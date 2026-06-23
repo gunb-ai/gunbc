@@ -6,6 +6,13 @@ import gunbc.ci_runner_placement {
   PlanUnsound,
   RunnerHostDeployment,
   runner_deployment_plan,
+  SessionReservationPlan,
+  SessionReservationDerived,
+  SessionReservationUnsound,
+  SessionHostReservation,
+  session_reservation_plan,
+  OperatingPointRow,
+  operating_curve,
 }
 import extdeps.github.actions { RunnerSpec, SelfHosted, HostedRunner, RunsOnExpression }
 import std.measure { byte_size_count }
@@ -38,16 +45,75 @@ fn manifest_host_text(h: RunnerHostDeployment) -> String {
   )
 }
 
-fn project_runner_deploy_to_doc() -> Doc {
+fn runner_plan_doc() -> Doc {
   match runner_deployment_plan() {
     PlanUnsound { reason: reason } =>
-      doc_line_of(text: concat("UNSOUND: ", reason))
+      doc_line_of(text: concat("runner-deploy UNSOUND: ", reason))
     PlanDerived { hosts: hosts, fleet_concurrent_runs: total } =>
       doc_concat(parts: append(
-        map(hosts, h => doc_line_of(text: manifest_host_text(h: h))),
-        items: [doc_line_of(text: concat("fleet_concurrent_runs=", to_string(total)))]
+        map(hosts, h => doc_line_of(text: concat("runner-deploy ", manifest_host_text(h: h)))),
+        items: [doc_line_of(text: concat("runner-deploy fleet_concurrent_runs=", to_string(total)))]
       ))
   }
+}
+
+fn session_host_text(h: SessionHostReservation) -> String {
+  concat(
+    concat(concat("host=", h.identity), concat(" sessions=", to_string(h.session_count))),
+    concat(" per_session_cap_bytes=", to_string(byte_size_count(b: h.per_session_reservation)))
+  )
+}
+
+fn session_plan_doc() -> Doc {
+  match session_reservation_plan() {
+    SessionReservationUnsound { reason: reason } =>
+      doc_line_of(text: concat("session-reservation UNSOUND: ", reason))
+    SessionReservationDerived {
+      hosts: hosts,
+      fleet_concurrent_sessions: total,
+      per_session_reservation: _,
+      coverage_count: covered,
+      sample_count: samples
+    } =>
+      doc_concat(parts: append(
+        map(hosts, h => doc_line_of(text: concat("session-reservation ", session_host_text(h: h)))),
+        items: [doc_line_of(text: concat(
+          concat("session-reservation fleet_concurrent_sessions=", to_string(total)),
+          concat(" measured_peak_coverage=", concat(to_string(covered), concat("/", to_string(samples))))
+        ))]
+      ))
+  }
+}
+
+fn operating_row_text(r: OperatingPointRow) -> String {
+  concat(
+    concat(
+      concat("  per_session_cap_bytes=", to_string(byte_size_count(b: r.per_session_cap))),
+      concat(" concurrency=", to_string(r.session_concurrency))
+    ),
+    concat(
+      concat(
+        concat(" sessions_slice_bytes=", to_string(byte_size_count(b: r.sessions_slice))),
+        concat(" runners_per_host=", to_string(r.min_runner_count))
+      ),
+      concat(" peak_coverage=", concat(to_string(r.coverage_count), concat("/", to_string(r.sample_count))))
+    )
+  )
+}
+
+fn operating_curve_doc() -> Doc {
+  doc_concat(parts: concat(
+    [doc_line_of(text: "operating-curve (operator selects one operating point grounded in measured per-session peaks min 0.28 / median ~2.06 / max 8.27 GiB; conservation: host_ram - host_fixed_overhead - per_session_cap*concurrency = runner_slice; runners_per_host = runner_slice / 24GiB whole-run peak):")],
+    map(operating_curve(), r => doc_line_of(text: operating_row_text(r: r)))
+  ))
+}
+
+fn project_runner_deploy_to_doc() -> Doc {
+  doc_concat(parts: [
+    runner_plan_doc(),
+    session_plan_doc(),
+    operating_curve_doc()
+  ])
 }
 
 fn expected_runner_deploy_manifest() -> String {
