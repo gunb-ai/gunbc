@@ -23,6 +23,30 @@ convention standing where necessity was available).
 There is also no typed carrier: `Terminal`/`Scaffold` are text only; `src/v2/lens/registry.dag` lists
 lenses (`LensRegistryEntryV0`) for **9 of ~35** files with no disposition field.
 
+### 0a. Post-#5579 reframe — the wall moved the ball halfway *and* grew the surface
+
+The comment-ban wall (#5579, `//` is now a parse error) changed the shape of this problem, it did not
+solve it. The marks that used to live in comments were forced **out of comments and into `data: String`
+rows** — `bytes_seam`, `unit_must_run_staged_note`, the Anthropic closure rows, the budget-tree leaves,
+`consumed_input_closure_concept_note` / `_convergence_candidate` / `_slice1_status` (#5605). So the
+problem statement is no longer "disposition lives in **comments** (invisible to a lens)" but
+"disposition lives in `data: String` **rows** — **visible** to a lens as a Node, but still **opaque
+prose** whose *meaning* a lens cannot read." Net: the wall made the marks Nodes (a lens can now *see*
+them) but the §3-migrate surface **grew** to include the whole post-wall `data:String` fleet on top of
+the original `🟡` extdeps comments. That **strengthens** this carrier's case — the displaced cost it
+removes is now bigger and concrete, with named instances (§6: denominate the benefit). It does not
+change the carrier: `data:String` prose → typed `Disposition` is the same move, with a larger,
+already-Node-shaped input set.
+
+This is the chosen first proof-by-use region: **slice-1** (operator GO 2026-06-23, work-item
+`adhoc-0a633bef-bb9`, `fierce-crane-13` under `neat-dove-397`) models `Disposition` +
+`ConstructionMechanism` in `std` (a DESIGN-named load-bearing carrier → **checkpoint** to
+`bright-stag-194` before any row migrates), migrates **this** `data:String` fleet region-by-region (each
+region red-on-revert so the lens is never inert mid-migration), and lands the fail-closed redundancy
+lens green-by-execution with a discriminating control. The substrate-mandatory **#1** end-state stays
+the named goal, not this slice — slice-1 *proves the binary taxonomy by use before cementing it*
+(see §2a).
+
 ## 1. The carrier — one concept, two carriers (§2 horizontal, single authority)
 
 Lens-lifecycle tags and coproduct dissolve-markers are the **same concept**. One typed carrier:
@@ -50,6 +74,30 @@ scaffold dead code — e.g. `SingleAuthority`, `RealizationDispatch`, `Substrate
 require the tag at definition, the lens is dead code and **dissolves**. The enforcement mechanism is
 disposed of *by* the discipline (same shape as the numeric-tower guard going dead). Jumping straight to
 #1 is rejected only on sequencing (substrate change + flag-day + unproven taxonomy), not on principle.
+
+### 2a. Taxonomy stress-test — the hypothesis slice-1 must try to falsify
+
+The first real test input is #5605's `ConsumedInputClosure`, which appears to wear **three** dispositions
+at once: the concept is sound (`_concept_note`), the impl is a scaffold (`_slice1_status`), and a
+convergence is pending (`_convergence_candidate`). This *looks* like the binary `Terminal | Scaffold` is
+too narrow and needs a soundness/completeness/convergence **axis split**. It is not — and that is the
+ruling slice-1 carries in as a hypothesis to **falsify**, not a blank:
+
+- It is **N marks per carrier, not N axes per `Disposition`.** Those three are three *distinct*
+  `data:String` rows, each cleanly one disposition: `_concept_note` → `Terminal{reason}` (consume-input
+  vs produce-artifact is a permanent §3 distinction — the concept stays); `_convergence_candidate` →
+  `Scaffold{dissolves_to: the one selection authority all consumers reach}`; `_slice1_status` →
+  `Scaffold{dissolves_to: per-unit selection}`. (Convergence-pending *is* a `Scaffold` — "these N
+  authorities should become 1" is a §3 redundancy that dissolves when the merge lands — not a third
+  axis.)
+- Splitting `Disposition` into axes would **grow the concept** to model what multiple-marks-per-carrier
+  already expresses (§2: net concepts must not grow by re-invention) — a failed decomposition.
+- **The discriminating test:** can every mark be assigned *exactly one* `Disposition` without losing
+  information? If yes, the binary holds and the multiplicity is just per-carrier mark count. The
+  taxonomy needs the split **only** if a *single, indivisible* mark genuinely needs two dispositions at
+  once (sound-concept AND scaffold-impl fused in one row that cannot be split into two marks) — and
+  green-by-execution would then show it. Until a mark fails that test, the binary is the cheaper, more
+  grounded answer.
 
 ## 3. What is actually enforceable (construction vs lens vs retro)
 

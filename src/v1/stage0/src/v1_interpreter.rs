@@ -4433,6 +4433,42 @@ fn eval_builtin(
             Ok(Some(Value::Str(text)))
         }
 
+        "bytes_octets" => {
+            let bytes = expect_byte_vec(positional.first().copied(), "bytes_octets")?;
+            let items: Vec<Value> = bytes.iter().map(|b| Value::Int(*b as i64)).collect();
+            Ok(Some(list_value(items)))
+        }
+
+        "octets_bytes" => {
+            let arg = positional.first().copied().ok_or_else(|| InterpError::TypeError {
+                msg: "octets_bytes requires a List<UInt8> argument".to_string(),
+            })?;
+            let items = free_monoid_to_vec(arg).ok_or_else(|| InterpError::TypeError {
+                msg: "octets_bytes expects a List<UInt8>".to_string(),
+            })?;
+            let mut out: Vec<Value> = Vec::with_capacity(items.len());
+            for item in &items {
+                match item {
+                    Value::Int(n) if (0..=255).contains(n) => out.push(Value::Int(*n)),
+                    other => {
+                        return Err(InterpError::TypeError {
+                            msg: format!(
+                                "octets_bytes expects octets 0..255, got element {}",
+                                other.type_label()
+                            ),
+                        })
+                    }
+                }
+            }
+            Ok(Some(list_value(out)))
+        }
+
+        "utf8_encode_bytes" => {
+            let s = expect_str(positional.first().copied(), "utf8_encode_bytes")?;
+            let items: Vec<Value> = s.as_bytes().iter().map(|b| Value::Int(*b as i64)).collect();
+            Ok(Some(list_value(items)))
+        }
+
         "discriminant" => match positional.first() {
             Some(Value::Variant { variant_name, .. }) => {
                 Ok(Some(Value::Str(resolve_sym(*variant_name))))
