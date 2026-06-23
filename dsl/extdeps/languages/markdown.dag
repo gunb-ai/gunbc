@@ -258,6 +258,14 @@ fn heading_level_to_int(level: HeadingLevel) -> Int {
   }
 }
 
+fn md_code_block(code: String, sp: MarkdownSpellings) -> String {
+  if ends_with(s: code, suffix: "\n") {
+    join([sp.code_fence, "\n", code, sp.code_fence], "")
+  } else {
+    join([sp.code_fence, "\n", code, "\n", sp.code_fence], "")
+  }
+}
+
 fn md_block(block: MarkdownBlock, sp: MarkdownSpellings) -> String {
   match block {
     HeadingBlock { level, inlines } =>
@@ -275,8 +283,7 @@ fn md_block(block: MarkdownBlock, sp: MarkdownSpellings) -> String {
     TaskListBlock { items } =>
       md_tasklist(items: items, sp: sp, depth: 0)
     CodeBlock { code } =>
-
-      join([sp.code_fence, "\n", code, sp.code_fence], "")
+      md_code_block(code: code, sp: sp)
     TableBlock { header, alignments, rows } =>
       md_table(header: header, alignments: alignments, rows: rows, sp: sp)
     BlockquoteBlock { blocks } =>
