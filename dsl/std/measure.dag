@@ -138,6 +138,8 @@ fn time_measure<S>(count: Nat) -> Measure<Time, S, Nat> {
 
 type ByteSize = Measure<Memory, One, Nat>
 
+type Kibibyte = Measure<Memory, Kibi, Nat>
+
 type Gibibyte = Measure<Memory, Gibi, Nat>
 
 fn gibibyte(count: Nat) -> Gibibyte {
