@@ -3504,7 +3504,12 @@ pub fn emit_module_full(
             for item in Rc::new({
                 let mut __result = Vec::new();
                 for item in typed_module.items.clone().iter().cloned() {
-                    if (is_type_def_item(item.clone()) && is_coproduct_type(item.clone())) {
+                    if (is_type_def_item(item.clone())
+                        && is_coproduct_type(item.clone())
+                        && !(corpus_repr_is_host(emit_info.corpus_repr.clone())
+                            && (authored_name(scope.type_env.clone(), item.clone())
+                                == "FreeMonoid".to_string())))
+                    {
                         __result.push(item);
                     }
                 }
@@ -7329,6 +7334,40 @@ pub fn emit_type_def_from_connective(
                     emit_info,
                 )
             }
+        } else if (corpus_repr_is_host(emit_info.corpus_repr.clone())
+            && (item_text.clone() == "FreeMonoid".to_string()))
+        {
+            // FreeMonoid grounding (§3 single authority): under HostNative the coproduct (Empty | Cons)
+            // is realized as the native Rust Vec, so emit a transparent type alias instead of the dead
+            // enum. Every FreeMonoid<T> slot then resolves to Vec<T> via Rust alias transparency; values
+            // are grounded to native Vec at the construct/pattern sites. The element-specialized text arm
+            // (FreeMonoid<Char> -> String) is handled upstream by the corpus-aware render_rust_* text
+            // guards, which keep PRECEDENCE over this default Vec arm. The enum's auto-impl accessors and
+            // variant-glob imports drop out with the enum (variant globs are filtered out under host).
+            let elem_csv = Rc::new({
+                let mut __result = Vec::new();
+                for p in item.params.clone().iter().cloned() {
+                    __result.push(generic_param_name_at(p.clone(), env.source_indices.clone()));
+                }
+                __result
+            })
+            .join(&", ".to_string());
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat(rust_visibility_prefix(), "type ".to_string()),
+                                item_text.clone(),
+                            ),
+                            type_params,
+                        ),
+                        " = Vec<".to_string(),
+                    ),
+                    elem_csv,
+                ),
+                ">;".to_string(),
+            )
         } else {
             {
                 let all_unit_variants = {
