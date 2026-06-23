@@ -140,8 +140,13 @@ in `gunbc_ci_floor_measured_peak`. The worst-max = `25769803776` (~24 GiB) in
 `gunbc_ci_floor_runner_worst_max` stays a **conservative placeholder**: it is driven by the rust-gate
 cargo-test rustc *child* processes (a `.rs`-touching PR), which run 28003119550 did not exercise and
 which no `.dag`/executor fix moves — so it is honestly un-verified and kept high (a too-low OOM-kill
-ceiling would kill legitimate worst-peak jobs; high fails closed). A measured worst-max needs a
-rust-gate-present heavy-run slot (coordinate with crisp-carp). NOTE: B4's #5619 dedup moves the *typical*
+ceiling would kill legitimate worst-peak jobs; high fails closed). **Provenance for the worst-max/cap
+side is deep-otter-528's srv2 worst-observed-max monitor, NOT B4** (B4's reservation/typical run had no
+rust gate present, so it under-reports the cap driver — the parent's two-driver invariant: typical ←
+B4 verified, worst-max ← deep-otter's accumulating monitor). The monitor reads ~8.2 GiB at rest and
+climbs under load; it is **not yet saturated**, and a cap below the ~10.8 GiB typical is unwritable here
+(it would violate `reservation < hard_cap` and OOM-kill every job), so the 24 GiB placeholder holds
+until deep-otter's monitor saturates to a real rust-gate-present worst ≥ typical. NOTE: B4's #5619 dedup moves the *typical*
 self-RSS only ~0.57 GiB (8.7→8.1, NOT the earlier-retracted 8.7→4.2) and never touches the cap side, so
 do not lower the reservation on its account. The margin is a single knob
 (`gunbc_ci_floor_runner_margin_num/den`, currently 6/5 = 20%).
