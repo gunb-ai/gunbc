@@ -32,7 +32,7 @@ Staged: `FidelityDisposition<Feature>` (`src/v2/extdeps/languages/fidelity.dag`)
 
 1. **English vocabulary closure** → fail-closed English ingest (replace catch-all with closed/typed word set). *Intersects the §0 lock-down.*
 2. **English ingest round-trip** — tokenize/parse proof for ingest (today `boundary/english_ingest_fail_closed.dag` marks it fail-closed; complete the bidirectional round-trip).
-3. **Cross-media targets beyond syntax** — JSON / protobuf / react / diagram as **first-class media** (structured, not stringified). React/JSX couples syntax + runtime value.
+3. **Cross-media targets beyond syntax** — JSON / protobuf / react / diagram as **first-class media** (structured, not stringified). React/JSX couples syntax + runtime value. **HTML is now a first-class `Medium<MarkupNode>`** (`dsl/extdeps/languages/html.dag`): `HtmlSpellings`-parameterized serializer + recursive-descent ingester prove the round-trip law (ingest∘serialize = identity, `DecodeFidelity`-bounded); `validate_href` enforces fail-closed on ingest for unsafe URL schemes; 5-witness receipt in `dsl/test/claim/html_roundtrip_test.dag`.
 4. **`Medium<A> ↔ Medium<B>` homomorphisms** — generalize translate's `coercion_fold` beyond strings (Realization pattern applied to media).
 5. **FidelityDisposition compose-up** — per-feature dispositions reduce to medium-level `DecodeFidelity`.
 6. **Eval runtime generalization** — move wave-1 literal semantics from synthetic pins into `wave1_model_core` primitives (T-22); per-Node-ID identity, not fixture-global singletons.
