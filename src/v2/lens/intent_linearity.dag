@@ -5,12 +5,7 @@ import v2.std.node { Node, Symbol }
 import v2.std.algebra { FreeMonoid, length, fold_list }
 import v2.std.logic { Bool }
 
-// Intent-linearity enforcer: a program's description should equal its irreducible information content
-// (minimal template + distinct data), recursively at every level -- intent 1:1 with its inputs. This is
-// the registry the redundancy lenses become ROWS of (so the enforcer is itself linear: one engine, N
-// rows, not a fork). Row 1 = the hand-unrolled fold; complexity cost-recurrence rules join later.
 
-// The §1 time-axis a rule's minimal form reduces (change-time = §2 maintenance; run-time = §1 cost).
 type CostAxis = ChangeTime | RunTime
 
 type LinearityRule {
@@ -19,8 +14,6 @@ type LinearityRule {
   detect: fn(FreeMonoid<Node>) -> Bool
 }
 
-// Row 1 — the hand-unrolled fold (change-time). detect reuses simulated_relationship; minimal form = one
-// fold over the data the chain spells out by hand.
 fn unroll_to_fold_rule() -> LinearityRule {
   LinearityRule {
     name: ^unroll_to_fold,
@@ -33,12 +26,10 @@ fn linearity_registry() -> FreeMonoid<LinearityRule> {
   [ unroll_to_fold_rule() ]
 }
 
-// typed projector (avoids field access on a fold lambda element)
 fn rule_fires(rule: LinearityRule, steps: FreeMonoid<Node>) -> Bool {
   rule.detect(steps)
 }
 
-// Is this chain non-linear at this level -- does ANY registry rule fire?
 fn chain_is_redundant(steps: FreeMonoid<Node>) -> Bool {
   fold_list(
     xs: linearity_registry(),
@@ -47,8 +38,6 @@ fn chain_is_redundant(steps: FreeMonoid<Node>) -> Bool {
   )
 }
 
-// Residual redundancy: a flagged chain of N statements collapses to 1 fold over N data, so it carries
-// (N - 1) redundant hand-copies -- the O(n)->O(1) saving the minimal form realizes; 0 if already minimal.
 fn chain_residual(steps: FreeMonoid<Node>) -> Int {
   if chain_is_redundant(steps: steps) {
     length(xs: steps) - 1
@@ -61,9 +50,6 @@ fn level_is_linear(level: FreeMonoid<Node>) -> Bool {
   !chain_is_redundant(steps: level)
 }
 
-// FRACTAL fixed point: a body is its statement-chains at each nesting level (produced by the parse/
-// resolve walk + chain projector; taken here as input). It is 1:1 / LINEAR iff NO level is redundant --
-// every level is already at its minimal form (every hole bottomed out at an atom).
 fn body_is_linear(levels: FreeMonoid<FreeMonoid<Node>>) -> Bool {
   fold_list(
     xs: levels,

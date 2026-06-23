@@ -463,7 +463,7 @@ fn shared_primitives_parses_strict() {
 fn tokenizer_non_ascii_performance_regression() {
     use std::time::Instant;
 
-    let source = read_v2_file("src/v1/02_parse.dag"); // largest .dag, has non-ASCII
+    let source = read_v2_file("src/v1/tests/fixtures/non_ascii_perf.dag");
     assert!(!source.is_ascii(), "test requires non-ASCII source file");
 
     let ascii_source: String = source
@@ -482,7 +482,7 @@ fn tokenizer_non_ascii_performance_regression() {
 
     let ratio = non_ascii_time.as_secs_f64() / ascii_time.as_secs_f64().max(0.001);
     eprintln!(
-        "tokenize 02_parse.dag: ascii={:.3}s, non-ascii={:.3}s, ratio={:.1}x",
+        "tokenize non_ascii_perf.dag: ascii={:.3}s, non-ascii={:.3}s, ratio={:.1}x",
         ascii_time.as_secs_f64(),
         non_ascii_time.as_secs_f64(),
         ratio,
@@ -496,7 +496,7 @@ fn tokenizer_non_ascii_performance_regression() {
 
     assert!(
         non_ascii_time.as_secs_f64() < 2.0,
-        "tokenize took {:.3}s — budget is 2s for ~270KB file",
+        "tokenize took {:.3}s — budget is 2s for ~48KB fixture",
         non_ascii_time.as_secs_f64(),
     );
 }
@@ -528,7 +528,7 @@ fn tokenizer_text_lookup_flat_in_file_size() {
 
 #[test]
 fn source_text_at_lookup_flat_in_file_size() {
-    let source = read_v2_file("src/v1/02_parse.dag");
+    let source = read_v2_file("src/v1/tests/fixtures/non_ascii_perf.dag");
     assert!(
         !source.is_ascii(),
         "fixture must include non-ASCII so a reintroduced substring slow path would be caught"
