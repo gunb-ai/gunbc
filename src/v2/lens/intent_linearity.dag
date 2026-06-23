@@ -41,8 +41,8 @@ fn linearity_registry() -> FreeMonoid<LinearityRule> {
 
 fn representation_eq(a: Representation, b: Representation) -> Bool {
   match a {
-    TermChain => match b { TermChain => true  _ => false }
-    TypeForest => match b { TypeForest => true _ => false }
+    TermChain => match b { TermChain => true  TypeForest => false }
+    TypeForest => match b { TermChain => false TypeForest => true }
   }
 }
 
