@@ -132,6 +132,22 @@ wiring.
   table. Those line-deletions are the *output* of the enforcer, gated on emit + write (§6 + the write
   effect), not a manual sweep.
 
+**Pre-audit fork-check findings (the audit starts from these, doesn't rediscover them):**
+
+- **`fact_density.dag` is the OTHER HALF of intent-linearity** — it detects a *hollow* carrier (too few
+  facts; an anemic/under-decomposed alias). That is §2-**deep** / leaf-side; intent-linearity is
+  §2-**horizontal**. Together they are the two inequalities of `description == information`: fact_density
+  catches *under* (hollow), intent_linearity catches *over* (redundant), and **1:1 is the equality**. The
+  linearity wall is two-sided. **Consolidate** under one `intent-linearity` umbrella; this subsumes *both*
+  DESIGN §2 open threads (horizontal redundancy + the parked leaf-side decomposition diagnosis).
+- **`table_decision_tree.dag` is the dispatch-ladder species' existing home** (today Unrealized) — it
+  already targets "a fn-encoded total table over a closed vocabulary → a substrate `TotalMap`/`TotalPolicy`
+  data row." That IS the if/else-ladder→table minimal form (a lookup, not a fold). **Realize it as the
+  dispatch-ladder registry row; do NOT fork a new lens.**
+- **`registry.dag` is the lens-identity authority** (`LensIdV0`), a registry *of lenses*, not of rules —
+  not a fork of the `LinearityRule` registry. But `intent_linearity` rows should **reference `LensIdV0`**
+  for lens identity rather than re-coin names (§3).
+
 **Deletes executed this turn: none.** All gated. The map is the deliverable; the triggers are the
 schedule.
 
