@@ -265,6 +265,66 @@ fn openai_responses_output_item_type_label(kind: OpenAiResponsesOutputItemType) 
   }
 }
 
+type OpenAiResponsesStatus
+  = OpenAiResponsesStatusCompleted
+  | OpenAiResponsesStatusFailed
+  | OpenAiResponsesStatusInProgress
+  | OpenAiResponsesStatusIncomplete
+  | OpenAiResponsesStatusCancelled
+  | OpenAiResponsesStatusQueued
+  | OpenAiResponsesStatusOther { raw: NonEmptyStr }
+
+data openai_responses_status_completed_wire: String = "completed"
+data openai_responses_status_failed_wire: String = "failed"
+data openai_responses_status_in_progress_wire: String = "in_progress"
+data openai_responses_status_incomplete_wire: String = "incomplete"
+data openai_responses_status_cancelled_wire: String = "cancelled"
+data openai_responses_status_queued_wire: String = "queued"
+
+fn parse_openai_responses_status(raw: String) -> OpenAiResponsesStatus {
+  if raw == openai_responses_status_completed_wire { OpenAiResponsesStatusCompleted }
+  else if raw == openai_responses_status_failed_wire { OpenAiResponsesStatusFailed }
+  else if raw == openai_responses_status_in_progress_wire { OpenAiResponsesStatusInProgress }
+  else if raw == openai_responses_status_incomplete_wire { OpenAiResponsesStatusIncomplete }
+  else if raw == openai_responses_status_cancelled_wire { OpenAiResponsesStatusCancelled }
+  else if raw == openai_responses_status_queued_wire { OpenAiResponsesStatusQueued }
+  else { OpenAiResponsesStatusOther { raw: raw } }
+}
+
+fn openai_responses_status_label(kind: OpenAiResponsesStatus) -> String {
+  match kind {
+    OpenAiResponsesStatusCompleted => openai_responses_status_completed_wire
+    OpenAiResponsesStatusFailed => openai_responses_status_failed_wire
+    OpenAiResponsesStatusInProgress => openai_responses_status_in_progress_wire
+    OpenAiResponsesStatusIncomplete => openai_responses_status_incomplete_wire
+    OpenAiResponsesStatusCancelled => openai_responses_status_cancelled_wire
+    OpenAiResponsesStatusQueued => openai_responses_status_queued_wire
+    OpenAiResponsesStatusOther { raw: r } => r
+  }
+}
+
+type OpenAiResponsesOutputItemStatus
+  = OpenAiResponsesOutputItemInProgress
+  | OpenAiResponsesOutputItemCompleted
+  | OpenAiResponsesOutputItemIncomplete
+  | OpenAiResponsesOutputItemStatusOther { raw: NonEmptyStr }
+
+fn parse_openai_responses_output_item_status(raw: String) -> OpenAiResponsesOutputItemStatus {
+  if raw == openai_responses_status_in_progress_wire { OpenAiResponsesOutputItemInProgress }
+  else if raw == openai_responses_status_completed_wire { OpenAiResponsesOutputItemCompleted }
+  else if raw == openai_responses_status_incomplete_wire { OpenAiResponsesOutputItemIncomplete }
+  else { OpenAiResponsesOutputItemStatusOther { raw: raw } }
+}
+
+fn openai_responses_output_item_status_label(kind: OpenAiResponsesOutputItemStatus) -> String {
+  match kind {
+    OpenAiResponsesOutputItemInProgress => openai_responses_status_in_progress_wire
+    OpenAiResponsesOutputItemCompleted => openai_responses_status_completed_wire
+    OpenAiResponsesOutputItemIncomplete => openai_responses_status_incomplete_wire
+    OpenAiResponsesOutputItemStatusOther { raw: r } => r
+  }
+}
+
 type OpenAiResponses200OutputContent {
   type: OpenAiResponsesOutputContentType
   text: String
@@ -301,7 +361,7 @@ type OpenAiResponses200Annotation
 type OpenAiResponses200OutputItem {
   id: String?
   type: OpenAiResponsesOutputItemType
-  status: String?
+  status: OpenAiResponsesOutputItemStatus?
   role: String?
   content: List<OpenAiResponses200OutputContent>
 }
@@ -326,7 +386,7 @@ type OpenAiResponses200Body {
   id: String
   object: String
   created_at: Int?
-  status: String?
+  status: OpenAiResponsesStatus?
   model: String
   output: List<OpenAiResponses200OutputItem>
   usage: OpenAiResponses200Usage
