@@ -1,8 +1,10 @@
 module v2.lens.intent_linearity
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import v2.lens.simulated_relationship { chain_is_simulated }
+import v2.lens.complexity_rewrite { cost_is_rewritable }
+import v2.lens.cost { symbolic_cost_of_node }
 import v2.std.node { Node, Symbol }
-import v2.std.algebra { FreeMonoid, length, fold_list }
+import v2.std.algebra { FreeMonoid, any, length, fold_list }
 import v2.std.logic { Bool }
 
 // Intent-linearity enforcer: a program's description should equal its irreducible information content
