@@ -17,7 +17,7 @@
 module test.claim.generated_artifact_drift
 
 import gunbc.generated_artifact {
-  GeneratedArtifact, CiYamlArtifact, GitignoreArtifact, RoadmapArtifact,
+  GeneratedArtifact, CiYamlArtifact, GitignoreArtifact, RoadmapArtifact, DesignArtifact,
   generated_artifact_registry,
   committed_generated_artifacts, artifact_path, artifact_generate, artifact_extra_valid,
   artifact_is_committed, registry_contains
@@ -44,9 +44,11 @@ fn witness_all_known_committed() -> Bool {
   artifact_is_committed(a: CiYamlArtifact)
     && artifact_is_committed(a: GitignoreArtifact)
     && artifact_is_committed(a: RoadmapArtifact)
+    && artifact_is_committed(a: DesignArtifact)
     && !path_is_ignored(path: ".github/workflows/ci.yml")
     && !path_is_ignored(path: ".gitignore")
     && !path_is_ignored(path: "ROADMAP.md")
+    && !path_is_ignored(path: "DESIGN.md")
 }
 
 // (2b) Discriminating: synthetic ignored paths DO classify ignored — the derivation genuinely reads the
@@ -66,13 +68,15 @@ fn witness_ignored_paths_excluded() -> Bool {
 // gunbc.generated_artifact). The named constructors here are authored from the TYPE, a distinct site from
 // the registry data literal.
 fn witness_registry_complete() -> Bool {
-  count(generated_artifact_registry) == 3
+  count(generated_artifact_registry) == 4
     && registry_contains(a: CiYamlArtifact)
     && registry_contains(a: GitignoreArtifact)
     && registry_contains(a: RoadmapArtifact)
+    && registry_contains(a: DesignArtifact)
     && artifact_is_committed(a: CiYamlArtifact)
     && artifact_is_committed(a: GitignoreArtifact)
     && artifact_is_committed(a: RoadmapArtifact)
+    && artifact_is_committed(a: DesignArtifact)
 }
 
 // ci.yml carries the extra YAML-parse validation seam (preserved from the old CiYamlGate); the others
@@ -80,6 +84,7 @@ fn witness_registry_complete() -> Bool {
 fn witness_extra_validation_wired() -> Bool {
   artifact_extra_valid(a: GitignoreArtifact)
     && artifact_extra_valid(a: RoadmapArtifact)
+    && artifact_extra_valid(a: DesignArtifact)
     && artifact_extra_valid(a: CiYamlArtifact)
 }
 

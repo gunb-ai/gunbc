@@ -48,3 +48,64 @@ data design_section_1_argument: Argument = Argument {
   axioms: design_axioms,
   propositions: design_section_1_propositions
 }
+
+// §2–§7: one headline proposition per section, each premised on the sections it is a consequence of.
+// This is the document's serial spine (DESIGN preamble: "each later section is a consequence of the ones
+// before it (or an independent peer)") made a checked consequence-chain — no orphan, no cycle, every claim
+// reachable from A1–A3 via §1. The full prose of each section lives in gunbc.design_document; binding the
+// two (render each section FROM its proposition) is the dissolution trigger below.
+data design_section_2_to_7_propositions: List<Proposition> = [
+
+  Proposition {
+    id: "s2.minimize-redundancy",
+    statement: "minimize redundancy is the master move for cost and complexity: redundant work loses on all three of §1's quantities at once, so a perfectly DRY process is by meaning the minimal/efficient one",
+    premises: ["s1.minimal-safe-efficient"]
+  },
+
+  Proposition {
+    id: "s3.single-authority",
+    statement: "single authority keeps §2 from being undone: minimization holds only if each fact lives in exactly one place; the recurring violation is nicknaming (a second name for one concept)",
+    premises: ["s2.minimize-redundancy"]
+  },
+
+  Proposition {
+    id: "s4.closed-grounded-substrate",
+    statement: "the closed, grounded substrate makes §2–§3 decidable: you can unify and decompose mechanically only in a closed, grounded system, and grounding is intersubjective",
+    premises: ["s2.minimize-redundancy", "s3.single-authority", "s1.grounding-intersubjective"]
+  },
+
+  Proposition {
+    id: "s5.fail-closed",
+    statement: "fail-closed is §1's safety axis: minimizing cost and complexity is worthless if a wrong thing passes silently; stronger than catching a wrong state is making it unwritable (correctness by construction, not validation)",
+    premises: ["s1.minimal-safe-efficient"]
+  },
+
+  Proposition {
+    id: "s6.how-to-work",
+    statement: "how to work given §1–§5: model by DFS-ing the concept DAG, prioritize holistically and denominate the benefit as displaced cost, and enforce by construction-first then lenses for the unstructurable residue",
+    premises: ["s2.minimize-redundancy", "s3.single-authority", "s4.closed-grounded-substrate", "s5.fail-closed"]
+  },
+
+  Proposition {
+    id: "s7.self-hosting",
+    statement: "self-hosting applies the principles to the compiler itself: it is an ordinary substrate fact written in itself, and because a wall is a row over a medium-agnostic substrate, language design opens up (compiler-fork × language → row + medium)",
+    premises: ["s4.closed-grounded-substrate", "s6.how-to-work", "s1.reduce-to-physics"]
+  }
+]
+
+data design_propositions: List<Proposition> =
+  concat(design_section_1_propositions, design_section_2_to_7_propositions)
+
+// The whole-document argument: A1–A3 + every section's headline claim. The syllogism lens
+// (std.syllogism.argument_form_is_valid) checks it is non-vacuous, orphan-free, acyclic, and
+// axiom-set-closed — the §1 open-thread "every claim a consequence-chain back to an axiom" turned on
+// this document itself (DESIGN §7 recursion).
+//
+// DISSOLUTION TRIGGER: today the section prose (gunbc.design_document) and these propositions are two
+// views of the same claims at different granularity — the proposition is the headline, the document is the
+// exposition. Collapse to one authority once design_document renders each section's lead FROM its
+// proposition (the document model carrying rich-block claim content), so the headline is single-authored.
+data design_argument: Argument = Argument {
+  axioms: design_axioms,
+  propositions: design_propositions
+}
