@@ -1654,8 +1654,7 @@ mod compiler_tests {
                     .files
                     .iter()
                     .find(|f| {
-                        f.path.contains("extdeps_llm_anthropic")
-                            && !f.path.contains("_contracts")
+                        f.path.contains("extdeps_llm_anthropic") && !f.path.contains("_contracts")
                     })
                     .expect(
                         "emitted file for extdeps.llm.anthropic not found — \
