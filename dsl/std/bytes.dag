@@ -2,6 +2,7 @@ module std.bytes
 
 import std.types { Bytes }
 import std.integer { UInt8 }
+import std.disposition { Disposition, Scaffold, DeclLocator, WholeDeclaration, SingleAuthority }
 
 fn pure_dag_seam_unreachable() -> Int {
   1 / 0
