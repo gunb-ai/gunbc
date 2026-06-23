@@ -598,35 +598,36 @@ pub fn close_fn_fields(
 ) -> Rc<HashMap<String, Rc<TypeSummary>>> {
     Rc::new(v1_rt::map_keys(&summaries)).iter().cloned().fold(
         summaries.clone(),
-        |acc: Rc<HashMap<String, Rc<TypeSummary>>>, name: String| {
-            match v1_rt::map_get(&summaries, name.clone()) {
-                Some(s) => {
-                    if !s.has_fn_fields
-                        && type_summary_reaches_fn(
-                            name.clone(),
-                            summaries.clone(),
-                            v1_rt::rc_empty_set::<String>(),
-                        )
-                    {
-                        v1_rt::rc_map_insert(
-                            acc.clone(),
-                            name.clone(),
-                            Rc::new(TypeSummary {
-                                name: s.name.clone(),
-                                repr: s.repr.clone(),
-                                field_summaries: s.field_summaries.clone(),
-                                field_type_map: s.field_type_map.clone(),
-                                variant_name_set: s.variant_name_set.clone(),
-                                generic_param_names: s.generic_param_names.clone(),
-                                has_fn_fields: true,
-                            }),
-                        )
-                    } else {
-                        acc.clone()
-                    }
+        |acc: Rc<HashMap<String, Rc<TypeSummary>>>, name: String| match v1_rt::map_get(
+            &summaries,
+            name.clone(),
+        ) {
+            Some(s) => {
+                if !s.has_fn_fields
+                    && type_summary_reaches_fn(
+                        name.clone(),
+                        summaries.clone(),
+                        v1_rt::rc_empty_set::<String>(),
+                    )
+                {
+                    v1_rt::rc_map_insert(
+                        acc.clone(),
+                        name.clone(),
+                        Rc::new(TypeSummary {
+                            name: s.name.clone(),
+                            repr: s.repr.clone(),
+                            field_summaries: s.field_summaries.clone(),
+                            field_type_map: s.field_type_map.clone(),
+                            variant_name_set: s.variant_name_set.clone(),
+                            generic_param_names: s.generic_param_names.clone(),
+                            has_fn_fields: true,
+                        }),
+                    )
+                } else {
+                    acc.clone()
                 }
-                None => acc.clone(),
             }
+            None => acc.clone(),
         },
     )
 }
