@@ -33,18 +33,18 @@ pub fn single_punct() -> Rc<HashMap<String, TokenShape>> {
     thread_local! {
         static CACHED: Rc<HashMap<String, TokenShape>> = {
             let mut __m = HashMap::new();
-            __m.insert("(", TokenShape::ShLParen);
-            __m.insert(")", TokenShape::ShRParen);
-            __m.insert("[", TokenShape::ShLBracket);
-            __m.insert("]", TokenShape::ShRBracket);
-            __m.insert(":", TokenShape::ShColon);
-            __m.insert(",", TokenShape::ShComma);
-            __m.insert(".", TokenShape::ShDot);
-            __m.insert("+", TokenShape::ShPlus);
-            __m.insert("*", TokenShape::ShStar);
-            __m.insert("%", TokenShape::ShPercent);
-            __m.insert("/", TokenShape::ShSlash);
-            __m.insert("^", TokenShape::ShCaret);
+            __m.insert("(".to_string(), TokenShape::ShLParen);
+            __m.insert(")".to_string(), TokenShape::ShRParen);
+            __m.insert("[".to_string(), TokenShape::ShLBracket);
+            __m.insert("]".to_string(), TokenShape::ShRBracket);
+            __m.insert(":".to_string(), TokenShape::ShColon);
+            __m.insert(",".to_string(), TokenShape::ShComma);
+            __m.insert(".".to_string(), TokenShape::ShDot);
+            __m.insert("+".to_string(), TokenShape::ShPlus);
+            __m.insert("*".to_string(), TokenShape::ShStar);
+            __m.insert("%".to_string(), TokenShape::ShPercent);
+            __m.insert("/".to_string(), TokenShape::ShSlash);
+            __m.insert("^".to_string(), TokenShape::ShCaret);
             Rc::new(__m)
         };
     }

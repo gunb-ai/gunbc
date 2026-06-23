@@ -152,6 +152,10 @@ pub fn to_string(value: i64) -> String {
     value.to_string()
 }
 
+pub fn utf8_decode_bytes(bytes: &[u8]) -> Result<String, String> {
+    String::from_utf8(bytes.to_vec()).map_err(|e| format!("invalid UTF-8 in access payload: {}", e))
+}
+
 pub fn clamp(val: i64, min_val: i64, max_val: i64) -> i64 {
     val.clamp(min_val, max_val)
 }
