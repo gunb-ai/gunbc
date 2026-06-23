@@ -7,7 +7,7 @@ import std.realization_width { byte_size_saturating_sub, hardware_thread_count_s
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
-data ctrl_jobserver_authority: ExternalAuthority = ExternalAuthority {
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "github.com/gunb-ai/ctrl/blob/main/host/install-ctrl-jobserver.sh"
