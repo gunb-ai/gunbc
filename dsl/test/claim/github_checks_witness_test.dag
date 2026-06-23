@@ -1,0 +1,135 @@
+module test.claim.github_checks_witness
+
+import extdeps.github.checks {
+  CheckStatus,
+  CheckConclusion,
+  CheckOutput,
+  CheckRun,
+  CheckRunList,
+  InProgress,
+  Completed,
+  Success,
+  Failure,
+}
+import extdeps.github.merge_state {
+  MergeStateStatus,
+  Clean,
+  Blocked,
+  Dirty,
+}
+import extdeps.github.mergeable_state {
+  MergeableState,
+  Mergeable,
+  Conflicting,
+}
+import std.types { Bool }
+
+data sample_check_output: CheckOutput = CheckOutput {
+  title: "CI passed",
+  summary: "All checks green",
+  annotations_count: 0,
+}
+
+data sample_check_run_success: CheckRun = CheckRun {
+  id: 42,
+  name: "gunbc-ci",
+  head_sha: "abc123def456",
+  status: Completed,
+  conclusion: Success,
+  started_at: null,
+  completed_at: null,
+  output: sample_check_output,
+  html_url: "https://github.com/gunb-ai/gunbc/actions/runs/42",
+}
+
+data sample_check_run_pending: CheckRun = CheckRun {
+  id: 43,
+  name: "gunbc-ci",
+  head_sha: "abc123def456",
+  status: InProgress,
+  conclusion: null,
+  started_at: null,
+  completed_at: null,
+  output: CheckOutput {
+    title: null,
+    summary: null,
+    annotations_count: 0,
+  },
+  html_url: "https://github.com/gunb-ai/gunbc/actions/runs/43",
+}
+
+data sample_check_list_one: CheckRunList = CheckRunList {
+  total_count: 1,
+  check_runs: [sample_check_run_success],
+}
+
+fn check_run_is_complete(run: CheckRun) -> Bool {
+  match run.status {
+    Completed => true
+    _ => false
+  }
+}
+
+fn check_run_succeeded(run: CheckRun) -> Bool {
+  match run.conclusion {
+    Success => true
+    _ => false
+  }
+}
+
+test fn witness_completed_run_is_complete() -> Bool {
+  check_run_is_complete(run: sample_check_run_success)
+}
+
+test fn witness_in_progress_run_is_not_complete() -> Bool {
+  !check_run_is_complete(run: sample_check_run_pending)
+}
+
+test fn witness_success_conclusion_recognized() -> Bool {
+  check_run_succeeded(run: sample_check_run_success)
+}
+
+test fn witness_pending_has_no_conclusion() -> Bool {
+  match sample_check_run_pending.conclusion {
+    null => true
+    _ => false
+  }
+}
+
+test fn witness_check_list_has_one_run() -> Bool {
+  count(sample_check_list_one.check_runs) == 1
+}
+
+fn merge_state_is_clean(s: MergeStateStatus) -> Bool {
+  match s {
+    Clean => true
+    _ => false
+  }
+}
+
+fn mergeable_state_is_conflicting(s: MergeableState) -> Bool {
+  match s {
+    Conflicting => true
+    _ => false
+  }
+}
+
+test fn witness_merge_state_clean_recognized() -> Bool {
+  merge_state_is_clean(s: Clean)
+}
+
+test fn witness_merge_state_blocked_not_clean() -> Bool {
+  !merge_state_is_clean(s: Blocked)
+}
+
+test fn witness_merge_state_dirty_not_clean() -> Bool {
+  !merge_state_is_clean(s: Dirty)
+}
+
+test fn witness_mergeable_conflicting_recognized() -> Bool {
+  mergeable_state_is_conflicting(s: Conflicting)
+}
+
+test fn witness_mergeable_mergeable_not_conflicting() -> Bool {
+  !mergeable_state_is_conflicting(s: Mergeable)
+}

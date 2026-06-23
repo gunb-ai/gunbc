@@ -1,0 +1,22 @@
+module extdeps.github.mergeable_state
+
+import std.serialization { CoproductWireContract, StringVariant, ScreamingSnakeCase }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/rest/pulls/pulls#get-a-pull-request"
+  }
+}
+
+type MergeableState
+  = Mergeable
+  | Conflicting
+  | Unknown
+
+data mergeable_state_wire_contract: CoproductWireContract = {
+  coproduct: "MergeableState",
+  encoding: StringVariant { naming: ScreamingSnakeCase }
+}
