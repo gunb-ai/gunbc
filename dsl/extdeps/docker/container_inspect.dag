@@ -148,22 +148,22 @@ fn container_state_is_running(state: ContainerState) -> Bool =
 
 fn container_inspect_memory_limit(inspect: ContainerInspect) -> ByteSize? {
   match inspect.host_config {
-    null => none
-    hc => hc.memory
+    Present { value: hc } => hc.memory
+    Absent => none
   }
 }
 
 fn container_inspect_cpu_quota(inspect: ContainerInspect) -> Microsecond? {
   match inspect.host_config {
-    null => none
-    hc => hc.cpu_quota
+    Present { value: hc } => hc.cpu_quota
+    Absent => none
   }
 }
 
 fn container_inspect_cpu_period(inspect: ContainerInspect) -> Microsecond? {
   match inspect.host_config {
-    null => none
-    hc => hc.cpu_period
+    Present { value: hc } => hc.cpu_period
+    Absent => none
   }
 }
 

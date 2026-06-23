@@ -102,6 +102,10 @@ service docker.ContainerStats {
   }
 }
 
+data dissolve_on_cpu_percent_ratio_carrier: List<String> = [
+  "closure:ground_cpu_percent_ratio_type|cpu_percent: Float? is a percentage/ratio without a Measure<Quantity, Scale, M> carrier; bare Float cannot encode unit semantics (is it 0–1 normalized or 0–100 scale?); §5 violation on unit-modeling|trigger:B3 introduces Ratio or PercentagePoint typed alias on std.measure and uses instead of bare Float"
+]
+
 data dissolve_on_error_responses_opaque_strings: List<String> = [
   "closure:typed_error_responses|Error responses (404 => String, 500 => String) collapse distinct error shapes (not-found vs server error) to opaque string, violating §5 fail-closed (errors must be typed and located with structured diagnostics). Docker API returns JSON error objects with reason/message; should be modeled as ErrorDetail coproduct or structured record (NotFound | ServerError variants with message and optional retry info)|trigger:B3 models error responses as typed variants with structured failure details, not opaque strings"
 ]
