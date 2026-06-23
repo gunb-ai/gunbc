@@ -59,9 +59,16 @@ const INERT_CARRIER_ROSTER: &[&str] = &[
     "AccessPolicy", // dsl/std/access.dag — access-policy model; no authz consumer wired yet.
     "CargoDependency", // dsl/extdeps/rust/cargo.dag — Cargo manifest dep row; emit/ingest unwired.
     "CargoPackage", // dsl/extdeps/rust/cargo.dag — Cargo manifest package row; unwired.
+    "CheckConclusion", // dsl/extdeps/github/checks.dag — GitHub check-run conclusion; shadow lane, no workflow consumer yet.
+    "CheckOutput",  // dsl/extdeps/github/checks.dag — GitHub check-run output block; shadow lane, no workflow consumer yet.
+    "CheckRun",     // dsl/extdeps/github/checks.dag — GitHub check-run shape; shadow lane, no workflow consumer yet.
+    "CheckRunList", // dsl/extdeps/github/checks.dag — GitHub check-run list shape; shadow lane, no workflow consumer yet.
+    "CheckStatus",  // dsl/extdeps/github/checks.dag — GitHub check-run status; shadow lane, no workflow consumer yet.
     "FilePermissions", // dsl/extdeps/access/posix.dag — POSIX mode permission carrier; no fs consumer.
     "FloorWitnessRow", // src/v2/workflow/affected_set_floor_runner.dag — runner row; self-only.
     "GitCliReportedVersion", // dsl/extdeps/git/versioning.dag — git --version parse target; unwired.
+    "MergeableState", // dsl/extdeps/github/mergeable_state.dag — GitHub PR mergeable field; shadow lane, no workflow consumer yet.
+    "MergeStateStatus", // dsl/extdeps/github/merge_state.dag — GitHub GraphQL mergeStateStatus; shadow lane, no workflow consumer yet.
     "ReactHookSite", // src/v2/extdeps/frameworks/react.dag — React hook-site model; unwired.
     "SecretValue",   // dsl/std/types.dag — secret-string carrier; no redaction consumer wired.
 ];
