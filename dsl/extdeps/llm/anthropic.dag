@@ -3,7 +3,8 @@ module extdeps.llm.anthropic
 import extdeps.llm.llm { llm_snake_wire_contract }
 import std.serialization { CoproductWireContract, VariantEncoding }
 import std.types { NonEmptyStr }
-import std.disposition { Disposition, Scaffold, Terminal, DeclLocator, WholeDeclaration, NamedField, SingleAuthority }
+import std.disposition { Disposition, Scaffold, Terminal, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -17,32 +18,32 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 data wire_contract: VariantEncoding = llm_snake_wire_contract
 
 data anthropic_chat_message_wire_contract: CoproductWireContract = {
-  coproduct: "AnthropicChatMessage",
+  coproduct: DeclarationRef { module_path: "extdeps.llm.anthropic", decl_name: "AnthropicChatMessage", field: WholeDeclaration },
   encoding: InternallyTaggedObject { tag_field: "role", naming: StripSuffixAndSnakeCase { suffix: "Message" } }
 }
 
 data anthropic_user_content_block_wire_contract: CoproductWireContract = {
-  coproduct: "AnthropicUserContentBlock",
+  coproduct: DeclarationRef { module_path: "extdeps.llm.anthropic", decl_name: "AnthropicUserContentBlock", field: WholeDeclaration },
   encoding: InternallyTaggedObject { tag_field: "type", naming: StripPrefixSuffixAndSnakeCase { prefix: "User", suffix: "Block" } }
 }
 
 data anthropic_assistant_content_block_wire_contract: CoproductWireContract = {
-  coproduct: "AnthropicAssistantContentBlock",
+  coproduct: DeclarationRef { module_path: "extdeps.llm.anthropic", decl_name: "AnthropicAssistantContentBlock", field: WholeDeclaration },
   encoding: InternallyTaggedObject { tag_field: "type", naming: StripPrefixSuffixAndSnakeCase { prefix: "Assistant", suffix: "Block" } }
 }
 
 data anthropic_messages_200_content_block_wire_contract: CoproductWireContract = {
-  coproduct: "AnthropicMessages200ContentBlock",
+  coproduct: DeclarationRef { module_path: "extdeps.llm.anthropic", decl_name: "AnthropicMessages200ContentBlock", field: WholeDeclaration },
   encoding: InternallyTaggedObject { tag_field: "type", naming: StripPrefixSuffixAndSnakeCase { prefix: "Messages", suffix: "Block" } }
 }
 
 data anthropic_tool_result_content_wire_contract: CoproductWireContract = {
-  coproduct: "AnthropicToolResultContent",
+  coproduct: DeclarationRef { module_path: "extdeps.llm.anthropic", decl_name: "AnthropicToolResultContent", field: WholeDeclaration },
   encoding: UntaggedVariant
 }
 
 data anthropic_tool_result_block_wire_contract: CoproductWireContract = {
-  coproduct: "AnthropicToolResultBlock",
+  coproduct: DeclarationRef { module_path: "extdeps.llm.anthropic", decl_name: "AnthropicToolResultBlock", field: WholeDeclaration },
   encoding: InternallyTaggedObject { tag_field: "type", naming: StripPrefixSuffixAndSnakeCase { prefix: "Anthropic", suffix: "Block" } }
 }
 
@@ -134,27 +135,27 @@ type AnthropicToolResultBlock
 data structural_coverage_gap_anthropic_tool_result_nested_block_wire_payloads: List<Disposition> = [
   Scaffold {
     dissolves_to: SingleAuthority,
-    bind: DeclLocator { module_path: "extdeps.llm.anthropic", decl_name: "AnthropicTextBlock", field: NamedField { field_name: "cache_control" } }
+    bind: DeclarationRef { module_path: "extdeps.llm.anthropic", decl_name: "AnthropicTextBlock", field: NamedField { field_name: "cache_control" } }
   },
   Scaffold {
     dissolves_to: SingleAuthority,
-    bind: DeclLocator { module_path: "extdeps.llm.anthropic", decl_name: "AnthropicTextBlock", field: NamedField { field_name: "citations" } }
+    bind: DeclarationRef { module_path: "extdeps.llm.anthropic", decl_name: "AnthropicTextBlock", field: NamedField { field_name: "citations" } }
   },
   Scaffold {
     dissolves_to: SingleAuthority,
-    bind: DeclLocator { module_path: "extdeps.llm.anthropic", decl_name: "AnthropicImageBlock", field: NamedField { field_name: "cache_control" } }
+    bind: DeclarationRef { module_path: "extdeps.llm.anthropic", decl_name: "AnthropicImageBlock", field: NamedField { field_name: "cache_control" } }
   },
   Scaffold {
     dissolves_to: SingleAuthority,
-    bind: DeclLocator { module_path: "extdeps.llm.anthropic", decl_name: "AnthropicToolReferenceBlock", field: NamedField { field_name: "cache_control" } }
+    bind: DeclarationRef { module_path: "extdeps.llm.anthropic", decl_name: "AnthropicToolReferenceBlock", field: NamedField { field_name: "cache_control" } }
   },
   Scaffold {
     dissolves_to: SingleAuthority,
-    bind: DeclLocator { module_path: "extdeps.llm.anthropic", decl_name: "CacheControl", field: NamedField { field_name: "ttl" } }
+    bind: DeclarationRef { module_path: "extdeps.llm.anthropic", decl_name: "CacheControl", field: NamedField { field_name: "ttl" } }
   },
   Scaffold {
     dissolves_to: SingleAuthority,
-    bind: DeclLocator { module_path: "extdeps.llm.anthropic", decl_name: "AnthropicDocumentBlock", field: WholeDeclaration }
+    bind: DeclarationRef { module_path: "extdeps.llm.anthropic", decl_name: "AnthropicDocumentBlock", field: WholeDeclaration }
   },
   Terminal {
     reason: "external_spec_watch: AnthropicSearchResultBlock optional fields track upstream Anthropic OpenAPI; no local construction dissolves this, re-justified by advisory if upstream drifts"

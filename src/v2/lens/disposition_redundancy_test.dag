@@ -1,13 +1,14 @@
 module v2.test.lens_disposition_redundancy.disposition_redundancy_test
 
 import v2.lens.disposition_redundancy { disposition_redundancy_violation_count }
-import std.disposition { Disposition, Scaffold, DeclLocator, NamedField, SingleAuthority }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, NamedField }
 import extdeps.llm.anthropic { structural_coverage_gap_anthropic_tool_result_nested_block_wire_payloads }
 import v2.std.collection { List }
 import v2.std.algebra { length }
 import v2.std.logic { Bool }
 
-data redundancy_present_successor_locator: DeclLocator = DeclLocator {
+data redundancy_present_successor_locator: DeclarationRef = DeclarationRef {
   module_path: "std.disposition",
   decl_name: "Disposition",
   field: NamedField { field_name: "marker" }
@@ -15,7 +16,7 @@ data redundancy_present_successor_locator: DeclLocator = DeclLocator {
 
 data redundancy_red_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: DeclLocator {
+  bind: DeclarationRef {
     module_path: "std.disposition",
     decl_name: "Disposition",
     field: NamedField { field_name: "marker" }
@@ -23,11 +24,11 @@ data redundancy_red_scaffold: Disposition = Scaffold {
 }
 
 data redundancy_red_dispositions: List<Disposition> = [redundancy_red_scaffold]
-data redundancy_present_with_successor: List<DeclLocator> = [redundancy_present_successor_locator]
-data redundancy_present_empty: List<DeclLocator> = []
+data redundancy_present_with_successor: List<DeclarationRef> = [redundancy_present_successor_locator]
+data redundancy_present_empty: List<DeclarationRef> = []
 
-data redundancy_region1_real_successor_present: List<DeclLocator> = [
-  DeclLocator {
+data redundancy_region1_real_successor_present: List<DeclarationRef> = [
+  DeclarationRef {
     module_path: "extdeps.llm.anthropic",
     decl_name: "AnthropicTextBlock",
     field: NamedField { field_name: "cache_control" }
