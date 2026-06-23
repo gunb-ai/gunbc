@@ -47,6 +47,16 @@ data gunbc_ci_job_peaks: List<CiJobPeak> = [
   CiJobPeak { job: "rust_tests", peak: JobCgroupPeakMeasured { cgroup_peak: byte_size(25769803776) } },
 ]
 
+data gunbc_ci_job_cgroup_peak_provenance: String = "measured-conservative: 24GiB round-up over observed 16-23GiB heavy ci/rust_tests cgroup whole-tree peaks; dissolve-on a per-job measured cgroup whole-tree VmHWM (a lower number only -> the over-commit-safe direction)"
+
+type SessionMemoryPeak
+  = SessionMemoryPeakMeasured { bytes: ByteSize }
+  | SessionMemoryPeakUnmeasured
+
+data gunbc_ci_per_session_peak: SessionMemoryPeak = SessionMemoryPeakUnmeasured
+
+data gunbc_ci_session_concurrency: Int = 2
+
 type HostFixedOverhead
   = HostFixedOverheadMeasured { bytes: ByteSize }
   | HostFixedOverheadUnmeasured
