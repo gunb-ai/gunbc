@@ -313,9 +313,8 @@ fn rt_unicode_ops() -> String {
     "}\n\n",
     "pub fn is_emoji_ident(cp: i64) -> bool {\n",
     "    use unicode_properties::emoji::UnicodeEmoji;\n",
-    "    char::from_u32(cp as u32)\n",
-    "        .map(|c| c.is_emoji_char() && !unicode_ident::is_xid_continue(c))\n",
-    "        .unwrap_or(false)\n",
+    "    use unicode_properties::emoji::EmojiStatus;\n",
+    "    char::from_u32(cp as u32).map(|c| matches!(c.emoji_status(), EmojiStatus::EmojiPresentation | EmojiStatus::EmojiPresentationAndModifierBase | EmojiStatus::EmojiPresentationAndEmojiComponent | EmojiStatus::EmojiPresentationAndModifierAndEmojiComponent) && !unicode_ident::is_xid_continue(c)).unwrap_or(false)\n",
     "}\n\n")
 }
 

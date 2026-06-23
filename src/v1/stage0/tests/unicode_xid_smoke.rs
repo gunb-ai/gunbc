@@ -1,4 +1,6 @@
 use v1_compiler::v1_compiler_tokenize::{is_reserved_emit_sentinel, sentinel_prefix_matches};
+use v1_compiler::v1_compiler_tokenize::tokenize;
+use v1_compiler::v1_std_core::TokenShape;
 use v1_compiler::v1_rt;
 
 #[test]
@@ -61,4 +63,18 @@ fn sentinel_detection() {
     // sentinel_prefix_matches itself: exact and mismatch
     assert!(sentinel_prefix_matches("_Eu".to_string(), "_Eu".to_string(), 0, 3));
     assert!(!sentinel_prefix_matches("_ex".to_string(), "_Eu".to_string(), 0, 3));
+}
+
+#[test]
+fn star_and_hash_are_not_ident_chars() {
+    // Extended_Pictographic excludes keycap bases # (U+0023) and * (U+002A)
+    assert!(!v1_rt::is_emoji_ident(35), "U+0023 # must NOT be emoji_ident");
+    assert!(!v1_rt::is_emoji_ident(42), "U+002A * must NOT be emoji_ident");
+
+    // Tokenize `a * b` — the * must produce ShStar, not ShIdent
+    let tokens = tokenize("a * b".to_string(), "test.dag".to_string());
+    let shapes: Vec<_> = tokens.iter().map(|t| t.shape.clone()).collect();
+    assert_eq!(shapes[0], TokenShape::ShIdent, "first token must be Ident");
+    assert_eq!(shapes[1], TokenShape::ShStar, "second token must be ShStar, not ShIdent — * must not be an emoji ident char");
+    assert_eq!(shapes[2], TokenShape::ShIdent, "third token must be Ident");
 }
