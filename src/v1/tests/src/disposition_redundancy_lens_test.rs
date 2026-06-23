@@ -87,7 +87,7 @@ fn disposition_redundancy_lens_discriminates_by_execution() {
     );
     assert_witness_true(
         test_entry,
-        "redundancy_region2_anthropic_200_residual_fires_on_tool_definition",
+        "redundancy_region2_anthropic_200_residual_fires_on_container_response",
     );
     // Slice-2: serde receipt is all Terminal, never fires even with a real present locator.
     assert_witness_true(
