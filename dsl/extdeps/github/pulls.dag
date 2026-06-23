@@ -7,6 +7,7 @@ import std.credentials { CredentialSource, EnvVar }
 import std.serialization { WireFormat, Text }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import extdeps.coverage { CoverageClosureEntry, CoverageClosureFact }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -243,8 +244,19 @@ type PullReview {
   html_url: Url
 }
 
-data structural_coverage_gap_github_pull_review_response_residual: List<String> = [
-  "closure:github_pull_review_response_residual|PullReview|json_pending:node_id|json_pending:user|json_pending:pull_request_url|json_pending:_links|json_pending:submitted_at|json_pending:author_association|trigger:GitHub PullReview consumer needs full review response fidelity"
+data structural_coverage_gap_github_pull_review_response_residual: List<CoverageClosureEntry> = [
+  {
+    facts: [
+      Subject { path: "PullReview" },
+      JsonPending { field: "node_id" },
+      JsonPending { field: "user" },
+      JsonPending { field: "pull_request_url" },
+      JsonPending { field: "_links" },
+      JsonPending { field: "submitted_at" },
+      JsonPending { field: "author_association" }
+    ],
+    trigger: "GitHub PullReview consumer needs full review response fidelity"
+  }
 ]
 
 type ReviewComment {
