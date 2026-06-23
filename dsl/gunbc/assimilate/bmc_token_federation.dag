@@ -1,6 +1,13 @@
 module gunbc.assimilate.bmc_token_federation
 
-import extdeps.cloud.gcp.gcp { ServiceAccountEmail, GcpProjectId, WifPool, WifProvider }
+import extdeps.cloud.gcp.gcp {
+  ServiceAccountEmail, GcpProjectId, WifPool, WifProvider,
+  wif_provider_resource, wif_principal_set_for_repo
+}
+import extdeps.cloud.gcp.iam {
+  role_secretmanager_secret_accessor,
+  role_secretmanager_secret_version_adder
+}
 import extdeps.github.actions {
   Step, RunStep, UsesStep,
   Workflow, Job,
@@ -21,15 +28,7 @@ data bmc_srv3_secret_name: String = "bmc-srv3-admin"
 
 data bmc_assimilator_sa_email: ServiceAccountEmail = "bmc-assimilator@gunbai-secrets.iam.gserviceaccount.com"
 
-data bmc_assimilator_sa_member: String = "serviceAccount:bmc-assimilator@gunbai-secrets.iam.gserviceaccount.com"
-
-data bmc_wif_pool_id: String = "github-actions"
-
-data bmc_wif_provider_id: String = "github-oidc"
-
 data bmc_federated_github_repo: String = "gunb-ai/gunbc"
-
-data bmc_wif_issuer_uri: String = "https://token.actions.githubusercontent.com"
 
 data bmc_wif_pool: WifPool = WifPool {
   name: "github-actions"
@@ -51,20 +50,19 @@ data bmc_wif_provider: WifProvider = WifProvider {
   }
 }
 
+fn bmc_assimilator_sa_member() -> String {
+  concat("serviceAccount:", bmc_assimilator_sa_email as String)
+}
+
 fn bmc_wif_provider_resource() -> String {
-  concat(
-    concat(concat("projects/", bmc_secrets_project_number), "/locations/global/workloadIdentityPools/"),
-    concat(concat(bmc_wif_pool_id, "/providers/"), bmc_wif_provider_id)
-  )
+  wif_provider_resource(project_number: bmc_secrets_project_number, provider: bmc_wif_provider)
 }
 
 fn bmc_wif_principal_set() -> String {
-  concat(
-    concat(
-      concat("principalSet://iam.googleapis.com/projects/", bmc_secrets_project_number),
-      "/locations/global/workloadIdentityPools/"
-    ),
-    concat(concat(bmc_wif_pool_id, "/attribute.repository/"), bmc_federated_github_repo)
+  wif_principal_set_for_repo(
+    project_number: bmc_secrets_project_number,
+    pool_id: bmc_wif_pool.name,
+    repository: bmc_federated_github_repo
   )
 }
 
@@ -73,8 +71,8 @@ fn bmc_wif_attribute_condition() -> String {
 }
 
 data bmc_assimilator_allowed_roles: List<String> = [
-  "roles/secretmanager.secretAccessor",
-  "roles/secretmanager.secretVersionAdder"
+  role_secretmanager_secret_accessor,
+  role_secretmanager_secret_version_adder
 ]
 
 fn bmc_role_allowed(role: String) -> Bool {
@@ -88,19 +86,18 @@ type SecretAccessBinding {
   project: GcpProjectId
 }
 
-data bmc_assimilator_bindings: List<SecretAccessBinding> = [
-  {
-    member: "serviceAccount:bmc-assimilator@gunbai-secrets.iam.gserviceaccount.com",
-    role: "roles/secretmanager.secretAccessor",
-    secret: "bmc-srv3-admin",
-    project: "gunbai-secrets"
-  },
-  {
-    member: "serviceAccount:bmc-assimilator@gunbai-secrets.iam.gserviceaccount.com",
-    role: "roles/secretmanager.secretVersionAdder",
-    secret: "bmc-srv3-admin",
-    project: "gunbai-secrets"
+fn bmc_secret_binding(role: String) -> SecretAccessBinding {
+  SecretAccessBinding {
+    member: bmc_assimilator_sa_member(),
+    role: role,
+    secret: bmc_srv3_secret_name,
+    project: bmc_secrets_project_id
   }
+}
+
+data bmc_assimilator_bindings: List<SecretAccessBinding> = [
+  bmc_secret_binding(role: role_secretmanager_secret_accessor),
+  bmc_secret_binding(role: role_secretmanager_secret_version_adder)
 ]
 
 fn gcp_wif_auth_step() -> Step {

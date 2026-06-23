@@ -21,14 +21,18 @@ type GcpRole {
   predefined: Bool
 }
 
+data role_secretmanager_secret_accessor: String = "roles/secretmanager.secretAccessor"
+
+data role_secretmanager_secret_version_adder: String = "roles/secretmanager.secretVersionAdder"
+
 data common_roles: List<GcpRole> = [
   { name: "roles/viewer", title: "Viewer", permissions: null, predefined: true },
   { name: "roles/editor", title: "Editor", permissions: null, predefined: true },
   { name: "roles/owner", title: "Owner", permissions: null, predefined: true },
   { name: "roles/storage.objectViewer", title: "Storage Object Viewer", permissions: null, predefined: true },
   { name: "roles/storage.objectAdmin", title: "Storage Object Admin", permissions: null, predefined: true },
-  { name: "roles/secretmanager.secretAccessor", title: "Secret Manager Secret Accessor", permissions: null, predefined: true },
-  { name: "roles/secretmanager.secretVersionAdder", title: "Secret Manager Secret Version Adder", permissions: null, predefined: true },
+  { name: role_secretmanager_secret_accessor, title: "Secret Manager Secret Accessor", permissions: null, predefined: true },
+  { name: role_secretmanager_secret_version_adder, title: "Secret Manager Secret Version Adder", permissions: null, predefined: true },
   { name: "roles/iam.serviceAccountTokenCreator", title: "Service Account Token Creator", permissions: null, predefined: true },
   { name: "roles/run.invoker", title: "Cloud Run Invoker", permissions: null, predefined: true }
 ]
