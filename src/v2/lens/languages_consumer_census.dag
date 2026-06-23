@@ -1,5 +1,6 @@
 module v2.lens.languages_consumer_census
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.disposition { SingleAuthority }
 
 import v2.std.collection { List }
 import v2.std.logic { Bool }
@@ -52,9 +53,6 @@ fn languages_consumer_census_live_per_language_row_ratchet_holds() -> Bool {
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: WallAfterGrounding {
-    grounding_authority: "LanguageSpec repointing to extdeps/languages/* (the per-language duplicate rows delete) plus Node-tree decl-reference projection",
-    dissolve_on: "the ~64 duplicate per-language rows are deleted once their consumers repoint, dissolving the census"
-  },
-  rationale: "A per-decl consumer census (composition-only vs external-consumer) is a decidable reference scan; a migration gate that dissolves when languages.dag's duplicate rows are deleted."
+  class: WallAfterGrounding { dissolves_to: SingleAuthority },
+  rationale: "A per-decl consumer census (composition-only vs external-consumer) is a decidable reference scan; a migration gate that dissolves when languages.dag's duplicate rows are deleted. Grounding authority: LanguageSpec repointing to extdeps/languages/* (the per-language duplicate rows delete) plus Node-tree decl-reference projection. Dissolves on: the ~64 duplicate per-language rows are deleted once their consumers repoint, dissolving the census"
 }
