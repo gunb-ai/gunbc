@@ -1,12 +1,12 @@
 # Resolver type-name-collision wall (§5 construction wall) — model-before-implement
 
-Status: **MODEL ONLY.** No resolver edit lands without parent (bright-stag) checkpoint-sign
-AND the std de-fork (sunny-cat-114 lane) reporting clean. This document is the model brought
-to that checkpoint. Authoring the guard/witness is in-scope; flipping the live fail-closed
-gate is operator-gated and Route-C-sequenced.
+Status: **MODEL — SIGNED (parent bright-stag, 2026-06-23).** The model (mechanism + Q2 policy +
+activation) is signed; **no resolver edit lands** until the §4 grounding de-fork is clean — the
+resolver guard is a separate, operator-gated future PR that lands on the de-forked tree. This
+document is the signed model; §3/§4 record the final ruling.
 
 Owner: jolly-ant-231 (deepest resolver context from the A1 diagnosis). Capstone of the std
-de-fork lane.
+de-fork lane. Q2 evidence: `docs/plans/dsl-v2-defork-audit.md` §2A (executed distribution).
 
 ---
 
@@ -120,18 +120,33 @@ emitter's coercion homomorphism check already walks; no new comparison primitive
 | False-positive risk | a legitimately-duplicated mirror that *cannot* be merged yet would block until merged | a divergent pair that *looks* similar but isn't structurally-equal still correctly fires |
 | §3 fidelity | full (one name ⇒ one authority, tree-wide) | partial (tolerates two authorities iff currently identical) |
 
-**Parent leans flag-ANY** (a mirror is still two authorities = the §3 violation). I concur on
-§3 grounds, *conditional on* the de-fork audit: flag-ANY is correct **iff** every true-mirror
-among the 9 basenames can be **merged to a single authority** (not just renamed-apart). If the
-audit finds a mirror that legitimately *cannot* be unified yet (e.g. a staged migration that
-must keep two homes transiently), flag-ANY would block it and flag-DIVERGENT is the honest
-interim. **The decision waits on sunny-cat-114's per-basename audit** of
-`algebra · coercion · effects · float · integer · logic · nat · node · verification`:
-each = divergent-concept (rename-apart) or true-mirror (merge). Design is policy-agnostic so
-parent rules on the measured distribution, not from the chair.
+### RULED — `flag-ANY` (parent bright-stag, signed 2026-06-23)
 
-(Coordination note: `sunny-cat-114` was not yet reachable as a session at authoring time —
-flagged to manager; this section folds in the audit the moment it lands.)
+**`require_structural_divergence = FALSE`.** Settled against the measured distribution (the
+executed per-basename audit in `docs/plans/dsl-v2-defork-audit.md` §2A — `structural_inequality`
+run over all 9 std basename pairs + a 351-entry floor-closure reachability BFS). The audit
+confirmed the cant-unify-yet set (basenames needing a milestone *later than* the grounding
+de-fork) is **{node, coercion} exactly** — no third stuck mirror — so flag-ANY does not block on
+an un-unifiable pair.
+
+Two consequences parent reconfirmed:
+
+- **flag-ANY FIRES on byte-identical mirror shared type-names too** (the audit's 3 in `algebra`,
+  3 in `integer`, 1 in `float`), not only on differing ones. This is **intended**: a
+  byte-identical mirror is still *two homes for one type* = the §3 single-authority violation and
+  a writable re-fork surface. So the de-fork must **merge even the mirrors** (delete the v2 copy,
+  repoint imports), and flag-ANY is exactly what forces that. flag-DIVERGENT would *tolerate* the
+  byte-mirrors — a standing §3 hole — so it is strictly worse here (it also still fires on every
+  grounding, sparing nothing). Mirrors are therefore **resolved by the de-fork, not exempted**.
+
+- **The exemption roster carries NO `{node, coercion}` entry — DROPPED as vacuous.** node and
+  coercion (and `logic`, and post-#5640 `verification`) share **zero** type names — only the
+  *basename* — so the type-name guard **never fires** on them. A roster entry for a collision the
+  mechanism cannot produce is a §5 inert scaffold (a dead line). Their collision is a
+  module-**basename** rename on the Route-C / v1-delete surface — a *different* mechanism, still
+  tracked (audit category-(c), `dissolve-on = v1-delete`), not by this guard. The guard's roster
+  is therefore **deliberately empty** — recorded here so its emptiness reads as a decision, not an
+  omission. (See §6.)
 
 ---
 
@@ -150,14 +165,22 @@ Two options:
   green only if zero flagged collisions remain, so merging it *proves* the tree is
   collision-free under the policy. This is the §5 "wall lands live or not at all".
 
-Sequencing (hard dependency): **de-fork clean (per chosen policy) → guard lands fail-closed,
-green, in one PR.** Concretely, the guard PR is mergeable iff the full floor corpus resolves
-clean with the guard active — which holds iff the de-fork eliminated all flagged same-name
-pairs. Under flag-ANY that means all 9 basenames de-forked (renamed-apart **or**
-merged-to-one-authority); under flag-DIVERGENT only the divergent subset.
+Sequencing (hard dependency, RULED): **the grounding de-fork of the shared-type-name set
+`{algebra, nat, effects, float, integer}` → guard lands flag-ANY, fail-closed, green, in one
+PR.** Each of those five is merged to a single authority (delete the v2 copy / repoint, or the
+operator grounding-unification design where the bodies diverge) — mirrors included (§3). The set
+is fronted by the **LIVE pair `{algebra (75 floor entries), nat (4)}`** (their `std.<b>` /
+`v2.std.<b>` co-occur in real floor closures today and silently fail-open — benign only because
+they shadow record-with-record, not the coproduct-variant-drop that broke `verification` under
+A1) and completed by the **latent `{effects, float, integer}`** (no co-occurring closure today,
+but re-arm risks — exactly how `verification` went latent→LIVE under A1's closure expansion).
+`verification` already cleared (#5640); `{node, coercion, logic}` are off this surface (zero
+shared type-names).
 
-This makes the wall the **capstone** of the de-fork lane, exactly as framed: the de-fork is not
-"cleanup that enables a later guard" — the guard *is* the de-fork's proof of completion.
+The guard PR is mergeable iff the full floor corpus resolves clean **with the guard active** —
+which holds iff that five-basename de-fork is complete. Its green landing therefore
+**self-certifies** the shared-type-name surface is collision-free: the wall is the **capstone**
+of the de-fork lane, correctly located. No dormant-guard state, no flip event — lands-already-green.
 
 ---
 
@@ -170,11 +193,12 @@ red when the behavior is wrong):
   (`claim_executor --source-root dsl --source-root src/v2`, both orders) — full corpus resolves
   clean **with the guard active**. (Baseline receipt already in hand from #1: post-rename,
   `affected_set_floor_runner_test` PASSes both orders, 56 modules.)
-- **Discriminating RED (the falsifier):** re-introduce a single synthetic same-name pair (e.g.
-  a throwaway `std.fixture.dup_typename` exporting a `TestClaim`) into a test's closure and
-  assert the guard emits `TypeNameCollision` and fails closed — and that *removing* it returns
-  green. Under flag-DIVERGENT, add the dual control: a structurally-identical mirror does **not**
-  fire while a divergent pair does.
+- **Discriminating RED (the falsifier):** re-introduce a single synthetic same-name pair into a
+  test's closure and assert the guard emits `TypeNameCollision` and fails closed — and that
+  *removing* it returns green. Run it **twice** to pin the flag-ANY semantics: once with a
+  **divergent** pair (different bodies) and once with a **byte-identical mirror** pair — *both*
+  must fire (flag-ANY excuses neither). A flag-DIVERGENT build would let the mirror through; that
+  it does **not** is the §3-fidelity control.
 - **No-regression control:** a type legitimately re-exported through multiple import paths
   (one declaring file, many hops) must stay green — proves `same_authority` (span.file
   identity) correctly excuses re-exports and the wall is not over-broad.
@@ -184,17 +208,25 @@ red when the behavior is wrong):
 ## 6. Scope guard / what this is NOT
 
 - **No resolver edit lands** here — model only until checkpoint-sign + de-fork clean.
-- Does **not** touch the `module std.verification` name-fork or the dsl↔v2 std module
-  reorganization (Route C) — orthogonal, operator-strategic. The wall keys on type-name
-  identity within a closure and is compatible with whatever Route C decides.
+- Does **not** touch the dsl↔v2 std module-**basename** reorganization (Route C / v1-delete) —
+  orthogonal, operator-strategic. The wall keys on shared **type-name** identity within a
+  closure, so the zero-shared-type-name basenames `{node, coercion, logic, verification}` are
+  off its surface entirely (this is why the roster carries no `{node, coercion}` entry, §3).
+  Their basename de-fork stays tracked in the audit's category-(c) (`dissolve-on = v1-delete`),
+  a different mechanism. The wall is compatible with whatever Route C decides.
 - Mirrors the existing `VariantCollision` precedent; introduces no new resolver concept beyond
   lifting that guard one level and dissolving the duplicate import-binding folds into one
   checked-merge helper (a §2 win bundled in).
 
 ## 7. Open items
 
-- sunny-cat-114 per-basename divergent/mirror audit → settles §3 policy + §4 de-fork scope.
-- Confirm both import-binding assembly sites (~11761, ~12355) are the only type-binding merge
-  loci (the `std.types`-special-cased branch folds key-by-key already and is naturally covered
-  by the same helper).
-- Parent ruling on flag-ANY vs flag-DIVERGENT against the measured distribution.
+- **RESOLVED** — Q2 policy: `flag-ANY` signed (§3); per-basename audit executed and homed in
+  `docs/plans/dsl-v2-defork-audit.md` §2A; activation gate set to the five-basename grounding
+  de-fork (§4). Roster: deliberately empty (§3).
+- Carried to the future resolver PR (not this model): confirm both import-binding assembly sites
+  (~11761, ~12355) are the only type-binding merge loci (the `std.types`-special-cased branch
+  folds key-by-key already and is naturally covered by the same checked-merge helper).
+- Dependency owned elsewhere: the five-basename grounding de-fork (`algebra` authority ruled;
+  `nat`/`integer`/`float` via #5428 numeric tower; `effects` axis decision) must complete before
+  the guard PR can land green. `{node, coercion}` basename de-fork stays on the Route-C / v1-delete
+  surface (audit category-(c)), unaffected by this guard.
