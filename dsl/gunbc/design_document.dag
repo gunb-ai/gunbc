@@ -1,15 +1,3 @@
-// gunbc.design_document — DESIGN.md as a .dag projection (DESIGN §7: this document is the first target of
-// the recursion — an ordinary substrate fact, generated from its model, drift-gated like ROADMAP.md).
-//
-// The PROSE is modeled as typed markdown blocks (heading / paragraph / bullet list / thematic break); a
-// paragraph carries the raw markdown source as one TextInline (the serializer passes `**bold**`/`code`
-// through verbatim — same convention as gunbc.roadmap_authority), unwrapped to a single line. The doc's
-// LOGICAL spine (axioms A1–A3 + the §1–§7 consequence-chain) is modeled separately and checked by the
-// syllogism lens in gunbc.design_argument; binding the two — render each claim FROM its proposition — is
-// the named dissolution trigger (see design_argument.dag).
-//
-// expected_design_md() is the single generator; gunbc.generated_artifact registers DESIGN.md against it
-// and tools.generated_artifact_gate drift-gates it. Do not hand-edit DESIGN.md — regenerate via main_wet.
 
 module gunbc.design_document
 
@@ -20,22 +8,15 @@ import std.markdown {
 }
 import extdeps.languages.markdown { serialize_markdown_source }
 
-// ── authoring helpers ──────────────────────────────────────────────────────────────────────────────
-// A paragraph / heading carries the exact markdown source line (inline formatting survives as literal
-// text through the serializer). Wrapped source lines are joined into one line per block.
-
 fn h1(text: String) -> MarkdownBlock { HeadingBlock { level: H1, inlines: [TextInline { text: text }] } }
 fn h2(text: String) -> MarkdownBlock { HeadingBlock { level: H2, inlines: [TextInline { text: text }] } }
 fn p(text: String) -> MarkdownBlock { ParagraphBlock { inlines: [TextInline { text: text }] } }
 fn rule() -> MarkdownBlock { ThematicBreak }
 
-// a bullet item that is a single paragraph
 fn li(text: String) -> MarkdownListItem { MarkdownListItem { blocks: [p(text: text)] } }
-// a bullet item carrying arbitrary blocks (lead paragraph + nested list + …)
 fn li_blocks(blocks: List<MarkdownBlock>) -> MarkdownListItem { MarkdownListItem { blocks: blocks } }
 fn ul(items: List<MarkdownListItem>) -> MarkdownBlock { UnorderedListBlock { items: items } }
 
-// ── preamble ─────────────────────────────────────────────────────────────────────────────────────
 fn preamble_blocks() -> List<MarkdownBlock> {
   [
     h1(text: "gunbc — Design"),
@@ -45,7 +26,6 @@ fn preamble_blocks() -> List<MarkdownBlock> {
   ]
 }
 
-// ── §1 — The objective (the axioms) ────────────────────────────────────────────────────────────────
 fn section_1_blocks() -> List<MarkdownBlock> {
   [
     h2(text: "1. The objective (the axioms)"),
@@ -72,7 +52,6 @@ fn section_1_blocks() -> List<MarkdownBlock> {
   ]
 }
 
-// ── §2 — Minimize redundancy ───────────────────────────────────────────────────────────────────────
 fn section_2_blocks() -> List<MarkdownBlock> {
   [
     h2(text: "2. Minimize redundancy (the master move for cost and complexity)"),
@@ -95,7 +74,6 @@ fn section_2_blocks() -> List<MarkdownBlock> {
   ]
 }
 
-// ── §3 — Single authority ──────────────────────────────────────────────────────────────────────────
 fn section_3_blocks() -> List<MarkdownBlock> {
   [
     h2(text: "3. Single authority (what keeps §2 from being undone)"),
@@ -106,7 +84,6 @@ fn section_3_blocks() -> List<MarkdownBlock> {
   ]
 }
 
-// ── §4 — The closed, grounded substrate ──────────────────────────────────────────────────────────────
 fn section_4_blocks() -> List<MarkdownBlock> {
   [
     h2(text: "4. The closed, grounded substrate (what makes §2–§3 decidable)"),
@@ -119,7 +96,6 @@ fn section_4_blocks() -> List<MarkdownBlock> {
   ]
 }
 
-// ── §5 — Fail-closed ─────────────────────────────────────────────────────────────────────────────────
 fn section_5_blocks() -> List<MarkdownBlock> {
   [
     h2(text: "5. Fail-closed (§1's safety axis — harm reduction)"),
@@ -130,7 +106,6 @@ fn section_5_blocks() -> List<MarkdownBlock> {
   ]
 }
 
-// ── §6 — How to work ─────────────────────────────────────────────────────────────────────────────────
 fn section_6_blocks() -> List<MarkdownBlock> {
   [
     h2(text: "6. How to work (given §1–§5 — these coexist)"),
@@ -143,7 +118,6 @@ fn section_6_blocks() -> List<MarkdownBlock> {
   ]
 }
 
-// ── §7 — Self-hosting ────────────────────────────────────────────────────────────────────────────────
 fn section_7_blocks() -> List<MarkdownBlock> {
   [
     h2(text: "7. Self-hosting (the principles applied to the compiler itself)"),
@@ -153,7 +127,6 @@ fn section_7_blocks() -> List<MarkdownBlock> {
   ]
 }
 
-// ── Recurring failure modes ──────────────────────────────────────────────────────────────────────────
 fn failure_modes_blocks() -> List<MarkdownBlock> {
   [
     h2(text: "Recurring failure modes (instances of §3–§5, kept for pattern-matching)"),
@@ -161,7 +134,6 @@ fn failure_modes_blocks() -> List<MarkdownBlock> {
   ]
 }
 
-// ── Open threads ─────────────────────────────────────────────────────────────────────────────────────
 fn open_threads_blocks() -> List<MarkdownBlock> {
   [
     h2(text: "Open threads"),
@@ -174,7 +146,6 @@ fn open_threads_blocks() -> List<MarkdownBlock> {
   ]
 }
 
-// ── Building & checks ────────────────────────────────────────────────────────────────────────────────
 fn building_checks_blocks() -> List<MarkdownBlock> {
   [
     h2(text: "Building & checks"),
@@ -186,19 +157,20 @@ fn building_checks_blocks() -> List<MarkdownBlock> {
   ]
 }
 
-// ── assembled document ───────────────────────────────────────────────────────────────────────────────
 fn design_blocks() -> List<MarkdownBlock> {
-  concat(preamble_blocks(),
-  concat(section_1_blocks(),
-  concat(section_2_blocks(),
-  concat(section_3_blocks(),
-  concat(section_4_blocks(),
-  concat(section_5_blocks(),
-  concat(section_6_blocks(),
-  concat(section_7_blocks(),
-  concat(failure_modes_blocks(),
-  concat(open_threads_blocks(),
-  building_checks_blocks()))))))))))
+  flat_map([
+    preamble_blocks(),
+    section_1_blocks(),
+    section_2_blocks(),
+    section_3_blocks(),
+    section_4_blocks(),
+    section_5_blocks(),
+    section_6_blocks(),
+    section_7_blocks(),
+    failure_modes_blocks(),
+    open_threads_blocks(),
+    building_checks_blocks(),
+  ], bs => bs)
 }
 
 fn design_document() -> MarkdownDocument {

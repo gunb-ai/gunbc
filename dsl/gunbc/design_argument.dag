@@ -49,11 +49,6 @@ data design_section_1_argument: Argument = Argument {
   propositions: design_section_1_propositions
 }
 
-// §2–§7: one headline proposition per section, each premised on the sections it is a consequence of.
-// This is the document's serial spine (DESIGN preamble: "each later section is a consequence of the ones
-// before it (or an independent peer)") made a checked consequence-chain — no orphan, no cycle, every claim
-// reachable from A1–A3 via §1. The full prose of each section lives in gunbc.design_document; binding the
-// two (render each section FROM its proposition) is the dissolution trigger below.
 data design_section_2_to_7_propositions: List<Proposition> = [
 
   Proposition {
@@ -95,15 +90,6 @@ data design_section_2_to_7_propositions: List<Proposition> = [
 
 data design_propositions: List<Proposition> = concat(design_section_1_propositions, design_section_2_to_7_propositions)
 
-// The whole-document argument: A1–A3 + every section's headline claim. The syllogism lens
-// (std.syllogism.argument_form_is_valid) checks it is non-vacuous, orphan-free, acyclic, and
-// axiom-set-closed — the §1 open-thread "every claim a consequence-chain back to an axiom" turned on
-// this document itself (DESIGN §7 recursion).
-//
-// DISSOLUTION TRIGGER: today the section prose (gunbc.design_document) and these propositions are two
-// views of the same claims at different granularity — the proposition is the headline, the document is the
-// exposition. Collapse to one authority once design_document renders each section's lead FROM its
-// proposition (the document model carrying rich-block claim content), so the headline is single-authored.
 data design_argument: Argument = Argument {
   axioms: design_axioms,
   propositions: design_propositions

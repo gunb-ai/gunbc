@@ -15,9 +15,6 @@ test fn design_s1_argument_is_non_vacuous() -> Bool {
   argument_is_non_vacuous(design_section_1_argument)
 }
 
-// The whole-document argument (A1–A3 + §1–§7 headline claims) is a valid syllogism: non-vacuous,
-// orphan-free, acyclic, axiom-set-closed — every section's claim chains back to an axiom (DESIGN §1
-// open-thread, §7 recursion turned on this document).
 test fn design_full_argument_form_is_valid() -> Bool {
   argument_form_is_valid(design_argument)
 }
