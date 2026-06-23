@@ -117,3 +117,7 @@ fn container_stats_online_cpus(stats: ContainerStats) -> Nat {
 data structural_coverage_gap_memory_stats_working_set: List<String> = [
   "closure:memory_stats_true_working_set|MemoryStats.usage includes page cache (inactive_file); true working-set = usage - stats.inactive_file from Docker stats sub-map|trigger:B2 models stats sub-map with inactive_file and policy uses working_set not raw usage"
 ]
+
+data dissolve_on_blkio_value_unit_ambiguity: List<String> = [
+  "closure:type_blkio_value_units|BlkioValue.value: Nat carries parent-dependent units (bytes under io_service_bytes_recursive, time under io_service_time_recursive, count under io_serviced_recursive); flat Nat smuggles unit invisible to type system (§5 fail-closed unit-modeling); Docker wire format is the constraint; remedy = typed per-list accessors returning ByteSize|Nanosecond|Nat or parent-tagged union|trigger:B3 models BlkioValue with discriminated unit type or typed accessors per parent list"
+]
