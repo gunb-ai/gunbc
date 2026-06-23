@@ -8,7 +8,7 @@ import std.realization_measurement {
 }
 
 data gunbc_ci_floor_measured_peak: ConcurrentMemoryPeakSample = ConcurrentMemoryPeakSample {
-  peak: byte_size(12455405158)
+  peak: byte_size(11592347648)
   concurrency: 4
 }
 

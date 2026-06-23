@@ -75,7 +75,7 @@ derives a real decision from it **and** an actuator enforces actual ≤ authored
 **consumer-0 — instantiate the real fleet tree.** Author the srv1 budget tree as a `data` instance
 (root = host RAM ~125 GiB → fixed overhead → R concurrent runs → per-run rustc `N` / `.dag`-floor
 spawn-width) with appropriations set from **measured** peaks, not guesses (see §7 for the B5 measured
-numbers — the per-run reservation is the B4-measured ~11.6 GiB whole-run cgroup peak @ width 4 + margin,
+numbers — the per-run reservation is the B4-measured ~10.8 GiB whole-run cgroup peak @ width 4 + margin,
 NOT a `totalMem / R` divide and NOT the old ~24 GiB pessimistic guess). Each consumer **imports** its
 parent allocation (divide-once); none re-divides host RAM. neat-dove owns the seam spec.
 
@@ -118,7 +118,8 @@ in two distinct fields — the k8s request-vs-limit shape — and deep-otter der
 from each:
 
 - **run-pool RESERVATION** = `srv1_ci_run_reservation()` = *typical* whole-run peak + margin
-  (B4-measured ~11.6 GiB @ width 4, × 6/5 ≈ 13.92 GiB). This is the bin-packing "request": the `ci_run`
+  (B4-measured ~10.8 GiB @ width 4 = `11592347648` bytes, run 28003119550, × 6/5 ≈ 12.96 GiB). This is
+  the bin-packing "request": the `ci_run`
   leaf appropriation, what `R = floor(gha_runner_pool / reservation)` (`measure_fit_count_floor`) is
   derived from, and what the `.dag`-floor spawn-width reads (`srv1_floor_memory_budget()`). deep-otter
   derives the **run-pool reservation** from this.
@@ -133,12 +134,17 @@ run count is unwritable (it cannot exceed what the pool floor-divides to); the l
 guess. Conservation across the three siblings is the residue lens (`node_conserves`) over the
 constructed tree.
 
-**Interim values — coordinate with B4 (quick-lynx-78) before freezing.** typical = 11.6 GiB and
-worst-max = 24 GiB are interim. B4 is landing a §2 dedup that drops the peak further (projected
-self 8.7→4.2) and is handing over **both** the verified worst-max and typical cgroup numbers; refine the
-two carriers in `dsl/gunbc/ci_floor_measurement.dag` (`gunbc_ci_floor_measured_peak`,
-`gunbc_ci_floor_runner_worst_max`) to B4's verified figures + margin when they land. The margin is a
-single knob (`gunbc_ci_floor_runner_margin_num/den`, currently 6/5 = 20%).
+**Values — B4 (quick-lynx-78) verified figures.** typical = `11592347648` bytes (~10.8 GiB whole-run
+cgroup peak @ width 4, run 28003119550, no rust gate present) is the B4-VERIFIED measurement, now frozen
+in `gunbc_ci_floor_measured_peak`. The worst-max = `25769803776` (~24 GiB) in
+`gunbc_ci_floor_runner_worst_max` stays a **conservative placeholder**: it is driven by the rust-gate
+cargo-test rustc *child* processes (a `.rs`-touching PR), which run 28003119550 did not exercise and
+which no `.dag`/executor fix moves — so it is honestly un-verified and kept high (a too-low OOM-kill
+ceiling would kill legitimate worst-peak jobs; high fails closed). A measured worst-max needs a
+rust-gate-present heavy-run slot (coordinate with crisp-carp). NOTE: B4's #5619 dedup moves the *typical*
+self-RSS only ~0.57 GiB (8.7→8.1, NOT the earlier-retracted 8.7→4.2) and never touches the cap side, so
+do not lower the reservation on its account. The margin is a single knob
+(`gunbc_ci_floor_runner_margin_num/den`, currently 6/5 = 20%).
 
 Carriers: [dsl/gunbc/ci_budget_tree.dag](../../dsl/gunbc/ci_budget_tree.dag) (the two-pool tree +
 two-number leaf accessors), [dsl/gunbc/ci_floor_measurement.dag](../../dsl/gunbc/ci_floor_measurement.dag)
