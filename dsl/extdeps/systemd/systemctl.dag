@@ -1,15 +1,10 @@
 module extdeps.systemd.systemctl
 
-import std.types { NonEmptyStr, String, List, Bool }
+import std.types { NonEmptyStr, String, List, Bool, Int }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
-// systemd's service-manager control surface. The interface shape (operation
-// inputs -> outputs, exit/error semantics) is what extdeps owns; the unit a
-// caller acts on is a parameter, never a literal baked into the argv (a baked
-// unit name would be business policy leaking down from the workflow layer).
-// Real names and semantics from systemctl(1).
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -17,7 +12,8 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-// `ActiveState` as reported by systemd (systemctl show -p ActiveState).
+data systemctl_interface_doc: String = "systemd's service-manager control surface. The operation shapes (inputs -> outputs, exit/error semantics) are what extdeps owns. The unit a caller acts on is always a parameter, never a literal baked into argv: a baked unit name would be business policy (which unit, on which host) leaking down from the workflow layer (DESIGN section 3 fact c). Names and exit semantics from systemctl(1). The show-effective read (Show / ShowProperty below) reads back the LIVE resolved value, which is the only sound basis for grounding an enforcement predicate (DESIGN section 5: verify the realization, not the declaration)."
+
 type UnitActiveState
   = UnitActive
   | UnitReloading
@@ -27,7 +23,6 @@ type UnitActiveState
   | UnitDeactivating
   | UnitMaintenance
 
-// `UnitFileState` / enablement as reported by systemctl is-enabled.
 type UnitFileState
   = UnitEnabled
   | UnitEnabledRuntime
@@ -41,9 +36,8 @@ type UnitFileState
   | UnitBad
 
 service systemd.Systemctl {
-  // Enable a unit (install its [Install] symlinks). An effect, not readonly.
   operation Enable {
-    input { unit: NonEmptyStr, now: Bool = false }
+    input { unit: NonEmptyStr }
     output {
       success: Bool from "exit_success"
       stdout: String from "stdout"
@@ -56,7 +50,6 @@ service systemd.Systemctl {
     }
   }
 
-  // Start a unit now. An effect.
   operation Start {
     input { unit: NonEmptyStr }
     output {
@@ -71,7 +64,19 @@ service systemd.Systemctl {
     }
   }
 
-  // Reload the manager so freshly written drop-ins / units take effect.
+  operation SetProperty {
+    input { unit: NonEmptyStr, property: NonEmptyStr, value: NonEmptyStr }
+    output {
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["systemctl", "set-property", "{unit}", "{property}={value}"] }
+    exit {
+      0 => Unit
+      nonzero => String "systemctl set-property failed"
+    }
+  }
+
   operation DaemonReload {
     input {}
     output {
@@ -85,8 +90,6 @@ service systemd.Systemctl {
     }
   }
 
-  // Read whether a unit is active. Prints "active" / "inactive" / "failed".
-  // Exit 0 iff active; readonly verify read.
   operation IsActive {
     input { unit: NonEmptyStr }
     output {
@@ -102,10 +105,7 @@ service systemd.Systemctl {
     }
   }
 
-  // Read the effective (post-merge) value of one unit property. Prints
-  // "Property=value". The "show-effective" verify read: what systemd
-  // *actually* resolved, not what a config file declared.
-  operation Show {
+  operation ShowProperty {
     input { unit: NonEmptyStr, property: NonEmptyStr }
     output { value: String from "stdout" }
     readonly

@@ -1,0 +1,88 @@
+module test.claim.oomd_install_grounding_witness
+
+import std.types { Bool }
+import std.realization_reconcile {
+  ShowEffectiveRead,
+  ReadObserved,
+  reconciliation_converged,
+}
+import gunbc.oomd_install {
+  OomdEffectiveRead,
+  reconcile_oomd,
+  oomd_evidence_from_reconciliation,
+  gunbc_oomd_install_evidence,
+}
+import gunbc.ci_floor_measurement {
+  OomdEnforcementEvidence,
+  OomdEnforced,
+  OomdUnverified,
+}
+import extdeps.systemd.systemctl { UnitActive, UnitInactive }
+import extdeps.systemd.oomd { ManagedOomKill, ManagedOomAuto }
+
+fn is_enforced(e: OomdEnforcementEvidence) -> Bool {
+  match e {
+    OomdEnforced => true
+    OomdUnverified => false
+  }
+}
+
+fn managed_read() -> ShowEffectiveRead<OomdEffectiveRead> {
+  ReadObserved {
+    value: OomdEffectiveRead {
+      unit_active: UnitActive,
+      effective_managed_oom_memory_pressure: ManagedOomKill,
+    }
+  }
+}
+
+fn unmanaged_read() -> ShowEffectiveRead<OomdEffectiveRead> {
+  ReadObserved {
+    value: OomdEffectiveRead {
+      unit_active: UnitActive,
+      effective_managed_oom_memory_pressure: ManagedOomAuto,
+    }
+  }
+}
+
+fn inactive_read() -> ShowEffectiveRead<OomdEffectiveRead> {
+  ReadObserved {
+    value: OomdEffectiveRead {
+      unit_active: UnitInactive,
+      effective_managed_oom_memory_pressure: ManagedOomKill,
+    }
+  }
+}
+
+fn witness_managed_read_grounds_enforced() -> Bool {
+  is_enforced(e: oomd_evidence_from_reconciliation(r: reconcile_oomd(read: managed_read())))
+}
+
+fn witness_managed_read_converges() -> Bool {
+  reconciliation_converged(r: reconcile_oomd(read: managed_read()))
+}
+
+fn witness_unmanaged_read_stays_unverified() -> Bool {
+  !is_enforced(e: oomd_evidence_from_reconciliation(r: reconcile_oomd(read: unmanaged_read())))
+}
+
+fn witness_unmanaged_read_does_not_converge() -> Bool {
+  !reconciliation_converged(r: reconcile_oomd(read: unmanaged_read()))
+}
+
+fn witness_inactive_unit_stays_unverified() -> Bool {
+  !is_enforced(e: oomd_evidence_from_reconciliation(r: reconcile_oomd(read: inactive_read())))
+}
+
+fn witness_absent_read_is_fail_closed() -> Bool {
+  !is_enforced(e: gunbc_oomd_install_evidence())
+}
+
+test fn oomd_install_grounding_holds() -> Bool {
+  witness_managed_read_grounds_enforced()
+    && witness_managed_read_converges()
+    && witness_unmanaged_read_stays_unverified()
+    && witness_unmanaged_read_does_not_converge()
+    && witness_inactive_unit_stays_unverified()
+    && witness_absent_read_is_fail_closed()
+}

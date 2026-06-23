@@ -1,0 +1,127 @@
+module gunbc.oomd_install
+
+import std.types { NonEmptyStr, String, Bool }
+import std.realization_reconcile {
+  ShowEffectiveRead,
+  ReadObserved,
+  ReadAbsent,
+  Grounding,
+  Grounds,
+  DoesNotGround,
+  Reconciliation,
+  Converged,
+  NotConverged,
+  reconcile,
+}
+import gunbc.ci_floor_measurement {
+  OomdEnforcementEvidence,
+  OomdEnforced,
+  OomdUnverified,
+}
+import extdeps.apt { package_systemd_oomd_defaults }
+import extdeps.systemd.oomd {
+  OomdGlobalConfig,
+  oomd_default_global_config,
+  UnitManagedOomPolicy,
+  ManagedOomAction,
+  ManagedOomKill,
+  ManagedOomAuto,
+  OomdDropIn,
+  systemd_oomd_unit,
+  oomd_managed_oom_memory_pressure_property,
+}
+import extdeps.systemd.systemctl {
+  UnitActiveState,
+  UnitActive,
+  UnitInactive,
+  UnitFailed,
+  UnitReloading,
+  UnitActivating,
+  UnitDeactivating,
+  UnitMaintenance,
+}
+
+data gunbc_oomd_install_doc: String = "Instance 1 of std.realization_reconcile, sibling to gunbc.os_install. Composes the systemd-oomd dependency lifecycle: apt-install systemd-oomd-defaults, write the runner-slice ManagedOOM drop-in (ManagedOOMMemoryPressure=kill), enable+start the unit, then VERIFY via a systemctl show-effective read that GROUNDS OomdEnforced. Per the brief this is PURE .dag with NO live host execution: the committed read is ReadAbsent, so the carrier derives OomdUnverified (fail-closed). OomdEnforced becomes derivable only when a real ReadObserved carrying an active unit AND effective ManagedOOMMemoryPressure=kill is supplied through gunbc_oomd_show_effective_read. WHICH slice and WHICH cap values are gunbc policy and live here, not in extdeps."
+
+data gunbc_oomd_runner_slice: NonEmptyStr = "gunbc-runner.slice"
+
+data gunbc_oomd_runner_policy: UnitManagedOomPolicy = UnitManagedOomPolicy {
+  scope_unit: gunbc_oomd_runner_slice,
+  managed_oom_swap: ManagedOomKill,
+  managed_oom_memory_pressure: ManagedOomKill,
+  managed_oom_memory_pressure_limit: 50,
+  managed_oom_memory_pressure_duration: 20,
+}
+
+type OomdApplyEffect {
+  install_package: NonEmptyStr
+  configured_policy: UnitManagedOomPolicy
+}
+
+data gunbc_oomd_apply_effect: OomdApplyEffect = OomdApplyEffect {
+  install_package: package_systemd_oomd_defaults,
+  configured_policy: gunbc_oomd_runner_policy,
+}
+
+type OomdInstallPlan {
+  install_package: NonEmptyStr
+  global_config: OomdGlobalConfig
+  dropin: OomdDropIn
+  service_unit: NonEmptyStr
+  verify_property: NonEmptyStr
+}
+
+data gunbc_oomd_install_plan: OomdInstallPlan = OomdInstallPlan {
+  install_package: package_systemd_oomd_defaults,
+  global_config: oomd_default_global_config,
+  dropin: OomdDropIn {
+    target_unit: gunbc_oomd_runner_slice,
+    policy: gunbc_oomd_runner_policy,
+  },
+  service_unit: systemd_oomd_unit,
+  verify_property: oomd_managed_oom_memory_pressure_property,
+}
+
+type OomdEffectiveRead {
+  unit_active: UnitActiveState
+  effective_managed_oom_memory_pressure: ManagedOomAction
+}
+
+fn ground_oomd_from_read(read: OomdEffectiveRead) -> Grounding<OomdEnforcementEvidence> {
+  match read.unit_active {
+    UnitActive =>
+      match read.effective_managed_oom_memory_pressure {
+        ManagedOomKill => Grounds { evidence: OomdEnforced }
+        ManagedOomAuto => DoesNotGround { reason: "systemd-oomd is active but the effective ManagedOOMMemoryPressure reads auto, not kill: the eviction backstop is not enforced on the runner slice" }
+      }
+    UnitInactive => DoesNotGround { reason: "systemd-oomd.service is not active" }
+    UnitFailed => DoesNotGround { reason: "systemd-oomd.service failed" }
+    UnitReloading => DoesNotGround { reason: "systemd-oomd.service is reloading; effective state not settled" }
+    UnitActivating => DoesNotGround { reason: "systemd-oomd.service is still activating" }
+    UnitDeactivating => DoesNotGround { reason: "systemd-oomd.service is deactivating" }
+    UnitMaintenance => DoesNotGround { reason: "systemd-oomd.service is in maintenance" }
+  }
+}
+
+fn reconcile_oomd(read: ShowEffectiveRead<OomdEffectiveRead>) -> Reconciliation<OomdApplyEffect, OomdEnforcementEvidence> {
+  reconcile(
+    apply_effect: gunbc_oomd_apply_effect,
+    show_read: read,
+    grounds_predicate: r => ground_oomd_from_read(read: r)
+  )
+}
+
+fn oomd_evidence_from_reconciliation(r: Reconciliation<OomdApplyEffect, OomdEnforcementEvidence>) -> OomdEnforcementEvidence {
+  match r {
+    Converged { evidence: e, applied: _ } => e
+    NotConverged { reason: _, applied: _ } => OomdUnverified
+  }
+}
+
+data gunbc_oomd_show_effective_read: ShowEffectiveRead<OomdEffectiveRead> = ReadAbsent {
+  reason: "no live systemctl show-effective / oomctl read has run on the fleet hosts yet; pure .dag model, the live verify is the later halted-1753 increment"
+}
+
+fn gunbc_oomd_install_evidence() -> OomdEnforcementEvidence {
+  oomd_evidence_from_reconciliation(r: reconcile_oomd(read: gunbc_oomd_show_effective_read))
+}

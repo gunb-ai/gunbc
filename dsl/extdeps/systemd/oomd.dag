@@ -5,13 +5,6 @@ import std.types { NonEmptyStr, String, FilePath, Seconds, Int, Bool }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
-// systemd-oomd: the userspace OOM killer that acts on cgroup memory pressure
-// and swap usage before the kernel OOM killer fires. This module models the
-// CONFIG SURFACE — the knobs systemd-oomd reads — with the real key names and
-// representations from oomd.conf(5) and systemd.resource-control(5). The unit
-// itself (start/enable/verify) is driven through extdeps.systemd.systemctl;
-// the decision of WHICH cgroups to protect at WHICH thresholds is workflow
-// policy (gunbc), not a fact about systemd-oomd.
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -19,39 +12,30 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-// The systemd-oomd unit, and the files it reads. Literals from the Ubuntu
-// systemd packaging.
+data oomd_surface_doc: String = "systemd-oomd is the userspace OOM manager: it watches cgroup memory pressure (PSI) and swap usage and kills the worst-offending cgroup BEFORE the kernel OOM killer / OOM livelock fires. That livelock is the srv2-reboot vector. This module models what oomd PROVIDES (the config knobs it reads and the eviction backstop it gives), with the real key names from oomd.conf(5) and systemd.resource-control(5). WHICH cgroups to protect at WHICH thresholds is workflow policy (gunbc), not a fact about systemd-oomd."
+
 data systemd_oomd_unit: NonEmptyStr = "systemd-oomd.service"
 data oomd_conf_path: FilePath = "/etc/systemd/oomd.conf"
 data oomd_conf_dropin_dir: FilePath = "/etc/systemd/oomd.conf.d"
 
-// systemd config percentages are integer-percent values ("60%"). One percent
-// concept, reused by every threshold knob below (a swap-used percent and a
-// memory-pressure percent are the same magnitude, not two types).
 type Percent = Int where range(min: 0, max: 100), brand("Percent")
 
-// `ManagedOOMSwap=` / `ManagedOOMMemoryPressure=` enable enum. Real values.
 type ManagedOomAction
   = ManagedOomAuto
   | ManagedOomKill
 
-// oomd.conf [OOM] section — the manager-wide defaults.
 type OomdGlobalConfig {
   swap_used_limit: Percent
   default_memory_pressure_limit: Percent
   default_memory_pressure_duration: Seconds
 }
 
-// systemd-oomd ships these defaults (oomd.conf(5)); a config that merely
-// matches them is the baseline, not enforcement of a tighter policy.
 data oomd_default_global_config: OomdGlobalConfig = OomdGlobalConfig {
   swap_used_limit: 90,
   default_memory_pressure_limit: 60,
   default_memory_pressure_duration: 30,
 }
 
-// Per-unit / per-slice OOM policy (systemd.resource-control(5)). The pressure
-// limit and duration are optional: absent means "inherit the manager default".
 type UnitManagedOomPolicy {
   scope_unit: NonEmptyStr
   managed_oom_swap: ManagedOomAction
@@ -60,10 +44,25 @@ type UnitManagedOomPolicy {
   managed_oom_memory_pressure_duration: Seconds?
 }
 
-// oomctl(1) dumps systemd-oomd's live view: which cgroups it currently
-// monitors for swap and for memory pressure. This is the show-effective read
-// that proves the daemon is not just running but actually managing the
-// intended cgroups.
+data oomd_managed_oom_memory_pressure_property: NonEmptyStr = "ManagedOOMMemoryPressure"
+data oomd_managed_oom_memory_pressure_limit_property: NonEmptyStr = "ManagedOOMMemoryPressureLimit"
+data oomd_managed_oom_swap_property: NonEmptyStr = "ManagedOOMSwap"
+
+data oomd_managed_value_kill: NonEmptyStr = "kill"
+data oomd_managed_value_auto: NonEmptyStr = "auto"
+
+fn managed_oom_action_value(a: ManagedOomAction) -> NonEmptyStr {
+  match a {
+    ManagedOomKill => oomd_managed_value_kill
+    ManagedOomAuto => oomd_managed_value_auto
+  }
+}
+
+type OomdDropIn {
+  target_unit: NonEmptyStr
+  policy: UnitManagedOomPolicy
+}
+
 service systemd.Oomctl {
   operation Dump {
     input {}
