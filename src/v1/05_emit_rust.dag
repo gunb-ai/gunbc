@@ -6063,10 +6063,6 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
           Absent => concat(display_tn, " {}")
         }
       } else if fields |> count == 0 {
-        // FreeMonoid `Empty` value grounding: when the value's carrier grounds to the host
-        // `Vec` in the seed (List under HostNative), construct the empty `Rc<Vec>` instead of
-        // the `Empty {}` coproduct variant (which would mismatch the `Vec`-rendered type,
-        // E0308). Faithful / non-container carriers fall through to the coproduct variant.
         let host_freemonoid_carrier = authored_name_at(source_indices: si, node: resolved_type)
         match rust_seed_host_freemonoid_empty(carrier_name: host_freemonoid_carrier, corpus_repr: emit_info.corpus_repr) {
           Present { value: grounded } => grounded
