@@ -20,7 +20,7 @@ import gunbc.ci_floor_measurement {
   gunbc_ci_concurrent_runs_conservative_high,
   gunbc_ci_runner_cap_enforced,
 }
-import gunbc.operator_fleet { operator_fleet_offers }
+import gunbc.fleet_intent { fleet_intent_offers }
 
 type RunnerHostDeployment {
   identity: HostIdentity
@@ -163,7 +163,7 @@ fn runner_deployment_plan() -> RunnerDeploymentPlan {
   runner_deployment_plan_for(
     job_peaks: gunbc_ci_job_peaks,
     overhead: gunbc_ci_host_fixed_overhead,
-    offers: operator_fleet_offers
+    offers: fleet_intent_offers
   )
 }
 
