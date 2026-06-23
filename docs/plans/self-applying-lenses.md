@@ -141,3 +141,84 @@ Each existing analytical lens is upgraded from `-> Bool`/`-> count` to *also* pr
 `Node` and (behind a flag) write it. Order by displaced cost, not taxonomy. The detect-only form stays
 valid where the fix is undecidable (the ratchet residue) — produce-and-apply is for the **decidable
 wall** classes, where the generalization is unambiguous.
+
+### The audit (every `src/v2/lens/*.dag`, classified)
+
+Surveyed all 39 top-level lens modules. Each falls into one of four buckets. The discriminator is **how
+the corrected `Node` is obtained**: *computed* by anti-unification (A) · a single *mechanical deletion*
+(B) · *chosen* by human design or unknowable (C) · or *not a detector at all* (D). The load-bearing
+finding: **produce-and-apply has real leverage almost only on bucket A** — that is the one family where
+the same read that *measures* the redundancy *computes* the fix (anti-unify → template + substitution).
+Everywhere else the "fix" is either picked (ambiguous), researched (the real authority), or — per §5
+construction-first — should be dissolved by making the bad state *unwritable at the substrate*, not
+patched by a validation lens. So most non-A walls stay **detect-only until their construction lands**;
+upgrading them to produce-and-apply would cement a validator where a wall was the right end-state.
+
+**A — redundancy / anti-unification → fold into the `v2.lens.intent_linearity` registry as a ROW**
+(one engine, N rows; the producer *is* the anti-unify generalization). These do not get a standalone
+produce-and-apply upgrade — they get *consumed* by the registry's producer-and-applier.
+
+| lens | redundancy detected | binder of the minimal form | state |
+|---|---|---|---|
+| `simulated_relationship` | hand-unrolled fold (N near-identical statements) | list element (fold) | **row 1, landed** (`chain_is_simulated`) |
+| `structural_similarity` | duplicate type decls (N near-identical shapes) | type parameter (generic) | scaffold (`verdict: Unrealized`); realize as the type-decl-forest row |
+| `identical_variant_payload` | coproduct arms with tag-not-recoverable identical payloads | merged arm | scaffold (`Unrealized`); gated on `structural_similarity`'s producer (`CarrierCloneTrigger`) |
+| `table_decision_tree` | fn-encoded total table as an if/else ladder | substrate `TotalMap`/`TotalPolicy` data row (**not** a fold — §S3 taxonomy) | scaffold (`Unrealized`); gated on the decision-tree-shape producer |
+| `cost` | decidable `(pattern → cheaper-form)` cost-recurrence entries | **RunTime**-axis rows (same `fold_node` catamorphism, different §1-time axis) | realized `WallNow`; the cost fold *is* the row's `detect` |
+| `fact_cardinality` | same fact forked across the Dsl/V2 trees (divergent cross-tree clone) | one consolidated decl (shrinking ratchet → 0) | realized; fork-family — merge needs canonical pick, so it stays a *consolidation ratchet*, not auto-apply |
+| `languages_consumer_census` | N per-language duplicate rows that should be one parameterized `LanguageSpec` | type parameter (the migration target) | realized; duplication census — a migration-progress ratchet, not an auto-applier |
+| `extdeps_shape_transport_policy` *(partial)* | `TransportFusionFork` — one endpoint identity forked across two services | one shape + N bound handlers (§3) | realized; the fusion-fork tell is fork-family (its policy-literal/dead-param tells are B-shaped deletions) |
+
+**B — decidable non-redundancy wall whose corrected `Node` is a single mechanical deletion** → the
+thin genuine produce-and-apply set. Even here the apply-half carries a *delete-vs-repair* judgment
+(an unused param may signal a body bug, and deletion cascades to call sites), so it ships behind a flag
+with the detect-only form retained.
+
+| lens | bad state | corrected Node | caveat |
+|---|---|---|---|
+| `unused_parameters` | parameter declared, never used in body (`UnusedParameterFact { declaration: Node }`) | delete the declaration node | call-site cascade; delete-vs-use ambiguity — propose, don't force |
+
+**C — detect-only / advisory residue.** No single computable corrected `Node`. Two sub-kinds:
+
+- **C1 — RatchetForever (undecidable by Rice / needs domain knowledge):** `complexity` (global
+  optimality), `synthesis` (no constructive faster realization), `unit_modeling` (does `4926` *denote*
+  a contact count? — domain knowledge), `idempotency` (needs an algebra-law proof), `ownership`
+  (needs a borrow model). These stay advisory **permanently**.
+- **C2 — decidable wall whose end-state is §5 *construction* (make it unwritable), not a patch lens:**
+  `effect`, `layering_imports`, `resolved_imports`, `visibility` (two valid repairs — promote target
+  *or* demote importer — so the fix is *chosen*, not computed), `parallelism`, `coverage`,
+  `mock_totality` (→ corpus-as-type totality check), `host_language_transport_script`,
+  `medium_structure_containment`, `realization_vocabulary_containment`, `fact_density`,
+  `leaf_model_verification` (decompose a `String` leaf — needs human modeling),
+  `discrimination` (witness must be authored), `structural_resolution` (resolution-status fact source).
+  `extdeps_external_authority` is C2 with a twist — the missing anchor URL must be *researched* (the
+  real upstream authority), not synthesized. Each already carries a `dissolve_on: …by construction`
+  marker; the correct work is landing that construction, **not** a produce-and-apply retrofit.
+
+**D — not a detector to upgrade** (the machinery produce-and-apply *uses*, plus harness/fixtures):
+`application` (the apply/write API — `apply_diff`/`substitute_at`), `application_serializer`
+(re-emit, the §4 grammar-inverse, `WallNow`), `intent_linearity` (the registry engine itself),
+`registry` (lens-identity table), `affected_set` + `affected_set_examples` (change-impact closure
+engine + fixtures), `edit_locus` (diff-path → substrate-node resolver), `testgen` (test-synthesis
+engine), `subsumption` (fix-set ordering meta — already produces `DissolutionSubsumption`),
+`visibility_test` (`*_test.dag` harness). The `*/` subtrees (`affected_set/`, `application/`, per-lens
+`*_test.dag`, `common/`, the `*/sg_claims_test.dag`, the `provenance_producer.dag` / `*_registry_owner.dag`
+producers) are all D as well — witnesses, fixtures, and producers, not detectors.
+
+### Consequences for the program
+
+- **A is the work that pays.** Realizing `structural_similarity` / `identical_variant_payload` /
+  `table_decision_tree` as registry rows and wiring `cost`'s catalog as RunTime rows (then building the
+  registry's one producer-and-applier over the shared anti-unify kernel) is the high-leverage retrofit —
+  it consolidates 8 lenses into rows of one engine *and* delivers the produce-and-apply payoff in a
+  single place, instead of N bespoke appliers. The fork-family members (`fact_cardinality`,
+  `languages_consumer_census`, the fusion-fork tell) join as **consolidation ratchets**, not
+  auto-appliers, because the canonical form is *picked*, not computed.
+- **B is one clean lens** (`unused_parameters`), and even it ships flag-gated and proposal-only.
+- **C2 is a redirection, not a retrofit:** the honest move is "land the construction named in each
+  `dissolve_on`," after which the lens deletes — upgrading these to produce-and-apply would be the §5
+  trap (a validator cemented where a wall was available).
+- **D is untouched** — it is the substrate the upgrade stands on.
+
+**Deletes / code changes executed by this audit: none.** The classification is the deliverable; the
+A-row realizations and C2 constructions are each separately gated (§6).
