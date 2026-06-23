@@ -77,12 +77,24 @@ fn fixture_citation() -> CtrlJobserverCitation {
   CtrlJobserverCited { config: fixture_cfg(), provenance: "fixture: parent-supplied installer knobs" }
 }
 
+fn runner_idle_bytes() -> ByteSize {
+  byte_size(314572800)
+}
+
+fn session_idle_bytes() -> ByteSize {
+  byte_size(471859200)
+}
+
 fn fixture_runner_measured() -> FleetContainerType {
-  GhaRunnerContainer { baseline: ContainerBaselineMeasured { idle: idle_memory_envelope(min_bytes: byte_size(314572800)) } }
+  GhaRunnerContainer { baseline: ContainerBaselineMeasured { idle: idle_memory_envelope(min_bytes: runner_idle_bytes()) } }
 }
 
 fn fixture_session_measured() -> FleetContainerType {
-  AgentSessionContainer { baseline: ContainerBaselineMeasured { idle: idle_memory_envelope(min_bytes: byte_size(471859200)) } }
+  AgentSessionContainer { baseline: ContainerBaselineMeasured { idle: idle_memory_envelope(min_bytes: session_idle_bytes()) } }
+}
+
+fn fixture_baselines() -> ByteSize {
+  baselines_sum(runner_baseline: runner_idle_bytes(), session_baseline: session_idle_bytes())
 }
 
 fn fixture_runner_unmeasured() -> FleetContainerType {
@@ -193,21 +205,16 @@ fn witness_plan_derives_and_conserves() -> Bool {
 
 fn witness_uncapped_build_pool_overcommits() -> Bool {
   let cfg = fixture_cfg()
-  let runner = fixture_runner_measured()
-  let session = fixture_session_measured()
-  let baselines = baselines_sum(runner: runner, session: session)
   let headroom = byte_size(16106127360)
   let nominal = nominal_build_pool(nproc: hardware_thread_count(count: 128), mem_total: host_125gib(), cfg: cfg)
   let bloated = byte_size(byte_size_count(b: nominal) * 4)
-  let tree = fleet_host_budget_tree(name: "overcommit", host: host_125gib(), overhead: overhead_16gib(), runner: runner, session: session, build_pool: bloated, headroom: headroom)
+  let tree = fleet_host_budget_tree(name: "overcommit", host: host_125gib(), overhead: overhead_16gib(), runner_baseline: runner_idle_bytes(), session_baseline: session_idle_bytes(), build_pool: bloated, headroom: headroom)
   !node_conserves(node: tree)
 }
 
 fn witness_capped_build_pool_positive_and_bounded() -> Bool {
   let cfg = fixture_cfg()
-  let runner = fixture_runner_measured()
-  let session = fixture_session_measured()
-  let baselines = baselines_sum(runner: runner, session: session)
+  let baselines = fixture_baselines()
   let headroom = byte_size(16106127360)
   let nominal = nominal_build_pool(nproc: hardware_thread_count(count: 128), mem_total: host_125gib(), cfg: cfg)
   let pool = capped_build_pool(host: host_125gib(), overhead: overhead_16gib(), baselines: baselines, headroom: headroom, nominal: nominal)
@@ -217,9 +224,7 @@ fn witness_capped_build_pool_positive_and_bounded() -> Bool {
 
 fn witness_runner_slice_cap_conserves() -> Bool {
   let cfg = fixture_cfg()
-  let runner = fixture_runner_measured()
-  let session = fixture_session_measured()
-  let baselines = baselines_sum(runner: runner, session: session)
+  let baselines = fixture_baselines()
   let headroom = byte_size(16106127360)
   let nominal = nominal_build_pool(nproc: hardware_thread_count(count: 128), mem_total: host_125gib(), cfg: cfg)
   let pool = capped_build_pool(host: host_125gib(), overhead: overhead_16gib(), baselines: baselines, headroom: headroom, nominal: nominal)
@@ -236,9 +241,7 @@ fn witness_runner_slice_cap_drift_red_receipt() -> Bool {
 }
 
 fn witness_5650_marker_dissolution() -> Bool {
-  let runner = fixture_runner_measured()
-  let session = fixture_session_measured()
-  let baselines = baselines_sum(runner: runner, session: session)
+  let baselines = fixture_baselines()
   let headroom = byte_size(16106127360)
   let cfg = fixture_cfg()
   let nominal = nominal_build_pool(nproc: hardware_thread_count(count: 128), mem_total: host_125gib(), cfg: cfg)

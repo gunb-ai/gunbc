@@ -105,15 +105,8 @@ fn overhead_claim(overhead: ByteSize) -> BudgetClaim {
   }
 }
 
-fn baseline_or_zero(c: FleetContainerType) -> ByteSize {
-  match container_baseline_bytes(c: c) {
-    BaselineResolved { bytes: b } => b
-    BaselineUnmeasured { reason: _ } => byte_size(0)
-  }
-}
-
-fn baselines_sum(runner: FleetContainerType, session: FleetContainerType) -> ByteSize {
-  byte_size(byte_size_count(b: baseline_or_zero(c: runner)) + byte_size_count(b: baseline_or_zero(c: session)))
+fn baselines_sum(runner_baseline: ByteSize, session_baseline: ByteSize) -> ByteSize {
+  byte_size(byte_size_count(b: runner_baseline) + byte_size_count(b: session_baseline))
 }
 
 fn nominal_build_pool(nproc: HardwareThreadCount, mem_total: ByteSize, cfg: CtrlJobserverConfig) -> ByteSize {
@@ -148,8 +141,8 @@ fn fleet_host_budget_tree(
   name: String,
   host: ByteSize,
   overhead: ByteSize,
-  runner: FleetContainerType,
-  session: FleetContainerType,
+  runner_baseline: ByteSize,
+  session_baseline: ByteSize,
   build_pool: ByteSize,
   headroom: ByteSize
 ) -> BudgetNode {
@@ -158,8 +151,8 @@ fn fleet_host_budget_tree(
     appropriation: appropriation_of(b: host),
     claims: [overhead_claim(overhead: overhead)],
     children: [
-      child_node(name: "runner_baseline", b: baseline_or_zero(c: runner)),
-      child_node(name: "session_baseline", b: baseline_or_zero(c: session)),
+      child_node(name: "runner_baseline", b: runner_baseline),
+      child_node(name: "session_baseline", b: session_baseline),
       child_node(name: "build_pool", b: build_pool),
       child_node(name: "headroom", b: headroom),
     ],
@@ -217,18 +210,18 @@ fn fleet_host_plan_for(
         CtrlJobserverCited { config: cfg, provenance: _ } =>
           match container_baseline_bytes(c: runner) {
             BaselineUnmeasured { reason: r } => FleetHostPlanUnsound { reason: r }
-            BaselineResolved { bytes: _ } =>
+            BaselineResolved { bytes: rb } =>
               match container_baseline_bytes(c: session) {
                 BaselineUnmeasured { reason: r } => FleetHostPlanUnsound { reason: r }
-                BaselineResolved { bytes: _ } => {
+                BaselineResolved { bytes: sb } => {
                   let floor = oomd_actuation_floor(host: host)
                   match resolve_headroom(policy: policy, floor: floor) {
                     HeadroomUnsound { reason: r } => FleetHostPlanUnsound { reason: r }
                     HeadroomResolved { bytes: hr } => {
-                      let baselines = baselines_sum(runner: runner, session: session)
+                      let baselines = baselines_sum(runner_baseline: rb, session_baseline: sb)
                       let nominal = nominal_build_pool(nproc: nproc, mem_total: host, cfg: cfg)
                       let pool = capped_build_pool(host: host, overhead: overhead, baselines: baselines, headroom: hr, nominal: nominal)
-                      let tree = fleet_host_budget_tree(name: name, host: host, overhead: overhead, runner: runner, session: session, build_pool: pool, headroom: hr)
+                      let tree = fleet_host_budget_tree(name: name, host: host, overhead: overhead, runner_baseline: rb, session_baseline: sb, build_pool: pool, headroom: hr)
                       let tokens = hardware_thread_count(count: measure_fit_count_floor(capacity: pool, each: cfg.mib_per_job))
                       FleetHostPlanDerived {
                         name: name,
