@@ -141,3 +141,102 @@ Each existing analytical lens is upgraded from `-> Bool`/`-> count` to *also* pr
 `Node` and (behind a flag) write it. Order by displaced cost, not taxonomy. The detect-only form stays
 valid where the fix is undecidable (the ratchet residue) — produce-and-apply is for the **decidable
 wall** classes, where the generalization is unambiguous.
+
+### Survey of every `src/v2/lens/*.dag` (the classification)
+
+Every lens in the tree falls into exactly one of three retrofit classes. The split is **not** by
+taxonomy but by *who owns the fix*:
+
+- **(A) — redundancy row.** Detect is an anti-unification/congruence read over some representation; the
+  **generalization it computes _is_ the minimal-form fix** (§4: one read, two directions). These fold
+  into `v2.lens.intent_linearity` as registry **rows** of one engine — they do not get a bespoke
+  apply-half, they get the registry's. Tag each row with its *binder* (what the varying hole becomes),
+  its *scheme* (foldl/scan/reduce/table-lookup — refinement 3), and its *§1 axis* (change-time = source
+  redundancy; run-time = computation redundancy).
+- **(B) — produce-and-apply (non-redundancy wall).** Not anti-unification, so not a registry row, but
+  the flagged state has a **unique, decidable corrective `Node` rewrite the lens can emit and write
+  itself** via `v2.lens.application` (`apply_diff`/`substitute_at`). This is the genuine "upgrade the
+  lens from flag to fix" case outside the redundancy family.
+- **(C) — detect-only (no self-applying upgrade).** The lens stays a flag. Three reasons:
+  - **c1 — ratchet residue:** the fix is undecidable or needs content a human must author (global
+    optimality by Rice; leaf-side decomposition / domain knowledge; choosing which of two *diverged*
+    forks is canonical; supplying a real upstream URL — fabricating any of these is the §5 fail-open).
+  - **c2 — dissolves by an _upstream_ construction:** the bad state becomes unwritable when a substrate
+    fact lands **elsewhere** (the resolver forbids the edge, `emit(intent, Bash)` owns shell, each
+    medium becomes `Medium<R>`, corpus-as-type makes the gap a totality error). The fix is not a
+    lens-emitted rewrite, so there is nothing to *produce-and-apply* — it is a projection awaiting its
+    authority (§3 "never a second authority").
+  - **c3 — mechanism / meta / fixture:** not a detector at all. Notably `application` +
+    `application_serializer` are the **write/serialize engine the whole program depends on** (the
+    apply-half itself), and `intent_linearity` + `registry` are the registry engine that (A) rows plug
+    into — these are *enablers*, never targets.
+
+| lens | class | binder/scheme · axis  (A) / corrective rewrite (B) / reason (C) |
+|---|---|---|
+| `simulated_relationship` | **A** | **row 1, landed.** list-element binder · foldl · change-time. Its `congruent`/`pair_is_unrolled` is the shared anti-unification **kernel** the other (A) rows reuse. |
+| `structural_similarity` | **A** | type-parameter binder · generic-instantiation · change-time. *Keystone:* realize the `Unrealized` scaffold as a row reusing the kernel over the type-decl forest; DELETE the bespoke `TypeShape`/`FnShapeUnrealized` scaffold on the consolidation-map trigger. |
+| `identical_variant_payload` | **A** | variant-tag binder (identical payloads → one tag-agnostic parameter) · change-time. Gated on the same producer as `structural_similarity`. |
+| `languages_consumer_census` | **A** | data-row binder (~64 identical per-language rows → one row + language list) · change-time. Apply-half is the §3 de-fork migration (repoint consumers to `extdeps/languages/*`), not an in-`Node` fold. |
+| `table_decision_tree` | **A** | **table-lookup scheme, _not_ a fold** (refinement 3): fn-encoded if/else ladder → cited rows in `extdeps/` + one generic dispatch (`TotalMap`). change-time. Currently `Unrealized`. |
+| `cost` | **A** | run-time. Supplies the `fold_node` cost catamorphism that is the **detect of the run-time rows**; its decidable `(pattern → cheaper-form)` catalog entries become `RunTime`-axis rows. File stays (the catamorphism is the row); what dissolves is "a complexity engine distinct from the redundancy engine." |
+| `complexity` | **A + c1** | run-time catalog → `RunTime` rows (A); the `RatchetForever` *global-optimality* residue stays detect-only (c1, Rice). |
+| `idempotency` | **A** | run-time (algebraic redundancy: `op∘op → op` / cancellation). Per-edge law-witness today; the simplification rewrite is the row's apply, gated on the closed-algebra carrier. |
+| `unused_parameters` | **B** | **flagship.** Corrective rewrite = delete the dead parameter and update every call site — a unique, decidable multi-edit `apply_diff`. Smallest blast radius → the right first produce-and-apply proof. |
+| `layering_imports` | **B / c2** | the *delete-a-forbidden-edge* subcase is a unique mechanical rewrite (B); *re-homing* a shared decl to the right layer is advisory, and the class dissolves anyway once the resolver rejects the inverted edge by construction (c2). |
+| `affected_set` | **C/c2** | re-exec frontier projection; dissolves when the scheduler consumes the frontier as a construction. |
+| `coverage` | **C/c2** | missing-set is decidable, but the fix is a *handler body* a human writes (a stub arm would be §5 fail-open); dissolves at corpus-as-type. |
+| `mock_totality` | **C/c2** | same as `coverage` — totality gap over declared-data corpus; dissolves at corpus-as-type. |
+| `discrimination` | **C/c2** | the lens cannot synthesize a discriminating red *input* (needs the semantics); dissolves when the witness-authoring surface forbids a green-only unit. |
+| `edit_locus` | **C/c2** | diff-path → `Node` projection over `NodeArtifactProvenance`; shim until the provenance carrier owns it. |
+| `effect` | **C/c2** | per-edge effect projection; dissolves when the signature-derived effect-kind set is closed in the substrate. |
+| `ownership` | **C/c2** | per-edge alias/ownership projection; dissolves when the closed access carrier lands on `InferredFacts`. |
+| `parallelism` | **C/c2** | per-edge coupling projection; dissolves when the coupling carrier lands on `InferredFacts`. |
+| `structural_resolution` | **C/c2** | projection-only over the resolver's binding facts — never a second authority. |
+| `resolved_imports` | **C/c2** | dangling-import projection of the resolver's `UnresolvedImport` rule; fix = author the missing module (external). |
+| `visibility` | **C/c2** | two valid fixes (restrict publication vs promote import) → ambiguous; dissolves into `access.dag`'s effective-public rule. |
+| `extdeps_shape_transport_policy` | **C/c2** | the four tells dissolve when the §3 interface/transport/policy de-fusion is realized by construction. |
+| `host_language_transport_script` | **C/c2** | literal-in-script-slot; dissolves when `emit(intent, Bash)` owns shell construction. |
+| `realization_vocabulary_containment` | **C/c2** | target-AST sidecar import outside the realization edge; shrinking-roster ratchet → wall when the arc empties. |
+| `medium_structure_containment` | **C/c2** | medium structure leaking to a raw string; shrinking roster → wall as each medium becomes `Medium<R>`. |
+| `leaf_model_verification` | **C/c2** | emitted-code behavior correctness (R1–R3); dissolves when host-exec (T-22) replaces structural pair-readiness. *(Note the irony: its own ~10 fixture pairs are an (A)-shaped redundancy — a self-application target once the kernel runs on the lens corpus itself, §7.)* |
+| `fact_cardinality` | **C/c1** | redundancy-*detect* (cross-tree coexistence), but choosing which of two **diverged** forks is canonical is a judgment → apply non-unique. (Contrast `languages_consumer_census`: identical copies → unique fold = A.) |
+| `fact_density` | **C/c1** | hollow-alias detect is a wall, but *what to decompose the leaf into* is §2 leaf-side domain knowledge — undecidable. |
+| `unit_modeling` | **C/c1** | whether a bare scalar denotes a modeled quantity needs domain knowledge (is `4926` a contact_count?) — `RatchetForever`. |
+| `extdeps_external_authority` | **C/c1** | anchor-presence is decidable, but the fix is the *real upstream URL* a human supplies; fabricating one is the §5 phony-anchor fail-open. |
+| `synthesis` | **C/c1** | lower-bound gap is provable, the closing program is not (`feedback_no_engine`; matmul-ω) — permanent advisory. |
+| `testgen` | **C/c1** | test-generation / gap heuristics; `RatchetForever`, no constructive close-loop. |
+| `application` | **C/c3** | **the apply engine** (`apply_edit`/`apply_diff`/`substitute_at`) — the produce-and-apply write substrate every (A)/(B) lens calls. Enabler, not a target. |
+| `application_serializer` | **C/c3** | **the serialize half** (emit = grammar inverse → `DagSourcePatch`). Enabler, not a target. |
+| `intent_linearity` | **C/c3** | the **registry engine** (A) rows plug into. Not a target — it is the host. |
+| `registry` | **C/c3** | the lens-identity registry (interim `LensIdV0` map). Meta. |
+| `subsumption` | **C/c3** | a meta ledger of which root-fix mechanically closes which leaf-fixes; not a code detector. |
+| `affected_set_examples` | **C/c3** | example/fixture data for `affected_set`. |
+| `visibility_test` | **C/c3** | witness file for `visibility` (a `*_test.dag`, floor-discovered). |
+
+### Priority order (by displaced cost, not taxonomy)
+
+The prerequisite gate for **every** apply-half: emit (§6) and `application.dag` exist; what is missing is
+(i) a **filesystem write effect** (the write twin of the lenses' `filesystem_read`) and (ii) the live
+**resolve walk** producing the per-body / per-decl `Node` facts the detectors consume (today they run as
+`lens_unit` over synthetic input). Until both land, the produce-half is provable on synthetic input but
+not wired to the corpus.
+
+1. **The §3 dup-decl family — `structural_similarity` + `identical_variant_payload` +
+   `languages_consumer_census`.** Highest displaced cost: a fork is *always* consolidated later, and the
+   debt re-duplicates through everything generated (testgen, emit, lenses). All three share **one
+   producer** (parse/resolve type-/data-decl facts) and **one kernel** (the term-layer `congruent`
+   generalized to the type-parameter / variant-tag / data-row binder) → land as one consolidation.
+2. **`simulated_relationship` row 1** — already landed; the unblock is the live statement-chain walk so
+   it fires on `dsl/**` instead of synthetic chains.
+3. **`cost` / `complexity` run-time catalog rows** — the `O(n^x) → O(n log n)` substitution catalog;
+   real run-time wins, but the rows must tag the run-time axis (the honest disanalogy: some source-DRY
+   rewrites are O(1)-runtime and vice-versa).
+4. **`unused_parameters` (B)** — the cleanest non-redundancy produce-and-apply: smallest, fully decidable
+   multi-edit rewrite. The right proof-of-concept for the write effect end-to-end.
+5. **`table_decision_tree`** — needs the decision-tree-shape producer **and** the `extdeps/` dispatch
+   target (its minimal form is rows + one generic dispatch, not a fold).
+
+Everything in **(C)** stays detect-only by design — c1 is the honest `RatchetForever` residue, c2 is a
+projection that dissolves when its single authority lands upstream (not a lens-applied rewrite), and c3 is
+the engine itself. None of these is a regression in the produce-and-apply program; they are the boundary
+of where it correctly stops (§5: check decidability before claiming a wall).
