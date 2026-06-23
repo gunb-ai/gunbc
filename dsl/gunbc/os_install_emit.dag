@@ -1,73 +1,56 @@
 module gunbc.os_install_emit
 
 import std.logic { Bool }
-import std.types { Int, NonEmptyStr, List, String }
+import std.types { List, String }
 import extdeps.os.ubuntu_autoinstall {
   UbuntuAutoinstallPayload,
   AutoinstallIdentity,
 }
-import gunbc.os_install { srv3_ubuntu_autoinstall }
-import std.layout {
-  Doc,
-  LayoutProtocol,
-  doc_concat, doc_line_of,
-  render
+import extdeps.formats.yaml {
+  YamlValue, YamlKeyValue,
+  yaml_mapping, yaml_sequence, yaml_string, yaml_int, yaml_bool,
+  kv, serialize_yaml, empty_yaml_values
 }
 
-data autoinstall_emit_protocol: LayoutProtocol = LayoutProtocol { indent_unit: "" }
-
-fn yaml_double_quote(s: NonEmptyStr) -> String {
-  concat(concat("\"", s), "\"")
-}
-
-fn identity_doc_lines(id: AutoinstallIdentity) -> List<Doc> {
+fn identity_entries(id: AutoinstallIdentity) -> List<YamlKeyValue> {
   [
-    doc_line_of(text: "  identity:"),
-    doc_line_of(text: concat("    hostname: ", id.hostname)),
-    doc_line_of(text: concat("    username: ", id.username)),
-    doc_line_of(text: concat("    realname: ", yaml_double_quote(s: id.realname))),
-    doc_line_of(text: concat("    password: ", yaml_double_quote(s: id.hashed_password))),
+    kv(key: "hostname", value: yaml_string(s: id.hostname)),
+    kv(key: "username", value: yaml_string(s: id.username)),
+    kv(key: "realname", value: yaml_string(s: id.realname)),
+    kv(key: "password", value: yaml_string(s: id.hashed_password)),
   ]
 }
 
-fn ssh_doc_lines(payload: UbuntuAutoinstallPayload) -> List<Doc> {
-  if payload.install_openssh_server {
-    [
-      doc_line_of(text: "  ssh:"),
-      doc_line_of(text: "    install-server: true"),
-    ]
+fn autoinstall_inner_entries(payload: UbuntuAutoinstallPayload) -> List<YamlKeyValue> {
+  let base = [
+    kv(key: "version", value: yaml_int(n: payload.autoinstall_version)),
+    kv(key: "locale", value: yaml_string(s: payload.locale)),
+    kv(key: "keyboard", value: yaml_mapping(entries: [
+      kv(key: "layout", value: yaml_string(s: payload.keyboard_layout)),
+    ])),
+    kv(key: "identity", value: yaml_mapping(entries: identity_entries(id: payload.identity))),
+  ]
+  let with_ssh = if payload.install_openssh_server {
+    append(base, items: [
+      kv(key: "ssh", value: yaml_mapping(entries: [
+        kv(key: "install-server", value: yaml_bool(b: true)),
+      ])),
+    ])
   } else {
-    []
+    base
   }
-}
-
-fn automation_doc_lines(payload: UbuntuAutoinstallPayload) -> List<Doc> {
   if payload.fully_automated {
-    [doc_line_of(text: "  interactive-sections: []")]
+    append(with_ssh, items: [
+      kv(key: "interactive-sections", value: yaml_sequence(elements: empty_yaml_values)),
+    ])
   } else {
-    []
+    with_ssh
   }
-}
-
-fn autoinstall_user_data_doc(payload: UbuntuAutoinstallPayload) -> Doc {
-  let head = [
-    doc_line_of(text: "#cloud-config"),
-    doc_line_of(text: "autoinstall:"),
-    doc_line_of(text: concat("  version: ", to_string(payload.autoinstall_version))),
-    doc_line_of(text: concat("  locale: ", payload.locale)),
-    doc_line_of(text: "  keyboard:"),
-    doc_line_of(text: concat("    layout: ", payload.keyboard_layout)),
-  ]
-  doc_concat(parts: concat(
-    concat(head, identity_doc_lines(id: payload.identity)),
-    concat(ssh_doc_lines(payload: payload), automation_doc_lines(payload: payload))
-  ))
 }
 
 fn autoinstall_user_data(payload: UbuntuAutoinstallPayload) -> String {
-  render(doc: autoinstall_user_data_doc(payload: payload), proto: autoinstall_emit_protocol)
-}
-
-fn expected_srv3_user_data() -> String {
-  autoinstall_user_data(payload: srv3_ubuntu_autoinstall)
+  let top = yaml_mapping(entries: [
+    kv(key: "autoinstall", value: yaml_mapping(entries: autoinstall_inner_entries(payload: payload))),
+  ])
+  concat("#cloud-config\n", serialize_yaml(v: top))
 }

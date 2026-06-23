@@ -1,7 +1,7 @@
 module gunbc.os_install
 
 import std.logic { Bool }
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, List }
 import std.os.types { OperatingSystemProduct, UbuntuOs, NobleNumbat2404Lts }
 import extdeps.toolchain.types { Architecture, Aarch64 }
 import extdeps.uri { Uri, Https }
@@ -18,6 +18,7 @@ import extdeps.os.ubuntu_autoinstall {
   NoCloudNet,
 }
 import gunbc.fleet_intent_network { operator_host_srv3 }
+import product.placement_supply { HostIdentity }
 import extdeps.bmc.types {
   RedfishBootSourceOverrideTarget,
   BootTargetPxe,
@@ -108,3 +109,15 @@ data srv3_os_install_plan: Srv3OsInstallPlan = Srv3OsInstallPlan {
   bmc_boot_enabled: BootOverrideOnce,
   post_stage_reset: ResetForceRestart,
 }
+
+type HostAutoinstall {
+  host: HostIdentity
+  payload: UbuntuAutoinstallPayload
+}
+
+data srv3_autoinstall_spec: HostAutoinstall = HostAutoinstall {
+  host: operator_host_srv3,
+  payload: srv3_ubuntu_autoinstall,
+}
+
+data fleet_autoinstall_specs: List<HostAutoinstall> = [srv3_autoinstall_spec]

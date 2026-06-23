@@ -7,7 +7,8 @@ import gunbc.gitignore_emit { expected_gitignore, path_is_ignored }
 import gunbc.roadmap_authority { expected_roadmap_md }
 import gunbc.design_document { expected_design_md }
 import gunbc.runner_deploy_emit { expected_runner_deploy_manifest }
-import gunbc.os_install_emit { expected_srv3_user_data }
+import gunbc.os_install { HostAutoinstall, fleet_autoinstall_specs }
+import gunbc.os_install_emit { autoinstall_user_data }
 import gunbc.plan { Plan, expected_plan_md, plan_path }
 import gunbc.plan_registry { all_plans }
 
@@ -17,11 +18,14 @@ type GeneratedArtifact
   | RoadmapArtifact
   | DesignArtifact
   | RunnerDeployArtifact
-  | Srv3AutoinstallUserDataArtifact
+  | AutoinstallUserDataArtifact { spec: HostAutoinstall }
   | PlanArtifact { plan: Plan }
 
 data generated_artifact_registry: List<GeneratedArtifact> = concat(
-  [CiYamlArtifact, GitignoreArtifact, RoadmapArtifact, DesignArtifact, RunnerDeployArtifact, Srv3AutoinstallUserDataArtifact],
+  concat(
+    [CiYamlArtifact, GitignoreArtifact, RoadmapArtifact, DesignArtifact, RunnerDeployArtifact],
+    map(fleet_autoinstall_specs, s => AutoinstallUserDataArtifact { spec: s })
+  ),
   map(all_plans, pl => PlanArtifact { plan: pl })
 )
 
@@ -32,7 +36,7 @@ fn artifact_path(a: GeneratedArtifact) -> String {
     RoadmapArtifact => "ROADMAP.md"
     DesignArtifact => "DESIGN.md"
     RunnerDeployArtifact => ".github/fleet-runner-deploy.manifest"
-    Srv3AutoinstallUserDataArtifact => "provisioning/srv3/user-data"
+    AutoinstallUserDataArtifact { spec } => concat(concat("provisioning/", spec.host), "/user-data")
     PlanArtifact { plan } => plan_path(p: plan)
   }
 }
@@ -44,7 +48,7 @@ fn artifact_generate(a: GeneratedArtifact) -> String {
     RoadmapArtifact => expected_roadmap_md()
     DesignArtifact => expected_design_md()
     RunnerDeployArtifact => expected_runner_deploy_manifest()
-    Srv3AutoinstallUserDataArtifact => expected_srv3_user_data()
+    AutoinstallUserDataArtifact { spec } => autoinstall_user_data(payload: spec.payload)
     PlanArtifact { plan } => expected_plan_md(p: plan)
   }
 }
@@ -71,7 +75,7 @@ fn artifact_eq(a: GeneratedArtifact, b: GeneratedArtifact) -> Bool {
     RoadmapArtifact => match b { RoadmapArtifact => true  _ => false }
     DesignArtifact => match b { DesignArtifact => true  _ => false }
     RunnerDeployArtifact => match b { RunnerDeployArtifact => true  _ => false }
-    Srv3AutoinstallUserDataArtifact => match b { Srv3AutoinstallUserDataArtifact => true  _ => false }
+    AutoinstallUserDataArtifact { spec } => match b { AutoinstallUserDataArtifact { spec: spec2 } => spec.host == spec2.host  _ => false }
     PlanArtifact { plan } => match b { PlanArtifact { plan: plan2 } => plan.slug == plan2.slug  _ => false }
   }
 }
