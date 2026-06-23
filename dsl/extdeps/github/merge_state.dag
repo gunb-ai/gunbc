@@ -1,0 +1,46 @@
+module extdeps.github.merge_state
+
+import std.serialization { CoproductWireContract, StringVariant, ScreamingSnakeCase }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/graphql/reference/enums#mergestatestatus"
+  }
+}
+
+-- REST API field on PullRequest (GET /repos/{owner}/{repo}/pulls/{pull_number})
+-- docs.github.com/en/rest/pulls/pulls#get-a-pull-request
+type MergeableState
+  = Mergeable
+  | Conflicting
+  | Unknown
+
+data mergeable_state_wire_contract: CoproductWireContract = {
+  coproduct: "MergeableState",
+  encoding: StringVariant { naming: ScreamingSnakeCase }
+}
+
+-- GraphQL-only enum; accessed via the GitHub GraphQL API v4
+-- pullRequest { mergeStateStatus }
+-- Indicates whether the PR is clean (safe to merge), blocked, dirty (conflicts), etc.
+type MergeStateStatus
+  = Behind
+  | Blocked
+  | Clean
+  | Dirty
+  | Draft
+  | HasHooks
+  | Unknown
+  | Unstable
+
+data merge_state_status_wire_contract: CoproductWireContract = {
+  coproduct: "MergeStateStatus",
+  encoding: StringVariant { naming: ScreamingSnakeCase }
+}
+
+data structural_coverage_gap_merge_state_graphql_residual: List<String> = [
+  "closure:merge_state_graphql_residual|MergeStateStatus|transport:GraphQL-only|trigger:dashboard shadow lane adds GraphQL transport handler when graphql extdeps module lands"
+]

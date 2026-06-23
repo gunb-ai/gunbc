@@ -1,0 +1,103 @@
+module extdeps.github.checks
+
+import extdeps.github.github { default_api_base, default_per_page }
+import std.types { CommitSha, Timestamp, Url }
+import extdeps.github.errors { GitHubErrorShape }
+import std.credentials { EnvVar }
+import std.serialization { CoproductWireContract, StringVariant, SnakeCase }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/rest/checks/runs"
+  }
+}
+
+type CheckStatus
+  = Queued
+  | InProgress
+  | Completed
+  | Waiting
+  | Pending
+  | Requested
+
+type CheckConclusion
+  = ActionRequired
+  | Cancelled
+  | Failure
+  | Neutral
+  | Skipped
+  | Stale
+  | Success
+  | TimedOut
+
+data check_status_wire_contract: CoproductWireContract = {
+  coproduct: "CheckStatus",
+  encoding: StringVariant { naming: SnakeCase }
+}
+
+data check_conclusion_wire_contract: CoproductWireContract = {
+  coproduct: "CheckConclusion",
+  encoding: StringVariant { naming: SnakeCase }
+}
+
+type CheckOutput {
+  title: String?
+  summary: String?
+  annotations_count: Int
+}
+
+type CheckRun {
+  id: Int
+  name: String
+  head_sha: CommitSha
+  status: CheckStatus
+  conclusion: CheckConclusion?
+  started_at: Timestamp?
+  completed_at: Timestamp?
+  output: CheckOutput
+  html_url: Url
+}
+
+type CheckRunList {
+  total_count: Int
+  check_runs: List<CheckRun>
+}
+
+service github.Checks {
+  config {
+    endpoint: default_api_base
+    auth: Bearer
+    auth_source: EnvVar { name: "GITHUB_TOKEN" }
+
+    rate_limit: { requests: 5000, per: hour, scope: core }
+    retry: { max_attempts: 3, backoff: exponential, retry_on: [429, 500, 502, 503, 504] }
+  }
+
+  operation ListForRef {
+    input {
+      auth_token: Secret
+      owner: String
+      repo: String
+      ref: String
+      per_page: Int = default_per_page
+    }
+    output {
+      result: CheckRunList
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/repos/\{owner\}/\{repo\}/commits/\{ref\}/check-runs",
+      query: { per_page: per_page }
+    }
+    response {
+      200 => CheckRunList
+      401 => GitHubErrorShape
+      404 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
+  }
+}
