@@ -3,7 +3,7 @@ module extdeps.llm.anthropic
 import extdeps.llm.llm { llm_snake_wire_contract }
 import std.serialization { CoproductWireContract, VariantEncoding }
 import std.types { NonEmptyStr }
-import std.disposition { Disposition, Scaffold, Terminal, DeclLocator, WholeDeclaration, NamedField, SingleAuthority }
+import std.disposition { Disposition, DeclLocator }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.coverage { CoverageClosureEntry, CoverageClosureFact }
