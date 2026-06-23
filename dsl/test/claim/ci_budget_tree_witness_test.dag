@@ -2,7 +2,7 @@ module test.claim.ci_budget_tree_witness
 
 import std.logic { Bool }
 import std.measure { byte_size_count }
-import product.budget_tree { node_conserves, budget_child_named }
+import product.budget_tree { node_conserves, budget_child_named, BudgetChildFound, BudgetChildMissing }
 import gunbc.ci_budget_tree {
   srv1_budget_tree,
   srv1_host_ram,
@@ -36,8 +36,8 @@ fn witness_divide_once_reduces_below_host() -> Bool {
 // The descent finds the real run node (not the fail-closed fallback).
 fn witness_l2_node_present() -> Bool {
   match srv1_ci_run_node() {
-    Present { value: _ } => true
-    Absent => false
+    BudgetChildFound { node: _ } => true
+    BudgetChildMissing => false
   }
 }
 
@@ -45,8 +45,8 @@ fn witness_l2_node_present() -> Bool {
 // asking for a wrong allocation gets no fabricated budget.
 fn witness_unknown_child_is_absent() -> Bool {
   match budget_child_named(node: srv1_budget_tree, name: "__no_such_child__") {
-    Present { value: _ } => false
-    Absent => true
+    BudgetChildFound { node: _ } => false
+    BudgetChildMissing => true
   }
 }
 

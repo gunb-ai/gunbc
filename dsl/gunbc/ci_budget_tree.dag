@@ -6,6 +6,7 @@ import std.realization_width { byte_size_saturating_sub }
 import extdeps.accounting.budget { Appropriation, LineItem }
 import product.budget_tree {
   BudgetNode, BudgetClaim, BudgetPriority, Guaranteed,
+  BudgetChild, BudgetChildFound, BudgetChildMissing,
   budget_child_named
 }
 import product.compute_fabric { compute_host_ram_bytes_total }
@@ -117,14 +118,14 @@ fn build_srv1_budget_tree() -> BudgetNode {
 data srv1_budget_tree: BudgetNode = build_srv1_budget_tree()
 
 // ── the consumer read path: descend the tree to the L2 (per-run) allocation ──
-fn srv1_run_pool_node() -> BudgetNode? {
+fn srv1_run_pool_node() -> BudgetChild {
   budget_child_named(node: srv1_budget_tree, name: srv1_run_pool_name())
 }
 
-fn srv1_ci_run_node() -> BudgetNode? {
+fn srv1_ci_run_node() -> BudgetChild {
   match srv1_run_pool_node() {
-    Absent => none
-    Present { value: pool } => budget_child_named(node: pool, name: srv1_ci_run_name())
+    BudgetChildMissing => BudgetChildMissing
+    BudgetChildFound { node: pool } => budget_child_named(node: pool, name: srv1_ci_run_name())
   }
 }
 
@@ -134,7 +135,7 @@ fn srv1_ci_run_node() -> BudgetNode? {
 // tree (no run node) yields a zero budget, which drives the floor to its conservative fallback.
 fn srv1_floor_memory_budget() -> ByteSize {
   match srv1_ci_run_node() {
-    Absent => byte_size(0)
-    Present { value: run } => run.appropriation.ceiling
+    BudgetChildMissing => byte_size(0)
+    BudgetChildFound { node: run } => run.appropriation.ceiling
   }
 }
