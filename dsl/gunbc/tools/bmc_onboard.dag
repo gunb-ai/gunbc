@@ -1,28 +1,26 @@
 module gunbc.tools.bmc_onboard
 
 import extdeps.bmc.http
-import extdeps.bmc.types { redfish_boot_target_wire, redfish_boot_override_enabled_wire, redfish_reset_type_wire }
 import extdeps.filesystem.filesystem_io
 import extdeps.entropy
 import extdeps.cloud.gcp.secret_manager
 import extdeps.cloud.gcp.gcp { GcpProjectId }
 import extdeps.shell
 import gunbc.bmc_onboarding { new_altra_onboarding_plan }
-import gunbc.os_install { srv3_os_install_plan }
 import std.credentials { Stored }
-import std.encoding { base64_encode, base64_decode, Base64Variant, Standard }
+import std.encoding { base64_encode, base64_decode, Standard }
 import std.integer { UInt8 }
 import std.types { NonEmptyStr, Secret, String }
 import std.logic { Bool }
 import std.resources { Network }
-import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure, exit_code_general_error }
+import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 
 data bmc_onboard_netrc_path: String = "/tmp/bmc_onboard_netrc"
 data bmc_onboard_pwbody_path: String = "/tmp/bmc_onboard_pwbody.json"
-data bmc_onboard_bootbody_path: String = "/tmp/bmc_onboard_bootbody.json"
-data bmc_onboard_resetbody_path: String = "/tmp/bmc_onboard_resetbody.json"
 
-data bmc_onboard_secret_on_disk_debt: String = "🟡 SCAFFOLD — the four /tmp paths above transiently hold the BMC credential on disk under the default umask: Filesystem.Write cannot set mode 0600 today and there is no post-run unlink. Operator-fenced (live writes gated), not a silent leak. Dissolve-on: feature:mode-aware-file-write — a mode-0600 file-write effect + an unlink leg bound the secret-on-disk window."
+data bmc_onboard_secret_on_disk_debt: String = "🟡 SCAFFOLD — the two /tmp paths above (netrc + password body) transiently hold the BMC credential on disk under the default umask: Filesystem.Write cannot set mode 0600 today and there is no post-run unlink. Operator-fenced (live writes gated), not a silent leak. Dissolve-on: feature:mode-aware-file-write — a mode-0600 file-write effect + an unlink leg bound the secret-on-disk window."
+
+data bmc_onboard_credential_path_module_split: String = "credential assimilation (acquire→mint→store→rotate) is modeled here independent of the OS-install leg — it imports neither gunbc.os_install nor extdeps.bmc.types, which it does not use (§2: no dependency on what is not consumed). The OS-install orchestration is deferred to the PXE/install-infra lane; this module's import closure stays small enough to be live-runnable today."
 
 data srv3_gcp_project: GcpProjectId = "gunbai-secrets"
 
@@ -109,61 +107,6 @@ func bmc_rotate_credential(new_credential: Secret) -> ProcessExit
   }
 }
 
-func bmc_os_install(new_credential: Secret) -> ProcessExit
-  uses net: Network
-{
-  let plan = new_altra_onboarding_plan
-  let host = plan.bmc.host
-  let account = plan.factory_login.username
-  let system_id = plan.redfish_system_id
-  let install = srv3_os_install_plan
-
-  if write_netrc(host: host, account: account, password: new_credential as String) == false {
-    return exit_failure(reason: "os-install: netrc (new credential) write failed")
-  }
-
-  let boot_body = Filesystem.Write(
-    path: bmc_onboard_bootbody_path,
-    content: boot_override_body(
-      target: redfish_boot_target_wire(t: install.bmc_boot_target),
-      enabled: redfish_boot_override_enabled_wire(e: install.bmc_boot_enabled)
-    )
-  )
-  if boot_body.success == false {
-    return exit_failure(reason: concat("os-install: boot body write failed: ", boot_body.error))
-  }
-
-  boot = redfish.Http.SetBootSourceOverride(
-    bmc_host: host,
-    netrc_file: bmc_onboard_netrc_path as NonEmptyStr,
-    system_id: system_id,
-    request_body_file: bmc_onboard_bootbody_path as NonEmptyStr
-  )
-  if boot.success == false {
-    return exit_failure(reason: concat("os-install: boot source override failed: ", boot.body))
-  }
-
-  let reset_body_w = Filesystem.Write(
-    path: bmc_onboard_resetbody_path,
-    content: reset_body(reset_type: redfish_reset_type_wire(r: install.post_stage_reset))
-  )
-  if reset_body_w.success == false {
-    return exit_failure(reason: concat("os-install: reset body write failed: ", reset_body_w.error))
-  }
-
-  reset = redfish.Http.ResetSystem(
-    bmc_host: host,
-    netrc_file: bmc_onboard_netrc_path as NonEmptyStr,
-    system_id: system_id,
-    request_body_file: bmc_onboard_resetbody_path as NonEmptyStr
-  )
-  return if reset.success {
-    ExitSuccess
-  } else {
-    exit_failure(reason: concat("os-install: system reset failed: ", reset.body))
-  }
-}
-
 func bmc_store_and_rotate(octets: List<UInt8>) -> ProcessExit
   uses net: Network
 {
@@ -190,15 +133,6 @@ func bmc_store_and_rotate(octets: List<UInt8>) -> ProcessExit
   return bmc_rotate_credential(new_credential: credential)
 }
 
-func bmc_onboard_store_rotate_install(octets: List<UInt8>) -> ProcessExit
-  uses net: Network
-{
-  return match bmc_store_and_rotate(octets: octets) {
-    ExitSuccess => bmc_os_install(new_credential: credential_from_octets(octets: octets))
-    ExitFailure { code: c, reason: r } => ExitFailure { code: c, reason: r }
-  }
-}
-
 func bmc_assimilate_srv3_credential() -> ProcessExit
   uses net: Network
 {
@@ -223,32 +157,5 @@ func bmc_assimilate_srv3_credential() -> ProcessExit
   return match octets_opt {
     Absent => exit_failure(reason: "gen: entropy mint failed (fail-closed)")
     Present { value: octets } => bmc_store_and_rotate(octets: octets)
-  }
-}
-
-func bmc_onboard_srv3() -> ProcessExit
-  uses net: Network
-{
-  let plan = new_altra_onboarding_plan
-  let host = plan.bmc.host
-  let account = plan.factory_login.username
-
-  root_resp = redfish.Http.GetServiceRoot(bmc_host: host)
-  if root_resp.success == false {
-    return exit_failure(reason: concat("acquire: service root unreachable: ", root_resp.body))
-  }
-  acq = redfish.Http.GetSystem(
-    bmc_host: host,
-    username: account,
-    password: plan.factory_login.published_password as Secret
-  )
-  if acq.success == false {
-    return exit_failure(reason: concat("acquire: factory login failed: ", acq.body))
-  }
-
-  octets_opt = mint_credential_octets(byte_count: bmc_credential_bytes)
-  return match octets_opt {
-    Absent => exit_failure(reason: "gen: entropy mint failed (fail-closed)")
-    Present { value: octets } => bmc_onboard_store_rotate_install(octets: octets)
   }
 }
