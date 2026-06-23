@@ -1,6 +1,5 @@
 module extdeps.provisioning.network_boot
 
-import std.logic { Bool }
 import std.types { NonEmptyStr }
 import extdeps.toolchain.types { Architecture, Aarch64, X86_64 }
 import extdeps.uri { Uri, Https }
@@ -14,21 +13,13 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 }
 
 type ClientNetworkBootMode =
-    LegacyBiosPxe
-  | UefiPxe
+    LegacyBiosPxe { tftp_root: Uri }
+  | UefiPxe { tftp_root: Uri }
   | UefiHttpBoot
 
 type DhcpBootDirection =
     NativeDhcpBootOptions
   | ProxyDhcp
-
-fn network_boot_mode_needs_tftp(mode: ClientNetworkBootMode) -> Bool {
-  match mode {
-    LegacyBiosPxe => true
-    UefiPxe => true
-    UefiHttpBoot => false
-  }
-}
 
 fn network_uefi_bootloader_artifact(arch: Architecture) -> NonEmptyStr? {
   match arch {
@@ -41,21 +32,5 @@ fn network_uefi_bootloader_artifact(arch: Architecture) -> NonEmptyStr? {
 type NetworkBootChain {
   boot_mode: ClientNetworkBootMode
   dhcp_direction: DhcpBootDirection
-  bootloader_artifact: NonEmptyStr
-  tftp_root: Uri?
   image_http_root: Uri
-}
-
-fn network_boot_chain_tftp_coherent(chain: NetworkBootChain) -> Bool {
-  if network_boot_mode_needs_tftp(mode: chain.boot_mode) {
-    match chain.tftp_root {
-      Present { value: _ } => true
-      Absent => false
-    }
-  } else {
-    match chain.tftp_root {
-      Present { value: _ } => false
-      Absent => true
-    }
-  }
 }

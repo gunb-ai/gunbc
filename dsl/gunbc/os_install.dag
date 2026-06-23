@@ -24,31 +24,14 @@ import extdeps.bmc.types {
   ResetForceRestart,
 }
 
-type BoardVirtualMediaSupport =
-    VirtualMediaPresent
-  | VirtualMediaAbsent
-
-type OsDeliveryMechanism =
-    NetworkBootDelivery { chain: NetworkBootChain, autoinstall: UbuntuAutoinstallPayload }
-  | VirtualMediaDelivery { image: Uri }
+type NetworkBootDelivery {
+  chain: NetworkBootChain
+  autoinstall: UbuntuAutoinstallPayload
+}
 
 type LanInstallInfraSurvey {
   existing_dhcp_configurable: Bool
   dedicated_install_server_present: Bool
-}
-
-fn os_delivery_is_coherent_for_board(
-  vm: BoardVirtualMediaSupport,
-  delivery: OsDeliveryMechanism,
-) -> Bool {
-  match vm {
-    VirtualMediaPresent => true
-    VirtualMediaAbsent =>
-      match delivery {
-        NetworkBootDelivery { chain: _, autoinstall: _ } => true
-        VirtualMediaDelivery { image: _ } => false
-      }
-  }
 }
 
 fn survey_implied_dhcp_direction(survey: LanInstallInfraSurvey) -> DhcpBootDirection {
@@ -62,9 +45,8 @@ fn survey_implied_dhcp_direction(survey: LanInstallInfraSurvey) -> DhcpBootDirec
 type Srv3OsInstallPlan {
   os_target: OperatingSystemProduct
   host_architecture: Architecture
-  board_virtual_media: BoardVirtualMediaSupport
   lan_survey: LanInstallInfraSurvey
-  delivery: OsDeliveryMechanism
+  network_boot_delivery: NetworkBootDelivery
   bmc_boot_target: RedfishBootSourceOverrideTarget
   bmc_boot_enabled: RedfishBootSourceOverrideEnabled
   post_stage_reset: RedfishResetType
@@ -77,9 +59,7 @@ data srv3_lan_install_survey: LanInstallInfraSurvey = LanInstallInfraSurvey {
 
 data srv3_network_boot_chain: NetworkBootChain = NetworkBootChain {
   boot_mode: UefiHttpBoot,
-  dhcp_direction: ProxyDhcp,
-  bootloader_artifact: "grubnetaa64.efi",
-  tftp_root: Absent,
+  dhcp_direction: survey_implied_dhcp_direction(survey: srv3_lan_install_survey),
   image_http_root: Uri {
     scheme: Https,
     locator: "install.srv3.lan/ubuntu-24.04/",
@@ -101,9 +81,8 @@ data srv3_ubuntu_autoinstall: UbuntuAutoinstallPayload = UbuntuAutoinstallPayloa
 data srv3_os_install_plan: Srv3OsInstallPlan = Srv3OsInstallPlan {
   os_target: UbuntuOs { distro: NobleNumbat2404Lts },
   host_architecture: Aarch64,
-  board_virtual_media: VirtualMediaAbsent,
   lan_survey: srv3_lan_install_survey,
-  delivery: NetworkBootDelivery {
+  network_boot_delivery: NetworkBootDelivery {
     chain: srv3_network_boot_chain,
     autoinstall: srv3_ubuntu_autoinstall,
   },

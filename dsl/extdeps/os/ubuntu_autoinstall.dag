@@ -23,14 +23,3 @@ type UbuntuAutoinstallPayload {
   fully_automated: Bool
   target_distribution: UbuntuDistribution
 }
-
-fn ubuntu_autoinstall_is_unattended_network(payload: UbuntuAutoinstallPayload) -> Bool {
-  if payload.fully_automated {
-    match payload.delivery {
-      NoCloudNet { seed_url: _ } => true
-      NoCloudLocal => false
-    }
-  } else {
-    false
-  }
-}
