@@ -2,9 +2,8 @@ module v2.lens.intent_linearity
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import v2.lens.simulated_relationship { chain_is_simulated }
 import v2.std.node { Node, Symbol }
-import v2.std.algebra { FreeMonoid, length, fold_list }
+import v2.std.algebra { FreeMonoid, length, any, for_all }
 import v2.std.logic { Bool }
-
 
 type CostAxis = ChangeTime | RunTime
 
@@ -31,11 +30,7 @@ fn rule_fires(rule: LinearityRule, steps: FreeMonoid<Node>) -> Bool {
 }
 
 fn chain_is_redundant(steps: FreeMonoid<Node>) -> Bool {
-  fold_list(
-    xs: linearity_registry(),
-    empty: false,
-    cons: fn(acc, rule) { acc || rule_fires(rule: rule, steps: steps) }
-  )
+  any(xs: linearity_registry(), predicate: fn(rule) { rule_fires(rule: rule, steps: steps) })
 }
 
 fn chain_residual(steps: FreeMonoid<Node>) -> Int {
@@ -51,11 +46,7 @@ fn level_is_linear(level: FreeMonoid<Node>) -> Bool {
 }
 
 fn body_is_linear(levels: FreeMonoid<FreeMonoid<Node>>) -> Bool {
-  fold_list(
-    xs: levels,
-    empty: true,
-    cons: fn(acc, level) { acc && level_is_linear(level: level) }
-  )
+  for_all(xs: levels, predicate: fn(level) { level_is_linear(level: level) })
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
