@@ -13,6 +13,7 @@ import extdeps.provisioning.network_boot {
 }
 import extdeps.os.ubuntu_autoinstall {
   NoCloudNet,
+  NoCloudLocal,
 }
 import gunbc.os_install {
   LanInstallInfraSurvey,
@@ -91,6 +92,6 @@ test fn srv3_plan_targets_ubuntu_2404_aarch64_pxe_once() -> Bool {
     && srv3_os_install_plan.network_boot_delivery.autoinstall.autoinstall_version == 1
     && match srv3_os_install_plan.network_boot_delivery.autoinstall.delivery {
       NoCloudNet { seed_url: _ } => true
-      _ => false
+      NoCloudLocal => false
     }
 }
