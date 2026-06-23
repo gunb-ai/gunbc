@@ -2350,11 +2350,6 @@ fn is_emittable_parametric_type_alias_item(item: Node, item_text: String, source
   }
 }
 
-// Single authority for "is this imported name an enum variant, and under which parent enum?".
-// Used by BOTH the variant-parent set (which drives variant `use M::Parent::{..}` lines) AND
-// the direct-import exclusion below, so a name can never be emitted as a direct `use M::{N}`
-// AND a variant `use M::Parent::{N}` at once (E0252 reimport). Mirrors the 4-rung resolution
-// order: same-module decl -> reexport surface -> imported-enum scope -> import-module-enum scope.
 fn import_variant_parent_for_name(n: String, import_module: String, registry: Map<String, ItemInfo>, type_summaries: Map<String, TypeSummary>, typed_modules: List<TypedModule>, export_sets: Map<String, Map<String, Bool>>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, imported_enums: List<String>, import_module_enums: List<String>) -> String {
   if is_import_graph_type_name(name: n, import_module: import_module, typed_modules: typed_modules, registry: registry, export_sets: export_sets, type_summaries: type_summaries, source_indices: source_indices, module_index: module_index) {
     ""
@@ -2416,11 +2411,6 @@ fn emit_specific_import_block(import_module: String, mod_name: String, filtered_
       import_variant_parent_for_name(n: n, import_module: import_module, registry: registry, type_summaries: type_summaries, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index, imported_enums: imported_enums, import_module_enums: import_module_enums)
     ) |> filter(p => p != "")
     let parent_list = unique_strings(items: all_parents)
-    // A name the variant authority claims (non-empty parent) is emitted as a variant
-    // `use M::Parent::{N}`, so it must NOT also appear in a direct `use M::{N}` — that is the
-    // E0252 reimport. The prior is_known_variant gate used a weaker authority (type_summaries
-    // only) that missed cross-module / reexported variants (File via UriScheme, Holds/Violates
-    // via Witness), leaving them in the direct set AND the variant set.
     let non_variant_top = top_level |> filter(n =>
       if import_variant_parent_for_name(n: n, import_module: import_module, registry: registry, type_summaries: type_summaries, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index, imported_enums: imported_enums, import_module_enums: import_module_enums) != "" {
         false
