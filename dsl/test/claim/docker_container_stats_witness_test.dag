@@ -1,7 +1,7 @@
 module test.claim.docker_container_stats_witness
 
 import extdeps.docker.container_stats { CpuStats, CpuUsage, MemoryStats, ContainerStats, PidStats, NetworkStats, NetworkInterface, Networks, container_stats_memory_usage, container_stats_cpu_usage_total, container_stats_online_cpus }
-import extdeps.docker.container_inspect { ContainerState, ContainerStateDetail, HostConfig, ContainerConfig, ContainerInspect, NetworkSettings, container_state_is_running, container_inspect_memory_limit, container_inspect_cpu_quota, container_inspect_cpu_period, Running, Exited, Paused }
+import extdeps.docker.container_inspect { ContainerState, ContainerStateDetail, HostConfig, ContainerConfig, ContainerInspect, NetworkSettings, container_state_is_running, container_inspect_memory_limit, container_inspect_cpu_quota, container_inspect_cpu_period, parse_container_state, container_state_wire_label, Running, Exited, Paused, Dead, Restarting }
 import std.measure { byte_size, nanosecond, microsecond }
 
 data sample_cpu_usage: CpuUsage = CpuUsage {
@@ -218,4 +218,68 @@ test fn sample_stats_has_realistic_timestamp() -> Bool {
 
 test fn sample_inspect_has_running_state() -> Bool {
   container_state_is_running(sample_container_inspect.state.status) == true
+}
+
+test fn parse_container_state_running() -> Bool {
+  match parse_container_state("running") {
+    Present { value: Running } => true
+    _ => false
+  }
+}
+
+test fn parse_container_state_exited() -> Bool {
+  match parse_container_state("exited") {
+    Present { value: Exited } => true
+    _ => false
+  }
+}
+
+test fn parse_container_state_paused() -> Bool {
+  match parse_container_state("paused") {
+    Present { value: Paused } => true
+    _ => false
+  }
+}
+
+test fn parse_container_state_dead() -> Bool {
+  match parse_container_state("dead") {
+    Present { value: Dead } => true
+    _ => false
+  }
+}
+
+test fn parse_container_state_restarting() -> Bool {
+  match parse_container_state("restarting") {
+    Present { value: Restarting } => true
+    _ => false
+  }
+}
+
+test fn parse_container_state_invalid_returns_none() -> Bool {
+  match parse_container_state("invalid") {
+    Absent => true
+    _ => false
+  }
+}
+
+test fn parse_container_state_case_sensitive() -> Bool {
+  match parse_container_state("RUNNING") {
+    Absent => true
+    _ => false
+  }
+}
+
+test fn container_state_wire_label_running() -> Bool {
+  container_state_wire_label(Running) == "running"
+}
+
+test fn container_state_wire_label_exited() -> Bool {
+  container_state_wire_label(Exited) == "exited"
+}
+
+test fn container_state_roundtrip_preserves_value() -> Bool {
+  let states = [Running, Paused, Exited, Dead, Restarting]
+  let roundtrip_running = (parse_container_state(container_state_wire_label(Running))) == Present { value: Running }
+  let roundtrip_exited = (parse_container_state(container_state_wire_label(Exited))) == Present { value: Exited }
+  roundtrip_running && roundtrip_exited
 }

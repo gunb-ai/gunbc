@@ -153,3 +153,24 @@ fn container_inspect_cpu_period(inspect: ContainerInspect) -> Microsecond? {
     hc => hc.cpu_period
   }
 }
+
+fn parse_container_state(raw: String) -> ContainerState? {
+  match raw {
+    "running" => Present { value: Running }
+    "paused" => Present { value: Paused }
+    "exited" => Present { value: Exited }
+    "dead" => Present { value: Dead }
+    "restarting" => Present { value: Restarting }
+    _ => none
+  }
+}
+
+fn container_state_wire_label(state: ContainerState) -> String {
+  match state {
+    Running => "running"
+    Paused => "paused"
+    Exited => "exited"
+    Dead => "dead"
+    Restarting => "restarting"
+  }
+}
