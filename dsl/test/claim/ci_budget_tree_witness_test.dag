@@ -11,7 +11,9 @@ import gunbc.ci_budget_tree {
   srv1_dashboard_session_pool_budget,
   srv1_ci_run_reservation,
   srv1_ci_run_container_hard_cap,
+  srv1_ci_run_worst_observed,
   srv1_runs_fit_in_pool,
+  srv1_runs_hard_guaranteed,
   srv1_floor_memory_budget,
   srv1_gha_runner_pool_node,
   srv1_dashboard_session_pool_node,
@@ -66,10 +68,26 @@ fn witness_reservation_below_hard_cap() -> Bool {
   byte_size_count(b: srv1_ci_run_reservation()) < byte_size_count(b: srv1_ci_run_container_hard_cap())
 }
 
+fn witness_worst_observed_fits_under_hard_cap() -> Bool {
+  let worst = byte_size_count(b: srv1_ci_run_worst_observed())
+  let cap = byte_size_count(b: srv1_ci_run_container_hard_cap())
+  let reservation = byte_size_count(b: srv1_ci_run_reservation())
+  reservation < worst && worst <= cap
+}
+
 fn witness_runs_fit_and_conserve_pool() -> Bool {
   let r = srv1_runs_fit_in_pool()
   let committed = r * byte_size_count(b: srv1_ci_run_reservation())
   r > 0 && committed <= byte_size_count(b: srv1_gha_runner_pool_budget())
+}
+
+fn witness_hard_guarantee_is_floor_of_reservation_fit() -> Bool {
+  let guaranteed = srv1_runs_hard_guaranteed()
+  let fit = srv1_runs_fit_in_pool()
+  let guaranteed_committed = guaranteed * byte_size_count(b: srv1_ci_run_container_hard_cap())
+  guaranteed >= 1
+    && guaranteed <= fit
+    && guaranteed_committed <= byte_size_count(b: srv1_gha_runner_pool_budget())
 }
 
 fn witness_l2_node_present() -> Bool {
@@ -101,7 +119,9 @@ test fn ci_budget_tree_holds() -> Bool {
     && witness_gha_pool_capped_by_dashboard_reservation()
     && witness_three_way_conservation()
     && witness_reservation_below_hard_cap()
+    && witness_worst_observed_fits_under_hard_cap()
     && witness_runs_fit_and_conserve_pool()
+    && witness_hard_guarantee_is_floor_of_reservation_fit()
     && witness_l2_node_present()
     && witness_unknown_child_is_absent()
     && witness_fit_count_fails_closed()

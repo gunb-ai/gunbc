@@ -109,9 +109,19 @@ host_ram`. The runner pool is now the **derived remainder** (the cap):
 `gha_runner_pool = host_ram − fixed_overhead − dashboard_session_pool` (saturating, so an
 over-large dashboard reservation fails closed to a zero runner pool — the tree then refuses to conserve
 rather than silently over-commit). `dashboard_session_pool = per_container_cap × concurrency`
-(measured per-session cgroup `memory.max` = ~31.27 GiB; interim concurrency = 2). deep-otter-528 **reads**
-`srv1_dashboard_session_pool_budget()` to drive dashboard admission; this session is the **single author**
-of the file, deep-otter does not edit it.
+(`per_container_cap` is the same single-authority container `memory.max` =
+`gunbc_ci_host_container_memory_cap` ~31.27 GiB shared with the floor-runner hard cap; interim
+concurrency = 2). deep-otter-528 **reads** `srv1_dashboard_session_pool_budget()` to drive dashboard
+admission; this session is the **single author** of the file, deep-otter does not edit it.
+
+*Follow-up (the session-class unlock, deep-otter lever #2, not in this PR).* Pinning every dashboard
+session to the 31.27 GiB floor-cap is the blunt-cap over-reservation #1799 already fixed for placement:
+the bulk of dashboard sessions are light agent/reviewer sessions (~2–4 GiB real, worst-observed ~9.5 GiB),
+not floor jobs. The unlock is a **session-class field** (light ~12 GiB vs floor-running ~31.27) so the
+session reservation is per-class; at light ≈ 12 GiB, concurrency 5–6 fits the session pool *and* the
+runner pool keeps ~49 GiB. It needs (a) deep-otter's longer-window light-session worst-observed and
+(b) a bright-stag/crisp-carp ruling on the session-vs-CI allocation, so it lands as a fast-follow with
+the accessor names unchanged. Interim concurrency = 2 preserves the runner pool until then.
 
 **Two numbers, two roles (the floor-runner leaf).** The `ci_run` leaf carries the per-run memory profile
 in two distinct fields — the k8s request-vs-limit shape — and deep-otter derives a different consumer
@@ -123,33 +133,44 @@ from each:
   leaf appropriation, what `R = floor(gha_runner_pool / reservation)` (`measure_fit_count_floor`) is
   derived from, and what the `.dag`-floor spawn-width reads (`srv1_floor_memory_budget()`). deep-otter
   derives the **run-pool reservation** from this.
-- **per-container HARD CAP** = `srv1_ci_run_container_hard_cap()` = *worst-observed-max* peak + margin
-  (interim ~24 GiB × 6/5 ≈ 28.8 GiB). This is the OOM-kill "limit": sizing it off the typical 11.6 would
-  OOM-kill legitimate jobs that spike to their worst peak. deep-otter derives the **per-container cap**
-  from this. The two are never collapsed (`reservation < hard_cap`, a witnessed invariant).
+- **per-container HARD CAP** = `srv1_ci_run_container_hard_cap()` = the real container `memory.max`
+  (`gunbc_ci_host_container_memory_cap` = `33578549248`, ~31.27 GiB = totalMem/4). This is the OOM-kill
+  "limit" — the *physical* kernel ceiling, so it carries **no margin** (you cannot reserve headroom above
+  what the host enforces). deep-otter derives the **per-container cap** from this. The two are never
+  collapsed (`reservation < hard_cap`, a witnessed invariant).
 
-**Construction-first, not validation.** `R` is *derived* from the pool ÷ reservation, so an over-wide
-run count is unwritable (it cannot exceed what the pool floor-divides to); the leaf appropriation is the
-*measured* peak + margin, so the floor's spawn-width is governed by a real number, not a `totalMem / R`
-guess. Conservation across the three siblings is the residue lens (`node_conserves`) over the
-constructed tree.
+A third measured field validates the cap is not a false-killer: **worst-observed** =
+`srv1_ci_run_worst_observed()` = the worst per-job cgroup `memory.peak` deep-otter's srv2 monitor has
+caught (`gunbc_ci_floor_runner_worst_max` = `32434110464`, ~30.2 GiB, actions-runner@srv2-09, a rust-gate
+floor job with rustc children). `reservation < worst_observed ≤ hard_cap` is witnessed: the worst real
+job (30.2) fits *under* the kill ceiling (31.27) — by only ~1 GiB. That ~1 GiB is a **risk to retire by
+shrinking the footprint, not by raising a cap the host can't afford**; if a future worst exceeds the
+container cap the witness goes red, which is the honest signal that jobs are about to OOM-kill.
 
-**Values — B4 (quick-lynx-78) verified figures.** typical = `11592347648` bytes (~10.8 GiB whole-run
-cgroup peak @ width 4, run 28003119550, no rust gate present) is the B4-VERIFIED measurement, now frozen
-in `gunbc_ci_floor_measured_peak`. The worst-max = `25769803776` (~24 GiB) in
-`gunbc_ci_floor_runner_worst_max` stays a **conservative placeholder**: it is driven by the rust-gate
-cargo-test rustc *child* processes (a `.rs`-touching PR), which run 28003119550 did not exercise and
-which no `.dag`/executor fix moves — so it is honestly un-verified and kept high (a too-low OOM-kill
-ceiling would kill legitimate worst-peak jobs; high fails closed). **Provenance for the worst-max/cap
-side is deep-otter-528's srv2 worst-observed-max monitor, NOT B4** (B4's reservation/typical run had no
-rust gate present, so it under-reports the cap driver — the parent's two-driver invariant: typical ←
-B4 verified, worst-max ← deep-otter's accumulating monitor). The monitor reads ~8.2 GiB at rest and
-climbs under load; it is **not yet saturated**, and a cap below the ~10.8 GiB typical is unwritable here
-(it would violate `reservation < hard_cap` and OOM-kill every job), so the 24 GiB placeholder holds
-until deep-otter's monitor saturates to a real rust-gate-present worst ≥ typical. NOTE: B4's #5619 dedup moves the *typical*
-self-RSS only ~0.57 GiB (8.7→8.1, NOT the earlier-retracted 8.7→4.2) and never touches the cap side, so
-do not lower the reservation on its account. The margin is a single knob
-(`gunbc_ci_floor_runner_margin_num/den`, currently 6/5 = 20%).
+**Construction-first, not validation.** `R = floor(gha_runner_pool / reservation)` is *derived*, so an
+over-wide run count is unwritable; the leaf appropriation is the *measured* typical peak + margin, so the
+floor's spawn-width is governed by a real number, not a `totalMem / R` guess. Conservation across the
+three siblings is the residue lens (`node_conserves`) over the constructed tree.
+
+**Reservation-fit vs hard-guarantee (the valve is load-bearing).** `srv1_runs_fit_in_pool()` =
+`floor(pool / reservation)` = 3 is the *bin-packing* count — it assumes typical usage, so a correlated
+burst of rust-gate jobs each spiking to the ~30 GiB worst would over-commit (3 × 30 > 49.45 GiB pool).
+The *hard-guarantee* count `srv1_runs_hard_guaranteed()` = `floor(pool / hard_cap)` = 1 is the number
+that never over-commits even if every job hits the container cap. `1 ≤ 3` is witnessed. The gap is
+covered by the host-RSS valve (deep-otter's admission backstop) — i.e. the reservation-based R is
+**valve-backstopped, not a hard guarantee**, exactly as the dashboard session pool is. The actuator that
+*enforces* R by start/stopping runner services (B5's "GHA-runner-pool memory cap") is a live-fleet apply
+and stays **operator-fenced** (§5); until it lands deep-otter holds the runner count at R=3 by hand, and
+the convergence proof is that the hand-walked count already equals the derived R.
+
+**Values — provenance.** typical/reservation ← **B4 (quick-lynx-78) verified** (`11592347648`, run
+28003119550); worst-observed ← **deep-otter-528's srv2 cgroup `memory.peak` monitor** (`32434110464`);
+hard cap ← the measured container `memory.max`. The two-driver invariant (parent): the reservation side
+is driven by typical claim_executor batches (B4 measures it), the cap/worst side by rust-gate rustc
+*children* (only deep-otter's rust-gate-present monitor sees it; B4's no-rust-gate run under-reports it).
+NOTE: B4's #5619 dedup moves the *typical* self-RSS only ~0.57 GiB (8.7→8.1, NOT the earlier-retracted
+8.7→4.2) and never touches the cap side. The margin is a single knob
+(`gunbc_ci_floor_runner_margin_num/den`, currently 6/5 = 20%) and applies to the **reservation only**.
 
 Carriers: [dsl/gunbc/ci_budget_tree.dag](../../dsl/gunbc/ci_budget_tree.dag) (the two-pool tree +
 two-number leaf accessors), [dsl/gunbc/ci_floor_measurement.dag](../../dsl/gunbc/ci_floor_measurement.dag)

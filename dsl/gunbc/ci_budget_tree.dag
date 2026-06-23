@@ -18,6 +18,7 @@ import gunbc.ci_floor_measurement {
   gunbc_ci_dashboard_session_reservation,
   FloorRunnerWorstMax, FloorRunnerWorstMaxMeasured, FloorRunnerWorstMaxUnmeasured,
   gunbc_ci_floor_runner_worst_max,
+  gunbc_ci_host_container_memory_cap,
   gunbc_ci_floor_whole_run_peak_rss_bytes,
   gunbc_ci_floor_runner_margin_num,
   gunbc_ci_floor_runner_margin_den
@@ -79,14 +80,22 @@ fn srv1_ci_run_reservation() -> ByteSize {
 }
 
 fn srv1_ci_run_container_hard_cap() -> ByteSize {
+  gunbc_ci_host_container_memory_cap
+}
+
+fn srv1_ci_run_worst_observed() -> ByteSize {
   match gunbc_ci_floor_runner_worst_max {
     FloorRunnerWorstMaxUnmeasured => srv1_host_ram()
-    FloorRunnerWorstMaxMeasured { bytes: w } => srv1_floor_runner_with_margin(b: w)
+    FloorRunnerWorstMaxMeasured { bytes: w } => w
   }
 }
 
 fn srv1_runs_fit_in_pool() -> Int {
   measure_fit_count_floor(capacity: srv1_gha_runner_pool_budget(), each: srv1_ci_run_reservation())
+}
+
+fn srv1_runs_hard_guaranteed() -> Int {
+  measure_fit_count_floor(capacity: srv1_gha_runner_pool_budget(), each: srv1_ci_run_container_hard_cap())
 }
 
 fn srv1_overhead_claim() -> BudgetClaim {
