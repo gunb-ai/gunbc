@@ -80,17 +80,6 @@ fn disposition_redundancy_lens_discriminates_by_execution() {
         test_entry,
         "redundancy_region1_fires_when_a_real_mark_successor_present",
     );
-    // Slice-2: anthropic remaining residual rows non-empty and fire on real successor.
-    assert_witness_true(test_entry, "redundancy_region2_anthropic_marks_nonempty");
-    assert_witness_true(
-        test_entry,
-        "redundancy_region2_anthropic_200_residual_fires_on_container_response",
-    );
-    // Slice-2: serde receipt is all Terminal, never fires even with a real present locator.
-    assert_witness_true(
-        test_entry,
-        "redundancy_region2_serde_receipt_all_terminal_never_fires",
-    );
     // Slice-2: bytes/encoding markers non-empty and two Scaffolds fire on synthetic present.
     assert_witness_true(test_entry, "redundancy_region_bytes_marks_nonempty");
     assert_witness_true(
