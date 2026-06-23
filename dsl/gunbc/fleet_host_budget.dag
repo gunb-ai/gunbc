@@ -7,6 +7,7 @@ import std.measure {
   Memory, One, Time, Nano,
   time_measure, watt,
   measure_scale_fraction_floor, measure_fit_count_floor,
+  HardwareThreadCount, hardware_thread_count,
 }
 import std.realization_width { byte_size_saturating_sub }
 import std.realization { RealizedStep, Placement, LocalFilesystem, Materialization, Share }
@@ -115,7 +116,7 @@ fn baselines_sum(runner: FleetContainerType, session: FleetContainerType) -> Byt
   byte_size(byte_size_count(b: baseline_or_zero(c: runner)) + byte_size_count(b: baseline_or_zero(c: session)))
 }
 
-fn nominal_build_pool(nproc: Int, mem_total: ByteSize, cfg: CtrlJobserverConfig) -> ByteSize {
+fn nominal_build_pool(nproc: HardwareThreadCount, mem_total: ByteSize, cfg: CtrlJobserverConfig) -> ByteSize {
   jobserver_build_pool_bytes(nproc: nproc, mem_total: mem_total, cfg: cfg)
 }
 
@@ -190,7 +191,7 @@ type FleetHostPlan
       name: String,
       tree: BudgetNode,
       runner_slice_cap: ByteSize,
-      effective_build_tokens: Int,
+      effective_build_tokens: HardwareThreadCount,
       build_step: RealizedStep<Nano>
     }
   | FleetHostPlanUnsound { reason: String }
@@ -199,7 +200,7 @@ fn fleet_host_plan_for(
   name: String,
   host: ByteSize,
   overhead: ByteSize,
-  nproc: Int,
+  nproc: HardwareThreadCount,
   runner: FleetContainerType,
   session: FleetContainerType,
   citation: CtrlJobserverCitation,
@@ -228,7 +229,7 @@ fn fleet_host_plan_for(
                       let nominal = nominal_build_pool(nproc: nproc, mem_total: host, cfg: cfg)
                       let pool = capped_build_pool(host: host, overhead: overhead, baselines: baselines, headroom: hr, nominal: nominal)
                       let tree = fleet_host_budget_tree(name: name, host: host, overhead: overhead, runner: runner, session: session, build_pool: pool, headroom: hr)
-                      let tokens = measure_fit_count_floor(capacity: pool, each: cfg.mib_per_job)
+                      let tokens = hardware_thread_count(count: measure_fit_count_floor(capacity: pool, each: cfg.mib_per_job))
                       FleetHostPlanDerived {
                         name: name,
                         tree: tree,
@@ -250,7 +251,7 @@ fn fleet_host_plan() -> FleetHostPlan {
     name: "fleet_host",
     host: byte_size(134217728000),
     overhead: byte_size(17179869184),
-    nproc: 128,
+    nproc: hardware_thread_count(count: 128),
     runner: gha_runner_container,
     session: agent_session_container,
     citation: ctrl_jobserver_config,

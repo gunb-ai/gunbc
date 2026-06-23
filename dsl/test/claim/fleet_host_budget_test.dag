@@ -1,7 +1,7 @@
 module test.claim.fleet_host_budget
 
 import std.types { Int, List, String, Bool }
-import std.measure { ByteSize, byte_size, byte_size_count }
+import std.measure { ByteSize, byte_size, byte_size_count, HardwareThreadCount, hardware_thread_count, hardware_thread_count_value }
 import product.budget_tree { BudgetNode, node_conserves }
 import extdeps.ctrl.jobserver {
   CtrlJobserverConfig,
@@ -67,7 +67,7 @@ import gunbc.ci_floor_measurement {
 
 fn fixture_cfg() -> CtrlJobserverConfig {
   CtrlJobserverConfig {
-    margin: 8,
+    margin: hardware_thread_count(count: 8),
     mem_reserve: byte_size(8589934592),
     mib_per_job: byte_size(1879048192),
   }
@@ -119,7 +119,7 @@ fn full_plan(
     name: "fixture",
     host: host_125gib(),
     overhead: overhead_16gib(),
-    nproc: 128,
+    nproc: hardware_thread_count(count: 128),
     runner: runner,
     session: session,
     citation: citation,
@@ -166,14 +166,14 @@ fn witness_headroom_at_or_above_floor_resolved() -> Bool {
 
 fn witness_tokens_memory_bound_binds() -> Bool {
   let cfg = fixture_cfg()
-  let tokens = derive_jobserver_tokens(nproc: 128, mem_total: host_125gib(), cfg: cfg)
+  let tokens = hardware_thread_count_value(t: derive_jobserver_tokens(nproc: hardware_thread_count(count: 128), mem_total: host_125gib(), cfg: cfg))
   tokens > 0 && tokens < 120
 }
 
 fn witness_plan_derives_and_conserves() -> Bool {
   match full_plan(citation: fixture_citation(), runner: fixture_runner_measured(), session: fixture_session_measured(), policy: fitting_headroom(), oomd: OomdEnforced) {
     FleetHostPlanDerived { name: _, tree: t, runner_slice_cap: _, effective_build_tokens: tk, build_step: _ } =>
-      node_conserves(node: t) && tk > 0
+      node_conserves(node: t) && hardware_thread_count_value(t: tk) > 0
     FleetHostPlanUnsound { reason: _ } => false
   }
 }
@@ -184,7 +184,7 @@ fn witness_uncapped_build_pool_overcommits() -> Bool {
   let session = fixture_session_measured()
   let baselines = baselines_sum(runner: runner, session: session)
   let headroom = byte_size(16106127360)
-  let nominal = nominal_build_pool(nproc: 128, mem_total: host_125gib(), cfg: cfg)
+  let nominal = nominal_build_pool(nproc: hardware_thread_count(count: 128), mem_total: host_125gib(), cfg: cfg)
   let bloated = byte_size(byte_size_count(b: nominal) * 4)
   let tree = fleet_host_budget_tree(name: "overcommit", host: host_125gib(), overhead: overhead_16gib(), runner: runner, session: session, build_pool: bloated, headroom: headroom)
   !node_conserves(node: tree)
@@ -196,7 +196,7 @@ fn witness_capped_build_pool_positive_and_bounded() -> Bool {
   let session = fixture_session_measured()
   let baselines = baselines_sum(runner: runner, session: session)
   let headroom = byte_size(16106127360)
-  let nominal = nominal_build_pool(nproc: 128, mem_total: host_125gib(), cfg: cfg)
+  let nominal = nominal_build_pool(nproc: hardware_thread_count(count: 128), mem_total: host_125gib(), cfg: cfg)
   let pool = capped_build_pool(host: host_125gib(), overhead: overhead_16gib(), baselines: baselines, headroom: headroom, nominal: nominal)
   let room = byte_size_count(b: host_125gib()) - byte_size_count(b: overhead_16gib()) - byte_size_count(b: baselines) - byte_size_count(b: headroom)
   byte_size_count(b: pool) > 0 && byte_size_count(b: pool) <= room
@@ -208,7 +208,7 @@ fn witness_runner_slice_cap_conserves() -> Bool {
   let session = fixture_session_measured()
   let baselines = baselines_sum(runner: runner, session: session)
   let headroom = byte_size(16106127360)
-  let nominal = nominal_build_pool(nproc: 128, mem_total: host_125gib(), cfg: cfg)
+  let nominal = nominal_build_pool(nproc: hardware_thread_count(count: 128), mem_total: host_125gib(), cfg: cfg)
   let pool = capped_build_pool(host: host_125gib(), overhead: overhead_16gib(), baselines: baselines, headroom: headroom, nominal: nominal)
   let cap = runner_slice_cap(host: host_125gib(), overhead: overhead_16gib(), baselines: baselines, build_pool: pool, headroom: headroom)
   let total = byte_size_count(b: overhead_16gib()) + byte_size_count(b: baselines) + byte_size_count(b: pool) + byte_size_count(b: headroom) + byte_size_count(b: cap)
@@ -228,7 +228,7 @@ fn witness_5650_marker_dissolution() -> Bool {
   let baselines = baselines_sum(runner: runner, session: session)
   let headroom = byte_size(16106127360)
   let cfg = fixture_cfg()
-  let nominal = nominal_build_pool(nproc: 128, mem_total: host_125gib(), cfg: cfg)
+  let nominal = nominal_build_pool(nproc: hardware_thread_count(count: 128), mem_total: host_125gib(), cfg: cfg)
   let pool = capped_build_pool(host: host_125gib(), overhead: overhead_16gib(), baselines: baselines, headroom: headroom, nominal: nominal)
   let cap = runner_slice_cap(host: host_125gib(), overhead: overhead_16gib(), baselines: baselines, build_pool: pool, headroom: headroom)
   let whole = byte_size_count(b: overhead_16gib()) + byte_size_count(b: baselines) + byte_size_count(b: pool) + byte_size_count(b: headroom) + byte_size_count(b: cap)
