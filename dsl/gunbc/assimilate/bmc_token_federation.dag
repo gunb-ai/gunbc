@@ -102,7 +102,7 @@ fn gcp_wif_auth_step() -> Step {
     with: Present {
       value: [
         kv(key: "workload_identity_provider", value: yaml_string(s: bmc_wif_provider_resource())),
-        kv(key: "service_account", value: yaml_string(s: bmc_assimilator_sa_email))
+        kv(key: "service_account", value: yaml_string(s: bmc_assimilator_sa_email as String))
       ]
     },
     env: none,
