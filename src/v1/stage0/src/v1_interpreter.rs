@@ -5260,6 +5260,20 @@ fn eval_builtin(
         "extdeps_external_authority_live_clean_tree_holds" => Ok(Some(Value::Bool(
             crate::extdeps_shape_transport_policy_project::external_authority_live_clean_tree_holds(),
         ))),
+        "extdeps_external_authority_anchor_shadow_masked_for_qualified_name" => {
+            let module = positional.first().ok_or_else(|| InterpError::TypeError {
+                msg: "extdeps_external_authority_anchor_shadow_masked_for_qualified_name requires a QualifiedName"
+                    .to_string(),
+            })?;
+            Ok(Some(Value::Bool(
+                crate::extdeps_shape_transport_policy_project::external_authority_anchor_shadow_masked_for_qualified_name(
+                    module,
+                ),
+            )))
+        }
+        "extdeps_external_authority_live_shadow_mask_holds" => Ok(Some(Value::Bool(
+            crate::extdeps_shape_transport_policy_project::external_authority_live_shadow_mask_holds(),
+        ))),
         "extdeps_external_authority_live_roster_module_count" => Ok(Some(Value::Int(
             crate::extdeps_shape_transport_policy_project::external_authority_live_roster_module_count(),
         ))),
