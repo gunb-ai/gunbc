@@ -5483,10 +5483,10 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
     map_insert(acc, b.name, node_type_deps(n: b.resolved, source_indices: source_indices))
   )
 
-  let str_bindings = fold(merged.bindings |> map_values, init: empty_map(), f: (acc, b) =>
+  let local_str_bindings = fold(pre_local_env.bindings |> map_values, init: empty_map(), f: (acc, b) =>
     map_insert(acc, b.name, b)
   )
-  let cycle_set_str = detect_type_cycles_kahn(deps_map: all_deps_map, bindings: str_bindings)
+  let cycle_set_str = detect_type_cycles_kahn(deps_map: all_deps_map, bindings: local_str_bindings)
   let cycle_set = cycle_set_str |> map(name => intern(table: intern_table, s: name).id)
   let cross_type_all_names = concat(cycle_set_str, map_keys(compiler_recursive_types))
   let cross_type_set_str = fold(cross_type_all_names, init: empty_set(), f: (acc, name) => set_insert(acc, name))
@@ -5575,10 +5575,10 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
     map_insert(acc, b.name, node_type_deps(n: b.resolved, source_indices: source_indices))
   )
 
-  let str_bindings = fold(merged.bindings |> map_values, init: empty_map(), f: (acc, b) =>
+  let local_str_bindings = fold(pre_local_env.bindings |> map_values, init: empty_map(), f: (acc, b) =>
     map_insert(acc, b.name, b)
   )
-  let cycle_set_str = detect_type_cycles_kahn(deps_map: all_deps_map, bindings: str_bindings)
+  let cycle_set_str = detect_type_cycles_kahn(deps_map: all_deps_map, bindings: local_str_bindings)
   let cycle_set = cycle_set_str |> map(name => intern(table: intern_table, s: name).id)
   let cross_type_all_names = concat(cycle_set_str, map_keys(compiler_recursive_types))
   let cross_type_set_str = fold(cross_type_all_names, init: empty_set(), f: (acc, name) => set_insert(acc, name))

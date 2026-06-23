@@ -12104,7 +12104,7 @@ pub fn build_type_env(
                     )
                 },
             );
-        let str_bindings = Rc::new(v1_rt::map_values(&merged.bindings.clone()))
+        let local_str_bindings = Rc::new(v1_rt::map_values(&pre_local_env.bindings.clone()))
             .iter()
             .cloned()
             .fold(
@@ -12113,7 +12113,7 @@ pub fn build_type_env(
                     v1_rt::rc_map_insert(acc, b.name.clone(), b.clone())
                 },
             );
-        let cycle_set_str = detect_type_cycles_kahn(all_deps_map.clone(), str_bindings);
+        let cycle_set_str = detect_type_cycles_kahn(all_deps_map.clone(), local_str_bindings);
         let cycle_set = Rc::new({
             let mut __result = Vec::new();
             for name in cycle_set_str.clone().iter().cloned() {
@@ -12572,7 +12572,7 @@ pub fn build_type_env_unresolved(
                     )
                 },
             );
-        let str_bindings = Rc::new(v1_rt::map_values(&merged.bindings.clone()))
+        let local_str_bindings = Rc::new(v1_rt::map_values(&pre_local_env.bindings.clone()))
             .iter()
             .cloned()
             .fold(
