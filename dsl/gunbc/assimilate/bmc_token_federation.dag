@@ -72,6 +72,15 @@ fn bmc_wif_attribute_condition() -> String {
   concat("assertion.repository == '", concat(bmc_federated_github_repo, "'"))
 }
 
+data bmc_assimilator_allowed_roles: List<String> = [
+  "roles/secretmanager.secretAccessor",
+  "roles/secretmanager.secretVersionAdder"
+]
+
+fn bmc_role_allowed(role: String) -> Bool {
+  fold(bmc_assimilator_allowed_roles, init: false, f: (acc, allowed) => acc || role == allowed)
+}
+
 type SecretAccessBinding {
   member: String
   role: String

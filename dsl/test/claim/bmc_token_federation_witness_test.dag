@@ -7,6 +7,8 @@ import gunbc.assimilate.bmc_token_federation {
   bmc_assimilator_sa_member,
   bmc_srv3_secret_name,
   bmc_secrets_project_id,
+  bmc_assimilator_allowed_roles,
+  bmc_role_allowed,
   bmc_wif_provider_resource,
   bmc_wif_principal_set,
   bmc_wif_attribute_condition,
@@ -17,14 +19,7 @@ fn binding_is_scoped(b: SecretAccessBinding) -> Bool {
   b.member == bmc_assimilator_sa_member
     && b.secret == bmc_srv3_secret_name
     && b.project == bmc_secrets_project_id
-    && string_contains(s: b.role, pattern: "roles/secretmanager.")
-}
-
-fn role_is_owner_or_admin(role: String) -> Bool {
-  string_contains(s: role, pattern: "admin")
-    || role == "roles/owner"
-    || role == "roles/editor"
-    || role == "roles/viewer"
+    && bmc_role_allowed(role: b.role)
 }
 
 test fn bmc_assimilator_least_privilege_two_scoped_roles() -> Bool {
@@ -34,8 +29,18 @@ test fn bmc_assimilator_least_privilege_two_scoped_roles() -> Bool {
     && fold(bmc_assimilator_bindings, init: false, f: (acc, b) => acc || b.role == "roles/secretmanager.secretVersionAdder")
 }
 
-test fn bmc_assimilator_no_broad_roles() -> Bool {
-  fold(bmc_assimilator_bindings, init: true, f: (acc, b) => acc && !role_is_owner_or_admin(role: b.role))
+test fn bmc_assimilator_roles_within_closed_allowlist() -> Bool {
+  bmc_assimilator_allowed_roles.length() == 2
+    && fold(bmc_assimilator_bindings, init: true, f: (acc, b) => acc && bmc_role_allowed(role: b.role))
+}
+
+test fn bmc_allowlist_excludes_lockout_roles() -> Bool {
+  !bmc_role_allowed(role: "roles/secretmanager.secretVersionManager")
+    && !bmc_role_allowed(role: "roles/secretmanager.secretVersionDestroyer")
+    && !bmc_role_allowed(role: "roles/secretmanager.admin")
+    && !bmc_role_allowed(role: "roles/owner")
+    && bmc_role_allowed(role: "roles/secretmanager.secretAccessor")
+    && bmc_role_allowed(role: "roles/secretmanager.secretVersionAdder")
 }
 
 test fn bmc_wif_provider_resource_is_well_formed() -> Bool {
