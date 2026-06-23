@@ -14,11 +14,10 @@ import std.markup {
   MarkupAttr,
   MarkupNode,
 }
-import std.react_markup {
+import extdeps.languages.html {
   EmitOk,
   EmitRejected,
-  UntrustedUrlScheme,
-  serialize_react_markup,
+  try_serialize_html_source,
 }
 import extdeps.http.server {
   HttpServerRoute,
@@ -56,23 +55,9 @@ type GunbhubRenderResult
   = RenderedHtml { html: String }
   | RenderRejected { reason: String }
 
-fn gunbhub_browse_entry(name: String) -> MarkupNode {
+fn gunbhub_header() -> MarkupNode {
   ElementNode {
-    tag: "li",
-    attrs: [],
-    children: [
-      ElementNode {
-        tag: "a",
-        attrs: [],
-        children: [ TextNode { text: name } ],
-      },
-    ],
-  }
-}
-
-fn gunbhub_browse_page() -> MarkupNode {
-  ElementNode {
-    tag: "div",
+    tag: "header",
     attrs: [],
     children: [
       ElementNode {
@@ -81,12 +66,70 @@ fn gunbhub_browse_page() -> MarkupNode {
         children: [ TextNode { text: "gunbc" } ],
       },
       ElementNode {
-        tag: "ul",
+        tag: "nav",
         attrs: [],
         children: [
-          gunbhub_browse_entry(name: "dsl"),
-          gunbhub_browse_entry(name: "src"),
-          gunbhub_browse_entry(name: "ROADMAP.md"),
+          ElementNode {
+            tag: "a",
+            attrs: [ MarkupAttr { name: "href", value: "/" } ],
+            children: [ TextNode { text: "Browse" } ],
+          },
+        ],
+      },
+    ],
+  }
+}
+
+fn gunbhub_browse_entry(name: String, path: String) -> MarkupNode {
+  ElementNode {
+    tag: "li",
+    attrs: [],
+    children: [
+      ElementNode {
+        tag: "a",
+        attrs: [ MarkupAttr { name: "href", value: path } ],
+        children: [ TextNode { text: name } ],
+      },
+    ],
+  }
+}
+
+fn gunbhub_browse_page() -> MarkupNode {
+  ElementNode {
+    tag: "html",
+    attrs: [],
+    children: [
+      ElementNode {
+        tag: "head",
+        attrs: [],
+        children: [
+          ElementNode {
+            tag: "title",
+            attrs: [],
+            children: [ TextNode { text: "gunbc" } ],
+          },
+        ],
+      },
+      ElementNode {
+        tag: "body",
+        attrs: [],
+        children: [
+          gunbhub_header(),
+          ElementNode {
+            tag: "main",
+            attrs: [],
+            children: [
+              ElementNode {
+                tag: "ul",
+                attrs: [],
+                children: [
+                  gunbhub_browse_entry(name: "dsl", path: "/dsl"),
+                  gunbhub_browse_entry(name: "src", path: "/src"),
+                  gunbhub_browse_entry(name: "ROADMAP.md", path: "/ROADMAP.md"),
+                ],
+              },
+            ],
+          },
         ],
       },
     ],
@@ -103,20 +146,45 @@ fn gunbhub_hostile_page() -> MarkupNode {
 
 fn gunbhub_readme_page() -> MarkupNode {
   ElementNode {
-    tag: "article",
+    tag: "html",
     attrs: [],
     children: [
       ElementNode {
-        tag: "h1",
-        attrs: [],
-        children: [ TextNode { text: "gunbc" } ],
-      },
-      ElementNode {
-        tag: "p",
+        tag: "head",
         attrs: [],
         children: [
-          TextNode {
-            text: "DAG-modeled compiler and language project. Rust is bootstrap seed.",
+          ElementNode {
+            tag: "title",
+            attrs: [],
+            children: [ TextNode { text: "gunbc — README" } ],
+          },
+        ],
+      },
+      ElementNode {
+        tag: "body",
+        attrs: [],
+        children: [
+          gunbhub_header(),
+          ElementNode {
+            tag: "main",
+            attrs: [],
+            children: [
+              ElementNode {
+                tag: "article",
+                attrs: [],
+                children: [
+                  ElementNode {
+                    tag: "p",
+                    attrs: [],
+                    children: [
+                      TextNode {
+                        text: "DAG-modeled compiler and language project. Rust is bootstrap seed.",
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
           },
         ],
       },
