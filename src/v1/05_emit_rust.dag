@@ -2737,12 +2737,6 @@ fn emit_imports(imports: List<Node>, emit_info: EmitGraphInfo, registry: Map<Str
   }
 }
 
-// The prelude injects the v1_rt realization of Witness/Holds/Violates. A module that already
-// imports the std-defined Witness/Holds/Violates (from v2.std.witness) brings the same NAMES into
-// scope, so an unconditional `use crate::v1_rt::Witness*` re-imports them -> E0252/E0255 (a §3
-// duplicate-authority bug: one concept, two import paths). Emit each v1_rt Witness use-line only
-// when its name is not already imported; use-sites stay qualified as `v1_rt::Witness*` (kept via
-// `use crate::v1_rt;`), so dropping the bare import never unresolves a reference.
 fn emit_prelude(imported_names: List<String>) -> String {
   let base = concat(
     "use std::collections::BTreeSet;\n",
@@ -2752,11 +2746,6 @@ fn emit_prelude(imported_names: List<String>) -> String {
   let has_witness = imported_names |> any(n => n == "Witness")
   let has_holds = imported_names |> any(n => n == "Holds")
   let has_violates = imported_names |> any(n => n == "Violates")
-  // Importing a variant (Holds/Violates) pulls the parent `Witness` enum into scope via the
-  // emitted `pub use <module>::\{Witness\}` (the variant-parent authority, #5562), so the v1_rt
-  // `Witness` parent collides with it exactly as an explicit `Witness` import would (E0252). Strip
-  // the bare parent use-line whenever ANY of \{Witness, Holds, Violates\} is imported, not only on
-  // an explicit `Witness` import.
   let witness_line = if has_witness || has_holds || has_violates {
     ""
   } else {
