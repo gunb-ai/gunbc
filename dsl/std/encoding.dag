@@ -187,31 +187,41 @@ fn base64_encode(octets: List<UInt8>, variant: Base64Variant) -> String {
   base64_encode_flush(st: st, alphabet: alphabet)
 }
 
-fn base64_char_value(c: String, variant: Base64Variant) -> Int {
+fn base64_char_value(c: String, variant: Base64Variant) -> Int? {
   let cp = code_point(c)
   if cp >= 65 && cp <= 90 {
-    cp - 65
+    Present { value: cp - 65 }
   } else if cp >= 97 && cp <= 122 {
-    cp - 71
+    Present { value: cp - 71 }
   } else if cp >= 48 && cp <= 57 {
-    cp + 4
+    Present { value: cp + 4 }
   } else {
     match variant {
-      Standard => if cp == 43 { 62 } else { 63 }
-      UrlSafe => if cp == 45 { 62 } else { 63 }
+      Standard =>
+        if cp == 43 { Present { value: 62 } }
+        else if cp == 47 { Present { value: 63 } }
+        else { none }
+      UrlSafe =>
+        if cp == 45 { Present { value: 62 } }
+        else if cp == 95 { Present { value: 63 } }
+        else { none }
     }
   }
 }
 
-fn base64_collect_values(s: String, i: Int, len: Int, variant: Base64Variant, acc: List<Int>) -> List<Int> {
+fn base64_collect_values(s: String, i: Int, len: Int, variant: Base64Variant, acc: List<Int>) -> List<Int>? {
   if i >= len {
-    acc
+    Present { value: acc }
   } else {
     let c = char_at(s, i)
     if c == "=" {
       base64_collect_values(s: s, i: i + 1, len: len, variant: variant, acc: acc)
     } else {
-      base64_collect_values(s: s, i: i + 1, len: len, variant: variant, acc: acc |> list_push(base64_char_value(c: c, variant: variant)))
+      match base64_char_value(c: c, variant: variant) {
+        Absent => none
+        Present { value: v } =>
+          base64_collect_values(s: s, i: i + 1, len: len, variant: variant, acc: acc |> list_push(v))
+      }
     }
   }
 }
@@ -262,11 +272,17 @@ fn base64_octet_of_int(n: Int) -> UInt8 {
   n
 }
 
-fn base64_decode(s: String, variant: Base64Variant) -> List<UInt8> {
-  let vals = base64_collect_values(s: s, i: 0, len: string_length(s), variant: variant, acc: [])
+fn base64_decode_values(vals: List<Int>) -> List<UInt8> {
   let st = fold(vals,
     init: Base64DecodeState { out: [], count: 0, v0: 0, v1: 0, v2: 0 },
     f: (acc, v) => base64_decode_step(st: acc, v: v)
   )
   base64_decode_flush(st: st) |> map(n => base64_octet_of_int(n: n))
+}
+
+fn base64_decode(s: String, variant: Base64Variant) -> List<UInt8>? {
+  match base64_collect_values(s: s, i: 0, len: string_length(s), variant: variant, acc: []) {
+    Absent => none
+    Present { value: vals } => Present { value: base64_decode_values(vals: vals) }
+  }
 }
