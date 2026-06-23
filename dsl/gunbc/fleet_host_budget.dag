@@ -1,12 +1,12 @@
 module gunbc.fleet_host_budget
 
 import std.types { Int, List, String, Bool }
-import std.nat { Nat, nat_min }
+import std.nat { Nat }
 import std.measure {
   ByteSize, byte_size, byte_size_count,
   Memory, One, Time, Nano,
   time_measure, watt,
-  measure_scale_fraction_floor, measure_fit_count_floor,
+  measure_scale_fraction_floor,
   HardwareThreadCount, hardware_thread_count,
 }
 import std.realization_width { byte_size_saturating_sub, cpu_cores_available }
@@ -24,7 +24,6 @@ import extdeps.ctrl.jobserver {
   CtrlJobserverAbsent,
   ctrl_jobserver_config,
   derive_jobserver_tokens,
-  jobserver_build_pool_bytes,
 }
 import gunbc.fleet_container {
   FleetContainerType,
@@ -33,7 +32,6 @@ import gunbc.fleet_container {
   BaselineUnmeasured,
   container_baseline_bytes,
   gha_runner_container,
-  agent_session_container,
 }
 import gunbc.ci_floor_measurement {
   OomdEnforcementEvidence,
@@ -89,11 +87,11 @@ fn resolve_headroom(policy: HeadroomPolicy, floor: ByteSize) -> HeadroomResoluti
   }
 }
 
-data gunbc_fleet_runner_slice_dropin_marker: String = "the runner-slice memory cap ALREADY EXISTS on disk as /etc/systemd/system/system-actions-runner.slice.d/10-resource-caps.conf (MemoryHigh=55307438489 ~51.5GiB = 55% of host, MemoryMax=70391285350 ~65.6GiB = 70% of host; cites the srv2 2026-05-28 reboot incident) but is INERT (effective MemoryMax=INFINITY) = disk!=live DRIFT, which the ctrl reconciler runner_host_reconcile.mjs is meant to fix. gunbc does NOT generate a new cap from scratch: it OWNS the cap VALUE = runner_slice_cap = host - overhead - Sigma(container baselines) - capped_build_pool - headroom (the CONSERVING value that REFINES the 55/70% static-fraction policy with the measured decomposition), fed INTO that existing drop-in. The 55/70% fractions are the coarse stand-in this conserving value sharpens."
+data gunbc_fleet_runner_slice_dropin_marker: String = "the runner-slice memory cap ALREADY EXISTS on disk as /etc/systemd/system/system-actions-runner.slice.d/10-resource-caps.conf (MemoryHigh=55307438489 ~51.5GiB = 55% of host, MemoryMax=70391285350 ~65.6GiB = 70% of host; cites the srv2 2026-05-28 reboot incident) but is INERT (effective MemoryMax=INFINITY) = disk!=live DRIFT, which the ctrl reconciler runner_host_reconcile.mjs is meant to fix. gunbc does NOT generate a new cap from scratch: it OWNS the cap VALUE = runner_slice_cap = host - overhead - session_worst_case_slice - headroom (the CONSERVING value that REFINES the 55/70% static-fraction policy; build_pool is NOT subtracted -- the GHA build lives INSIDE this slice, counted once via the per-job peak, see gunbc_fleet_build_pool_counted_once_marker), fed INTO that existing drop-in. The 55/70% fractions are the coarse stand-in this conserving value sharpens."
 
 data gunbc_fleet_oomd_evidence: OomdEnforcementEvidence = OomdUnverified
 
-data gunbc_fleet_capped_build_pool_marker: String = "capped_build_pool = min(jobserver_build_pool_bytes(...), host - overhead - Sigma(baselines) - headroom) via nat_min on counts + byte_size_saturating_sub. This min-cap conservation is explicit + fail-closed + composes (it feeds node_conserves so Sigma children <= host). It does NOT bind by construction: the build pool is already ~memory-bounded by the jobserver derivation (~69 tokens on a 125GiB host), so on a fitting host the min may be slack (the jobserver figure is already conserving). The cap is the belt-and-suspenders host-wide ceiling that stays correct even if the jobserver knobs drift upward."
+data gunbc_fleet_build_pool_counted_once_marker: String = "the sccache build pool is NO LONGER a host-level sibling reservation subtracted before the runner slice (that was a DOUBLE-COUNT: a GHA-CI runner job IS a build -- its rustc lives INSIDE system-actions-runner.slice and is already charged in the per-job whole-tree peak that the runner count divides by; subtracting build_pool again starved the runner slice to ~0). Counted-once fix (bright-stag §2/§3 ruling 2026-06-23): the build memory lives INSIDE the cgroup that builds (runner slice for GHA-CI, session footprint for session ctrl-builds), so it is NOT a separate host line. The shared pool's CONCURRENCY survives as effective_build_tokens (= derive_jobserver_tokens, the jobserver authority) -- the build-bound axis of the min-over-constraints runner count, NOT a memory subtraction. runner_baseline likewise lives INSIDE the runner slice (idle is in the per-job peak), so it is an informational sub-allocation of the slice, not a host sibling. The SESSION ctrl-build burst is the session-reservation-plan's per_session_cap concern (REGIME-1 worst-case), re-attributed there, not deleted."
 
 fn appropriation_of(b: ByteSize) -> Appropriation<Memory, One> {
   Appropriation { ceiling: b }
@@ -104,25 +102,6 @@ fn overhead_claim(overhead: ByteSize) -> BudgetClaim {
     item: LineItem { purpose: "host_fixed_overhead", amount: overhead },
     priority: Guaranteed,
   }
-}
-
-fn baselines_sum(runner_baseline: ByteSize, session_baseline: ByteSize) -> ByteSize {
-  byte_size(byte_size_count(b: runner_baseline) + byte_size_count(b: session_baseline))
-}
-
-fn nominal_build_pool(nproc: HardwareThreadCount, mem_total: ByteSize, cfg: CtrlJobserverConfig) -> ByteSize {
-  jobserver_build_pool_bytes(nproc: nproc, mem_total: mem_total, cfg: cfg)
-}
-
-fn build_pool_room(host: ByteSize, overhead: ByteSize, baselines: ByteSize, headroom: ByteSize) -> ByteSize {
-  let after_overhead = byte_size_saturating_sub(total: host, reserved: overhead)
-  let after_baselines = byte_size_saturating_sub(total: after_overhead, reserved: baselines)
-  byte_size_saturating_sub(total: after_baselines, reserved: headroom)
-}
-
-fn capped_build_pool(host: ByteSize, overhead: ByteSize, baselines: ByteSize, headroom: ByteSize, nominal: ByteSize) -> ByteSize {
-  let room = build_pool_room(host: host, overhead: overhead, baselines: baselines, headroom: headroom)
-  byte_size(nat_min(a: byte_size_count(b: nominal), b: byte_size_count(b: room)))
 }
 
 fn host_ram_of(offer: ComputeOffer) -> ByteSize {
@@ -138,33 +117,42 @@ fn child_node(name: String, b: ByteSize) -> BudgetNode {
   }
 }
 
+data gunbc_fleet_session_worstcase_marker: String = "the host-level session reservation subtracted from the runner slice is the session WORST-CASE (REGIME-1 per_session_cap * concurrency = the resolve_session_slice figure), NOT the idle session_baseline. Safe-by-construction = sum-of-MAXES <= host: srv1/srv2 co-host the agent-session fleet AND the runners, and a session ctrl-build BURSTS well above idle CONCURRENTLY with full runner load; reserving only idle would over-commit when a session build co-runs with runners, defeating the by-construction property and re-introducing the need for oomd. This UNIFIES the session-slice authority (§3): the SAME resolve_session_slice number is subtracted here AND drives the dashboard session reservation -- one figure, not a fork. RESIDUAL VECTOR (bright-stag §5 caveat): this is only truly safe-by-construction if the session slice is itself LIVE-CAP-ENFORCED at that worst-case (verified-effective, same discipline as RunnerSlotEnforcement). There is NO session-slice enforcement carrier modeled today -> the session burst is the one place oomd-as-backstop still earns its keep until a SessionSliceEnforcement carrier + verified-effective apply lands (T-next, coordinate with the CI-humming manager). headroom stays the general kernel/residue margin where oomd operates."
+
+fn runner_slice_cap(host: ByteSize, overhead: ByteSize, session_slice: ByteSize, headroom: ByteSize) -> ByteSize {
+  let after_overhead = byte_size_saturating_sub(total: host, reserved: overhead)
+  let after_session = byte_size_saturating_sub(total: after_overhead, reserved: session_slice)
+  byte_size_saturating_sub(total: after_session, reserved: headroom)
+}
+
+fn runner_slice_node(runner_slice: ByteSize, runner_baseline: ByteSize) -> BudgetNode {
+  BudgetNode {
+    name: "runner_slice",
+    appropriation: appropriation_of(b: runner_slice),
+    claims: [],
+    children: [child_node(name: "runner_idle_baseline", b: runner_baseline)],
+  }
+}
+
 fn fleet_host_budget_tree(
   name: String,
   host: ByteSize,
   overhead: ByteSize,
   runner_baseline: ByteSize,
-  session_baseline: ByteSize,
-  build_pool: ByteSize,
-  headroom: ByteSize
+  session_slice: ByteSize,
+  headroom: ByteSize,
+  runner_slice: ByteSize
 ) -> BudgetNode {
   BudgetNode {
     name: name,
     appropriation: appropriation_of(b: host),
     claims: [overhead_claim(overhead: overhead)],
     children: [
-      child_node(name: "runner_baseline", b: runner_baseline),
-      child_node(name: "session_baseline", b: session_baseline),
-      child_node(name: "sccache_build_pool", b: build_pool),
+      child_node(name: "session_worstcase_reservation", b: session_slice),
       child_node(name: "headroom", b: headroom),
+      runner_slice_node(runner_slice: runner_slice, runner_baseline: runner_baseline),
     ],
   }
-}
-
-fn runner_slice_cap(host: ByteSize, overhead: ByteSize, baselines: ByteSize, build_pool: ByteSize, headroom: ByteSize) -> ByteSize {
-  let after_overhead = byte_size_saturating_sub(total: host, reserved: overhead)
-  let after_baselines = byte_size_saturating_sub(total: after_overhead, reserved: baselines)
-  let after_build = byte_size_saturating_sub(total: after_baselines, reserved: build_pool)
-  byte_size_saturating_sub(total: after_build, reserved: headroom)
 }
 
 type RunnerSliceCapEffectiveness
@@ -197,7 +185,7 @@ fn fleet_host_plan_for(
   overhead: ByteSize,
   nproc: HardwareThreadCount,
   runner: FleetContainerType,
-  session: FleetContainerType,
+  session_slice: ByteSize,
   citation: CtrlJobserverCitation,
   policy: HeadroomPolicy,
   oomd: OomdEnforcementEvidence
@@ -208,35 +196,28 @@ fn fleet_host_plan_for(
     OomdEnforced =>
       match citation {
         CtrlJobserverAbsent =>
-          FleetHostPlanUnsound { reason: "ctrl-jobserver config citation absent: refuse to derive the build pool without the cited installer knobs (margin / mem_reserve / mib_per_job)" }
+          FleetHostPlanUnsound { reason: "ctrl-jobserver config citation absent: refuse to derive the build token bound without the cited installer knobs (margin / mem_reserve / mib_per_job)" }
         CtrlJobserverCited { config: cfg, provenance: _ } =>
           match container_baseline_bytes(c: runner) {
             BaselineUnmeasured { reason: r } => FleetHostPlanUnsound { reason: r }
-            BaselineResolved { bytes: rb } =>
-              match container_baseline_bytes(c: session) {
-                BaselineUnmeasured { reason: r } => FleetHostPlanUnsound { reason: r }
-                BaselineResolved { bytes: sb } => {
-                  let floor = oomd_actuation_floor(host: host)
-                  match resolve_headroom(policy: policy, floor: floor) {
-                    HeadroomUnsound { reason: r } => FleetHostPlanUnsound { reason: r }
-                    HeadroomResolved { bytes: hr } => {
-                      let baselines = baselines_sum(runner_baseline: rb, session_baseline: sb)
-                      let nominal = nominal_build_pool(nproc: nproc, mem_total: host, cfg: cfg)
-                      let pool = capped_build_pool(host: host, overhead: overhead, baselines: baselines, headroom: hr, nominal: nominal)
-                      let tree = fleet_host_budget_tree(name: name, host: host, overhead: overhead, runner_baseline: rb, session_baseline: sb, build_pool: pool, headroom: hr)
-                      let tokens = hardware_thread_count(count: measure_fit_count_floor(capacity: pool, each: cfg.mib_per_job))
-                      FleetHostPlanDerived {
-                        name: name,
-                        tree: tree,
-                        runner_slice_cap: runner_slice_cap(host: host, overhead: overhead, baselines: baselines, build_pool: pool, headroom: hr),
-                        effective_build_tokens: tokens,
-                        effective_runner_cpu_cap: cpu_cores_available(nproc: nproc, margin: cfg.margin),
-                        build_step: build_realization(cfg: cfg),
-                      }
-                    }
+            BaselineResolved { bytes: rb } => {
+              let floor = oomd_actuation_floor(host: host)
+              match resolve_headroom(policy: policy, floor: floor) {
+                HeadroomUnsound { reason: r } => FleetHostPlanUnsound { reason: r }
+                HeadroomResolved { bytes: hr } => {
+                  let slice = runner_slice_cap(host: host, overhead: overhead, session_slice: session_slice, headroom: hr)
+                  let tree = fleet_host_budget_tree(name: name, host: host, overhead: overhead, runner_baseline: rb, session_slice: session_slice, headroom: hr, runner_slice: slice)
+                  FleetHostPlanDerived {
+                    name: name,
+                    tree: tree,
+                    runner_slice_cap: slice,
+                    effective_build_tokens: derive_jobserver_tokens(nproc: nproc, mem_total: host, cfg: cfg),
+                    effective_runner_cpu_cap: cpu_cores_available(nproc: nproc, margin: cfg.margin),
+                    build_step: build_realization(cfg: cfg),
                   }
                 }
               }
+            }
           }
       }
   }
@@ -249,16 +230,19 @@ fn fleet_host_plan() -> FleetHostPlan {
     overhead: byte_size(17179869184),
     nproc: hardware_thread_count(count: 128),
     runner: gha_runner_container,
-    session: agent_session_container,
+    session_slice: byte_size(0),
     citation: ctrl_jobserver_config,
     policy: gunbc_fleet_headroom_policy,
     oomd: gunbc_fleet_oomd_evidence
   )
 }
 
+data gunbc_fleet_standalone_plan_session_slice_marker: String = "fleet_host_plan() is the standalone live fail-closed SMOKE only (committed oomd=OomdUnverified -> Unsound before session_slice is consumed). It passes session_slice=0 as a placeholder because fleet_host_budget cannot resolve the session reservation mode without importing UP into ci_runner_placement (the cycle the param-pass design avoids). The REAL live plan is the per-offer path: ci_runner_placement resolves the worst-case session_slice via resolve_session_slice and passes it DOWN into fleet_host_plan_for_offer. Do not read capacity from fleet_host_plan(); read it from runner_deployment_plan()."
+
 fn fleet_host_plan_for_offer(
   offer: ComputeOffer,
   overhead: ByteSize,
+  session_slice: ByteSize,
   citation: CtrlJobserverCitation,
   policy: HeadroomPolicy,
   oomd: OomdEnforcementEvidence
@@ -273,7 +257,7 @@ fn fleet_host_plan_for_offer(
         overhead: overhead,
         nproc: cpu_facts_threads(cpu: cpu),
         runner: gha_runner_container,
-        session: agent_session_container,
+        session_slice: session_slice,
         citation: citation,
         policy: policy,
         oomd: oomd
