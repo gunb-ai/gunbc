@@ -6257,7 +6257,6 @@ v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(rust_visib
                     }
                     __result
                 });
-                let _ = ();
                 let imported_enums = Rc::new({
                     let mut __result = Vec::new();
                     for n in top_level.clone().iter().cloned() {
@@ -6272,7 +6271,8 @@ v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(rust_visib
                     for en in Rc::new({
                         let mut __result = Vec::new();
                         for en in imported_enums.clone().iter().cloned() {
-                            if ({
+                            // A host FreeMonoid is a Vec alias with no variants -- no variant-glob import.
+                            if (({
                                 let mut __found = false;
                                 for p in parent_list.clone().iter().cloned() {
                                     if (p.clone() == en.clone()) {
@@ -6282,6 +6282,10 @@ v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(rust_visib
                                 }
                                 __found
                             } == false)
+                                && !is_host_freemonoid_vec_alias(
+                                    en.clone(),
+                                    emit_info.corpus_repr.clone(),
+                                ))
                             {
                                 __result.push(en);
                             }
@@ -6327,25 +6331,7 @@ v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(rust_visib
                     ),
                     wildcard_enum_lines,
                 );
-                // FreeMonoid grounding: under HostNative the coproduct is a `type FreeMonoid<T> = Vec<T>`
-                // alias (no variants), so drop variant-glob / variant-list imports of it (use
-                // ...::FreeMonoid::* and ::FreeMonoid::{Empty, Cons}); the bare type import `{FreeMonoid}`
-                // (no `FreeMonoid::`) is kept. Tightly gated to FreeMonoid -- other coproducts (Witness,
-                // etc.) keep their variant imports.
-                let host_filtered = if corpus_repr_is_host(emit_info.corpus_repr.clone()) {
-                    Rc::new({
-                        let mut __result = Vec::new();
-                        for l in all_lines.iter().cloned() {
-                            if !v1_rt::contains(l.clone(), "FreeMonoid::".to_string()) {
-                                __result.push(l);
-                            }
-                        }
-                        __result
-                    })
-                } else {
-                    all_lines
-                };
-                host_filtered.join(&"\n".to_string())
+                all_lines.join(&"\n".to_string())
             }
         }
     }
