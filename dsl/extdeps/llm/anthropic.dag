@@ -6,6 +6,7 @@ import std.types { NonEmptyStr }
 import std.disposition { Disposition, Scaffold, Terminal, DeclLocator, WholeDeclaration, NamedField, SingleAuthority }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import extdeps.coverage { CoverageClosureEntry, CoverageClosureFact }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -277,21 +278,116 @@ type AnthropicMessages200Body {
   container: Json?
 }
 
-data structural_coverage_gap_anthropic_messages_200_residual: List<String> = [
-  "closure:anthropic_messages_200_residual|AnthropicMessages200Body|json_pending:container|AnthropicMessages200ContentBlock.MessagesWebSearchToolResultBlock.content|AnthropicMessages200ContentBlock.MessagesWebSearchToolResultBlock.caller|json_pending:web_search_tool_result_payload|trigger:container-management response surface plus web search result/error payload coproduct plus typed caller carrier for web search tool result",
-  "closure:anthropic_messages_200_residual|AnthropicMessages200ContentBlock.MessagesToolUseBlock|residue:client_tool_name_input_and_optional_caller_payloads_not_bound_to_declared_tool_schema|trigger:tool_use response block references declared AnthropicToolDefinition through typed caller carrier and input payload schema",
-  "closure:anthropic_messages_200_residual|AnthropicMessages200ContentBlock.MessagesServerToolUseBlock|residue:server_tool_input_and_optional_caller_payloads_unmodeled|trigger:fold server_tool_use name and input into a server-tool-use coproduct keyed by AnthropicServerToolName",
-  "closure:anthropic_messages_200_residual|AnthropicServerToolName|external_spec_watch:server_tool_use_name_set|trigger:Anthropic publishes additional server_tool_use.name values beyond the generated SDK literal set",
-  "closure:anthropic_messages_200_residual|AnthropicMessages200ContentBlock|variant_pending:web_fetch_tool_result|variant_pending:code_execution_tool_result|variant_pending:bash_code_execution_tool_result|variant_pending:text_editor_code_execution_tool_result|variant_pending:tool_search_tool_result|variant_pending:advisor_tool_result|variant_pending:mcp_tool_use|variant_pending:mcp_tool_result|variant_pending:container_upload|trigger:Anthropic beta/server-tool content-block surface modeled structurally",
-  "closure:anthropic_messages_200_residual|llm.Anthropic.Messages.output.content|blocked:variant_aware_typed_rest_response_projection|path:content/0/text|requires_arm:AnthropicMessages200ContentBlock.MessagesTextBlock|trigger:structural projection metadata carrier lands"
+data structural_coverage_gap_anthropic_messages_200_residual: List<CoverageClosureEntry> = [
+  {
+    closure: "anthropic_messages_200_residual",
+    facts: [
+      Subject { path: "AnthropicMessages200Body" },
+      JsonPending { field: "container" },
+      Subject { path: "AnthropicMessages200ContentBlock.MessagesWebSearchToolResultBlock.content" },
+      Subject { path: "AnthropicMessages200ContentBlock.MessagesWebSearchToolResultBlock.caller" },
+      JsonPending { field: "web_search_tool_result_payload" }
+    ],
+    trigger: "container-management response surface plus web search result/error payload coproduct plus typed caller carrier for web search tool result"
+  },
+  {
+    closure: "anthropic_messages_200_residual",
+    facts: [
+      Subject { path: "AnthropicMessages200ContentBlock.MessagesToolUseBlock" },
+      Residue { description: "client_tool_name_input_and_optional_caller_payloads_not_bound_to_declared_tool_schema" }
+    ],
+    trigger: "tool_use response block references declared AnthropicToolDefinition through typed caller carrier and input payload schema"
+  },
+  {
+    closure: "anthropic_messages_200_residual",
+    facts: [
+      Subject { path: "AnthropicMessages200ContentBlock.MessagesServerToolUseBlock" },
+      Residue { description: "server_tool_input_and_optional_caller_payloads_unmodeled" }
+    ],
+    trigger: "fold server_tool_use name and input into a server-tool-use coproduct keyed by AnthropicServerToolName"
+  },
+  {
+    closure: "anthropic_messages_200_residual",
+    facts: [
+      Subject { path: "AnthropicServerToolName" },
+      ExternalSpecWatch { item: "server_tool_use_name_set" }
+    ],
+    trigger: "Anthropic publishes additional server_tool_use.name values beyond the generated SDK literal set"
+  },
+  {
+    closure: "anthropic_messages_200_residual",
+    facts: [
+      Subject { path: "AnthropicMessages200ContentBlock" },
+      VariantPending { variant: "web_fetch_tool_result" },
+      VariantPending { variant: "code_execution_tool_result" },
+      VariantPending { variant: "bash_code_execution_tool_result" },
+      VariantPending { variant: "text_editor_code_execution_tool_result" },
+      VariantPending { variant: "tool_search_tool_result" },
+      VariantPending { variant: "advisor_tool_result" },
+      VariantPending { variant: "mcp_tool_use" },
+      VariantPending { variant: "mcp_tool_result" },
+      VariantPending { variant: "container_upload" }
+    ],
+    trigger: "Anthropic beta/server-tool content-block surface modeled structurally"
+  },
+  {
+    closure: "anthropic_messages_200_residual",
+    facts: [
+      Subject { path: "llm.Anthropic.Messages.output.content" },
+      Blocked { reason: "variant_aware_typed_rest_response_projection" },
+      PathRef { path: "content/0/text" },
+      RequiresArm { arm: "AnthropicMessages200ContentBlock.MessagesTextBlock" }
+    ],
+    trigger: "structural projection metadata carrier lands"
+  }
 ]
 
-data rest_request_wire_serde_alignment_receipt: List<String> = [
-  "closure:rest_request_wire_serde_alignment|llm.Anthropic.Messages|AnthropicChatMessage|paid:role_internally_tagged_object_user_assistant",
-  "closure:rest_request_wire_serde_alignment|llm.Anthropic.Messages|AnthropicUserContentBlock|paid:type_internally_tagged_object_text_tool_result",
-  "closure:rest_request_wire_serde_alignment|llm.Anthropic.Messages|AnthropicAssistantContentBlock|paid:type_internally_tagged_object_text_tool_use",
-  "closure:rest_request_wire_serde_alignment|llm.Anthropic.Messages|AnthropicUserContentBlock.UserToolResultBlock.content|paid:tool_result_content_untagged_scalar_or_block_array",
-  "closure:rest_request_wire_serde_alignment|llm.Anthropic.Messages|AnthropicToolResultBlock|paid:type_internally_tagged_object_tool_result_nested_blocks"
+data rest_request_wire_serde_alignment_receipt: List<CoverageClosureEntry> = [
+  {
+    closure: "rest_request_wire_serde_alignment",
+    facts: [
+      Subject { path: "llm.Anthropic.Messages" },
+      Subject { path: "AnthropicChatMessage" },
+      Paid { item: "role_internally_tagged_object_user_assistant" }
+    ],
+    trigger: none
+  },
+  {
+    closure: "rest_request_wire_serde_alignment",
+    facts: [
+      Subject { path: "llm.Anthropic.Messages" },
+      Subject { path: "AnthropicUserContentBlock" },
+      Paid { item: "type_internally_tagged_object_text_tool_result" }
+    ],
+    trigger: none
+  },
+  {
+    closure: "rest_request_wire_serde_alignment",
+    facts: [
+      Subject { path: "llm.Anthropic.Messages" },
+      Subject { path: "AnthropicAssistantContentBlock" },
+      Paid { item: "type_internally_tagged_object_text_tool_use" }
+    ],
+    trigger: none
+  },
+  {
+    closure: "rest_request_wire_serde_alignment",
+    facts: [
+      Subject { path: "llm.Anthropic.Messages" },
+      Subject { path: "AnthropicUserContentBlock.UserToolResultBlock.content" },
+      Paid { item: "tool_result_content_untagged_scalar_or_block_array" }
+    ],
+    trigger: none
+  },
+  {
+    closure: "rest_request_wire_serde_alignment",
+    facts: [
+      Subject { path: "llm.Anthropic.Messages" },
+      Subject { path: "AnthropicToolResultBlock" },
+      Paid { item: "type_internally_tagged_object_tool_result_nested_blocks" }
+    ],
+    trigger: none
+  }
 ]
 
 data structural_coverage_gap_anthropic_messages_file_image_beta_header: List<String> = [

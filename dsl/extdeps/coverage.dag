@@ -1,0 +1,31 @@
+module extdeps.coverage
+
+import std.types { NonEmptyStr }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, File }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: File
+    locator: "DESIGN.md#2-minimize-redundancy"
+  }
+}
+
+type CoverageClosureFact
+  = Subject { path: NonEmptyStr }
+  | VariantPending { variant: NonEmptyStr }
+  | JsonPending { field: NonEmptyStr }
+  | Residue { description: NonEmptyStr }
+  | Paid { item: NonEmptyStr }
+  | Missing { item: NonEmptyStr }
+  | DeclaredMetadata { field: NonEmptyStr }
+  | ExternalSpecWatch { item: NonEmptyStr }
+  | Blocked { reason: NonEmptyStr }
+  | PathRef { path: NonEmptyStr }
+  | RequiresArm { arm: NonEmptyStr }
+
+type CoverageClosureEntry {
+  closure: NonEmptyStr
+  facts: List<CoverageClosureFact>
+  trigger: NonEmptyStr?
+}
