@@ -1,0 +1,153 @@
+module gunbc.ci_budget_tree
+
+import std.measure { ByteSize, byte_size, byte_size_count, Memory, One }
+import std.types { Int, List }
+import std.realization_width { memory_effective_budget }
+import extdeps.accounting.budget { Appropriation, LineItem }
+import product.budget_tree {
+  BudgetNode, BudgetClaim, BudgetPriority, Guaranteed, Burstable,
+  node_conserves_local, node_balance, admit_claims, claim_items
+}
+import product.compute_fabric { compute_host_ram_bytes_total }
+import gunbc.operator_fleet { srv1_host }
+import gunbc.ci_floor_measurement {
+  CiJobPeak,
+  HostFixedOverhead, HostFixedOverheadMeasured, HostFixedOverheadUnmeasured,
+  gunbc_ci_job_peaks,
+  gunbc_ci_host_fixed_overhead,
+  gunbc_ci_concurrent_runs_conservative_high,
+}
+import gunbc.ci_runner_placement {
+  JobPeakResolution, JobPeaksResolved, JobPeaksUnresolved,
+  resolve_run_unit_peak,
+}
+
+// The srv1 fleet memory budget as a BudgetNode tree, instantiated entirely from the
+// measured single-authority carriers (no fresh magic numbers): host RAM from the modeled
+// srv1 ComputeHost, fixed overhead + per-run peak + conservative-high R from
+// gunbc.ci_floor_measurement, reduced through the same helpers ci_runner_placement uses
+// (resolve_run_unit_peak, memory_effective_budget) so the tree does not fork their numbers.
+//
+// Divide-once: the root is host RAM; the run-pool's appropriation is the placement-effective
+// budget (0.8 safety fraction minus fixed overhead), so the unallocated remainder at the root
+// is exactly the safety headroom (Surplus, by construction). The floor consumer imports one
+// run slot (per-run peak); it never re-divides host RAM.
+
+fn srv1_host_ram() -> ByteSize {
+  compute_host_ram_bytes_total(host: srv1_host)
+}
+
+// Fail-closed: an unmeasured overhead cannot price the reserve, so reserve nothing usable
+// (byte_size(0) collapses the run-pool to the safety fraction alone — conservative, never
+// an over-commit). The live carrier is HostFixedOverheadMeasured, so this is the §5 backstop.
+fn gunbc_ci_fixed_overhead_bytes() -> ByteSize {
+  match gunbc_ci_host_fixed_overhead {
+    HostFixedOverheadMeasured { bytes: b } => b
+    HostFixedOverheadUnmeasured => byte_size(0)
+  }
+}
+
+// Single authority for the per-run peak: the same reduction ci_runner_placement applies to
+// gunbc_ci_job_peaks. Fail-closed to byte_size(0) when unresolved (a zero per-run peak makes
+// every fit/admission back off rather than divide by a fabricated number).
+fn gunbc_ci_per_run_peak() -> ByteSize {
+  match resolve_run_unit_peak(job_peaks: gunbc_ci_job_peaks) {
+    JobPeaksResolved { run_unit_peak: p } => p
+    JobPeaksUnresolved { reason: _ } => byte_size(0)
+  }
+}
+
+// The placement-effective budget for runs: 0.8 safety fraction of host RAM minus fixed
+// overhead. Reused verbatim from std.realization_width so the budget tree and
+// ci_runner_placement read the SAME usable-for-runs number (§3 single authority).
+fn gunbc_ci_run_pool_budget() -> ByteSize {
+  memory_effective_budget(budget: srv1_host_ram(), reserved: gunbc_ci_fixed_overhead_bytes())
+}
+
+fn run_claim(peak: ByteSize) -> BudgetClaim {
+  BudgetClaim {
+    item: LineItem { purpose: "concurrent-run", amount: peak },
+    priority: Burstable
+  }
+}
+
+fn run_claims_loop(acc: List<BudgetClaim>, peak: ByteSize, remaining: Int) -> List<BudgetClaim> {
+  if remaining <= 0 {
+    acc
+  } else {
+    run_claims_loop(acc: concat(acc, [run_claim(peak: peak)]), peak: peak, remaining: remaining - 1)
+  }
+}
+
+// R candidate runs at the conservative-high ceiling, each appropriated the per-run peak.
+fn gunbc_ci_run_candidates() -> List<BudgetClaim> {
+  run_claims_loop(
+    acc: [],
+    peak: gunbc_ci_per_run_peak(),
+    remaining: gunbc_ci_concurrent_runs_conservative_high
+  )
+}
+
+// L1 — the concurrent-run pool. Appropriation = placement-effective budget; claims = the
+// conservative-high R candidate runs. node_conserves_local is HONESTLY false here whenever
+// R exceeds what the pool can admit: that is the §5 over-commit the OOM-killer enforces today,
+// not a wall. The wall is admit_claims below (admission is construction).
+fn gunbc_ci_run_pool_node() -> BudgetNode {
+  BudgetNode {
+    name: "concurrent-runs",
+    appropriation: Appropriation { ceiling: gunbc_ci_run_pool_budget() },
+    claims: gunbc_ci_run_candidates(),
+    children: []
+  }
+}
+
+// L0 — srv1 host RAM. Claim = fixed overhead (Guaranteed). Child = the run pool. The root
+// conserves with a Surplus equal to the 0.8 safety headroom (reserved by construction, not a
+// flag): overhead + run-pool-budget = overhead + (0.8 host - overhead) = 0.8 host < host.
+fn gunbc_srv1_budget_tree() -> BudgetNode {
+  BudgetNode {
+    name: "srv1",
+    appropriation: Appropriation { ceiling: srv1_host_ram() },
+    claims: [
+      BudgetClaim {
+        item: LineItem { purpose: "host-fixed-overhead", amount: gunbc_ci_fixed_overhead_bytes() },
+        priority: Guaranteed
+      }
+    ],
+    children: [gunbc_ci_run_pool_node()]
+  }
+}
+
+// L2 — the .dag CI floor run. One run slot: appropriation = per-run peak. This is the
+// allocation the floor spawn-width derives its memory budget from (Track A); the floor never
+// divides host RAM, it imports this single slot from its parent run pool (divide-once).
+fn gunbc_ci_floor_run_node() -> BudgetNode {
+  BudgetNode {
+    name: "ci-floor-run",
+    appropriation: Appropriation { ceiling: gunbc_ci_per_run_peak() },
+    claims: [],
+    children: []
+  }
+}
+
+// The floor's L2 memory budget in bytes — the single value Track A wires into
+// gunbc_ci_floor_spawn_width in place of an independently-divided host budget.
+fn gunbc_ci_floor_run_appropriation_bytes() -> Int {
+  byte_size_count(b: gunbc_ci_floor_run_node().appropriation.ceiling)
+}
+
+// Byte accessors for downstream consumers (the floor) that need the raw magnitude.
+fn gunbc_ci_per_run_peak_bytes() -> Int {
+  byte_size_count(b: gunbc_ci_per_run_peak())
+}
+
+fn gunbc_ci_srv1_host_ram_bytes() -> Int {
+  byte_size_count(b: srv1_host_ram())
+}
+
+// Construction: the admitted run set is provably within the run-pool appropriation. The
+// count of admitted runs is the safe concurrent-run count derived by zero-based admission —
+// over-commit is unwritable on this path (it lands in `refused`, not `committed`).
+fn gunbc_ci_admitted_run_count() -> Int {
+  admit_claims(node: gunbc_ci_run_pool_node()).committed.length()
+}

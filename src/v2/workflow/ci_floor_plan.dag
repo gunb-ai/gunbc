@@ -13,7 +13,12 @@ import v2.std.dependency { DataDependsOn, ResourceDependsOn, DependencyView }
 import v2.std.node { Atom, Node, TypeNode }
 import v2.std.text { String }
 import std.types { ContentHash, Int }
-import std.measure { HardwareThreadCount, hardware_thread_count, byte_size }
+import std.measure { HardwareThreadCount, hardware_thread_count, hardware_thread_count_value, byte_size }
+import gunbc.ci_budget_tree {
+  gunbc_ci_floor_run_appropriation_bytes,
+  gunbc_ci_per_run_peak_bytes,
+  gunbc_ci_srv1_host_ram_bytes,
+}
 import std.realization_width { width_fold_objective_goals, memory_aware_spawn_width, bounded_host_spawn_width }
 import product.compute_fabric {
   ResourceEnvelope,
@@ -242,7 +247,7 @@ fn gunbc_ci_floor_hardware_threads() -> HardwareThreadCount {
   altra_max_m12830_catalog.threads
 }
 
-fn gunbc_ci_floor_spawn_width(memory_budget_bytes: Int) -> HardwareThreadCount {
+fn gunbc_ci_floor_spawn_width_at_budget(memory_budget_bytes: Int) -> HardwareThreadCount {
   memory_aware_spawn_width(
     shard_count: gunbc_ci_floor_breadth(),
     hardware_threads: gunbc_ci_floor_hardware_threads(),
@@ -250,6 +255,15 @@ fn gunbc_ci_floor_spawn_width(memory_budget_bytes: Int) -> HardwareThreadCount {
     per_shard_peak: gunbc_ci_floor_per_shard_peak_rss_bytes(),
     conservative_fallback_width: gunbc_ci_floor_conservative_fallback_width
   )
+}
+
+// Track A — the floor spawn-width is CONSTRUCTED from the budget tree's L2 run allocation
+// (the one run slot the floor imports), not from a free-Int host budget. There is no longer a
+// knob to set the budget too high: the only budget available is the divide-once L2 slot, so a
+// spawn that would over-commit the floor is unwritable. This dissolves the realization_width
+// independent-host-division fork onto extdeps.accounting.budget (§3 single authority).
+fn gunbc_ci_floor_spawn_width() -> HardwareThreadCount {
+  gunbc_ci_floor_spawn_width_at_budget(memory_budget_bytes: gunbc_ci_floor_run_appropriation_bytes())
 }
 
 fn gunbc_ci_floor_run_envelope(memory_budget_bytes: Int) -> ResourceEnvelope {
@@ -285,6 +299,26 @@ fn witness_floor_fail_open_would_exceed_budget() -> Bool {
 fn witness_floor_unreadable_budget_uses_conservative_envelope() -> Bool {
   let envelope = gunbc_ci_floor_run_envelope(memory_budget_bytes: 0)
   demand_envelope_thread_count(envelope: envelope) == gunbc_ci_floor_conservative_fallback_width
+}
+
+// Track A construction: the floor's budget is the L2 run slot (the per-run peak), NOT a
+// host-wide budget — the divide-once boundary made concrete. The discriminating control is
+// that the budget differs from host RAM: an independently-divided host budget is no longer
+// reachable through the floor entrypoint.
+fn witness_floor_budget_is_l2_run_slot_not_host() -> Bool {
+  let budget = gunbc_ci_floor_run_appropriation_bytes()
+  budget == gunbc_ci_per_run_peak_bytes() && budget != gunbc_ci_srv1_host_ram_bytes()
+}
+
+// The tree-derived spawn-width fits inside the L2 budget it was constructed from, and is a
+// genuine memory-bounded width (> 0, not the unreadable-budget fallback) — the construction
+// produces a usable, conserving width by execution.
+fn witness_floor_spawn_width_fits_l2_budget() -> Bool {
+  let budget = gunbc_ci_floor_run_appropriation_bytes()
+  let envelope = gunbc_ci_floor_run_envelope(memory_budget_bytes: budget)
+  demand_envelope_fits_budget(envelope: envelope, budget: byte_size(budget))
+    && demand_envelope_thread_count(envelope: envelope) > 0
+    && hardware_thread_count_value(t: gunbc_ci_floor_spawn_width()) > 0
 }
 
 fn floor_layer_heavy_resolve_count(batch: ExecutorBatch, spec: CiSpec) -> Int {

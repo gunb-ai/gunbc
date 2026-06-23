@@ -1,0 +1,66 @@
+module test.claim.ci_budget_tree_witness
+
+import std.logic { Bool }
+import std.measure { byte_size_count, measure_le }
+import extdeps.accounting.budget {
+  BudgetBalance, Surplus, within_appropriation
+}
+import product.budget_tree {
+  node_conserves_local, node_balance, admit_claims
+}
+import gunbc.ci_budget_tree {
+  gunbc_srv1_budget_tree,
+  gunbc_ci_run_pool_node,
+  gunbc_ci_floor_run_node,
+  gunbc_ci_per_run_peak,
+  gunbc_ci_run_pool_budget,
+  gunbc_ci_admitted_run_count,
+}
+import gunbc.ci_runner_placement { effective_runners_per_host }
+
+// The root conserves and the unallocated remainder is a Surplus — the 0.8 safety headroom,
+// reserved by construction (overhead claim + run-pool budget = 0.8 host < host).
+fn witness_root_conserves_with_safety_surplus() -> Bool {
+  node_conserves_local(node: gunbc_srv1_budget_tree())
+    && (node_balance(node: gunbc_srv1_budget_tree()) == Surplus)
+}
+
+// Honest §5 boundary: at the conservative-high R the run pool does NOT locally conserve —
+// the over-commit the kernel OOM-killer enforces today. This is the residue lens, not a wall.
+fn witness_runpool_overcommits_at_conservative_high() -> Bool {
+  !node_conserves_local(node: gunbc_ci_run_pool_node())
+}
+
+// The wall: admission is construction. The committed set is provably within appropriation and
+// the excess candidates are refused (not silently dropped). Admitted count = the safe R (3).
+fn witness_admission_constructs_safe_run_count() -> Bool {
+  let admitted = admit_claims(node: gunbc_ci_run_pool_node())
+  return within_appropriation(
+      appropriation: gunbc_ci_run_pool_node().appropriation,
+      items: admitted.committed
+    )
+    && (admitted.refused.length() > 0)
+    && (admitted.committed.length() == 3)
+}
+
+// §3 convergence: the budget-tree admission reproduces the existing placement authority's
+// per-host run count from the same measured numbers — the two are not forked.
+fn witness_admission_matches_placement() -> Bool {
+  gunbc_ci_admitted_run_count() == effective_runners_per_host(cap_enforced: true)
+}
+
+// Divide-once: the floor imports exactly one run slot (per-run peak) and that slot fits inside
+// the parent run-pool budget. The floor never re-divides host RAM.
+fn witness_floor_run_imports_one_slot() -> Bool {
+  (byte_size_count(b: gunbc_ci_floor_run_node().appropriation.ceiling)
+      == byte_size_count(b: gunbc_ci_per_run_peak()))
+    && measure_le(a: gunbc_ci_floor_run_node().appropriation.ceiling, b: gunbc_ci_run_pool_budget())
+}
+
+test fn ci_budget_tree_holds() -> Bool {
+  witness_root_conserves_with_safety_surplus()
+    && witness_runpool_overcommits_at_conservative_high()
+    && witness_admission_constructs_safe_run_count()
+    && witness_admission_matches_placement()
+    && witness_floor_run_imports_one_slot()
+}
