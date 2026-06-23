@@ -22,7 +22,24 @@ test fn utf8_total_direction_holds() -> Bool {
 
 test fn base64_octet_roundtrip_holds() -> Bool {
   let o = bytes_octets(b: utf8_encode_bytes(s: "foobar"))
-  base64_decode(s: base64_encode(octets: o, variant: Standard), variant: Standard) == o
+  match base64_decode(s: base64_encode(octets: o, variant: Standard), variant: Standard) {
+    Present { value: d } => d == o
+    Absent => false
+  }
+}
+
+test fn base64_decode_rejects_invalid_char_holds() -> Bool {
+  match base64_decode(s: "Zm9*", variant: Standard) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+test fn base64_decode_rejects_cross_variant_char_holds() -> Bool {
+  match base64_decode(s: "Zm9-", variant: Standard) {
+    Present { value: _ } => false
+    Absent => true
+  }
 }
 
 test fn base64_rfc4648_golden_vectors_holds() -> Bool {
@@ -41,5 +58,8 @@ test fn base64url_alphabet_golden_holds() -> Bool {
 }
 
 test fn base64url_roundtrip_holds() -> Bool {
-  base64_decode(s: base64_encode(octets: url_witness_octets, variant: UrlSafe), variant: UrlSafe) == url_witness_octets
+  match base64_decode(s: base64_encode(octets: url_witness_octets, variant: UrlSafe), variant: UrlSafe) {
+    Present { value: d } => d == url_witness_octets
+    Absent => false
+  }
 }
