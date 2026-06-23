@@ -1,0 +1,110 @@
+module test.claim.budget_tree_witness
+
+import std.logic { Bool }
+import std.measure { byte_size, Memory, One }
+import extdeps.accounting.budget {
+  Appropriation, LineItem, BudgetBalance, Surplus, Balanced, Deficit,
+  BudgetingMethod, ZeroBased, within_appropriation, admit_all, AdmissionState
+}
+import product.budget_tree {
+  BudgetNode, BudgetClaim, BudgetPriority, Guaranteed, BestEffort,
+  Reconciliation, AllSatisfied, Evicted, GuaranteedShortfall,
+  node_conserves, node_conserves_local, node_balance, reconcile,
+  claim_items, budget_tree_method
+}
+
+fn claim(name: String, amount: Nat, p: BudgetPriority) -> BudgetClaim {
+  BudgetClaim { item: LineItem { purpose: name, amount: byte_size(count: amount) }, priority: p }
+}
+
+fn appr(n: Nat) -> Appropriation<Memory, One> {
+  Appropriation { ceiling: byte_size(count: n) }
+}
+
+fn sample_claims() -> List<BudgetClaim> {
+  [
+    claim(name: "g1", amount: 40, p: Guaranteed),
+    claim(name: "g2", amount: 40, p: Guaranteed),
+    claim(name: "b1", amount: 30, p: BestEffort)
+  ]
+}
+
+fn leaf_node(cap: Nat) -> BudgetNode {
+  BudgetNode { name: "host", appropriation: appr(n: cap), claims: sample_claims(), children: [] }
+}
+
+fn child_node(cap: Nat) -> BudgetNode {
+  BudgetNode { name: "c", appropriation: appr(n: cap), claims: sample_claims(), children: [] }
+}
+
+fn root_with(child: BudgetNode) -> BudgetNode {
+  BudgetNode { name: "root", appropriation: appr(n: 200), claims: [], children: [child] }
+}
+
+fn is_all_satisfied(r: Reconciliation) -> Bool {
+  match r { AllSatisfied { realized: x } => true  _ => false }
+}
+
+fn is_evicted(r: Reconciliation) -> Bool {
+  match r { Evicted { kept: k, evicted: e } => true  _ => false }
+}
+
+fn is_guaranteed_shortfall(r: Reconciliation) -> Bool {
+  match r { GuaranteedShortfall { shortfall: s } => true  _ => false }
+}
+
+fn witness_conservation_residue_lens() -> Bool {
+  node_conserves_local(node: leaf_node(cap: 120)) && !node_conserves_local(node: leaf_node(cap: 100))
+}
+
+fn witness_tree_conservation_recursive() -> Bool {
+  node_conserves(node: root_with(child: child_node(cap: 120)))
+    && !node_conserves(node: root_with(child: child_node(cap: 100)))
+}
+
+fn witness_divide_once() -> Bool {
+  let two_children = [child_node(cap: 100), child_node(cap: 100)]
+  let tight = BudgetNode { name: "r", appropriation: appr(n: 150), claims: [], children: two_children }
+  let roomy = BudgetNode { name: "r", appropriation: appr(n: 250), claims: [], children: two_children }
+  return !node_conserves_local(node: tight) && node_conserves_local(node: roomy)
+}
+
+fn witness_admission_is_construction() -> Bool {
+  let admitted = admit_all(appropriation: appr(n: 90), candidates: claim_items(claims: sample_claims()))
+  return within_appropriation(appropriation: appr(n: 90), items: admitted.committed)
+    && admitted.refused.length() > 0
+}
+
+fn witness_balance_states() -> Bool {
+  (node_balance(node: leaf_node(cap: 200)) == Surplus)
+    && (node_balance(node: leaf_node(cap: 110)) == Balanced)
+    && (node_balance(node: leaf_node(cap: 100)) == Deficit)
+}
+
+fn witness_reconcile_all_satisfied() -> Bool {
+  is_all_satisfied(r: reconcile(node: leaf_node(cap: 120), actual: byte_size(count: 120)))
+}
+
+fn witness_reconcile_evicts_best_effort() -> Bool {
+  is_evicted(r: reconcile(node: leaf_node(cap: 120), actual: byte_size(count: 90)))
+}
+
+fn witness_reconcile_guaranteed_shortfall() -> Bool {
+  is_guaranteed_shortfall(r: reconcile(node: leaf_node(cap: 120), actual: byte_size(count: 50)))
+}
+
+fn witness_method_is_zero_based() -> Bool {
+  budget_tree_method == ZeroBased
+}
+
+test fn budget_tree_holds() -> Bool {
+  witness_conservation_residue_lens()
+    && witness_tree_conservation_recursive()
+    && witness_divide_once()
+    && witness_admission_is_construction()
+    && witness_balance_states()
+    && witness_reconcile_all_satisfied()
+    && witness_reconcile_evicts_best_effort()
+    && witness_reconcile_guaranteed_shortfall()
+    && witness_method_is_zero_based()
+}
