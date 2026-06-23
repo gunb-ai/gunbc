@@ -1156,7 +1156,7 @@ fn is_coproduct_wire_contract_row(item: Node, module_items: List<Node>, imports:
 fn emit_coproduct_wire_contract_target_validation(contract_item: Node, local_coproduct_names: List<String>, source_indices: Map<String, NewlineIndex>) -> String {
   match contract_item.body {
     Present { value: body } =>
-      match record_string_field(record: body, field_name: "coproduct", source_indices: source_indices) {
+      match coproduct_decl_ref_decl_name(body: body, source_indices: source_indices) {
         Present { value: target_name } =>
           if any(local_coproduct_names, predicate: name => name == target_name) {
             ""
@@ -1164,7 +1164,7 @@ fn emit_coproduct_wire_contract_target_validation(contract_item: Node, local_cop
             emit_rust_compile_error_item(message: concat("CoproductWireContract target does not name a local coproduct: ", target_name))
           }
         Absent =>
-          emit_rust_compile_error_item(message: "CoproductWireContract.coproduct must be a string declaration name")
+          emit_rust_compile_error_item(message: "CoproductWireContract.coproduct must be a DeclarationRef with a string decl_name")
       }
     Absent =>
       emit_rust_compile_error_item(message: "CoproductWireContract row missing initializer body")
