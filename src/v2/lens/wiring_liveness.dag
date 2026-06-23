@@ -2,20 +2,21 @@ module v2.lens.wiring_liveness
 
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.disposition { RealizationDispatch }
-import v2.std.algebra { contains, list_snoc_item }
+import v2.std.algebra { contains, length, list_snoc_item }
 import v2.std.collection { List }
 import v2.std.dependency { DependencyView, dependency_lens }
 import v2.std.logic { Bool }
 import v2.std.node { Node }
 
-type WiringVerdict
-  = Wired
-  | Unwired
-
 type WiringRelation {
   output: Node
   declared_input: Node
   dependence: List<DependencyView>
+}
+
+type WiringReachState {
+  reached: List<Node>
+  stable: Bool
 }
 
 fn wiring_node_eq(a: Node, b: Node) -> Bool {
@@ -40,10 +41,26 @@ fn wiring_reach_pass(dependence: List<DependencyView>, reached: List<Node>) -> L
   })
 }
 
+fn wiring_reach_fixpoint_step(dependence: List<DependencyView>, state: WiringReachState) -> WiringReachState {
+  if state.stable {
+    state
+  } else {
+    let next = wiring_reach_pass(dependence: dependence, reached: state.reached)
+    WiringReachState {
+      reached: next,
+      stable: length(xs: next) == length(xs: state.reached)
+    }
+  }
+}
+
 fn wiring_reach_saturate(dependence: List<DependencyView>, reached: List<Node>) -> List<Node> {
-  fold(dependence, init: reached, f: fn(acc, ignored) {
-    wiring_reach_pass(dependence: dependence, reached: acc)
-  })
+  fold(
+    dependence,
+    init: WiringReachState { reached: reached, stable: false },
+    f: fn(acc, ignored) {
+      wiring_reach_fixpoint_step(dependence: dependence, state: acc)
+    }
+  ).reached
 }
 
 fn wiring_reaches(dependence: List<DependencyView>, from: Node, to: Node) -> Bool {
@@ -53,23 +70,12 @@ fn wiring_reaches(dependence: List<DependencyView>, from: Node, to: Node) -> Boo
   )
 }
 
-fn wiring_verdict(relation: WiringRelation) -> WiringVerdict {
-  if wiring_reaches(
+fn wiring_relation_is_wired(relation: WiringRelation) -> Bool {
+  wiring_reaches(
     dependence: relation.dependence,
     from: relation.output,
     to: relation.declared_input
-  ) {
-    Wired
-  } else {
-    Unwired
-  }
-}
-
-fn wiring_verdict_is_wired(verdict: WiringVerdict) -> Bool {
-  match verdict {
-    Wired => true
-    Unwired => false
-  }
+  )
 }
 
 fn wiring_relation_from_tree(output: Node, declared_input: Node) -> WiringRelation {
@@ -81,10 +87,8 @@ fn wiring_relation_from_tree(output: Node, declared_input: Node) -> WiringRelati
 }
 
 fn wiring_input_is_wired(output: Node, declared_input: Node) -> Bool {
-  wiring_verdict_is_wired(
-    verdict: wiring_verdict(
-      relation: wiring_relation_from_tree(output: output, declared_input: declared_input)
-    )
+  wiring_relation_is_wired(
+    relation: wiring_relation_from_tree(output: output, declared_input: declared_input)
   )
 }
 
