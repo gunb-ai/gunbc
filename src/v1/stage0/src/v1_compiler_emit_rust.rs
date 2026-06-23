@@ -6653,13 +6653,19 @@ pub fn emit_prelude(imported_names: Rc<Vec<String>>) -> String {
             ),
             "use crate::v1_rt;".to_string(),
         );
-        let witness_line = if imported_names.iter().any(|n| n.as_str() == "Witness") {
+        let has_witness = imported_names.iter().any(|n| n.as_str() == "Witness");
+        let has_holds = imported_names.iter().any(|n| n.as_str() == "Holds");
+        let has_violates = imported_names.iter().any(|n| n.as_str() == "Violates");
+        // Importing a variant (Holds/Violates) pulls the parent `Witness` enum into scope via the
+        // emitted `pub use <module>::{Witness}` (the variant-parent authority, #5562), so the v1_rt
+        // `Witness` parent collides with it exactly as an explicit `Witness` import would (E0252).
+        // Strip the bare parent use-line whenever ANY of {Witness, Holds, Violates} is imported,
+        // not only on an explicit `Witness` import.
+        let witness_line = if has_witness || has_holds || has_violates {
             "".to_string()
         } else {
             "\nuse crate::v1_rt::Witness;".to_string()
         };
-        let has_holds = imported_names.iter().any(|n| n.as_str() == "Holds");
-        let has_violates = imported_names.iter().any(|n| n.as_str() == "Violates");
         let variant_line = if has_holds && has_violates {
             "".to_string()
         } else if has_holds {

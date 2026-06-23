@@ -2759,13 +2759,19 @@ fn emit_prelude(imported_names: List<String>) -> String {
     "use std::collections::HashMap;\n",
     "use std::rc::Rc;\n",
     "use crate::v1_rt;")
-  let witness_line = if imported_names |> any(n => n == "Witness") {
+  let has_witness = imported_names |> any(n => n == "Witness")
+  let has_holds = imported_names |> any(n => n == "Holds")
+  let has_violates = imported_names |> any(n => n == "Violates")
+  // Importing a variant (Holds/Violates) pulls the parent `Witness` enum into scope via the
+  // emitted `pub use <module>::\{Witness\}` (the variant-parent authority, #5562), so the v1_rt
+  // `Witness` parent collides with it exactly as an explicit `Witness` import would (E0252). Strip
+  // the bare parent use-line whenever ANY of \{Witness, Holds, Violates\} is imported, not only on
+  // an explicit `Witness` import.
+  let witness_line = if has_witness || has_holds || has_violates {
     ""
   } else {
     "\nuse crate::v1_rt::Witness;"
   }
-  let has_holds = imported_names |> any(n => n == "Holds")
-  let has_violates = imported_names |> any(n => n == "Violates")
   let variant_line = if has_holds && has_violates {
     ""
   } else if has_holds {
