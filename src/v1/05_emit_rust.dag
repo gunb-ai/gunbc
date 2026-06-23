@@ -2656,7 +2656,7 @@ fn emit_specific_import_block(import_module: String, mod_name: String, filtered_
     // (no variants), so drop variant-glob / variant-list imports of it (use ...::FreeMonoid::* and
     // ::FreeMonoid::{Empty, Cons}); the bare type import `{FreeMonoid}` (no `FreeMonoid::`) is kept.
     let host_filtered = if corpus_repr_is_host(corpus_repr: emit_info.corpus_repr) {
-      all_lines |> filter(l => !contains(line: l, substring: "FreeMonoid::"))
+      all_lines |> filter(l => !contains(l, "FreeMonoid::"))
     } else { all_lines }
     host_filtered |> join(separator: "\n")
   }
@@ -5851,6 +5851,39 @@ fn freemonoid_cons_binding(cons_arm: Node, field: String, source_indices: Map<St
   }
 }
 
+// Structure-not-name detection: a match grounds to native Vec iff its Empty and Cons arms both
+// resolve to the FreeMonoid coproduct -- regardless of how the scrutinee's type is spelled at the
+// match site (a FreeMonoid/List alias, or a downstream alias whose authored name is neither). The
+// variant->parent resolution (pattern_parent_enum, which falls back to the unique enum owning the
+// variant) is the structural source; keying on scrut_type's surface name was the fragile heuristic
+// that let alias-typed scrutinees (e.g. edit_locus loci_from_bindings_for_path) escape to the enum.
+fn arm_resolved_parent_enum(arm: Node, scrut_type: String, type_summaries: Map<String, TypeSummary>) -> String? {
+  match arm_pattern(n: arm) {
+    VariantPattern { name: n, parent_enum: pe, field_bindings: _ } =>
+      pattern_parent_enum(name: n, parent_enum: pe, scrut_type: scrut_type, type_summaries: type_summaries)
+    _ => none
+  }
+}
+
+fn parent_enum_is_freemonoid(p: String?) -> Bool {
+  match p {
+    Present { value: nm } => nm == "FreeMonoid"
+    Absent => false
+  }
+}
+
+fn arms_are_freemonoid_coproduct(arms: List<Node>, scrut_type: String, type_summaries: Map<String, TypeSummary>) -> Bool {
+  let empty_is_fm = match freemonoid_match_arm_for(arms: arms, variant: "Empty") {
+    Present { value: ea } => parent_enum_is_freemonoid(p: arm_resolved_parent_enum(arm: ea, scrut_type: scrut_type, type_summaries: type_summaries))
+    Absent => false
+  }
+  let cons_is_fm = match freemonoid_match_arm_for(arms: arms, variant: "Cons") {
+    Present { value: ca } => parent_enum_is_freemonoid(p: arm_resolved_parent_enum(arm: ca, scrut_type: scrut_type, type_summaries: type_summaries))
+    Absent => false
+  }
+  empty_is_fm && cons_is_fm
+}
+
 fn emit_native_freemonoid_match(scrut_str: String, arms: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let si = scope.type_env.source_indices
   match freemonoid_match_arm_for(arms: arms, variant: "Empty") {
@@ -5881,7 +5914,7 @@ fn emit_typed_match(scrutinee: Node, arms: List<Node>, registry: Map<String, Ite
     _ => ""
   }
   // FreeMonoid grounding: rewrite a host FreeMonoid/List match into a native Rc<Vec> if-else.
-  let native_fm = if corpus_repr_is_host(corpus_repr: emit_info.corpus_repr) && (scrut_type == "FreeMonoid" || scrut_type == "List") {
+  let native_fm = if corpus_repr_is_host(corpus_repr: emit_info.corpus_repr) && arms_are_freemonoid_coproduct(arms: arms, scrut_type: scrut_type, type_summaries: emit_info.type_summaries) {
     emit_native_freemonoid_match(scrut_str: scrut_str, arms: arms, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
   } else { "" }
   if native_fm != "" { return native_fm }
