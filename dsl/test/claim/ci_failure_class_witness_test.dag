@@ -4,8 +4,9 @@ import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import gunbc.ci_failure_class {
   InfraSignature, RunnerLost,
   FloorFailureClass, Infra, Structural,
+  FloorOutcome, NoFailure, Failure,
   classify_failure_reason, classify_floor_exit,
-  floor_failure_blocks_merge, floor_exit_blocks_merge,
+  floor_failure_blocks_merge, floor_outcome_blocks_merge, floor_exit_blocks_merge,
   infra_retry_grep_alternation, build_retry_infra_signatures,
   verdict_infra_signatures, infra_signature_match_substring,
   infra_signature_origin,
@@ -25,6 +26,20 @@ fn class_is_structural(c: FloorFailureClass) -> Bool {
   match c {
     Infra { signature: _ } => false
     Structural { reason: _ } => true
+  }
+}
+
+fn outcome_is_structural(o: FloorOutcome) -> Bool {
+  match o {
+    NoFailure => false
+    Failure { class: c } => class_is_structural(c: c)
+  }
+}
+
+fn outcome_is_no_failure(o: FloorOutcome) -> Bool {
+  match o {
+    NoFailure => true
+    Failure { class: _ } => false
   }
 }
 
@@ -72,13 +87,13 @@ fn witness_structural_not_swallowed_as_infra() -> Bool {
     && reason_blocks_merge(reason: layering)
     && reason_blocks_merge(reason: drift)
     && reason_blocks_merge(reason: oom_structural)
-    && class_is_structural(c: classify_floor_exit(e: ExitFailure { code: 137, reason: oom_structural }))
+    && outcome_is_structural(o: classify_floor_exit(e: ExitFailure { code: 137, reason: oom_structural }))
     && floor_exit_blocks_merge(e: ExitFailure { code: 137, reason: oom_structural })
 }
 
 fn witness_bare_exit_137_fails_closed() -> Bool {
   let bare = ExitFailure { code: 137, reason: "Process completed with exit code 137." }
-  class_is_structural(c: classify_floor_exit(e: bare))
+  outcome_is_structural(o: classify_floor_exit(e: bare))
     && floor_exit_blocks_merge(e: bare)
 }
 
@@ -90,7 +105,7 @@ fn witness_unknown_reason_fails_closed() -> Bool {
 
 fn witness_floor_green_does_not_block() -> Bool {
   (floor_exit_blocks_merge(e: ExitSuccess) == false)
-    && class_is_structural(c: classify_floor_exit(e: ExitSuccess))
+    && outcome_is_no_failure(o: classify_floor_exit(e: ExitSuccess))
 }
 
 fn witness_grep_alternation_is_single_authority() -> Bool {

@@ -88,10 +88,14 @@ fn classify_failure_reason(reason: String) -> FloorFailureClass {
   })
 }
 
-fn classify_floor_exit(e: ProcessExit) -> FloorFailureClass {
+type FloorOutcome
+  = NoFailure
+  | Failure { class: FloorFailureClass }
+
+fn classify_floor_exit(e: ProcessExit) -> FloorOutcome {
   match e {
-    ExitSuccess => Structural { reason: "" }
-    ExitFailure { code: _, reason: r } => classify_failure_reason(reason: r)
+    ExitSuccess => NoFailure
+    ExitFailure { code: _, reason: r } => Failure { class: classify_failure_reason(reason: r) }
   }
 }
 
@@ -102,12 +106,15 @@ fn floor_failure_blocks_merge(c: FloorFailureClass) -> Bool {
   }
 }
 
-fn floor_exit_blocks_merge(e: ProcessExit) -> Bool {
-  match e {
-    ExitSuccess => false
-    ExitFailure { code: _, reason: _ } =>
-      floor_failure_blocks_merge(c: classify_floor_exit(e: e))
+fn floor_outcome_blocks_merge(o: FloorOutcome) -> Bool {
+  match o {
+    NoFailure => false
+    Failure { class: c } => floor_failure_blocks_merge(c: c)
   }
+}
+
+fn floor_exit_blocks_merge(e: ProcessExit) -> Bool {
+  floor_outcome_blocks_merge(o: classify_floor_exit(e: e))
 }
 
 type MergeGatingStatus
