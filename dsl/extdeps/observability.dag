@@ -1,7 +1,5 @@
 module extdeps.observability
 
-import std.types { Bool }
-
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -25,30 +23,24 @@ type ObservationClass =
   | StorageInventory
   | NetworkInventory
 
-fn channel_observes(channel: ObservabilityChannel, class: ObservationClass) -> Bool {
-  match channel {
-    InBand => true
-    OutOfBand =>
-      match class {
-        ProcessorInventory => true
-        MemoryInventory => true
-        PowerState => true
-        PowerDraw => true
-        Thermal => true
-        StorageInventory => false
-        NetworkInventory => false
-      }
-  }
-}
-
 type ObservationRoutingOutcome =
     RoutedTo { channel: ObservabilityChannel }
   | ChannelCannotObserve { channel: ObservabilityChannel, class: ObservationClass }
 
+// The single public answer to "can this channel observe this class?" is the structured outcome — no
+// separate Bool predicate over the coproducts (the typed RoutedTo/ChannelCannotObserve subsumes it).
 fn route_observation(channel: ObservabilityChannel, class: ObservationClass) -> ObservationRoutingOutcome {
-  if channel_observes(channel: channel, class: class) {
-    RoutedTo { channel: channel }
-  } else {
-    ChannelCannotObserve { channel: channel, class: class }
+  match channel {
+    InBand => RoutedTo { channel: channel }
+    OutOfBand =>
+      match class {
+        ProcessorInventory => RoutedTo { channel: channel }
+        MemoryInventory => RoutedTo { channel: channel }
+        PowerState => RoutedTo { channel: channel }
+        PowerDraw => RoutedTo { channel: channel }
+        Thermal => RoutedTo { channel: channel }
+        StorageInventory => ChannelCannotObserve { channel: channel, class: class }
+        NetworkInventory => ChannelCannotObserve { channel: channel, class: class }
+      }
   }
 }

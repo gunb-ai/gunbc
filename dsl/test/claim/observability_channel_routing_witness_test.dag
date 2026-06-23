@@ -10,46 +10,55 @@ import extdeps.observability {
   NetworkInventory,
   PowerDraw,
   ProcessorInventory,
-  channel_observes,
   route_observation,
 }
 
+// The structured ObservationRoutingOutcome is the only public answer (channel_observes was dissolved into
+// route_observation), so every assertion reads that typed surface directly — no Bool projection.
+
 test fn out_of_band_cannot_observe_storage() -> Bool {
-  channel_observes(channel: OutOfBand, class: StorageInventory) == false
-    && match route_observation(channel: OutOfBand, class: StorageInventory) {
-      ChannelCannotObserve { channel: _, class: _ } => true
-      RoutedTo { channel: _ } => false
-    }
+  match route_observation(channel: OutOfBand, class: StorageInventory) {
+    ChannelCannotObserve { channel: _, class: _ } => true
+    RoutedTo { channel: _ } => false
+  }
 }
 
 test fn in_band_observes_storage() -> Bool {
-  channel_observes(channel: InBand, class: StorageInventory)
-    && match route_observation(channel: InBand, class: StorageInventory) {
-      RoutedTo { channel: c } =>
-        match c {
-          InBand => true
-          OutOfBand => false
-        }
-      ChannelCannotObserve { channel: _, class: _ } => false
-    }
+  match route_observation(channel: InBand, class: StorageInventory) {
+    RoutedTo { channel: c } =>
+      match c {
+        InBand => true
+        OutOfBand => false
+      }
+    ChannelCannotObserve { channel: _, class: _ } => false
+  }
 }
 
 test fn out_of_band_observes_power_and_processor() -> Bool {
-  channel_observes(channel: OutOfBand, class: PowerDraw)
-    && channel_observes(channel: OutOfBand, class: ProcessorInventory)
-    && match route_observation(channel: OutOfBand, class: PowerDraw) {
+  match route_observation(channel: OutOfBand, class: PowerDraw) {
+    RoutedTo { channel: _ } => true
+    ChannelCannotObserve { channel: _, class: _ } => false
+  }
+    && match route_observation(channel: OutOfBand, class: ProcessorInventory) {
       RoutedTo { channel: _ } => true
       ChannelCannotObserve { channel: _, class: _ } => false
     }
 }
 
 test fn out_of_band_cannot_observe_network() -> Bool {
-  channel_observes(channel: OutOfBand, class: NetworkInventory) == false
+  match route_observation(channel: OutOfBand, class: NetworkInventory) {
+    ChannelCannotObserve { channel: _, class: _ } => true
+    RoutedTo { channel: _ } => false
+  }
 }
 
 test fn out_of_band_storage_blindness_grounded_in_openbmc_finding() -> Bool {
   match bmc_firmware_host_storage_visibility(family: OpenBmc) {
-    HostStorageBlind => channel_observes(channel: OutOfBand, class: StorageInventory) == false
+    HostStorageBlind =>
+      match route_observation(channel: OutOfBand, class: StorageInventory) {
+        ChannelCannotObserve { channel: _, class: _ } => true
+        RoutedTo { channel: _ } => false
+      }
     HostStorageEnumerable => false
   }
 }
