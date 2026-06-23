@@ -10,7 +10,7 @@ const CERT_ENTRY: &str = "src/v2/compiler/manual/fold_list_generic_instantiation
 const WITNESS_FN: &str = "fold_list_generic_instantiation_holds";
 
 fn v2_source_roots() -> Vec<std::path::PathBuf> {
-    vec![workspace_root().join("src/v2")]
+    crate::helpers::v2_layer_roots()
 }
 
 fn cert_source_pairs() -> &'static Vec<(String, String)> {
