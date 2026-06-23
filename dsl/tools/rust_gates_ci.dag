@@ -1,6 +1,6 @@
 module tools.rust_gates_ci
 
-import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.git
 import extdeps.cargo_build
 import extdeps.cargo_build { cargo_nextest_build_jobs_flag }
@@ -22,6 +22,13 @@ fn rust_gate_build_jobs_args() -> List<String> {
   cargo_nextest_build_jobs_flag(count: compile_jobs_count_or_serial(jobs: jobs))
 }
 
+fn gate_diag(check: String, stdout: String, stderr: String) -> String {
+  concat(
+    concat("=== ", concat(check, " FAILED ===\n")),
+    concat(stdout, concat("\n", stderr))
+  )
+}
+
 func run_gates() -> ProcessExit {
   fmt = cargo.Build.Fmt(extra_args: ["--all", "--check"])
   clippy = cargo.Build.Clippy(extra_args: ["--all-targets"], lint_args: ["-D", "warnings"])
@@ -29,7 +36,10 @@ func run_gates() -> ProcessExit {
   return if fmt.success && clippy.success && test.success {
     ExitSuccess
   } else {
-    ExitFailure { code: 1, reason: "rust gate failed: cargo fmt --all --check and/or cargo clippy --all-targets -- -D warnings and/or cargo nextest run -p v1-compiler-tests" }
+    let fmt_diag = if fmt.success { "" } else { gate_diag(check: "cargo fmt --all --check", stdout: fmt.stdout, stderr: fmt.stderr) }
+    let clippy_diag = if clippy.success { "" } else { gate_diag(check: "cargo clippy --all-targets -- -D warnings", stdout: clippy.stdout, stderr: clippy.stderr) }
+    let test_diag = if test.success { "" } else { gate_diag(check: "cargo nextest run -p v1-compiler-tests", stdout: test.stdout, stderr: test.stderr) }
+    exit_failure(reason: concat("rust gate:\n", concat(fmt_diag, concat(clippy_diag, test_diag))))
   }
 }
 
