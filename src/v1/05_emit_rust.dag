@@ -5881,7 +5881,26 @@ fn parent_enum_is_freemonoid(p: String?) -> Bool {
   }
 }
 
+// A FreeMonoid match may pair an Empty/Cons variant arm with a WILDCARD/bind catch-all rather than
+// the sibling variant (e.g. `Empty => .. | _ => ..`). The catch-all fills the missing branch.
+fn freemonoid_catchall_arm(arms: List<Node>) -> Node? {
+  arms |> filter(arm => match arm_pattern(n: arm) {
+    Wildcard => true
+    Bind { name: _ } => true
+    _ => false
+  }) |> first
+}
+
+fn freemonoid_catchall_bind_name(arm: Node) -> String {
+  match arm_pattern(n: arm) {
+    Bind { name: nm } => nm
+    _ => ""
+  }
+}
+
 fn arms_are_freemonoid_coproduct(arms: List<Node>, scrut_type: String, type_summaries: Map<String, TypeSummary>) -> Bool {
+  let has_empty = match freemonoid_match_arm_for(arms: arms, variant: "Empty") { Present { value: _ } => true  Absent => false }
+  let has_cons = match freemonoid_match_arm_for(arms: arms, variant: "Cons") { Present { value: _ } => true  Absent => false }
   let empty_is_fm = match freemonoid_match_arm_for(arms: arms, variant: "Empty") {
     Present { value: ea } => parent_enum_is_freemonoid(p: arm_resolved_parent_enum(arm: ea, scrut_type: scrut_type, type_summaries: type_summaries))
     Absent => false
@@ -5890,7 +5909,14 @@ fn arms_are_freemonoid_coproduct(arms: List<Node>, scrut_type: String, type_summ
     Present { value: ca } => parent_enum_is_freemonoid(p: arm_resolved_parent_enum(arm: ca, scrut_type: scrut_type, type_summaries: type_summaries))
     Absent => false
   }
-  empty_is_fm && cons_is_fm
+  let has_catchall = match freemonoid_catchall_arm(arms: arms) { Present { value: _ } => true  Absent => false }
+  // Fire iff at least one genuine FreeMonoid variant arm AND both branches are fillable (the missing
+  // sibling variant supplied by the catch-all). Safe to loosen: the enum is removed, so any real
+  // FreeMonoid match that does NOT ground natively emits a dangling FreeMonoid::Empty/Cons.
+  let is_fm = empty_is_fm || cons_is_fm
+  let empty_fillable = has_empty || has_catchall
+  let cons_fillable = has_cons || has_catchall
+  is_fm && empty_fillable && cons_fillable
 }
 
 fn emit_native_freemonoid_match(scrut_str: String, arms: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
