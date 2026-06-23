@@ -345,6 +345,11 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
+            "census_corpus_roots_follow_layer_authority".to_string(),
+            bool_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
             "transport_script_literal_violation_count_for_path".to_string(),
             int_type(),
         );

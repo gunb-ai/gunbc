@@ -23,6 +23,10 @@ fn non_fold_residue_live_coproduct_universe_count() -> Int {
   non_fold_residue_coproduct_universe_count()
 }
 
+fn non_fold_residue_discovery_roots_follow_authority() -> Bool {
+  census_corpus_roots_follow_layer_authority()
+}
+
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: WallAfterGrounding {
     grounding_authority: "exhaustiveness-by-default in the typechecker (the DESIGN §4 CoproductExhaustiveness direction) making a wildcard over a closed coproduct unwritable, plus gunbc#5364 (.dag compile-graph access) folding the host match scan into a pure .dag Node-tree reader",
