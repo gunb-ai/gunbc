@@ -8,8 +8,8 @@
 
 "Is it empty", "does it have N", "did `Int64` overflow" are the same question — a **cardinality constraint** — answered today by scattered manual `if list_length(..) == 0` / `count` / bound checks. Model cardinality as a refinement **axis** and two things fall out:
 
-- **Decidability (why this fragment, not general refinement).** Arbitrary value predicates (`admits: fn(B) -> Bool`, `refinement.dag:34`) are undecidable, so they can only be checked at a runtime constructor boundary. **Cardinality** predicates — `length == N`, `≥ 1`, `magnitude < 2^width` — are linear arithmetic over counts: **decidable**, hence checkable *statically* and fold-propagated. Scoping refinement to cardinality is what keeps it inside the §4 bounded/decidable substrate; general refinement would break it.
-- **Fold-propagation (the payoff).** A catamorphism that carries the cardinality means folding a `List<Bit>` yields its length, adding two bounded `Int64` yields the combined bound (and **overflow is a typed `Rejected`, not a silent wrap**). "When we fold, it's handled automatically" — the empty/count/width checks stop being hand-written.
+1. **Decidability (why this fragment, not general refinement).** Arbitrary value predicates (`admits: fn(B) -> Bool`, `refinement.dag:34`) are undecidable, so they can only be checked at a runtime constructor boundary. **Cardinality** predicates — `length == N`, `≥ 1`, `magnitude < 2^width` — are linear arithmetic over counts: **decidable**, hence checkable *statically* and fold-propagated. Scoping refinement to cardinality is what keeps it inside the §4 bounded/decidable substrate; general refinement would break it.
+2. **Fold-propagation (the payoff).** A catamorphism that carries the cardinality means folding a `List<Bit>` yields its length, adding two bounded `Int64` yields the combined bound (and **overflow is a typed `Rejected`, not a silent wrap**). "When we fold, it's handled automatically" — the empty/count/width checks stop being hand-written.
 
 ## 1. What is ALREADY built (this is wiring, not greenfield)
 
