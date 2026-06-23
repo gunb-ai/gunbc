@@ -3297,39 +3297,6 @@ fn eval_service_call(
                 what: format!("unknown service operation: {}", key),
             })?;
 
-    // Native handler — dissolve-on: getrandom(2) transport lands in extdeps/getrandom/
-    if key == "Getrandom.ReadBytes" {
-        let count = args
-            .iter()
-            .find(|(k, _)| k.as_deref() == Some("count"))
-            .and_then(|(_, v)| if let Value::Int(n) = v { Some(*n) } else { None })
-            .ok_or_else(|| InterpError::TypeError {
-                msg: "Getrandom.ReadBytes: count arg required".to_string(),
-            })?;
-        if !(0..=65536).contains(&count) {
-            return Err(InterpError::TypeError {
-                msg: format!("Getrandom.ReadBytes: count must be 0..=65536, got {count}"),
-            });
-        }
-        let n = count as usize;
-        let mut buf = vec![0u8; n];
-        if n > 0 {
-            use std::io::Read;
-            std::fs::File::open("/dev/urandom")
-                .and_then(|mut f| f.read_exact(&mut buf))
-                .map_err(|e| InterpError::TypeError {
-                    msg: format!("Getrandom.ReadBytes: /dev/urandom: {e}"),
-                })?;
-        }
-        let items: Vec<Value> = buf.iter().map(|b| Value::Int(*b as i64)).collect();
-        let mut fields = HashMap::new();
-        fields.insert(ctx.sym("octets"), list_value(items));
-        return Ok(Value::Record {
-            type_name: ctx.sym("GetrandomReadBytesResult"),
-            fields: Rc::new(fields),
-        });
-    }
-
     let transport = op_node
         .transport
         .as_ref()

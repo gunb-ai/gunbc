@@ -11,17 +11,15 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data getrandom_native_transport_seam_note: String = "SEAM: Getrandom.ReadBytes transport argv is a fail-closed decoy; native /dev/urandom read is intercepted in eval_service_call before transport dispatch. DISSOLUTION: replace decoy with a real /dev/urandom transport when native-read support lands in the transport vocabulary."
-
 service Getrandom {
   operation ReadBytes {
     input { count: Int }
-    output { octets: List<UInt8> }
+    output { octets_b64: String from "stdout" }
     readonly
-    transport shell { argv: ["false"] }
+    transport shell { argv: ["sh", "-c", "head -c {count} /dev/urandom | base64 -w 0"] }
     exit {
       0 => Unit
-      nonzero => String "getrandom native transport seam: decoy must not run"
+      nonzero => String "Getrandom.ReadBytes: /dev/urandom or base64 failed"
     }
   }
 }
