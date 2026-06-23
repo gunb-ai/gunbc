@@ -1,5 +1,6 @@
 module v2.lens.visibility
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.disposition { SingleAuthority }
 
 import v2.std.logic { Bool }
 import v2.std.algebra { length, list_snoc_item }
@@ -55,9 +56,6 @@ fn visibility_clean(facts: List<ModuleVisibilityFact>) -> Bool {
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: WallAfterGrounding {
-    grounding_authority: "access-checked publication by construction (access.dag's effective_public) plus the live ModuleVisibilityFact bridge",
-    dissolve_on: "a public module exposing a non-public import is unpublishable by construction (effective_public), not flagged by an import-graph lens"
-  },
-  rationale: "A public module importing a non-public module is a decidable import-graph property; the realization of access.dag's effective_public leak rule, staged on the live ModuleVisibilityFact bridge."
+  class: WallAfterGrounding { dissolves_to: SingleAuthority },
+  rationale: "A public module importing a non-public module is a decidable import-graph property; the realization of access.dag's effective_public leak rule, staged on the live ModuleVisibilityFact bridge. Grounding authority: access-checked publication by construction (access.dag's effective_public) plus the live ModuleVisibilityFact bridge. Dissolves on: a public module exposing a non-public import is unpublishable by construction (effective_public), not flagged by an import-graph lens"
 }
