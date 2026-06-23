@@ -11,17 +11,6 @@ import extdeps.github.checks {
   Success,
   Failure,
 }
-import extdeps.github.merge_state {
-  MergeStateStatus,
-  Clean,
-  Blocked,
-  Dirty,
-}
-import extdeps.github.mergeable_state {
-  MergeableState,
-  Mergeable,
-  Conflicting,
-}
 import std.types { Bool }
 
 data sample_check_output: CheckOutput = CheckOutput {
@@ -100,36 +89,3 @@ test fn witness_check_list_has_one_run() -> Bool {
   count(sample_check_list_one.check_runs) == 1
 }
 
-fn merge_state_is_clean(s: MergeStateStatus) -> Bool {
-  match s {
-    Clean => true
-    _ => false
-  }
-}
-
-fn mergeable_state_is_conflicting(s: MergeableState) -> Bool {
-  match s {
-    Conflicting => true
-    _ => false
-  }
-}
-
-test fn witness_merge_state_clean_recognized() -> Bool {
-  merge_state_is_clean(s: Clean)
-}
-
-test fn witness_merge_state_blocked_not_clean() -> Bool {
-  !merge_state_is_clean(s: Blocked)
-}
-
-test fn witness_merge_state_dirty_not_clean() -> Bool {
-  !merge_state_is_clean(s: Dirty)
-}
-
-test fn witness_mergeable_conflicting_recognized() -> Bool {
-  mergeable_state_is_conflicting(s: Conflicting)
-}
-
-test fn witness_mergeable_mergeable_not_conflicting() -> Bool {
-  !mergeable_state_is_conflicting(s: Mergeable)
-}

@@ -1,0 +1,38 @@
+module test.claim.github_mergeable_state_witness
+
+import extdeps.github.mergeable_state {
+  MergeableState,
+  Mergeable,
+  Conflicting,
+}
+import std.types { Bool }
+
+fn mergeable_state_is_mergeable(s: MergeableState) -> Bool {
+  match s {
+    Mergeable => true
+    _ => false
+  }
+}
+
+fn mergeable_state_is_conflicting(s: MergeableState) -> Bool {
+  match s {
+    Conflicting => true
+    _ => false
+  }
+}
+
+test fn witness_mergeable_state_mergeable_recognized() -> Bool {
+  mergeable_state_is_mergeable(s: Mergeable)
+}
+
+test fn witness_mergeable_state_conflicting_not_mergeable() -> Bool {
+  !mergeable_state_is_mergeable(s: Conflicting)
+}
+
+test fn witness_mergeable_state_conflicting_recognized() -> Bool {
+  mergeable_state_is_conflicting(s: Conflicting)
+}
+
+test fn witness_mergeable_state_mergeable_not_conflicting() -> Bool {
+  !mergeable_state_is_conflicting(s: Mergeable)
+}
