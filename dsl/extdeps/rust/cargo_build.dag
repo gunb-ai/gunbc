@@ -12,15 +12,23 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 data cargo_compile_env: Map<String, String> = empty_map()
 
+fn cargo_build_jobs_flag(count: Int) -> List<String> {
+  ["--jobs", "{count}"]
+}
+
+fn cargo_nextest_build_jobs_flag(count: Int) -> List<String> {
+  ["--build-jobs", "{count}"]
+}
+
 service cargo.Build {
   operation Build {
-    input { extra_args: List<String> = [], env: Map<String, String> = cargo_compile_env }
+    input { extra_args: List<String> = [], env: Map<String, String> = cargo_compile_env, build_jobs_args: List<String> = [] }
     output {
       success: Bool from "exit_success"
       stdout: String from "stdout"
       stderr: String from "stderr"
     }
-    transport shell { argv: ["cargo", "build", extra_args] }
+    transport shell { argv: ["cargo", "build", build_jobs_args, extra_args] }
     exit {
       0 => Unit
       101 => String "Compilation failed"
@@ -43,13 +51,13 @@ service cargo.Build {
   }
 
   operation Nextest {
-    input { extra_args: List<String> = [] }
+    input { extra_args: List<String> = [], build_jobs_args: List<String> = [] }
     output {
       success: Bool from "exit_success"
       stdout: String from "stdout"
       stderr: String from "stderr"
     }
-    transport shell { argv: ["cargo", "nextest", "run", extra_args] }
+    transport shell { argv: ["cargo", "nextest", "run", build_jobs_args, extra_args] }
     exit {
       0 => Unit
       100 => String "Tests failed"

@@ -256,6 +256,19 @@ test); (B) the partition decides *which* sites are walled now vs flagged vs fenc
 guard against the purity trap (§6 of DESIGN): a medium earns a wall only when it is the cheapest path to a
 real displaced cost (a grep that goes fail-open on an unanticipated surface form), never for elegance.
 
+### 5.3 The ② lens-residue slice, generalized — regime-2 emission
+
+The ② lens-residue emitters above (`serialize_yaml`, plus the `serialize_gitignore` /
+`serialize_runner_deploy` projections) share a sharper boundary than "hand-rolled-but-closeable": they are
+**emit-only** — we *never ingest* a `.gitignore` or a `ci.yml`-as-config, so the round-trip oracle (A) has
+nothing to gate against and faithfulness rests on the authored projection (§5 honesty boundary). That is a
+distinct regime from the grammar-inverse ① wall (markdown/languages), and collapsing the three hand-rolled
+projection serializers into **one** `render(doc, protocol)` fold over a shared `std.layout` `Doc` IR is the
+§2 de-boutique-ing of exactly this slice — detailed in
+[regime-2 shared emission fold](regime2-shared-emission-fold.md). It stays a ② scaffold (a forward-only
+subset of the ① grammar rows) with dissolution into the v2 `TargetModel` rows; whether `yaml` ever crosses
+into regime-1 (parseable, round-trip-gated) is the separate decision that doc fences off.
+
 ## 6. Independent §3-hygiene cleanup (not a roadmap item)
 
 Found in the same sweep, fixable now with existing authority (dispatched separately): `lit(text: "dsl")`

@@ -3,17 +3,29 @@ module tools.rust_gates_ci
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import extdeps.git
 import extdeps.cargo_build
+import extdeps.cargo_build { cargo_nextest_build_jobs_flag }
 import tools.rust_stage0_gates { should_run_gates }
 import gunbc.ci_spec {
   gunbc_ci_spec,
   DiffMergeBase,
   DiffTwoDot,
 }
+import gunbc.ci_compile_jobs { ci_compile_jobs, compile_jobs_count_or_serial }
+import gunbc.operator_fleet { srv1_host }
+import product.compute_fabric { compute_host_ram_bytes_total }
+
+fn rust_gate_build_jobs_args() -> List<String> {
+  let jobs = ci_compile_jobs(
+    memory_budget: compute_host_ram_bytes_total(host: srv1_host),
+    force_serial: false
+  )
+  cargo_nextest_build_jobs_flag(count: compile_jobs_count_or_serial(jobs: jobs))
+}
 
 func run_gates() -> ProcessExit {
   fmt = cargo.Build.Fmt(extra_args: ["--all", "--check"])
   clippy = cargo.Build.Clippy(extra_args: ["--all-targets"], lint_args: ["-D", "warnings"])
-  test = cargo.Build.Nextest(extra_args: ["-p", "v1-compiler-tests"])
+  test = cargo.Build.Nextest(extra_args: ["-p", "v1-compiler-tests"], build_jobs_args: rust_gate_build_jobs_args())
   return if fmt.success && clippy.success && test.success {
     ExitSuccess
   } else {
