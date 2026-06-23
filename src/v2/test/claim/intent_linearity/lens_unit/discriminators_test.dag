@@ -1,6 +1,6 @@
 module v2.test.intent_linearity.lens_unit.discriminators
 
-import v2.lens.intent_linearity { chain_is_redundant, chain_residual, level_is_linear, body_is_linear }
+import v2.lens.intent_linearity { chain_is_redundant, forest_is_redundant, chain_residual, level_is_linear, body_is_linear }
 import v2.std.node {
   Node, Edge, EdgeLabel, Positional,
   NodeKind, TypeNode, Connective, Atom, Conj,
@@ -54,4 +54,15 @@ test fn all_minimal_body_is_linear() -> Bool {
 }
 test fn single_minimal_level_is_linear() -> Bool {
   level_is_linear(level: linear_chain_b)
+}
+
+data dup_type_pair: List<Node> = [
+  conj2(a: atom(id: ^x86), b: atom(id: ^arm)),
+  conj2(a: atom(id: ^x86), b: atom(id: ^arm))
+]
+test fn dup_type_decls_redundant_through_registry() -> Bool {
+  forest_is_redundant(decls: dup_type_pair)
+}
+test fn dup_type_pair_not_flagged_by_term_binder() -> Bool {
+  !chain_is_redundant(steps: dup_type_pair)
 }
