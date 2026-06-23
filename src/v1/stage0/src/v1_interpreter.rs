@@ -575,6 +575,11 @@ pub enum InterpError {
     NoSuchField { type_name: String, field: String },
     TypeError { msg: String },
     CrossRepresentationEquality { detail: String },
+    // §5 fail-closed: a service declares an auth scheme (`auth: Bearer`, `svc_auth`) but its
+    // realization resolved no token — the `auth_input` field is unbound AND no `auth_source` env
+    // var is set. Raised BEFORE send so a declared-but-unwired credential is a typed, located
+    // refusal here, never an opaque remote 401 (the prod wiring-liveness incident, ROADMAP §4).
+    AuthDeclaredButUnwired { service: String, detail: String },
     PatternMatchFailure { value: String },
     DivisionByZero,
     Unimplemented { what: String },
@@ -593,6 +598,9 @@ impl fmt::Display for InterpError {
             InterpError::TypeError { msg } => write!(f, "type error: {}", msg),
             InterpError::CrossRepresentationEquality { detail } => {
                 write!(f, "cross-representation equality: {}", detail)
+            }
+            InterpError::AuthDeclaredButUnwired { service, detail } => {
+                write!(f, "auth declared but unwired for '{}': {}", service, detail)
             }
             InterpError::PatternMatchFailure { value } => {
                 write!(f, "non-exhaustive pattern match on: {}", value)
@@ -3849,7 +3857,25 @@ fn dispatch_rest(
         None => "GET".to_string(),
     };
 
-    let (auth_header_name, auth_token) = resolve_auth(service_node, transport, param_env, &si, ctx);
+    let (auth_header_name, auth_token, auth_declared) =
+        resolve_auth(service_node, transport, param_env, &si, ctx);
+
+    // §5 fail-closed wiring-liveness guard: if the service DECLARES an auth scheme but the
+    // realization resolved no token (empty or absent), refuse here with a typed, located error
+    // BEFORE the request is sent — a declared-but-unwired credential must never silently degrade
+    // into an opaque remote 401 (ROADMAP §4; the prod rotation incident). This binds both the
+    // `auth_input` (caller-supplied) and `auth_source` (env-var) paths: whichever the service
+    // declares, an unbound result fails closed at the seam.
+    if auth_declared && auth_token.as_deref().map_or(true, str::is_empty) {
+        return Err(InterpError::AuthDeclaredButUnwired {
+            service: service_node.name.clone(),
+            detail: format!(
+                "auth scheme declared (header '{}') but no token resolved for {} {} — \
+                 `auth_input` field unbound and `auth_source` env var unset",
+                auth_header_name, method, url
+            ),
+        });
+    }
 
     let reserved_props = [
         "base_url",
@@ -3984,13 +4010,16 @@ fn resolve_auth(
     param_env: &Rc<Env>,
     si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
     ctx: &InterpContext,
-) -> (String, Option<String>) {
+) -> (String, Option<String>, bool) {
     let mut header_name = "Authorization".to_string();
     let mut env_var_name: Option<String> = None;
     // `auth_input: <field>` (§3): the token is an operation INPUT the caller supplies,
     // not ambient env. Resolve it from the per-call param env. Takes precedence over
     // `auth_source` (env var) when both are present.
     let mut input_field_name: Option<String> = None;
+    // Whether the service DECLARES an auth scheme at all (`svc_auth` present). Drives the
+    // fail-closed pre-send guard: declared-but-no-token-resolved is a typed refusal, not a 401.
+    let mut auth_declared = false;
 
     for prop in service_node.properties.iter() {
         let name = field_init_node_name_at(prop.clone(), si.clone());
@@ -3998,6 +4027,7 @@ fn resolve_auth(
 
         match name.as_str() {
             "svc_auth" => {
+                auth_declared = true;
                 let scheme = authored_name_at(si.clone(), val_node.clone());
                 if scheme == "Bearer" {
                     header_name = "Authorization".to_string();
@@ -4046,13 +4076,13 @@ fn resolve_auth(
     if let Some(field) = input_field_name {
         if let Some(Value::Str(tok)) = param_env.lookup(ctx.sym(&field)) {
             if !tok.is_empty() {
-                return (header_name, Some(tok.clone()));
+                return (header_name, Some(tok.clone()), auth_declared);
             }
         }
     }
 
     let token = env_var_name.and_then(|var| resolve_env_var_token(ctx, &var));
-    (header_name, token)
+    (header_name, token, auth_declared)
 }
 
 fn extract_string_value(node: &Rc<Node>) -> Option<String> {
