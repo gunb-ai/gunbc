@@ -38,6 +38,9 @@ import gunbc.ci_floor_measurement {
   OomdEnforcementEvidence,
   OomdEnforced,
   OomdUnverified,
+  RunnerSliceCapEffectiveness,
+  CapEffective,
+  CapUnbounded,
 }
 
 data fleet_build_realization_marker: String = "build = ONE shared host-wide RealizedStep, NOT per-type. shape = CreateEffect CreateIfAbsent keyed on the content hash (sccache content-addresses the compile -> create-if-absent on content key); materialization = Share (the CACHING arm = ctrl-sccache, host-wide across GHA-CI builds AND session ctrl-builds); placement = LocalFilesystem; cost.space = mib_per_job (the per-build memory envelope = SCHEDULING arm = ctrl-jobserver). The two arms (ctrl-jobserver scheduling + ctrl-sccache caching) already unify GHA and session builds = the two arms of std.realization RealizedStep instantiated. A typed RealizedStep value IS constructed (build_realization below), not only this marker."
@@ -165,10 +168,6 @@ fn runner_slice_cap(host: ByteSize, overhead: ByteSize, baselines: ByteSize, bui
   let after_build = byte_size_saturating_sub(total: after_baselines, reserved: build_pool)
   byte_size_saturating_sub(total: after_build, reserved: headroom)
 }
-
-type RunnerSliceCapEffectiveness
-  = CapEffective { bytes: ByteSize }
-  | CapUnbounded
 
 data gunbc_fleet_runner_slice_drift_marker: String = "the runner-slice cap disk!=live DRIFT detector (the REAL over-commit vector, not sessions). runner_slice_cap_drifted(disk_cap, effective): the live bug is 10-resource-caps.conf setting MemoryMax=70391285350 ON DISK while the effective runtime cgroup is CapUnbounded (MemoryMax=INFINITY) -> drift=true. The ctrl reconciler runner_host_reconcile.mjs is meant to make disk==live (CapEffective with the disk cap) -> drift=false; a different effective value is also drift. This is the SHAPE + a fixture red-receipt; the live-read arm (systemctl show the effective MemoryMax) is the D2 effectful floor gate, fail-closed when the host read is unavailable (never silently pass off-host)."
 
