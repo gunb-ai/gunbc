@@ -6,9 +6,13 @@ import product.budget_tree { node_conserves, budget_child_named, BudgetChildFoun
 import gunbc.ci_budget_tree {
   srv1_budget_tree,
   srv1_host_ram,
-  srv1_run_pool_budget,
+  srv1_fixed_overhead_bytes,
+  srv1_gha_runner_pool_budget,
+  srv1_dashboard_session_pool_budget,
   srv1_per_run_budget,
   srv1_floor_memory_budget,
+  srv1_gha_runner_pool_node,
+  srv1_dashboard_session_pool_node,
   srv1_ci_run_node,
   per_run_budget_split,
 }
@@ -24,8 +28,37 @@ fn witness_floor_budget_is_l2_allocation() -> Bool {
 fn witness_divide_once_reduces_below_host() -> Bool {
   let per_run = byte_size_count(b: srv1_floor_memory_budget())
   per_run > 0
-    && per_run < byte_size_count(b: srv1_run_pool_budget())
-    && byte_size_count(b: srv1_run_pool_budget()) < byte_size_count(b: srv1_host_ram())
+    && per_run < byte_size_count(b: srv1_gha_runner_pool_budget())
+    && byte_size_count(b: srv1_gha_runner_pool_budget()) < byte_size_count(b: srv1_host_ram())
+}
+
+fn witness_two_pools_present() -> Bool {
+  let gha_found = match srv1_gha_runner_pool_node() {
+    BudgetChildFound { node: _ } => true
+    BudgetChildMissing => false
+  }
+  let dash_found = match srv1_dashboard_session_pool_node() {
+    BudgetChildFound { node: _ } => true
+    BudgetChildMissing => false
+  }
+  return gha_found && dash_found
+}
+
+fn witness_dashboard_pool_reserved() -> Bool {
+  let dash = byte_size_count(b: srv1_dashboard_session_pool_budget())
+  dash > 0 && dash < byte_size_count(b: srv1_host_ram())
+}
+
+fn witness_gha_pool_capped_by_dashboard_reservation() -> Bool {
+  let single_pool = byte_size_count(b: srv1_host_ram()) - byte_size_count(b: srv1_fixed_overhead_bytes())
+  byte_size_count(b: srv1_gha_runner_pool_budget()) < single_pool
+}
+
+fn witness_three_way_conservation() -> Bool {
+  let overhead = byte_size_count(b: srv1_fixed_overhead_bytes())
+  let gha = byte_size_count(b: srv1_gha_runner_pool_budget())
+  let dash = byte_size_count(b: srv1_dashboard_session_pool_budget())
+  overhead + gha + dash <= byte_size_count(b: srv1_host_ram())
 }
 
 fn witness_l2_node_present() -> Bool {
@@ -52,6 +85,10 @@ test fn ci_budget_tree_holds() -> Bool {
   witness_srv1_tree_conserves()
     && witness_floor_budget_is_l2_allocation()
     && witness_divide_once_reduces_below_host()
+    && witness_two_pools_present()
+    && witness_dashboard_pool_reserved()
+    && witness_gha_pool_capped_by_dashboard_reservation()
+    && witness_three_way_conservation()
     && witness_l2_node_present()
     && witness_unknown_child_is_absent()
     && witness_degenerate_r_fails_closed()

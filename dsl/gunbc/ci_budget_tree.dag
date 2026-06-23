@@ -79,7 +79,7 @@ fn per_run_budget_split(pool: ByteSize, r: Int) -> ByteSize {
 }
 
 fn srv1_per_run_budget() -> ByteSize {
-  per_run_budget_split(pool: srv1_run_pool_budget(), r: srv1_runs_per_host())
+  per_run_budget_split(pool: srv1_gha_runner_pool_budget(), r: srv1_runs_per_host())
 }
 
 fn srv1_overhead_claim() -> BudgetClaim {
@@ -106,12 +106,21 @@ fn srv1_run_children() -> List<BudgetNode> {
   replicate_budget_node(n: srv1_runs_per_host(), node: srv1_ci_run_node_value())
 }
 
-fn srv1_run_pool_node_value() -> BudgetNode {
+fn srv1_gha_runner_pool_node_value() -> BudgetNode {
   BudgetNode {
-    name: srv1_run_pool_name(),
-    appropriation: srv1_appropriation(b: srv1_run_pool_budget()),
+    name: srv1_gha_runner_pool_name(),
+    appropriation: srv1_appropriation(b: srv1_gha_runner_pool_budget()),
     claims: [],
     children: srv1_run_children()
+  }
+}
+
+fn srv1_dashboard_session_pool_node_value() -> BudgetNode {
+  BudgetNode {
+    name: srv1_dashboard_session_pool_name(),
+    appropriation: srv1_appropriation(b: srv1_dashboard_session_pool_budget()),
+    claims: [],
+    children: []
   }
 }
 
@@ -120,18 +129,22 @@ fn build_srv1_budget_tree() -> BudgetNode {
     name: srv1_node_name(),
     appropriation: srv1_appropriation(b: srv1_host_ram()),
     claims: [srv1_overhead_claim()],
-    children: [srv1_run_pool_node_value()]
+    children: [srv1_gha_runner_pool_node_value(), srv1_dashboard_session_pool_node_value()]
   }
 }
 
 data srv1_budget_tree: BudgetNode = build_srv1_budget_tree()
 
-fn srv1_run_pool_node() -> BudgetChild {
-  budget_child_named(node: srv1_budget_tree, name: srv1_run_pool_name())
+fn srv1_gha_runner_pool_node() -> BudgetChild {
+  budget_child_named(node: srv1_budget_tree, name: srv1_gha_runner_pool_name())
+}
+
+fn srv1_dashboard_session_pool_node() -> BudgetChild {
+  budget_child_named(node: srv1_budget_tree, name: srv1_dashboard_session_pool_name())
 }
 
 fn srv1_ci_run_node() -> BudgetChild {
-  match srv1_run_pool_node() {
+  match srv1_gha_runner_pool_node() {
     BudgetChildMissing => BudgetChildMissing
     BudgetChildFound { node: pool } => budget_child_named(node: pool, name: srv1_ci_run_name())
   }
