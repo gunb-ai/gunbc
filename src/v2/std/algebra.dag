@@ -701,6 +701,29 @@ fn zip_eq<T>(
   }
 }
 
+fn zip_map<A, B, C>(
+  a: FreeMonoid<A>,
+  b: FreeMonoid<B>,
+  f: fn(A, B) -> C
+) -> FreeMonoid<C> {
+  match a {
+    Empty => Empty
+    Cons { head: ha, tail: ta } =>
+      match b {
+        Empty => Empty
+        Cons { head: hb, tail: tb } =>
+          Cons { head: f(ha, hb), tail: zip_map(a: ta, b: tb, f: f) }
+      }
+  }
+}
+
+fn reduce_or<T>(xs: FreeMonoid<T>, fallback: T, combine: fn(T, T) -> T) -> T {
+  match xs {
+    Empty => fallback
+    Cons { head: h, tail: t } => fold_non_empty(head: h, tail: t, cons: combine)
+  }
+}
+
 fn is_prefix_of<T>(
   prefix: FreeMonoid<T>,
   xs: FreeMonoid<T>,

@@ -1,5 +1,15 @@
 module extdeps.languages.dag.emit
 
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/gunb-ai/gunbc/tree/main/dsl/extdeps/languages/dag"
+  }
+}
+
 data dag_keywords: Map<String, String> = {
   "true": "true", "false": "false", "null": "none",
   "and": "&&", "or": "||", "not": "!",

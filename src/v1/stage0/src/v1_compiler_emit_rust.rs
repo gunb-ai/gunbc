@@ -3150,7 +3150,7 @@ pub fn emit_lib_rs_from_files(
             __result
         });
         let hand_maintained_mods = if has_compiler_tests.clone() {
-            "\npub mod v1_interpreter;\npub mod cli_run;\npub mod rest_transport_facts;\npub mod wire_value_serialize;\npub mod coproduct_reflection;\npub mod resolved_graph_cache;\npub mod recorded_fixture;\npub mod cache_purity_oracle;\npub mod doc_reachability_project;\npub mod medium_structure_project;\npub mod extdeps_shape_transport_policy_project;\npub mod fact_cardinality_census;\npub mod import_resolution_project;\npub mod languages_consumer_census;\npub mod layering_imports_project;\npub mod module_path_index;\npub mod transport_script_position_project;".to_string()
+            "\npub mod v1_interpreter;\npub mod cli_run;\npub mod rest_transport_facts;\npub mod wire_value_serialize;\npub mod coproduct_reflection;\npub mod resolved_graph_cache;\npub mod recorded_fixture;\npub mod cache_purity_oracle;\npub mod corpus_lex;\npub mod doc_reachability_project;\npub mod inert_carrier_project;\npub mod medium_structure_project;\npub mod extdeps_shape_transport_policy_project;\npub mod fact_cardinality_census;\npub mod import_resolution_project;\npub mod languages_consumer_census;\npub mod non_fold_residue_project;\npub mod layering_imports_project;\npub mod module_path_index;\npub mod transport_script_position_project;".to_string()
         } else {
             "".to_string()
         };
@@ -3253,7 +3253,22 @@ pub fn emit_module_full(
         let m = typed_module.module.clone();
         let scope = module_emit_scope(typed_module.clone());
         let scoped_data_items = build_scoped_data_item_index(typed_module.clone(), data_items);
-        let prelude = emit_prelude();
+        let prelude_imported_names = Rc::new({
+            let mut __result = Vec::new();
+            for imp in module_imports(m.clone()).iter().cloned() {
+                for name in import_specific_names_at(
+                    imp.clone(),
+                    scope.type_env.clone().source_indices.clone(),
+                )
+                .iter()
+                .cloned()
+                {
+                    __result.push(name);
+                }
+            }
+            __result
+        });
+        let prelude = emit_prelude(prelude_imported_names);
         let local_type_names = Rc::new({
             let mut __result = Vec::new();
             for item in Rc::new({
@@ -6626,26 +6641,45 @@ pub fn emit_imports(
     }
 }
 
-pub fn emit_prelude() -> String {
+pub fn emit_prelude(imported_names: Rc<Vec<String>>) -> String {
     {
-        let use_line = v1_rt::concat(
+        let base = v1_rt::concat(
             v1_rt::concat(
                 v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            "use std::collections::BTreeSet;\n".to_string(),
-                            "use std::collections::HashMap;\n".to_string(),
-                        ),
-                        "use std::rc::Rc;\n".to_string(),
-                    ),
-                    "use crate::v1_rt;\n".to_string(),
+                    "use std::collections::BTreeSet;\n".to_string(),
+                    "use std::collections::HashMap;\n".to_string(),
                 ),
-                "use crate::v1_rt::Witness;\n".to_string(),
+                "use std::rc::Rc;\n".to_string(),
             ),
-            "use crate::v1_rt::Witness::{Holds, Violates};".to_string(),
+            "use crate::v1_rt;".to_string(),
         );
-        let wrapper_use = "use crate::NonEmptyVec;\nuse crate::NonEmptyBTreeSet;".to_string();
-        v1_rt::concat(v1_rt::concat(use_line, "\n".to_string()), wrapper_use)
+        let has_witness = imported_names.iter().any(|n| n.as_str() == "Witness");
+        let has_holds = imported_names.iter().any(|n| n.as_str() == "Holds");
+        let has_violates = imported_names.iter().any(|n| n.as_str() == "Violates");
+        // Importing a variant (Holds/Violates) pulls the parent `Witness` enum into scope via the
+        // emitted `pub use <module>::{Witness}` (the variant-parent authority, #5562), so the v1_rt
+        // `Witness` parent collides with it exactly as an explicit `Witness` import would (E0252).
+        // Strip the bare parent use-line whenever ANY of {Witness, Holds, Violates} is imported,
+        // not only on an explicit `Witness` import.
+        let witness_line = if has_witness || has_holds || has_violates {
+            "".to_string()
+        } else {
+            "\nuse crate::v1_rt::Witness;".to_string()
+        };
+        let variant_line = if has_holds && has_violates {
+            "".to_string()
+        } else if has_holds {
+            "\nuse crate::v1_rt::Witness::Violates;".to_string()
+        } else if has_violates {
+            "\nuse crate::v1_rt::Witness::Holds;".to_string()
+        } else {
+            "\nuse crate::v1_rt::Witness::{Holds, Violates};".to_string()
+        };
+        let wrapper_use = "\nuse crate::NonEmptyVec;\nuse crate::NonEmptyBTreeSet;".to_string();
+        v1_rt::concat(
+            v1_rt::concat(v1_rt::concat(base, witness_line), variant_line),
+            wrapper_use,
+        )
     }
 }
 
