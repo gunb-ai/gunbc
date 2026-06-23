@@ -13,15 +13,15 @@ import std.types { NonEmptyStr }
 
 test fn witness_active_wire_decodes_to_active() -> Bool {
   match parse_systemd_unit_active_state(raw: "active") {
-    Present { value: Active } => True
-    _ => False
+    Present { value: Active } => true
+    _ => false
   }
 }
 
 test fn witness_wrong_case_does_not_decode() -> Bool {
   match parse_systemd_unit_active_state(raw: "ACTIVE") {
-    none => True
-    _ => False
+    none => true
+    _ => false
   }
 }
 
