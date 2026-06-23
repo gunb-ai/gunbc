@@ -258,6 +258,8 @@ fn dual_declare_both_empty_fails_closed() {
     }
 }
 
+// Pub-API smoke: confirms the 3 variants are reachable from outside v1_compiler.
+// Execution discrimination lives in the wet-dispatch tests above.
 #[test]
 fn auth_resolution_enum_is_pub_and_discriminable() {
     let _ = AuthResolution::NoAuthDeclared;
