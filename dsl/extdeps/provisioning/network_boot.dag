@@ -1,15 +1,5 @@
 module extdeps.provisioning.network_boot
 
-// Network-boot install mechanism — the cited upstream way to boot a host with no
-// removable media: the firmware fetches a bootloader + kernel/initrd over the LAN,
-// directed by DHCP. This is the OS-install path forced on a board with no Redfish
-// VirtualMedia (the ASRock ALTRAD8UD / OpenBMC case, lane E). The BMC's role is only
-// to set the one-shot boot source to Pxe and reset; the *delivery* lives here.
-//
-// Single authority for the mechanism; the per-mode realizations (legacy TFTP chain
-// vs UEFI HTTP Boot) and the per-arch bootloader artifact are dispatch over a closed
-// sum (DESIGN §3 — dispatch lives in extdeps, not std).
-
 import std.logic { Bool }
 import std.types { NonEmptyStr }
 import extdeps.toolchain.types { Architecture, Aarch64, X86_64 }
@@ -23,29 +13,15 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-// How the client firmware boots from the network.
-//   LegacyBiosPxe  — BIOS option ROM PXE: DHCP options 66/67 + TFTP.
-//   UefiPxe        — UEFI PXE: still TFTP-based, client arch via DHCP option 93.
-//   UefiHttpBoot   — UEFI HTTP Boot: firmware fetches the boot image directly over
-//                    HTTP(S); no TFTP server needed (UEFI 2.5+).
 type ClientNetworkBootMode =
     LegacyBiosPxe
   | UefiPxe
   | UefiHttpBoot
 
-// How the client learns where the boot server is.
-//   NativeDhcpBootOptions — the LAN's own DHCP server serves the boot options
-//                           (next-server/filename or the HTTPClient vendor class).
-//                           Requires a configurable DHCP server.
-//   ProxyDhcp             — a separate proxyDHCP service (e.g. dnsmasq) answers PXE
-//                           requests *alongside* an existing DHCP server that cannot
-//                           be configured — the consumer-router case.
 type DhcpBootDirection =
     NativeDhcpBootOptions
   | ProxyDhcp
 
-// Whether a given boot mode needs a TFTP server stood up at all. UEFI HTTP Boot
-// fetches over HTTP and needs none; the PXE modes chainload the bootloader via TFTP.
 fn network_boot_mode_needs_tftp(mode: ClientNetworkBootMode) -> Bool {
   match mode {
     LegacyBiosPxe => true
@@ -54,9 +30,6 @@ fn network_boot_mode_needs_tftp(mode: ClientNetworkBootMode) -> Bool {
   }
 }
 
-// The signed GRUB network bootloader image served for a UEFI network boot, keyed by
-// client architecture (Debian/Ubuntu netboot naming). Absent for architectures we do
-// not yet ground — fail-closed, not a fabricated default (DESIGN §5).
 fn network_uefi_bootloader_artifact(arch: Architecture) -> NonEmptyStr? {
   match arch {
     Aarch64 => Present { value: "grubnetaa64.efi" }
@@ -65,9 +38,6 @@ fn network_uefi_bootloader_artifact(arch: Architecture) -> NonEmptyStr? {
   }
 }
 
-// A concrete network-boot chain: the firmware mode, how DHCP directs the client, the
-// bootloader artifact served, the optional TFTP root (None for pure HTTP Boot), and
-// the HTTP root from which kernel/initrd/squashfs + autoinstall seed are served.
 type NetworkBootChain {
   boot_mode: ClientNetworkBootMode
   dhcp_direction: DhcpBootDirection
@@ -76,18 +46,16 @@ type NetworkBootChain {
   image_http_root: Uri
 }
 
-// A chain is well-formed when its TFTP root is present exactly when the mode needs one.
 fn network_boot_chain_tftp_coherent(chain: NetworkBootChain) -> Bool {
-  match network_boot_mode_needs_tftp(mode: chain.boot_mode) {
-    true =>
-      match chain.tftp_root {
-        Present { value: _ } => true
-        Absent => false
-      }
-    false =>
-      match chain.tftp_root {
-        Present { value: _ } => false
-        Absent => true
-      }
+  if network_boot_mode_needs_tftp(mode: chain.boot_mode) {
+    match chain.tftp_root {
+      Present { value: _ } => true
+      Absent => false
+    }
+  } else {
+    match chain.tftp_root {
+      Present { value: _ } => false
+      Absent => true
+    }
   }
 }

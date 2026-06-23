@@ -1,24 +1,11 @@
 module gunbc.os_install
 
-// Lane E: srv3's OS-install path. The ASRock ALTRAD8UD (Ampere Altra, aarch64) running
-// OpenBMC at 192.168.1.192 has NO Redfish VirtualMedia (confirmed live), so the only
-// install path is a network boot driven by the BMC's one-shot Pxe boot override plus an
-// unattended Ubuntu autoinstall served over the LAN.
-//
-// LAN survey (2026-06-23): the only DHCP on 192.168.1.0/24 is a Verizon Fios consumer
-// router (192.168.1.1) which cannot serve PXE boot options; there is no TFTP / HTTP /
-// proxyDHCP install server anywhere on the subnet. So the install infra must be stood
-// up, and because the existing DHCP is not configurable the chain must use proxyDHCP.
-// That observation is modeled as data (LanInstallInfraSurvey) so the design decision
-// (ProxyDhcp, UEFI HTTP Boot) is derived from the survey, not asserted bare.
-
 import std.logic { Bool }
 import std.os.types { OperatingSystemProduct, UbuntuOs, NobleNumbat2404Lts }
 import extdeps.toolchain.types { Architecture, Aarch64 }
 import extdeps.uri { Uri, Https }
 import extdeps.provisioning.network_boot {
   NetworkBootChain,
-  ClientNetworkBootMode,
   UefiHttpBoot,
   DhcpBootDirection,
   NativeDhcpBootOptions,
@@ -26,7 +13,6 @@ import extdeps.provisioning.network_boot {
 }
 import extdeps.os.ubuntu_autoinstall {
   UbuntuAutoinstallPayload,
-  AutoinstallDeliveryMethod,
   NoCloudNet,
 }
 import extdeps.bmc.types {
@@ -38,27 +24,19 @@ import extdeps.bmc.types {
   ResetForceRestart,
 }
 
-// Whether the board exposes Redfish VirtualMedia (ISO mount) at all.
 type BoardVirtualMediaSupport =
     VirtualMediaPresent
   | VirtualMediaAbsent
 
-// How the OS image reaches the host.
-//   NetworkBootDelivery — PXE/HTTP network boot + autoinstall (no removable media).
-//   VirtualMediaDelivery — a Redfish-mounted install ISO (requires VirtualMedia).
 type OsDeliveryMechanism =
     NetworkBootDelivery { chain: NetworkBootChain, autoinstall: UbuntuAutoinstallPayload }
   | VirtualMediaDelivery { image: Uri }
 
-// What the LAN survey found, as facts the design is derived from.
 type LanInstallInfraSurvey {
   existing_dhcp_configurable: Bool
   dedicated_install_server_present: Bool
 }
 
-// A board with no VirtualMedia cannot be installed by mounting an ISO; the only
-// coherent delivery is a network boot. Fail-closed (DESIGN §5): a VirtualMediaDelivery
-// claimed on a VirtualMediaAbsent board is incoherent, not silently accepted.
 fn os_delivery_is_coherent_for_board(
   vm: BoardVirtualMediaSupport,
   delivery: OsDeliveryMechanism,
@@ -73,12 +51,11 @@ fn os_delivery_is_coherent_for_board(
   }
 }
 
-// The survey decides how DHCP must direct the client: if the existing DHCP server can
-// be configured we serve native boot options; otherwise we run proxyDHCP alongside it.
 fn survey_implied_dhcp_direction(survey: LanInstallInfraSurvey) -> DhcpBootDirection {
-  match survey.existing_dhcp_configurable {
-    true => NativeDhcpBootOptions
-    false => ProxyDhcp
+  if survey.existing_dhcp_configurable {
+    NativeDhcpBootOptions
+  } else {
+    ProxyDhcp
   }
 }
 
@@ -88,23 +65,16 @@ type Srv3OsInstallPlan {
   board_virtual_media: BoardVirtualMediaSupport
   lan_survey: LanInstallInfraSurvey
   delivery: OsDeliveryMechanism
-  // The BMC drives the install: set a one-shot Pxe boot override, then reset.
   bmc_boot_target: RedfishBootSourceOverrideTarget
   bmc_boot_enabled: RedfishBootSourceOverrideEnabled
   post_stage_reset: RedfishResetType
 }
 
-// Survey of the srv3 LAN (2026-06-23): consumer Fios DHCP (not configurable), no
-// install server present.
 data srv3_lan_install_survey: LanInstallInfraSurvey = LanInstallInfraSurvey {
   existing_dhcp_configurable: false,
   dedicated_install_server_present: false,
 }
 
-// UEFI HTTP Boot needs no TFTP, so tftp_root is Absent. The HTTP root and the bootloader
-// artifact name the install server that must be stood up (it does not exist yet — the
-// survey found none). The bootloader artifact mirrors network_uefi_bootloader_artifact
-// for Aarch64; the witness binds the two so the literal cannot drift from the authority.
 data srv3_network_boot_chain: NetworkBootChain = NetworkBootChain {
   boot_mode: UefiHttpBoot,
   dhcp_direction: ProxyDhcp,

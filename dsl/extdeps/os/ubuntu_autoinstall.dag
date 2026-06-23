@@ -1,10 +1,5 @@
 module extdeps.os.ubuntu_autoinstall
 
-// Ubuntu Subiquity autoinstall — the cited upstream format for an unattended Ubuntu
-// Server install. Over a network boot the installer fetches its config from a NoCloud
-// datasource named on the kernel command line (`autoinstall ds=nocloud-net;s=<url>`),
-// so the payload model below is the seed the HTTP root in a NetworkBootChain serves.
-
 import std.logic { Bool }
 import std.types { Int }
 import std.os.types { UbuntuDistribution }
@@ -18,32 +13,24 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-// How the installer obtains its autoinstall user-data.
-//   NoCloudNet   — fetched over HTTP from a seed URL (network install).
-//   NoCloudLocal — read from a local seed (e.g. a second medium); not used here.
 type AutoinstallDeliveryMethod =
     NoCloudNet { seed_url: Uri }
   | NoCloudLocal
 
 type UbuntuAutoinstallPayload {
-  // Subiquity autoinstall schema version (`version: 1` today).
   autoinstall_version: Int
   delivery: AutoinstallDeliveryMethod
-  // interactive-sections: [] plus the `autoinstall` kernel arg => no prompts.
   fully_automated: Bool
   target_distribution: UbuntuDistribution
 }
 
-// An unattended payload must be both fully automated AND delivered over the network
-// (a local seed would defeat a no-media install). Fail-closed: anything else is not
-// a hands-off network install.
 fn ubuntu_autoinstall_is_unattended_network(payload: UbuntuAutoinstallPayload) -> Bool {
-  match payload.fully_automated {
-    true =>
-      match payload.delivery {
-        NoCloudNet { seed_url: _ } => true
-        NoCloudLocal => false
-      }
-    false => false
+  if payload.fully_automated {
+    match payload.delivery {
+      NoCloudNet { seed_url: _ } => true
+      NoCloudLocal => false
+    }
+  } else {
+    false
   }
 }
