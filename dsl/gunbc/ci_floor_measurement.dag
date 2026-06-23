@@ -98,17 +98,6 @@ type HostFixedOverhead
   | HostFixedOverheadUnmeasured
 
 data gunbc_ci_host_fixed_overhead: HostFixedOverhead = HostFixedOverheadMeasured { bytes: byte_size(17179869184) }
-<<<<<<< HEAD
-
-type DashboardSessionReservation
-  = DashboardSessionReservationMeasured { per_container_cap: ByteSize, concurrency: Int }
-  | DashboardSessionReservationUnmeasured
-
-data gunbc_ci_dashboard_session_reservation: DashboardSessionReservation = DashboardSessionReservationMeasured { per_container_cap: gunbc_ci_host_container_memory_cap, concurrency: 2 }
-
-data gunbc_ci_concurrent_runs_conservative_high: Int = 10
-
-data gunbc_ci_runner_cap_enforced: Bool = false
 
 data gunbc_ci_floor_measured_peak_disposition: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
@@ -136,5 +125,3 @@ data gunbc_ci_concurrent_runs_conservative_high_disposition: Disposition = Scaff
     field: WholeDeclaration
   }
 }
-=======
->>>>>>> origin/main
