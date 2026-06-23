@@ -81,13 +81,18 @@ construction, so the per-site arms disappear (exactly what #5428 did for the num
 The deep sub-root is the `Value::Null` split (~131 sites, own runway). The safety axis literally: every
 silent `false` is a deferred bug paid later at interest.
 
-**#3 — the lens backstop** *(cheapest gate; gates #1/#2 so new residue can't merge)*. The
-**inert-abstraction lens** (generalize the inert-lens backstop #5433 from lenses to *all* carriers — flag
-*defined + self-tested + zero non-test consumers*) and the **non-fold-residue audit** (`_ =>` over closed
-coproducts · `unwrap_or_default` in inference · hand-rolled recursion where a fold exists). A pure reader
-over the same `Node` tree (zero substrate edits). Decidable, wall-able. First RED witness =
-`Placement`/`Materialization` (a genuinely-inert carrier — *not* the now-wired `cached_stage`, so the lens
-isn't itself inert).
+**#3 — the lens backstop** *(cheapest gate; gates #1/#2 so new residue can't merge)*. **LANDED** (Lane 7,
+this PR): the **inert-abstraction lens** (`v2.lens.inert_carrier` over `inert_carrier_project.rs`) flags a
+type carrier that is *defined + self-tested + zero real consumer* — DESIGN §5 coverage-by-illusion (the
+`self-tested` gate is what separates it from the project's deliberate model-first staging); and the
+**non-fold-residue audit** (`v2.lens.non_fold_residue` over `non_fold_residue_project.rs`) flags a `match`
+whose scrutinee is a closed-coproduct param carrying a `_ =>` wildcard escape. Both are fail-closed floor
+witnesses (`src/v2/lens/{inert_carrier,non_fold_residue}_test.dag`, green-by-execution through
+`claim_batch`), each walled against a named, shrinking exception roster with a stale-roster ratchet, and
+each proven discriminating by synthetic RED/GREEN host controls (inert→RED, consumed→GREEN; residue→RED,
+total-fold→GREEN). Host-fed today; both fold into pure `.dag` Node-tree readers at gunbc#5364. Remaining
+audit targets (deferred, follow-up): `unwrap_or_default` in inference · hand-rolled recursion where a fold
+exists.
 
 **Start with #1.** It is the most elegant (a root with measured fan-out), it is the prerequisite that
 makes #2 a fold instead of a grind, and it is the only one that changes the default.

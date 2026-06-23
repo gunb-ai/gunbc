@@ -442,35 +442,6 @@ pub struct StageResult {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct DocumentLine {
-    pub text: String,
-    pub is_comment: bool,
-    pub is_blank: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct DocumentSection {
-    pub title: String,
-    pub has_title: bool,
-    pub lines: Rc<Vec<Rc<DocumentLine>>>,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct Document {
-    pub header: String,
-    pub has_header: bool,
-    pub comment_prefix: String,
-    pub sections: Rc<Vec<Rc<DocumentSection>>>,
-    pub trailing_newline: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct TextFile {
-    pub path: String,
-    pub document: Rc<Document>,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RenderedTextFile {
     pub path: String,
     pub content: String,
