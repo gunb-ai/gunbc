@@ -124,6 +124,14 @@ fn measure_scale_fraction_ceil<Q, S>(m: Measure<Q, S, Nat>, num: Nat, den: Nat) 
   Measure { count: if den == 0 { m.count * num } else { ((m.count * num) + (den - 1)) / den } }
 }
 
+fn measure_add<Q, S>(a: Measure<Q, S, Nat>, b: Measure<Q, S, Nat>) -> Measure<Q, S, Nat> {
+  Measure { count: a.count + b.count }
+}
+
+fn measure_le<Q, S>(a: Measure<Q, S, Nat>, b: Measure<Q, S, Nat>) -> Bool {
+  a.count <= b.count
+}
+
 fn time_measure<S>(count: Nat) -> Measure<Time, S, Nat> {
   Measure { count: count }
 }
