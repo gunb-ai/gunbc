@@ -56,15 +56,9 @@ fn perturbed_spellings() -> HtmlSpellings {
 
 fn perturbed_node() -> MarkupNode {
   ElementNode {
-    tag: "div",
-    attrs: [],
-    children: [
-      ElementNode {
-        tag: "p",
-        attrs: [],
-        children: [TextNode { text: "plain text" }],
-      },
-    ],
+    tag: "a",
+    attrs: [MarkupAttr { name: "href", value: "/about" }],
+    children: [TextNode { text: "plain text" }],
   }
 }
 
@@ -101,19 +95,33 @@ fn witness_core_advertised_lossless() -> Bool {
   }
 }
 
-fn unsafe_href_node() -> MarkupNode {
-  ElementNode {
+fn witness_frontier_unsafe_href_rejected() -> Bool {
+  let serialized = serialize_html_source(node: ElementNode {
     tag: "a",
     attrs: [MarkupAttr { name: "href", value: "javascript:alert(1)" }],
     children: [TextNode { text: "x" }],
-  }
-}
-
-fn witness_frontier_unsafe_href_rejected() -> Bool {
-  let serialized = serialize_html_source(node: unsafe_href_node())
+  })
   match ingest_html_source(src: serialized) {
     IngestRejected { reason: _ } => true
     IngestedNode { node: _ } => false
+  }
+}
+
+fn adjacent_text_node() -> MarkupNode {
+  ElementNode {
+    tag: "span",
+    attrs: [],
+    children: [
+      TextNode { text: "a" },
+      TextNode { text: "b" },
+    ],
+  }
+}
+
+fn witness_frontier_not_roundtripped() -> Bool {
+  match ingest_html_source(src: serialize_html_source(node: adjacent_text_node())) {
+    IngestedNode { node } => !(node == adjacent_text_node())
+    IngestRejected { reason: _ } => false
   }
 }
 
@@ -123,4 +131,5 @@ test fn html_roundtrip_keystone_holds() -> Bool {
     && witness_ingest_reads_attr_assign_row()
     && witness_core_advertised_lossless()
     && witness_frontier_unsafe_href_rejected()
+    && witness_frontier_not_roundtripped()
 }
