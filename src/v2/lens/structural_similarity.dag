@@ -1,53 +1,49 @@
 module v2.lens.structural_similarity
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 
-import v2.std.collection { List, Map }
-import v2.std.nat { Nat, Zero }
-import v2.std.node { Symbol }
+import v2.lens.simulated_relationship { congruent }
+import v2.std.node { Node }
+import v2.std.algebra { FreeMonoid, length, skip, is_prefix_of }
+import v2.std.logic { Bool }
 
-type DeclId = Symbol
+// §2-horizontal / §3-nicknaming detector at the TYPE-DECLARATION layer -- the type-decl
+// twin of v2.lens.simulated_relationship (which targets statement chains inside a body).
+// Same anti-unification engine -- `congruent`, the shared kernel seeded in
+// simulated_relationship -- a different BINDER: the leaves that vary across a congruent
+// family of type decls are not a fold's list-element hole but a TYPE PARAMETER hole. N
+// near-identical type decls collapse to one generic (`Int8`..`Int128` = one
+// `Compose<Int, MachineWidth<N>>` axis, not 10 hand-rolled types; `CpuArchitecture` and
+// `TargetArchitecture`, byte-identical enums, = one name). This is consolidated into the
+// v2.lens.intent_linearity registry as a row -- one engine (`congruent`), two binders.
+//
+// Difference from the term binder: a fold needs VARYING data, so simulated_relationship
+// excludes pure duplication; at the type layer byte-identical decls are the STRONGEST §3
+// nickname, so the type binder fires on `congruent` DIRECTLY (identical OR distinct-leaf),
+// and a PAIR already suffices (threshold 2, not the fold's 3). Adjacency reuses the same
+// skip / is_prefix_of machinery: congruence is one shared skeleton, transitive across the
+// family, so "every adjacent pair congruent" closes the whole family. Variant-matching on
+// FreeMonoid stays inside v2.std.algebra (the v2 cross-module generic-instantiation
+// weakness), so the list walk goes through algebra's combinators, never a local match.
 
-type TypeIdent = Symbol
-
-type VariantShape {
-  field_arity: Nat
-  field_type_idents: List<TypeIdent>
-}
-
-type TypeShape {
-  variant_set: List<VariantShape>
-  total_variants: Nat
-}
-
-type FnShapeUnrealized {}
-
-type StructuralShape
-  = TypeDecl { shape: TypeShape }
-  | FnDecl { shape: FnShapeUnrealized }
-
-type StructuralSimilarityVerdict
-  = Unrealized
-  | Produced { index: Map<DeclId, StructuralShape> }
-
-type StructuralSimilarityFact {
-  verdict: StructuralSimilarityVerdict
-}
-
-data structural_similarity_empty_type_shape: TypeShape = {
-  variant_set: [],
-  total_variants: Zero
-}
-
-fn structural_similarity_fact() -> StructuralSimilarityFact {
-  StructuralSimilarityFact {
-    verdict: Unrealized
+// A type-declaration forest is STRUCTURALLY SIMILAR (redundant: collapses to one
+// parameterized type) iff it holds >=2 decls that anti-unify -- share one skeleton,
+// differing only at leaf positions (the type-parameter holes).
+fn type_decls_anti_unify(decls: FreeMonoid<Node>) -> Bool {
+  if length(xs: decls) < 2 {
+    false
+  } else {
+    is_prefix_of(
+      prefix: skip(xs: decls, n: 1),
+      xs: decls,
+      eq: fn(later, earlier) { congruent(a: earlier, b: later) }
+    )
   }
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: WallAfterGrounding {
-    grounding_authority: "the parse/resolve walk producing per-decl TypeShape/VariantShape facts by construction",
-    dissolve_on: "per-decl structural-shape facts are produced by the substrate walk, not by a staged lens producer"
+    grounding_authority: "the parse/resolve walk that projects a module's type declarations into a FreeMonoid<Node> forest (shared with v2.lens.simulated_relationship's statement-chain projector)",
+    dissolve_on: "type_decls_anti_unify runs over live dsl/** type-declaration forests once the parse/resolve walk produces per-module type-decl facts; until then this is a lens_unit predicate over synthetic type-decl forests, consumed as a row of the v2.lens.intent_linearity registry"
   },
-  rationale: "Per-decl structural shape is a decidable index; a scaffold producer-stage substrate (unblocking variant-parameter-clone and structural-similarity) until the parse/resolve walk lands."
+  rationale: "Structural congruence of type declarations is decidable (a wall): type decls that share one skeleton differing only at leaf positions collapse to one generic (the leaves becoming type parameters), and byte-identical decls are the strongest §3 nickname. The undecidable residue (whether the leaf variance is semantically one type parameter or coincidental) stays a ratchet. One engine (`congruent`), two binders (term chain / type forest)."
 }
