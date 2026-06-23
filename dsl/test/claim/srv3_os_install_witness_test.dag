@@ -1,12 +1,10 @@
 module test.claim.srv3_os_install
 
 import std.logic { Bool }
-import std.types { Int }
 import std.os.types { UbuntuOs, WindowsOs, MacosOs, NobleNumbat2404Lts }
 import extdeps.toolchain.types { X86_64, Riscv64 }
 import extdeps.provisioning.network_boot {
   network_uefi_bootloader_artifact,
-  DhcpBootDirection,
   NativeDhcpBootOptions,
   ProxyDhcp,
   UefiHttpBoot,
@@ -30,13 +28,6 @@ import extdeps.bmc.types {
 }
 import extdeps.boards.asrock_rack {
   asrock_altrad8ud_virtual_media_support,
-}
-
-fn dhcp_direction_tag(d: DhcpBootDirection) -> Int {
-  match d {
-    NativeDhcpBootOptions => 0
-    ProxyDhcp => 1
-  }
 }
 
 test fn srv3_bootloader_artifact_is_arch_grounded() -> Bool {
@@ -63,15 +54,19 @@ test fn srv3_chain_is_uefi_http_boot() -> Bool {
 }
 
 test fn srv3_survey_forces_proxy_dhcp() -> Bool {
-  dhcp_direction_tag(srv3_network_boot_chain.dhcp_direction) == 1
-    && dhcp_direction_tag(
-      survey_implied_dhcp_direction(
-        survey: LanInstallInfraSurvey {
-          existing_dhcp_configurable: true,
-          dedicated_install_server_present: false,
-        }
-      )
-    ) == 0
+  match srv3_network_boot_chain.dhcp_direction {
+    ProxyDhcp => true
+    NativeDhcpBootOptions => false
+  }
+    && match survey_implied_dhcp_direction(
+      survey: LanInstallInfraSurvey {
+        existing_dhcp_configurable: true,
+        dedicated_install_server_present: false,
+      }
+    ) {
+      ProxyDhcp => false
+      NativeDhcpBootOptions => true
+    }
 }
 
 test fn srv3_board_has_no_virtual_media() -> Bool {
