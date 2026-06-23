@@ -28,7 +28,7 @@ fn plan_dissolution_blocks(p: Plan) -> List<MarkdownBlock> {
 }
 
 fn plan_to_blocks(p: Plan) -> List<MarkdownBlock> {
-  concat(concat([plan_h1(text: concat("Plan — ", p.title))], p.body), plan_dissolution_blocks(p: p))
+  concat(concat([plan_h1(text: p.title)], p.body), plan_dissolution_blocks(p: p))
 }
 
 fn plan_to_document(p: Plan) -> MarkdownDocument {
