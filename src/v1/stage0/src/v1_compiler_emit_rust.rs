@@ -3559,9 +3559,29 @@ pub fn emit_module_full(
             __result
         });
         let module_import_items = module_imports(m.clone());
-        let coproduct_wire_contract_validations = emit_coproduct_wire_contract_validations(
+        let this_module_name = authored_name(scope.type_env.clone(), m.clone());
+        let sidecar_items = contracts_items_for_module(
+            this_module_name.clone(),
+            typed_modules.clone(),
+            scope.type_env.clone().source_indices.clone(),
+            module_index.clone(),
+        );
+        let wire_context_items = v1_rt::concat(
             typed_module.items.clone(),
+            sidecar_items.clone(),
+        );
+        let wire_context_imports = v1_rt::concat(
             module_import_items.clone(),
+            contracts_imports_for_module(
+                this_module_name.clone(),
+                typed_modules.clone(),
+                scope.type_env.clone().source_indices.clone(),
+                module_index.clone(),
+            ),
+        );
+        let coproduct_wire_contract_validations = emit_coproduct_wire_contract_validations(
+            wire_context_items.clone(),
+            wire_context_imports.clone(),
             local_coproduct_names,
             scope.type_env.clone().source_indices.clone(),
         );
@@ -3582,27 +3602,41 @@ pub fn emit_module_full(
                 local_enum_uses.clone().join(&"\n".to_string()),
             )
         };
-        let wire_contract_item = Rc::new({
-            let mut __result = Vec::new();
-            for i in typed_module.items.clone().iter().cloned() {
-                if (item_binding_is_named(
-                    scope.type_env.clone(),
-                    i.clone(),
-                    "wire_contract".to_string(),
-                ) && match v1_rt::map_get(
-                    &scope.item_registry.clone(),
-                    "wire_contract".to_string(),
-                ) {
-                    Some(info) => (info.kind.clone() == ItemKind::DataItem),
-                    None => false,
-                }) {
-                    __result.push(i);
+        // Primary module: strict guard (name + registry DataItem check).
+        // Sidecar fallback: name-only check — sidecar items are curated by the
+        // _contracts.dag convention and not registered in the primary module's scope.
+        let wire_contract_item = {
+            let from_primary = Rc::new({
+                let mut __result = Vec::new();
+                for i in typed_module.items.clone().iter().cloned() {
+                    if (item_binding_is_named(
+                        scope.type_env.clone(),
+                        i.clone(),
+                        "wire_contract".to_string(),
+                    ) && match v1_rt::map_get(
+                        &scope.item_registry.clone(),
+                        "wire_contract".to_string(),
+                    ) {
+                        Some(info) => (info.kind.clone() == ItemKind::DataItem),
+                        None => false,
+                    }) {
+                        __result.push(i);
+                    }
                 }
-            }
-            __result
-        })
-        .first()
-        .cloned();
+                __result
+            })
+            .first()
+            .cloned();
+            from_primary.or_else(|| {
+                sidecar_items.clone().iter().cloned().find(|i| {
+                    item_binding_is_named(
+                        scope.type_env.clone(),
+                        i.clone(),
+                        "wire_contract".to_string(),
+                    )
+                })
+            })
+        };
         let items_str = Rc::new({
             let mut __result = Vec::new();
             for item in typed_module.items.clone().iter().cloned() {
@@ -3615,8 +3649,8 @@ pub fn emit_module_full(
                     emit_info.clone(),
                     wire_contract_item.clone(),
                     scoped_data_items.clone(),
-                    typed_module.items.clone(),
-                    module_import_items.clone(),
+                    wire_context_items.clone(),
+                    wire_context_imports.clone(),
                     export_sets.clone(),
                     typed_modules.clone(),
                     module_index.clone(),
@@ -3805,6 +3839,36 @@ pub fn typed_module_by_name(
     module_index: Rc<ModuleIndex>,
 ) -> Option<Rc<TypedModule>> {
     v1_rt::map_get(&module_index.by_name.clone(), module_name)
+}
+
+pub fn contracts_items_for_module(
+    module_name: String,
+    typed_modules: Rc<Vec<Rc<TypedModule>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    module_index: Rc<ModuleIndex>,
+) -> Rc<Vec<Rc<Node>>> {
+    match v1_rt::map_get(
+        &module_index.by_name.clone(),
+        v1_rt::concat(module_name, "_contracts".to_string()),
+    ) {
+        Some(tm) => tm.items.clone(),
+        None => Rc::new(vec![]),
+    }
+}
+
+pub fn contracts_imports_for_module(
+    module_name: String,
+    typed_modules: Rc<Vec<Rc<TypedModule>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    module_index: Rc<ModuleIndex>,
+) -> Rc<Vec<Rc<Node>>> {
+    match v1_rt::map_get(
+        &module_index.by_name.clone(),
+        v1_rt::concat(module_name, "_contracts".to_string()),
+    ) {
+        Some(tm) => module_imports(tm.module.clone()),
+        None => Rc::new(vec![]),
+    }
 }
 
 pub fn module_name_from_filename(
