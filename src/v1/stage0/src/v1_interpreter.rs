@@ -4078,9 +4078,10 @@ pub fn resolve_auth(
         return AuthResolution::NoAuthDeclared;
     }
 
-    // §3: a caller-supplied input token wins over an ambient env var. Extract the String
-    // payload explicitly (the token is a Secret = Value::Str) rather than relying on Display —
-    // a non-string Value must NOT produce a stringified-debug Bearer header; fall through instead.
+    // §3: caller-supplied input token wins over ambient env var when non-empty; if the input
+    // field is absent or empty, fall through to auth_source so dual-declare services
+    // (auth_input + auth_source) get the env-var fallback.  Extract the String payload
+    // explicitly — a non-Str Value must NOT produce a stringified-debug Bearer header.
     if let Some(ref field) = input_field_name {
         if let Some(Value::Str(tok)) = param_env.lookup(ctx.sym(field)) {
             if !tok.is_empty() {
@@ -4090,9 +4091,7 @@ pub fn resolve_auth(
                 };
             }
         }
-        return AuthResolution::DeclaredButUnwired {
-            reason: format!("auth_input field '{}' resolved to no token", field),
-        };
+        // input field unresolved or empty — fall through to auth_source attempt below.
     }
 
     match env_var_name.and_then(|var| resolve_env_var_token(ctx, &var)) {
@@ -4101,7 +4100,8 @@ pub fn resolve_auth(
             token: tok,
         },
         _ => AuthResolution::DeclaredButUnwired {
-            reason: "auth declared but no token resolved (auth_source env var absent or empty)"
+            reason: "auth declared but no token resolved (auth_input unresolved/empty, \
+                     auth_source env var absent or empty)"
                 .to_string(),
         },
     }
