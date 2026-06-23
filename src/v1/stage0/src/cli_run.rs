@@ -3821,11 +3821,9 @@ mod sidecar_placement_hygiene_tests {
         let root = dir.to_string_lossy().into_owned();
         let result = discover_floor_corpus_rows(&[root], &[]);
         let _ = std::fs::remove_dir_all(&dir);
-        assert!(
-            result.is_err(),
-            "misplaced wire-contract decl must drive discover_floor_corpus_rows to Err"
-        );
-        let msg = result.unwrap_err();
+        let msg = result
+            .err()
+            .expect("misplaced wire-contract decl must drive discover_floor_corpus_rows to Err");
         assert!(
             msg.contains("wire-contract decls") && msg.contains("_contracts.dag"),
             "error must name the decl type and required suffix: {msg}"
