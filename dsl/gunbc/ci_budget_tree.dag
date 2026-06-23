@@ -1,0 +1,140 @@
+module gunbc.ci_budget_tree
+
+import std.measure { ByteSize, byte_size, measure_scale_fraction_floor, Memory, One }
+import std.types { Int, List, String }
+import std.realization_width { byte_size_saturating_sub }
+import extdeps.accounting.budget { Appropriation, LineItem }
+import product.budget_tree {
+  BudgetNode, BudgetClaim, BudgetPriority, Guaranteed,
+  budget_child_named
+}
+import product.compute_fabric { compute_host_ram_bytes_total }
+import gunbc.operator_fleet { srv1_host }
+import gunbc.ci_floor_measurement {
+  HostFixedOverhead, HostFixedOverheadMeasured, HostFixedOverheadUnmeasured,
+  gunbc_ci_host_fixed_overhead
+}
+import gunbc.ci_runner_placement { gunbc_ci_runners_per_host }
+
+// ── consumer-0: the real srv1 fleet budget tree, instantiated from measured numbers ──
+//
+// Every figure below is read from an existing single authority, never re-coined:
+//   host RAM      -> compute_host_ram_bytes_total(srv1_host)        (operator_fleet, 128 GiB)
+//   fixed overhead-> gunbc_ci_host_fixed_overhead                   (ci_floor_measurement, 16 GiB)
+//   R (runs/host) -> gunbc_ci_runners_per_host()                    (ci_runner_placement, divide-once)
+// The tree is the §3 single authority for the memory split; consumers (Track A: the .dag
+// floor spawn-width) DESCEND it for their allocation rather than re-dividing host RAM.
+
+fn srv1_node_name() -> String {
+  "srv1"
+}
+
+fn srv1_run_pool_name() -> String {
+  "ci_run_pool"
+}
+
+fn srv1_ci_run_name() -> String {
+  "ci_run"
+}
+
+fn srv1_appropriation(b: ByteSize) -> Appropriation<Memory, One> {
+  Appropriation { ceiling: b }
+}
+
+fn srv1_host_ram() -> ByteSize {
+  compute_host_ram_bytes_total(host: srv1_host)
+}
+
+// Fail closed: an unmeasured overhead reserves the entire host, leaving zero run budget, so a
+// missing measurement collapses the floor width to the conservative fallback rather than
+// fabricating headroom the host does not have.
+fn srv1_fixed_overhead_bytes() -> ByteSize {
+  match gunbc_ci_host_fixed_overhead {
+    HostFixedOverheadMeasured { bytes: b } => b
+    HostFixedOverheadUnmeasured => srv1_host_ram()
+  }
+}
+
+// L1: host RAM minus the fixed overhead claim, shared across the R concurrent runs.
+fn srv1_run_pool_budget() -> ByteSize {
+  byte_size_saturating_sub(total: srv1_host_ram(), reserved: srv1_fixed_overhead_bytes())
+}
+
+// R, guarded against a degenerate zero so the divide-once never divides by zero.
+fn srv1_runs_per_host() -> Int {
+  let r = gunbc_ci_runners_per_host()
+  if r <= 0 { 1 } else { r }
+}
+
+// L2: one run's share of the pool. Divide-once: a run imports its parent's allocation
+// (run_pool budget) split R ways; it never re-divides host RAM.
+fn srv1_per_run_budget() -> ByteSize {
+  measure_scale_fraction_floor(m: srv1_run_pool_budget(), num: 1, den: srv1_runs_per_host())
+}
+
+fn srv1_overhead_claim() -> BudgetClaim {
+  BudgetClaim {
+    item: LineItem { purpose: "host_fixed_overhead", amount: srv1_fixed_overhead_bytes() },
+    priority: Guaranteed
+  }
+}
+
+fn srv1_ci_run_node_value() -> BudgetNode {
+  BudgetNode {
+    name: srv1_ci_run_name(),
+    appropriation: srv1_appropriation(b: srv1_per_run_budget()),
+    claims: [],
+    children: []
+  }
+}
+
+fn replicate_budget_node(n: Int, node: BudgetNode) -> List<BudgetNode> {
+  if n <= 0 { [] } else { concat([node], replicate_budget_node(n: n - 1, node: node)) }
+}
+
+fn srv1_run_children() -> List<BudgetNode> {
+  replicate_budget_node(n: srv1_runs_per_host(), node: srv1_ci_run_node_value())
+}
+
+fn srv1_run_pool_node_value() -> BudgetNode {
+  BudgetNode {
+    name: srv1_run_pool_name(),
+    appropriation: srv1_appropriation(b: srv1_run_pool_budget()),
+    claims: [],
+    children: srv1_run_children()
+  }
+}
+
+fn build_srv1_budget_tree() -> BudgetNode {
+  BudgetNode {
+    name: srv1_node_name(),
+    appropriation: srv1_appropriation(b: srv1_host_ram()),
+    claims: [srv1_overhead_claim()],
+    children: [srv1_run_pool_node_value()]
+  }
+}
+
+data srv1_budget_tree: BudgetNode = build_srv1_budget_tree()
+
+// ── the consumer read path: descend the tree to the L2 (per-run) allocation ──
+fn srv1_run_pool_node() -> BudgetNode? {
+  budget_child_named(node: srv1_budget_tree, name: srv1_run_pool_name())
+}
+
+fn srv1_ci_run_node() -> BudgetNode? {
+  match srv1_run_pool_node() {
+    Absent => none
+    Present { value: pool } => budget_child_named(node: pool, name: srv1_ci_run_name())
+  }
+}
+
+// The memory budget the .dag floor spawn-width consumes. Sourced by DESCENT from the tree's
+// L2 node, never a free parameter — so an over-wide spawn that would exceed a single run's
+// share is unwritable: the budget is constructed by divide-once, not passed in. A malformed
+// tree (no run node) yields a zero budget, which drives the floor to its conservative fallback.
+fn srv1_floor_memory_budget() -> ByteSize {
+  match srv1_ci_run_node() {
+    Absent => byte_size(0)
+    Present { value: run } => run.appropriation.ceiling
+  }
+}

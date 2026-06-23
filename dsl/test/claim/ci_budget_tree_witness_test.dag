@@ -1,0 +1,59 @@
+module test.claim.ci_budget_tree_witness
+
+import std.logic { Bool }
+import std.measure { byte_size_count }
+import product.budget_tree { node_conserves, budget_child_named }
+import gunbc.ci_budget_tree {
+  srv1_budget_tree,
+  srv1_host_ram,
+  srv1_run_pool_budget,
+  srv1_per_run_budget,
+  srv1_floor_memory_budget,
+  srv1_ci_run_node,
+}
+
+// The instantiated srv1 tree conserves: at every node the claims plus the children's
+// appropriations stay within the node's own appropriation (divide-once, recursive).
+fn witness_srv1_tree_conserves() -> Bool {
+  node_conserves(node: srv1_budget_tree)
+}
+
+// The floor's memory budget is read off the tree's L2 node by descent, and it equals the
+// per-run allocation the tree was built from: construction (the data) and the read agree.
+fn witness_floor_budget_is_l2_allocation() -> Bool {
+  byte_size_count(b: srv1_floor_memory_budget()) == byte_size_count(b: srv1_per_run_budget())
+}
+
+// Divide-once actually reduced the budget: a single run's share is strictly less than the
+// whole host RAM and strictly less than the post-overhead pool.
+fn witness_divide_once_reduces_below_host() -> Bool {
+  let per_run = byte_size_count(b: srv1_floor_memory_budget())
+  per_run > 0
+    && per_run < byte_size_count(b: srv1_run_pool_budget())
+    && byte_size_count(b: srv1_run_pool_budget()) < byte_size_count(b: srv1_host_ram())
+}
+
+// The descent finds the real run node (not the fail-closed fallback).
+fn witness_l2_node_present() -> Bool {
+  match srv1_ci_run_node() {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+// Fail-closed control: a name that is not a child of the root yields Absent, so a consumer
+// asking for a wrong allocation gets no fabricated budget.
+fn witness_unknown_child_is_absent() -> Bool {
+  match budget_child_named(node: srv1_budget_tree, name: "__no_such_child__") {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+test fn ci_budget_tree_holds() -> Bool {
+  witness_srv1_tree_conserves()
+    && witness_floor_budget_is_l2_allocation()
+    && witness_divide_once_reduces_below_host()
+    && witness_l2_node_present()
+    && witness_unknown_child_is_absent()
+}

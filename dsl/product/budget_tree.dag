@@ -48,6 +48,14 @@ fn node_conserves(node: BudgetNode) -> Bool {
   node_conserves_local(node: node) && all(node.children, c => node_conserves(node: c))
 }
 
+// Descent: the named child of a node, or Absent when no child carries that name.
+// A consumer reads its allocation off the tree by name (divide-once: it imports the
+// parent's allocation, never re-divides the root). A missing name returns Absent so the
+// caller fails closed rather than fabricating a budget.
+fn budget_child_named(node: BudgetNode, name: String) -> BudgetNode? {
+  filter(node.children, c => c.name == name).first()
+}
+
 fn admit_claims(node: BudgetNode) -> AdmissionState<Memory, One> {
   admit_all(appropriation: node.appropriation, candidates: claim_items(claims: node.claims))
 }
