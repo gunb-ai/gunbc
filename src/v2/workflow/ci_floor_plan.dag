@@ -253,10 +253,6 @@ fn gunbc_ci_floor_spawn_width_for_budget(memory_budget: ByteSize) -> HardwareThr
   )
 }
 
-// Track A: the floor spawn-width derives its memory budget from the srv1 budget tree's L2
-// (per-run) allocation by DESCENT — not from a free parameter. The divide-once tree governs
-// the floor: an over-wide spawn that would exceed one run's share is unwritable, because the
-// budget is constructed (host RAM - overhead, divided R ways), never passed in.
 fn gunbc_ci_floor_spawn_width() -> HardwareThreadCount {
   gunbc_ci_floor_spawn_width_for_budget(memory_budget: srv1_floor_memory_budget())
 }
@@ -296,18 +292,12 @@ fn witness_floor_unreadable_budget_uses_conservative_envelope() -> Bool {
   demand_envelope_thread_count(envelope: envelope) == gunbc_ci_floor_conservative_fallback_width
 }
 
-// Track A: the tree-derived floor width is strictly narrower than the cpu-only (budget-blind)
-// baseline. Comparing against the unbounded cpu/breadth cap (not the full-host memory figure)
-// makes the witness discriminate exactly what it claims: memory IS the binding constraint and
-// the divide-once L2 budget governs the floor. If memory were not binding both widths collapse
-// to the cpu cap and the witness reds — correctly signalling the tree no longer governs.
 fn witness_floor_width_governed_by_budget_tree() -> Bool {
   let tree_width = hardware_thread_count_value(t: gunbc_ci_floor_spawn_width())
   let cpu_only_width = hardware_thread_count_value(t: bounded_host_spawn_width(shard_count: gunbc_ci_floor_breadth(), hardware_threads: gunbc_ci_floor_hardware_threads()))
   return tree_width < cpu_only_width
 }
 
-// The tree-derived budget is real (positive) and the floor spawns at least one worker.
 fn witness_floor_width_derived_from_tree_is_positive() -> Bool {
   byte_size_count(b: srv1_floor_memory_budget()) > 0
     && hardware_thread_count_value(t: gunbc_ci_floor_spawn_width()) > 0

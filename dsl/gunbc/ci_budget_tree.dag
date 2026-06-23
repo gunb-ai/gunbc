@@ -17,14 +17,6 @@ import gunbc.ci_floor_measurement {
 }
 import gunbc.ci_runner_placement { gunbc_ci_runners_per_host }
 
-// ── consumer-0: the real srv1 fleet budget tree, instantiated from measured numbers ──
-//
-// Every figure below is read from an existing single authority, never re-coined:
-//   host RAM      -> compute_host_ram_bytes_total(srv1_host)        (operator_fleet, 128 GiB)
-//   fixed overhead-> gunbc_ci_host_fixed_overhead                   (ci_floor_measurement, 16 GiB)
-//   R (runs/host) -> gunbc_ci_runners_per_host()                    (ci_runner_placement, divide-once)
-// The tree is the §3 single authority for the memory split; consumers (Track A: the .dag
-// floor spawn-width) DESCEND it for their allocation rather than re-dividing host RAM.
 
 fn srv1_node_name() -> String {
   "srv1"
@@ -46,9 +38,6 @@ fn srv1_host_ram() -> ByteSize {
   compute_host_ram_bytes_total(host: srv1_host)
 }
 
-// Fail closed: an unmeasured overhead reserves the entire host, leaving zero run budget, so a
-// missing measurement collapses the floor width to the conservative fallback rather than
-// fabricating headroom the host does not have.
 fn srv1_fixed_overhead_bytes() -> ByteSize {
   match gunbc_ci_host_fixed_overhead {
     HostFixedOverheadMeasured { bytes: b } => b
@@ -56,7 +45,6 @@ fn srv1_fixed_overhead_bytes() -> ByteSize {
   }
 }
 
-// L1: host RAM minus the fixed overhead claim, shared across the R concurrent runs.
 fn srv1_run_pool_budget() -> ByteSize {
   byte_size_saturating_sub(total: srv1_host_ram(), reserved: srv1_fixed_overhead_bytes())
 }
@@ -65,9 +53,6 @@ fn srv1_runs_per_host() -> Int {
   gunbc_ci_runners_per_host()
 }
 
-// Divide-once split, fail-closed on a degenerate R (<= 0): a zero per-run budget collapses the
-// floor to its conservative fallback rather than fabricating a count of 1 — the same shape as
-// srv1_fixed_overhead_bytes (unmeasured => zero headroom), never a quiet substitution.
 fn per_run_budget_split(pool: ByteSize, r: Int) -> ByteSize {
   if r <= 0 {
     measure_scale_fraction_floor(m: pool, num: 0, den: 1)
@@ -76,8 +61,6 @@ fn per_run_budget_split(pool: ByteSize, r: Int) -> ByteSize {
   }
 }
 
-// L2: one run's share of the pool. Divide-once: a run imports its parent's allocation
-// (run_pool budget) split R ways; it never re-divides host RAM.
 fn srv1_per_run_budget() -> ByteSize {
   per_run_budget_split(pool: srv1_run_pool_budget(), r: srv1_runs_per_host())
 }
@@ -126,7 +109,6 @@ fn build_srv1_budget_tree() -> BudgetNode {
 
 data srv1_budget_tree: BudgetNode = build_srv1_budget_tree()
 
-// ── the consumer read path: descend the tree to the L2 (per-run) allocation ──
 fn srv1_run_pool_node() -> BudgetChild {
   budget_child_named(node: srv1_budget_tree, name: srv1_run_pool_name())
 }
@@ -138,10 +120,6 @@ fn srv1_ci_run_node() -> BudgetChild {
   }
 }
 
-// The memory budget the .dag floor spawn-width consumes. Sourced by DESCENT from the tree's
-// L2 node, never a free parameter — so an over-wide spawn that would exceed a single run's
-// share is unwritable: the budget is constructed by divide-once, not passed in. A malformed
-// tree (no run node) yields a zero budget, which drives the floor to its conservative fallback.
 fn srv1_floor_memory_budget() -> ByteSize {
   match srv1_ci_run_node() {
     BudgetChildMissing => byte_size(0)

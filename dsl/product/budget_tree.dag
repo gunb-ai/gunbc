@@ -48,11 +48,6 @@ fn node_conserves(node: BudgetNode) -> Bool {
   node_conserves_local(node: node) && all(node.children, c => node_conserves(node: c))
 }
 
-// Descent result as a closed sum (not a raw-nullable optional, which cannot be branched on
-// with match): BudgetChildFound carries the named child, BudgetChildMissing is the fail-closed
-// case when no child carries that name. A consumer reads its allocation off the tree by name
-// (divide-once: it imports the parent's allocation, never re-divides the root); a missing name
-// yields BudgetChildMissing so the caller fails closed rather than fabricating a budget.
 type BudgetChild =
     BudgetChildFound { node: BudgetNode }
   | BudgetChildMissing
