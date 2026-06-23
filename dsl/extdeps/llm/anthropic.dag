@@ -6,6 +6,7 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.coverage { CoverageClosureEntry, CoverageClosureFact }
 import extdeps.llm.anthropic_contracts {
+  wire_contract,
   anthropic_chat_message_wire_contract,
   anthropic_user_content_block_wire_contract,
   anthropic_assistant_content_block_wire_contract,
