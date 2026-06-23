@@ -1,6 +1,6 @@
 module test.claim.docker_container_stats_witness
 
-import extdeps.docker.container_stats { CpuStats, CpuUsage, MemoryStats, ContainerStats, PidStats, BlkioStats, NetworkStats, Networks, container_stats_memory_usage, container_stats_cpu_usage_total, container_stats_online_cpus }
+import extdeps.docker.container_stats { CpuStats, CpuUsage, MemoryStats, ContainerStats, PidStats, NetworkStats, Networks, container_stats_memory_usage, container_stats_cpu_usage_total, container_stats_online_cpus }
 import extdeps.docker.container_inspect { ContainerState, ContainerStateDetail, HostConfig, ContainerConfig, ContainerInspect, NetworkSettings, container_state_is_running, container_inspect_memory_limit, container_inspect_cpu_quota, container_inspect_cpu_period, Running, Exited, Paused }
 import std.measure { byte_size }
 

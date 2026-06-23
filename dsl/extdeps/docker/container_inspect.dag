@@ -1,6 +1,7 @@
 module extdeps.docker.container_inspect
 
-import std.types { Timestamp, String, Int, Nat, FilePath }
+import std.types { Timestamp, String, Int, FilePath }
+import std.nat { Nat }
 import std.measure { ByteSize, byte_size, byte_size_count }
 import std.serialization { VariantEncoding, StringVariant, VariantNaming, AsAuthored, CoproductWireContract }
 import extdeps.external_authority { ExternalAuthority }
