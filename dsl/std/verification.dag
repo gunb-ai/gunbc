@@ -19,14 +19,14 @@ type AssertKind
   | AssertSome
   | AssertNone
 
-type TestClaim {
+type AssertionClaim {
   kind: AssertKind
   label: String
 }
 
 type TestCase {
   name: String
-  claims: List<TestClaim>
+  claims: List<AssertionClaim>
   ignored: Bool
 }
 
