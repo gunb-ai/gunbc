@@ -100,7 +100,7 @@ fn emission_ingestion_inverse_body() -> List<MarkdownBlock> {
         row(cells: [cell(text: "GitHub Actions `$\{\{ \}\}` expression language"), cell(text: "**opaque `String`** (🟡 scaffold) — worst"), cell(text: "`actions.dag` `*Expression \{ expression: String \}`; inline `$\{\{ runner.temp \}\}`/`$\{\{ hashFiles(…) \}\}` in `ci_workflow.dag`")]),
         row(cells: [cell(text: "CI YAML structure + shell-in-`run:`"), cell(text: "partly modeled, values strings; **three nested unmodeled languages** (YAML + GHA-expr + shell) all grepped"), cell(text: "`ci_yaml_serializer_witness_test.dag`, `ci_runner_seam_witness_test.dag`")]),
         row(cells: [cell(text: "bash intent (`program.dag`)"), cell(text: "sidecar AST, 11 importers"), cell(text: "the §5 guard's existing target")]),
-        row(cells: [cell(text: "**markup** (react/html/markdown)"), cell(text: "**modeled with escape semantics + MODEL-level discriminating witnesses** — the target state"), cell(text: "`react_markup_witness_test.dag` checks the *reject behavior* (`escape_url`, std/markup SECURITY SCOPE), not a grep")]),
+        row(cells: [cell(text: "**markup** (react/html/markdown)"), cell(text: "**modeled with escape semantics + MODEL-level discriminating witnesses** — the target state"), cell(text: "`html_emit_witness_test.dag` checks the *reject behavior* (`escape_url`, std/markup SECURITY SCOPE), not a grep")]),
       ],
     },
     p(text: "Markup already does it right; the CI YAML is the same problem three layers deep, still strings."),
