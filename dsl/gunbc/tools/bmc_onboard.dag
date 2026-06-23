@@ -8,8 +8,6 @@ import extdeps.cloud.gcp.gcp { GcpProjectId }
 import extdeps.shell
 import gunbc.bmc_onboarding { new_altra_onboarding_plan }
 import std.credentials { Stored }
-import std.encoding { base64_encode, base64_decode, Standard }
-import std.integer { UInt8 }
 import std.types { NonEmptyStr, Secret, String }
 import std.logic { Bool }
 import std.resources { Network }
