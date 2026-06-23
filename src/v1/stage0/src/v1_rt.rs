@@ -474,9 +474,9 @@ pub fn is_xid_continue(cp: i64) -> bool {
 }
 
 pub fn is_emoji_ident(cp: i64) -> bool {
-    use unicode_properties::UnicodeEmoji;
+    use unicode_properties::emoji::UnicodeEmoji;
     char::from_u32(cp as u32)
-        .map(|c| c.is_extended_pictographic())
+        .map(|c| c.is_emoji_char() && !unicode_ident::is_xid_continue(c))
         .unwrap_or(false)
 }
 

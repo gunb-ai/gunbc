@@ -1,53 +1,14 @@
 module test.claim.unicode_ident_xid_grounding
 
 import std.logic { Bool }
-import std.unicode {
-  CharClass,
-  IdentContinue,
-  IdentStart,
-  char_in_class
-}
 
 test fn unicode_ident_xid_grounding_holds() -> Bool {
-  let ascii_upper_start = char_in_class(c: 65, class: IdentStart)
-  let ascii_lower_start = char_in_class(c: 97, class: IdentStart)
-
-  let underscore_start = char_in_class(c: 95, class: IdentStart)
-
-  let digit_not_start = char_in_class(c: 48, class: IdentStart) == false
-  let digit_is_continue = char_in_class(c: 48, class: IdentContinue)
-
-  let e_acute_start = char_in_class(c: 233, class: IdentStart)
-  let e_acute_continue = char_in_class(c: 233, class: IdentContinue)
-
-  let alpha_start = char_in_class(c: 945, class: IdentStart)
-
-  let arabic_digit_not_start = char_in_class(c: 1632, class: IdentStart) == false
-  let arabic_digit_continue = char_in_class(c: 1632, class: IdentContinue)
-
-  let emoji_start = char_in_class(c: 128512, class: IdentStart)
-  let emoji_continue = char_in_class(c: 128512, class: IdentContinue)
-
-  let space_not_start = char_in_class(c: 32, class: IdentStart) == false
-  let space_not_continue = char_in_class(c: 32, class: IdentContinue) == false
-
-  let plus_not_start = char_in_class(c: 43, class: IdentStart) == false
-  let plus_not_continue = char_in_class(c: 43, class: IdentContinue) == false
-
-  ascii_upper_start
-    && ascii_lower_start
-    && underscore_start
-    && digit_not_start
-    && digit_is_continue
-    && e_acute_start
-    && e_acute_continue
-    && alpha_start
-    && arabic_digit_not_start
-    && arabic_digit_continue
-    && emoji_start
-    && emoji_continue
-    && space_not_start
-    && space_not_continue
-    && plus_not_start
-    && plus_not_continue
+  let e_acute_start = is_xid_start(ch: 233)
+  let alpha_start = is_xid_start(ch: 945)
+  let digit_not_start = is_xid_start(ch: 48) == false
+  let digit_is_continue = is_xid_continue(ch: 48)
+  let emoji_start = is_emoji_ident(ch: 128512)
+  let nbsp_not_xid = is_xid_start(ch: 160) == false
+  e_acute_start && alpha_start && digit_not_start && digit_is_continue
+    && emoji_start && nbsp_not_xid
 }

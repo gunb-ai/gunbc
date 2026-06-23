@@ -11,3 +11,5 @@ text_lookup_work_counter = []
 stacker = "0.1"
 serde = { version = "1", features = ["derive", "rc"] }
 serde_json = "1"
+unicode-ident = "1"
+unicode-properties = { version = "0.1", features = ["emoji"] }

@@ -782,6 +782,8 @@ dependencies = [
  "serde",
  "serde_json",
  "stacker",
+ "unicode-ident",
+ "unicode-properties",
 ]
 
 [[package]]
