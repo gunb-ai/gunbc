@@ -124,11 +124,14 @@ fn base64_alphabet(variant: Base64Variant) -> String {
   }
 }
 
+type Base64EncodeBuf
+  = EncEmpty
+  | EncOne { b0: Int }
+  | EncTwo { b0: Int, b1: Int }
+
 type Base64EncodeState {
   out: String
-  count: Int
-  b0: Int
-  b1: Int
+  buf: Base64EncodeBuf
 }
 
 fn base64_octet_int(b: UInt8) -> Int {
@@ -140,49 +143,51 @@ fn base64_sextet_char(alphabet: String, n: Int, divisor: Int) -> String {
 }
 
 fn base64_encode_step(st: Base64EncodeState, octet: Int, alphabet: String) -> Base64EncodeState {
-  if st.count == 0 {
-    Base64EncodeState { out: st.out, count: 1, b0: octet, b1: 0 }
-  } else if st.count == 1 {
-    Base64EncodeState { out: st.out, count: 2, b0: st.b0, b1: octet }
-  } else {
-    let n = st.b0 * 65536 + st.b1 * 256 + octet
-    let quad = concat(
-      base64_sextet_char(alphabet: alphabet, n: n, divisor: 262144),
-      base64_sextet_char(alphabet: alphabet, n: n, divisor: 4096),
-      base64_sextet_char(alphabet: alphabet, n: n, divisor: 64),
-      char_at(alphabet, n % 64)
-    )
-    Base64EncodeState { out: concat(st.out, quad), count: 0, b0: 0, b1: 0 }
+  match st.buf {
+    EncEmpty => Base64EncodeState { out: st.out, buf: EncOne { b0: octet } }
+    EncOne { b0: x } => Base64EncodeState { out: st.out, buf: EncTwo { b0: x, b1: octet } }
+    EncTwo { b0: x, b1: y } => {
+      let n = x * 65536 + y * 256 + octet
+      let quad = concat(
+        base64_sextet_char(alphabet: alphabet, n: n, divisor: 262144),
+        base64_sextet_char(alphabet: alphabet, n: n, divisor: 4096),
+        base64_sextet_char(alphabet: alphabet, n: n, divisor: 64),
+        char_at(alphabet, n % 64)
+      )
+      Base64EncodeState { out: concat(st.out, quad), buf: EncEmpty }
+    }
   }
 }
 
 fn base64_encode_flush(st: Base64EncodeState, alphabet: String) -> String {
-  if st.count == 1 {
-    let n = st.b0 * 65536
-    concat(
-      st.out,
-      base64_sextet_char(alphabet: alphabet, n: n, divisor: 262144),
-      base64_sextet_char(alphabet: alphabet, n: n, divisor: 4096),
-      "=="
-    )
-  } else if st.count == 2 {
-    let n = st.b0 * 65536 + st.b1 * 256
-    concat(
-      st.out,
-      base64_sextet_char(alphabet: alphabet, n: n, divisor: 262144),
-      base64_sextet_char(alphabet: alphabet, n: n, divisor: 4096),
-      base64_sextet_char(alphabet: alphabet, n: n, divisor: 64),
-      "="
-    )
-  } else {
-    st.out
+  match st.buf {
+    EncEmpty => st.out
+    EncOne { b0: x } => {
+      let n = x * 65536
+      concat(
+        st.out,
+        base64_sextet_char(alphabet: alphabet, n: n, divisor: 262144),
+        base64_sextet_char(alphabet: alphabet, n: n, divisor: 4096),
+        "=="
+      )
+    }
+    EncTwo { b0: x, b1: y } => {
+      let n = x * 65536 + y * 256
+      concat(
+        st.out,
+        base64_sextet_char(alphabet: alphabet, n: n, divisor: 262144),
+        base64_sextet_char(alphabet: alphabet, n: n, divisor: 4096),
+        base64_sextet_char(alphabet: alphabet, n: n, divisor: 64),
+        "="
+      )
+    }
   }
 }
 
 fn base64_encode(octets: List<UInt8>, variant: Base64Variant) -> String {
   let alphabet = base64_alphabet(variant: variant)
   let st = fold(octets,
-    init: Base64EncodeState { out: "", count: 0, b0: 0, b1: 0 },
+    init: Base64EncodeState { out: "", buf: EncEmpty },
     f: (acc, octet) => base64_encode_step(st: acc, octet: base64_octet_int(b: octet), alphabet: alphabet)
   )
   base64_encode_flush(st: st, alphabet: alphabet)
@@ -229,47 +234,47 @@ fn base64_collect_values(s: String, i: Int, len: Int, variant: Base64Variant, se
   }
 }
 
+type Base64DecodeBuf
+  = DecEmpty
+  | DecOne { v0: Int }
+  | DecTwo { v0: Int, v1: Int }
+  | DecThree { v0: Int, v1: Int, v2: Int }
+
 type Base64DecodeState {
   out: List<Int>
-  count: Int
-  v0: Int
-  v1: Int
-  v2: Int
+  buf: Base64DecodeBuf
 }
 
 fn base64_decode_step(st: Base64DecodeState, v: Int) -> Base64DecodeState {
-  if st.count == 0 {
-    Base64DecodeState { out: st.out, count: 1, v0: v, v1: 0, v2: 0 }
-  } else if st.count == 1 {
-    Base64DecodeState { out: st.out, count: 2, v0: st.v0, v1: v, v2: 0 }
-  } else if st.count == 2 {
-    Base64DecodeState { out: st.out, count: 3, v0: st.v0, v1: st.v1, v2: v }
-  } else {
-    let n = st.v0 * 262144 + st.v1 * 4096 + st.v2 * 64 + v
-    let byte0 = (n / 65536) % 256
-    let byte1 = (n / 256) % 256
-    let byte2 = n % 256
-    Base64DecodeState {
-      out: st.out |> list_push(byte0) |> list_push(byte1) |> list_push(byte2),
-      count: 0,
-      v0: 0,
-      v1: 0,
-      v2: 0
+  match st.buf {
+    DecEmpty => Base64DecodeState { out: st.out, buf: DecOne { v0: v } }
+    DecOne { v0: a } => Base64DecodeState { out: st.out, buf: DecTwo { v0: a, v1: v } }
+    DecTwo { v0: a, v1: b } => Base64DecodeState { out: st.out, buf: DecThree { v0: a, v1: b, v2: v } }
+    DecThree { v0: a, v1: b, v2: c } => {
+      let n = a * 262144 + b * 4096 + c * 64 + v
+      let byte0 = (n / 65536) % 256
+      let byte1 = (n / 256) % 256
+      let byte2 = n % 256
+      Base64DecodeState {
+        out: st.out |> list_push(byte0) |> list_push(byte1) |> list_push(byte2),
+        buf: DecEmpty
+      }
     }
   }
 }
 
 fn base64_decode_flush(st: Base64DecodeState) -> List<Int>? {
-  if st.count == 0 {
-    Present { value: st.out }
-  } else if st.count == 2 {
-    let n = st.v0 * 262144 + st.v1 * 4096
-    Present { value: st.out |> list_push((n / 65536) % 256) }
-  } else if st.count == 3 {
-    let n = st.v0 * 262144 + st.v1 * 4096 + st.v2 * 64
-    Present { value: st.out |> list_push((n / 65536) % 256) |> list_push((n / 256) % 256) }
-  } else {
-    none
+  match st.buf {
+    DecEmpty => Present { value: st.out }
+    DecOne { v0: _ } => none
+    DecTwo { v0: a, v1: b } => {
+      let n = a * 262144 + b * 4096
+      Present { value: st.out |> list_push((n / 65536) % 256) }
+    }
+    DecThree { v0: a, v1: b, v2: c } => {
+      let n = a * 262144 + b * 4096 + c * 64
+      Present { value: st.out |> list_push((n / 65536) % 256) |> list_push((n / 256) % 256) }
+    }
   }
 }
 
@@ -279,7 +284,7 @@ fn base64_octet_of_int(n: Int) -> UInt8 {
 
 fn base64_decode_values(vals: List<Int>) -> List<UInt8>? {
   let st = fold(vals,
-    init: Base64DecodeState { out: [], count: 0, v0: 0, v1: 0, v2: 0 },
+    init: Base64DecodeState { out: [], buf: DecEmpty },
     f: (acc, v) => base64_decode_step(st: acc, v: v)
   )
   match base64_decode_flush(st: st) {
