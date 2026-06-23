@@ -6311,7 +6311,25 @@ v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(rust_visib
                     ),
                     wildcard_enum_lines,
                 );
-                all_lines.join(&"\n".to_string())
+                // FreeMonoid grounding: under HostNative the coproduct is a `type FreeMonoid<T> = Vec<T>`
+                // alias (no variants), so drop variant-glob / variant-list imports of it (use
+                // ...::FreeMonoid::* and ::FreeMonoid::{Empty, Cons}); the bare type import `{FreeMonoid}`
+                // (no `FreeMonoid::`) is kept. Tightly gated to FreeMonoid -- other coproducts (Witness,
+                // etc.) keep their variant imports.
+                let host_filtered = if corpus_repr_is_host(emit_info.corpus_repr.clone()) {
+                    Rc::new({
+                        let mut __result = Vec::new();
+                        for l in all_lines.iter().cloned() {
+                            if !v1_rt::contains(l.clone(), "FreeMonoid::".to_string()) {
+                                __result.push(l);
+                            }
+                        }
+                        __result
+                    })
+                } else {
+                    all_lines
+                };
+                host_filtered.join(&"\n".to_string())
             }
         }
     }
@@ -16009,6 +16027,57 @@ pub fn freemonoid_cons_binding(
     }
 }
 
+// Structure-not-name detection: a match grounds to native Vec iff its Empty and Cons arms both
+// resolve to the FreeMonoid coproduct, regardless of how the scrutinee's type is spelled at the match
+// site. The variant->parent resolution (pattern_parent_enum, falling back to the unique enum owning
+// the variant) is the structural source; keying on scrut_type's surface name let alias-typed
+// scrutinees escape to the enum. (See .dag authority.)
+pub fn arm_resolved_parent_enum(
+    arm: Rc<Node>,
+    scrut_type: String,
+    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+) -> Option<String> {
+    match (*arm_pattern(arm.clone())).clone() {
+        MatchPattern::VariantPattern {
+            name: n,
+            parent_enum: pe,
+            ..
+        } => pattern_parent_enum(n, pe, scrut_type, type_summaries),
+        _ => None,
+    }
+}
+
+pub fn parent_enum_is_freemonoid(p: Option<String>) -> bool {
+    match p {
+        Some(nm) => (nm == "FreeMonoid".to_string()),
+        None => false,
+    }
+}
+
+pub fn arms_are_freemonoid_coproduct(
+    arms: Rc<Vec<Rc<Node>>>,
+    scrut_type: String,
+    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+) -> bool {
+    let empty_is_fm = match freemonoid_match_arm_for(arms.clone(), "Empty".to_string()) {
+        Some(ea) => parent_enum_is_freemonoid(arm_resolved_parent_enum(
+            ea,
+            scrut_type.clone(),
+            type_summaries.clone(),
+        )),
+        None => false,
+    };
+    let cons_is_fm = match freemonoid_match_arm_for(arms.clone(), "Cons".to_string()) {
+        Some(ca) => parent_enum_is_freemonoid(arm_resolved_parent_enum(
+            ca,
+            scrut_type.clone(),
+            type_summaries.clone(),
+        )),
+        None => false,
+    };
+    (empty_is_fm && cons_is_fm)
+}
+
 pub fn emit_native_freemonoid_match(
     scrut_str: String,
     arms: Rc<Vec<Rc<Node>>>,
@@ -16126,8 +16195,11 @@ pub fn emit_typed_match(
         // FreeMonoid grounding: a match on a host FreeMonoid/List scrutinee emits a native
         // if-else over Rc<Vec> rather than the FreeMonoid::Empty/Cons enum arms.
         let native_fm = if (corpus_repr_is_host(emit_info.corpus_repr.clone())
-            && ((scrut_type.clone() == "FreeMonoid".to_string())
-                || (scrut_type.clone() == "List".to_string())))
+            && arms_are_freemonoid_coproduct(
+                arms.clone(),
+                scrut_type.clone(),
+                emit_info.type_summaries.clone(),
+            ))
         {
             emit_native_freemonoid_match(
                 scrut_str.clone(),
