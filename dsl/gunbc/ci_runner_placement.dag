@@ -2,8 +2,8 @@ module gunbc.ci_runner_placement
 
 import product.compute_fabric { ComputeOffer, compute_host_ram_bytes_total }
 import product.placement_supply { HostIdentity }
-import std.realization_width { memory_bounded_fit_count, memory_effective_budget, measure_max }
-import std.measure { ByteSize, byte_size, byte_size_count, measure_scale_fraction_floor }
+import std.realization_width { measure_max, byte_size_saturating_sub }
+import std.measure { ByteSize, byte_size, byte_size_count, measure_scale_fraction_floor, measure_fit_count_floor, measure_le }
 import std.types { Int, List, String, Bool }
 import extdeps.github.actions { RunnerSpec }
 import gunbc.runner_spec_from_offer { runner_spec_from_offer }
@@ -15,10 +15,23 @@ import gunbc.ci_floor_measurement {
   HostFixedOverhead,
   HostFixedOverheadMeasured,
   HostFixedOverheadUnmeasured,
+  SessionOperatingPoint,
+  SessionOperatingPointSet,
+  SessionOperatingPointUnset,
+  SessionAggregateReservation,
+  SessionAggregateMeasured,
+  SessionAggregateUnmeasured,
+  OomdEnforcementEvidence,
+  OomdEnforced,
+  OomdUnverified,
+  SessionReservationMode,
+  Regime1WorstCase,
+  Regime2AggregateOomd,
+  SessionReservationModeUnset,
   gunbc_ci_job_peaks,
   gunbc_ci_host_fixed_overhead,
-  gunbc_ci_concurrent_runs_conservative_high,
-  gunbc_ci_runner_cap_enforced,
+  gunbc_ci_per_session_peak_samples,
+  gunbc_ci_session_reservation_mode,
 }
 import gunbc.fleet_intent { fleet_intent_offers }
 
@@ -85,24 +98,89 @@ fn resolve_run_unit_peak(job_peaks: List<CiJobPeak>) -> JobPeakResolution {
   }
 }
 
-fn host_runner_count(offer: ComputeOffer, run_unit_peak: ByteSize, reserved: ByteSize) -> Int {
-  memory_bounded_fit_count(
-    budget: compute_host_ram_bytes_total(host: offer.supply.physical),
-    unit_peak: run_unit_peak,
-    reserved: reserved
+type SessionSliceResolution
+  = SessionSliceResolved { bytes: ByteSize, per_session_cap: ByteSize, concurrency: Int }
+  | SessionSliceUnresolved { reason: String }
+
+fn resolve_regime1_slice(c: ByteSize, n: Int) -> SessionSliceResolution {
+  if byte_size_count(b: c) == 0 {
+    SessionSliceUnresolved { reason: "per-session cap is zero bytes: refuse a degenerate sessions-slice" }
+  } else if n <= 0 {
+    SessionSliceUnresolved { reason: "session concurrency is non-positive: refuse a degenerate sessions-slice" }
+  } else {
+    SessionSliceResolved {
+      bytes: measure_scale_fraction_floor(m: c, num: n, den: 1),
+      per_session_cap: c,
+      concurrency: n,
+    }
+  }
+}
+
+fn resolve_session_slice(mode: SessionReservationMode) -> SessionSliceResolution {
+  match mode {
+    SessionReservationModeUnset =>
+      SessionSliceUnresolved {
+        reason: "session reservation mode unset: the per-session budget is an operator operating-point choice (REGIME-1 worst-case cap C * concurrency N, or REGIME-2 measured aggregate with C as the oomd eviction ceiling) grounded in the measured distribution (min 0.28 / median ~2.06 / max 8.27 GiB); refuse to derive the host sessions-slice (and therefore the conserving runner count) until gunbc_ci_session_reservation_mode is set. See the operating curve in the manifest."
+      }
+    Regime1WorstCase { point: p } =>
+      match p {
+        SessionOperatingPointUnset =>
+          SessionSliceUnresolved { reason: "REGIME-1 operating point unset: refuse to derive a worst-case sessions-slice without a (cap, concurrency) pair" }
+        SessionOperatingPointSet { per_session_cap: c, session_concurrency: n } =>
+          resolve_regime1_slice(c: c, n: n)
+      }
+    Regime2AggregateOomd { oomd_eviction_ceiling: ceiling, session_concurrency: n, aggregate_reservation: agg, oomd_enforcement: oomd } =>
+      match oomd {
+        OomdUnverified =>
+          SessionSliceUnresolved { reason: "REGIME-2 keystone unmet: it over-commits the per-session caps, so it is unsound until per-cgroup memory.max + systemd-oomd eviction is verified live on the hosts (oomd_enforcement = OomdUnverified). Fail closed; do NOT reserve the smaller aggregate without the runtime eviction floor." }
+        OomdEnforced =>
+          match agg {
+            SessionAggregateUnmeasured =>
+              SessionSliceUnresolved { reason: "REGIME-2 aggregate-concurrent-peak series unmeasured: refuse to derive the aggregate sessions-slice without a measured realistic concurrent peak (the 13 per-session samples are NOT an aggregate). Fail closed." }
+            SessionAggregateMeasured { bytes: agg_bytes } =>
+              if byte_size_count(b: agg_bytes) == 0 {
+                SessionSliceUnresolved { reason: "REGIME-2 measured aggregate is zero bytes: refuse a degenerate sessions-slice" }
+              } else if byte_size_count(b: ceiling) == 0 {
+                SessionSliceUnresolved { reason: "REGIME-2 oomd eviction ceiling is zero bytes: refuse a degenerate per-session ceiling" }
+              } else if n <= 0 {
+                SessionSliceUnresolved { reason: "REGIME-2 session concurrency is non-positive: refuse a degenerate admitted-session target" }
+              } else {
+                SessionSliceResolved {
+                  bytes: agg_bytes,
+                  per_session_cap: ceiling,
+                  concurrency: n,
+                }
+              }
+          }
+      }
+  }
+}
+
+fn host_allocatable(offer: ComputeOffer, overhead: ByteSize) -> ByteSize {
+  byte_size_saturating_sub(
+    total: compute_host_ram_bytes_total(host: offer.supply.physical),
+    reserved: overhead
   )
 }
 
-fn host_deployment(offer: ComputeOffer, count: Int, reserved: ByteSize) -> RunnerHostDeployment {
-  let host_ram = compute_host_ram_bytes_total(host: offer.supply.physical)
+fn host_runner_slice(offer: ComputeOffer, overhead: ByteSize, session_slice: ByteSize) -> ByteSize {
+  byte_size_saturating_sub(total: host_allocatable(offer: offer, overhead: overhead), reserved: session_slice)
+}
+
+fn host_runner_count(offer: ComputeOffer, overhead: ByteSize, session_slice: ByteSize, run_unit_peak: ByteSize) -> Int {
+  measure_fit_count_floor(
+    capacity: host_runner_slice(offer: offer, overhead: overhead, session_slice: session_slice),
+    each: run_unit_peak
+  )
+}
+
+fn host_deployment(offer: ComputeOffer, overhead: ByteSize, session_slice: ByteSize, count: Int) -> RunnerHostDeployment {
+  let runner_slice = host_runner_slice(offer: offer, overhead: overhead, session_slice: session_slice)
+  let safe_den = if count > 0 { count } else { 1 }
   RunnerHostDeployment {
     identity: offer.supply.physical.identity,
     runner_count: count,
-    per_runner_memory_cap: measure_scale_fraction_floor(
-      m: memory_effective_budget(budget: host_ram, reserved: reserved),
-      num: 1,
-      den: count
-    ),
+    per_runner_memory_cap: measure_scale_fraction_floor(m: runner_slice, num: 1, den: safe_den),
     runner: runner_spec_from_offer(offer: offer),
   }
 }
@@ -114,26 +192,27 @@ fn empty_deployment_accumulator() -> DeploymentAccumulator {
 fn accumulate_host_deployment(
   acc: DeploymentAccumulator,
   offer: ComputeOffer,
-  run_unit_peak: ByteSize,
-  reserved: ByteSize
+  overhead: ByteSize,
+  session_slice: ByteSize,
+  run_unit_peak: ByteSize
 ) -> DeploymentAccumulator {
-  let count = host_runner_count(offer: offer, run_unit_peak: run_unit_peak, reserved: reserved)
+  let count = host_runner_count(offer: offer, overhead: overhead, session_slice: session_slice, run_unit_peak: run_unit_peak)
   DeploymentAccumulator {
-    deployments: concat(acc.deployments, [host_deployment(offer: offer, count: count, reserved: reserved)]),
+    deployments: concat(acc.deployments, [host_deployment(offer: offer, overhead: overhead, session_slice: session_slice, count: count)]),
     any_unfit: acc.any_unfit || (count == 0),
     total: acc.total + count,
   }
 }
 
-fn derive_plan_with_budget(offers: List<ComputeOffer>, run_unit_peak: ByteSize, reserved: ByteSize) -> RunnerDeploymentPlan {
+fn derive_plan_with_budget(offers: List<ComputeOffer>, overhead: ByteSize, session_slice: ByteSize, run_unit_peak: ByteSize) -> RunnerDeploymentPlan {
   let acc = fold(
     offers,
     init: empty_deployment_accumulator(),
-    f: (a, o) => accumulate_host_deployment(acc: a, offer: o, run_unit_peak: run_unit_peak, reserved: reserved)
+    f: (a, o) => accumulate_host_deployment(acc: a, offer: o, overhead: overhead, session_slice: session_slice, run_unit_peak: run_unit_peak)
   )
   if acc.any_unfit {
     PlanUnsound {
-      reason: "at least one fleet host cannot host a single runner under its safety budget minus fixed overhead (heaviest co-resident job peak exceeds 0.8 x host RAM - host_fixed_overhead)"
+      reason: "at least one fleet host cannot host a single runner under conservation (host RAM - host_fixed_overhead - sessions_slice < one whole-run cgroup peak); lower the per-session cap C, lower the session concurrency N, or sharpen the conservative 24GiB per-run peak"
     }
   } else {
     PlanDerived { hosts: acc.deployments, fleet_concurrent_runs: acc.total }
@@ -143,6 +222,7 @@ fn derive_plan_with_budget(offers: List<ComputeOffer>, run_unit_peak: ByteSize, 
 fn runner_deployment_plan_for(
   job_peaks: List<CiJobPeak>,
   overhead: HostFixedOverhead,
+  session_slice: ByteSize,
   offers: List<ComputeOffer>
 ) -> RunnerDeploymentPlan {
   match resolve_run_unit_peak(job_peaks: job_peaks) {
@@ -153,32 +233,123 @@ fn runner_deployment_plan_for(
           PlanUnsound {
             reason: "host fixed overhead unmeasured: the sccache server daemon may live in a sibling host cgroup outside every per-job cgroup, so it is counted by no per-job peak; refuse to derive runner capacity until it is classified and reserved exactly once"
           }
-        HostFixedOverheadMeasured { bytes: reserved } =>
-          derive_plan_with_budget(offers: offers, run_unit_peak: peak, reserved: reserved)
+        HostFixedOverheadMeasured { bytes: oh } =>
+          derive_plan_with_budget(offers: offers, overhead: oh, session_slice: session_slice, run_unit_peak: peak)
       }
   }
 }
 
 fn runner_deployment_plan() -> RunnerDeploymentPlan {
-  runner_deployment_plan_for(
-    job_peaks: gunbc_ci_job_peaks,
-    overhead: gunbc_ci_host_fixed_overhead,
-    offers: fleet_intent_offers
-  )
-}
-
-fn effective_runners_per_host(cap_enforced: Bool) -> Int {
-  if cap_enforced {
-    match runner_deployment_plan() {
-      PlanDerived { hosts: hosts, fleet_concurrent_runs: _ } =>
-        fold(hosts, init: 0, f: (acc, h) => if h.runner_count > acc { h.runner_count } else { acc })
-      PlanUnsound { reason: _ } => gunbc_ci_concurrent_runs_conservative_high
-    }
-  } else {
-    gunbc_ci_concurrent_runs_conservative_high
+  match resolve_session_slice(mode: gunbc_ci_session_reservation_mode) {
+    SessionSliceUnresolved { reason: r } => PlanUnsound { reason: r }
+    SessionSliceResolved { bytes: s, per_session_cap: _, concurrency: _ } =>
+      runner_deployment_plan_for(
+        job_peaks: gunbc_ci_job_peaks,
+        overhead: gunbc_ci_host_fixed_overhead,
+        session_slice: s,
+        offers: fleet_intent_offers
+      )
   }
 }
 
-fn gunbc_ci_runners_per_host() -> Int {
-  effective_runners_per_host(cap_enforced: gunbc_ci_runner_cap_enforced)
+type RunnersPerHostResolution
+  = RunnersPerHostDerived { count: Int }
+  | RunnersPerHostUnsound { reason: String }
+
+fn effective_runners_per_host() -> RunnersPerHostResolution {
+  match runner_deployment_plan() {
+    PlanDerived { hosts: hosts, fleet_concurrent_runs: _ } =>
+      RunnersPerHostDerived { count: fold(hosts, init: 0, f: (acc, h) => if h.runner_count > acc { h.runner_count } else { acc }) }
+    PlanUnsound { reason: r } => RunnersPerHostUnsound { reason: r }
+  }
+}
+
+type SessionHostReservation {
+  identity: HostIdentity
+  session_count: Int
+  per_session_reservation: ByteSize
+}
+
+type SessionReservationPlan
+  = SessionReservationDerived {
+      hosts: List<SessionHostReservation>,
+      fleet_concurrent_sessions: Int,
+      per_session_reservation: ByteSize,
+      coverage_count: Int,
+      sample_count: Int
+    }
+  | SessionReservationUnsound { reason: String }
+
+fn samples_covered(cap: ByteSize) -> Int {
+  fold(gunbc_ci_per_session_peak_samples, init: 0, f: (acc, s) => if measure_le(a: s, b: cap) { acc + 1 } else { acc })
+}
+
+fn session_reservation_plan() -> SessionReservationPlan {
+  match resolve_session_slice(mode: gunbc_ci_session_reservation_mode) {
+    SessionSliceUnresolved { reason: r } => SessionReservationUnsound { reason: r }
+    SessionSliceResolved { bytes: _, per_session_cap: c, concurrency: n } =>
+      SessionReservationDerived {
+        hosts: map(fleet_intent_offers, o => SessionHostReservation {
+          identity: o.supply.physical.identity,
+          session_count: n,
+          per_session_reservation: c,
+        }),
+        fleet_concurrent_sessions: n * fleet_intent_offers.length(),
+        per_session_reservation: c,
+        coverage_count: samples_covered(cap: c),
+        sample_count: gunbc_ci_per_session_peak_samples.length(),
+      }
+  }
+}
+
+data gunbc_ci_count_field_measure_followup: String = "dissolve-on feature:M12-cardinal-count-value-measure-sweep -- the M12 / Practice-13 value-Measure sweep for cardinal COUNT fields. The runner/session counts here (OperatingPointRow.min_runner_count, .session_concurrency, .coverage_count, .sample_count; RunnerHostDeployment.runner_count; SessionHostReservation.session_count; SessionReservationDerived.fleet_concurrent_sessions) are flat Int -- cardinals per DESIGN sec 2, identical in kind to the codebase-wide bare-Int count convention (rank_count, contact_count, processor_count, lane_count, stick_count, approval_count, ...) and to the unit_modeling lens's own cardinal exemptions (index/ordinal/position). The lens is an ADVISORY region-3 RatchetForever (not floor-enrolled, does not gate CI). Disposition for the whole cluster: convert together to a count-Measure carrier (HardwareThreadCount-style) in one M12 sweep so the unit modeling stays single-authority -- do NOT peel one field here (the forked-logic trap)."
+
+type OperatingPointRow {
+  per_session_cap: ByteSize
+  session_concurrency: Int
+  sessions_slice: ByteSize
+  min_runner_count: Int
+  coverage_count: Int
+  sample_count: Int
+}
+
+fn evaluate_operating_point(cap: ByteSize, n: Int) -> OperatingPointRow {
+  let slice = match resolve_session_slice(mode: Regime1WorstCase { point: SessionOperatingPointSet { per_session_cap: cap, session_concurrency: n } }) {
+    SessionSliceResolved { bytes: b, per_session_cap: _, concurrency: _ } => b
+    SessionSliceUnresolved { reason: _ } => byte_size(0)
+  }
+  let plan = runner_deployment_plan_for(
+    job_peaks: gunbc_ci_job_peaks,
+    overhead: gunbc_ci_host_fixed_overhead,
+    session_slice: slice,
+    offers: fleet_intent_offers
+  )
+  let min_count = match plan {
+    PlanDerived { hosts: hs, fleet_concurrent_runs: _ } =>
+      fold(hs, init: 0, f: (acc, h) => if acc == 0 { h.runner_count } else { if h.runner_count < acc { h.runner_count } else { acc } })
+    PlanUnsound { reason: _ } => 0
+  }
+  OperatingPointRow {
+    per_session_cap: cap,
+    session_concurrency: n,
+    sessions_slice: slice,
+    min_runner_count: min_count,
+    coverage_count: samples_covered(cap: cap),
+    sample_count: gunbc_ci_per_session_peak_samples.length(),
+  }
+}
+
+data gunbc_ci_session_operating_curve_candidates: List<SessionOperatingPoint> = [
+  SessionOperatingPointSet { per_session_cap: byte_size(2211908157), session_concurrency: 16 },
+  SessionOperatingPointSet { per_session_cap: byte_size(4294967296), session_concurrency: 16 },
+  SessionOperatingPointSet { per_session_cap: byte_size(8879844884), session_concurrency: 6 },
+  SessionOperatingPointSet { per_session_cap: byte_size(10737418240), session_concurrency: 6 },
+  SessionOperatingPointSet { per_session_cap: byte_size(8879844884), session_concurrency: 4 },
+]
+
+fn operating_curve() -> List<OperatingPointRow> {
+  map(gunbc_ci_session_operating_curve_candidates, op => match op {
+    SessionOperatingPointSet { per_session_cap: c, session_concurrency: n } => evaluate_operating_point(cap: c, n: n)
+    SessionOperatingPointUnset => evaluate_operating_point(cap: byte_size(0), n: 0)
+  })
 }

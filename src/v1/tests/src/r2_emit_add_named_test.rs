@@ -12,7 +12,7 @@ const WITNESS_FN: &str = "mvp1_rust_emit_add_fn_accepts_holds";
 const PINNED_ADD_SOURCE: &str = "fn add(x: i32, y: i32) -> i32 { x + y }";
 
 fn v2_source_roots() -> Vec<std::path::PathBuf> {
-    vec![workspace_root().join("src/v2")]
+    crate::helpers::v2_layer_roots()
 }
 
 fn cert_source_pairs() -> &'static Vec<(String, String)> {
