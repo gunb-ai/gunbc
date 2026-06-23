@@ -15,7 +15,10 @@ use v1_compiler::v1_interpreter::{self, Value};
 use crate::helpers::{resolve_imports_transitively_with_source_roots, workspace_root};
 
 fn cross_tree_source_roots() -> Vec<std::path::PathBuf> {
-    vec![workspace_root().join("dsl"), workspace_root().join("src/v2")]
+    vec![
+        workspace_root().join("dsl"),
+        workspace_root().join("src/v2"),
+    ]
 }
 
 fn assert_resolved_no_hard_errors(result: &ResolvedPipelineResult) {
@@ -56,7 +59,10 @@ fn assert_witness_true(entry: &str, witness_fn: &str) {
 fn disposition_redundancy_lens_discriminates_by_execution() {
     let test_entry = "src/v2/lens/disposition_redundancy_test.dag";
     // Red control: a Scaffold whose successor IS present fires.
-    assert_witness_true(test_entry, "redundancy_red_control_fires_when_successor_present");
+    assert_witness_true(
+        test_entry,
+        "redundancy_red_control_fires_when_successor_present",
+    );
     // Flip: the SAME Scaffold with the successor absent goes green.
     assert_witness_true(
         test_entry,

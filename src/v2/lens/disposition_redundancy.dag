@@ -2,47 +2,31 @@ module v2.lens.disposition_redundancy
 
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 
-import std.disposition { Disposition, Scaffold, Terminal, DeclLocator }
-import std.types { NonEmptyStr }
+import std.disposition { Disposition, Scaffold, Terminal, DeclLocator, ScaffoldTarget, WholeDeclaration, NamedField }
 import v2.std.collection { List }
 import v2.std.algebra { count_where, any }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 
-fn optional_string_eq(a: String?, b: String?) -> Bool {
+fn scaffold_target_eq(a: ScaffoldTarget, b: ScaffoldTarget) -> Bool {
   match a {
-    Present { value: av } =>
+    WholeDeclaration =>
       match b {
-        Present { value: bv } => av == bv
-        Absent => false
+        WholeDeclaration => true
+        NamedField { field_name: _ } => false
       }
-    Absent =>
+    NamedField { field_name: an } =>
       match b {
-        Present { value: _ } => false
-        Absent => true
-      }
-  }
-}
-
-fn optional_nonempty_eq(a: NonEmptyStr?, b: NonEmptyStr?) -> Bool {
-  match a {
-    Present { value: av } =>
-      match b {
-        Present { value: bv } => av == bv
-        Absent => false
-      }
-    Absent =>
-      match b {
-        Present { value: _ } => false
-        Absent => true
+        NamedField { field_name: bn } => an == bn
+        WholeDeclaration => false
       }
   }
 }
 
 fn decl_locator_eq(a: DeclLocator, b: DeclLocator) -> Bool {
-  a.decl_name == b.decl_name
-    && optional_string_eq(a: a.module_path, b: b.module_path)
-    && optional_nonempty_eq(a: a.field, b: b.field)
+  a.module_path == b.module_path
+    && a.decl_name == b.decl_name
+    && scaffold_target_eq(a: a.field, b: b.field)
 }
 
 fn disposition_binds_present(d: Disposition, present: List<DeclLocator>) -> Bool {

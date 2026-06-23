@@ -7,10 +7,14 @@ type ConstructionMechanism
   | RealizationDispatch
   | SubstrateMandatoryTag
 
+type ScaffoldTarget
+  = WholeDeclaration
+  | NamedField { field_name: NonEmptyStr }
+
 type DeclLocator {
-  module_path: String?
+  module_path: String
   decl_name: NonEmptyStr
-  field: NonEmptyStr?
+  field: ScaffoldTarget
 }
 
 type Disposition
@@ -20,8 +24,8 @@ type Disposition
 data decl_locator_dissolves_into_declaration_ref: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclLocator {
-    module_path: Present { value: "std.serialization" },
+    module_path: "std.serialization",
     decl_name: "DeclarationRef",
-    field: Present { value: "decl_name" }
+    field: NamedField { field_name: "decl_name" }
   }
 }

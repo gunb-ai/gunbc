@@ -1,24 +1,24 @@
 module v2.test.lens_disposition_redundancy.disposition_redundancy_test
 
 import v2.lens.disposition_redundancy { disposition_redundancy_violation_count }
-import std.disposition { Disposition, Scaffold, DeclLocator, SingleAuthority }
+import std.disposition { Disposition, Scaffold, DeclLocator, NamedField, SingleAuthority }
 import extdeps.llm.anthropic { structural_coverage_gap_anthropic_tool_result_nested_block_wire_payloads }
 import v2.std.collection { List }
 import v2.std.algebra { length }
 import v2.std.logic { Bool }
 
 data redundancy_present_successor_locator: DeclLocator = DeclLocator {
-  module_path: Present { value: "std.disposition" },
+  module_path: "std.disposition",
   decl_name: "Disposition",
-  field: none
+  field: NamedField { field_name: "marker" }
 }
 
 data redundancy_red_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclLocator {
-    module_path: Present { value: "std.disposition" },
+    module_path: "std.disposition",
     decl_name: "Disposition",
-    field: none
+    field: NamedField { field_name: "marker" }
   }
 }
 
