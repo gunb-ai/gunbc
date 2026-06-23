@@ -6587,6 +6587,30 @@ fn emit_rust_tco_if(frame: TcoFrame, fn_name: String, params: List<Node>, regist
   }
 }
 
+// FreeMonoid grounding for the recursion->loop (TCO) path: a FreeMonoid/List match lowered into a
+// `loop { match .. }` is rewritten to a native Rc<Vec> if-else, mirroring emit_native_freemonoid_match
+// but emitting each arm body via emit_typed_tco_expr so the break/reassign lowering is preserved. This
+// path is distinct from emit_typed_match's; without it the loop-lowered std algebra folds (fold_list,
+// skip, ..) and recursive lens walks (edit_locus) keep emitting the removed FreeMonoid::Empty/Cons enum.
+fn emit_native_freemonoid_tco_match(scrut_str: String, arms: List<Node>, fn_name: String, params: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
+  let si = scope.type_env.source_indices
+  match freemonoid_match_arm_for(arms: arms, variant: "Empty") {
+    Present { value: ea } =>
+      match freemonoid_match_arm_for(arms: arms, variant: "Cons") {
+        Present { value: ca } =>
+          let empty_body = emit_typed_tco_expr(texpr: arm_body(n: ea), fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+          let head_bind = freemonoid_cons_binding(cons_arm: ca, field: "head", source_indices: si)
+          let tail_bind = freemonoid_cons_binding(cons_arm: ca, field: "tail", source_indices: si)
+          let cons_body = emit_typed_tco_expr(texpr: arm_body(n: ca), fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+          let head_let = if head_bind == "_" { "" } else { concat("let ", head_bind, " = (*__fm)[0].clone(); ") }
+          let tail_let = if tail_bind == "_" { "" } else { concat("let ", tail_bind, ": Rc<Vec<_>> = Rc::new((*__fm)[1..].to_vec()); ") }
+          concat("{ let __fm = ", scrut_str, "; if __fm.is_empty() { ", empty_body, " } else { ", head_let, tail_let, cons_body, " } }")
+        Absent => ""
+      }
+    Absent => ""
+  }
+}
+
 fn emit_rust_tco_match(frame: TcoFrame, fn_name: String, params: List<Node>, registry: Map<String, ItemInfo>, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   match frame.expr.expr_data {
     ExprMatch =>
@@ -6601,6 +6625,10 @@ fn emit_rust_tco_match(frame: TcoFrame, fn_name: String, params: List<Node>, reg
           } else { authored_name_at(source_indices: frame.scope.type_env.source_indices, node: rt) }
         _ => ""
       }
+      let native_tco_fm = if corpus_repr_is_host(corpus_repr: emit_info.corpus_repr) && arms_are_freemonoid_coproduct(arms: arm_list, scrut_type: tco_scrut_type, type_summaries: emit_info.type_summaries) {
+        emit_native_freemonoid_tco_match(scrut_str: scrut_str, arms: arm_list, fn_name: fn_name, params: params, registry: registry, scope: frame.scope, depth: frame.depth, shared_types: shared_types, emit_info: emit_info)
+      } else { "" }
+      if native_tco_fm != "" { native_tco_fm } else {
       let rc_match = analyze_rc_match(scrutinee: s, arms: arm_list, scrut_type: tco_scrut_type, shared_types: shared_types, emit_info: emit_info, source_indices: frame.scope.type_env.source_indices)
       let arm_strs = arm_list |> map(arm =>
         emit_typed_tco_match_arm(arm: arm, fn_name: fn_name, params: params, registry: registry, scope: frame.scope, depth: frame.depth, shared_types: shared_types, emit_info: emit_info, scrut_type: tco_scrut_type))
@@ -6615,6 +6643,7 @@ fn emit_rust_tco_match(frame: TcoFrame, fn_name: String, params: List<Node>, reg
         concat("match ", scrut_str, ".as_str() {\n", arms_str, "\n}")
       } else {
         concat("match ", scrut_str, " {\n", arms_str, "\n}")
+      }
       }
     _ => emit_error_expr(message: "emit_rust_tco_match expected ExprMatch", target: Rust)
   }
