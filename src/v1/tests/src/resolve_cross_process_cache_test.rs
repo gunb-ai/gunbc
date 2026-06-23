@@ -307,7 +307,11 @@ fn key_mismatch_forces_miss_not_stale_hit() {
 
     let mutated = dir.join("entry_a.dag");
     let content = fs::read_to_string(&mutated).expect("read entry");
-    fs::write(&mutated, format!("{content}\nfn perturb_marker() -> Int {{ 0 }}\n")).expect("perturb entry");
+    fs::write(
+        &mutated,
+        format!("{content}\nfn perturb_marker() -> Int {{ 0 }}\n"),
+    )
+    .expect("perturb entry");
 
     let sources_after = load_sources_for_entry(&roots, &a).expect("sources after");
     let digest_after = subject_digest_for_closure(&sources_after);
