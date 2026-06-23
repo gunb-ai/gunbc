@@ -308,6 +308,14 @@ pub fn corpus_repr_is_host(corpus_repr: RustCorpusRepr) -> bool {
     }
 }
 
+// Single authority for the FreeMonoid value-side grounding decision: under HostNative the FreeMonoid
+// coproduct is realized as a `type FreeMonoid<T> = Vec<T>` alias -- structurally a zero-variant type.
+// Every consumer (the alias render, and the import emitters that must NOT generate variant-glob /
+// variant-list imports for a type with no variants) consults THIS predicate. (See .dag authority.)
+pub fn is_host_freemonoid_vec_alias(name: String, corpus_repr: RustCorpusRepr) -> bool {
+    (corpus_repr_is_host(corpus_repr) && (name == "FreeMonoid".to_string()))
+}
+
 pub fn render_rust_text_carrier(shared_types: Rc<std::collections::BTreeSet<String>>) -> String {
     render_rust_shared_type_if_needed(
         "FreeMonoid".to_string(),
@@ -3506,9 +3514,10 @@ pub fn emit_module_full(
                 for item in typed_module.items.clone().iter().cloned() {
                     if (is_type_def_item(item.clone())
                         && is_coproduct_type(item.clone())
-                        && !(corpus_repr_is_host(emit_info.corpus_repr.clone())
-                            && (authored_name(scope.type_env.clone(), item.clone())
-                                == "FreeMonoid".to_string())))
+                        && !is_host_freemonoid_vec_alias(
+                            authored_name(scope.type_env.clone(), item.clone()),
+                            emit_info.corpus_repr.clone(),
+                        ))
                     {
                         __result.push(item);
                     }
@@ -6141,7 +6150,13 @@ v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(rust_visib
                 let variant_lines = Rc::new({
                     let mut __result = Vec::new();
                     for parent in parent_list.clone().iter().cloned() {
-                        __result.push({
+                        // A host FreeMonoid is a Vec alias with no variants -- no variant-list import.
+                        __result.push(if is_host_freemonoid_vec_alias(
+                            parent.clone(),
+                            emit_info.corpus_repr.clone(),
+                        ) {
+                            "".to_string()
+                        } else {
                             let variants = Rc::new({
                                 let mut __result = Vec::new();
                                 for n in deduped_names.clone().iter().cloned() {
@@ -6242,6 +6257,7 @@ v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(rust_visib
                     }
                     __result
                 });
+                let _ = ();
                 let imported_enums = Rc::new({
                     let mut __result = Vec::new();
                     for n in top_level.clone().iter().cloned() {
@@ -7352,9 +7368,7 @@ pub fn emit_type_def_from_connective(
                     emit_info,
                 )
             }
-        } else if (corpus_repr_is_host(emit_info.corpus_repr.clone())
-            && (item_text.clone() == "FreeMonoid".to_string()))
-        {
+        } else if is_host_freemonoid_vec_alias(item_text.clone(), emit_info.corpus_repr.clone()) {
             // FreeMonoid grounding (§3 single authority): under HostNative the coproduct (Empty | Cons)
             // is realized as the native Rust Vec, so emit a transparent type alias instead of the dead
             // enum. Every FreeMonoid<T> slot then resolves to Vec<T> via Rust alias transparency; values
