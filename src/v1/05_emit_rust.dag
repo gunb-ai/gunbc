@@ -6302,7 +6302,7 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
           Present { value: f } => emit_typed_expr(texpr: field_init_node_value(n: f), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
           Absent => "compile_error!(\"FreeMonoid Cons missing tail field\")"
         }
-        return concat("Rc::new({ let mut __cons_v = (*", tail_val, ").clone(); __cons_v.insert(0, ", head_val, "); __cons_v })")
+        return concat("{ let mut __cons_v = (*", tail_val, ").clone(); __cons_v.insert(0, ", head_val, "); __cons_v }")
       }
       let optional_variant = is_optional_variant_name(name: tn) && (is_optional_parent(parent_enum: parent_enum) || is_optional_parent(parent_enum: effective_parent))
       let rust_tn = if optional_variant {
