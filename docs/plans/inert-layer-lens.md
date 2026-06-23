@@ -234,9 +234,11 @@ revert); RED/GREEN controls over a synthetic graph in the project module's unit 
   self-tested (named in a `*_test.dag`) AND used by zero non-test code outside its own declaration block.
   The `self-tested` gate is the key — it filters from "every staged-ahead carrier" (the model-first
   discipline this whole doc defends) down to the precise §5 trap (a green test, no production consumer),
-  yielding a small, high-confidence set (9 seeded: AccessPolicy, CargoDependency, CargoPackage,
-  FilePermissions, FloorWitnessRow, GitCliReportedVersion, RbacPolicy, ReactHookSite, SecretValue) rather
-  than the hundreds a raw reachability sweep returns. Fail-closed floor witness
+  yielding a small, high-confidence set (8 carriers: AccessPolicy, CargoDependency, CargoPackage,
+  FilePermissions, FloorWitnessRow, GitCliReportedVersion, ReactHookSite, SecretValue) rather
+  than the hundreds a raw reachability sweep returns. (Seeded at 9; `RbacPolicy` then dissolved off the
+  roster the moment a real consumer landed — `extdeps/bmc/access.dag`'s `redfish_rbac_policy` — exactly
+  the stale-roster ratchet doing its job.) Fail-closed floor witness
   (`src/v2/lens/inert_carrier_test.dag`), named shrinking roster + stale-roster ratchet, discriminating
   synthetic RED/GREEN host controls. This is the Tier-2-host-fed path of §3 (not the cli_run.rs Tier-1
   closure); DISSOLUTION at gunbc#5364. The run-root-reachability variant below (CacheLayerPlan/WorkDemand
