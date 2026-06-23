@@ -1,7 +1,7 @@
 module gunbc.operator_fleet
 
 import gunbc.operator_fleet_network { operator_host_srv1, operator_host_srv2, operator_host_srv3 }
-import extdeps.storage.samsung { samsung_970_evo_plus_1tb_catalog }
+import extdeps.storage.western_digital { wd_black_sn850x_2tb_catalog }
 import extdeps.cpu.ampere { altra_max_m12830_catalog }
 import extdeps.cpu.types { CpuFacts, CpuDeploymentFacts }
 import extdeps.boards.asrock_rack { asrock_altrad8ud_1l2t_catalog }
@@ -59,8 +59,12 @@ data srv1_bmc_credential: CredentialFlow = Stored { secret_name: "bmc-srv1-admin
 data srv2_bmc_credential: CredentialFlow = Stored { secret_name: "bmc-srv2-admin" }
 data srv3_bmc_credential: CredentialFlow = Stored { secret_name: "bmc-srv3-admin" }
 
-data operator_nvme_970_evo_plus_1tb: StorageDevice = nvme_storage_device(
-  catalog: samsung_970_evo_plus_1tb_catalog,
+data srv1_nvme0: StorageDevice = nvme_storage_device(
+  catalog: wd_black_sn850x_2tb_catalog,
+  persistence: Persistent,
+)
+data srv2_nvme0: StorageDevice = nvme_storage_device(
+  catalog: wd_black_sn850x_2tb_catalog,
   persistence: Persistent,
 )
 
@@ -69,7 +73,7 @@ data srv1_host: ComputeHost = ComputeHost {
   baseboard: Present { value: srv1_baseboard },
   processors: [CpuProcessor { cpu: operator_fleet_cpu }],
   memory: [MemoryDevice { capacity: gibibyte_to_byte_size(g: gibibyte(128)), memory_kind: Dram, bandwidth: none }],
-  storage: [operator_nvme_970_evo_plus_1tb, operator_nvme_970_evo_plus_1tb],
+  storage: [srv1_nvme0],
   network_interfaces: [],
 }
 data srv2_host: ComputeHost = ComputeHost {
@@ -77,7 +81,7 @@ data srv2_host: ComputeHost = ComputeHost {
   baseboard: Present { value: srv2_baseboard },
   processors: [CpuProcessor { cpu: operator_fleet_cpu }],
   memory: [MemoryDevice { capacity: gibibyte_to_byte_size(g: gibibyte(128)), memory_kind: Dram, bandwidth: none }],
-  storage: [operator_nvme_970_evo_plus_1tb, operator_nvme_970_evo_plus_1tb],
+  storage: [srv2_nvme0],
   network_interfaces: [],
 }
 data srv3_host: ComputeHost = ComputeHost {

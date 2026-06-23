@@ -1,6 +1,6 @@
 module extdeps.storage.types
 
-import std.measure { ByteSize, Bandwidth }
+import std.measure { ByteSize, Bandwidth, bandwidth, bandwidth_count }
 import std.types { Int, NonEmptyStr }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
@@ -15,23 +15,17 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-type PcieGeneration {
-  generation_number: Int
+type PcieGeneration =
+    Gen3
+  | Gen4
+  | Gen5
 
-  per_lane_transfer_rate_gtps: Int
-}
-
-data pcie_gen3: PcieGeneration = PcieGeneration {
-  generation_number: 3,
-  per_lane_transfer_rate_gtps: 8,
-}
-data pcie_gen4: PcieGeneration = PcieGeneration {
-  generation_number: 4,
-  per_lane_transfer_rate_gtps: 16,
-}
-data pcie_gen5: PcieGeneration = PcieGeneration {
-  generation_number: 5,
-  per_lane_transfer_rate_gtps: 32,
+fn pcie_generation_per_lane_bandwidth(g: PcieGeneration) -> Bandwidth {
+  match g {
+    Gen3 => bandwidth(8000000000 * 128 / 130 / 8)
+    Gen4 => bandwidth(16000000000 * 128 / 130 / 8)
+    Gen5 => bandwidth(32000000000 * 128 / 130 / 8)
+  }
 }
 
 type PcieLink {
@@ -40,8 +34,8 @@ type PcieLink {
   lane_count: Int
 }
 
-fn pcie_link_raw_transfer_rate_gtps(link: PcieLink) -> Int {
-  link.generation.per_lane_transfer_rate_gtps * link.lane_count
+fn pcie_link_bandwidth(link: PcieLink) -> Bandwidth {
+  bandwidth(bandwidth_count(pcie_generation_per_lane_bandwidth(g: link.generation)) * link.lane_count)
 }
 
 type NvmeFormFactor =

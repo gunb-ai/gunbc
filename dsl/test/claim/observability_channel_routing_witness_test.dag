@@ -1,6 +1,8 @@
 module test.claim.observability_channel_routing
 
 import std.logic { Bool }
+import std.bmc { OpenBmc }
+import extdeps.bmc.openbmc { bmc_firmware_host_storage_visibility }
 import extdeps.observability {
   InBand,
   OutOfBand,
@@ -43,4 +45,11 @@ test fn out_of_band_observes_power_and_processor() -> Bool {
 
 test fn out_of_band_cannot_observe_network() -> Bool {
   channel_observes(channel: OutOfBand, class: NetworkInventory) == false
+}
+
+test fn out_of_band_storage_blindness_grounded_in_openbmc_finding() -> Bool {
+  match bmc_firmware_host_storage_visibility(family: OpenBmc) {
+    HostStorageBlind => channel_observes(channel: OutOfBand, class: StorageInventory) == false
+    HostStorageEnumerable => false
+  }
 }
