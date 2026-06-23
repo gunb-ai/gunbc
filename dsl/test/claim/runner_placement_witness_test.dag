@@ -36,6 +36,16 @@ import gunbc.ci_floor_measurement {
   SessionOperatingPoint,
   SessionOperatingPointSet,
   SessionOperatingPointUnset,
+  SessionAggregateReservation,
+  SessionAggregateMeasured,
+  SessionAggregateUnmeasured,
+  OomdEnforcementEvidence,
+  OomdEnforced,
+  OomdUnverified,
+  SessionReservationMode,
+  Regime1WorstCase,
+  Regime2AggregateOomd,
+  SessionReservationModeUnset,
   gunbc_ci_job_cgroup_peak_provenance,
   gunbc_ci_per_session_peak_provenance,
   gunbc_ci_footprint_granularity_note,
@@ -156,18 +166,55 @@ fn witness_overhead_unmeasured_is_refused() -> Bool {
   is_unsound(plan: runner_deployment_plan_for(job_peaks: fitting_job_mix(), overhead: HostFixedOverheadUnmeasured, session_slice: small_session_slice(), offers: fleet_intent_offers))
 }
 
-fn witness_operating_point_set_resolves_slice() -> Bool {
-  match resolve_session_slice(op: SessionOperatingPointSet { per_session_cap: byte_size(10000000000), session_concurrency: 4 }) {
+fn witness_regime1_resolves_worst_case_slice() -> Bool {
+  match resolve_session_slice(mode: Regime1WorstCase { point: SessionOperatingPointSet { per_session_cap: byte_size(10000000000), session_concurrency: 4 } }) {
     SessionSliceResolved { bytes: b, per_session_cap: c, concurrency: n } =>
       byte_size_count(b: b) == 40000000000 && byte_size_count(b: c) == 10000000000 && n == 4
     SessionSliceUnresolved { reason: _ } => false
   }
 }
 
-fn witness_operating_point_unset_is_unresolved() -> Bool {
-  match resolve_session_slice(op: SessionOperatingPointUnset) {
+fn witness_mode_unset_is_unresolved() -> Bool {
+  match resolve_session_slice(mode: SessionReservationModeUnset) {
     SessionSliceUnresolved { reason: _ } => true
     SessionSliceResolved { bytes: _, per_session_cap: _, concurrency: _ } => false
+  }
+}
+
+fn witness_regime2_oomd_unverified_is_unresolved() -> Bool {
+  match resolve_session_slice(mode: Regime2AggregateOomd {
+    oomd_eviction_ceiling: byte_size(8000000000),
+    session_concurrency: 16,
+    aggregate_reservation: SessionAggregateMeasured { bytes: byte_size(15000000000) },
+    oomd_enforcement: OomdUnverified,
+  }) {
+    SessionSliceUnresolved { reason: _ } => true
+    SessionSliceResolved { bytes: _, per_session_cap: _, concurrency: _ } => false
+  }
+}
+
+fn witness_regime2_aggregate_unmeasured_is_unresolved() -> Bool {
+  match resolve_session_slice(mode: Regime2AggregateOomd {
+    oomd_eviction_ceiling: byte_size(8000000000),
+    session_concurrency: 16,
+    aggregate_reservation: SessionAggregateUnmeasured,
+    oomd_enforcement: OomdEnforced,
+  }) {
+    SessionSliceUnresolved { reason: _ } => true
+    SessionSliceResolved { bytes: _, per_session_cap: _, concurrency: _ } => false
+  }
+}
+
+fn witness_regime2_reserves_aggregate_not_product() -> Bool {
+  match resolve_session_slice(mode: Regime2AggregateOomd {
+    oomd_eviction_ceiling: byte_size(8000000000),
+    session_concurrency: 16,
+    aggregate_reservation: SessionAggregateMeasured { bytes: byte_size(15000000000) },
+    oomd_enforcement: OomdEnforced,
+  }) {
+    SessionSliceResolved { bytes: b, per_session_cap: c, concurrency: n } =>
+      byte_size_count(b: b) == 15000000000 && byte_size_count(b: c) == 8000000000 && n == 16
+    SessionSliceUnresolved { reason: _ } => false
   }
 }
 
@@ -214,8 +261,11 @@ test fn runner_placement_holds() -> Bool {
     && witness_zero_peak_is_refused()
     && witness_partial_unmeasured_is_refused()
     && witness_overhead_unmeasured_is_refused()
-    && witness_operating_point_set_resolves_slice()
-    && witness_operating_point_unset_is_unresolved()
+    && witness_regime1_resolves_worst_case_slice()
+    && witness_mode_unset_is_unresolved()
+    && witness_regime2_oomd_unverified_is_unresolved()
+    && witness_regime2_aggregate_unmeasured_is_unresolved()
+    && witness_regime2_reserves_aggregate_not_product()
     && witness_coverage_is_distribution_grounded()
     && witness_curve_has_full_coverage_three_runner_option()
     && witness_curve_cap_monotone_runner_count()

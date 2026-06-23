@@ -18,10 +18,20 @@ import gunbc.ci_floor_measurement {
   SessionOperatingPoint,
   SessionOperatingPointSet,
   SessionOperatingPointUnset,
+  SessionAggregateReservation,
+  SessionAggregateMeasured,
+  SessionAggregateUnmeasured,
+  OomdEnforcementEvidence,
+  OomdEnforced,
+  OomdUnverified,
+  SessionReservationMode,
+  Regime1WorstCase,
+  Regime2AggregateOomd,
+  SessionReservationModeUnset,
   gunbc_ci_job_peaks,
   gunbc_ci_host_fixed_overhead,
   gunbc_ci_per_session_peak_samples,
-  gunbc_ci_session_operating_point,
+  gunbc_ci_session_reservation_mode,
 }
 import gunbc.fleet_intent { fleet_intent_offers }
 
@@ -92,23 +102,56 @@ type SessionSliceResolution
   = SessionSliceResolved { bytes: ByteSize, per_session_cap: ByteSize, concurrency: Int }
   | SessionSliceUnresolved { reason: String }
 
-fn resolve_session_slice(op: SessionOperatingPoint) -> SessionSliceResolution {
-  match op {
-    SessionOperatingPointUnset =>
+fn resolve_regime1_slice(c: ByteSize, n: Int) -> SessionSliceResolution {
+  if byte_size_count(b: c) == 0 {
+    SessionSliceUnresolved { reason: "per-session cap is zero bytes: refuse a degenerate sessions-slice" }
+  } else if n <= 0 {
+    SessionSliceUnresolved { reason: "session concurrency is non-positive: refuse a degenerate sessions-slice" }
+  } else {
+    SessionSliceResolved {
+      bytes: measure_scale_fraction_floor(m: c, num: n, den: 1),
+      per_session_cap: c,
+      concurrency: n,
+    }
+  }
+}
+
+fn resolve_session_slice(mode: SessionReservationMode) -> SessionSliceResolution {
+  match mode {
+    SessionReservationModeUnset =>
       SessionSliceUnresolved {
-        reason: "session operating point unset: the per-session budget is an operator operating-point choice (per-session cap C vs concurrency N) grounded in the measured distribution (min 0.28 / median ~2.06 / max 8.27 GiB); refuse to derive the host sessions-slice (and therefore the conserving runner count) until gunbc_ci_session_operating_point is set. See the operating curve in the manifest."
+        reason: "session reservation mode unset: the per-session budget is an operator operating-point choice (REGIME-1 worst-case cap C * concurrency N, or REGIME-2 measured aggregate with C as the oomd eviction ceiling) grounded in the measured distribution (min 0.28 / median ~2.06 / max 8.27 GiB); refuse to derive the host sessions-slice (and therefore the conserving runner count) until gunbc_ci_session_reservation_mode is set. See the operating curve in the manifest."
       }
-    SessionOperatingPointSet { per_session_cap: c, session_concurrency: n } =>
-      if byte_size_count(b: c) == 0 {
-        SessionSliceUnresolved { reason: "per-session cap is zero bytes: refuse a degenerate sessions-slice" }
-      } else if n <= 0 {
-        SessionSliceUnresolved { reason: "session concurrency is non-positive: refuse a degenerate sessions-slice" }
-      } else {
-        SessionSliceResolved {
-          bytes: measure_scale_fraction_floor(m: c, num: n, den: 1),
-          per_session_cap: c,
-          concurrency: n,
-        }
+    Regime1WorstCase { point: p } =>
+      match p {
+        SessionOperatingPointUnset =>
+          SessionSliceUnresolved { reason: "REGIME-1 operating point unset: refuse to derive a worst-case sessions-slice without a (cap, concurrency) pair" }
+        SessionOperatingPointSet { per_session_cap: c, session_concurrency: n } =>
+          resolve_regime1_slice(c: c, n: n)
+      }
+    Regime2AggregateOomd { oomd_eviction_ceiling: ceiling, session_concurrency: n, aggregate_reservation: agg, oomd_enforcement: oomd } =>
+      match oomd {
+        OomdUnverified =>
+          SessionSliceUnresolved { reason: "REGIME-2 keystone unmet: it over-commits the per-session caps, so it is unsound until per-cgroup memory.max + systemd-oomd eviction is verified live on the hosts (oomd_enforcement = OomdUnverified). Fail closed; do NOT reserve the smaller aggregate without the runtime eviction floor." }
+        OomdEnforced =>
+          match agg {
+            SessionAggregateUnmeasured =>
+              SessionSliceUnresolved { reason: "REGIME-2 aggregate-concurrent-peak series unmeasured: refuse to derive the aggregate sessions-slice without a measured realistic concurrent peak (the 13 per-session samples are NOT an aggregate). Fail closed." }
+            SessionAggregateMeasured { bytes: agg_bytes } =>
+              if byte_size_count(b: agg_bytes) == 0 {
+                SessionSliceUnresolved { reason: "REGIME-2 measured aggregate is zero bytes: refuse a degenerate sessions-slice" }
+              } else if byte_size_count(b: ceiling) == 0 {
+                SessionSliceUnresolved { reason: "REGIME-2 oomd eviction ceiling is zero bytes: refuse a degenerate per-session ceiling" }
+              } else if n <= 0 {
+                SessionSliceUnresolved { reason: "REGIME-2 session concurrency is non-positive: refuse a degenerate admitted-session target" }
+              } else {
+                SessionSliceResolved {
+                  bytes: agg_bytes,
+                  per_session_cap: ceiling,
+                  concurrency: n,
+                }
+              }
+          }
       }
   }
 }
@@ -197,7 +240,7 @@ fn runner_deployment_plan_for(
 }
 
 fn runner_deployment_plan() -> RunnerDeploymentPlan {
-  match resolve_session_slice(op: gunbc_ci_session_operating_point) {
+  match resolve_session_slice(mode: gunbc_ci_session_reservation_mode) {
     SessionSliceUnresolved { reason: r } => PlanUnsound { reason: r }
     SessionSliceResolved { bytes: s, per_session_cap: _, concurrency: _ } =>
       runner_deployment_plan_for(
@@ -242,7 +285,7 @@ fn samples_covered(cap: ByteSize) -> Int {
 }
 
 fn session_reservation_plan() -> SessionReservationPlan {
-  match resolve_session_slice(op: gunbc_ci_session_operating_point) {
+  match resolve_session_slice(mode: gunbc_ci_session_reservation_mode) {
     SessionSliceUnresolved { reason: r } => SessionReservationUnsound { reason: r }
     SessionSliceResolved { bytes: _, per_session_cap: c, concurrency: n } =>
       SessionReservationDerived {
@@ -271,7 +314,7 @@ type OperatingPointRow {
 }
 
 fn evaluate_operating_point(cap: ByteSize, n: Int) -> OperatingPointRow {
-  let slice = match resolve_session_slice(op: SessionOperatingPointSet { per_session_cap: cap, session_concurrency: n }) {
+  let slice = match resolve_session_slice(mode: Regime1WorstCase { point: SessionOperatingPointSet { per_session_cap: cap, session_concurrency: n } }) {
     SessionSliceResolved { bytes: b, per_session_cap: _, concurrency: _ } => b
     SessionSliceUnresolved { reason: _ } => byte_size(0)
   }

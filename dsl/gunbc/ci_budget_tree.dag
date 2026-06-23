@@ -18,7 +18,7 @@ import gunbc.ci_floor_measurement {
   gunbc_ci_floor_whole_run_peak_rss_bytes,
   gunbc_ci_floor_runner_margin_num,
   gunbc_ci_floor_runner_margin_den,
-  gunbc_ci_session_operating_point
+  gunbc_ci_session_reservation_mode
 }
 import gunbc.ci_runner_placement {
   SessionSliceResolution, SessionSliceResolved, SessionSliceUnresolved,
@@ -43,7 +43,7 @@ fn host_allocatable_bytes(offer: ComputeOffer) -> ByteSize {
 }
 
 fn session_pool_bytes_live(offer: ComputeOffer) -> ByteSize {
-  match resolve_session_slice(op: gunbc_ci_session_operating_point) {
+  match resolve_session_slice(mode: gunbc_ci_session_reservation_mode) {
     SessionSliceResolved { bytes: s, per_session_cap: _, concurrency: _ } => s
     SessionSliceUnresolved { reason: _ } => host_allocatable_bytes(offer: offer)
   }

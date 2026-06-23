@@ -65,13 +65,26 @@ type SessionOperatingPoint
   = SessionOperatingPointSet { per_session_cap: ByteSize, session_concurrency: Int }
   | SessionOperatingPointUnset
 
-data gunbc_ci_session_operating_point: SessionOperatingPoint = SessionOperatingPointUnset
+type SessionAggregateReservation
+  = SessionAggregateMeasured { bytes: ByteSize }
+  | SessionAggregateUnmeasured
+
+type OomdEnforcementEvidence
+  = OomdEnforced
+  | OomdUnverified
+
+type SessionReservationMode
+  = Regime1WorstCase { point: SessionOperatingPoint }
+  | Regime2AggregateOomd { oomd_eviction_ceiling: ByteSize, session_concurrency: Int, aggregate_reservation: SessionAggregateReservation, oomd_enforcement: OomdEnforcementEvidence }
+  | SessionReservationModeUnset
+
+data gunbc_ci_session_reservation_mode: SessionReservationMode = SessionReservationModeUnset
 
 data gunbc_ci_per_run_peak_sharpen_followup: String = "highest-leverage follow-up: gunbc_ci_job_peaks 24GiB is a conservative round-up (observed heavy 16-23GiB); a measured cgroup whole-tree VmHWM per job would LOWER it, freeing host budget for BOTH more runners and more sessions. The per-run footprint is the dominant constraint (24GiB/run is why only ~2-4 runners fit regardless of the session cap), so sharpening it dominates the operating curve."
 
-data gunbc_ci_session_regime_model: String = "REGIME-1 (shipping, safe-now, no runtime floor required): sessions_slice = per_session_cap C * concurrency N -- reserve as if all N sessions sit at their cap simultaneously. This is what the operating curve renders. It forces the hard tension visible in the curve: on a 128GiB host at 24GiB/run you cannot get high concurrency AND full peak coverage AND 3 runners at once."
+data gunbc_ci_session_regime_model: String = "REGIME-1 (Regime1WorstCase mode, shipping, safe-now, no runtime floor required): sessions_slice = per_session_cap C * concurrency N -- reserve as if all N sessions sit at their cap simultaneously. This is what the operating curve renders. It forces the hard tension visible in the curve: on a 128GiB host at 24GiB/run you cannot get high concurrency AND full peak coverage AND 3 runners at once. Both regimes are now SELECTABLE via the SessionReservationMode authority (gunbc_ci_session_reservation_mode): resolve_session_slice dispatches REGIME-1 -> C*N and REGIME-2 -> measured aggregate; the committed mode stays SessionReservationModeUnset (fail-closed) until the operator picks."
 
-data gunbc_ci_session_regime2_followup: String = "REGIME-2 (high-concurrency unlock, NOT built here -- needs its own measurement): sessions_slice = measured realistic AGGREGATE concurrent peak (the sessions do not all peak together: the 13 samples sum to ~15GiB vs C*N ~128GiB), with C kept only as the per-session OOM CEILING. The far-smaller aggregate reservation lets high concurrency (16+) AND full coverage (C=8GiB, no kills) AND 3 runners coexist. GATE: REGIME-2 over-commits the per-session caps, so it is SAFE only with the REGIME-2 runtime eviction floor live -- per-cgroup memory.max + systemd-oomd on the live hosts (operator fix-manifest item 8). That oomd floor is the KEYSTONE: it is both the srv2-reboot fix and the REGIME-2 enabler. The operator picks the regime; REGIME-1 ships now, REGIME-2 unlocks post-oomd, parameterized on a measured aggregate-concurrent-peak series."
+data gunbc_ci_session_regime2_followup: String = "REGIME-2 (high-concurrency unlock, now a SETTABLE mode = Regime2AggregateOomd, fail-closed pending two inputs): sessions_slice = measured realistic AGGREGATE concurrent peak (the sessions do not all peak together: the 13 samples sum to ~15GiB vs C*N ~128GiB), with C kept only as the per-session OOM CEILING (oomd_eviction_ceiling). The far-smaller aggregate reservation lets high concurrency (16+) AND full coverage (C=8GiB, no kills) AND 3 runners coexist. resolve_session_slice DERIVES it: Regime2AggregateOomd { oomd_eviction_ceiling: C, session_concurrency: N, aggregate_reservation, oomd_enforcement }. TWO fail-closed gates, neither guessed: (a) aggregate_reservation = SessionAggregateUnmeasured until a measured aggregate-concurrent-peak series lands (no aggregate sample committed yet); (b) oomd_enforcement = OomdUnverified until per-cgroup memory.max + systemd-oomd is live and verified on the hosts (operator fix-manifest item 8). That oomd floor is the KEYSTONE: it is both the srv2-reboot fix and the REGIME-2 enabler. REGIME-1 ships now; REGIME-2 unlocks the moment both gates flip to SessionAggregateMeasured + OomdEnforced -- a 1-line mode set, no structural change."
 
 data gunbc_ci_footprint_granularity_note: String = "two distinct memory footprints, intentionally separate carriers (a de-conflation, not a fork): (1) INTER-run whole-run cgroup peak gunbc_ci_job_peaks (~24GiB) decides how many runs/runners CO-RESIDE per host -> the conserving budget tree; (2) WITHIN-run per-shard peak gunbc_ci_floor_per_shard_peak_rss_bytes (~2.9GiB) decides parallelism INSIDE one run against its container cap -> memory_aware_spawn_width (#5444). Different granularity (whole-run vs per-shard) and different decision, so two carriers. Do not consolidate them into one authority."
 
