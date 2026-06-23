@@ -1,31 +1,13 @@
 module std.disposition
 
 import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef }
 
 type ConstructionMechanism
   = SingleAuthority
   | RealizationDispatch
   | SubstrateMandatoryTag
 
-type ScaffoldTarget
-  = WholeDeclaration
-  | NamedField { field_name: NonEmptyStr }
-
-type DeclLocator {
-  module_path: NonEmptyStr
-  decl_name: NonEmptyStr
-  field: ScaffoldTarget
-}
-
 type Disposition
   = Terminal { reason: NonEmptyStr }
-  | Scaffold { dissolves_to: ConstructionMechanism, bind: DeclLocator }
-
-data decl_locator_dissolves_into_declaration_ref: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclLocator {
-    module_path: "std.serialization",
-    decl_name: "DeclarationRef",
-    field: NamedField { field_name: "decl_name" }
-  }
-}
+  | Scaffold { dissolves_to: ConstructionMechanism, bind: DeclarationRef }
