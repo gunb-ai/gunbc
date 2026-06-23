@@ -212,7 +212,9 @@ fn emit(pos: TokPos, shape: TokenShape, text: String, len: Int, file: String) ->
 fn scan_ident(source: SourceRef, pos: TokPos) -> ScanResult {
   let end = source_scan_while(source: source, start: pos.pos, pred: is_ident_char)
   let text = source_substring(source: source, start: pos.pos, end: end)
-  let shape = if is_keyword_text(text: text) { ShKeyword } else { ShIdent }
+  let shape = if is_reserved_emit_sentinel(text: text) { ShUnknown }
+    else if is_keyword_text(text: text) { ShKeyword }
+    else { ShIdent }
   let token = make_token(text: text, span: make_file_span(file: source.file, start: pos.pos, end: end), shape: shape)
   ScanResult { pos: end, token: token, interp_depth: pos.interp_depth }
 }
@@ -390,9 +392,32 @@ fn is_digit(ch: Int) -> Bool {
 }
 
 fn is_ident_start(ch: Int) -> Bool {
-  (ch >= 97 && ch <= 122) || (ch >= 65 && ch <= 90) || ch == 95
+  ch == 95 || is_xid_start(ch: ch) || is_emoji_ident(ch: ch)
 }
 
 fn is_ident_char(ch: Int) -> Bool {
-  is_ident_start(ch: ch) || is_digit(ch: ch)
+  is_xid_continue(ch: ch) || is_emoji_ident(ch: ch)
+}
+
+fn is_hex_upper_digit(ch: Int) -> Bool {
+  (ch >= 48 && ch <= 57) || (ch >= 65 && ch <= 70)
+}
+
+fn all_hex_upper_in_range(text: String, pos: Int, end: Int) -> Bool {
+  if pos >= end { true }
+  else {
+    let ch = code_point(c: char_at(s: text, pos: pos))
+    if is_hex_upper_digit(ch: ch) { all_hex_upper_in_range(text: text, pos: pos + 1, end: end) }
+    else { false }
+  }
+}
+
+fn is_reserved_emit_sentinel(text: String) -> Bool {
+  let n = string_length(s: text)
+  if n < 5 { false }
+  else if code_point(c: char_at(s: text, pos: 0)) != 95 { false }
+  else if code_point(c: char_at(s: text, pos: 1)) != 69 { false }
+  else if code_point(c: char_at(s: text, pos: 2)) != 117 { false }
+  else if code_point(c: char_at(s: text, pos: n - 1)) != 95 { false }
+  else { all_hex_upper_in_range(text: text, pos: 3, end: n - 1) }
 }

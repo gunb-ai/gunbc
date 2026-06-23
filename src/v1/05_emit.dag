@@ -89,6 +89,7 @@ import v1.compiler.languages {
   NamingCase, PascalCase, SnakeCase, CamelCase, AsAuthored,
   ReservedWordStrategy, PrefixEscape, SuffixEscape, NoEscape,
   StringInterpSyntax, InterpStyle, FormatArgs, InlineExpr, EscapePair,
+  CharSanitization, EmojiCharEscape, EmojiEscape, NoCharSanitization,
   RecordLitSyntax,
   ImportRule,
   TypeUsageTrigger, TraitImplTrigger, DeriveMacroTrigger,
@@ -1574,13 +1575,54 @@ fn emit_suffix_escape_ident(converted: String, suffix: String, keywords: List<St
   }
 }
 
+fn hex_digit_char(d: Int) -> String {
+  if d < 10 { from_code_point(cp: 48 + d) }
+  else { from_code_point(cp: 55 + d) }
+}
+
+fn int_to_upper_hex_inner(n: Int, acc: String) -> String {
+  if n == 0 { acc }
+  else { int_to_upper_hex_inner(n: n / 16, acc: concat(hex_digit_char(d: n % 16), acc)) }
+}
+
+fn int_to_upper_hex(n: Int) -> String {
+  if n == 0 { "0" }
+  else { int_to_upper_hex_inner(n: n, acc: "") }
+}
+
+fn escape_emoji_codepoints_inner(s: String, pos: Int, n: Int, acc: String, prefix: String, suffix: String) -> String {
+  if pos >= n { acc }
+  else {
+    let ch_str = char_at(s: s, pos: pos)
+    let cp = code_point(c: ch_str)
+    let next_acc = if is_emoji_ident(ch: cp) {
+      concat(acc, prefix, int_to_upper_hex(n: cp), suffix)
+    } else {
+      concat(acc, ch_str)
+    }
+    escape_emoji_codepoints_inner(s: s, pos: pos + 1, n: n, acc: next_acc, prefix: prefix, suffix: suffix)
+  }
+}
+
+fn escape_emoji_codepoints(name: String, prefix: String, suffix: String) -> String {
+  escape_emoji_codepoints_inner(s: name, pos: 0, n: string_length(s: name), acc: "", prefix: prefix, suffix: suffix)
+}
+
+fn apply_char_sanitization(name: String, rule: CharSanitization) -> String {
+  match rule {
+    NoCharSanitization => name
+    EmojiEscape { rule: r } => escape_emoji_codepoints(name: name, prefix: r.prefix, suffix: r.suffix)
+  }
+}
+
 fn emit_ident(name: String, target: RenderTarget) -> String {
   let spec = language_spec(target: target)
+  let sanitized = apply_char_sanitization(name: name, rule: spec.char_sanitization)
   let converted = match spec.naming_case {
-    SnakeCase => to_snake(name: name)
-    CamelCase => to_camel(name: name)
-    PascalCase => capitalize_first(s: to_camel(name: name))
-    AsAuthored => name
+    SnakeCase => to_snake(name: sanitized)
+    CamelCase => to_camel(name: sanitized)
+    PascalCase => capitalize_first(s: to_camel(name: sanitized))
+    AsAuthored => sanitized
   }
   let is_reserved = spec.reserved_words.keywords |> any(r => r == converted)
   if is_reserved {

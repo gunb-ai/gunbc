@@ -343,6 +343,7 @@ type LanguageSpec {
   record_lit: RecordLitSyntax
   service_method: ServiceMethodStrategy
   service_return: ServiceReturnStrategy
+  char_sanitization: CharSanitization
 }
 
 type TupleSyntax {
@@ -381,6 +382,15 @@ type StringInterpSyntax {
   plain_template: String
   escape_pairs: List<EscapePair>
 }
+
+type EmojiCharEscape {
+  prefix: String
+  suffix: String
+}
+
+type CharSanitization
+  = NoCharSanitization
+  | EmojiEscape { rule: EmojiCharEscape }
 
 fn rust_spec() -> LanguageSpec {
   LanguageSpec {
@@ -522,7 +532,8 @@ fn rust_spec() -> LanguageSpec {
       anon_field_indent: "    "
     },
     service_method: SelfInParams { self_param: "&self" },
-    service_return: ArrowReturn
+    service_return: ArrowReturn,
+    char_sanitization: EmojiEscape { rule: EmojiCharEscape { prefix: "_Eu", suffix: "_" } }
   }
 }
 
@@ -666,7 +677,8 @@ fn python_spec() -> LanguageSpec {
       anon_field_indent: "    "
     },
     service_method: SelfInParams { self_param: "self" },
-    service_return: ArrowReturn
+    service_return: ArrowReturn,
+    char_sanitization: EmojiEscape { rule: EmojiCharEscape { prefix: "_Eu", suffix: "_" } }
   }
 }
 
@@ -810,7 +822,8 @@ fn go_spec() -> LanguageSpec {
       anon_field_indent: "\t"
     },
     service_method: ExternalReceiver { var_name: "c" },
-    service_return: ErrorTupleReturn { error_type: "error" }
+    service_return: ErrorTupleReturn { error_type: "error" },
+    char_sanitization: EmojiEscape { rule: EmojiCharEscape { prefix: "_Eu", suffix: "_" } }
   }
 }
 
@@ -954,7 +967,8 @@ fn dag_spec() -> LanguageSpec {
       anon_field_indent: "    "
     },
     service_method: SelfInParams { self_param: "" },
-    service_return: ArrowReturn
+    service_return: ArrowReturn,
+    char_sanitization: NoCharSanitization
   }
 }
 

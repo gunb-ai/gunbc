@@ -461,6 +461,25 @@ pub fn code_point(c: String) -> i64 {
     c.chars().next().map(|ch| ch as i64).unwrap_or(0)
 }
 
+pub fn is_xid_start(cp: i64) -> bool {
+    char::from_u32(cp as u32)
+        .map(unicode_ident::is_xid_start)
+        .unwrap_or(false)
+}
+
+pub fn is_xid_continue(cp: i64) -> bool {
+    char::from_u32(cp as u32)
+        .map(unicode_ident::is_xid_continue)
+        .unwrap_or(false)
+}
+
+pub fn is_emoji_ident(cp: i64) -> bool {
+    use unicode_properties::UnicodeEmoji;
+    char::from_u32(cp as u32)
+        .map(|c| c.is_extended_pictographic())
+        .unwrap_or(false)
+}
+
 pub fn from_code_point(cp: i64) -> String {
     char::from_u32(cp as u32)
         .map(|c| c.to_string())
