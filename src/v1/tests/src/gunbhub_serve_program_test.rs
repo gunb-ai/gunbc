@@ -4,12 +4,10 @@ use crate::helpers::workspace_root;
 fn gunbhub_serve_program_runs_green() {
     let ws = workspace_root();
     let gunbc = ws.join("target/release/gunbc");
-    if !gunbc.is_file() {
-        eprintln!(
-            "skipping gunbhub_serve_program_runs_green: release binary not found (run `cargo build --release -p v1-compiler` first)"
-        );
-        return;
-    }
+    assert!(
+        gunbc.is_file(),
+        "release gunbc binary required for gunbhub_serve_program (built in ci_floor / ci_floor_parity)"
+    );
 
     let entry = ws.join("dsl/examples/gunbhub_serve_program/gunbhub_serve_program.dag");
     let program_root = ws.join("dsl/examples/gunbhub_serve_program");
