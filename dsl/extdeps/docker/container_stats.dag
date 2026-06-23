@@ -2,32 +2,21 @@ module extdeps.docker.container_stats
 
 import std.types { Timestamp, String, Int, Float }
 import std.nat { Nat }
-import std.measure { ByteSize, byte_size, byte_size_count }
-import std.serialization { VariantEncoding, StringVariant, VariantNaming, AsAuthored }
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
-
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
-    locator: "docs.docker.com/engine/api/v1.47/#tag/Container/operation/ContainerStats"
-  }
-}
-
-data wire_contract: VariantEncoding = StringVariant { naming: AsAuthored }
+import std.measure { ByteSize, byte_size, byte_size_count, Nanosecond, nanosecond, nanosecond_count, Microsecond }
+import extdeps.docker.endpoint { docker_default_endpoint, docker_wire_contract, docker_external_authority_anchor }
 
 type CpuStats {
   cpu_usage: CpuUsage
-  system_cpu_usage: Nat
+  system_cpu_usage: Nanosecond
   online_cpus: Nat
   cpu_percent: Float?
 }
 
 type CpuUsage {
-  total_usage: Nat
-  percpu_usage: List<Nat>?
-  usage_in_kernelmode: Nat
-  usage_in_usermode: Nat
+  total_usage: Nanosecond
+  percpu_usage: List<Nanosecond>?
+  usage_in_kernelmode: Nanosecond
+  usage_in_usermode: Nanosecond
 }
 
 type MemoryStats {
@@ -74,8 +63,13 @@ type NetworkStats {
   tx_dropped: Nat
 }
 
+type NetworkInterface {
+  name: String
+  stats: NetworkStats
+}
+
 type Networks {
-  eth0: NetworkStats?
+  interfaces: List<NetworkInterface>
 }
 
 service docker.ContainerStats {
@@ -108,13 +102,11 @@ service docker.ContainerStats {
   }
 }
 
-data docker_default_endpoint: String = "unix:///var/run/docker.sock"
-
 fn container_stats_memory_usage(stats: ContainerStats) -> ByteSize {
   stats.memory_stats.usage
 }
 
-fn container_stats_cpu_usage_total(stats: ContainerStats) -> Nat {
+fn container_stats_cpu_usage_total(stats: ContainerStats) -> Nanosecond {
   stats.cpu_stats.cpu_usage.total_usage
 }
 

@@ -245,3 +245,23 @@ fn bandwidth(count: Nat) -> Bandwidth {
 fn bandwidth_count(b: Bandwidth) -> Nat {
   measure_count(b)
 }
+
+type Nanosecond = Measure<Time, Nano, Nat>
+
+fn nanosecond(count: Nat) -> Nanosecond {
+  Nanosecond { count: count }
+}
+
+fn nanosecond_count(n: Nanosecond) -> Nat {
+  measure_count(n)
+}
+
+type Microsecond = Measure<Time, Micro, Nat>
+
+fn microsecond(count: Nat) -> Microsecond {
+  Microsecond { count: count }
+}
+
+fn microsecond_count(m: Microsecond) -> Nat {
+  measure_count(m)
+}

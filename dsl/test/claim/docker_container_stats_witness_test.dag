@@ -1,14 +1,14 @@
 module test.claim.docker_container_stats_witness
 
-import extdeps.docker.container_stats { CpuStats, CpuUsage, MemoryStats, ContainerStats, PidStats, NetworkStats, Networks, container_stats_memory_usage, container_stats_cpu_usage_total, container_stats_online_cpus }
+import extdeps.docker.container_stats { CpuStats, CpuUsage, MemoryStats, ContainerStats, PidStats, NetworkStats, NetworkInterface, Networks, container_stats_memory_usage, container_stats_cpu_usage_total, container_stats_online_cpus }
 import extdeps.docker.container_inspect { ContainerState, ContainerStateDetail, HostConfig, ContainerConfig, ContainerInspect, NetworkSettings, container_state_is_running, container_inspect_memory_limit, container_inspect_cpu_quota, container_inspect_cpu_period, Running, Exited, Paused }
-import std.measure { byte_size }
+import std.measure { byte_size, nanosecond, microsecond }
 
 data sample_cpu_usage: CpuUsage = CpuUsage {
-  total_usage: 1234567890
-  percpu_usage: [1000000, 234567890]
-  usage_in_kernelmode: 100000000
-  usage_in_usermode: 1134567890
+  total_usage: nanosecond(1234567890)
+  percpu_usage: [nanosecond(1000000), nanosecond(234567890)]
+  usage_in_kernelmode: nanosecond(100000000)
+  usage_in_usermode: nanosecond(1134567890)
 }
 
 data sample_memory_stats: MemoryStats = MemoryStats {
@@ -20,7 +20,7 @@ data sample_memory_stats: MemoryStats = MemoryStats {
 
 data sample_cpu_stats: CpuStats = CpuStats {
   cpu_usage: sample_cpu_usage
-  system_cpu_usage: 9876543210
+  system_cpu_usage: nanosecond(9876543210)
   online_cpus: 4
   cpu_percent: none
 }
@@ -41,7 +41,7 @@ data sample_network_stats: NetworkStats = NetworkStats {
 }
 
 data sample_networks: Networks = Networks {
-  eth0: Present { value: sample_network_stats }
+  interfaces: [NetworkInterface { name: "eth0", stats: sample_network_stats }]
 }
 
 data sample_container_stats: ContainerStats = ContainerStats {
@@ -58,8 +58,8 @@ data sample_host_config: HostConfig = HostConfig {
   memory: Present { value: byte_size(2147483648) }
   memory_reservation: none
   memory_swap: none
-  cpu_period: 100000
-  cpu_quota: 400000
+  cpu_period: Present { value: microsecond(100000) }
+  cpu_quota: Present { value: microsecond(400000) }
   cpuset_cpus: none
   cpuset_mems: none
   blkio_weight: none
@@ -147,7 +147,7 @@ test fn container_stats_memory_usage_returns_correct_bytes() -> Bool {
 
 test fn container_stats_cpu_usage_total_returns_correct_nanoseconds() -> Bool {
   let total = container_stats_cpu_usage_total(sample_container_stats)
-  total == 1234567890
+  total == nanosecond(1234567890)
 }
 
 test fn container_stats_online_cpus_returns_correct_count() -> Bool {
@@ -176,14 +176,14 @@ test fn container_inspect_memory_limit_extracts_from_host_config() -> Bool {
 
 test fn container_inspect_cpu_quota_extracts_from_host_config() -> Bool {
   match container_inspect_cpu_quota(sample_container_inspect) {
-    Present { value: quota } => quota == 400000
+    Present { value: quota } => quota == microsecond(400000)
     Absent => false
   }
 }
 
 test fn container_inspect_cpu_period_extracts_from_host_config() -> Bool {
   match container_inspect_cpu_period(sample_container_inspect) {
-    Present { value: period } => period == 100000
+    Present { value: period } => period == microsecond(100000)
     Absent => false
   }
 }

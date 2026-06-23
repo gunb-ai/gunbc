@@ -2,19 +2,9 @@ module extdeps.docker.container_inspect
 
 import std.types { Timestamp, String, Int, FilePath }
 import std.nat { Nat }
-import std.measure { ByteSize, byte_size, byte_size_count }
-import std.serialization { VariantEncoding, StringVariant, VariantNaming, AsAuthored, CoproductWireContract }
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
-
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
-    locator: "docs.docker.com/engine/api/v1.47/#tag/Container/operation/ContainerInspect"
-  }
-}
-
-data wire_contract: VariantEncoding = StringVariant { naming: AsAuthored }
+import std.measure { ByteSize, byte_size, byte_size_count, Microsecond, microsecond_count }
+import std.serialization { VariantEncoding, StringVariant, VariantNaming, AsAuthored }
+import extdeps.docker.endpoint { docker_default_endpoint, docker_wire_contract, docker_external_authority_anchor }
 
 type ContainerState
   = Running
@@ -22,11 +12,6 @@ type ContainerState
   | Exited
   | Dead
   | Restarting
-
-data container_state_wire_contract: CoproductWireContract = {
-  coproduct: "ContainerState",
-  encoding: StringVariant { naming: AsAuthored }
-}
 
 type ContainerStateDetail {
   status: ContainerState
@@ -47,8 +32,8 @@ type HostConfig {
   memory: ByteSize?
   memory_reservation: ByteSize?
   memory_swap: ByteSize?
-  cpu_period: Nat?
-  cpu_quota: Nat?
+  cpu_period: Microsecond?
+  cpu_quota: Microsecond?
   cpuset_cpus: String?
   cpuset_mems: String?
   blkio_weight: Nat?
@@ -145,14 +130,8 @@ service docker.Container {
   }
 }
 
-data docker_default_endpoint: String = "unix:///var/run/docker.sock"
-
-fn container_state_is_running(state: ContainerState) -> Bool {
-  match state {
-    Running => true
-    _ => false
-  }
-}
+fn container_state_is_running(state: ContainerState) -> Bool =
+  state == Running
 
 fn container_inspect_memory_limit(inspect: ContainerInspect) -> ByteSize? {
   match inspect.host_config {
@@ -161,14 +140,14 @@ fn container_inspect_memory_limit(inspect: ContainerInspect) -> ByteSize? {
   }
 }
 
-fn container_inspect_cpu_quota(inspect: ContainerInspect) -> Nat? {
+fn container_inspect_cpu_quota(inspect: ContainerInspect) -> Microsecond? {
   match inspect.host_config {
     null => none
     hc => hc.cpu_quota
   }
 }
 
-fn container_inspect_cpu_period(inspect: ContainerInspect) -> Nat? {
+fn container_inspect_cpu_period(inspect: ContainerInspect) -> Microsecond? {
   match inspect.host_config {
     null => none
     hc => hc.cpu_period

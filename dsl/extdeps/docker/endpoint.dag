@@ -1,0 +1,17 @@
+module extdeps.docker.endpoint
+
+import std.types { String }
+import std.serialization { VariantEncoding, StringVariant, VariantNaming, AsAuthored }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data docker_default_endpoint: String = "unix:///var/run/docker.sock"
+
+data docker_wire_contract: VariantEncoding = StringVariant { naming: AsAuthored }
+
+data docker_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.docker.com/engine/api/v1.47"
+  }
+}
