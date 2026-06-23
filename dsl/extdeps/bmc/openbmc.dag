@@ -21,6 +21,12 @@ data openbmc_factory_login: FactoryLogin = FactoryLogin {
 
 data openbmc_supported_protocols: List<BmcProtocol> = [Redfish, Ipmi]
 
+type RedfishHostStorageVisibility =
+    HostStorageEnumerable
+  | HostStorageBlind
+
+data openbmc_redfish_host_storage_visibility: RedfishHostStorageVisibility = HostStorageBlind
+
 fn bmc_firmware_factory_login(family: BmcFirmwareFamily) -> FactoryLogin {
   match family {
     OpenBmc => openbmc_factory_login
@@ -30,5 +36,11 @@ fn bmc_firmware_factory_login(family: BmcFirmwareFamily) -> FactoryLogin {
 fn bmc_firmware_supported_protocols(family: BmcFirmwareFamily) -> List<BmcProtocol> {
   match family {
     OpenBmc => openbmc_supported_protocols
+  }
+}
+
+fn bmc_firmware_host_storage_visibility(family: BmcFirmwareFamily) -> RedfishHostStorageVisibility {
+  match family {
+    OpenBmc => openbmc_redfish_host_storage_visibility
   }
 }
