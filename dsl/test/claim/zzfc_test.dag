@@ -1,0 +1,11 @@
+module test.claim.zzfc
+import std.logic { Bool }
+import std.integer { UInt8 }
+import std.bytes { bytes_octets, utf8_encode_bytes }
+
+fn probe_octets(b: List<UInt8>) -> List<UInt8> { [1 / 0] }
+
+test fn fc_probe() -> Bool {
+  let o = bytes_octets(b: utf8_encode_bytes(s: "x"))
+  o == o
+}
