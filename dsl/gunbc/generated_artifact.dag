@@ -1,0 +1,61 @@
+
+module gunbc.generated_artifact
+
+import gunbc.ci_yaml_emit { expected_ci_yml }
+import gunbc.ci_yaml_validate { ci_yml_parses }
+import gunbc.gitignore_emit { expected_gitignore, path_is_ignored }
+import gunbc.roadmap_authority { expected_roadmap_md }
+
+type GeneratedArtifact
+  = CiYamlArtifact
+  | GitignoreArtifact
+  | RoadmapArtifact
+
+data generated_artifact_registry: List<GeneratedArtifact> = [
+  CiYamlArtifact,
+  GitignoreArtifact,
+  RoadmapArtifact
+]
+
+fn artifact_path(a: GeneratedArtifact) -> String {
+  match a {
+    CiYamlArtifact => ".github/workflows/ci.yml"
+    GitignoreArtifact => ".gitignore"
+    RoadmapArtifact => "ROADMAP.md"
+  }
+}
+
+fn artifact_generate(a: GeneratedArtifact) -> String {
+  match a {
+    CiYamlArtifact => expected_ci_yml()
+    GitignoreArtifact => expected_gitignore()
+    RoadmapArtifact => expected_roadmap_md()
+  }
+}
+
+fn artifact_extra_valid(a: GeneratedArtifact) -> Bool {
+  match a {
+    CiYamlArtifact => ci_yml_parses(path: artifact_path(a: a))
+    _ => true
+  }
+}
+
+fn artifact_is_committed(a: GeneratedArtifact) -> Bool {
+  !path_is_ignored(path: artifact_path(a: a))
+}
+
+fn committed_generated_artifacts() -> List<GeneratedArtifact> {
+  filter(generated_artifact_registry, a => artifact_is_committed(a: a))
+}
+
+fn artifact_eq(a: GeneratedArtifact, b: GeneratedArtifact) -> Bool {
+  match a {
+    CiYamlArtifact => match b { CiYamlArtifact => true  _ => false }
+    GitignoreArtifact => match b { GitignoreArtifact => true  _ => false }
+    RoadmapArtifact => match b { RoadmapArtifact => true  _ => false }
+  }
+}
+
+fn registry_contains(a: GeneratedArtifact) -> Bool {
+  any(generated_artifact_registry, x => artifact_eq(a: x, b: a))
+}

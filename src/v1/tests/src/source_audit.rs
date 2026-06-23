@@ -113,14 +113,19 @@ fn emit_handles_null_coalesce() {
 
 #[test]
 fn emit_handles_for_loop() {
+    use crate::helpers::{assert_no_diagnostics, compile_dag, find_file};
     let source = read_v2_file("src/v1/05_emit_rust.dag");
     assert!(
         source.contains("emit_typed_for_each"),
         "05_emit_rust.dag should contain emit_typed_for_each"
     );
+    let dag = "module test\nfn demo(items: List<Int>) -> List<Int> {\n  for x in items { x }\n}\n";
+    let result = compile_dag(dag);
+    assert_no_diagnostics(&result);
+    let rust = find_file(&result, "src/test.rs");
     assert!(
-        source.contains("iter().cloned()"),
-        "05_emit_rust.dag should contain iter().cloned()"
+        rust.contains("iter().cloned()"),
+        "for-loop over a List should emit iter().cloned() in Rust output"
     );
 }
 
