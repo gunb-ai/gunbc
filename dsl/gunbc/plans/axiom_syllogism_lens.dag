@@ -11,7 +11,6 @@ fn h2(text: String) -> MarkdownBlock { HeadingBlock { level: H2, inlines: [TextI
 fn h3(text: String) -> MarkdownBlock { HeadingBlock { level: H3, inlines: [TextInline { text: text }] } }
 fn p(text: String) -> MarkdownBlock { ParagraphBlock { inlines: [TextInline { text: text }] } }
 fn li(text: String) -> MarkdownListItem { MarkdownListItem { blocks: [p(text: text)] } }
-fn li_blocks(blocks: List<MarkdownBlock>) -> MarkdownListItem { MarkdownListItem { blocks: blocks } }
 fn ul(items: List<MarkdownListItem>) -> MarkdownBlock { UnorderedListBlock { items: items } }
 fn ol(items: List<MarkdownListItem>) -> MarkdownBlock { OrderedListBlock { items: items } }
 fn cell(text: String) -> MarkdownTableCell { MarkdownTableCell { inlines: [TextInline { text: text }] } }
