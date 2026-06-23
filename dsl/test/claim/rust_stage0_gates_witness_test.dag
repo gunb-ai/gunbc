@@ -1,6 +1,6 @@
 module test.claim.rust_stage0_gates_witness
 
-import tools.rust_stage0_gates { path_is_rust_monolith, should_run_gates }
+import tools.rust_stage0_gates { path_is_rust_monolith, should_run_gates, unit_must_run }
 
 fn w_rs_selects() -> Bool { path_is_rust_monolith(path: "src/v1/stage0/src/lib.rs") }
 fn w_cargo_toml_selects() -> Bool { path_is_rust_monolith(path: "src/v1/stage0/Cargo.toml") }
@@ -33,6 +33,35 @@ fn w_git_fail_fires() -> Bool {
   should_run_gates(paths: [], git_success: false) == true
 }
 
+// ── Edge-(b) coverage discriminating control ──────────────────────────────────
+// (i) a changed .dag IN coproduct_reflection_conformance_test's declared closure
+//     FIRES the rust gate (was false before this slice — discriminates the new behavior).
+fn w_closure_dag_fires() -> Bool {
+  should_run_gates(paths: ["src/v2/std/node_query.dag"], git_success: true) == true
+}
+
+// (ii) a changed .dag OUTSIDE every declared closure does NOT fire (discriminates an
+//      over-fire that would run on any .dag change). text.dag is a real file, not consumed.
+fn w_out_of_closure_dag_no_fire() -> Bool {
+  should_run_gates(paths: ["src/v2/std/text.dag"], git_success: true) == false
+}
+
+// (iii) fail-closed: a unit with NO declared closure must run regardless of the diff
+//       (absent declaration = run, never skip).
+fn w_undeclared_unit_must_run() -> Bool {
+  unit_must_run(unit: "some_undeclared_rust_test", paths: ["src/v2/std/text.dag"]) == true
+}
+
+// per-unit selection of the declared unit: affected by an in-closure .dag, skipped on
+// an out-of-closure .dag (the affordability direction the convergence will later use).
+fn w_declared_unit_affected_by_closure_dag() -> Bool {
+  unit_must_run(unit: "coproduct_reflection_conformance_test", paths: ["src/v2/std/node.dag"]) == true
+}
+
+fn w_declared_unit_unaffected_by_other_dag() -> Bool {
+  unit_must_run(unit: "coproduct_reflection_conformance_test", paths: ["src/v2/std/text.dag"]) == false
+}
+
 test fn rust_stage0_gates_witnesses() -> Bool {
   w_rs_selects() &&
   w_cargo_toml_selects() &&
@@ -45,5 +74,10 @@ test fn rust_stage0_gates_witnesses() -> Bool {
   w_rs_substring_no_select() &&
   w_generic_config_no_select() &&
   w_empty_no_fire() &&
-  w_git_fail_fires()
+  w_git_fail_fires() &&
+  w_closure_dag_fires() &&
+  w_out_of_closure_dag_no_fire() &&
+  w_undeclared_unit_must_run() &&
+  w_declared_unit_affected_by_closure_dag() &&
+  w_declared_unit_unaffected_by_other_dag()
 }
