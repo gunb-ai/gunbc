@@ -419,6 +419,12 @@ fn sentinel_prefix_matches(text: String, prefix: String, pos: Int, len: Int) -> 
   else { sentinel_prefix_matches(text: text, prefix: prefix, pos: pos + 1, len: len) }
 }
 
+fn sentinel_suffix_matches(text: String, suffix: String, pos: Int, sfx_len: Int, text_start: Int) -> Bool {
+  if pos >= sfx_len { true }
+  else if code_point(c: char_at(s: text, pos: text_start + pos)) != code_point(c: char_at(s: suffix, pos: pos)) { false }
+  else { sentinel_suffix_matches(text: text, suffix: suffix, pos: pos + 1, sfx_len: sfx_len, text_start: text_start) }
+}
+
 fn is_reserved_emit_sentinel(text: String) -> Bool {
   let rule = canonical_emoji_char_escape()
   let pfx = rule.prefix
@@ -428,6 +434,6 @@ fn is_reserved_emit_sentinel(text: String) -> Bool {
   let n = string_length(s: text)
   if n < pfx_len + sfx_len + 1 { false }
   else if !sentinel_prefix_matches(text: text, prefix: pfx, pos: 0, len: pfx_len) { false }
-  else if code_point(c: char_at(s: text, pos: n - sfx_len)) != code_point(c: char_at(s: sfx, pos: 0)) { false }
+  else if !sentinel_suffix_matches(text: text, suffix: sfx, pos: 0, sfx_len: sfx_len, text_start: n - sfx_len) { false }
   else { all_hex_upper_in_range(text: text, pos: pfx_len, end: n - sfx_len) }
 }

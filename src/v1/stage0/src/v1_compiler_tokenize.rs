@@ -956,6 +956,24 @@ pub fn sentinel_prefix_matches(text: String, prefix: String, pos: i64, len: i64)
     }
 }
 
+pub fn sentinel_suffix_matches(
+    text: String,
+    suffix: String,
+    pos: i64,
+    sfx_len: i64,
+    text_start: i64,
+) -> bool {
+    if pos >= sfx_len {
+        true
+    } else if v1_rt::code_point(v1_rt::char_at(&text, text_start + pos))
+        != v1_rt::code_point(v1_rt::char_at(&suffix, pos))
+    {
+        false
+    } else {
+        sentinel_suffix_matches(text, suffix, pos + 1, sfx_len, text_start)
+    }
+}
+
 pub fn is_reserved_emit_sentinel(text: String) -> bool {
     let rule = canonical_emoji_char_escape();
     let pfx = rule.prefix;
@@ -967,9 +985,7 @@ pub fn is_reserved_emit_sentinel(text: String) -> bool {
         false
     } else if !sentinel_prefix_matches(text.clone(), pfx.clone(), 0, pfx_len) {
         false
-    } else if v1_rt::code_point(v1_rt::char_at(&text, n - sfx_len))
-        != v1_rt::code_point(v1_rt::char_at(&sfx, 0))
-    {
+    } else if !sentinel_suffix_matches(text.clone(), sfx.clone(), 0, sfx_len, n - sfx_len) {
         false
     } else {
         all_hex_upper_in_range(text.clone(), pfx_len, n - sfx_len)
