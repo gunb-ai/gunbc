@@ -1,5 +1,14 @@
 module gunbc.ci_failure_class
 
+# STATUS (ci-merge-freshness §6): this verdict is COMPUTED + surfaced, gating DEFERRED.
+# `floor_exit_blocks_merge` is built, witnessed, and EXECUTES, but NOTHING consumes it to block a
+# merge — a verdict-without-enforcement (an executed+visible interim, NOT an inert lens, NOT a live
+# gate). The merge MECHANISM (the operator merge-queue re-running the floor vs the merge-RESULT tree
+# and consuming this verdict) is the operator's repo-admin half. Wiring this into the CI-floor HOST
+# exit semantics is the livelock path and is OFF. Flip to enforcing is gated on BOTH: (a) the
+# cross-run clustering-reclassification consumer (UNBUILT — reclassifies a clustered exit-137 OOM
+# back to Infra) AND (b) cap-recovery (IN-FLIGHT: #5650 + operator oomd). Do NOT flip early.
+
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import extdeps.runtime.errno { PosixErrno, EAGAIN, errno_strerror }
 import extdeps.rust.std_process { StdProcessSpawnOutcome, SpawnFailed, spawn_outcome_log_fragment }

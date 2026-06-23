@@ -62,31 +62,38 @@ re-leak silently excused, a §5 fail-open). It is **complementary** and explicit
 already exist; the reverse-staleness gate is the genuine residual lens; the freshness requirement in §3 is
 the actual 3×-red killer.
 
-## 6. The infra-vs-structural verdict ships DORMANT (scaffold + written enable-gate)
+## 6. The infra-vs-structural verdict is COMPUTED + surfaced; gating is DEFERRED
 
-#5615 (`gunbc.ci_failure_class`) builds the construction-first half that makes the §3 freshness
+`gunbc.ci_failure_class` builds the construction-first half that makes the §3 freshness
 requirement *viable*: a classifier that partitions a floor red into `Infra | Structural` and a
 fail-closed verdict surface `floor_exit_blocks_merge(ProcessExit) -> Bool` (success / unambiguous-infra ⇒
 non-blocking; everything else, including a bare exit-137, ⇒ Structural ⇒ blocks). Without it, requiring
 green-on-main would block merges on the environmental reds (sccache/EAGAIN/runner contention) that are
 *not* the defect the freshness rule targets.
 
-**#5615 ships this verdict surface DORMANT.** It is built and witnessed but **nothing consumes
-`floor_exit_blocks_merge` to block any merge** — it is dormant by construction, since the freshness
-*mechanism* (§3, the operator merge-queue that would actually re-run vs current `main` and consume the
-verdict) is explicitly out of #5615's scope. This is a §6 **scaffold-with-dissolution-trigger**: the
-verdict exists; flipping it to *enforcing* is the dissolution event, and it is gated — **do not wire the
-merge-queue to block on this verdict until BOTH hold:**
+**The verdict is COMPUTED and surfaced, gating DEFERRED** (re-landed clean after the #5627 outage-revert
+of #5615; the re-land is #5651, on top of the #5640 `TestClaim`→`AssertionClaim` de-fork that removed the
+flat-intern collision the original land tripped). It is built and witnessed and **executes**, but
+**nothing consumes `floor_exit_blocks_merge` to block any merge** — a verdict-without-enforcement, a
+legitimate executed+visible interim (NOT an inert lens, and explicitly NOT a claimed-live gate). The
+freshness *mechanism* (§3, the operator merge-queue that re-runs the floor vs the merge-RESULT tree =
+Wall A and consumes the verdict) is the operator's repo-admin half, and is **out of scope of the
+classifier PR**. Wiring `floor_exit_blocks_merge` into the CI-floor HOST exit semantics is the **livelock
+path and is OFF** (infra-OOM mis-classified `Structural` ⇒ block ⇒ re-run ⇒ OOM ⇒ …) — never do it.
 
-- **(a) the cross-run clustering-reclassification consumer has landed.** A *lone* exit-137 fails closed
-  to `Structural` (a single `ProcessExit` cannot tell a co-residence OOM from a structural
+This is a §6 **scaffold-with-dissolution-trigger**: the verdict exists and runs; flipping it to
+*gating/enforcing* (the operator merge-queue consuming it) is the dissolution event, and it is gated —
+**do not flip to enforcing until BOTH clear:**
+
+- **(a) the cross-run clustering-reclassification consumer has landed (UNBUILT today).** A *lone* exit-137
+  fails closed to `Structural` (a single `ProcessExit` cannot tell a co-residence OOM from a structural
   memory-runaway). If the green-on-main mechanism went live first, a genuine co-residence OOM on a
   re-run would read `Structural ⇒ block ⇒ re-run ⇒ OOM ⇒ …` — the livelock deep-otter-528 warned of.
   The clustering consumer (simultaneous multi-job death + host-uptime reset in a tight window) is what
   *reclassifies* such a clustered OOM back to `Infra`; it is a **hard prerequisite** for enforcement.
-- **(b) cap-recovery has reclaimed session slots.** Green-on-main re-runs *increase* floor memory load
-  during exactly the contention window this lockdown is containing; enforcing before the host has slack
-  worsens the OOM pressure the verdict is meant to triage.
+- **(b) cap-recovery has reclaimed session slots (IN-FLIGHT: #5650 + operator oomd).** Green-on-main
+  re-runs *increase* floor memory load during exactly the contention window this lockdown is containing;
+  enforcing before the host has slack worsens the OOM pressure the verdict is meant to triage.
 
 Until both clear, the verdict is a loaded mechanism left unwired on purpose: a future worker must **not**
 flip it to enforcing early. The trigger is decidable (both consumers either exist on `main` or do not),
