@@ -51,11 +51,15 @@ pub(crate) fn witness_layer_roots_from_source(content: &str) -> Vec<String> {
             continue;
         }
         let body = item.body.as_ref().unwrap_or_else(|| {
-            panic!("ci_layer_roots authority: `{WITNESS_LAYER_ROOTS_DATA_NAME}` has no value body")
+            panic!(
+                "ci_layer_roots authority: `data {WITNESS_LAYER_ROOTS_DATA_NAME}` in \
+                 {CI_LAYER_ROOTS_AUTHORITY_REL} has no value body"
+            )
         });
         if !matches!(body.expr_data.as_ref(), ExprData::ExprListLit) {
             panic!(
-                "ci_layer_roots authority: `{WITNESS_LAYER_ROOTS_DATA_NAME}` is not a list literal"
+                "ci_layer_roots authority: `data {WITNESS_LAYER_ROOTS_DATA_NAME}` in \
+                 {CI_LAYER_ROOTS_AUTHORITY_REL} is not a `List<String>` literal"
             );
         }
         let mut roots = Vec::new();
@@ -64,18 +68,21 @@ pub(crate) fn witness_layer_roots_from_source(content: &str) -> Vec<String> {
                 ExprData::ExprLiteral { value } => match value.as_ref() {
                     LiteralValue::LitStr { value } => roots.push(value.clone()),
                     _ => panic!(
-                        "ci_layer_roots authority: `{WITNESS_LAYER_ROOTS_DATA_NAME}` element is not a string literal"
+                        "ci_layer_roots authority: an element of `{WITNESS_LAYER_ROOTS_DATA_NAME}` in \
+                         {CI_LAYER_ROOTS_AUTHORITY_REL} is not a string literal"
                     ),
                 },
                 _ => panic!(
-                    "ci_layer_roots authority: `{WITNESS_LAYER_ROOTS_DATA_NAME}` element is not a literal"
+                    "ci_layer_roots authority: an element of `{WITNESS_LAYER_ROOTS_DATA_NAME}` in \
+                     {CI_LAYER_ROOTS_AUTHORITY_REL} is not a literal"
                 ),
             }
         }
         if roots.is_empty() {
             panic!(
-                "ci_layer_roots authority: `{WITNESS_LAYER_ROOTS_DATA_NAME}` is empty (fail-closed: \
-                 an empty witness corpus would vacuously pass every census wall)"
+                "ci_layer_roots authority: `{WITNESS_LAYER_ROOTS_DATA_NAME}` in \
+                 {CI_LAYER_ROOTS_AUTHORITY_REL} is empty (fail-closed: an empty witness corpus would \
+                 vacuously pass every census wall)"
             );
         }
         return roots;
