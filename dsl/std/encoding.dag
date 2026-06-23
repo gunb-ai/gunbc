@@ -119,6 +119,8 @@ fn utf8_decode_bytes(payload: Bytes) -> String {
 
 type Base64Variant = Standard | UrlSafe
 
+data base64_group_fill_carrier_debt_marker: String = "Base64EncodeState.count / Base64DecodeState.count are hand-rolled closed sums (inhabitants {0,1,2} and {0,1,2,3}) over Int, so illegal states are representable (§5 'make the bad state unwritable'). File-local helpers behind the pure base64_encode/base64_decode surface; every arm is covered by execution in base64_rfc4648_witness_test.dag. dissolve-on: carrier swap to declared closed sums (e.g. Empty|One|Two / +Three) the next time the encode/decode state machine is touched."
+
 fn base64_alphabet(variant: Base64Variant) -> String {
   match variant {
     Standard => "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
