@@ -241,9 +241,50 @@ func bmc_onboard_store_rotate_install(octets: List<UInt8>) -> ProcessExit
     return exit_failure(reason: concat("store: GCP durability read-back mismatch — refusing to rotate (would lock out srv3); stored version ", stored.name))
   }
 
-  return match bmc_rotate_credential(new_credential: credential) {
-    ExitSuccess => bmc_os_install(new_credential: credential)
+  return bmc_rotate_credential(new_credential: credential)
+}
+
+// Full continuation: store+rotate, then (on success) os-install. os-install requires a reachable
+// PXE/install server (Lane E) — do NOT run this until that infra exists, or it resets srv3 into a
+// dead PXE boot.
+func bmc_onboard_store_rotate_install(octets: List<UInt8>) -> ProcessExit
+  uses net: Network
+{
+  return match bmc_store_and_rotate(octets: octets) {
+    ExitSuccess => bmc_os_install(new_credential: base64_encode(octets: octets, variant: UrlSafe) as Secret)
     ExitFailure { code: c, reason: r } => ExitFailure { code: c, reason: r }
+  }
+}
+
+// CREDENTIAL ASSIMILATION ONLY — acquire -> gen(fail-closed) -> store(read-back gated) -> rotate ->
+// reauth, STOPPING before os-install. This is the safe live step to assimilate srv3's BMC credential
+// (factory root/0penBmc -> a minted admin credential durably stored in GCP) while the PXE/install
+// server does not yet exist. Run: gunbc run --source-root dsl --entry dsl/gunbc/tools/bmc_onboard.dag
+//   --function bmc_assimilate_srv3_credential
+func bmc_assimilate_srv3_credential() -> ProcessExit
+  uses net: Network
+{
+  let plan = new_altra_onboarding_plan
+  let host = plan.bmc.host
+  let account = plan.factory_login.username
+
+  root_resp = redfish.Http.GetServiceRoot(bmc_host: host)
+  if root_resp.success == false {
+    return exit_failure(reason: concat("acquire: service root unreachable: ", root_resp.body))
+  }
+  acq = redfish.Http.GetSystem(
+    bmc_host: host,
+    username: account,
+    password: plan.factory_login.published_password as Secret
+  )
+  if acq.success == false {
+    return exit_failure(reason: concat("acquire: factory login failed: ", acq.body))
+  }
+
+  octets_opt = mint_credential_octets(byte_count: bmc_credential_bytes)
+  return match octets_opt {
+    Absent => exit_failure(reason: "gen: entropy mint failed (fail-closed)")
+    Present { value: octets } => bmc_store_and_rotate(octets: octets)
   }
 }
 
