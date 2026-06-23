@@ -53,6 +53,7 @@ import gunbc.ci_floor_measurement {
   gunbc_ci_per_run_peak_sharpen_followup,
   gunbc_ci_session_regime_model,
   gunbc_ci_session_regime2_followup,
+  gunbc_ci_regime2_aggregate_dissolution_marker,
 }
 import gunbc.fleet_intent { fleet_intent_offers, srv1_offer }
 import std.measure { ByteSize, byte_size, byte_size_count }
@@ -248,6 +249,7 @@ fn witness_followup_markers_documented() -> Bool {
     && gunbc_ci_per_run_peak_sharpen_followup != ""
     && gunbc_ci_session_regime_model != ""
     && gunbc_ci_session_regime2_followup != ""
+    && gunbc_ci_regime2_aggregate_dissolution_marker != ""
 }
 
 test fn runner_placement_holds() -> Bool {
