@@ -2,12 +2,12 @@ module extdeps.coverage
 
 import std.types { NonEmptyStr }
 import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, File }
+import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
-    scheme: File
-    locator: "DESIGN.md#2-minimize-redundancy"
+    scheme: Https
+    locator: "github.com/gunb-ai/gunbc/tree/main/dsl/extdeps/coverage"
   }
 }
 
