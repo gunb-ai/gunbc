@@ -81,10 +81,7 @@ fn disposition_redundancy_lens_discriminates_by_execution() {
         "redundancy_region1_fires_when_a_real_mark_successor_present",
     );
     // Slice-2: anthropic remaining residual rows non-empty and fire on real successor.
-    assert_witness_true(
-        test_entry,
-        "redundancy_region2_anthropic_marks_nonempty",
-    );
+    assert_witness_true(test_entry, "redundancy_region2_anthropic_marks_nonempty");
     assert_witness_true(
         test_entry,
         "redundancy_region2_anthropic_200_residual_fires_on_container_response",
@@ -95,28 +92,19 @@ fn disposition_redundancy_lens_discriminates_by_execution() {
         "redundancy_region2_serde_receipt_all_terminal_never_fires",
     );
     // Slice-2: bytes/encoding markers non-empty and two Scaffolds fire on synthetic present.
-    assert_witness_true(
-        test_entry,
-        "redundancy_region_bytes_marks_nonempty",
-    );
+    assert_witness_true(test_entry, "redundancy_region_bytes_marks_nonempty");
     assert_witness_true(
         test_entry,
         "redundancy_region_bytes_fires_on_builtin_registry_present",
     );
     // Slice-2: budget-tree markers non-empty and fire on job_peaks locator.
-    assert_witness_true(
-        test_entry,
-        "redundancy_region_budget_marks_nonempty",
-    );
+    assert_witness_true(test_entry, "redundancy_region_budget_marks_nonempty");
     assert_witness_true(
         test_entry,
         "redundancy_region_budget_fires_on_job_peaks_present",
     );
     // Slice-2: rust_stage0_gates markers non-empty and fire on synthetic present.
-    assert_witness_true(
-        test_entry,
-        "redundancy_region_rust_gates_marks_nonempty",
-    );
+    assert_witness_true(test_entry, "redundancy_region_rust_gates_marks_nonempty");
     assert_witness_true(
         test_entry,
         "redundancy_region_rust_gates_fires_on_convergence_target_present",
