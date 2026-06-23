@@ -37,7 +37,7 @@ fn plan_to_document(p: Plan) -> MarkdownDocument {
 
 fn plan_has_dissolution_trigger(p: Plan) -> Bool {
   match p.dissolution {
-    HasTrigger { text: _ } => true
+    HasTrigger { text } => length(text) > 0
     NoTrigger => false
   }
 }
