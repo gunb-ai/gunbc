@@ -3603,7 +3603,7 @@ pub fn emit_module_full(
         };
         let wire_contract_item = Rc::new({
             let mut __result = Vec::new();
-            for i in typed_module.items.clone().iter().cloned() {
+            for i in wire_context_items.clone().iter().cloned() {
                 if (item_binding_is_named(
                     scope.type_env.clone(),
                     i.clone(),
