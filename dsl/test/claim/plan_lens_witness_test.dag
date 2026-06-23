@@ -19,6 +19,10 @@ fn plan_untitled() -> Plan {
   Plan { slug: "z", title: "", body: [], dissolution: HasTrigger { text: "t" } }
 }
 
+fn plan_with_empty_trigger() -> Plan {
+  Plan { slug: "w", title: "w", body: [], dissolution: HasTrigger { text: "" } }
+}
+
 test fn every_registered_plan_has_dissolution_trigger() -> Bool {
   plans_all_have_dissolution_trigger(plans: all_plans)
 }
@@ -30,7 +34,9 @@ test fn every_registered_plan_is_titled() -> Bool {
 test fn missing_dissolution_trigger_is_detected() -> Bool {
   plan_has_dissolution_trigger(p: plan_with_trigger())
     && (plan_has_dissolution_trigger(p: plan_without_trigger()) == false)
+    && (plan_has_dissolution_trigger(p: plan_with_empty_trigger()) == false)
     && (plans_all_have_dissolution_trigger(plans: [plan_with_trigger(), plan_without_trigger()]) == false)
+    && (plans_all_have_dissolution_trigger(plans: [plan_with_trigger(), plan_with_empty_trigger()]) == false)
 }
 
 test fn missing_title_is_detected() -> Bool {
