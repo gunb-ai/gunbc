@@ -61,16 +61,25 @@ fn srv1_run_pool_budget() -> ByteSize {
   byte_size_saturating_sub(total: srv1_host_ram(), reserved: srv1_fixed_overhead_bytes())
 }
 
-// R, guarded against a degenerate zero so the divide-once never divides by zero.
 fn srv1_runs_per_host() -> Int {
-  let r = gunbc_ci_runners_per_host()
-  if r <= 0 { 1 } else { r }
+  gunbc_ci_runners_per_host()
+}
+
+// Divide-once split, fail-closed on a degenerate R (<= 0): a zero per-run budget collapses the
+// floor to its conservative fallback rather than fabricating a count of 1 — the same shape as
+// srv1_fixed_overhead_bytes (unmeasured => zero headroom), never a quiet substitution.
+fn per_run_budget_split(pool: ByteSize, r: Int) -> ByteSize {
+  if r <= 0 {
+    measure_scale_fraction_floor(m: pool, num: 0, den: 1)
+  } else {
+    measure_scale_fraction_floor(m: pool, num: 1, den: r)
+  }
 }
 
 // L2: one run's share of the pool. Divide-once: a run imports its parent's allocation
 // (run_pool budget) split R ways; it never re-divides host RAM.
 fn srv1_per_run_budget() -> ByteSize {
-  measure_scale_fraction_floor(m: srv1_run_pool_budget(), num: 1, den: srv1_runs_per_host())
+  per_run_budget_split(pool: srv1_run_pool_budget(), r: srv1_runs_per_host())
 }
 
 fn srv1_overhead_claim() -> BudgetClaim {
