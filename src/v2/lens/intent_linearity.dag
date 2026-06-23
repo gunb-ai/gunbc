@@ -1,0 +1,67 @@
+module v2.lens.intent_linearity
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import v2.lens.simulated_relationship { chain_is_simulated }
+import v2.std.node { Node, Symbol }
+import v2.std.algebra { FreeMonoid, length, fold_list }
+import v2.std.logic { Bool }
+
+
+type CostAxis = ChangeTime | RunTime
+
+type LinearityRule {
+  name: Symbol
+  axis: CostAxis
+  detect: fn(FreeMonoid<Node>) -> Bool
+}
+
+fn unroll_to_fold_rule() -> LinearityRule {
+  LinearityRule {
+    name: ^unroll_to_fold,
+    axis: ChangeTime,
+    detect: fn(s) { chain_is_simulated(steps: s) }
+  }
+}
+
+fn linearity_registry() -> FreeMonoid<LinearityRule> {
+  [ unroll_to_fold_rule() ]
+}
+
+fn rule_fires(rule: LinearityRule, steps: FreeMonoid<Node>) -> Bool {
+  rule.detect(steps)
+}
+
+fn chain_is_redundant(steps: FreeMonoid<Node>) -> Bool {
+  fold_list(
+    xs: linearity_registry(),
+    empty: false,
+    cons: fn(acc, rule) { acc || rule_fires(rule: rule, steps: steps) }
+  )
+}
+
+fn chain_residual(steps: FreeMonoid<Node>) -> Int {
+  if chain_is_redundant(steps: steps) {
+    length(xs: steps) - 1
+  } else {
+    0
+  }
+}
+
+fn level_is_linear(level: FreeMonoid<Node>) -> Bool {
+  !chain_is_redundant(steps: level)
+}
+
+fn body_is_linear(levels: FreeMonoid<FreeMonoid<Node>>) -> Bool {
+  fold_list(
+    xs: levels,
+    empty: true,
+    cons: fn(acc, level) { acc && level_is_linear(level: level) }
+  )
+}
+
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding {
+    grounding_authority: "the parse/resolve walk + chain projector decomposing a body into its per-level statement-chains (shared with v2.lens.simulated_relationship / v2.lens.structural_similarity)",
+    dissolve_on: "body_is_linear runs over live dsl/** bodies once the walk projects per-level chains; the registry grows by rows (complexity cost-recurrence rules join the change-time rows); until then this is a lens_unit over projected synthetic chains"
+  },
+  rationale: "Intent-linearity is a wall up to the substrate's expressible abstraction (anti-unification computes the structural minimum) and a ratchet beyond it (global minimal description is Kolmogorov-uncomputable). The registry is the decidable wall-half; complexity.dag keeps the RatchetForever optimality residue. One engine, N rows (§2-horizontal)."
+}
