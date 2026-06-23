@@ -11,7 +11,7 @@ import std.credentials { Stored }
 import std.types { NonEmptyStr, Secret, String }
 import std.logic { Bool }
 import std.resources { Network }
-import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
 
 data bmc_onboard_netrc_path: String = "/tmp/bmc_onboard_netrc"
 data bmc_onboard_pwbody_path: String = "/tmp/bmc_onboard_pwbody.json"
@@ -56,12 +56,8 @@ fn onboarding_secret_id() -> NonEmptyStr {
   }
 }
 
-fn mint_credential_octets(byte_count: Int) -> List<UInt8>? {
-  base64_decode(s: Urandom.ReadBytes(count: byte_count).octets_b64, variant: Standard)
-}
-
-fn credential_from_octets(octets: List<UInt8>) -> Secret {
-  base64_encode(octets: octets, variant: Standard) as Secret
+fn mint_bmc_credential() -> Secret {
+  Urandom.ReadBytes(count: bmc_credential_bytes).octets_b64 as Secret
 }
 
 fn write_netrc(host: String, account: String, password: String) -> Bool {
@@ -105,10 +101,9 @@ func bmc_rotate_credential(new_credential: Secret) -> ProcessExit
   }
 }
 
-func bmc_store_and_rotate(octets: List<UInt8>) -> ProcessExit
+func bmc_store_and_rotate(credential: Secret) -> ProcessExit
   uses net: Network
 {
-  let credential = credential_from_octets(octets: octets)
   let payload_b64 = credential as String
   let secret_id = onboarding_secret_id()
 
@@ -151,9 +146,5 @@ func bmc_assimilate_srv3_credential() -> ProcessExit
     return exit_failure(reason: concat("acquire: factory login failed: ", acq.body))
   }
 
-  octets_opt = mint_credential_octets(byte_count: bmc_credential_bytes)
-  return match octets_opt {
-    Absent => exit_failure(reason: "gen: entropy mint failed (fail-closed)")
-    Present { value: octets } => bmc_store_and_rotate(octets: octets)
-  }
+  return bmc_store_and_rotate(credential: mint_bmc_credential())
 }
