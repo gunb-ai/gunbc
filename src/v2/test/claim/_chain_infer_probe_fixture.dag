@@ -1,0 +1,9 @@
+module v2.test.claim.chain_infer_probe_fixture
+
+fn step_one(x: Int) -> Int { x }
+fn step_two(y: Int) -> Int { y }
+fn run_gates() -> Int {
+  let a = step_one(x: 1)
+  let b = step_two(y: a)
+  b
+}

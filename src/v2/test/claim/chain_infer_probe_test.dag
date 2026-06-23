@@ -1,0 +1,168 @@
+module v2.test.claim.chain_infer_probe
+
+import v2.compiler.source_authority {
+  semantic_ir_from_source,
+  DagSemanticIr,
+}
+import v2.compiler.infer {
+  infer,
+  InferredTree,
+  InferredFacts,
+  inferred_facts_witness_for_node,
+}
+import extdeps.communication.medium { Medium }
+import extdeps.filesystem.filesystem_io
+import v2.compiler.resolve { ResolvedTree }
+import v2.std.node {
+  Node,
+  NodeKind,
+  ComputationNode,
+  TypeNode,
+  Behavior,
+  Bind,
+  node_subtree_nodes,
+}
+import v2.std.witness { Witness, Holds, Violates }
+import v2.std.algebra { length, any, count_where, filter, FreeMonoid }
+import v2.std.diagnostic {
+  Outcome,
+  Accepted,
+  Rejected,
+}
+import v2.std.logic { Bool }
+
+data fixture_path: String = "src/v2/test/claim/_chain_infer_probe_fixture.dag"
+
+fn read_fixture_medium() -> Medium<String> {
+  let result = filesystem_read(path: fixture_path)
+  Medium { carried: result.content }
+}
+
+// ---- (a) resolve works on the self-contained file ----
+
+fn ir_outcome() -> Outcome<DagSemanticIr> {
+  semantic_ir_from_source(source: read_fixture_medium())
+}
+
+func resolve_accepted() -> Bool {
+  match ir_outcome() {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// ---- (b) infer works end-to-end ----
+
+fn resolved_tree_or_fail() -> Outcome<ResolvedTree> {
+  match ir_outcome() {
+    Accepted { value: ir, diagnostics: _ } => Accepted { value: ir.tree, diagnostics: None }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+fn infer_outcome() -> Outcome<InferredTree> {
+  match resolved_tree_or_fail() {
+    Accepted { value: tree, diagnostics: _ } => infer(tree: tree)
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+func infer_accepted() -> Bool {
+  match infer_outcome() {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// ---- predicates over nodes ----
+
+fn node_is_bind(n: Node) -> Bool {
+  match n.kind {
+    ComputationNode { behavior: b } =>
+      match b {
+        Bind => true
+        Value => false
+        Transform => false
+        Branch => false
+        Loop => false
+        Match => false
+      }
+    TypeNode { connective: _ } => false
+  }
+}
+
+fn witness_holds(w: Witness<InferredFacts>) -> Bool {
+  match w {
+    Holds { value: _ } => true
+    Violates { diagnostic: _ } => false
+  }
+}
+
+fn node_has_facts(tree: InferredTree, n: Node) -> Bool {
+  witness_holds(w: inferred_facts_witness_for_node(tree: tree, node: n))
+}
+
+fn all_nodes(tree: InferredTree) -> FreeMonoid<Node> {
+  node_subtree_nodes(root: tree.root)
+}
+
+// ---- diagnostic counts (run with --claim-run flips these to bool, but the
+//      interesting numbers come from non-claim run printing) ----
+
+// (c) root has facts?
+func root_has_facts() -> Bool {
+  match infer_outcome() {
+    Accepted { value: tree, diagnostics: _ } => node_has_facts(tree: tree, n: tree.root)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// (c) at least one Bind node exists in the tree?
+func tree_contains_bind() -> Bool {
+  match infer_outcome() {
+    Accepted { value: tree, diagnostics: _ } =>
+      any(xs: all_nodes(tree: tree), predicate: node_is_bind)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// (c) ALL Bind nodes have facts (grounded resolved type for the bind node)?
+func all_bind_nodes_have_facts() -> Bool {
+  match infer_outcome() {
+    Accepted { value: tree, diagnostics: _ } =>
+      let binds = filter(xs: all_nodes(tree: tree), predicate: node_is_bind)
+      match length(xs: binds) {
+        0 => false
+        _ => for_all_have_facts(tree: tree, nodes: binds)
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn for_all_have_facts(tree: InferredTree, nodes: FreeMonoid<Node>) -> Bool {
+  match length(xs: filter(xs: nodes, predicate: fn(n) { node_has_facts(tree: tree, n: n) })) == length(xs: nodes) {
+    true => true
+    false => false
+  }
+}
+
+// (c)/(d) coverage: do MOST body nodes have facts, or only the root?
+// returns true if count(nodes-with-facts) > 1  (i.e. more than just the root)
+func body_nodes_have_facts() -> Bool {
+  match infer_outcome() {
+    Accepted { value: tree, diagnostics: _ } =>
+      let n_facts = count_where(xs: all_nodes(tree: tree), predicate: fn(n) { node_has_facts(tree: tree, n: n) })
+      n_facts > 1
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// (c)/(d) FULL coverage: every node in the tree has facts?
+func all_nodes_have_facts() -> Bool {
+  match infer_outcome() {
+    Accepted { value: tree, diagnostics: _ } =>
+      let nodes = all_nodes(tree: tree)
+      for_all_have_facts(tree: tree, nodes: nodes)
+    Rejected { diagnostics: _ } => false
+  }
+}
