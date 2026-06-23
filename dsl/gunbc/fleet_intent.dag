@@ -94,7 +94,7 @@ data srv3_host: ComputeHost = ComputeHost {
   baseboard: Present { value: srv3_baseboard },
   processors: [CpuProcessor { cpu: fleet_intent_cpu }],
   memory: [MemoryDevice { capacity: gibibyte_to_byte_size(g: gibibyte(128)), memory_kind: Dram, bandwidth: none }],
-  storage: [],
+  storage: [srv3_nvme0],
   network_interfaces: [],
 }
 

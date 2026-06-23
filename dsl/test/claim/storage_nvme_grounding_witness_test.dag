@@ -7,7 +7,7 @@ import extdeps.storage.types {
   pcie_link_bandwidth,
   pcie_generation_per_lane_bandwidth,
 }
-import extdeps.storage.samsung { samsung_970_evo_plus_1tb_catalog }
+import extdeps.storage.samsung { samsung_970_evo_plus_2tb_catalog }
 import extdeps.storage.western_digital { wd_black_sn850x_2tb_catalog }
 import product.compute_fabric { nvme_storage_device, StorageDevice, Persistent, Nvme }
 
@@ -27,12 +27,12 @@ test fn wd_black_sn850x_pcie_link_grounds_gen4_x4() -> Bool {
 }
 
 test fn samsung_970_evo_plus_pcie_link_grounds_gen3_x4() -> Bool {
-  match samsung_970_evo_plus_1tb_catalog.pcie_link.generation {
+  match samsung_970_evo_plus_2tb_catalog.pcie_link.generation {
     Gen3 => true
     Gen4 => false
     Gen5 => false
   }
-    && samsung_970_evo_plus_1tb_catalog.pcie_link.lane_count == 4
+    && samsung_970_evo_plus_2tb_catalog.pcie_link.lane_count == 4
     && bandwidth_count(pcie_generation_per_lane_bandwidth(g: Gen3)) == (8000000000 * 128 / 130 / 8)
 }
 
@@ -40,7 +40,7 @@ test fn nvme_catalog_specs_decode() -> Bool {
   byte_size_count(wd_black_sn850x_2tb_catalog.capacity_bytes) == 2000398934016
     && bandwidth_count(wd_black_sn850x_2tb_catalog.sequential_read) == 7300000000
     && bandwidth_count(wd_black_sn850x_2tb_catalog.sequential_write) == 6300000000
-    && byte_size_count(samsung_970_evo_plus_1tb_catalog.capacity_bytes) == 1000204886016
+    && byte_size_count(samsung_970_evo_plus_2tb_catalog.capacity_bytes) == 2000398934016
 }
 
 test fn form_factor_is_m2_2280() -> Bool {

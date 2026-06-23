@@ -3,12 +3,13 @@ module test.claim.fleet_intent_storage
 import std.logic { Bool }
 import std.types { list_length }
 import std.measure { byte_size_count }
-import gunbc.fleet_intent { srv1_host, srv2_host, srv3_host, srv1_nvme0 }
+import gunbc.fleet_intent { srv1_host, srv2_host, srv3_host, srv1_nvme0, srv3_nvme0 }
 import extdeps.observability { OutOfBand, StorageInventory, route_observation }
 
-test fn in_band_hosts_carry_their_real_drive() -> Bool {
+test fn every_host_carries_its_real_drive() -> Bool {
   list_length(items: srv1_host.storage) == 1
     && list_length(items: srv2_host.storage) == 1
+    && list_length(items: srv3_host.storage) == 1
 }
 
 test fn srv1_drive_is_catalog_grounded_wd_sn850x() -> Bool {
@@ -25,17 +26,26 @@ test fn srv1_drive_is_catalog_grounded_wd_sn850x() -> Bool {
     }
 }
 
-test fn drive_serial_is_pending_until_in_band_enumeration() -> Bool {
-  match srv1_nvme0.serial {
-    Absent => true
-    Present { value: _ } => false
-  }
+test fn srv3_drive_is_catalog_grounded_samsung_970_evo_plus_2tb() -> Bool {
+  byte_size_count(srv3_nvme0.capacity) == 2000398934016
+    && match srv3_nvme0.catalog {
+      Present { value: c } =>
+        match c.pcie_link.generation {
+          Gen3 => true
+          Gen4 => false
+          Gen5 => false
+        }
+      Absent => false
+    }
 }
 
-test fn out_of_band_only_host_reports_no_drives() -> Bool {
-  list_length(items: srv3_host.storage) == 0
-    && match route_observation(channel: OutOfBand, class: StorageInventory) {
-      ChannelCannotObserve { channel: _, class: _ } => true
-      RoutedTo { channel: _ } => false
-    }
+test fn drive_serial_is_pending_until_in_band_enumeration() -> Bool {
+  (srv1_nvme0.serial == none) && (srv3_nvme0.serial == none)
+}
+
+test fn bmc_cannot_observe_drives_even_though_they_are_known() -> Bool {
+  match route_observation(channel: OutOfBand, class: StorageInventory) {
+    ChannelCannotObserve { channel: _, class: _ } => true
+    RoutedTo { channel: _ } => false
+  }
 }
