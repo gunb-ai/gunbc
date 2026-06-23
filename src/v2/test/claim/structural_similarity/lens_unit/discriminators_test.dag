@@ -9,65 +9,45 @@ import v2.std.node {
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 
-// ── synthetic type-decl Node shapes (no live parse/resolve walk needed) ─────────
 fn atom(id: Symbol) -> Node {
   node_synthetic(kind: TypeNode { connective: Atom { identity: id } }, children: [])
 }
-// a 2-variant sum type (e.g. `enum Arch = X86 | Arm`)
 fn disj2(a: Node, b: Node) -> Node {
   node_synthetic(kind: TypeNode { connective: Disj }, children: [
     Edge { label: Positional, target: a }, Edge { label: Positional, target: b } ])
 }
-// a product/compose shape (e.g. `Compose<Int, Width>`)
 fn compose2(a: Node, b: Node) -> Node {
   node_synthetic(kind: TypeNode { connective: Conj }, children: [
     Edge { label: Positional, target: a }, Edge { label: Positional, target: b } ])
 }
 
-// ── RED: structurally-similar type decls (must flag) ────────────────────────────
-
-// §3 nickname: two byte-identical enums (the CpuArchitecture / TargetArchitecture
-// smell). The strongest duplication -- one concept, two names. The type binder fires
-// on `congruent` directly, so identical decls (which the term binder excludes as pure
-// duplication) are caught here.
 data nickname_pair: List<Node> = [
   disj2(a: atom(id: ^x86), b: atom(id: ^arm)),
   disj2(a: atom(id: ^x86), b: atom(id: ^arm))
 ]
 
-// §2-horizontal: a congruent FAMILY varying at one leaf -- `Int8`/`Int16`/`Int32` =
-// one `Compose<Int, MachineWidth<N>>` axis, the leaf width becoming a type parameter.
 data width_family: List<Node> = [
   compose2(a: atom(id: ^int), b: atom(id: ^w8)),
   compose2(a: atom(id: ^int), b: atom(id: ^w16)),
   compose2(a: atom(id: ^int), b: atom(id: ^w32))
 ]
 
-// ── GREEN: genuinely-distinct type decls (must NOT flag) ────────────────────────
-
-// Different skeletons: a nullary atom, a sum, a product -- no shared template, so no
-// single generic collapses them. Adjacent pairs diverge in shape (atom has no children
-// where disj2 does), so anti-unification finds no non-trivial common form.
 data distinct_decls: List<Node> = [
   atom(id: ^unit),
   disj2(a: atom(id: ^a), b: atom(id: ^b)),
   compose2(a: atom(id: ^int), b: atom(id: ^w8))
 ]
 
-// A family whose middle decl breaks the skeleton (arity 2 product vs a deeper nest):
-// adjacency fails, so the family does NOT collapse to one generic.
 data near_but_divergent: List<Node> = [
   compose2(a: atom(id: ^int), b: atom(id: ^w8)),
   compose2(a: atom(id: ^int), b: compose2(a: atom(id: ^ptr), b: atom(id: ^w16))),
   compose2(a: atom(id: ^int), b: atom(id: ^w32))
 ]
 
-// A single type decl is not yet a similarity (< 2).
 data single_decl: List<Node> = [
   disj2(a: atom(id: ^x), b: atom(id: ^y))
 ]
 
-// ── witnesses ────────────────────────────────────────────────────────────────────
 test fn nickname_pair_is_similar() -> Bool {
   type_decls_anti_unify(decls: nickname_pair)
 }

@@ -56,11 +56,6 @@ test fn single_minimal_level_is_linear() -> Bool {
   level_is_linear(level: linear_chain_b)
 }
 
-// ── consolidation: the type-decl row fires through the SAME engine ───────────────
-// structural_similarity is now Row 2 of the registry (one engine, two binders), so a
-// congruent type-decl family is redundant through the type binder (forest_is_redundant)
-// of the same registry the term binder uses -- proof the row is wired in, not a peer.
-// Two byte-identical enums = the §3 nickname (CpuArchitecture / TargetArchitecture).
 data dup_type_pair: List<Node> = [
   conj2(a: atom(id: ^x86), b: atom(id: ^arm)),
   conj2(a: atom(id: ^x86), b: atom(id: ^arm))
@@ -68,9 +63,6 @@ data dup_type_pair: List<Node> = [
 test fn dup_type_decls_redundant_through_registry() -> Bool {
   forest_is_redundant(decls: dup_type_pair)
 }
-// Binder isolation: the type pair is NOT flagged by the TERM binder (two congruent
-// statements are not yet a fold; the term row needs ≥3) -- proves rows stay off the
-// other binder's projection, so one registry serves both without contamination.
 test fn dup_type_pair_not_flagged_by_term_binder() -> Bool {
   !chain_is_redundant(steps: dup_type_pair)
 }
