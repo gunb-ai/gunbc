@@ -1,0 +1,51 @@
+module std.disposition
+
+import std.types { NonEmptyStr }
+
+// The disposition of a coproduct decl / lens registry entry / dissolve-marker (DESIGN §5).
+//
+// A disposition records WHY a closed form is the way it is: closed **for a reason**
+// (`Terminal` — the unstructurable residue: complexity / cost / necessity) or a **stand-in
+// awaiting a construction** (`Scaffold`). Before this carrier, that distinction lived only in
+// freeform comments — and a lens is a pure reader over the Node tree, so comments are
+// unreadable (DESIGN §0 of docs/plans/disposition-carrier.md). The untagged/indeterminate
+// state ("closed for a reason, or just unfinished?") is the fail-open state, and it is
+// arbitrary (DESIGN §1: arbitrary = convention standing where necessity was available).
+//
+// One disposition per mark. Multiplicity lives in N-marks-per-carrier (a carrier may bear
+// several dissolve-marks, each one disposition), NOT N-axes-per-disposition — splitting this
+// into soundness/completeness/convergence axes would grow the concept to re-model what
+// multiple-marks-per-carrier already expresses (DESIGN §2: net concepts must not grow by
+// re-invention).
+
+// The mechanism by which a `Scaffold` will be made dead code — modeled, not a string
+// (DESIGN §2/§3: the successor construction is a grounded concept, not a freeform note).
+// These are the three ways a stand-in dissolves:
+type ConstructionMechanism
+  // one grounded authority replaces N hand-listed / forked rows (DESIGN §3 single-authority)
+  = SingleAuthority
+  // a dispatch selects the projected/real handler; the hand-authored arm becomes dead code
+  // (DESIGN §2 Realization — e.g. the mock_corpus dissolve-on-arrival case)
+  | RealizationDispatch
+  // the substrate requires the tag at definition; the enforcing lens itself dissolves
+  // (DESIGN §5 wall-by-construction — the named end-state of the disposition rollout)
+  | SubstrateMandatoryTag
+
+// A reference to the named successor declaration whose arrival dissolves a `Scaffold` — the
+// thing that, once present, makes the stand-in redundant. The redundancy lens (DESIGN §3 of
+// the plan) checks this for presence: a `Scaffold` whose `bind` decl already exists is
+// scaffold + named-successor both alive = §2 parallel-representation debt → RED. Identity is
+// the decl's qualified position (module path + decl name), which the lens enumerates over the
+// corpus. (Distinct from a substrate `Node`: this names a *declaration*, not a graph node.)
+type NodeRef {
+  module_path: String
+  decl_name: NonEmptyStr
+}
+
+type Disposition
+  // legitimately closed / lens-forever: the unstructurable residue (complexity / cost /
+  // necessity). `reason` is the standing justification, re-justified by advisory report, never
+  // gated (correctness of Terminal-vs-Scaffold is judgment, not a wall — DESIGN §5).
+  = Terminal { reason: NonEmptyStr }
+  // a stand-in until `dissolves_to` lands at `bind`; the one hard gate is the redundancy lens.
+  | Scaffold { dissolves_to: ConstructionMechanism, bind: NodeRef }
