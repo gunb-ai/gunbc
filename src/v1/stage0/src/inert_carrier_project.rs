@@ -67,10 +67,6 @@ const INERT_CARRIER_ROSTER: &[&str] = &[
     "ReactHookSite", // src/v2/extdeps/frameworks/react.dag — React hook-site model; unwired.
     "SecretValue", // dsl/std/types.dag — secret-string carrier; no redaction consumer wired.
     "SystemdUnitStatus", // dsl/extdeps/os/systemd.dag — systemd unit status shape; shadow lane, no workflow consumer yet.
-    "WorkflowRun", // dsl/extdeps/github/workflow_runs.dag — GH Actions run record; shadow lane, no workflow consumer yet.
-    "WorkflowRunConclusion", // dsl/extdeps/github/workflow_runs.dag — run conclusion coproduct; shadow lane, no workflow consumer yet.
-    "WorkflowRunList", // dsl/extdeps/github/workflow_runs.dag — paginated run list; shadow lane, no workflow consumer yet.
-    "WorkflowRunStatus", // dsl/extdeps/github/workflow_runs.dag — run status coproduct; shadow lane, no workflow consumer yet.
 ];
 
 /// Extract top-level `type NAME` carrier declarations with their full declaration BLOCK text.
