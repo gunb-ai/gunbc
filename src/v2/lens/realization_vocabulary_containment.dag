@@ -32,6 +32,7 @@ data realization_vocab_exception_roster: List<String> = [
   "dsl/gunbc/ci_spec.dag",
   "dsl/gunbc/ci_yaml_validate.dag",
   "dsl/tools/build_step.dag",
+  "dsl/tools/build_step_transport.dag",
   "dsl/tools/dsl_compile_clean_transport.dag",
   "dsl/tools/emit_host_transport.dag",
   "dsl/tools/extdeps_external_authority_transport.dag",

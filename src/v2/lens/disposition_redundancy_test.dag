@@ -1,0 +1,67 @@
+module v2.test.lens_disposition_redundancy.disposition_redundancy_test
+
+import v2.lens.disposition_redundancy { disposition_redundancy_violation_count }
+import std.disposition { Disposition, Scaffold, DeclLocator, NamedField, SingleAuthority }
+import extdeps.llm.anthropic { structural_coverage_gap_anthropic_tool_result_nested_block_wire_payloads }
+import v2.std.collection { List }
+import v2.std.algebra { length }
+import v2.std.logic { Bool }
+
+data redundancy_present_successor_locator: DeclLocator = DeclLocator {
+  module_path: "std.disposition",
+  decl_name: "Disposition",
+  field: NamedField { field_name: "marker" }
+}
+
+data redundancy_red_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclLocator {
+    module_path: "std.disposition",
+    decl_name: "Disposition",
+    field: NamedField { field_name: "marker" }
+  }
+}
+
+data redundancy_red_dispositions: List<Disposition> = [redundancy_red_scaffold]
+data redundancy_present_with_successor: List<DeclLocator> = [redundancy_present_successor_locator]
+data redundancy_present_empty: List<DeclLocator> = []
+
+data redundancy_region1_real_successor_present: List<DeclLocator> = [
+  DeclLocator {
+    module_path: "extdeps.llm.anthropic",
+    decl_name: "AnthropicTextBlock",
+    field: NamedField { field_name: "cache_control" }
+  }
+]
+
+test fn redundancy_red_control_fires_when_successor_present() -> Bool {
+  disposition_redundancy_violation_count(
+    dispositions: redundancy_red_dispositions,
+    present: redundancy_present_with_successor
+  ) == 1
+}
+
+test fn redundancy_red_control_flips_green_when_successor_absent() -> Bool {
+  disposition_redundancy_violation_count(
+    dispositions: redundancy_red_dispositions,
+    present: redundancy_present_empty
+  ) == 0
+}
+
+test fn redundancy_region1_anthropic_green_against_nonmatching_present() -> Bool {
+  disposition_redundancy_violation_count(
+    dispositions: structural_coverage_gap_anthropic_tool_result_nested_block_wire_payloads,
+    present: redundancy_present_with_successor
+  ) == 0
+}
+
+test fn redundancy_region1_anthropic_marks_nonempty() -> Bool {
+  length(xs: structural_coverage_gap_anthropic_tool_result_nested_block_wire_payloads) > 0
+}
+
+test fn redundancy_region1_fires_when_a_real_mark_successor_present() -> Bool {
+  disposition_redundancy_violation_count(
+    dispositions: structural_coverage_gap_anthropic_tool_result_nested_block_wire_payloads,
+    present: redundancy_region1_real_successor_present
+  ) == 1
+}

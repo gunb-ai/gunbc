@@ -559,6 +559,79 @@ pub fn build_type_summary(
     }
 }
 
+pub fn type_summary_reaches_fn(
+    name: String,
+    summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    visited: Rc<std::collections::BTreeSet<String>>,
+) -> bool {
+    if v1_rt::set_contains(&visited, name.clone()) {
+        false
+    } else {
+        match v1_rt::map_get(&summaries, name.clone()) {
+            Some(s) => {
+                if s.has_fn_fields {
+                    true
+                } else {
+                    let v2 = v1_rt::rc_set_insert(visited.clone(), name.clone());
+                    {
+                        let mut __any = false;
+                        for ft in Rc::new(v1_rt::map_values(&s.field_type_map.clone()))
+                            .iter()
+                            .cloned()
+                        {
+                            if type_summary_reaches_fn(ft.clone(), summaries.clone(), v2.clone()) {
+                                __any = true;
+                                break;
+                            }
+                        }
+                        __any
+                    }
+                }
+            }
+            None => false,
+        }
+    }
+}
+
+pub fn close_fn_fields(
+    summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+) -> Rc<HashMap<String, Rc<TypeSummary>>> {
+    Rc::new(v1_rt::map_keys(&summaries)).iter().cloned().fold(
+        summaries.clone(),
+        |acc: Rc<HashMap<String, Rc<TypeSummary>>>, name: String| match v1_rt::map_get(
+            &summaries,
+            name.clone(),
+        ) {
+            Some(s) => {
+                if !s.has_fn_fields
+                    && type_summary_reaches_fn(
+                        name.clone(),
+                        summaries.clone(),
+                        v1_rt::rc_empty_set::<String>(),
+                    )
+                {
+                    v1_rt::rc_map_insert(
+                        acc.clone(),
+                        name.clone(),
+                        Rc::new(TypeSummary {
+                            name: s.name.clone(),
+                            repr: s.repr.clone(),
+                            field_summaries: s.field_summaries.clone(),
+                            field_type_map: s.field_type_map.clone(),
+                            variant_name_set: s.variant_name_set.clone(),
+                            generic_param_names: s.generic_param_names.clone(),
+                            has_fn_fields: true,
+                        }),
+                    )
+                } else {
+                    acc.clone()
+                }
+            }
+            None => acc.clone(),
+        },
+    )
+}
+
 pub fn add_emit_item_summary(
     state: Rc<EmitInfoBuildState>,
     item: Rc<Node>,

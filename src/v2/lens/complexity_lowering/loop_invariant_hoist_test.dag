@@ -1,0 +1,69 @@
+module v2.test.lens_complexity_lowering.loop_invariant_hoist
+
+import v2.lens.complexity_lowering { cost_class_is_lowerable, cost_is_lowerable, minimized_class }
+import v2.lens.cost {
+  ClassLinear,
+  ClassPolynomial,
+  LinearCost,
+  ProductCost,
+  SizeVariable,
+  SumCost,
+  SymbolicCost,
+  asymptotic_class_dominates,
+  asymptotic_class_of_cost,
+  polynomial_degree_two
+}
+import v2.std.node { Atom, Node, Symbol, TypeNode, node_synthetic }
+import v2.std.logic { Bool }
+
+fn leaf(id: Symbol) -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: id } }, children: [])
+}
+
+data quadratic_cost: SymbolicCost = ProductCost {
+  lhs: LinearCost { variable: SizeVariable { source: leaf(id: ^outer) } },
+  rhs: LinearCost { variable: SizeVariable { source: leaf(id: ^inner) } }
+}
+data linear_cost: SymbolicCost = LinearCost { variable: SizeVariable { source: leaf(id: ^single) } }
+data sum_cost: SymbolicCost = SumCost {
+  lhs: LinearCost { variable: SizeVariable { source: leaf(id: ^a) } },
+  rhs: LinearCost { variable: SizeVariable { source: leaf(id: ^b) } }
+}
+
+test fn quadratic_is_lowerable() -> Bool {
+  cost_is_lowerable(c: quadratic_cost)
+}
+test fn quadratic_minimizes_strictly_below_realized() -> Bool {
+  asymptotic_class_dominates(
+    a: asymptotic_class_of_cost(cost: quadratic_cost),
+    b: minimized_class(c: quadratic_cost)
+  )
+  && !asymptotic_class_dominates(
+    a: minimized_class(c: quadratic_cost),
+    b: asymptotic_class_of_cost(cost: quadratic_cost)
+  )
+}
+
+test fn lowerable_matches_before_class() -> Bool {
+  cost_class_is_lowerable(cls: ClassPolynomial { degree: polynomial_degree_two() })
+}
+test fn linear_class_not_lowerable() -> Bool {
+  !cost_class_is_lowerable(cls: ClassLinear)
+}
+
+test fn linear_not_lowerable() -> Bool {
+  !cost_is_lowerable(c: linear_cost)
+}
+test fn sum_of_linears_not_lowerable() -> Bool {
+  !cost_is_lowerable(c: sum_cost)
+}
+test fn linear_minimized_unchanged() -> Bool {
+  asymptotic_class_dominates(
+    a: minimized_class(c: linear_cost),
+    b: asymptotic_class_of_cost(cost: linear_cost)
+  )
+  && asymptotic_class_dominates(
+    a: asymptotic_class_of_cost(cost: linear_cost),
+    b: minimized_class(c: linear_cost)
+  )
+}
