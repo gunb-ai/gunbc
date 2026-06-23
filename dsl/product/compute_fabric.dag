@@ -59,6 +59,7 @@ import extdeps.cpu.types {
   SocketPackage,
 }
 import extdeps.storage.types { NvmeDeviceCatalogRow }
+import extdeps.ctrl.jobserver { CtrlJobserverConfig }
 import extdeps.toolchain.types {
   Architecture,
   Aarch64,
@@ -256,7 +257,7 @@ type ComputeSupplyFacts {
 }
 
 type ProviderConstraint
-  = HostJobserverFifo { fifo_path: NonEmptyStr, token_cap: Int }
+  = HostJobserverFifo { fifo_path: NonEmptyStr, config_ref: CtrlJobserverConfig }
   | SharedHomeRoot { path: NonEmptyStr }
   | MaxConcurrentRunners { cap: Int }
   | OomBehavior { signal: OomSignalClass }

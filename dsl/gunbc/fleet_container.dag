@@ -1,0 +1,59 @@
+module gunbc.fleet_container
+
+import std.types { String }
+import std.measure { ByteSize, byte_size }
+import product.compute_fabric { ResourceEnvelope, MemoryRequirement, CpuRequirement, GpuRequirement, StorageRequirement, NetworkRequirement }
+
+type ContainerBaseline
+  = ContainerBaselineMeasured { idle: ResourceEnvelope }
+  | ContainerBaselineUnmeasured
+
+type FleetContainerType
+  = GhaRunnerContainer { baseline: ContainerBaseline }
+  | AgentSessionContainer { baseline: ContainerBaseline }
+
+fn idle_memory_envelope(min_bytes: ByteSize) -> ResourceEnvelope {
+  ResourceEnvelope {
+    cpu: none,
+    gpu: none,
+    memory: Present { value: MemoryRequirement { min_bytes: min_bytes } },
+    storage: none,
+    network: none,
+  }
+}
+
+data gha_runner_container: FleetContainerType = GhaRunnerContainer {
+  baseline: ContainerBaselineMeasured { idle: idle_memory_envelope(min_bytes: byte_size(314572800)) }
+}
+
+data agent_session_container: FleetContainerType = AgentSessionContainer {
+  baseline: ContainerBaselineMeasured { idle: idle_memory_envelope(min_bytes: byte_size(471859200)) }
+}
+
+data fleet_container_baseline_provenance: String = "measured live idle cgroup memory.current, parent read 2026-06-23: GhaRunner ~0.2-0.3GiB (committed 300 MiB = 314572800 B), AgentSession ~0.35-0.5GiB (committed 450 MiB = 471859200 B; observed bold-otter 360 / calm-otter 421 / jolly-ant 437 / crisp-carp 488 MiB). These are IDLE baselines separated from build-burst (a session mid-build draws the shared build pool, not its own baseline). vs the 31.27GiB docker --memory cap (33578549248 B) = ~70x over-reservation per container. Committed as ContainerBaselineMeasured (parent-supplied live reads), NOT a fail-closed Unmeasured."
+
+type BaselineResolution
+  = BaselineResolved { bytes: ByteSize }
+  | BaselineUnmeasured { reason: String }
+
+fn container_baseline(c: FleetContainerType) -> ContainerBaseline {
+  match c {
+    GhaRunnerContainer { baseline: b } => b
+    AgentSessionContainer { baseline: b } => b
+  }
+}
+
+fn baseline_memory_min_bytes(env: ResourceEnvelope) -> BaselineResolution {
+  match env.memory {
+    Present { value: m } => BaselineResolved { bytes: m.min_bytes }
+    Absent => BaselineUnmeasured { reason: "container baseline ResourceEnvelope carries no MemoryRequirement: refuse to reserve a zero idle baseline" }
+  }
+}
+
+fn container_baseline_bytes(c: FleetContainerType) -> BaselineResolution {
+  match container_baseline(c: c) {
+    ContainerBaselineUnmeasured =>
+      BaselineUnmeasured { reason: "container idle baseline unmeasured: refuse to reserve host budget without a measured per-type idle cgroup read (fail closed, do not silently reserve zero)" }
+    ContainerBaselineMeasured { idle: env } => baseline_memory_min_bytes(env: env)
+  }
+}
