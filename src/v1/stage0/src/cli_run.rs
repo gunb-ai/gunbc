@@ -2048,7 +2048,8 @@ const SIDECAR_PLACEMENT_RULES: &[SidecarPlacementRule] = &[
     },
     SidecarPlacementRule {
         required_suffix: "_contracts.dag",
-        decl_description: "wire-contract decls (`CoproductWireContract` and `VariantEncoding` data items)",
+        decl_description:
+            "wire-contract decls (`CoproductWireContract` and `VariantEncoding` data items)",
         scan: scan_wire_contract_decl_names,
     },
 ];
@@ -2170,8 +2171,10 @@ pub fn discover_floor_corpus_rows(
                 .iter()
                 .map(|rule| (rule.scan)(&content))
                 .collect();
-            for (i, (rule, names)) in
-                SIDECAR_PLACEMENT_RULES.iter().zip(rule_decls.iter()).enumerate()
+            for (i, (rule, names)) in SIDECAR_PLACEMENT_RULES
+                .iter()
+                .zip(rule_decls.iter())
+                .enumerate()
             {
                 if !names.is_empty() && !entry.ends_with(rule.required_suffix) {
                     sidecar_violations[i].push(entry.clone());
@@ -2190,13 +2193,18 @@ pub fn discover_floor_corpus_rows(
             }
         }
     }
-    for (rule, violations) in SIDECAR_PLACEMENT_RULES.iter().zip(sidecar_violations.iter()) {
+    for (rule, violations) in SIDECAR_PLACEMENT_RULES
+        .iter()
+        .zip(sidecar_violations.iter())
+    {
         if !violations.is_empty() {
             let mut sorted = violations.clone();
             sorted.sort();
             return Err(format!(
                 "{} must live in `*{}` files; found in: {}",
-                rule.decl_description, rule.required_suffix, sorted.join(", ")
+                rule.decl_description,
+                rule.required_suffix,
+                sorted.join(", ")
             ));
         }
     }
@@ -3799,8 +3807,7 @@ mod sidecar_placement_hygiene_tests {
 
     #[test]
     fn scan_ignores_non_wire_contract_data() {
-        let content =
-            "data baz: Int = 42\ndata qux: String = \"hello\"\ndata flag: Bool = true";
+        let content = "data baz: Int = 42\ndata qux: String = \"hello\"\ndata flag: Bool = true";
         assert!(
             scan_wire_contract_decl_names(content).is_empty(),
             "should not fire on non-wire-contract data decls"
