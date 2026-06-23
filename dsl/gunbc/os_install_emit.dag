@@ -1,0 +1,73 @@
+module gunbc.os_install_emit
+
+import std.logic { Bool }
+import std.types { Int, NonEmptyStr, List, String }
+import extdeps.os.ubuntu_autoinstall {
+  UbuntuAutoinstallPayload,
+  AutoinstallIdentity,
+}
+import gunbc.os_install { srv3_ubuntu_autoinstall }
+import std.layout {
+  Doc,
+  LayoutProtocol,
+  doc_concat, doc_line_of,
+  render
+}
+
+data autoinstall_emit_protocol: LayoutProtocol = LayoutProtocol { indent_unit: "" }
+
+fn yaml_double_quote(s: NonEmptyStr) -> String {
+  concat(concat("\"", s), "\"")
+}
+
+fn identity_doc_lines(id: AutoinstallIdentity) -> List<Doc> {
+  [
+    doc_line_of(text: "  identity:"),
+    doc_line_of(text: concat("    hostname: ", id.hostname)),
+    doc_line_of(text: concat("    username: ", id.username)),
+    doc_line_of(text: concat("    realname: ", yaml_double_quote(s: id.realname))),
+    doc_line_of(text: concat("    password: ", yaml_double_quote(s: id.hashed_password))),
+  ]
+}
+
+fn ssh_doc_lines(payload: UbuntuAutoinstallPayload) -> List<Doc> {
+  if payload.install_openssh_server {
+    [
+      doc_line_of(text: "  ssh:"),
+      doc_line_of(text: "    install-server: true"),
+    ]
+  } else {
+    []
+  }
+}
+
+fn automation_doc_lines(payload: UbuntuAutoinstallPayload) -> List<Doc> {
+  if payload.fully_automated {
+    [doc_line_of(text: "  interactive-sections: []")]
+  } else {
+    []
+  }
+}
+
+fn autoinstall_user_data_doc(payload: UbuntuAutoinstallPayload) -> Doc {
+  let head = [
+    doc_line_of(text: "#cloud-config"),
+    doc_line_of(text: "autoinstall:"),
+    doc_line_of(text: concat("  version: ", to_string(payload.autoinstall_version))),
+    doc_line_of(text: concat("  locale: ", payload.locale)),
+    doc_line_of(text: "  keyboard:"),
+    doc_line_of(text: concat("    layout: ", payload.keyboard_layout)),
+  ]
+  doc_concat(parts: concat(
+    concat(head, identity_doc_lines(id: payload.identity)),
+    concat(ssh_doc_lines(payload: payload), automation_doc_lines(payload: payload))
+  ))
+}
+
+fn autoinstall_user_data(payload: UbuntuAutoinstallPayload) -> String {
+  render(doc: autoinstall_user_data_doc(payload: payload), proto: autoinstall_emit_protocol)
+}
+
+fn expected_srv3_user_data() -> String {
+  autoinstall_user_data(payload: srv3_ubuntu_autoinstall)
+}

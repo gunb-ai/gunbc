@@ -7,6 +7,7 @@ import gunbc.gitignore_emit { expected_gitignore, path_is_ignored }
 import gunbc.roadmap_authority { expected_roadmap_md }
 import gunbc.design_document { expected_design_md }
 import gunbc.runner_deploy_emit { expected_runner_deploy_manifest }
+import gunbc.os_install_emit { expected_srv3_user_data }
 import gunbc.plan { Plan, expected_plan_md, plan_path }
 import gunbc.plan_registry { all_plans }
 
@@ -16,10 +17,11 @@ type GeneratedArtifact
   | RoadmapArtifact
   | DesignArtifact
   | RunnerDeployArtifact
+  | Srv3AutoinstallUserDataArtifact
   | PlanArtifact { plan: Plan }
 
 data generated_artifact_registry: List<GeneratedArtifact> = concat(
-  [CiYamlArtifact, GitignoreArtifact, RoadmapArtifact, DesignArtifact, RunnerDeployArtifact],
+  [CiYamlArtifact, GitignoreArtifact, RoadmapArtifact, DesignArtifact, RunnerDeployArtifact, Srv3AutoinstallUserDataArtifact],
   map(all_plans, pl => PlanArtifact { plan: pl })
 )
 
