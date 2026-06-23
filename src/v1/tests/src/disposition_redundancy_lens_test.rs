@@ -75,4 +75,9 @@ fn disposition_redundancy_lens_discriminates_by_execution() {
     );
     // Region-1 wiring / red-on-revert: the migrated marks are non-empty and typed.
     assert_witness_true(test_entry, "redundancy_region1_anthropic_marks_nonempty");
+    // Discrimination on REAL region-1 marks (not synthetic): a real mark's successor present fires.
+    assert_witness_true(
+        test_entry,
+        "redundancy_region1_fires_when_a_real_mark_successor_present",
+    );
 }

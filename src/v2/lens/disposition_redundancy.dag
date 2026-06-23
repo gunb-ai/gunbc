@@ -6,7 +6,6 @@ import std.disposition { Disposition, Scaffold, Terminal, DeclLocator, ScaffoldT
 import v2.std.collection { List }
 import v2.std.algebra { count_where, any }
 import v2.std.logic { Bool }
-import v2.std.text { String }
 
 fn scaffold_target_eq(a: ScaffoldTarget, b: ScaffoldTarget) -> Bool {
   match a {

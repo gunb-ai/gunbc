@@ -12,7 +12,7 @@ type ScaffoldTarget
   | NamedField { field_name: NonEmptyStr }
 
 type DeclLocator {
-  module_path: String
+  module_path: NonEmptyStr
   decl_name: NonEmptyStr
   field: ScaffoldTarget
 }
