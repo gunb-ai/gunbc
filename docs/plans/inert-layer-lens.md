@@ -227,6 +227,22 @@ revert); RED/GREEN controls over a synthetic graph in the project module's unit 
 
 ## 9. Open
 
+- **LANDED — the code symbol-level inert-CARRIER instance (Lane 7, this PR).** `v2.lens.inert_carrier`
+  over `src/v1/stage0/src/inert_carrier_project.rs` flags a *type carrier* that is **defined +
+  self-tested + zero real consumer** (DESIGN §5 coverage-by-illusion). The landing took the
+  **coverage-by-illusion** reading of §1 rather than run-root reachability: a carrier is inert iff it is
+  self-tested (named in a `*_test.dag`) AND used by zero non-test code outside its own declaration block.
+  The `self-tested` gate is the key — it filters from "every staged-ahead carrier" (the model-first
+  discipline this whole doc defends) down to the precise §5 trap (a green test, no production consumer),
+  yielding a small, high-confidence set (8 carriers: AccessPolicy, CargoDependency, CargoPackage,
+  FilePermissions, FloorWitnessRow, GitCliReportedVersion, ReactHookSite, SecretValue) rather
+  than the hundreds a raw reachability sweep returns. (Seeded at 9; `RbacPolicy` then dissolved off the
+  roster the moment a real consumer landed — `extdeps/bmc/access.dag`'s `redfish_rbac_policy` — exactly
+  the stale-roster ratchet doing its job.) Fail-closed floor witness
+  (`src/v2/lens/inert_carrier_test.dag`), named shrinking roster + stale-roster ratchet, discriminating
+  synthetic RED/GREEN host controls. This is the Tier-2-host-fed path of §3 (not the cli_run.rs Tier-1
+  closure); DISSOLUTION at gunbc#5364. The run-root-reachability variant below (CacheLayerPlan/WorkDemand
+  — NOT self-tested, so out of this instance's scope) remains the next, distinct cut.
 - Confirm the run-root set (is `scheduler.dag` the sole runtime, or also the v1 `claim_executor` path?
   the digest census touched both).
 - Decide Tier-1-now vs wait for Tier-2's host bridge so the first landing is symbol-granular (the census

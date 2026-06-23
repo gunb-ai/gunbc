@@ -10,6 +10,14 @@ import gunbc.ci_runner_placement {
 import extdeps.github.actions { RunnerSpec, SelfHosted, HostedRunner, RunsOnExpression }
 import std.measure { byte_size_count }
 import std.types { String, List, Int, Bool }
+import std.layout {
+  Doc, DocConcat,
+  LayoutProtocol,
+  doc_concat, doc_line_of,
+  render
+}
+
+data runner_deploy_protocol: LayoutProtocol = LayoutProtocol { indent_unit: "" }
 
 fn runner_labels_text(spec: RunnerSpec) -> String {
   match spec {
@@ -20,26 +28,30 @@ fn runner_labels_text(spec: RunnerSpec) -> String {
   }
 }
 
-fn manifest_host_line(h: RunnerHostDeployment) -> String {
+fn manifest_host_text(h: RunnerHostDeployment) -> String {
   concat(
     concat(
       concat(concat("host=", h.identity), concat(" runners=", to_string(h.runner_count))),
       concat(" cap_bytes=", to_string(byte_size_count(b: h.per_runner_memory_cap)))
     ),
-    concat(concat(" labels=", runner_labels_text(spec: h.runner)), "\n")
+    concat(" labels=", runner_labels_text(spec: h.runner))
   )
 }
 
-fn expected_runner_deploy_manifest() -> String {
+fn project_runner_deploy_to_doc() -> Doc {
   match runner_deployment_plan() {
     PlanUnsound { reason: reason } =>
-      concat(concat("UNSOUND: ", reason), "\n")
+      doc_line_of(text: concat("UNSOUND: ", reason))
     PlanDerived { hosts: hosts, fleet_concurrent_runs: total } =>
-      concat(
-        fold(hosts, init: "", f: (acc, h) => concat(acc, manifest_host_line(h: h))),
-        concat("fleet_concurrent_runs=", concat(to_string(total), "\n"))
-      )
+      doc_concat(parts: append(
+        map(hosts, h => doc_line_of(text: manifest_host_text(h: h))),
+        items: [doc_line_of(text: concat("fleet_concurrent_runs=", to_string(total)))]
+      ))
   }
+}
+
+fn expected_runner_deploy_manifest() -> String {
+  render(doc: project_runner_deploy_to_doc(), proto: runner_deploy_protocol)
 }
 
 fn runner_deploy_drifted(committed: String) -> Bool {

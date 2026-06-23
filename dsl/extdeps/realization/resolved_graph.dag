@@ -1,5 +1,8 @@
 module extdeps.realization.resolved_graph
 
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
 import extdeps.cache.types { CacheInterfaceCatalogFacts, ContentAddressed }
 import std.cache_identity { CacheInterfaceId }
 import std.cache_interface {
@@ -20,6 +23,13 @@ import std.cache_interface {
   Org,
 }
 import std.measure { ByteSize, byte_size }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/gunb-ai/gunbc/tree/main/dsl/extdeps/realization"
+  }
+}
 
 data resolved_graph_cache_cap_bytes: ByteSize = byte_size(count: 10737418240)
 
