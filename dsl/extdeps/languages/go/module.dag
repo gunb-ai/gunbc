@@ -115,7 +115,7 @@ type GoRetractRange
 
 type GoRetractEntry {
   range: GoRetractRange
-  rationale: String?
+  rationale: NonEmptyStr?
 }
 
 type GoModFile {

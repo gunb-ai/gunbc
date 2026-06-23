@@ -1,5 +1,6 @@
 module v2.lens.medium_structure_containment
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.disposition { RealizationDispatch }
 
 import v2.std.algebra {
   fold_list,
@@ -245,9 +246,6 @@ fn medium_structure_containment_clean_live(
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: WallAfterGrounding {
-    grounding_authority: "each medium modeled as a Medium<R> Node emitted via grammar rows (GHA-expr: witty-wolf-587's extdeps.github.expressions / serialize_expression); the §5 realization-vocab guard is the sibling for the imported-sidecar face",
-    dissolve_on: "the exception roster empties as each medium is modeled — a check becomes a model walk or unwritable, and authoring or grepping the medium's syntax as a raw string outside the realization edge is then unwritable"
-  },
-  rationale: "A medium's structure leaking out of a Node into a raw string — written as a grounded-marker literal (emit-side) or grepped over an emitted-medium value (check-side, by call-target provenance) outside the realization edge — is a decidable property; this class is ② (lens residue) ONLY because the media are not all modeled yet, a shrinking-roster ratchet that becomes a pure ① construction wall as each medium becomes a Medium<R> Node."
+  class: WallAfterGrounding { dissolves_to: RealizationDispatch },
+  rationale: "A medium's structure leaking out of a Node into a raw string — written as a grounded-marker literal (emit-side) or grepped over an emitted-medium value (check-side, by call-target provenance) outside the realization edge — is a decidable property; this class is ② (lens residue) ONLY because the media are not all modeled yet, a shrinking-roster ratchet that becomes a pure ① construction wall as each medium becomes a Medium<R> Node. Grounding authority: each medium modeled as a Medium<R> Node emitted via grammar rows (GHA-expr: witty-wolf-587's extdeps.github.expressions / serialize_expression); the §5 realization-vocab guard is the sibling for the imported-sidecar face. Dissolves on: the exception roster empties as each medium is modeled — a check becomes a model walk or unwritable, and authoring or grepping the medium's syntax as a raw string outside the realization edge is then unwritable"
 }
