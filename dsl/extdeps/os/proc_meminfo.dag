@@ -2,7 +2,7 @@ module extdeps.os.proc_meminfo
 
 import std.types { NonEmptyStr }
 import std.list { List }
-import std.measure { Measure }
+import std.measure { Measure, Memory, Kibi }
 import std.nat { Nat }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }

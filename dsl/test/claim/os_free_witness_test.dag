@@ -5,21 +5,22 @@ import extdeps.os.free {
   MemoryStats,
   SwapStats,
 }
+import std.measure { ByteSize }
 
 test fn free_output_witnesses() -> Bool {
   let memory_stats = MemoryStats {
-    total: 8192000000,
-    used: 1024000000,
-    free: 2048000000,
-    shared: 0,
-    buff_cache: 5120000000,
-    available: 3072000000,
+    total: 8192000000 as ByteSize,
+    used: 1024000000 as ByteSize,
+    free: 2048000000 as ByteSize,
+    shared: 0 as ByteSize,
+    buff_cache: 5120000000 as ByteSize,
+    available: 3072000000 as ByteSize,
   }
 
   let swap_stats = SwapStats {
-    total: 2048000000,
-    used: 0,
-    free: 2048000000,
+    total: 2048000000 as ByteSize,
+    used: 0 as ByteSize,
+    free: 2048000000 as ByteSize,
   }
 
   let output = FreeOutput {
