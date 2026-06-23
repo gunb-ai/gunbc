@@ -219,7 +219,7 @@ still a violation) · internal review finds missing tests, external review finds
 - model §1's axioms (A1–A3) explicitly in `.dag` and have a lens **enforce the syllogism** — every
   claim a consequence-chain back to an axiom, no orphan and no cycle (the §4 acyclicity test turned on
   the argument itself; the §7 recursion, with this document as the first target). (operator's next
-  project)
+  project) → candidate articulation for review: [intent-linearity draft](docs/plans/intent-linearity-design-draft.md)
 - can a lens mechanically diagnose the *leaf-side* of decomposition (§2)? (operator-parked)
 - the model↔realization fork is systemic, and where unfinished it fails open: every primitive is
   modeled as a coproduct and realized as a native `Value`, reconciled by per-site bridges, so coverage
