@@ -79,5 +79,5 @@ fn import_resolution_facts_live(
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: SingleAuthority },
-  rationale: "A dangling import is decidable and is the resolver's authoritative UnresolvedImport rule; this lens is the interim projection of that single authority into a CI gate the parse-gated whole-tree compile never reaches. Grounding authority: front_end_sources parse-resilience so the resolver's own UnresolvedImport rule gates the whole tree Dissolves on: whole-tree resolve runs (front_end_sources no longer short-circuits to graph:none on a parse error), so UnresolvedImport is the authority"
+  rationale: "A dangling import is decidable and is the resolver's authoritative UnresolvedImport rule; this lens is the interim projection of that single authority into a CI gate the parse-gated whole-tree compile never reaches. Grounding authority: front_end_sources parse-resilience so the resolver's own UnresolvedImport rule gates the whole tree. Dissolves on: whole-tree resolve runs (front_end_sources no longer short-circuits to graph:none on a parse error), so UnresolvedImport is the authority"
 }

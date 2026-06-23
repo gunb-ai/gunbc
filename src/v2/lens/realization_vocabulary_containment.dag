@@ -219,5 +219,5 @@ fn realization_vocab_roster_sound_live(scan_roots: List<String>) -> Bool {
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: RealizationDispatch },
-  rationale: "Importing the target-AST sidecar outside the realization edge is a decidable import-graph property; a shrinking-roster ratchet that becomes a pure construction wall once the bash-sidecar arc empties the roster. Grounding authority: the bash-sidecar arc (warm-badger-46) migrating every consumer onto emit(intent, Bash) Dissolves on: the exception roster empties to a pure wall, extdeps.languages.bash.program is deletable, and importing target-AST vocab outside the realization edge is then unwritable"
+  rationale: "Importing the target-AST sidecar outside the realization edge is a decidable import-graph property; a shrinking-roster ratchet that becomes a pure construction wall once the bash-sidecar arc empties the roster. Grounding authority: the bash-sidecar arc (warm-badger-46) migrating every consumer onto emit(intent, Bash). Dissolves on: the exception roster empties to a pure wall, extdeps.languages.bash.program is deletable, and importing target-AST vocab outside the realization edge is then unwritable"
 }
