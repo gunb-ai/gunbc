@@ -39,7 +39,13 @@ func run_rust_monolith_gate() -> ProcessExit {
     DiffMergeBase => git.Core.DiffNameOnlyMerge(base: policy.base, head: policy.head)
     DiffTwoDot => git.Core.DiffNameOnly(base: policy.base, head: policy.head)
   }
-  return if should_run_gates(paths: changed.paths, git_success: changed.success) {
+  // closure_paths: [] for now -- the rust-test consumed-.dag closures live on the
+  // NodeArtifactProvenance carrier in the v2 tree (v2.workflow.rust_test_dag_closure), and
+  // dsl is MORE fundamental than v2 (cross_tree.import_model), so this dsl host program
+  // cannot import the v2 closure. Threading the union of declared closures into this
+  // production caller is the Edge-(b) shared blocker (structural .dag-closure discovery,
+  // surfaced into a dsl-readable form) -- not slice 1. Empty closure is behavior-preserving.
+  return if should_run_gates(paths: changed.paths, git_success: changed.success, closure_paths: []) {
     run_gates()
   } else {
     ExitSuccess

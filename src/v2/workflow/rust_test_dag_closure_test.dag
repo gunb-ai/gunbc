@@ -1,0 +1,101 @@
+module v2.test.workflow.rust_test_dag_closure
+
+// Edge-(b) coverage keystone -- slice 1 discriminating control, proven green-by-execution.
+//
+// Proves the ONE declared fact -- coproduct_reflection_conformance_test's consumed-.dag
+// closure on the NodeArtifactProvenance carrier -- read in the gate's direction:
+//   IN-closure  .dag change => must-run (coverage fire);
+//   OFF-closure .dag change => may-skip (the discriminating control / affordability);
+//   undeclared (empty closure) test => must-run (fail-closed);
+//   git read failure => must-run (fail-closed).
+//
+// TREE BOUNDARY: the rust gate `should_run_gates` lives in the dsl tree, which is MORE
+// fundamental than v2 (cross_tree.import_model), so the v2 closure cannot be threaded into
+// the dsl gate in a single executable expression. The gate-level fire/skip on a closure
+// path is therefore proven in the SAME tree as the gate -- dsl/test/claim/
+// rust_stage0_gates_witness_test.dag (w_closure_dag_fires / w_off_closure_dag_no_fire).
+// This v2 witness proves the carrier-based per-test decision the gate consumes. Threading
+// the v2 closure into the dsl production gate is the Edge-(b) shared blocker, not slice 1.
+//
+// SCOPE: proves the fire/skip PLUMBING + fail-closed default on a HAND-LISTED closure, not
+// the coverage WALL (drift-proof completeness). The wall needs the structurally-derived
+// closure (the shared blocker). See the model module header.
+
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.std.algebra { contains, length }
+import v2.workflow.rust_test_dag_closure {
+  coproduct_reflection_conformance_closure,
+  rust_test_changed_in_closure,
+  rust_test_closure_dag_paths,
+  rust_test_closure_path_eq,
+  rust_test_must_run
+}
+
+// A .dag the test genuinely consumes (it reflects over Connective/Behavior, both in node.dag).
+data closure_in_path: String = "src/v2/std/node.dag"
+// A .dag the test does NOT consume -- the discriminating control.
+data closure_off_path: String = "src/v2/lens/cost.dag"
+
+fn closure_paths() -> List<String> {
+  rust_test_closure_dag_paths(closure: coproduct_reflection_conformance_closure)
+}
+
+// --- The closure is declared (non-empty) and actually contains the reflected-over file ---
+
+test fn closure_is_declared_and_contains_node_dag() -> Bool {
+  let declared = length(xs: coproduct_reflection_conformance_closure) > 0
+  let has_node = contains(xs: closure_paths(), item: closure_in_path, eq: rust_test_closure_path_eq)
+  declared && has_node
+}
+
+// --- Per-test coverage: a declared test whose closure the diff HITS must run (FIRE) ---
+
+test fn declared_affected_test_must_run() -> Bool {
+  rust_test_must_run(
+    closure: coproduct_reflection_conformance_closure,
+    changed: [closure_in_path],
+    git_success: true
+  )
+}
+
+// --- Discriminating control: a declared test whose closure the diff MISSES may skip ---
+
+test fn declared_unaffected_test_may_skip() -> Bool {
+  rust_test_must_run(
+    closure: coproduct_reflection_conformance_closure,
+    changed: [closure_off_path],
+    git_success: true
+  ) == false
+}
+
+// --- Per-test fail-closed default: undeclared (empty closure) test is must-run ---
+
+test fn undeclared_test_must_run() -> Bool {
+  rust_test_must_run(closure: [], changed: [closure_off_path], git_success: true)
+}
+
+// --- Per-test fail-closed default: git read failure is must-run ---
+
+test fn git_failure_must_run() -> Bool {
+  rust_test_must_run(
+    closure: coproduct_reflection_conformance_closure,
+    changed: [closure_off_path],
+    git_success: false
+  )
+}
+
+// --- The closure-membership helper agrees with the gate projection (one fact) ---
+
+test fn changed_in_closure_matches_projection() -> Bool {
+  let hit = rust_test_changed_in_closure(
+    changed: [closure_in_path],
+    closure: coproduct_reflection_conformance_closure
+  )
+  let miss = rust_test_changed_in_closure(
+    changed: [closure_off_path],
+    closure: coproduct_reflection_conformance_closure
+  )
+  hit && (miss == false)
+}
