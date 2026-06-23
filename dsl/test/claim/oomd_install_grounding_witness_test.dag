@@ -17,8 +17,8 @@ import gunbc.ci_floor_measurement {
   OomdEnforced,
   OomdUnverified,
 }
-import extdeps.systemd.systemctl { UnitActive, UnitInactive }
-import extdeps.systemd.oomd { ManagedOomKill, ManagedOomAuto }
+import extdeps.os.systemd { Active, Inactive }
+import extdeps.os.oomd { ManagedOomKill, ManagedOomAuto }
 
 fn is_enforced(e: OomdEnforcementEvidence) -> Bool {
   match e {
@@ -30,7 +30,7 @@ fn is_enforced(e: OomdEnforcementEvidence) -> Bool {
 fn managed_read() -> ShowEffectiveRead<OomdEffectiveRead> {
   ReadObserved {
     value: OomdEffectiveRead {
-      unit_active: UnitActive,
+      unit_active: Active,
       effective_managed_oom_memory_pressure: ManagedOomKill,
     }
   }
@@ -39,7 +39,7 @@ fn managed_read() -> ShowEffectiveRead<OomdEffectiveRead> {
 fn unmanaged_read() -> ShowEffectiveRead<OomdEffectiveRead> {
   ReadObserved {
     value: OomdEffectiveRead {
-      unit_active: UnitActive,
+      unit_active: Active,
       effective_managed_oom_memory_pressure: ManagedOomAuto,
     }
   }
@@ -48,7 +48,7 @@ fn unmanaged_read() -> ShowEffectiveRead<OomdEffectiveRead> {
 fn inactive_read() -> ShowEffectiveRead<OomdEffectiveRead> {
   ReadObserved {
     value: OomdEffectiveRead {
-      unit_active: UnitInactive,
+      unit_active: Inactive,
       effective_managed_oom_memory_pressure: ManagedOomKill,
     }
   }

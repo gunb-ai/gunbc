@@ -2,7 +2,7 @@ module std.realization_reconcile
 
 import std.types { String, Bool }
 
-data realization_reconcile_doc: String = "Canonical reconcile-and-verify-ground carrier. SHARED substrate: runner-slot, PXE, and ctrl reconcile all import this; systemd-oomd is its FIRST instance, not its owner (home is std, the layer all consumers point toward). Signed signature: reconcile(apply_effect, show_read, grounds_predicate) -> Converged { evidence } | NotConverged { reason }. DESIGN section 5 invariant: the evidence carrier is produced ONLY by grounds_predicate over an OBSERVED show_read. The verdict depends on the read alone, NEVER on apply_effect: trusting apply (the declaration that the effect was applied) instead of the read (what the host actually resolved) would be a fail-open seam. So apply_effect is threaded as provenance only and is structurally incapable of producing evidence. A read that is absent or does not ground yields NotConverged (fail-closed) and records no evidence."
+data realization_reconcile_doc: String = "Canonical reconcile-and-verify-ground carrier. SHARED substrate: runner-slot, PXE, and ctrl reconcile all import this; systemd-oomd is its FIRST instance, not its owner (home is std, the layer all consumers point toward). Signed-signature intent: reconcile(apply_effect, show_read, grounds_predicate) -> Converged { evidence } | NotConverged { reason }. SUBSTRATE DEVIATION (reported for sign-off): the v1 seed cannot type a fn-typed parameter whose return is a generic-applied enum (fn(R) -> Grounding<E> fails at the annotation), so grounds_predicate cannot be passed as a higher-order arg here. Closest faithful realization: reconcile takes the grounding VALUE (Grounding<E>, which a caller derives by applying its predicate to the observed read) and enforces the read-presence gate. DESIGN section 5 invariants kept: (1) a ReadAbsent show_read yields NotConverged regardless of the grounding passed, so evidence is structurally impossible without an OBSERVED read; (2) the verdict never depends on apply_effect (trusting the declaration-that-it-was-applied over the read would be fail-open), so apply_effect is threaded as provenance only. Residue the substrate cannot close (documented honestly, not hidden): the carrier cannot itself re-run the predicate over the observed value, so coupling the grounding to THAT read is the caller's obligation; the oomd instance discharges it with no hand-grounding seam by deriving the grounding from the matched read value inline."
 
 type ShowEffectiveRead<R>
   = ReadObserved { value: R }
@@ -19,17 +19,15 @@ type Reconciliation<A, E>
 fn reconcile<A, R, E>(
   apply_effect: A,
   show_read: ShowEffectiveRead<R>,
-  grounds_predicate: fn(R) -> Grounding<E>
+  grounding: Grounding<E>
 ) -> Reconciliation<A, E> {
   match show_read {
     ReadAbsent { reason: why } => NotConverged { reason: why, applied: apply_effect }
-    ReadObserved { value: observed } => {
-      let grounded = grounds_predicate(observed)
-      match grounded {
+    ReadObserved { value: _ } =>
+      match grounding {
         Grounds { evidence: e } => Converged { evidence: e, applied: apply_effect }
         DoesNotGround { reason: why } => NotConverged { reason: why, applied: apply_effect }
       }
-    }
   }
 }
 
