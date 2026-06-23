@@ -36,7 +36,7 @@ use crate::v1_compiler_infer_emit_info::RustCorpusRepr::{FaithfulFreeMonoid, Hos
 use crate::v1_compiler_infer_emit_info::TypeRepr::{EnumRepr, StructRepr};
 pub use crate::v1_compiler_infer_emit_info::{
     add_emit_item_summary, build_enum_field_summaries, build_struct_field_summaries,
-    derive_variant_to_enum, empty_emit_graph_info, lookup_emit_type_summary,
+    close_fn_fields, derive_variant_to_enum, empty_emit_graph_info, lookup_emit_type_summary,
 };
 pub use crate::v1_compiler_infer_emit_info::{
     EmitGraphInfo, EmitInfoBuildState, RustCorpusRepr, TypeRepr, TypeSummary,
@@ -13673,7 +13673,7 @@ pub fn build_emit_graph_info(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<EmitGraphI
         let init = Rc::new(EmitInfoBuildState {
             type_summaries: v1_rt::rc_empty_map::<String, Rc<TypeSummary>>(),
         });
-        let built = modules.clone().iter().cloned().fold(
+        let built_raw = modules.clone().iter().cloned().fold(
             init.clone(),
             |state: Rc<EmitInfoBuildState>, typed_module: Rc<TypedModule>| {
                 typed_module.items.clone().iter().cloned().fold(
@@ -13688,6 +13688,9 @@ pub fn build_emit_graph_info(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<EmitGraphI
                 )
             },
         );
+        let built = Rc::new(EmitInfoBuildState {
+            type_summaries: close_fn_fields(built_raw.type_summaries.clone()),
+        });
         let all_recursive = modules.clone().iter().cloned().fold(
             v1_rt::rc_empty_set::<_>(),
             |acc: _, m: Rc<TypedModule>| {

@@ -15,6 +15,63 @@ fn any_rust_monolith(paths: List<String>) -> Bool {
   fold(paths, false, fn(acc, p) { acc || path_is_rust_monolith(path: p) })
 }
 
+data consumed_input_closure_concept_note: String = "ConsumedInputClosure = a unit's declared consumed-.dag inputs (what .dag a unit reads -> what must re-run on change). This is AFFECTED-SET SELECTION, the same underlying concept as (1) v2 affected_set/source_authority (src/v2/lens/affected_set, v2.std.artifact.NodeArtifactProvenance) and (2) the .dag-floor witness selection, at a third layer (rust tests run by the v1 binary). It is NOT NodeArtifactProvenance: that PRODUCES-artifact over v2 Nodes, this CONSUMES-input over opaque unit identities -- different direction, different domain, no coincidence to dedupe (DESIGN 2/3), so FIRST authority for the dsl-layer instance, not a parallel mint. Homed in dsl because the consumer should_run_gates runs in the v1/dsl tree, which cannot import v2 (imports point toward std; v2->dsl legal, dsl->v2 forbidden); dsl is the one layer all three consumers reach. unit is opaque -- a rust test is ONE kind of unit, named general so the .dag-floor selection can converge onto this carrier later without a rename."
+
+data consumed_input_closure_convergence_candidate: String = "CONVERGENCE CANDIDATE (accounted, not unified now) with v2 affected_set/source_authority AND the .dag-floor selection -- same concept at different layers. DISSOLUTION TRIGGER: one consumed-input/selection authority at a layer all three consumers reach (the deep (B) work -- relocate provenance/affected_set down, or a shared lower-layer authority)."
+
+data consumed_input_closure_slice1_status: String = "SLICE-1 NON-SOUND WIRING-ONLY: consumed_dag_paths is HAND-LISTED. Proves the fire/skip plumbing, NOT the coverage WALL (drift-proof completeness, closure superset of actual-reads). A .dag read added later is NOT captured here -> declaration drift silently re-opens the .dag->rust fail-open for the missing path. DISSOLUTION TRIGGER (soundness): structural closure derivation through the opaque host-read seam (filesystem_read/ws.join) -- the shared blocker. Only coproduct_reflection_conformance_test populated for slice 1."
+
+type ConsumedInputClosure {
+  unit: String
+  consumed_dag_paths: List<String>
+}
+
+data coproduct_reflection_conformance_consumed_closure: ConsumedInputClosure = ConsumedInputClosure {
+  unit: "coproduct_reflection_conformance_test",
+  consumed_dag_paths: [
+    "src/v2/compiler/manual/coproduct_reflection_conformance_test.dag",
+    "src/v2/std/algebra.dag",
+    "src/v2/std/collection.dag",
+    "src/v2/std/diagnostic.dag",
+    "src/v2/std/logic.dag",
+    "src/v2/std/node.dag",
+    "src/v2/std/node_query.dag",
+    "src/v2/std/witness.dag"
+  ]
+}
+
+data declared_consumed_input_closures: List<ConsumedInputClosure> = [
+  coproduct_reflection_conformance_consumed_closure
+]
+
+fn closure_contains_path(closure: ConsumedInputClosure, path: String) -> Bool {
+  fold(closure.consumed_dag_paths, false, fn(acc, p) { acc || (p == path) })
+}
+
+fn closure_hit_by_any(closure: ConsumedInputClosure, paths: List<String>) -> Bool {
+  fold(paths, false, fn(acc, p) { acc || closure_contains_path(closure: closure, path: p) })
+}
+
+fn any_declared_closure_hit(paths: List<String>) -> Bool {
+  fold(declared_consumed_input_closures, false, fn(acc, c) { acc || closure_hit_by_any(closure: c, paths: paths) })
+}
+
+data unit_must_run_failclosed_note: String = "Fail-closed per-unit selection: a unit with NO declared closure must run (absent declaration = run, never skip), keeping the coverage direction sound while declarations are added incrementally. A declared unit runs iff a changed path is in its closure. The fold seeds true (the fail-closed default); the matching declared entry, if any, overrides it with the affected-by-diff verdict."
+
+data unit_must_run_staged_note: String = "STAGED primitive (DESIGN 6 scaffold-with-dissolution-trigger): unit_must_run is the fail-closed PER-UNIT selector but is NOT YET consumed by the live gate -- should_run_gates fires coarsely via any_declared_closure_hit (all-or-nothing: any declared closure hit runs the whole rust suite). It is exercised only by its discriminating witnesses today (proving the fail-closed (iii) direction by execution). DISSOLUTION / CONSUMER TRIGGER: the per-unit rust-test selection slice (the affordability direction) that replaces all-or-nothing should_run_gates with per-test selection -- at which point unit_must_run becomes the live selector and this staged note dissolves. Until then it is an intentionally-staged primitive, not an inert abstraction."
+
+fn unit_must_run(unit: String, paths: List<String>) -> Bool {
+  fold(declared_consumed_input_closures, true, fn(acc, c) {
+    if c.unit == unit { closure_hit_by_any(closure: c, paths: paths) } else { acc }
+  })
+}
+
+data should_run_gates_coverage_note: String = "Coverage fire (Edge-(b)): the rust gate ALSO runs when a changed .dag is in the union of declared consumed-input closures -- purely additive to the existing .rs/Cargo fire, so the change only ever ADDS fires, never newly skips (fail-closed for coverage)."
+
 fn should_run_gates(paths: List<String>, git_success: Bool) -> Bool {
-  if git_success { any_rust_monolith(paths: paths) } else { true }
+  if git_success {
+    any_rust_monolith(paths: paths) || any_declared_closure_hit(paths: paths)
+  } else {
+    true
+  }
 }
