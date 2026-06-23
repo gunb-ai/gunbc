@@ -201,7 +201,11 @@ fn block_sequence_element_doc(e: YamlValue) -> Doc {
       } else {
         doc_line_of(text: concat("- ", emit_inline_scalar_text(s: s)))
       }
-    _ => doc_line_of(text: concat("- ", emit_scalar(v: e)))
+    YamlNull => doc_line_of(text: concat("- ", emit_scalar(v: e)))
+    YamlBool { value: _ } => doc_line_of(text: concat("- ", emit_scalar(v: e)))
+    YamlInt { lexeme: _ } => doc_line_of(text: concat("- ", emit_scalar(v: e)))
+    YamlFloat { lexeme: _ } => doc_line_of(text: concat("- ", emit_scalar(v: e)))
+    YamlSequence { elements: _ } => doc_line_of(text: concat("- ", emit_scalar(v: e)))
   }
 }
 
