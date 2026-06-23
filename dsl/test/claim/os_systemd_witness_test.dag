@@ -7,20 +7,21 @@ import extdeps.os.systemd {
   Inactive,
   Failed,
 }
+import std.types { NonEmptyStr }
 
 test fn systemd_witnesses() -> Bool {
   let active_status = SystemdUnitStatus {
-    name: "docker.service",
+    name: "docker.service" as NonEmptyStr,
     active_state: Active,
   }
 
   let inactive_status = SystemdUnitStatus {
-    name: "some.service",
+    name: "some.service" as NonEmptyStr,
     active_state: Inactive,
   }
 
   let failed_status = SystemdUnitStatus {
-    name: "failing.service",
+    name: "failing.service" as NonEmptyStr,
     active_state: Failed,
   }
 

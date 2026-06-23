@@ -5,6 +5,7 @@ import extdeps.os.proc_meminfo {
   MemoryMetric,
   meminfo_field_names,
 }
+import std.types { NonEmptyStr }
 
 test fn proc_meminfo_witnesses() -> Bool {
   let info = ProcMeminfo {
@@ -19,7 +20,7 @@ test fn proc_meminfo_witnesses() -> Bool {
   }
 
   let metric = MemoryMetric {
-    key: "MemTotal",
+    key: "MemTotal" as NonEmptyStr,
     value_kibibytes: 8012272,
   }
 
