@@ -3,7 +3,7 @@ module extdeps.docker.container_stats
 import std.types { Timestamp, String, Int, Float }
 import std.nat { Nat }
 import std.measure { ByteSize, byte_size, byte_size_count, Nanosecond, nanosecond, nanosecond_count, Microsecond }
-import extdeps.docker.endpoint { docker_default_endpoint, docker_wire_contract, docker_external_authority_anchor }
+import extdeps.docker.endpoint { docker_default_endpoint, docker_external_authority_anchor }
 
 type CpuStats {
   cpu_usage: CpuUsage
@@ -113,3 +113,7 @@ fn container_stats_cpu_usage_total(stats: ContainerStats) -> Nanosecond {
 fn container_stats_online_cpus(stats: ContainerStats) -> Nat {
   stats.cpu_stats.online_cpus
 }
+
+data structural_coverage_gap_memory_stats_working_set: List<String> = [
+  "closure:memory_stats_true_working_set|MemoryStats.usage includes page cache (inactive_file); true working-set = usage - stats.inactive_file from Docker stats sub-map|trigger:B2 models stats sub-map with inactive_file and policy uses working_set not raw usage"
+]
