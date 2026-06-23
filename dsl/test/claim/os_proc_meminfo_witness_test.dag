@@ -5,27 +5,27 @@ import extdeps.os.proc_meminfo {
   MemoryMetric,
   meminfo_field_names,
 }
-import std.measure { Kibibyte }
+import std.measure { Kibibyte, measure_count }
 import std.types { NonEmptyStr }
 
 test fn proc_meminfo_witnesses() -> Bool {
   let info = ProcMeminfo {
-    mem_total: 8012272 as Kibibyte,
-    mem_free: 4048136 as Kibibyte,
-    mem_available: 6144000 as Kibibyte,
-    buffers: 256000 as Kibibyte,
-    cached: 2048136 as Kibibyte,
-    swap_total: 2097152 as Kibibyte,
-    swap_free: 2097152 as Kibibyte,
+    mem_total: Kibibyte { count: 8012272 },
+    mem_free: Kibibyte { count: 4048136 },
+    mem_available: Kibibyte { count: 6144000 },
+    buffers: Kibibyte { count: 256000 },
+    cached: Kibibyte { count: 2048136 },
+    swap_total: Kibibyte { count: 2097152 },
+    swap_free: Kibibyte { count: 2097152 },
     all_metrics: [],
   }
 
   let metric = MemoryMetric {
     key: "MemTotal" as NonEmptyStr,
-    value: 8012272 as Kibibyte,
+    value: Kibibyte { count: 8012272 },
   }
 
-  info.mem_total > 0
-    && info.mem_available <= info.mem_total
-    && metric.value > 0
+  measure_count(m: info.mem_total) > 0
+    && measure_count(m: info.mem_available) <= measure_count(m: info.mem_total)
+    && measure_count(m: metric.value) > 0
 }

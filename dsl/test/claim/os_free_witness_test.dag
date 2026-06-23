@@ -5,22 +5,22 @@ import extdeps.os.free {
   MemoryStats,
   SwapStats,
 }
-import std.measure { ByteSize }
+import std.measure { ByteSize, byte_size, byte_size_count }
 
 test fn free_output_witnesses() -> Bool {
   let memory_stats = MemoryStats {
-    total: 8192000000 as ByteSize,
-    used: 1024000000 as ByteSize,
-    free: 2048000000 as ByteSize,
-    shared: 0 as ByteSize,
-    buff_cache: 5120000000 as ByteSize,
-    available: 3072000000 as ByteSize,
+    total: byte_size(count: 8192000000),
+    used: byte_size(count: 1024000000),
+    free: byte_size(count: 2048000000),
+    shared: byte_size(count: 0),
+    buff_cache: byte_size(count: 5120000000),
+    available: byte_size(count: 3072000000),
   }
 
   let swap_stats = SwapStats {
-    total: 2048000000 as ByteSize,
-    used: 0 as ByteSize,
-    free: 2048000000 as ByteSize,
+    total: byte_size(count: 2048000000),
+    used: byte_size(count: 0),
+    free: byte_size(count: 2048000000),
   }
 
   let output = FreeOutput {
@@ -28,11 +28,11 @@ test fn free_output_witnesses() -> Bool {
     swap: swap_stats,
   }
 
-  memory_stats.total > 0
-    && memory_stats.available <= memory_stats.total
-    && memory_stats.free <= memory_stats.total
-    && swap_stats.used <= swap_stats.total
-    && swap_stats.free <= swap_stats.total
-    && output.memory.total > 0
-    && memory_stats.available >= memory_stats.free
+  byte_size_count(b: memory_stats.total) > 0
+    && byte_size_count(b: memory_stats.available) <= byte_size_count(b: memory_stats.total)
+    && byte_size_count(b: memory_stats.free) <= byte_size_count(b: memory_stats.total)
+    && byte_size_count(b: swap_stats.used) <= byte_size_count(b: swap_stats.total)
+    && byte_size_count(b: swap_stats.free) <= byte_size_count(b: swap_stats.total)
+    && byte_size_count(b: output.memory.total) > 0
+    && byte_size_count(b: memory_stats.available) >= byte_size_count(b: memory_stats.free)
 }
