@@ -6,26 +6,25 @@ import extdeps.os.systemd {
   Active,
   Inactive,
   Failed,
+  parse_systemd_unit_active_state,
+  systemd_unit_active_state_wire_label,
 }
 import std.types { NonEmptyStr }
 
-test fn systemd_witnesses() -> Bool {
-  let active_status = SystemdUnitStatus {
-    name: "docker.service" as NonEmptyStr,
-    active_state: Active,
+test fn witness_active_wire_decodes_to_active() -> Bool {
+  match parse_systemd_unit_active_state(raw: "active") {
+    Present { value: Active } => True
+    _ => False
   }
+}
 
-  let inactive_status = SystemdUnitStatus {
-    name: "some.service" as NonEmptyStr,
-    active_state: Inactive,
+test fn witness_wrong_case_does_not_decode() -> Bool {
+  match parse_systemd_unit_active_state(raw: "ACTIVE") {
+    none => True
+    _ => False
   }
+}
 
-  let failed_status = SystemdUnitStatus {
-    name: "failing.service" as NonEmptyStr,
-    active_state: Failed,
-  }
-
-  active_status.name != ""
-    && inactive_status.name != ""
-    && failed_status.name != ""
+test fn witness_roundtrip_failed() -> Bool {
+  systemd_unit_active_state_wire_label(s: Failed) == "failed"
 }

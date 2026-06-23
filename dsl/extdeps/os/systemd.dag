@@ -25,6 +25,27 @@ data systemd_unit_active_state_wire_contract: CoproductWireContract = {
   encoding: StringVariant { naming: SnakeCase }
 }
 
+fn parse_systemd_unit_active_state(raw: String) -> SystemdUnitActiveState? {
+  if raw == "active" { Present { value: Active } }
+  else { if raw == "inactive" { Present { value: Inactive } }
+  else { if raw == "activating" { Present { value: Activating } }
+  else { if raw == "deactivating" { Present { value: Deactivating } }
+  else { if raw == "reloading" { Present { value: Reloading } }
+  else { if raw == "failed" { Present { value: Failed } }
+  else { none } } } } } }
+}
+
+fn systemd_unit_active_state_wire_label(s: SystemdUnitActiveState) -> String {
+  match s {
+    Active => "active"
+    Inactive => "inactive"
+    Activating => "activating"
+    Deactivating => "deactivating"
+    Reloading => "reloading"
+    Failed => "failed"
+  }
+}
+
 type SystemdUnitStatus {
   name: NonEmptyStr
   active_state: SystemdUnitActiveState
