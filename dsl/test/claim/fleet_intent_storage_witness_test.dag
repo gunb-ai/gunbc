@@ -25,6 +25,13 @@ test fn srv1_drive_is_catalog_grounded_wd_sn850x() -> Bool {
     }
 }
 
+test fn drive_serial_is_pending_until_in_band_enumeration() -> Bool {
+  match srv1_nvme0.serial {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
 test fn out_of_band_only_host_reports_no_drives() -> Bool {
   list_length(items: srv3_host.storage) == 0
     && match route_observation(channel: OutOfBand, class: StorageInventory) {

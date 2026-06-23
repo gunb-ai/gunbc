@@ -26,7 +26,7 @@ fn samsung_970_evo_plus(part_number: NonEmptyStr, capacity_bytes: ByteSize) -> N
   }
 }
 
-data samsung_970_evo_plus_1tb_catalog: NvmeDeviceCatalogRow = samsung_970_evo_plus(
-  part_number: "MZ-V7S1T0BW",
-  capacity_bytes: byte_size(1000204886016),
+data samsung_970_evo_plus_2tb_catalog: NvmeDeviceCatalogRow = samsung_970_evo_plus(
+  part_number: "MZ-V7S2T0BW",
+  capacity_bytes: byte_size(2000398934016),
 )

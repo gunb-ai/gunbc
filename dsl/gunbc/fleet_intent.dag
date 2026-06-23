@@ -2,6 +2,7 @@ module gunbc.fleet_intent
 
 import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2, operator_host_srv3 }
 import extdeps.storage.western_digital { wd_black_sn850x_2tb_catalog }
+import extdeps.storage.samsung { samsung_970_evo_plus_2tb_catalog }
 import extdeps.cpu.ampere { altra_max_m12830_catalog }
 import extdeps.cpu.types { CpuFacts, CpuDeploymentFacts }
 import extdeps.boards.asrock_rack { asrock_altrad8ud_1l2t_catalog }
@@ -65,6 +66,10 @@ data srv1_nvme0: StorageDevice = nvme_storage_device(
 )
 data srv2_nvme0: StorageDevice = nvme_storage_device(
   catalog: wd_black_sn850x_2tb_catalog,
+  persistence: Persistent,
+)
+data srv3_nvme0: StorageDevice = nvme_storage_device(
+  catalog: samsung_970_evo_plus_2tb_catalog,
   persistence: Persistent,
 )
 
