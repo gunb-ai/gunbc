@@ -13,7 +13,7 @@ fn p(text: String) -> MarkdownBlock { ParagraphBlock { inlines: [TextInline { te
 fn li(text: String) -> MarkdownListItem { MarkdownListItem { blocks: [p(text: text)] } }
 fn ol(items: List<MarkdownListItem>) -> MarkdownBlock { OrderedListBlock { items: items } }
 fn cell(text: String) -> MarkdownTableCell { MarkdownTableCell { inlines: [TextInline { text: text }] } }
-fn row(texts: List<String>) -> MarkdownTableRow { MarkdownTableRow { cells: map(texts, t => cell(text: t)) } }
+fn row(cells: List<MarkdownTableCell>) -> MarkdownTableRow { MarkdownTableRow { cells: cells } }
 
 fn model_realization_fork_body() -> List<MarkdownBlock> {
   [
@@ -25,33 +25,33 @@ fn model_realization_fork_body() -> List<MarkdownBlock> {
     p(text: "**Native realization** — `Value` enum, 13 variants (`v1_interpreter.rs:448-483`): `Null, Bool, Int, Float, Str, List, Map, Set, Record, Variant, Closure, Fn, Unit`."),
     p(text: "**Modeled coproducts** (each → a native variant):"),
     TableBlock {
-      header: row(texts: ["modeled", "form", "native", "bridge site", "coverage"]),
+      header: row(cells: [cell(text: "modeled"), cell(text: "form"), cell(text: "native"), cell(text: "bridge site"), cell(text: "coverage")]),
       alignments: [AlignNone, AlignNone, AlignNone, AlignNone, AlignNone],
       rows: [
-        row(texts: ["`Nat`", "`Zero \\| Succ` (`nat.dag:21`)", "`Value::Int`", "pattern match `:2468`; eq guard `:1910`", "partial (pattern + eq only; arithmetic stays native i64)"]),
-        row(texts: ["`Bool`", "`True \\| False` (`logic.dag:19`)", "`Value::Bool`", "literal `:1764`; ops via `is_truthy`", "accidental (no coproduct-arm bridge; safe only because no corpus matches nominal arms)"]),
-        row(texts: ["`Int`", "`GroupCompletion<Nat>` (`integer.dag:41`)", "`Value::Int`", "native i64 ops", "total at op level, but native, not the modeled form"]),
-        row(texts: ["`Optional`", "`Absent \\| Present` (`collection.dag`)", "`Value::Null`", "pattern match `:2528`", "partial (pattern only)"]),
-        row(texts: ["`Witness`", "`Violates \\| Holds` (`witness.dag`)", "`Value::Null`", "pattern match `:2507`", "partial (pattern only)"]),
-        row(texts: ["`FreeMonoid`", "`Empty \\| Cons` (`algebra.dag:76`)", "`Value::List`/`Str`", "`free_monoid_to_vec :6225`", "total (one centralized flatten — the compositional exemplar)"]),
+        row(cells: [cell(text: "`Nat`"), cell(text: "`Zero \\| Succ` (`nat.dag:21`)"), cell(text: "`Value::Int`"), cell(text: "pattern match `:2468`; eq guard `:1910`"), cell(text: "partial (pattern + eq only; arithmetic stays native i64)")]),
+        row(cells: [cell(text: "`Bool`"), cell(text: "`True \\| False` (`logic.dag:19`)"), cell(text: "`Value::Bool`"), cell(text: "literal `:1764`; ops via `is_truthy`"), cell(text: "accidental (no coproduct-arm bridge; safe only because no corpus matches nominal arms)")]),
+        row(cells: [cell(text: "`Int`"), cell(text: "`GroupCompletion<Nat>` (`integer.dag:41`)"), cell(text: "`Value::Int`"), cell(text: "native i64 ops"), cell(text: "total at op level, but native, not the modeled form")]),
+        row(cells: [cell(text: "`Optional`"), cell(text: "`Absent \\| Present` (`collection.dag`)"), cell(text: "`Value::Null`"), cell(text: "pattern match `:2528`"), cell(text: "partial (pattern only)")]),
+        row(cells: [cell(text: "`Witness`"), cell(text: "`Violates \\| Holds` (`witness.dag`)"), cell(text: "`Value::Null`"), cell(text: "pattern match `:2507`"), cell(text: "partial (pattern only)")]),
+        row(cells: [cell(text: "`FreeMonoid`"), cell(text: "`Empty \\| Cons` (`algebra.dag:76`)"), cell(text: "`Value::List`/`Str`"), cell(text: "`free_monoid_to_vec :6225`"), cell(text: "total (one centralized flatten — the compositional exemplar)")]),
       ],
     },
     h2(text: "2. Reconciliation chokepoints (fail-open / closed / reconciled)"),
     TableBlock {
-      header: row(texts: ["site", "file:line", "verdict"]),
+      header: row(cells: [cell(text: "site"), cell(text: "file:line"), cell(text: "verdict")]),
       alignments: [AlignNone, AlignNone, AlignNone],
       rows: [
-        row(texts: ["`Value::eq` catch-all", "`:689`", "**FAIL-OPEN** (`_ => false` on straddle) — but left infallible by design (single `CanonKey` authority)"]),
-        row(texts: ["`eval_binop` Eq/Ne guard", "`:1910-1922`", "**FAIL-CLOSED** (raises `CrossRepresentationEquality` on numeric straddle) — landed"]),
-        row(texts: ["`pattern_matches`", "`:2276-2563`", "RECONCILED (explicit per-variant arms)"]),
-        row(texts: ["`value_hash` / `CanonKey::new`", "`:344` / `:309`", "RECONCILED / FAIL-CLOSED (reflexivity check rejects non-reflexive)"]),
-        row(texts: ["`parse_table_memo` / `pure_call_memo` / `resolved_graph_cache`", "(see lock-down §3)", "reconciled-with-caveat → the under-keyed / lossy cache holes are this seam at the cache layer"]),
+        row(cells: [cell(text: "`Value::eq` catch-all"), cell(text: "`:689`"), cell(text: "**FAIL-OPEN** (`_ => false` on straddle) — but left infallible by design (single `CanonKey` authority)")]),
+        row(cells: [cell(text: "`eval_binop` Eq/Ne guard"), cell(text: "`:1910-1922`"), cell(text: "**FAIL-CLOSED** (raises `CrossRepresentationEquality` on numeric straddle) — landed")]),
+        row(cells: [cell(text: "`pattern_matches`"), cell(text: "`:2276-2563`"), cell(text: "RECONCILED (explicit per-variant arms)")]),
+        row(cells: [cell(text: "`value_hash` / `CanonKey::new`"), cell(text: "`:344` / `:309`"), cell(text: "RECONCILED / FAIL-CLOSED (reflexivity check rejects non-reflexive)")]),
+        row(cells: [cell(text: "`parse_table_memo` / `pure_call_memo` / `resolved_graph_cache`"), cell(text: "(see lock-down §3)"), cell(text: "reconciled-with-caveat → the under-keyed / lossy cache holes are this seam at the cache layer")]),
       ],
     },
     p(text: "`FreeMonoid` is the proof that compositional reconciliation is *possible* (one flatten, all ops). Every other primitive is per-site."),
     h2(text: "3. Grounding order (does it dissolve the guards?)"),
     ol(items: [
-      li(text: "**Numeric tower — GROUNDED (#5428, 2026-06-21).** Nat construction-side grounded: `Zero → Value::Int(0)`, `Succ{prev:Int(k)} → Value::Int(k+1)` — native form == modeled form. `cross_representation_numeric_straddle` is dead-in-corpus for numerics; `eval_binop`'s `CrossRepresentationEquality` guard is **kept as fail-closed backstop** (not removed — guard removal is bundled with the `Value::Null` split in §3.2, fenced out of this window). The discriminating witness `cross_representation_equality_test` confirms: former fork cases now reconcile to `Bool(true)`; genuine diffs (`1==2`, `Succ{Zero}==Zero → Int(1)==Int(0)`) stay `false`. **Done.**"),
+      li(text: "**Numeric tower — GROUNDED (#5428, 2026-06-21).** Nat construction-side grounded: `Zero → Value::Int(0)`, `Succ\{prev:Int(k)\} → Value::Int(k+1)` — native form == modeled form. `cross_representation_numeric_straddle` is dead-in-corpus for numerics; `eval_binop`'s `CrossRepresentationEquality` guard is **kept as fail-closed backstop** (not removed — guard removal is bundled with the `Value::Null` split in §3.2, fenced out of this window). The discriminating witness `cross_representation_equality_test` confirms: former fork cases now reconcile to `Bool(true)`; genuine diffs (`1==2`, `Succ\{Zero\}==Zero → Int(1)==Int(0)`) stay `false`. **Done.**"),
       li(text: "**`Value::Null` overload — the deeper root; NO, needs SPLITTING not grounding-away.** `Value::Null` means *None* / *Absent* (Optional) / *miss* (map lookup) / *Violates* (Witness) **all at once**. So a blanket equality guard is wrong — `present == None → false` is *legitimate* at ~131 sites. The fix is semantic: **split the sentinel** — `raw_map_lookup` returns `Optional<V>` directly (not `Null` + later bridge), Witness miss returns `Violates`, etc. — so each meaning has its own carrier. This is HIGH effort / HIGH impact and is the real depth of the root."),
       li(text: "**`FreeMonoid`** — mostly reconciled already; just ensure every op honours both forms."),
       li(text: "**`Bool`** — currently safe (no nominal-arm match in the corpus); if one lands, apply the numeric pattern (~5 lines). Low priority."),
