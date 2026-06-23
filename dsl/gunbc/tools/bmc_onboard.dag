@@ -29,7 +29,7 @@ import extdeps.shell
 import gunbc.bmc_onboarding { new_altra_onboarding_plan }
 import gunbc.os_install { srv3_os_install_plan }
 import std.credentials { Stored }
-import std.encoding { base64_encode, base64_decode, Base64Variant, Standard, UrlSafe }
+import std.encoding { base64_encode, base64_decode, Base64Variant, Standard }
 import std.integer { UInt8 }
 import std.types { NonEmptyStr, Secret, String }
 import std.logic { Bool }
@@ -107,6 +107,18 @@ fn onboarding_secret_id() -> NonEmptyStr {
 // fails closed on nonzero exit). The CALLER fails closed on Absent, never fabricating a credential.
 fn mint_credential_octets(byte_count: Int) -> List<UInt8>? {
   base64_decode(s: Urandom.ReadBytes(count: byte_count).octets_b64, variant: Standard)
+}
+
+// SINGLE AUTHORITY for the credential string derived from entropy octets (§2/§3). The password set
+// on the BMC, the payload stored in GCP, and the read-back comparison MUST all be the identical
+// string — deriving it independently at each site (rotate / store / os-install) lets the encoding
+// variant diverge, and a recoverer who reads the GCP secret would get a string that is NOT the
+// password (a §5 lockout foot-gun: the stored value must BE the credential, not a re-encoding of it).
+// The credential is itself valid base64, so it doubles as the GCP wire payload: GCP stores the
+// underlying octets and AccessVersion returns this exact string as `data_b64` — so the recovered
+// secret IS the password, directly usable, no decode/re-encode step at the recovery site.
+fn credential_from_octets(octets: List<UInt8>) -> Secret {
+  base64_encode(octets: octets, variant: Standard) as Secret
 }
 
 // --- write a netrc authenticating as `account` with `password` --------------
@@ -224,8 +236,11 @@ func bmc_os_install(new_credential: Secret) -> ProcessExit
 func bmc_store_and_rotate(octets: List<UInt8>) -> ProcessExit
   uses net: Network
 {
-  let credential = base64_encode(octets: octets, variant: UrlSafe) as Secret
-  let payload_b64 = base64_encode(octets: octets, variant: Standard)
+  let credential = credential_from_octets(octets: octets)
+  // The credential is valid base64, so it is also the GCP wire payload — GCP decodes it to the raw
+  // octets, stores them, and returns this same string as `data_b64`. So `data_b64 == payload_b64`
+  // (the read-back gate below) proves the EXACT credential is durably recoverable, not merely the octets.
+  let payload_b64 = credential as String
   let secret_id = onboarding_secret_id()
 
   // Store the credential to GCP for durability (payload is base64 of the same octets — no utf8 hop),
@@ -263,7 +278,7 @@ func bmc_onboard_store_rotate_install(octets: List<UInt8>) -> ProcessExit
   uses net: Network
 {
   return match bmc_store_and_rotate(octets: octets) {
-    ExitSuccess => bmc_os_install(new_credential: base64_encode(octets: octets, variant: UrlSafe) as Secret)
+    ExitSuccess => bmc_os_install(new_credential: credential_from_octets(octets: octets))
     ExitFailure { code: c, reason: r } => ExitFailure { code: c, reason: r }
   }
 }
