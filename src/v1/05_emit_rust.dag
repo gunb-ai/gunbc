@@ -145,6 +145,7 @@ import v1.compiler.emit_core_support {
 }
 
 fn render_rust_type(n: Node, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>) -> String {
+  if is_host_text_carrier_type(n: n, source_indices: source_indices, corpus_repr: corpus_repr) { return "String" }
   match n.inferred {
     Present { value: TypeVariable { id: tv } } => tv
     _ =>
@@ -161,6 +162,7 @@ fn render_rust_type(n: Node, shared_types: Set<String>, corpus_repr: RustCorpusR
 }
 
 fn render_rust_type_without_applied_binding(n: Node, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>) -> String {
+  if is_host_text_carrier_type(n: n, source_indices: source_indices, corpus_repr: corpus_repr) { return "String" }
   if n.connective == NoConnective && n.children |> count > 0 && !is_container_type(name: authored_name_at(source_indices: source_indices, node: n)) {
     render_rust_applied_type_shared(n: n, generic_param_names: [], shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: empty_map(), env: TypeEnv { bindings: empty_map(), recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_indices: source_indices, intern_table: empty_intern_table() })
   } else if node_is_set_collection(n: n, source_indices: source_indices) {
@@ -202,6 +204,9 @@ fn corpus_repr_is_faithful(corpus_repr: RustCorpusRepr) -> Bool {
 fn corpus_repr_is_host(corpus_repr: RustCorpusRepr) -> Bool {
   match corpus_repr { HostNative => true  FaithfulFreeMonoid => false }
 }
+fn is_host_freemonoid_vec_alias(name: String, corpus_repr: RustCorpusRepr) -> Bool {
+  corpus_repr_is_host(corpus_repr: corpus_repr) && name == "FreeMonoid"
+}
 fn render_rust_text_carrier(shared_types: Set<String>) -> String {
   render_rust_shared_type_if_needed(type_name: "FreeMonoid", rendered: "FreeMonoid<Char>", shared_types: shared_types)
 }
@@ -241,6 +246,47 @@ fn rust_host_string_seam_fn_emit(name: String) -> String? {
   }
 }
 
+fn rust_host_string_op_fn_emit(name: String) -> String? {
+  if name == "string_is_empty" {
+    Present { value: concat(
+      "pub fn string_is_empty(s: String) -> bool {\n",
+      "    s.is_empty()\n",
+      "}\n"
+    ) }
+  } else if name == "string_head" {
+    Present { value: concat(
+      "pub fn string_head(s: String) -> Rc<CharResult> {\n",
+      "    match s.chars().next() {\n",
+      "        Some(c) => Rc::new(CharResult::CharFound { value: Box::new(c as i64) }),\n",
+      "        None => Rc::new(CharResult::CharAbsent),\n",
+      "    }\n",
+      "}\n"
+    ) }
+  } else if name == "string_tail" {
+    Present { value: concat(
+      "pub fn string_tail(s: String) -> Rc<ListTailResult<Char>> {\n",
+      "    let mut __it = s.chars();\n",
+      "    match __it.next() {\n",
+      "        Some(_) => Rc::new(ListTailResult::TailFound { tail: Rc::new(__it.map(|c| c as i64).collect::<Vec<i64>>()) }),\n",
+      "        None => Rc::new(ListTailResult::TailAbsent),\n",
+      "    }\n",
+      "}\n"
+    ) }
+  } else if name == "fold_source" {
+    Present { value: concat(
+      "pub fn fold_source<R: Clone>(src: String, algebra: Rc<SourceFold<R>>) -> R {\n",
+      "    let mut __acc = (algebra.init)(src.clone());\n",
+      "    for _ in src.chars() {\n",
+      "        __acc = if (algebra.is_done)(__acc.clone()) { __acc } else { (algebra.step)(__acc) };\n",
+      "    }\n",
+      "    __acc\n",
+      "}\n"
+    ) }
+  } else {
+    none
+  }
+}
+
 fn rust_opaque_kernel_alias_carrier(name: String) -> String? {
   if name == "Json" || name == "Bytes" {
     Present { value: coerce_primitive_type(target: Rust, dag_name: name) }
@@ -258,10 +304,40 @@ fn rust_seed_host_numeric_alias(name: String, corpus_repr: RustCorpusRepr) -> St
 }
 
 fn rust_seed_host_container_base(name: String, corpus_repr: RustCorpusRepr) -> String? {
-  if name == "List" && corpus_repr_is_host(corpus_repr: corpus_repr) {
+  if (name == "List" || name == "FreeMonoid") && corpus_repr_is_host(corpus_repr: corpus_repr) {
     Present { value: "Vec" }
   } else {
     none
+  }
+}
+
+fn rust_host_text_carrier_elem_name(n: Node, source_indices: Map<String, NewlineIndex>) -> String {
+  match n.children |> first {
+    Present { value: ch } => authored_name_at(source_indices: source_indices, node: ch)
+    Absent =>
+      match find_property(props: n.properties, prop_name: "__applied_type_args", source_indices: source_indices) {
+        Present { value: applied } =>
+          match applied.children |> first {
+            Present { value: ach } => authored_name_at(source_indices: source_indices, node: ach)
+            Absent => ""
+          }
+        Absent => ""
+      }
+  }
+}
+
+fn is_host_text_carrier_type(n: Node, source_indices: Map<String, NewlineIndex>, corpus_repr: RustCorpusRepr) -> Bool {
+  if !corpus_repr_is_host(corpus_repr: corpus_repr) {
+    false
+  } else {
+    let nm = authored_name_at(source_indices: source_indices, node: n)
+    if nm == "String" {
+      true
+    } else if nm == "FreeMonoid" || nm == "List" {
+      rust_host_text_carrier_elem_name(n: n, source_indices: source_indices) == "Char"
+    } else {
+      false
+    }
   }
 }
 
@@ -342,6 +418,7 @@ fn render_rust_applied_type_arg(n: Node, generic_param_names: List<String>, shar
 }
 
 fn render_rust_applied_type(n: Node, generic_param_names: List<String>, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
+  if is_host_text_carrier_type(n: n, source_indices: source_indices, corpus_repr: corpus_repr) { return "String" }
   let base_name = authored_name_at(source_indices: source_indices, node: n)
   if n.children |> count == 0 {
 
@@ -380,6 +457,7 @@ fn render_rust_applied_type_shared(n: Node, generic_param_names: List<String>, s
 }
 
 fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
+  if is_host_text_carrier_type(n: n, source_indices: source_indices, corpus_repr: corpus_repr) { return "String" }
   let applied_prop = find_property(props: n.properties, prop_name: "__applied_type_args", source_indices: source_indices)
   let applied_overlay = match applied_prop {
     Present { value: applied } =>
@@ -438,6 +516,7 @@ fn rust_fn_sig_peel_closed_alias(env: TypeEnv, n: Node) -> Bool {
 }
 
 fn render_rust_fn_sig_type(n: Node, generic_param_names: List<String>, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
+  if is_host_text_carrier_type(n: n, source_indices: source_indices, corpus_repr: corpus_repr) { return "String" }
   let name = authored_name_at(source_indices: source_indices, node: n)
   if n.connective == NoConnective && n.children |> count == 0 && name == "String" && corpus_repr_is_faithful(corpus_repr: corpus_repr) {
     render_rust_text_carrier(shared_types: shared_types)
@@ -468,6 +547,7 @@ fn render_rust_fn_sig_type_applied_binding(n: Node, shared_types: Set<String>, c
 }
 
 fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>, scope: InferScope, imports: List<Node>, registry: Map<String, ItemInfo>, module_name: String, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, module_index: ModuleIndex, variant_to_enum: Map<String, String>) -> String {
+  if is_host_text_carrier_type(n: n, source_indices: source_indices, corpus_repr: corpus_repr) { return "String" }
   let name = authored_name_at(source_indices: source_indices, node: n)
   if n.connective == NoConnective && n.children |> count == 0 && (generic_param_names |> any(g => g == name)) {
     name
@@ -1557,7 +1637,8 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
   let svc_imports_str = if extern_svc_imports |> count == 0 { "" }
     else { concat("\n", extern_svc_imports |> join(separator: "\n")) }
   let local_enum_uses = typed_module.items
-    |> filter(item => is_type_def_item(item: item) && is_coproduct_type(n: item))
+    |> filter(item => is_type_def_item(item: item) && is_coproduct_type(n: item)
+      && !is_host_freemonoid_vec_alias(name: authored_name(env: scope.type_env, node: item), corpus_repr: emit_info.corpus_repr))
     |> map(item => concat("use self::", authored_name(env: scope.type_env, node: item), "::*;"))
   let local_coproduct_names = typed_module.items
     |> filter(item => is_type_def_item(item: item) && is_coproduct_type(n: item))
@@ -2522,6 +2603,7 @@ fn emit_specific_import_block(import_module: String, mod_name: String, filtered_
       parent_main_lines |> filter(l => l != "")
     }
     let variant_lines = parent_list |> map(parent =>
+      if is_host_freemonoid_vec_alias(name: parent, corpus_repr: emit_info.corpus_repr) { "" } else {
       let variants = deduped_names |> filter(n =>
         if is_import_graph_type_name(name: n, import_module: import_module, typed_modules: typed_modules, registry: registry, export_sets: export_sets, type_summaries: type_summaries, source_indices: source_indices, module_index: module_index) {
           false
@@ -2548,10 +2630,12 @@ fn emit_specific_import_block(import_module: String, mod_name: String, filtered_
       }
       let vars_str = variants |> join(separator: ", ")
       concat("use crate::", parent_mod, "::", parent, "::{", vars_str, "};")
+      }
     )
     let imported_enums = top_level |> filter(n => is_enum_in_summaries(type_summaries: type_summaries, type_name: n))
     let wildcard_enum_lines = imported_enums
-      |> filter(en => parent_list |> any(p => p == en) == false)
+      |> filter(en => parent_list |> any(p => p == en) == false
+        && !is_host_freemonoid_vec_alias(name: en, corpus_repr: emit_info.corpus_repr))
       |> map(en => concat("use crate::", mod_name, "::", en, "::*;"))
     let all_lines = concat(
       main_lines |> filter(l => l != ""),
@@ -2814,7 +2898,9 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
     emit_type_def_from_connective(item: item, recursive_types: emit_info.recursive_type_set, shared_types: shared_types, env: env, emit_info: emit_info, wire_contract_item: wire_contract_item, data_items: data_items, module_items: module_items, imports: imports)
   } else if is_type_alias_item(item: item, source_indices: env.source_indices) {
 
-    if (item.params |> count) == 0 && rust_nominal_identity_carrier_type_eligible(type_name: item_text) {
+    if corpus_repr_is_host(corpus_repr: emit_info.corpus_repr) && item_text == "String" {
+      concat(rust_visibility_prefix(), rust_items().type_alias_keyword, " String = std::string::String;")
+    } else if (item.params |> count) == 0 && rust_nominal_identity_carrier_type_eligible(type_name: item_text) {
       rust_nominal_identity_carrier_def(name: item_text)
     } else if is_zero_param_self_referential_opaque_decl(item: item, source_indices: env.source_indices) {
       emit_zero_param_phantom_opaque_struct(item: item, source_indices: env.source_indices)
@@ -2996,6 +3082,9 @@ fn emit_type_def_from_connective(item: Node, recursive_types: Set<String>, share
   if is_product {
     let generic_param_names = item.params |> map(p => generic_param_name_at(n: p, source_indices: env.source_indices))
     emit_struct_from_children(name: item_text, type_params: type_params, generic_param_names: generic_param_names, children: item.children, recursive_types: recursive_types, shared_types: shared_types, env: env, emit_info: emit_info)
+  } else if is_host_freemonoid_vec_alias(name: item_text, corpus_repr: emit_info.corpus_repr) {
+    let elem_csv = item.params |> map(p => generic_param_name_at(n: p, source_indices: env.source_indices)) |> join(separator: ", ")
+    concat(rust_visibility_prefix(), "type ", item_text, type_params, " = Vec<", elem_csv, ">;")
   } else {
     let all_unit_variants = item.children |> all(child => child.children |> count == 0)
     let serde_policy = match resolve_local_coproduct_wire_policy(coproduct_name: item_text, all_unit_variants: all_unit_variants, module_items: module_items, imports: imports, source_indices: env.source_indices) {
@@ -3086,6 +3175,7 @@ fn emit_struct_from_children(name: String, type_params: String, generic_param_na
 }
 
 fn render_rust_type_with_applied_binding(n: Node, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>) -> String {
+  if is_host_text_carrier_type(n: n, source_indices: source_indices, corpus_repr: corpus_repr) { return "String" }
   match find_property(props: n.properties, prop_name: "__applied_type_args", source_indices: source_indices) {
     Present { value: applied } =>
       if applied.children |> count > 0 {
@@ -3501,6 +3591,15 @@ fn emit_variant_from_child(child: Node, enum_name: String, recursive_types: Set<
 
 fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, registry: Map<String, ItemInfo>, scope: InferScope, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let si = scope.type_env.source_indices
+  let host_text_op = if corpus_repr_is_host(corpus_repr: emit_info.corpus_repr) {
+    rust_host_string_op_fn_emit(name: name)
+  } else { none }
+  if host_text_op != none {
+    return match host_text_op {
+      Present { value: op_fn } => op_fn
+      Absent => ""
+    }
+  }
   match rust_host_string_seam_fn_emit(name: name) {
     Present { value: seam_fn } =>
       if corpus_repr_is_faithful(corpus_repr: emit_info.corpus_repr) { seam_fn } else { "" }
@@ -4342,6 +4441,9 @@ fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: Infe
     let variant_parent = effective_variant_parent(name: name, binding_kind: binding_kind, resolved_type: resolved_type, emit_info: emit_info, source_indices: source_indices)
     let ref_str = match variant_parent {
       Present { value: enum_name } =>
+        if name == "Empty" && enum_name == "FreeMonoid" && corpus_repr_is_host(corpus_repr: emit_info.corpus_repr) {
+          "Rc::new(vec![])"
+        } else {
         let qualified = if is_optional_variant_name(name: name) && enum_name == "Optional" {
           if name == "Present" { "Some" } else { "None" }
         } else {
@@ -4350,6 +4452,7 @@ fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: Infe
         if set_contains(shared_types, enum_name) {
           concat("Rc::new(", qualified, ")")
         } else { qualified }
+        }
       Absent =>
         match map_get(registry, name) {
           Present { value: info } =>
@@ -4397,6 +4500,9 @@ fn emit_typed_expr_base(texpr: Node, registry: Map<String, ItemInfo>, scope: Inf
         let variant_parent = effective_variant_parent(name: n, binding_kind: binding_kind, resolved_type: texpr.inferred, emit_info: emit_info, source_indices: si)
         match variant_parent {
           Present { value: enum_name } =>
+            if n == "Empty" && enum_name == "FreeMonoid" && corpus_repr_is_host(corpus_repr: emit_info.corpus_repr) {
+              "Rc::new(vec![])"
+            } else {
             let qualified = if is_optional_variant_name(name: n) && enum_name == "Optional" {
               if n == "Present" { "Some" } else { "None" }
             } else {
@@ -4405,6 +4511,7 @@ fn emit_typed_expr_base(texpr: Node, registry: Map<String, ItemInfo>, scope: Inf
             if set_contains(shared_types, enum_name) {
               concat("Rc::new(", qualified, ")")
             } else { qualified }
+            }
           Absent =>
             match map_get(registry, n) {
               Present { value: info } =>
@@ -5688,6 +5795,119 @@ fn emit_typed_first_arg(args: List<Node>, registry: Map<String, ItemInfo>, scope
   }
 }
 
+fn freemonoid_match_arm_for(arms: List<Node>, variant: String) -> Node? {
+  arms |> filter(arm => match arm_pattern(n: arm) {
+    VariantPattern { name: n, parent_enum: _, field_bindings: _ } => n == variant
+    _ => false
+  }) |> first
+}
+
+fn freemonoid_cons_binding(cons_arm: Node, field: String, source_indices: Map<String, NewlineIndex>) -> String {
+  match arm_pattern(n: cons_arm) {
+    VariantPattern { name: _, parent_enum: _, field_bindings: fbs } =>
+      match fbs |> filter(fb => field_binding_name_at(n: fb, source_indices: source_indices) == field) |> first {
+        Present { value: fb } =>
+          match field_binding_pattern(n: fb) {
+            Bind { name: nm } => nm
+            _ => "_"
+          }
+        Absent => "_"
+      }
+    _ => "_"
+  }
+}
+
+fn arm_resolved_parent_enum(arm: Node, scrut_type: String, type_summaries: Map<String, TypeSummary>) -> String? {
+  match arm_pattern(n: arm) {
+    VariantPattern { name: n, parent_enum: pe, field_bindings: _ } =>
+      pattern_parent_enum(name: n, parent_enum: pe, scrut_type: scrut_type, type_summaries: type_summaries)
+    _ => none
+  }
+}
+
+fn parent_enum_is_freemonoid(p: String?) -> Bool {
+  match p {
+    Present { value: nm } => nm == "FreeMonoid"
+    Absent => false
+  }
+}
+
+fn freemonoid_catchall_arm(arms: List<Node>) -> Node? {
+  arms |> filter(arm => match arm_pattern(n: arm) {
+    Wildcard => true
+    Bind { name: _ } => true
+    _ => false
+  }) |> first
+}
+
+fn freemonoid_catchall_bind_name(arm: Node) -> String {
+  match arm_pattern(n: arm) {
+    Bind { name: nm } => nm
+    _ => ""
+  }
+}
+
+fn arms_are_freemonoid_coproduct(arms: List<Node>, scrut_type: String, type_summaries: Map<String, TypeSummary>) -> Bool {
+  let has_empty = match freemonoid_match_arm_for(arms: arms, variant: "Empty") { Present { value: _ } => true  Absent => false }
+  let has_cons = match freemonoid_match_arm_for(arms: arms, variant: "Cons") { Present { value: _ } => true  Absent => false }
+  let empty_is_fm = match freemonoid_match_arm_for(arms: arms, variant: "Empty") {
+    Present { value: ea } => parent_enum_is_freemonoid(p: arm_resolved_parent_enum(arm: ea, scrut_type: scrut_type, type_summaries: type_summaries))
+    Absent => false
+  }
+  let cons_is_fm = match freemonoid_match_arm_for(arms: arms, variant: "Cons") {
+    Present { value: ca } => parent_enum_is_freemonoid(p: arm_resolved_parent_enum(arm: ca, scrut_type: scrut_type, type_summaries: type_summaries))
+    Absent => false
+  }
+  let has_catchall = match freemonoid_catchall_arm(arms: arms) { Present { value: _ } => true  Absent => false }
+  let is_fm = empty_is_fm || cons_is_fm
+  let empty_fillable = has_empty || has_catchall
+  let cons_fillable = has_cons || has_catchall
+  is_fm && empty_fillable && cons_fillable
+}
+
+fn freemonoid_empty_branch_body(empty_arm: Node?, catchall: Node?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
+  match empty_arm {
+    Present { value: ea } => emit_typed_expr(texpr: arm_body(n: ea), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+    Absent => match catchall {
+      Present { value: wa } =>
+        let bn = freemonoid_catchall_bind_name(arm: wa)
+        let bind_let = if bn == "" { "" } else { concat("let ", bn, " = __fm.clone(); ") }
+        concat(bind_let, emit_typed_expr(texpr: arm_body(n: wa), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024))
+      Absent => ""
+    }
+  }
+}
+
+fn freemonoid_nonempty_branch_body(cons_arm: Node?, catchall: Node?, si: Map<String, NewlineIndex>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
+  match cons_arm {
+    Present { value: ca } =>
+      let head_bind = freemonoid_cons_binding(cons_arm: ca, field: "head", source_indices: si)
+      let tail_bind = freemonoid_cons_binding(cons_arm: ca, field: "tail", source_indices: si)
+      let head_let = if head_bind == "_" { "" } else { concat("let ", head_bind, " = (*__fm)[0].clone(); ") }
+      let tail_let = if tail_bind == "_" { "" } else { concat("let ", tail_bind, ": Rc<Vec<_>> = Rc::new((*__fm)[1..].to_vec()); ") }
+      concat(head_let, tail_let, emit_typed_expr(texpr: arm_body(n: ca), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024))
+    Absent => match catchall {
+      Present { value: wa } =>
+        let bn = freemonoid_catchall_bind_name(arm: wa)
+        let bind_let = if bn == "" { "" } else { concat("let ", bn, " = __fm.clone(); ") }
+        concat(bind_let, emit_typed_expr(texpr: arm_body(n: wa), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024))
+      Absent => ""
+    }
+  }
+}
+
+fn emit_native_freemonoid_match(scrut_str: String, arms: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
+  let si = scope.type_env.source_indices
+  let empty_arm = freemonoid_match_arm_for(arms: arms, variant: "Empty")
+  let cons_arm = freemonoid_match_arm_for(arms: arms, variant: "Cons")
+  let catchall = freemonoid_catchall_arm(arms: arms)
+  let empty_body = freemonoid_empty_branch_body(empty_arm: empty_arm, catchall: catchall, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+  let nonempty_body = freemonoid_nonempty_branch_body(cons_arm: cons_arm, catchall: catchall, si: si, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+  if empty_body == "" || nonempty_body == "" { "" } else {
+    concat("{ let __fm = ", scrut_str, "; if __fm.is_empty() { ", empty_body, " } else { ", nonempty_body, " } }")
+  }
+}
+
 fn emit_typed_match(scrutinee: Node, arms: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let scrut_str = emit_typed_expr(texpr: scrutinee, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
   let scrut_type = match scrutinee.inferred {
@@ -5698,6 +5918,10 @@ fn emit_typed_match(scrutinee: Node, arms: List<Node>, registry: Map<String, Ite
       } else { authored_name_at(source_indices: scope.type_env.source_indices, node: rt) }
     _ => ""
   }
+  let native_fm = if corpus_repr_is_host(corpus_repr: emit_info.corpus_repr) && arms_are_freemonoid_coproduct(arms: arms, scrut_type: scrut_type, type_summaries: emit_info.type_summaries) {
+    emit_native_freemonoid_match(scrut_str: scrut_str, arms: arms, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+  } else { "" }
+  if native_fm != "" { return native_fm }
   let rc_match = analyze_rc_match(scrutinee: scrutinee, arms: arms, scrut_type: scrut_type, shared_types: shared_types, emit_info: emit_info, source_indices: scope.type_env.source_indices)
   let match_result_type = match arms |> first {
     Present { value: first_arm } => resolved_type(n: arm_body(n: first_arm))
@@ -6067,6 +6291,19 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
             parent_enum
           }
       }
+      let host_freemonoid_cons = tn == "Cons" && corpus_repr_is_host(corpus_repr: emit_info.corpus_repr)
+        && (match effective_parent { Present { value: p } => p == "FreeMonoid"  Absent => false })
+      if host_freemonoid_cons {
+        let head_val = match fields |> filter(f => field_init_node_name_at(n: f, source_indices: si) == "head") |> first {
+          Present { value: f } => emit_typed_expr(texpr: field_init_node_value(n: f), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+          Absent => "compile_error!(\"FreeMonoid Cons missing head field\")"
+        }
+        let tail_val = match fields |> filter(f => field_init_node_name_at(n: f, source_indices: si) == "tail") |> first {
+          Present { value: f } => emit_typed_expr(texpr: field_init_node_value(n: f), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+          Absent => "compile_error!(\"FreeMonoid Cons missing tail field\")"
+        }
+        return concat("{ let mut __cons_v = (*", tail_val, ").clone(); __cons_v.insert(0, ", head_val, "); __cons_v }")
+      }
       let optional_variant = is_optional_variant_name(name: tn) && (is_optional_parent(parent_enum: parent_enum) || is_optional_parent(parent_enum: effective_parent))
       let rust_tn = if optional_variant {
         if tn == "Present" { "Some" } else { "None" }
@@ -6342,6 +6579,49 @@ fn emit_rust_tco_if(frame: TcoFrame, fn_name: String, params: List<Node>, regist
   }
 }
 
+fn freemonoid_tco_empty_branch_body(empty_arm: Node?, catchall: Node?, fn_name: String, params: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
+  match empty_arm {
+    Present { value: ea } => emit_typed_tco_expr(texpr: arm_body(n: ea), fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+    Absent => match catchall {
+      Present { value: wa } =>
+        let bn = freemonoid_catchall_bind_name(arm: wa)
+        let bind_let = if bn == "" { "" } else { concat("let ", bn, " = __fm.clone(); ") }
+        concat(bind_let, emit_typed_tco_expr(texpr: arm_body(n: wa), fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info))
+      Absent => ""
+    }
+  }
+}
+
+fn freemonoid_tco_nonempty_branch_body(cons_arm: Node?, catchall: Node?, si: Map<String, NewlineIndex>, fn_name: String, params: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
+  match cons_arm {
+    Present { value: ca } =>
+      let head_bind = freemonoid_cons_binding(cons_arm: ca, field: "head", source_indices: si)
+      let tail_bind = freemonoid_cons_binding(cons_arm: ca, field: "tail", source_indices: si)
+      let head_let = if head_bind == "_" { "" } else { concat("let ", head_bind, " = (*__fm)[0].clone(); ") }
+      let tail_let = if tail_bind == "_" { "" } else { concat("let ", tail_bind, ": Rc<Vec<_>> = Rc::new((*__fm)[1..].to_vec()); ") }
+      concat(head_let, tail_let, emit_typed_tco_expr(texpr: arm_body(n: ca), fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info))
+    Absent => match catchall {
+      Present { value: wa } =>
+        let bn = freemonoid_catchall_bind_name(arm: wa)
+        let bind_let = if bn == "" { "" } else { concat("let ", bn, " = __fm.clone(); ") }
+        concat(bind_let, emit_typed_tco_expr(texpr: arm_body(n: wa), fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info))
+      Absent => ""
+    }
+  }
+}
+
+fn emit_native_freemonoid_tco_match(scrut_str: String, arms: List<Node>, fn_name: String, params: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
+  let si = scope.type_env.source_indices
+  let empty_arm = freemonoid_match_arm_for(arms: arms, variant: "Empty")
+  let cons_arm = freemonoid_match_arm_for(arms: arms, variant: "Cons")
+  let catchall = freemonoid_catchall_arm(arms: arms)
+  let empty_body = freemonoid_tco_empty_branch_body(empty_arm: empty_arm, catchall: catchall, fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+  let nonempty_body = freemonoid_tco_nonempty_branch_body(cons_arm: cons_arm, catchall: catchall, si: si, fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+  if empty_body == "" || nonempty_body == "" { "" } else {
+    concat("{ let __fm = ", scrut_str, "; if __fm.is_empty() { ", empty_body, " } else { ", nonempty_body, " } }")
+  }
+}
+
 fn emit_rust_tco_match(frame: TcoFrame, fn_name: String, params: List<Node>, registry: Map<String, ItemInfo>, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   match frame.expr.expr_data {
     ExprMatch =>
@@ -6356,6 +6636,10 @@ fn emit_rust_tco_match(frame: TcoFrame, fn_name: String, params: List<Node>, reg
           } else { authored_name_at(source_indices: frame.scope.type_env.source_indices, node: rt) }
         _ => ""
       }
+      let native_tco_fm = if corpus_repr_is_host(corpus_repr: emit_info.corpus_repr) && arms_are_freemonoid_coproduct(arms: arm_list, scrut_type: tco_scrut_type, type_summaries: emit_info.type_summaries) {
+        emit_native_freemonoid_tco_match(scrut_str: scrut_str, arms: arm_list, fn_name: fn_name, params: params, registry: registry, scope: frame.scope, depth: frame.depth, shared_types: shared_types, emit_info: emit_info)
+      } else { "" }
+      if native_tco_fm != "" { native_tco_fm } else {
       let rc_match = analyze_rc_match(scrutinee: s, arms: arm_list, scrut_type: tco_scrut_type, shared_types: shared_types, emit_info: emit_info, source_indices: frame.scope.type_env.source_indices)
       let arm_strs = arm_list |> map(arm =>
         emit_typed_tco_match_arm(arm: arm, fn_name: fn_name, params: params, registry: registry, scope: frame.scope, depth: frame.depth, shared_types: shared_types, emit_info: emit_info, scrut_type: tco_scrut_type))
@@ -6370,6 +6654,7 @@ fn emit_rust_tco_match(frame: TcoFrame, fn_name: String, params: List<Node>, reg
         concat("match ", scrut_str, ".as_str() {\n", arms_str, "\n}")
       } else {
         concat("match ", scrut_str, " {\n", arms_str, "\n}")
+      }
       }
     _ => emit_error_expr(message: "emit_rust_tco_match expected ExprMatch", target: Rust)
   }

@@ -6,19 +6,20 @@ import gunbc.ci_yaml_validate { ci_yml_parses }
 import gunbc.gitignore_emit { expected_gitignore, path_is_ignored }
 import gunbc.roadmap_authority { expected_roadmap_md }
 import gunbc.design_document { expected_design_md }
+import gunbc.plan { Plan, expected_plan_md, plan_path }
+import gunbc.plan_registry { all_plans }
 
 type GeneratedArtifact
   = CiYamlArtifact
   | GitignoreArtifact
   | RoadmapArtifact
   | DesignArtifact
+  | PlanArtifact { plan: Plan }
 
-data generated_artifact_registry: List<GeneratedArtifact> = [
-  CiYamlArtifact,
-  GitignoreArtifact,
-  RoadmapArtifact,
-  DesignArtifact
-]
+data generated_artifact_registry: List<GeneratedArtifact> = concat(
+  [CiYamlArtifact, GitignoreArtifact, RoadmapArtifact, DesignArtifact],
+  map(all_plans, pl => PlanArtifact { plan: pl })
+)
 
 fn artifact_path(a: GeneratedArtifact) -> String {
   match a {
@@ -26,6 +27,7 @@ fn artifact_path(a: GeneratedArtifact) -> String {
     GitignoreArtifact => ".gitignore"
     RoadmapArtifact => "ROADMAP.md"
     DesignArtifact => "DESIGN.md"
+    PlanArtifact { plan } => plan_path(p: plan)
   }
 }
 
@@ -35,6 +37,7 @@ fn artifact_generate(a: GeneratedArtifact) -> String {
     GitignoreArtifact => expected_gitignore()
     RoadmapArtifact => expected_roadmap_md()
     DesignArtifact => expected_design_md()
+    PlanArtifact { plan } => expected_plan_md(p: plan)
   }
 }
 
@@ -59,6 +62,7 @@ fn artifact_eq(a: GeneratedArtifact, b: GeneratedArtifact) -> Bool {
     GitignoreArtifact => match b { GitignoreArtifact => true  _ => false }
     RoadmapArtifact => match b { RoadmapArtifact => true  _ => false }
     DesignArtifact => match b { DesignArtifact => true  _ => false }
+    PlanArtifact { plan } => match b { PlanArtifact { plan: plan2 } => plan.slug == plan2.slug  _ => false }
   }
 }
 

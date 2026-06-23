@@ -33,8 +33,21 @@ fn verify_artifact_exists(art: BuildArtifact) -> ShellStmt {
   }
 }
 
+fn verify_artifact_nonempty(art: BuildArtifact) -> ShellStmt {
+  If {
+    cond: command(words: [lit(text: "["), lit(text: "!"), lit(text: "-s"), art.path, lit(text: "]")]),
+    then: [
+      build_verify_echo(msg: Concat { parts: [
+        lit(text: concat("::error::build verification: declared artifact '", concat(art.name, "' is zero-byte after a 'successful' build (sccache served a truncated/empty cached artifact — DESIGN §5 fail-open); failing closed: "))),
+        art.path
+      ] }),
+      Exit { code: 1 }
+    ]
+  }
+}
+
 fn verify_artifact(art: BuildArtifact) -> List<ShellStmt> {
-  [verify_artifact_exists(art: art)]
+  [verify_artifact_exists(art: art), verify_artifact_nonempty(art: art)]
 }
 
 fn emit_verifications(produces: List<BuildArtifact>) -> List<ShellStmt> {
