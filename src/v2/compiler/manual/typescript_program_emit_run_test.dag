@@ -1,9 +1,14 @@
 module v2.test.manual.typescript_program_emit_run
 
 import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.witness { Holds, Violates }
 import extdeps.communication.medium { Medium }
+import v2.compiler.translate { target_serialize_source_from_model }
+import v2.extdeps.languages.typescript {
+  ts_wave2a_task_target_model_witness,
+  ts_wave2a_task_type_alias_emitted
+}
 import v2.test.manual.mvp1_typescript_add_translate { anchor_mvp1_ts_emit_accepts }
-import v2.test.manual.mvp1_typescript_record_task_translate { anchor_mvp1_ts_task_emit_accepts }
 
 fn ts_program_emit_add_source() -> String {
   match anchor_mvp1_ts_emit_accepts() {
@@ -13,9 +18,16 @@ fn ts_program_emit_add_source() -> String {
 }
 
 fn ts_program_emit_record_source() -> String {
-  match anchor_mvp1_ts_task_emit_accepts() {
-    Accepted { value: source, diagnostics: _ } => source.carried
-    Rejected { diagnostics: _ } => "TS_RECORD_EMIT_REJECTED"
+  match ts_wave2a_task_target_model_witness() {
+    Holds { value: target } =>
+      match target_serialize_source_from_model(
+        target: target,
+        emitted: ts_wave2a_task_type_alias_emitted()
+      ) {
+        Accepted { value: src, diagnostics: _ } => src
+        Rejected { diagnostics: _ } => "TS_RECORD_SERIALIZE_REJECTED"
+      }
+    Violates { diagnostic: _ } => "TS_RECORD_TARGET_MODEL_VIOLATES"
   }
 }
 
