@@ -6,6 +6,7 @@ import gunbc.ci_layer_roots {
 }
 import tools.build_step { BuildArtifact, verifications_script }
 import extdeps.languages.bash.program { Concat, lit, var_ref }
+import gunbc.ci_failure_class { infra_retry_grep_alternation }
 
 type Gate
   = RustMonolithGate
@@ -82,7 +83,7 @@ fn ci_cargo_eagain_retry_core(command: String) -> String {
     concat(
       concat(
         concat(
-          "  if grep -qiE 'Resource temporarily unavailable|failed to spawn|sccache: encountered fatal error' \"$BUILD_LOG\"; then\n",
+          concat(concat("  if grep -qiE '", infra_retry_grep_alternation()), "' \"$BUILD_LOG\"; then\n"),
           "    echo \"::warning::cargo/sccache EAGAIN under fleet pressure; cold retry CARGO_BUILD_JOBS=1 (keep sccache)\"\n"
         ),
         concat(
@@ -93,7 +94,7 @@ fn ci_cargo_eagain_retry_core(command: String) -> String {
       concat(
         concat(
           concat(
-            "      if grep -qiE 'Resource temporarily unavailable|failed to spawn|sccache:' \"$RETRY_LOG\"; then\n",
+            concat(concat("      if grep -qiE '", infra_retry_grep_alternation()), "' \"$RETRY_LOG\"; then\n"),
             "        echo \"::warning::cargo/sccache still failing; retry without RUSTC_WRAPPER\"\n"
           ),
           concat("        env -u RUSTC_WRAPPER CARGO_BUILD_JOBS=1 ", concat(command, " || exit 1\n"))
