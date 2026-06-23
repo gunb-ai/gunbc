@@ -54,13 +54,12 @@ const INERT_CARRIER_ROSTER: &[&str] = &[
     // `*_test.dag` — DESIGN §5 coverage-by-illusion (a green test, no production consumer).
     // dissolve-on per entry: wire the real consumer, then DELETE the entry (the stale-roster ratchet
     // reds the floor until you do). A NEW self-tested-but-unconsumed carrier not listed here reds.
-    "AccessPolicy", // dsl/std/rbac.dag — RBAC policy model; no authz consumer wired yet.
+    "AccessPolicy", // dsl/std/access.dag — access-policy model; no authz consumer wired yet.
     "CargoDependency", // dsl/extdeps/rust/cargo.dag — Cargo manifest dep row; emit/ingest unwired.
     "CargoPackage", // dsl/extdeps/rust/cargo.dag — Cargo manifest package row; unwired.
-    "FilePermissions", // dsl/std/* — POSIX/mode permission carrier; no filesystem consumer.
+    "FilePermissions", // dsl/extdeps/access/posix.dag — POSIX mode permission carrier; no fs consumer.
     "FloorWitnessRow", // src/v2/workflow/affected_set_floor_runner.dag — runner row; self-only.
-    "GitCliReportedVersion", // dsl/extdeps/* — git --version parse target; no version consumer wired.
-    "RbacPolicy",            // dsl/std/rbac.dag — RBAC policy aggregate; no authz consumer wired.
+    "GitCliReportedVersion", // dsl/extdeps/git/versioning.dag — git --version parse target; unwired.
     "ReactHookSite", // src/v2/extdeps/frameworks/react.dag — React hook-site model; unwired.
     "SecretValue",   // dsl/std/types.dag — secret-string carrier; no redaction consumer wired.
 ];
