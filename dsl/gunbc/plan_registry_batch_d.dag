@@ -1,0 +1,5 @@
+module gunbc.plan_registry_batch_d
+
+import gunbc.plan { Plan }
+
+data batch_d_plans: List<Plan> = []
