@@ -1,14 +1,17 @@
 module v2.test.lens_complexity_rewrite.loop_invariant_hoist
 
-import v2.lens.complexity_rewrite { cost_is_nested_product, cost_is_rewritable, minimized_class }
+import v2.lens.complexity_rewrite { cost_class_is_rewritable, cost_is_rewritable, minimized_class }
 import v2.lens.cost {
+  ClassLinear,
+  ClassPolynomial,
   LinearCost,
   ProductCost,
   SizeVariable,
   SumCost,
   SymbolicCost,
   asymptotic_class_dominates,
-  asymptotic_class_of_cost
+  asymptotic_class_of_cost,
+  polynomial_degree_two
 }
 import v2.std.node { Atom, Node, Symbol, TypeNode, node_synthetic }
 import v2.std.logic { Bool }
@@ -27,9 +30,6 @@ data sum_cost: SymbolicCost = SumCost {
   rhs: LinearCost { variable: SizeVariable { source: leaf(id: ^b) } }
 }
 
-test fn quadratic_is_nested_product() -> Bool {
-  cost_is_nested_product(c: quadratic_cost)
-}
 test fn quadratic_is_rewritable() -> Bool {
   cost_is_rewritable(c: quadratic_cost)
 }
@@ -42,6 +42,13 @@ test fn quadratic_minimizes_strictly_below_realized() -> Bool {
     a: minimized_class(c: quadratic_cost),
     b: asymptotic_class_of_cost(cost: quadratic_cost)
   )
+}
+
+test fn rewritable_matches_before_class() -> Bool {
+  cost_class_is_rewritable(cls: ClassPolynomial { degree: polynomial_degree_two() })
+}
+test fn linear_class_not_rewritable() -> Bool {
+  !cost_class_is_rewritable(cls: ClassLinear)
 }
 
 test fn linear_not_rewritable() -> Bool {
