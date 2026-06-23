@@ -3375,6 +3375,67 @@ pub fn build_module_export_sets(
     )
 }
 
+pub fn extend_scoped_data_items_with_sidecar(
+    base: Rc<HashMap<String, Rc<Vec<Rc<Node>>>>>,
+    module_name: String,
+    module_index: &Rc<ModuleIndex>,
+    data_items: Rc<HashMap<String, Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<HashMap<String, Rc<Vec<Rc<Node>>>>> {
+    match v1_rt::map_get(
+        &module_index.by_name.clone(),
+        v1_rt::concat(module_name, "_contracts".to_string()),
+    ) {
+        None => base,
+        Some(sidecar_tm) => module_imports(sidecar_tm.module.clone())
+            .iter()
+            .cloned()
+            .fold(
+                base,
+                |acc: Rc<HashMap<String, Rc<Vec<Rc<Node>>>>>, imp: Rc<Node>| {
+                    if import_is_all(imp.clone()) {
+                        acc.clone()
+                    } else {
+                        let import_path =
+                            authored_name_at(source_indices.clone(), imp.clone());
+                        import_specific_names_at(imp.clone(), source_indices.clone())
+                            .iter()
+                            .cloned()
+                            .fold(
+                                acc.clone(),
+                                |inner: Rc<HashMap<String, Rc<Vec<Rc<Node>>>>>,
+                                 imported_name: String| {
+                                    match v1_rt::map_get(&inner, imported_name.clone()) {
+                                        Some(_) => inner.clone(),
+                                        None => {
+                                            let qualified = v1_rt::concat(
+                                                v1_rt::concat(
+                                                    import_path.clone(),
+                                                    ".".to_string(),
+                                                ),
+                                                imported_name.clone(),
+                                            );
+                                            match v1_rt::map_get(
+                                                &data_items,
+                                                qualified.clone(),
+                                            ) {
+                                                Some(item) => insert_scoped_data_item(
+                                                    inner.clone(),
+                                                    imported_name.clone(),
+                                                    item.clone(),
+                                                ),
+                                                None => inner.clone(),
+                                            }
+                                        }
+                                    }
+                                },
+                            )
+                    }
+                },
+            ),
+    }
+}
+
 pub fn emit_module_full(
     typed_module: Rc<TypedModule>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
@@ -3389,7 +3450,16 @@ pub fn emit_module_full(
     {
         let m = typed_module.module.clone();
         let scope = module_emit_scope(typed_module.clone());
-        let scoped_data_items = build_scoped_data_item_index(typed_module.clone(), data_items);
+        let scoped_data_items = extend_scoped_data_items_with_sidecar(
+            build_scoped_data_item_index(typed_module.clone(), data_items.clone()),
+            authored_name_at(
+                typed_module.type_env.clone().source_indices.clone(),
+                typed_module.module.clone(),
+            ),
+            &module_index,
+            data_items,
+            typed_module.type_env.clone().source_indices.clone(),
+        );
         let prelude_imported_names = Rc::new({
             let mut __result = Vec::new();
             for imp in module_imports(m.clone()).iter().cloned() {
@@ -3602,9 +3672,6 @@ pub fn emit_module_full(
                 local_enum_uses.clone().join(&"\n".to_string()),
             )
         };
-        // Primary module: strict guard (name + registry DataItem check).
-        // Sidecar fallback: name-only check — sidecar items are curated by the
-        // _contracts.dag convention and not registered in the primary module's scope.
         let wire_contract_item = {
             let from_primary = Rc::new({
                 let mut __result = Vec::new();
@@ -3628,12 +3695,7 @@ pub fn emit_module_full(
             .first()
             .cloned();
             from_primary.or_else(|| {
-                let module_nm = authored_name(scope.type_env.clone(), m.clone());
-                eprintln!("[wire_contract_sidecar] module={} sidecar_items_len={}", module_nm, sidecar_items.len());
                 sidecar_items.clone().iter().cloned().find(|i| {
-                    let n = i.name.clone();
-                    let authored = authored_name(scope.type_env.clone(), i.clone());
-                    eprintln!("[wire_contract_sidecar]   item name={:?} authored={:?}", n, authored);
                     item_binding_is_named(
                         scope.type_env.clone(),
                         i.clone(),
