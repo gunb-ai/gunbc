@@ -1,9 +1,19 @@
 module extdeps.cache.catalog_io
 
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
 import std.cache_interface {
   CacheLookupSemantics,
   CacheWriteSemantics,
   CacheMissSemantics,
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/gunb-ai/gunbc/tree/main/dsl/extdeps/cache"
+  }
 }
 
 type CacheInterfaceCatalogIoSemantics {
