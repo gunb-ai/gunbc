@@ -32,6 +32,7 @@ fn artifact_path(a: GeneratedArtifact) -> String {
     RoadmapArtifact => "ROADMAP.md"
     DesignArtifact => "DESIGN.md"
     RunnerDeployArtifact => ".github/fleet-runner-deploy.manifest"
+    Srv3AutoinstallUserDataArtifact => "provisioning/srv3/user-data"
     PlanArtifact { plan } => plan_path(p: plan)
   }
 }
@@ -43,6 +44,7 @@ fn artifact_generate(a: GeneratedArtifact) -> String {
     RoadmapArtifact => expected_roadmap_md()
     DesignArtifact => expected_design_md()
     RunnerDeployArtifact => expected_runner_deploy_manifest()
+    Srv3AutoinstallUserDataArtifact => expected_srv3_user_data()
     PlanArtifact { plan } => expected_plan_md(p: plan)
   }
 }
@@ -69,6 +71,7 @@ fn artifact_eq(a: GeneratedArtifact, b: GeneratedArtifact) -> Bool {
     RoadmapArtifact => match b { RoadmapArtifact => true  _ => false }
     DesignArtifact => match b { DesignArtifact => true  _ => false }
     RunnerDeployArtifact => match b { RunnerDeployArtifact => true  _ => false }
+    Srv3AutoinstallUserDataArtifact => match b { Srv3AutoinstallUserDataArtifact => true  _ => false }
     PlanArtifact { plan } => match b { PlanArtifact { plan: plan2 } => plan.slug == plan2.slug  _ => false }
   }
 }
