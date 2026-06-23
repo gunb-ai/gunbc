@@ -770,6 +770,9 @@ pub fn is_clean_tree_roster_excluded_for_module_path(module_path: &str) -> bool 
     if module_path.starts_with("extdeps.fixture.") {
         return true;
     }
+    if module_path.ends_with(".mock_corpus") {
+        return true;
+    }
     clean_tree_roster_exclusion_paths().contains(&module_path)
 }
 
@@ -1110,6 +1113,26 @@ service github.Gist {
         assert!(is_clean_tree_roster_excluded_for_module_path(
             "extdeps.fixture.external_authority_bogus_scheme"
         ));
+    }
+
+    #[test]
+    fn mock_corpus_excluded_but_real_sibling_still_in_roster() {
+        assert!(
+            is_clean_tree_roster_excluded_for_module_path("extdeps.git.mock_corpus"),
+            "a *.mock_corpus hermetic replay fixture must be excluded from the anchor roster"
+        );
+        assert!(
+            is_clean_tree_roster_excluded_for_module_path("extdeps.github.mock_corpus"),
+            "*.mock_corpus exclusion must hold across services"
+        );
+        assert!(
+            !is_clean_tree_roster_excluded_for_module_path("extdeps.git.git"),
+            "the real sibling that the mock replays must stay in the roster (exclusion is not fail-open)"
+        );
+        assert!(
+            !is_clean_tree_roster_excluded_for_module_path("extdeps.cloud.cloud"),
+            "a real external-dependency module must stay in the roster"
+        );
     }
 
     #[test]

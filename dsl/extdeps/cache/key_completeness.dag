@@ -1,5 +1,8 @@
 module extdeps.cache.key_completeness
 
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
 import extdeps.cache.types {
   CatalogKeyDerivationFacts,
   CacheInterfaceCatalogFacts,
@@ -19,6 +22,13 @@ import std.lens_verdict {
 }
 import std.types { Bool }
 import std.list { List }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/gunb-ai/gunbc/tree/main/dsl/extdeps/cache"
+  }
+}
 
 fn cache_key_derivation_complete(facts: CatalogKeyDerivationFacts) -> Bool {
   match facts.key_inputs {
