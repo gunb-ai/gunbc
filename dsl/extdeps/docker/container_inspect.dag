@@ -1,0 +1,175 @@
+module extdeps.docker.container_inspect
+
+import std.types { Timestamp, String, Int, Nat, FilePath }
+import std.measure { ByteSize, byte_size, byte_size_count }
+import std.serialization { VariantEncoding, StringVariant, VariantNaming, AsAuthored, CoproductWireContract }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.docker.com/engine/api/v1.47/#tag/Container/operation/ContainerInspect"
+  }
+}
+
+data wire_contract: VariantEncoding = StringVariant { naming: AsAuthored }
+
+type ContainerState
+  = Running
+  | Paused
+  | Exited
+  | Dead
+  | Restarting
+
+data container_state_wire_contract: CoproductWireContract = {
+  coproduct: "ContainerState",
+  encoding: StringVariant { naming: AsAuthored }
+}
+
+type ContainerStateDetail {
+  status: ContainerState
+  running: Bool
+  paused: Bool
+  restarting: Bool
+  oom_killed: Bool
+  dead: Bool
+  pid: Nat?
+  exit_code: Int?
+  error: String?
+  started_at: Timestamp?
+  finished_at: Timestamp?
+}
+
+type HostConfig {
+  cpu_shares: Nat?
+  memory: ByteSize?
+  memory_reservation: ByteSize?
+  memory_swap: ByteSize?
+  cpu_period: Nat?
+  cpu_quota: Nat?
+  cpuset_cpus: String?
+  cpuset_mems: String?
+  blkio_weight: Nat?
+  blkio_weight_device: List<String>?
+  network_mode: String?
+  pid_mode: String?
+  ipc_mode: String?
+  uts_mode: String?
+  cap_add: List<String>?
+  cap_drop: List<String>?
+  exposed_ports: List<String>?
+  port_bindings: List<String>?
+  volumes: List<String>?
+  volumes_from: List<String>?
+  device_requests: List<String>?
+}
+
+type ContainerConfig {
+  hostname: String?
+  domainname: String?
+  user: String?
+  attach_stdin: Bool?
+  attach_stdout: Bool?
+  attach_stderr: Bool?
+  tty: Bool?
+  open_stdin: Bool?
+  stdin_once: Bool?
+  env: List<String>?
+  cmd: List<String>?
+  image: String?
+  volumes: List<String>?
+  working_dir: String?
+  entrypoint: List<String>?
+  labels: List<String>?
+  mac_address: String?
+  exposed_ports: List<String>?
+  network_disabled: Bool?
+}
+
+type ContainerInspect {
+  id: String
+  created: Timestamp
+  path: FilePath?
+  args: List<String>?
+  state: ContainerStateDetail
+  image: String
+  resolv_conf_path: FilePath?
+  hostname: String?
+  name: String?
+  restart_count: Nat?
+  driver: String?
+  platform: String?
+  config: ContainerConfig?
+  network_settings: NetworkSettings?
+  host_config: HostConfig?
+}
+
+type NetworkSettings {
+  bridge: String?
+  gateway: String?
+  ip_address: String?
+  ip_prefix_len: Nat?
+  mac_address: String?
+  networks: List<String>?
+}
+
+service docker.Container {
+  config {
+    endpoint: docker_default_endpoint
+    auth: None
+
+    retry: { max_attempts: 3, backoff: exponential, retry_on: [500, 502, 503, 504] }
+  }
+
+  operation Inspect {
+    input {
+      container_id: String
+      size: Bool = false
+    }
+    output {
+      container: ContainerInspect
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/containers/\{container_id\}/json",
+      query: { size: size }
+    }
+    response {
+      200 => ContainerInspect
+      404 => String
+      500 => String
+    }
+  }
+}
+
+data docker_default_endpoint: String = "unix:///var/run/docker.sock"
+
+fn container_state_is_running(state: ContainerState) -> Bool {
+  match state {
+    Running => true
+    _ => false
+  }
+}
+
+fn container_inspect_memory_limit(inspect: ContainerInspect) -> ByteSize? {
+  match inspect.host_config {
+    null => none
+    hc => hc.memory
+  }
+}
+
+fn container_inspect_cpu_quota(inspect: ContainerInspect) -> Nat? {
+  match inspect.host_config {
+    null => none
+    hc => hc.cpu_quota
+  }
+}
+
+fn container_inspect_cpu_period(inspect: ContainerInspect) -> Nat? {
+  match inspect.host_config {
+    null => none
+    hc => hc.cpu_period
+  }
+}
