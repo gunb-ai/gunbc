@@ -145,7 +145,19 @@ fn md_item(marker: String, blocks: List<MarkdownBlock>, sp: MarkdownSpellings, d
       }
       { idx: 1, out: lead }
     } else {
-      { idx: acc.idx + 1, out: concat(acc.out, concat("\n", md_nested(block: b, sp: sp, depth: depth + 1))) }
+      // Continuation block of a list item. A nested LIST handles its own indentation (md_nested at
+      // depth+1) and sits on the next line. A LEAF continuation (a paragraph / code block after a nested
+      // list) needs a CommonMark loose-list continuation: a blank line then indentation to the item's
+      // content column (depth+1 list-indents). Without this it renders as a lazy continuation of the
+      // preceding sub-bullet. Lists keep their existing rendering, so artifacts whose items only carry
+      // nested lists (ROADMAP.md) are byte-unchanged.
+      let cont = match b {
+        UnorderedListBlock { items: _ } => concat("\n", md_nested(block: b, sp: sp, depth: depth + 1))
+        OrderedListBlock { items: _ } => concat("\n", md_nested(block: b, sp: sp, depth: depth + 1))
+        TaskListBlock { items: _ } => concat("\n", md_nested(block: b, sp: sp, depth: depth + 1))
+        _ => concat("\n\n", concat(repeat_string(s: sp.list_indent, n: depth + 1), md_block(block: b, sp: sp)))
+      }
+      { idx: acc.idx + 1, out: concat(acc.out, cont) }
     }
   }).out
 }
