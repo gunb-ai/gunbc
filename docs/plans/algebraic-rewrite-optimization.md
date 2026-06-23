@@ -120,7 +120,8 @@ Every rule lands as a row carrying *exactly* these fields; the worker builds to 
 out = []
 for x in a:                 // |a| = n
   if contains(b, x):        // linear scan of b = O(|b|) → whole loop O(n·m)
-    out.append(x)```
+    out.append(x)
+```
 - **OUTPUT (rewritten):**
 
   ```
@@ -128,7 +129,8 @@ bset = set(b)               // O(|b|)
 out = []
 for x in a:
   if bset.contains(x):      // O(1) amortized → whole loop O(n + m)
-    out.append(x)```
+    out.append(x)
+```
 - **precondition (structural):** the membership test is pure (`EffectShape` pure) **and** `b` is not mutated anywhere in the loop body.
 - **non-firing control (witness d):** the same shape where `b` *is* mutated in the loop (e.g. `b.append(...)`) — the precomputed set would go stale, so the rule **must not fire**; code untouched.
 - **discriminating equivalence input (witness c):** `a=[1,2,3]`, `b=[2,3,4]` → both forms yield `[2,3]`.
@@ -141,7 +143,8 @@ for x in a:
   ```
 fn f(n):
   if n < 2: return n
-  return f(n-1) + f(n-2)    // overlapping subproblems → O(2ⁿ)```
+  return f(n-1) + f(n-2)    // overlapping subproblems → O(2ⁿ)
+```
 - **OUTPUT (rewritten):** `f` memoized on its argument — each `f(k)` computed once → O(n).
 - **precondition (structural):** `f` is a **pure function of its arguments** (`EffectShape` pure — a *different precondition shape* from Rule 1, which is why D2 seeds with both: it proves the framework on both "no-mutation" and "pure-fn" preconditions).
 - **non-firing control (witness d):** `f` has an observable effect (prints / mutates a global) — memoizing would change observable behavior, so **must not fire**.

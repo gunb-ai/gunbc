@@ -128,11 +128,11 @@ fn algebraic_rewrite_optimization_body() -> List<MarkdownBlock> {
     ul(items: [
       li_blocks(blocks: [
         p(text: "**INPUT (slow form it fires on):**"),
-        CodeBlock { code: "out = []\nfor x in a:                 // |a| = n\n  if contains(b, x):        // linear scan of b = O(|b|) → whole loop O(n·m)\n    out.append(x)" },
+        CodeBlock { code: "out = []\nfor x in a:                 // |a| = n\n  if contains(b, x):        // linear scan of b = O(|b|) → whole loop O(n·m)\n    out.append(x)\n" },
       ]),
       li_blocks(blocks: [
         p(text: "**OUTPUT (rewritten):**"),
-        CodeBlock { code: "bset = set(b)               // O(|b|)\nout = []\nfor x in a:\n  if bset.contains(x):      // O(1) amortized → whole loop O(n + m)\n    out.append(x)" },
+        CodeBlock { code: "bset = set(b)               // O(|b|)\nout = []\nfor x in a:\n  if bset.contains(x):      // O(1) amortized → whole loop O(n + m)\n    out.append(x)\n" },
       ]),
       li(text: "**precondition (structural):** the membership test is pure (`EffectShape` pure) **and** `b` is not mutated anywhere in the loop body."),
       li(text: "**non-firing control (witness d):** the same shape where `b` *is* mutated in the loop (e.g. `b.append(...)`) — the precomputed set would go stale, so the rule **must not fire**; code untouched."),
@@ -143,7 +143,7 @@ fn algebraic_rewrite_optimization_body() -> List<MarkdownBlock> {
     ul(items: [
       li_blocks(blocks: [
         p(text: "**INPUT (slow form):**"),
-        CodeBlock { code: "fn f(n):\n  if n < 2: return n\n  return f(n-1) + f(n-2)    // overlapping subproblems → O(2ⁿ)" },
+        CodeBlock { code: "fn f(n):\n  if n < 2: return n\n  return f(n-1) + f(n-2)    // overlapping subproblems → O(2ⁿ)\n" },
       ]),
       li(text: "**OUTPUT (rewritten):** `f` memoized on its argument — each `f(k)` computed once → O(n)."),
       li(text: "**precondition (structural):** `f` is a **pure function of its arguments** (`EffectShape` pure — a *different precondition shape* from Rule 1, which is why D2 seeds with both: it proves the framework on both \"no-mutation\" and \"pure-fn\" preconditions)."),
