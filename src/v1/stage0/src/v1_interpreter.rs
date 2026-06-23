@@ -3846,8 +3846,7 @@ fn dispatch_rest(
         None => "GET".to_string(),
     };
 
-    let (auth_header_name, auth_token) =
-        resolve_auth(service_node, transport, param_env, &si, ctx);
+    let (auth_header_name, auth_token) = resolve_auth(service_node, transport, param_env, &si, ctx);
 
     let reserved_props = [
         "base_url",
