@@ -234,7 +234,8 @@ enum BatchUnit {
 /// empty-entry sentinels and DiscoveryBatch nodes stay their own units (each resolves apart).
 fn group_batch_units(batch: &[Runnable]) -> Vec<BatchUnit> {
     let mut units: Vec<BatchUnit> = Vec::new();
-    let mut entry_to_unit: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    let mut entry_to_unit: std::collections::HashMap<String, usize> =
+        std::collections::HashMap::new();
     for runnable in batch {
         match runnable {
             Runnable::SingleClaim { entry, function } if entry.is_empty() => {
@@ -296,7 +297,11 @@ fn claim_result_for_outcome(function: String, outcome: ClaimOutcome) -> ClaimRes
     }
 }
 
-fn run_batch_unit(source_roots: Vec<String>, unit: BatchUnit, spawn_width: usize) -> Vec<ClaimResult> {
+fn run_batch_unit(
+    source_roots: Vec<String>,
+    unit: BatchUnit,
+    spawn_width: usize,
+) -> Vec<ClaimResult> {
     match unit {
         BatchUnit::UnrunnableSentinel { function } => vec![ClaimResult {
             function,
@@ -1095,5 +1100,157 @@ fn main() -> ExitCode {
     match run() {
         Ok(code) => code,
         Err(code) => code,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn single(entry: &str, function: &str) -> Runnable {
+        Runnable::SingleClaim {
+            entry: entry.to_string(),
+            function: function.to_string(),
+        }
+    }
+
+    fn discovery() -> Runnable {
+        Runnable::DiscoveryBatch {
+            source_roots: vec!["src/v2".to_string()],
+            scan_dirs: vec![],
+            explicit_entries: vec![],
+            skip_unaffected_node_frontier: true,
+        }
+    }
+
+    /// Flatten the grouped units back to the (entry, function) claims they will execute, in the
+    /// order each unit runs them. `Discovery` contributes no SingleClaim pairs; an empty-entry
+    /// sentinel surfaces as `("", function)`. This is the verdict-preservation oracle: grouping is
+    /// only allowed to change scheduling, never which claims run.
+    fn executed_claims(units: &[BatchUnit]) -> Vec<(String, String)> {
+        let mut out = Vec::new();
+        for unit in units {
+            match unit {
+                BatchUnit::SharedClaims { entry, functions } => {
+                    for f in functions {
+                        out.push((entry.clone(), f.clone()));
+                    }
+                }
+                BatchUnit::UnrunnableSentinel { function } => {
+                    out.push((String::new(), function.clone()));
+                }
+                BatchUnit::Discovery { .. } => {}
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn same_entry_claims_coalesce_into_one_resolve_group() {
+        // The floor's batch-2 shape: many gate witnesses share one file. They must collapse to a
+        // single resolve-group (one resolve) carrying every function, in input order.
+        let batch = vec![
+            single("gate.dag", "rust_gate"),
+            single("gate.dag", "emit_gate"),
+            single("gate.dag", "layering_gate"),
+        ];
+        let units = group_batch_units(&batch);
+        assert_eq!(
+            units.len(),
+            1,
+            "three same-entry claims => one resolve-group"
+        );
+        match &units[0] {
+            BatchUnit::SharedClaims { entry, functions } => {
+                assert_eq!(entry, "gate.dag");
+                assert_eq!(functions, &["rust_gate", "emit_gate", "layering_gate"]);
+            }
+            _ => panic!("expected a SharedClaims unit"),
+        }
+    }
+
+    #[test]
+    fn grouping_preserves_every_claim_exactly_once() {
+        // Verdict preservation: no claim dropped, duplicated, or invented — grouping only reorders
+        // by coalescing same-entry claims (keeping their relative order). Mixed entries interleave.
+        let batch = vec![
+            single("a.dag", "a1"),
+            single("b.dag", "b1"),
+            single("a.dag", "a2"),
+            discovery(),
+            single("b.dag", "b2"),
+            single("", "__unmapped__"),
+        ];
+        let units = group_batch_units(&batch);
+
+        // a.dag coalesces (a1 before a2), b.dag coalesces (b1 before b2), discovery + sentinel stay.
+        let mut got = executed_claims(&units);
+        let mut want = vec![
+            ("a.dag".to_string(), "a1".to_string()),
+            ("a.dag".to_string(), "a2".to_string()),
+            ("b.dag".to_string(), "b1".to_string()),
+            ("b.dag".to_string(), "b2".to_string()),
+            (String::new(), "__unmapped__".to_string()),
+        ];
+        got.sort();
+        want.sort();
+        assert_eq!(got, want, "exact same claim set runs after grouping");
+
+        // Same-entry relative order is preserved within each coalesced group.
+        let a = units
+            .iter()
+            .find_map(|u| match u {
+                BatchUnit::SharedClaims { entry, functions } if entry == "a.dag" => Some(functions),
+                _ => None,
+            })
+            .expect("a.dag group present");
+        assert_eq!(a, &["a1", "a2"]);
+    }
+
+    #[test]
+    fn empty_entry_sentinel_is_its_own_failing_unit() {
+        // The unmapped-node sentinel (empty entry) must never coalesce into a real resolve-group;
+        // it is a stand-alone fail-closed unit so a non-complete plan stays red (DESIGN §5).
+        let batch = vec![single("", "__gunbc_ci_floor_unmapped__")];
+        let units = group_batch_units(&batch);
+        assert_eq!(units.len(), 1);
+        match &units[0] {
+            BatchUnit::UnrunnableSentinel { function } => {
+                assert_eq!(function, "__gunbc_ci_floor_unmapped__");
+            }
+            _ => panic!("empty-entry claim must be an UnrunnableSentinel, not a resolve-group"),
+        }
+
+        // And it fails closed when run.
+        let unit = units.into_iter().next().unwrap();
+        let results = run_batch_unit(vec!["src/v2".to_string()], unit, 1);
+        assert_eq!(results.len(), 1);
+        assert!(!results[0].ok, "unmapped sentinel must fail closed");
+    }
+
+    #[test]
+    fn discovery_batch_stays_an_isolated_unit() {
+        // A discovery corpus node never merges with SingleClaims — it keeps its own shard-parallel
+        // resolve path.
+        let batch = vec![
+            single("gate.dag", "g1"),
+            discovery(),
+            single("gate.dag", "g2"),
+        ];
+        let units = group_batch_units(&batch);
+        assert_eq!(units.len(), 2, "gate group + discovery");
+        assert!(units
+            .iter()
+            .any(|u| matches!(u, BatchUnit::Discovery { .. })));
+        let gate = units
+            .iter()
+            .find_map(|u| match u {
+                BatchUnit::SharedClaims { entry, functions } if entry == "gate.dag" => {
+                    Some(functions)
+                }
+                _ => None,
+            })
+            .expect("gate group present");
+        assert_eq!(gate, &["g1", "g2"], "both gate claims kept in one group");
     }
 }
