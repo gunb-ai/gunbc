@@ -22,6 +22,31 @@ pub fn read_v2_file(relative_path: &str) -> String {
         .unwrap_or_else(|e| panic!("failed to read {}: {}", path.display(), e))
 }
 
+/// Read a large `.dag` file and guarantee distributed non-ASCII content.
+///
+/// The tokenizer/source-lookup perf tests need a ~270KB source where multi-byte
+/// (non-ASCII) characters appear throughout, so a reintroduced byte-substring
+/// slow path (byte-offset != char-offset) would be caught. Non-ASCII used to live
+/// in `.dag` comments, but the parser-wall comment strip (#5567) removed all
+/// comments tree-wide, leaving the corpus pure ASCII. Inject a multi-byte char at
+/// a fixed stride so the fixture stays representative without depending on comments.
+pub fn read_v2_file_with_distributed_non_ascii(relative_path: &str) -> String {
+    const STRIDE: usize = 97; // prime stride: spread non-ASCII across the whole file
+    read_v2_file(relative_path)
+        .chars()
+        .enumerate()
+        .map(|(i, c)| {
+            // Replace (not insert) so char count is unchanged; only swap an ASCII
+            // char for a 3-byte char so byte-offset diverges from char-offset.
+            if i % STRIDE == 0 && c.is_ascii_graphic() {
+                '\u{2014}' // EM DASH
+            } else {
+                c
+            }
+        })
+        .collect()
+}
+
 pub fn source_roots() -> [std::path::PathBuf; 2] {
     let ws = workspace_root();
     [ws.join("src/v1"), ws.join("dsl")]
