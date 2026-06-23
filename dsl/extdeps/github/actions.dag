@@ -191,14 +191,6 @@ type MatrixStrategy {
   max_parallel: Int?
 }
 
-type CheckConclusion
-  = Success
-  | Failure
-  | Cancelled
-  | Skipped
-  | TimedOut
-  | ActionRequired
-
 data checkout_action: ActionRef = ActionRef {
   owner: "actions", repo: "checkout", ref: "v5"
 }
