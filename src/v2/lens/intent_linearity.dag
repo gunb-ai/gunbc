@@ -3,7 +3,7 @@ import v2.lens.common.construction_justification { ConstructionJustification, Wa
 import v2.lens.simulated_relationship { chain_is_simulated }
 import v2.lens.structural_similarity { type_decls_anti_unify }
 import v2.std.node { Node, Symbol }
-import v2.std.algebra { FreeMonoid, length, fold_list }
+import v2.std.algebra { FreeMonoid, length, any, for_all }
 import v2.std.logic { Bool }
 
 type CostAxis = ChangeTime | RunTime
@@ -50,6 +50,7 @@ fn rule_fires(rule: LinearityRule, steps: FreeMonoid<Node>) -> Bool {
   rule.detect(steps)
 }
 
+<<<<<<< HEAD
 fn input_is_redundant_for(rep: Representation, input: FreeMonoid<Node>) -> Bool {
   fold_list(
     xs: linearity_registry(),
@@ -58,6 +59,10 @@ fn input_is_redundant_for(rep: Representation, input: FreeMonoid<Node>) -> Bool 
       acc || (representation_eq(a: rule.representation, b: rep) && rule_fires(rule: rule, steps: input))
     }
   )
+=======
+fn chain_is_redundant(steps: FreeMonoid<Node>) -> Bool {
+  any(xs: linearity_registry(), predicate: fn(rule) { rule_fires(rule: rule, steps: steps) })
+>>>>>>> origin/main
 }
 
 fn chain_is_redundant(steps: FreeMonoid<Node>) -> Bool {
@@ -81,11 +86,7 @@ fn level_is_linear(level: FreeMonoid<Node>) -> Bool {
 }
 
 fn body_is_linear(levels: FreeMonoid<FreeMonoid<Node>>) -> Bool {
-  fold_list(
-    xs: levels,
-    empty: true,
-    cons: fn(acc, level) { acc && level_is_linear(level: level) }
-  )
+  for_all(xs: levels, predicate: fn(level) { level_is_linear(level: level) })
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
