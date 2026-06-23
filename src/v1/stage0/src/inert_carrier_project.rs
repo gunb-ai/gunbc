@@ -61,10 +61,18 @@ const INERT_CARRIER_ROSTER: &[&str] = &[
     "CargoPackage", // dsl/extdeps/rust/cargo.dag — Cargo manifest package row; unwired.
     "FilePermissions", // dsl/extdeps/access/posix.dag — POSIX mode permission carrier; no fs consumer.
     "FloorWitnessRow", // src/v2/workflow/affected_set_floor_runner.dag — runner row; self-only.
+    "FreeOutput", // dsl/extdeps/os/free.dag — host metrics shape; shadow lane, no workflow consumer yet.
     "GitCliReportedVersion", // dsl/extdeps/git/versioning.dag — git --version parse target; unwired.
+<<<<<<< HEAD
     "MergeStateStatus", // dsl/extdeps/github/merge_state.dag — GitHub GraphQL mergeStateStatus; no parse fn (transport deferred), no workflow consumer yet.
     "ReactHookSite",    // src/v2/extdeps/frameworks/react.dag — React hook-site model; unwired.
     "SecretValue",      // dsl/std/types.dag — secret-string carrier; no redaction consumer wired.
+=======
+    "ProcMeminfo", // dsl/extdeps/os/proc_meminfo.dag — /proc/meminfo parsed shape; shadow lane, no workflow consumer yet.
+    "ReactHookSite", // src/v2/extdeps/frameworks/react.dag — React hook-site model; unwired.
+    "SecretValue", // dsl/std/types.dag — secret-string carrier; no redaction consumer wired.
+    "SystemdUnitStatus", // dsl/extdeps/os/systemd.dag — systemd unit status shape; shadow lane, no workflow consumer yet.
+>>>>>>> origin/main
 ];
 
 /// Extract top-level `type NAME` carrier declarations with their full declaration BLOCK text.
