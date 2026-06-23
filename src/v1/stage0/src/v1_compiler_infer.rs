@@ -13640,8 +13640,7 @@ pub fn rust_corpus_repr(modules: Rc<Vec<Rc<TypedModule>>>) -> RustCorpusRepr {
             }
             __found
         };
-        if true {
-            let _ = has_seed;
+        if has_seed {
             RustCorpusRepr::HostNative
         } else {
             RustCorpusRepr::FaithfulFreeMonoid

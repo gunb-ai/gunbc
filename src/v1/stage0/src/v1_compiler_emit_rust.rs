@@ -6885,7 +6885,10 @@ pub fn emit_typed_item(
                     // path, since `type String = String;` would be illegal-recursive) so cross-module
                     // `use ..::String` imports still resolve. String *slots* still render native via
                     // is_host_text_carrier_type.
-                    "".to_string()
+                    v1_rt::concat(
+                        rust_visibility_prefix(),
+                        "type String = std::string::String;".to_string(),
+                    )
                 } else if (((item.params.clone().len() as i64) == 0)
                     && rust_nominal_identity_carrier_type_eligible(item_text.clone()))
                 {
