@@ -376,7 +376,10 @@ pub fn rust_host_string_seam_fn_emit(name: String) -> Option<String> {
 pub fn rust_host_string_op_fn_emit(name: String) -> Option<String> {
     if (name == "string_is_empty".to_string()) {
         Some(v1_rt::concat(
-            v1_rt::concat("pub fn string_is_empty(s: String) -> bool {\n".to_string(), "    s.is_empty()\n".to_string()),
+            v1_rt::concat(
+                "pub fn string_is_empty(s: String) -> bool {\n".to_string(),
+                "    s.is_empty()\n".to_string(),
+            ),
             "}\n".to_string(),
         ))
     } else if (name == "string_head".to_string()) {
@@ -6151,31 +6154,35 @@ v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(rust_visib
                     let mut __result = Vec::new();
                     for parent in parent_list.clone().iter().cloned() {
                         // A host FreeMonoid is a Vec alias with no variants -- no variant-list import.
-                        __result.push(if is_host_freemonoid_vec_alias(
-                            parent.clone(),
-                            emit_info.corpus_repr.clone(),
-                        ) {
-                            "".to_string()
-                        } else {
-                            let variants = Rc::new({
-                                let mut __result = Vec::new();
-                                for n in deduped_names.clone().iter().cloned() {
-                                    if if is_import_graph_type_name(
-                                        n.clone(),
-                                        import_module.clone(),
-                                        typed_modules.clone(),
-                                        registry.clone(),
-                                        export_sets.clone(),
-                                        type_summaries.clone(),
-                                        source_indices.clone(),
-                                        module_index.clone(),
-                                    ) {
-                                        false
-                                    } else {
-                                        if is_enum_in_summaries(type_summaries.clone(), n.clone()) {
+                        __result.push(
+                            if is_host_freemonoid_vec_alias(
+                                parent.clone(),
+                                emit_info.corpus_repr.clone(),
+                            ) {
+                                "".to_string()
+                            } else {
+                                let variants = Rc::new({
+                                    let mut __result = Vec::new();
+                                    for n in deduped_names.clone().iter().cloned() {
+                                        if if is_import_graph_type_name(
+                                            n.clone(),
+                                            import_module.clone(),
+                                            typed_modules.clone(),
+                                            registry.clone(),
+                                            export_sets.clone(),
+                                            type_summaries.clone(),
+                                            source_indices.clone(),
+                                            module_index.clone(),
+                                        ) {
                                             false
                                         } else {
-                                            match find_variant_parent_in_module(
+                                            if is_enum_in_summaries(
+                                                type_summaries.clone(),
+                                                n.clone(),
+                                            ) {
+                                                false
+                                            } else {
+                                                match find_variant_parent_in_module(
                                                 n.clone(),
                                                 import_module.clone(),
                                                 typed_modules.clone(),
@@ -6208,52 +6215,53 @@ v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(rust_visib
                                                     }
                                                 }
                                             }
+                                            }
+                                        } {
+                                            __result.push(n);
                                         }
-                                    } {
-                                        __result.push(n);
                                     }
-                                }
-                                __result
-                            });
-                            let parent_mod = match variants.clone().first().cloned() {
-                                Some(v) => variant_parent_defining_module_filename(
-                                    parent.clone(),
-                                    v.clone(),
-                                    import_module.clone(),
-                                    typed_modules.clone(),
-                                    export_sets.clone(),
-                                    source_indices.clone(),
-                                    registry.clone(),
-                                    mod_name.clone(),
-                                    module_index.clone(),
-                                ),
-                                None => item_defining_module_filename(
-                                    parent.clone(),
-                                    registry.clone(),
-                                    mod_name.clone(),
-                                ),
-                            };
-                            let vars_str = variants.clone().join(&", ".to_string());
-                            v1_rt::concat(
+                                    __result
+                                });
+                                let parent_mod = match variants.clone().first().cloned() {
+                                    Some(v) => variant_parent_defining_module_filename(
+                                        parent.clone(),
+                                        v.clone(),
+                                        import_module.clone(),
+                                        typed_modules.clone(),
+                                        export_sets.clone(),
+                                        source_indices.clone(),
+                                        registry.clone(),
+                                        mod_name.clone(),
+                                        module_index.clone(),
+                                    ),
+                                    None => item_defining_module_filename(
+                                        parent.clone(),
+                                        registry.clone(),
+                                        mod_name.clone(),
+                                    ),
+                                };
+                                let vars_str = variants.clone().join(&", ".to_string());
                                 v1_rt::concat(
                                     v1_rt::concat(
                                         v1_rt::concat(
                                             v1_rt::concat(
                                                 v1_rt::concat(
-                                                    "use crate::".to_string(),
-                                                    parent_mod.clone(),
+                                                    v1_rt::concat(
+                                                        "use crate::".to_string(),
+                                                        parent_mod.clone(),
+                                                    ),
+                                                    "::".to_string(),
                                                 ),
-                                                "::".to_string(),
+                                                parent.clone(),
                                             ),
-                                            parent.clone(),
+                                            "::{".to_string(),
                                         ),
-                                        "::{".to_string(),
+                                        vars_str.clone(),
                                     ),
-                                    vars_str.clone(),
-                                ),
-                                "};".to_string(),
-                            )
-                        });
+                                    "};".to_string(),
+                                )
+                            },
+                        );
                     }
                     __result
                 });
@@ -6878,7 +6886,8 @@ pub fn emit_typed_item(
             )
         } else {
             if is_type_alias_item(item.clone(), env.source_indices.clone()) {
-                if (corpus_repr_is_host(emit_info.corpus_repr) && (item_text == "String".to_string()))
+                if (corpus_repr_is_host(emit_info.corpus_repr)
+                    && (item_text == "String".to_string()))
                 {
                     // String = FreeMonoid<Char> grounds to native Rust `String` under host (bright-stag
                     // ruling 2026-06-23). Emit a NON-recursive alias to the native carrier (full std
@@ -11693,28 +11702,28 @@ pub fn emit_var_ref(
                             // FreeMonoid grounding: Empty -> native empty Rc<Vec> (already Rc-wrapped)
                             "Rc::new(vec![])".to_string()
                         } else {
-                        let qualified = if (is_optional_variant_name(name.clone())
-                            && (enum_name.clone() == "Optional".to_string()))
-                        {
-                            if (name.clone() == "Present".to_string()) {
-                                "Some".to_string()
+                            let qualified = if (is_optional_variant_name(name.clone())
+                                && (enum_name.clone() == "Optional".to_string()))
+                            {
+                                if (name.clone() == "Present".to_string()) {
+                                    "Some".to_string()
+                                } else {
+                                    "None".to_string()
+                                }
                             } else {
-                                "None".to_string()
+                                v1_rt::concat(
+                                    v1_rt::concat(enum_name.clone(), "::".to_string()),
+                                    name.clone(),
+                                )
+                            };
+                            if v1_rt::set_contains(&shared_types, enum_name.clone()) {
+                                v1_rt::concat(
+                                    v1_rt::concat("Rc::new(".to_string(), qualified),
+                                    ")".to_string(),
+                                )
+                            } else {
+                                qualified
                             }
-                        } else {
-                            v1_rt::concat(
-                                v1_rt::concat(enum_name.clone(), "::".to_string()),
-                                name.clone(),
-                            )
-                        };
-                        if v1_rt::set_contains(&shared_types, enum_name.clone()) {
-                            v1_rt::concat(
-                                v1_rt::concat("Rc::new(".to_string(), qualified),
-                                ")".to_string(),
-                            )
-                        } else {
-                            qualified
-                        }
                         }
                     }
                     None => match v1_rt::map_get(&registry, name.clone()) {
@@ -11811,28 +11820,28 @@ pub fn emit_typed_expr_base(
                                         // FreeMonoid grounding: Empty -> native empty Rc<Vec>
                                         "Rc::new(vec![])".to_string()
                                     } else {
-                                    let qualified = if (is_optional_variant_name(n.clone())
-                                        && (enum_name.clone() == "Optional".to_string()))
-                                    {
-                                        if (n.clone() == "Present".to_string()) {
-                                            "Some".to_string()
+                                        let qualified = if (is_optional_variant_name(n.clone())
+                                            && (enum_name.clone() == "Optional".to_string()))
+                                        {
+                                            if (n.clone() == "Present".to_string()) {
+                                                "Some".to_string()
+                                            } else {
+                                                "None".to_string()
+                                            }
                                         } else {
-                                            "None".to_string()
+                                            v1_rt::concat(
+                                                v1_rt::concat(enum_name.clone(), "::".to_string()),
+                                                n.clone(),
+                                            )
+                                        };
+                                        if v1_rt::set_contains(&shared_types, enum_name.clone()) {
+                                            v1_rt::concat(
+                                                v1_rt::concat("Rc::new(".to_string(), qualified),
+                                                ")".to_string(),
+                                            )
+                                        } else {
+                                            qualified
                                         }
-                                    } else {
-                                        v1_rt::concat(
-                                            v1_rt::concat(enum_name.clone(), "::".to_string()),
-                                            n.clone(),
-                                        )
-                                    };
-                                    if v1_rt::set_contains(&shared_types, enum_name.clone()) {
-                                        v1_rt::concat(
-                                            v1_rt::concat("Rc::new(".to_string(), qualified),
-                                            ")".to_string(),
-                                        )
-                                    } else {
-                                        qualified
-                                    }
                                     }
                                 }
                                 None => match v1_rt::map_get(&registry, n.clone()) {
@@ -16019,15 +16028,17 @@ pub fn freemonoid_cons_binding(
         MatchPattern::VariantPattern {
             field_bindings: fbs,
             ..
-        } => match fbs.iter().cloned().find(|fb| {
-            field_binding_name_at(fb.clone(), source_indices.clone()) == field.clone()
-        }) {
-            Some(fb) => match (*field_binding_pattern(fb.clone())).clone() {
-                MatchPattern::Bind { name: nm, .. } => nm,
-                _ => "_".to_string(),
-            },
-            None => "_".to_string(),
-        },
+        } => {
+            match fbs.iter().cloned().find(|fb| {
+                field_binding_name_at(fb.clone(), source_indices.clone()) == field.clone()
+            }) {
+                Some(fb) => match (*field_binding_pattern(fb.clone())).clone() {
+                    MatchPattern::Bind { name: nm, .. } => nm,
+                    _ => "_".to_string(),
+                },
+                None => "_".to_string(),
+            }
+        }
         _ => "_".to_string(),
     }
 }
@@ -16334,8 +16345,7 @@ pub fn emit_typed_match(
                 arms.clone(),
                 scrut_type.clone(),
                 emit_info.type_summaries.clone(),
-            ))
-        {
+            )) {
             emit_native_freemonoid_match(
                 scrut_str.clone(),
                 arms.clone(),
@@ -17419,13 +17429,9 @@ pub fn emit_typed_record_lit(
                         None => false,
                     }));
                 if host_freemonoid_cons {
-                    let head_val = match fields
-                        .clone()
-                        .iter()
-                        .cloned()
-                        .find(|f| {
-                            field_init_node_name_at(f.clone(), si.clone()) == "head".to_string()
-                        }) {
+                    let head_val = match fields.clone().iter().cloned().find(|f| {
+                        field_init_node_name_at(f.clone(), si.clone()) == "head".to_string()
+                    }) {
                         Some(f) => emit_typed_expr(
                             field_init_node_value(f.clone()),
                             registry.clone(),
@@ -17435,15 +17441,13 @@ pub fn emit_typed_record_lit(
                             emit_info.clone(),
                             1024,
                         ),
-                        None => "compile_error!(\"FreeMonoid Cons missing head field\")".to_string(),
+                        None => {
+                            "compile_error!(\"FreeMonoid Cons missing head field\")".to_string()
+                        }
                     };
-                    let tail_val = match fields
-                        .clone()
-                        .iter()
-                        .cloned()
-                        .find(|f| {
-                            field_init_node_name_at(f.clone(), si.clone()) == "tail".to_string()
-                        }) {
+                    let tail_val = match fields.clone().iter().cloned().find(|f| {
+                        field_init_node_name_at(f.clone(), si.clone()) == "tail".to_string()
+                    }) {
                         Some(f) => emit_typed_expr(
                             field_init_node_value(f.clone()),
                             registry.clone(),
@@ -17453,7 +17457,9 @@ pub fn emit_typed_record_lit(
                             emit_info.clone(),
                             1024,
                         ),
-                        None => "compile_error!(\"FreeMonoid Cons missing tail field\")".to_string(),
+                        None => {
+                            "compile_error!(\"FreeMonoid Cons missing tail field\")".to_string()
+                        }
                     };
                     // Return a BARE Vec; the standard shared-type wrap (emit_typed_expr) adds the
                     // single Rc. Returning Rc<Vec> here double-wraps (-> Rc<Rc<Vec>>). tail_val is the
@@ -17461,10 +17467,7 @@ pub fn emit_typed_record_lit(
                     return v1_rt::concat(
                         v1_rt::concat(
                             v1_rt::concat(
-                                v1_rt::concat(
-                                    "{ let mut __cons_v = (*".to_string(),
-                                    tail_val,
-                                ),
+                                v1_rt::concat("{ let mut __cons_v = (*".to_string(), tail_val),
                                 ").clone(); __cons_v.insert(0, ".to_string(),
                             ),
                             head_val,
@@ -18505,10 +18508,7 @@ pub fn emit_native_freemonoid_tco_match(
                                 v1_rt::concat(
                                     v1_rt::concat(
                                         v1_rt::concat(
-                                            v1_rt::concat(
-                                                "{ let __fm = ".to_string(),
-                                                scrut_str,
-                                            ),
+                                            v1_rt::concat("{ let __fm = ".to_string(), scrut_str),
                                             "; if __fm.is_empty() { ".to_string(),
                                         ),
                                         empty_body,
@@ -18573,8 +18573,7 @@ pub fn emit_rust_tco_match(
                     arm_list.clone(),
                     tco_scrut_type.clone(),
                     emit_info.type_summaries.clone(),
-                ))
-            {
+                )) {
                 emit_native_freemonoid_tco_match(
                     scrut_str.clone(),
                     arm_list.clone(),
