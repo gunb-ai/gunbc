@@ -6,9 +6,24 @@ import gunbc.ci_runner_placement {
   PlanUnsound,
   runner_deployment_plan,
   runner_deployment_plan_for,
-  host_runner_count,
-  gunbc_ci_runners_per_host,
+  host_runner_slice,
+  SessionSliceResolution,
+  SessionSliceResolved,
+  SessionSliceUnresolved,
+  resolve_session_slice,
+  SessionReservationPlan,
+  SessionReservationDerived,
+  SessionReservationUnsound,
+  session_reservation_plan,
+  RunnersPerHostResolution,
+  RunnersPerHostDerived,
+  RunnersPerHostUnsound,
   effective_runners_per_host,
+  OperatingPointRow,
+  evaluate_operating_point,
+  operating_curve,
+  samples_covered,
+  gunbc_ci_count_field_measure_followup,
 }
 import gunbc.runner_deploy_emit { expected_runner_deploy_manifest, runner_deploy_drifted }
 import gunbc.ci_floor_measurement {
@@ -18,21 +33,31 @@ import gunbc.ci_floor_measurement {
   HostFixedOverhead,
   HostFixedOverheadMeasured,
   HostFixedOverheadUnmeasured,
-  gunbc_ci_runner_cap_enforced,
-  gunbc_ci_concurrent_runs_conservative_high,
+  SessionOperatingPoint,
+  SessionOperatingPointSet,
+  SessionOperatingPointUnset,
+  SessionAggregateReservation,
+  SessionAggregateMeasured,
+  SessionAggregateUnmeasured,
+  OomdEnforcementEvidence,
+  OomdEnforced,
+  OomdUnverified,
+  SessionReservationMode,
+  Regime1WorstCase,
+  Regime2AggregateOomd,
+  SessionReservationModeUnset,
+  gunbc_ci_job_cgroup_peak_provenance,
+  gunbc_ci_per_session_peak_provenance,
+  gunbc_ci_footprint_granularity_note,
+  gunbc_ci_footprint_bridge_followup,
+  gunbc_ci_per_run_peak_sharpen_followup,
+  gunbc_ci_session_regime_model,
+  gunbc_ci_session_regime2_followup,
+  gunbc_ci_regime2_aggregate_dissolution_marker,
 }
 import gunbc.fleet_intent { fleet_intent_offers, srv1_offer }
-import std.realization_width { memory_effective_budget }
-import std.measure { byte_size, byte_size_count }
+import std.measure { ByteSize, byte_size, byte_size_count }
 import std.types { Bool, Int, List }
-import product.compute_fabric { compute_host_ram_bytes_total }
-
-fn is_unsound(plan: RunnerDeploymentPlan) -> Bool {
-  match plan {
-    PlanUnsound { reason: _ } => true
-    PlanDerived { hosts: _, fleet_concurrent_runs: _ } => false
-  }
-}
 
 fn fitting_job_mix() -> List<CiJobPeak> {
   [
@@ -60,68 +85,154 @@ fn fitting_overhead() -> HostFixedOverhead {
   HostFixedOverheadMeasured { bytes: byte_size(8000000000) }
 }
 
-fn huge_overhead() -> HostFixedOverhead {
-  HostFixedOverheadMeasured { bytes: byte_size(130000000000) }
+fn small_session_slice() -> ByteSize {
+  byte_size(20000000000)
 }
 
-fn witness_live_carrier_measured_derives_plan() -> Bool {
-  match runner_deployment_plan() {
-    PlanDerived { hosts: _, fleet_concurrent_runs: total } => total >= 1
+fn big_session_slice() -> ByteSize {
+  byte_size(100000000000)
+}
+
+fn is_unsound(plan: RunnerDeploymentPlan) -> Bool {
+  match plan {
+    PlanUnsound { reason: _ } => true
+    PlanDerived { hosts: _, fleet_concurrent_runs: _ } => false
+  }
+}
+
+fn plan_total(plan: RunnerDeploymentPlan) -> Int {
+  match plan {
+    PlanDerived { hosts: _, fleet_concurrent_runs: total } => total
+    PlanUnsound { reason: _ } => 0
+  }
+}
+
+fn witness_live_runner_plan_fail_closed() -> Bool {
+  is_unsound(plan: runner_deployment_plan())
+}
+
+fn witness_live_session_plan_fail_closed() -> Bool {
+  match session_reservation_plan() {
+    SessionReservationUnsound { reason: _ } => true
+    SessionReservationDerived { hosts: _, fleet_concurrent_sessions: _, per_session_reservation: _, coverage_count: _, sample_count: _ } => false
+  }
+}
+
+fn witness_live_effective_runners_fail_closed() -> Bool {
+  match effective_runners_per_host() {
+    RunnersPerHostUnsound { reason: _ } => true
+    RunnersPerHostDerived { count: _ } => false
+  }
+}
+
+fn witness_measured_fixture_derives_capacity() -> Bool {
+  match runner_deployment_plan_for(job_peaks: fitting_job_mix(), overhead: fitting_overhead(), session_slice: small_session_slice(), offers: fleet_intent_offers) {
+    PlanDerived { hosts: hosts, fleet_concurrent_runs: total } => hosts.length() == 2 && total >= 2
     PlanUnsound { reason: _ } => false
   }
 }
 
-fn witness_measured_mix_derives_capacity() -> Bool {
-  match runner_deployment_plan_for(job_peaks: fitting_job_mix(), overhead: fitting_overhead(), offers: fleet_intent_offers) {
-    PlanDerived { hosts: hosts, fleet_concurrent_runs: total } =>
-      hosts.length() == 2 && total >= 2
-    PlanUnsound { reason: _ } => false
-  }
-}
-
-fn witness_derived_count_respects_host_budget() -> Bool {
+fn witness_count_respects_conserved_runner_slice() -> Bool {
   let peak = 40000000000
-  let reserved = byte_size(8000000000)
-  let count = host_runner_count(offer: srv1_offer, run_unit_peak: byte_size(peak), reserved: reserved)
-  let effective = byte_size_count(
-    b: memory_effective_budget(budget: compute_host_ram_bytes_total(host: srv1_offer.supply.physical), reserved: reserved)
-  )
-  count * peak <= effective && count >= 1
+  let slice = small_session_slice()
+  match runner_deployment_plan_for(job_peaks: fitting_job_mix(), overhead: fitting_overhead(), session_slice: slice, offers: fleet_intent_offers) {
+    PlanDerived { hosts: hosts, fleet_concurrent_runs: _ } =>
+      all(hosts, h => {
+        let runner_slice = byte_size_count(b: host_runner_slice(offer: srv1_offer, overhead: byte_size(8000000000), session_slice: slice))
+        h.runner_count * peak <= runner_slice && h.runner_count >= 1
+      })
+    PlanUnsound { reason: _ } => false
+  }
+}
+
+fn witness_bigger_session_slice_starves_runners() -> Bool {
+  let small = runner_deployment_plan_for(job_peaks: fitting_job_mix(), overhead: fitting_overhead(), session_slice: small_session_slice(), offers: fleet_intent_offers)
+  let big = runner_deployment_plan_for(job_peaks: fitting_job_mix(), overhead: fitting_overhead(), session_slice: big_session_slice(), offers: fleet_intent_offers)
+  !is_unsound(plan: small) && is_unsound(plan: big)
 }
 
 fn witness_over_commit_is_refused() -> Bool {
-  is_unsound(plan: runner_deployment_plan_for(job_peaks: oversized_job_mix(), overhead: fitting_overhead(), offers: fleet_intent_offers))
+  is_unsound(plan: runner_deployment_plan_for(job_peaks: oversized_job_mix(), overhead: fitting_overhead(), session_slice: small_session_slice(), offers: fleet_intent_offers))
 }
 
 fn witness_zero_peak_is_refused() -> Bool {
-  is_unsound(plan: runner_deployment_plan_for(job_peaks: zero_job_mix(), overhead: fitting_overhead(), offers: fleet_intent_offers))
+  is_unsound(plan: runner_deployment_plan_for(job_peaks: zero_job_mix(), overhead: fitting_overhead(), session_slice: small_session_slice(), offers: fleet_intent_offers))
 }
 
 fn witness_partial_unmeasured_is_refused() -> Bool {
-  is_unsound(plan: runner_deployment_plan_for(job_peaks: partial_unmeasured_mix(), overhead: fitting_overhead(), offers: fleet_intent_offers))
+  is_unsound(plan: runner_deployment_plan_for(job_peaks: partial_unmeasured_mix(), overhead: fitting_overhead(), session_slice: small_session_slice(), offers: fleet_intent_offers))
 }
 
 fn witness_overhead_unmeasured_is_refused() -> Bool {
-  is_unsound(plan: runner_deployment_plan_for(job_peaks: fitting_job_mix(), overhead: HostFixedOverheadUnmeasured, offers: fleet_intent_offers))
+  is_unsound(plan: runner_deployment_plan_for(job_peaks: fitting_job_mix(), overhead: HostFixedOverheadUnmeasured, session_slice: small_session_slice(), offers: fleet_intent_offers))
 }
 
-fn witness_huge_overhead_is_refused() -> Bool {
-  is_unsound(plan: runner_deployment_plan_for(job_peaks: fitting_job_mix(), overhead: huge_overhead(), offers: fleet_intent_offers))
-}
-
-fn witness_runners_per_host_fail_closed_pre_cap() -> Bool {
-  !gunbc_ci_runner_cap_enforced
-    && gunbc_ci_runners_per_host() == gunbc_ci_concurrent_runs_conservative_high
-}
-
-fn witness_runners_per_host_cap_enforced_derives_model_count() -> Bool {
-  let effective_r = effective_runners_per_host(cap_enforced: true)
-  match runner_deployment_plan() {
-    PlanDerived { hosts: hosts, fleet_concurrent_runs: _ } =>
-      let model_r = fold(hosts, init: 0, f: (acc, h) => if h.runner_count > acc { h.runner_count } else { acc })
-      effective_r == model_r && model_r >= 1
-    PlanUnsound { reason: _ } => false
+fn witness_regime1_resolves_worst_case_slice() -> Bool {
+  match resolve_session_slice(mode: Regime1WorstCase { point: SessionOperatingPointSet { per_session_cap: byte_size(10000000000), session_concurrency: 4 } }) {
+    SessionSliceResolved { bytes: b, per_session_cap: c, concurrency: n } =>
+      byte_size_count(b: b) == 40000000000 && byte_size_count(b: c) == 10000000000 && n == 4
+    SessionSliceUnresolved { reason: _ } => false
   }
+}
+
+fn witness_mode_unset_is_unresolved() -> Bool {
+  match resolve_session_slice(mode: SessionReservationModeUnset) {
+    SessionSliceUnresolved { reason: _ } => true
+    SessionSliceResolved { bytes: _, per_session_cap: _, concurrency: _ } => false
+  }
+}
+
+fn witness_regime2_oomd_unverified_is_unresolved() -> Bool {
+  match resolve_session_slice(mode: Regime2AggregateOomd {
+    oomd_eviction_ceiling: byte_size(8000000000),
+    session_concurrency: 16,
+    aggregate_reservation: SessionAggregateMeasured { bytes: byte_size(15000000000) },
+    oomd_enforcement: OomdUnverified,
+  }) {
+    SessionSliceUnresolved { reason: _ } => true
+    SessionSliceResolved { bytes: _, per_session_cap: _, concurrency: _ } => false
+  }
+}
+
+fn witness_regime2_aggregate_unmeasured_is_unresolved() -> Bool {
+  match resolve_session_slice(mode: Regime2AggregateOomd {
+    oomd_eviction_ceiling: byte_size(8000000000),
+    session_concurrency: 16,
+    aggregate_reservation: SessionAggregateUnmeasured,
+    oomd_enforcement: OomdEnforced,
+  }) {
+    SessionSliceUnresolved { reason: _ } => true
+    SessionSliceResolved { bytes: _, per_session_cap: _, concurrency: _ } => false
+  }
+}
+
+fn witness_regime2_reserves_aggregate_not_product() -> Bool {
+  match resolve_session_slice(mode: Regime2AggregateOomd {
+    oomd_eviction_ceiling: byte_size(8000000000),
+    session_concurrency: 16,
+    aggregate_reservation: SessionAggregateMeasured { bytes: byte_size(15000000000) },
+    oomd_enforcement: OomdEnforced,
+  }) {
+    SessionSliceResolved { bytes: b, per_session_cap: c, concurrency: n } =>
+      byte_size_count(b: b) == 15000000000 && byte_size_count(b: c) == 8000000000 && n == 16
+    SessionSliceUnresolved { reason: _ } => false
+  }
+}
+
+fn witness_coverage_is_distribution_grounded() -> Bool {
+  samples_covered(cap: byte_size(0)) == 0
+    && samples_covered(cap: byte_size(2211908157)) == 6
+    && samples_covered(cap: byte_size(8879844884)) == 13
+}
+
+fn witness_curve_has_full_coverage_three_runner_option() -> Bool {
+  any(operating_curve(), r => r.coverage_count == r.sample_count && r.min_runner_count >= 3)
+}
+
+fn witness_curve_cap_monotone_runner_count() -> Bool {
+  let lo = evaluate_operating_point(cap: byte_size(2000000000), n: 6)
+  let hi = evaluate_operating_point(cap: byte_size(8000000000), n: 6)
+  hi.min_runner_count <= lo.min_runner_count && hi.coverage_count >= lo.coverage_count
 }
 
 fn witness_manifest_drift_red_receipt() -> Bool {
@@ -129,16 +240,37 @@ fn witness_manifest_drift_red_receipt() -> Bool {
     && runner_deploy_drifted(committed: concat(expected_runner_deploy_manifest(), "x"))
 }
 
+fn witness_followup_markers_documented() -> Bool {
+  gunbc_ci_count_field_measure_followup != ""
+    && gunbc_ci_job_cgroup_peak_provenance != ""
+    && gunbc_ci_per_session_peak_provenance != ""
+    && gunbc_ci_footprint_granularity_note != ""
+    && gunbc_ci_footprint_bridge_followup != ""
+    && gunbc_ci_per_run_peak_sharpen_followup != ""
+    && gunbc_ci_session_regime_model != ""
+    && gunbc_ci_session_regime2_followup != ""
+    && gunbc_ci_regime2_aggregate_dissolution_marker != ""
+}
+
 test fn runner_placement_holds() -> Bool {
-  witness_live_carrier_measured_derives_plan()
-    && witness_runners_per_host_fail_closed_pre_cap()
-    && witness_runners_per_host_cap_enforced_derives_model_count()
-    && witness_measured_mix_derives_capacity()
-    && witness_derived_count_respects_host_budget()
+  witness_live_runner_plan_fail_closed()
+    && witness_live_session_plan_fail_closed()
+    && witness_live_effective_runners_fail_closed()
+    && witness_measured_fixture_derives_capacity()
+    && witness_count_respects_conserved_runner_slice()
+    && witness_bigger_session_slice_starves_runners()
     && witness_over_commit_is_refused()
     && witness_zero_peak_is_refused()
     && witness_partial_unmeasured_is_refused()
     && witness_overhead_unmeasured_is_refused()
-    && witness_huge_overhead_is_refused()
+    && witness_regime1_resolves_worst_case_slice()
+    && witness_mode_unset_is_unresolved()
+    && witness_regime2_oomd_unverified_is_unresolved()
+    && witness_regime2_aggregate_unmeasured_is_unresolved()
+    && witness_regime2_reserves_aggregate_not_product()
+    && witness_coverage_is_distribution_grounded()
+    && witness_curve_has_full_coverage_three_runner_option()
+    && witness_curve_cap_monotone_runner_count()
     && witness_manifest_drift_red_receipt()
+    && witness_followup_markers_documented()
 }
