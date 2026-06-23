@@ -66,3 +66,31 @@ On the uncapped fleet the physical OOM-killer pre-empts `reconcile`, so **interi
 L1 run-claim count must be the conservative-HIGH ceiling, never an observed sample. This is the
 honest §5 boundary: merging the tree is necessary but not sufficient to end the OOMs — the
 actuator is the other half.
+
+## 6. Next steps — from model to protective (the execution plan)
+
+The carrier is merged (#5582), but per §3/§5 above the tree is descriptive until a consumer
+derives a real decision from it **and** an actuator enforces actual ≤ authored. The path:
+
+**consumer-0 — instantiate the real fleet tree.** Author the srv1 budget tree as a `data` instance
+(root = host RAM ~125 GiB → fixed overhead → R concurrent runs → per-run rustc `N` / `.dag`-floor
+spawn-width) with appropriations set from **measured** peaks (#5574 leaf-cgroup: per-run ~24 GiB
+pessimistic, host ~125 GiB), not guesses. Each consumer **imports** its parent allocation
+(divide-once); none re-divides host RAM. neat-dove owns the seam spec.
+
+**Track A — `.dag`-floor spawn-width (in-tree, no fenced apply).** Convert
+`std.realization_width.memory_aware_spawn_width` to take its memory budget from the tree's L2
+allocation instead of an independently-divided host budget. Payoff: an over-wide spawn that would
+OOM the floor becomes a **compile error** (the admission wall made real at the floor) and one of
+the three §3 forks dissolves. Fully landable without touching the live fleet — the immediate step.
+
+**Track B — CI run-concurrency R (the stern-otter OOM cure; needs the actuator).** Derive `R`
+(runs/host) and `N` (compile-jobs) from L0/L1 divide-once (placement #5559 / compile-jobs #5546 as
+the consumer leaves). This PREVENTS OOM only paired with the §5 actuator — an **operator decision**:
+(a) admission control (enforced `R` cap; don't admit run R+1) or (b) cgroup `memory.max` on the
+srv1 runners (live-fleet apply, fenced). Until one lands, `R` stays conservative-HIGH.
+
+**Convergence (§3).** As each consumer imports its allocation, the forked budgets
+(`realization_width`, complexity `EffortBudget`) collapse onto `extdeps.accounting.budget`; the
+roadmap then re-homes #5444 / #5559 / #5546 as edge-children of `1-budget-tree` (reflecting reality,
+not aspiration).
