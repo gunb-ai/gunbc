@@ -2,8 +2,7 @@ module extdeps.os.proc_meminfo
 
 import std.types { NonEmptyStr }
 import std.list { List }
-import std.measure { Measure, Memory, Kibi }
-import std.nat { Nat }
+import std.measure { Kibibyte }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -13,8 +12,6 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
     locator: "man7.org/linux/man-pages/man5/proc.5.html#/proc/meminfo"
   }
 }
-
-type Kibibyte = Measure<Memory, Kibi, Nat>
 
 type MemoryMetric {
   key: NonEmptyStr
