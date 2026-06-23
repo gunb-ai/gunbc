@@ -1,6 +1,6 @@
-module v2.test.lens_complexity_rewrite.loop_invariant_hoist
+module v2.test.lens_complexity_lowering.loop_invariant_hoist
 
-import v2.lens.complexity_rewrite { cost_class_is_rewritable, cost_is_rewritable, minimized_class }
+import v2.lens.complexity_lowering { cost_class_is_lowerable, cost_is_lowerable, minimized_class }
 import v2.lens.cost {
   ClassLinear,
   ClassPolynomial,
@@ -30,8 +30,8 @@ data sum_cost: SymbolicCost = SumCost {
   rhs: LinearCost { variable: SizeVariable { source: leaf(id: ^b) } }
 }
 
-test fn quadratic_is_rewritable() -> Bool {
-  cost_is_rewritable(c: quadratic_cost)
+test fn quadratic_is_lowerable() -> Bool {
+  cost_is_lowerable(c: quadratic_cost)
 }
 test fn quadratic_minimizes_strictly_below_realized() -> Bool {
   asymptotic_class_dominates(
@@ -44,18 +44,18 @@ test fn quadratic_minimizes_strictly_below_realized() -> Bool {
   )
 }
 
-test fn rewritable_matches_before_class() -> Bool {
-  cost_class_is_rewritable(cls: ClassPolynomial { degree: polynomial_degree_two() })
+test fn lowerable_matches_before_class() -> Bool {
+  cost_class_is_lowerable(cls: ClassPolynomial { degree: polynomial_degree_two() })
 }
-test fn linear_class_not_rewritable() -> Bool {
-  !cost_class_is_rewritable(cls: ClassLinear)
+test fn linear_class_not_lowerable() -> Bool {
+  !cost_class_is_lowerable(cls: ClassLinear)
 }
 
-test fn linear_not_rewritable() -> Bool {
-  !cost_is_rewritable(c: linear_cost)
+test fn linear_not_lowerable() -> Bool {
+  !cost_is_lowerable(c: linear_cost)
 }
-test fn sum_of_linears_not_rewritable() -> Bool {
-  !cost_is_rewritable(c: sum_cost)
+test fn sum_of_linears_not_lowerable() -> Bool {
+  !cost_is_lowerable(c: sum_cost)
 }
 test fn linear_minimized_unchanged() -> Bool {
   asymptotic_class_dominates(

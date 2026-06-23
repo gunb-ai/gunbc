@@ -807,7 +807,7 @@ pub fn run_value(
 
 pub fn handle_ci() {
     handle_run_with_options(
-        vec!["dsl".to_string(), "src/v2".to_string()],
+        crate::module_path_index::witness_layer_roots(),
         "main".to_string(),
         Some("dsl/tools/gunbc_ci.dag".to_string()),
         false,
