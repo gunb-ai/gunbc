@@ -3,7 +3,6 @@ mod compiler_tests {
     use crate::v1_compiler_tokenize::tokenize;
     use std::collections::HashMap;
 
-    /// Find workspace root by walking up from the current directory looking for Cargo.toml + dsl/
     fn workspace_root() -> std::path::PathBuf {
         let mut dir = std::env::current_dir().expect("no current dir");
         loop {
@@ -16,15 +15,12 @@ mod compiler_tests {
         }
     }
 
-    /// Read a .dag file from the workspace
     fn read_dag(path: &str) -> String {
         let full = workspace_root().join(path);
         std::fs::read_to_string(&full)
             .unwrap_or_else(|e| panic!("failed to read {}: {}", full.display(), e))
     }
 
-    /// Discover all .dag files under a directory, returning (relative_path, content) pairs.
-    /// The relative path is relative to the workspace root.
     fn discover_dag_files(dir: &str) -> Vec<(String, String)> {
         let root = workspace_root();
         let base = root.join(dir);
@@ -50,7 +46,6 @@ mod compiler_tests {
                         .unwrap()
                         .to_string_lossy()
                         .to_string();
-                    // Test fixtures (e.g. fact_cardinality_split_brace.dag) are not modules.
                     if rel.contains("/tests/") {
                         continue;
                     }
@@ -62,7 +57,6 @@ mod compiler_tests {
         }
     }
 
-    /// Build SourceFile vec from discovered .dag files.
     fn source_files_from(
         pairs: &[(String, String)],
     ) -> Vec<std::rc::Rc<crate::v1_compiler_compile::SourceFile>> {
@@ -176,7 +170,6 @@ mod compiler_tests {
         result
     }
 
-    /// Build the self-compile source closure from src/v1 entry modules with dsl as a dependency pool.
     fn self_compile_sources() -> Vec<std::rc::Rc<crate::v1_compiler_compile::SourceFile>> {
         resolve_source_closure(discover_dag_files("src/v1"), &["src/v1", "dsl"])
     }
@@ -539,10 +532,6 @@ mod compiler_tests {
         );
     }
 
-    // =========================================================================
-    // Coercion registry tests (auto-generated from data declarations)
-    // =========================================================================
-
     #[test]
     fn coercion_rust_checkpoint_resolves_primitives() {
         use crate::v1_compiler_coercion::*;
@@ -883,7 +872,6 @@ mod compiler_tests {
         );
     }
 
-    /// Return current process RSS in bytes (macOS via mach_task_basic_info).
     fn get_rss_bytes() -> u64 {
         #[cfg(target_os = "macos")]
         {
@@ -1173,7 +1161,6 @@ mod compiler_tests {
                     source_count, total_chars
                 );
 
-                // 1a. Tokenize + parse
                 let t = Instant::now();
                 let mut token_lists = Vec::new();
                 for source in &sources {
@@ -1214,7 +1201,6 @@ mod compiler_tests {
                     modules.push(m);
                 }
                 let parse_elapsed = t.elapsed();
-                // 1b. Resolve
                 let t = Instant::now();
                 let resolve_si = sources.iter().fold(
                     crate::v1_rt::rc_empty_map::<
@@ -1243,7 +1229,6 @@ mod compiler_tests {
                     .filter(|d| crate::v1_std_core::is_error_diagnostic(d.diagnostic.clone()))
                     .count();
 
-                // 1c. Newline indices
                 let t = Instant::now();
                 let newline_indices: Vec<_> = sources
                     .iter()
@@ -1264,7 +1249,6 @@ mod compiler_tests {
                 eprintln!("  Newline indices:               {:>8.2?}", newline_elapsed);
                 eprintln!("  Frontend total:               {:>8.2?}", frontend_elapsed);
 
-                // 2. Normalize
                 let t = Instant::now();
                 let source_indices = newline_indices.iter().cloned().fold(
                     crate::v1_rt::rc_empty_map::<
@@ -1285,7 +1269,6 @@ mod compiler_tests {
                     normalize_elapsed
                 );
 
-                // 3. Reconcile
                 let t = Instant::now();
                 let typed = crate::v1_compiler_infer::reconcile(
                     norm.graph.clone(),
@@ -1303,7 +1286,6 @@ mod compiler_tests {
                     reconcile_elapsed, type_errors
                 );
 
-                // 4. Complexity
                 let t = Instant::now();
                 let func_entries = crate::v1_compiler_compile::extract_func_entries(typed.clone());
                 let func_count = func_entries.len();
@@ -1324,7 +1306,6 @@ mod compiler_tests {
                     cx_diags.len()
                 );
 
-                // 5. Ownership
                 let t = Instant::now();
                 let ownership = crate::v1_compiler_compile::extract_ownership_proofs(typed.clone());
                 let ownership_elapsed = t.elapsed();
@@ -1337,7 +1318,6 @@ mod compiler_tests {
                     own_diags.len()
                 );
 
-                // 6. Emit
                 let artifact_plan = crate::v1_compiler_compile::default_artifact_plan(
                     std::rc::Rc::new(
                         typed
