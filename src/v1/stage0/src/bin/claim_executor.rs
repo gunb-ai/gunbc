@@ -203,51 +203,76 @@ struct ClaimResult {
     detail: String,
 }
 
-fn run_one_runnable(
-    source_roots: Vec<String>,
-    runnable: Runnable,
-    spawn_width: usize,
-) -> ClaimResult {
-    match runnable {
-        Runnable::SingleClaim { entry, function } => {
-            run_single_claim(&source_roots, entry, function)
-        }
-        Runnable::DiscoveryBatch {
-            source_roots: roots,
-            scan_dirs,
-            explicit_entries,
-            skip_unaffected_node_frontier,
-        } => run_discovery_batch_node(
-            roots,
-            scan_dirs,
-            explicit_entries,
-            skip_unaffected_node_frontier,
-            spawn_width,
-        ),
-    }
+/// A batch is partitioned into resolve-groups before scheduling. SingleClaims that share one
+/// `entry` collapse into a single `SharedClaims` group: the entry's import closure is resolved
+/// (and typechecked) EXACTLY ONCE and every claim runs on that one shared interpreter context,
+/// instead of each claim re-resolving the identical graph on its own thread. This is the floor's
+/// dominant footprint win — batch-2's gate witnesses all live in one file
+/// (`dsl/tools/floor_effect_gate_witness.dag`, ~0.9 GiB / 106 modules per resolve), so the
+/// per-thread-resolve scheme held that graph ~6x concurrently (~4.5 GiB of pure duplication,
+/// roughly half the self-RSS). Resolve is a pure function of `(source_roots, entry)`, so sharing
+/// the graph across same-entry claims is semantically identical — correctness by construction
+/// (DESIGN §2: duplicated work removed; §4: realization may share what the pure spec models apart).
+enum BatchUnit {
+    SharedClaims {
+        entry: String,
+        functions: Vec<String>,
+    },
+    UnrunnableSentinel {
+        function: String,
+    },
+    Discovery {
+        source_roots: Vec<String>,
+        scan_dirs: Vec<String>,
+        explicit_entries: Vec<(String, String)>,
+        skip_unaffected_node_frontier: bool,
+    },
 }
 
-fn run_single_claim(source_roots: &[String], entry: String, function: String) -> ClaimResult {
-    if entry.is_empty() {
-        return ClaimResult {
-            function,
-            ok: false,
-            detail: "unrunnable sentinel (unmapped node or non-complete plan) — failing closed"
-                .to_string(),
-        };
-    }
-    let (graph, source_indices) = match resolve_entry_graph(source_roots, &entry) {
-        Ok(pair) => pair,
-        Err(msg) => {
-            return ClaimResult {
-                function,
-                ok: false,
-                detail: format!("resolve failed for {}: {}", entry, msg),
+/// Partition a batch's runnables into resolve-groups, preserving first-appearance order so the
+/// PASS/FAIL log stays stable. SingleClaims with a non-empty `entry` coalesce by `entry`;
+/// empty-entry sentinels and DiscoveryBatch nodes stay their own units (each resolves apart).
+fn group_batch_units(batch: &[Runnable]) -> Vec<BatchUnit> {
+    let mut units: Vec<BatchUnit> = Vec::new();
+    let mut entry_to_unit: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    for runnable in batch {
+        match runnable {
+            Runnable::SingleClaim { entry, function } if entry.is_empty() => {
+                units.push(BatchUnit::UnrunnableSentinel {
+                    function: function.clone(),
+                });
             }
+            Runnable::SingleClaim { entry, function } => {
+                if let Some(&idx) = entry_to_unit.get(entry) {
+                    if let BatchUnit::SharedClaims { functions, .. } = &mut units[idx] {
+                        functions.push(function.clone());
+                    }
+                } else {
+                    entry_to_unit.insert(entry.clone(), units.len());
+                    units.push(BatchUnit::SharedClaims {
+                        entry: entry.clone(),
+                        functions: vec![function.clone()],
+                    });
+                }
+            }
+            Runnable::DiscoveryBatch {
+                source_roots,
+                scan_dirs,
+                explicit_entries,
+                skip_unaffected_node_frontier,
+            } => units.push(BatchUnit::Discovery {
+                source_roots: source_roots.clone(),
+                scan_dirs: scan_dirs.clone(),
+                explicit_entries: explicit_entries.clone(),
+                skip_unaffected_node_frontier: *skip_unaffected_node_frontier,
+            }),
         }
-    };
-    let ctx = make_eval_context(&graph, source_indices, ExecutionMode::Wet);
-    match run_claim(&ctx, &function) {
+    }
+    units
+}
+
+fn claim_result_for_outcome(function: String, outcome: ClaimOutcome) -> ClaimResult {
+    match outcome {
         ClaimOutcome::Pass => ClaimResult {
             function,
             ok: true,
@@ -269,6 +294,57 @@ fn run_single_claim(source_roots: &[String], entry: String, function: String) ->
             detail: format!("runtime error: {}", message),
         },
     }
+}
+
+fn run_batch_unit(source_roots: Vec<String>, unit: BatchUnit, spawn_width: usize) -> Vec<ClaimResult> {
+    match unit {
+        BatchUnit::UnrunnableSentinel { function } => vec![ClaimResult {
+            function,
+            ok: false,
+            detail: "unrunnable sentinel (unmapped node or non-complete plan) — failing closed"
+                .to_string(),
+        }],
+        BatchUnit::Discovery {
+            source_roots: roots,
+            scan_dirs,
+            explicit_entries,
+            skip_unaffected_node_frontier,
+        } => vec![run_discovery_batch_node(
+            roots,
+            scan_dirs,
+            explicit_entries,
+            skip_unaffected_node_frontier,
+            spawn_width,
+        )],
+        BatchUnit::SharedClaims { entry, functions } => {
+            run_shared_entry_claims(&source_roots, &entry, &functions)
+        }
+    }
+}
+
+fn run_shared_entry_claims(
+    source_roots: &[String],
+    entry: &str,
+    functions: &[String],
+) -> Vec<ClaimResult> {
+    let (graph, source_indices) = match resolve_entry_graph(source_roots, entry) {
+        Ok(pair) => pair,
+        Err(msg) => {
+            return functions
+                .iter()
+                .map(|function| ClaimResult {
+                    function: function.clone(),
+                    ok: false,
+                    detail: format!("resolve failed for {}: {}", entry, msg),
+                })
+                .collect();
+        }
+    };
+    let ctx = make_eval_context(&graph, source_indices, ExecutionMode::Wet);
+    functions
+        .iter()
+        .map(|function| claim_result_for_outcome(function.clone(), run_claim(&ctx, function)))
+        .collect()
 }
 
 fn run_discovery_batch_node(
@@ -660,33 +736,36 @@ fn run_walk(source_roots: &[String], batches: &[Vec<Runnable>], spawn_width: usi
     let mut batches_run = 0usize;
     for (bi, batch) in batches.iter().enumerate() {
         batches_run = bi + 1;
+        let units = group_batch_units(batch);
         eprintln!(
-            "claim_executor: batch {} — {} node(s), spawn_width={}",
+            "claim_executor: batch {} — {} node(s) in {} resolve-group(s), spawn_width={}",
             bi + 1,
             batch.len(),
+            units.len(),
             width
         );
-        let handles: Vec<_> = batch
-            .iter()
-            .map(|runnable| {
+        let handles: Vec<_> = units
+            .into_iter()
+            .map(|unit| {
                 let roots = source_roots.to_vec();
-                let runnable = runnable.clone();
-                thread::spawn(move || run_one_runnable(roots, runnable, width))
+                thread::spawn(move || run_batch_unit(roots, unit, width))
             })
             .collect();
         for handle in handles {
             match handle.join() {
-                Ok(result) => {
-                    if result.ok {
-                        println!("PASS [batch {}] {}", bi + 1, result.function);
-                    } else {
-                        println!(
-                            "FAIL [batch {}] {} ({})",
-                            bi + 1,
-                            result.function,
-                            result.detail
-                        );
-                        any_failed = true;
+                Ok(results) => {
+                    for result in results {
+                        if result.ok {
+                            println!("PASS [batch {}] {}", bi + 1, result.function);
+                        } else {
+                            println!(
+                                "FAIL [batch {}] {} ({})",
+                                bi + 1,
+                                result.function,
+                                result.detail
+                            );
+                            any_failed = true;
+                        }
                     }
                 }
                 Err(_) => {
