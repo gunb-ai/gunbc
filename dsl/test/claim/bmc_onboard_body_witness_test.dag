@@ -1,0 +1,35 @@
+module test.claim.bmc_onboard_body_witness
+
+import std.logic { Bool }
+import gunbc.tools.bmc_onboard {
+  netrc_content,
+  account_password_body,
+  boot_override_body,
+  reset_body,
+  gcp_secret_full_name,
+}
+
+test fn netrc_content_shape_holds() -> Bool {
+  let got = netrc_content(host: "192.168.1.192", account: "root", password: "s3cr3t")
+  got == "machine 192.168.1.192 login root password s3cr3t\n"
+}
+
+test fn account_password_body_shape_holds() -> Bool {
+  let got = account_password_body(new_password: "NEWPW")
+  got == "{\"Password\": \"NEWPW\"}"
+}
+
+test fn boot_override_body_shape_holds() -> Bool {
+  let got = boot_override_body(target: "Pxe", enabled: "Once")
+  got == "{\"Boot\": {\"BootSourceOverrideTarget\": \"Pxe\", \"BootSourceOverrideEnabled\": \"Once\"}}"
+}
+
+test fn reset_body_shape_holds() -> Bool {
+  let got = reset_body(reset_type: "ForceRestart")
+  got == "{\"ResetType\": \"ForceRestart\"}"
+}
+
+test fn gcp_secret_full_name_shape_holds() -> Bool {
+  let got = gcp_secret_full_name(project: "gunbai-secrets", secret_id: "bmc-srv3-admin")
+  got == "projects/gunbai-secrets/secrets/bmc-srv3-admin"
+}

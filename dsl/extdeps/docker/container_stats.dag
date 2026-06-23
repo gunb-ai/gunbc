@@ -1,0 +1,140 @@
+module extdeps.docker.container_stats
+
+import std.types { Timestamp, String, Int, Float }
+import std.nat { Nat }
+import std.measure { ByteSize, byte_size, byte_size_count, Nanosecond, nanosecond, nanosecond_count, Microsecond }
+import extdeps.docker.endpoint { docker_default_endpoint }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.docker.com/engine/api/v1.47"
+  }
+}
+
+type CpuStats {
+  cpu_usage: CpuUsage
+  system_cpu_usage: Nanosecond
+  online_cpus: Nat
+  cpu_percent: Float?
+}
+
+type CpuUsage {
+  total_usage: Nanosecond
+  percpu_usage: List<Nanosecond>?
+  usage_in_kernelmode: Nanosecond
+  usage_in_usermode: Nanosecond
+}
+
+type MemoryStats {
+  usage: ByteSize
+  max_usage: ByteSize
+  limit: ByteSize
+  failcnt: Nat?
+}
+
+type PidStats {
+  current: Nat?
+}
+
+type ContainerStats {
+  read: Timestamp
+  pids_stats: PidStats?
+  blkio_stats: BlkioStats?
+  cpu_stats: CpuStats
+  memory_stats: MemoryStats
+  networks: Networks?
+}
+
+type BlkioStats {
+  io_service_bytes_recursive: List<BlkioValue>?
+  io_service_time_recursive: List<BlkioValue>?
+  io_serviced_recursive: List<BlkioValue>?
+  io_time_recursive: List<BlkioValue>?
+  sectors_recursive: List<BlkioValue>?
+}
+
+type BlkioValue {
+  op: String
+  value: Nat
+}
+
+type NetworkStats {
+  rx_bytes: ByteSize
+  rx_packets: Nat
+  rx_errors: Nat
+  rx_dropped: Nat
+  tx_bytes: ByteSize
+  tx_packets: Nat
+  tx_errors: Nat
+  tx_dropped: Nat
+}
+
+type NetworkInterface {
+  name: String
+  stats: NetworkStats
+}
+
+type Networks {
+  interfaces: List<NetworkInterface>
+}
+
+service docker.ContainerStats {
+  config {
+    endpoint: docker_default_endpoint
+    auth: None
+
+    retry: { max_attempts: 3, backoff: exponential, retry_on: [500, 502, 503, 504] }
+  }
+
+  operation GetStats {
+    input {
+      container_id: String
+      stream: Bool = false
+    }
+    output {
+      stats: ContainerStats
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/containers/\{container_id\}/stats",
+      query: { stream: stream }
+    }
+    response {
+      200 => ContainerStats
+      404 => String
+      500 => String
+    }
+  }
+}
+
+data dissolve_on_cpu_percent_ratio_carrier: List<String> = [
+  "closure:ground_cpu_percent_ratio_type|cpu_percent: Float? is a percentage/ratio without a Measure<Quantity, Scale, M> carrier; bare Float cannot encode unit semantics (is it 0–1 normalized or 0–100 scale?); §5 violation on unit-modeling|trigger:Ratio or PercentagePoint typed alias lands in std/measure"
+]
+
+data dissolve_on_error_responses_opaque_strings: List<String> = [
+  "closure:typed_error_responses|Error responses (404 => String, 500 => String) collapse distinct error shapes (not-found vs server error) to opaque string, violating §5 fail-closed (errors must be typed and located with structured diagnostics). Docker API returns JSON error objects with reason/message; should be modeled as ErrorDetail coproduct or structured record (NotFound | ServerError variants with message and optional retry info)|trigger:typed error response variants land in extdeps/docker or extdeps/github.errors pattern applied here"
+]
+
+fn container_stats_memory_usage(stats: ContainerStats) -> ByteSize {
+  stats.memory_stats.usage
+}
+
+fn container_stats_cpu_usage_total(stats: ContainerStats) -> Nanosecond {
+  stats.cpu_stats.cpu_usage.total_usage
+}
+
+fn container_stats_online_cpus(stats: ContainerStats) -> Nat {
+  stats.cpu_stats.online_cpus
+}
+
+data structural_coverage_gap_memory_stats_working_set: List<String> = [
+  "closure:memory_stats_true_working_set|MemoryStats.usage includes page cache (inactive_file); true working-set = usage - stats.inactive_file from Docker stats sub-map|trigger:B2 models stats sub-map with inactive_file and policy uses working_set not raw usage"
+]
+
+data dissolve_on_blkio_value_unit_ambiguity: List<String> = [
+  "closure:type_blkio_value_units|BlkioValue.value: Nat carries parent-dependent units (bytes under io_service_bytes_recursive, time under io_service_time_recursive, count under io_serviced_recursive); flat Nat smuggles unit invisible to type system (§5 fail-closed unit-modeling); Docker wire format is the constraint; remedy = typed per-list accessors returning ByteSize|Nanosecond|Nat or parent-tagged union|trigger:typed or tagged union models for BlkioValue land in extdeps/docker"
+]
