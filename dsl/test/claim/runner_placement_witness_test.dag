@@ -23,6 +23,7 @@ import gunbc.ci_runner_placement {
   evaluate_operating_point,
   operating_curve,
   samples_covered,
+  gunbc_ci_count_field_measure_followup,
 }
 import gunbc.runner_deploy_emit { expected_runner_deploy_manifest, runner_deploy_drifted }
 import gunbc.ci_floor_measurement {
@@ -35,6 +36,13 @@ import gunbc.ci_floor_measurement {
   SessionOperatingPoint,
   SessionOperatingPointSet,
   SessionOperatingPointUnset,
+  gunbc_ci_job_cgroup_peak_provenance,
+  gunbc_ci_per_session_peak_provenance,
+  gunbc_ci_footprint_granularity_note,
+  gunbc_ci_footprint_bridge_followup,
+  gunbc_ci_per_run_peak_sharpen_followup,
+  gunbc_ci_session_regime_model,
+  gunbc_ci_session_regime2_followup,
 }
 import gunbc.fleet_intent { fleet_intent_offers, srv1_offer }
 import std.measure { ByteSize, byte_size, byte_size_count }
@@ -184,6 +192,17 @@ fn witness_manifest_drift_red_receipt() -> Bool {
     && runner_deploy_drifted(committed: concat(expected_runner_deploy_manifest(), "x"))
 }
 
+fn witness_followup_markers_documented() -> Bool {
+  gunbc_ci_count_field_measure_followup != ""
+    && gunbc_ci_job_cgroup_peak_provenance != ""
+    && gunbc_ci_per_session_peak_provenance != ""
+    && gunbc_ci_footprint_granularity_note != ""
+    && gunbc_ci_footprint_bridge_followup != ""
+    && gunbc_ci_per_run_peak_sharpen_followup != ""
+    && gunbc_ci_session_regime_model != ""
+    && gunbc_ci_session_regime2_followup != ""
+}
+
 test fn runner_placement_holds() -> Bool {
   witness_live_runner_plan_fail_closed()
     && witness_live_session_plan_fail_closed()
@@ -201,4 +220,5 @@ test fn runner_placement_holds() -> Bool {
     && witness_curve_has_full_coverage_three_runner_option()
     && witness_curve_cap_monotone_runner_count()
     && witness_manifest_drift_red_receipt()
+    && witness_followup_markers_documented()
 }

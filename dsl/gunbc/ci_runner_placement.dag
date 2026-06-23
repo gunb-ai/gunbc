@@ -259,6 +259,8 @@ fn session_reservation_plan() -> SessionReservationPlan {
   }
 }
 
+data gunbc_ci_count_field_measure_followup: String = "dissolve-on: the M12 / Practice-13 value-Measure sweep for cardinal COUNT fields. The runner/session counts here (OperatingPointRow.min_runner_count, .session_concurrency, .coverage_count, .sample_count; RunnerHostDeployment.runner_count; SessionHostReservation.session_count; SessionReservationDerived.fleet_concurrent_sessions) are flat Int, consistent with the codebase-wide convention for cardinals (RunnerHostDeployment.runner_count predates this change). Convert the whole cluster together to a count-Measure carrier (HardwareThreadCount-style) in one sweep so the unit modeling stays single-authority, rather than peeling one field here."
+
 type OperatingPointRow {
   per_session_cap: ByteSize
   session_concurrency: Int
