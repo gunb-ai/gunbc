@@ -28,8 +28,8 @@ fn witness_multiline_mapping_value_still_block_literal() -> Bool {
 fn witness_no_embedded_newline_in_any_position() -> Bool {
   let top = serialize_yaml(v: yaml_string(s: "a\nb"))
   let seq = serialize_yaml(v: yaml_sequence(elements: [yaml_string(s: "a\nb")]))
-  !string_contains(s: top, pattern: "a\nb") &&
-    !string_contains(s: seq, pattern: "a\nb")
+  (top == "|\n  a\n  b\n") &&
+    (seq == "- |\n  a\n  b\n")
 }
 
 test fn yaml_multiline_block_keystone_holds() -> Bool {
