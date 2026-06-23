@@ -7,25 +7,34 @@ import std.resources { Entropy }
 import extdeps.getrandom
 import std.encoding { Base64Variant, Standard, UrlSafe, base64_encode, base64_decode }
 
-fn getrandom_octets(count: Int) -> List<UInt8> {
-  match base64_decode(s: Getrandom.ReadBytes(count: count).octets_b64, variant: Standard) {
-    Present { value: bs } => bs
-  }
+data getrandom_decode_absent_unreachable: String = "🟡 SCAFFOLD — Absent arm in mint_base64url_credential is structurally dead: Getrandom.ReadBytes fails-closed on nonzero exit (see exit clause), so octets_b64 is always valid standard base64; base64_decode Absent is unreachable. Dissolution trigger: native OS transport that mints octets directly removes the base64 round-trip and this arm."
+
+fn getrandom_octets(count: Int) -> List<UInt8>? {
+  base64_decode(s: Getrandom.ReadBytes(count: count).octets_b64, variant: Standard)
 }
 
 pattern mint_base64url_credential(byte_count: Int) -> { credential: String }
   uses entropy: Entropy
 {
-  octets = getrandom_octets(count: byte_count)
-  return { credential: base64_encode(octets: octets, variant: UrlSafe) }
+  node cred = match getrandom_octets(count: byte_count) {
+    Present { value: bs } => base64_encode(octets: bs, variant: UrlSafe)
+    Absent => ""
+  }
+  return { credential: cred }
 }
 
 test fn random_bytes_count_holds() -> Bool {
-  list_length(items: getrandom_octets(count: 16)) == 16
+  match getrandom_octets(count: 16) {
+    Present { value: bs } => list_length(items: bs) == 16
+    Absent => false
+  }
 }
 
 test fn random_bytes_zero_holds() -> Bool {
-  list_length(items: getrandom_octets(count: 0)) == 0
+  match getrandom_octets(count: 0) {
+    Present { value: bs } => list_length(items: bs) == 0
+    Absent => false
+  }
 }
 
 test fn random_bytes_base64url_mint_16_length_holds() -> Bool {
