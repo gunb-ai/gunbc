@@ -56,6 +56,10 @@ type HostConfig {
   device_requests: List<String>?
 }
 
+data dissolve_on_memory_swap_unlimited_convention: List<String> = [
+  "closure:ground_unlimited_memory_via_special_variant|HostConfig.memory_swap: ByteSize? loses Docker wire convention where -1 encodes 'unlimited'; ByteSize is Measure<Memory, One, Nat> (Nat-backed, non-negative only), so wire value -1 cannot round-trip (fidelity gap at extdeps boundary). Callers cannot distinguish 'swap disabled' (-1) from 'swap zero bytes' (0) without special handling|trigger:B3 grounds unlimited-capable memory fields via coproduct variant (Unlimited | Limited(ByteSize)) or tagged union, preserving wire semantics"
+]
+
 type ContainerConfig {
   hostname: String?
   domainname: String?
