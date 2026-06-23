@@ -1,6 +1,6 @@
 module extdeps.apt
 
-import std.types { NonEmptyStr, FilePath }
+import std.types { NonEmptyStr, FilePath, String, Bool }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -18,7 +18,32 @@ data apt_local_bin_dir: FilePath = "/usr/local/bin"
 data package_coreutils: NonEmptyStr = "coreutils"     
 data package_grep: NonEmptyStr = "grep"               
 data package_diffutils: NonEmptyStr = "diffutils"     
-data package_cargo: NonEmptyStr = "cargo"             
-data package_rustc: NonEmptyStr = "rustc"             
+data package_cargo: NonEmptyStr = "cargo"
+data package_rustc: NonEmptyStr = "rustc"
+
+// On Ubuntu, the systemd-oomd binary ships in the `systemd` package; the
+// `systemd-oomd-defaults` package is what installs the default oomd.conf and
+// enables the daemon out of the box.
+data package_systemd_oomd_defaults: NonEmptyStr = "systemd-oomd-defaults"
 
 data apt_man_url: NonEmptyStr = "https://manpages.debian.org/testing/apt/apt.8.en.html"
+
+// Install as an effect. The package is a parameter — apt models the install
+// interface; WHICH package is workflow policy (the caller supplies it). The
+// argv carries no business literal. Exit codes from apt-get(8).
+service apt.PackageManager {
+  operation Install {
+    input { package: NonEmptyStr }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["apt-get", "install", "--yes", "{package}"] }
+    exit {
+      0 => Unit
+      100 => String "apt-get install failed (lock held, fetch error, or unmet dependency)"
+      nonzero => String "apt-get install failed"
+    }
+  }
+}

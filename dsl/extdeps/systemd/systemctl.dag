@@ -1,0 +1,118 @@
+module extdeps.systemd.systemctl
+
+import std.types { NonEmptyStr, String, List, Bool }
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+// systemd's service-manager control surface. The interface shape (operation
+// inputs -> outputs, exit/error semantics) is what extdeps owns; the unit a
+// caller acts on is a parameter, never a literal baked into the argv (a baked
+// unit name would be business policy leaking down from the workflow layer).
+// Real names and semantics from systemctl(1).
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.freedesktop.org/software/systemd/man/latest/systemctl.html"
+  }
+}
+
+// `ActiveState` as reported by systemd (systemctl show -p ActiveState).
+type UnitActiveState
+  = UnitActive
+  | UnitReloading
+  | UnitInactive
+  | UnitFailed
+  | UnitActivating
+  | UnitDeactivating
+  | UnitMaintenance
+
+// `UnitFileState` / enablement as reported by systemctl is-enabled.
+type UnitFileState
+  = UnitEnabled
+  | UnitEnabledRuntime
+  | UnitLinked
+  | UnitMasked
+  | UnitStatic
+  | UnitDisabled
+  | UnitIndirect
+  | UnitGenerated
+  | UnitTransient
+  | UnitBad
+
+service systemd.Systemctl {
+  // Enable a unit (install its [Install] symlinks). An effect, not readonly.
+  operation Enable {
+    input { unit: NonEmptyStr, now: Bool = false }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["systemctl", "enable", "{unit}"] }
+    exit {
+      0 => Unit
+      nonzero => String "systemctl enable failed"
+    }
+  }
+
+  // Start a unit now. An effect.
+  operation Start {
+    input { unit: NonEmptyStr }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["systemctl", "start", "{unit}"] }
+    exit {
+      0 => Unit
+      nonzero => String "systemctl start failed"
+    }
+  }
+
+  // Reload the manager so freshly written drop-ins / units take effect.
+  operation DaemonReload {
+    input {}
+    output {
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["systemctl", "daemon-reload"] }
+    exit {
+      0 => Unit
+      nonzero => String "systemctl daemon-reload failed"
+    }
+  }
+
+  // Read whether a unit is active. Prints "active" / "inactive" / "failed".
+  // Exit 0 iff active; readonly verify read.
+  operation IsActive {
+    input { unit: NonEmptyStr }
+    output {
+      state: String from "stdout"
+      active: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["systemctl", "is-active", "{unit}"] }
+    exit {
+      0 => Unit
+      3 => Unit "unit is not active"
+      nonzero => String "systemctl is-active failed"
+    }
+  }
+
+  // Read the effective (post-merge) value of one unit property. Prints
+  // "Property=value". The "show-effective" verify read: what systemd
+  // *actually* resolved, not what a config file declared.
+  operation Show {
+    input { unit: NonEmptyStr, property: NonEmptyStr }
+    output { value: String from "stdout" }
+    readonly
+    transport shell { argv: ["systemctl", "show", "{unit}", "--property={property}", "--value"] }
+    exit {
+      0 => Unit
+      nonzero => String "systemctl show failed"
+    }
+  }
+}
