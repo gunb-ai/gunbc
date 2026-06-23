@@ -54,7 +54,6 @@ import v2.std.grammar {
 }
 import v2.std.witness { Holds, Violates, Witness }
 import v2.std.compilers.lexing {
-  BlockCommentTextChar,
   CharClassPattern,
   CharPattern,
   ChoicePattern,
@@ -67,7 +66,6 @@ import v2.std.compilers.lexing {
   LexRule,
   LexRuleSet,
   LexRules,
-  LineCommentTextChar,
   LiteralPattern,
   ModeledLexRules,
   OneOrMorePattern,
@@ -415,35 +413,11 @@ fn dag_whitespace_trivia_rule() -> LexRule {
   }
 }
 
-fn dag_line_comment_trivia_rule() -> LexRule {
-  TriviaRule {
-    pattern: SequencePattern {
-      left: LiteralPattern { text: "//" },
-      right: RepeatPattern { element: CharClassPattern { class: LineCommentTextChar } }
-    }
-  }
-}
-
-fn dag_block_comment_trivia_rule() -> LexRule {
-  TriviaRule {
-    pattern: DelimitedPattern {
-      open: LiteralPattern { text: "/*" },
-      body: ChoicePattern {
-        left: CharClassPattern { class: BlockCommentTextChar },
-        right: CharPattern { char: 42 }
-      },
-      close: LiteralPattern { text: "*/" }
-    }
-  }
-}
-
 fn dag_wave1_lex_rules() -> LexRuleSet {
 
   LexRuleSet {
     rules: [
       dag_whitespace_trivia_rule(),
-      dag_line_comment_trivia_rule(),
-      dag_block_comment_trivia_rule(),
       dag_string_literal_lex_rule(),
       dag_int_literal_lex_rule(),
       dag_ident_lex_rule(),
@@ -3126,28 +3100,28 @@ fn dag_language_model_wave1_modeled() -> LanguageModel {
 
 type DagTriviaNormalization
   = DagWhitespaceDeclaredNormalized
-  | DagLineCommentDeclaredNormalized
-  | DagBlockCommentDeclaredNormalized
+  | DagLineCommentFailClosed
+  | DagBlockCommentFailClosed
 
 fn dag_whitespace_fidelity() -> FidelityDisposition<DagTriviaNormalization> {
   DeclaredNormalized { feature: DagWhitespaceDeclaredNormalized }
 }
 
 fn dag_line_comment_fidelity() -> FidelityDisposition<DagTriviaNormalization> {
-  DeclaredNormalized { feature: DagLineCommentDeclaredNormalized }
+  FailClosed { feature: DagLineCommentFailClosed }
 }
 
 fn dag_block_comment_fidelity() -> FidelityDisposition<DagTriviaNormalization> {
-  DeclaredNormalized { feature: DagBlockCommentDeclaredNormalized }
+  FailClosed { feature: DagBlockCommentFailClosed }
 }
 
 fn dag_trivia_normalization_feature_node(feature: DagTriviaNormalization) -> Node {
   match feature {
     DagWhitespaceDeclaredNormalized =>
       dag_grammar_atom(id: ^dag_trivia_feature_whitespace)
-    DagLineCommentDeclaredNormalized =>
+    DagLineCommentFailClosed =>
       dag_grammar_atom(id: ^dag_trivia_feature_line_comment)
-    DagBlockCommentDeclaredNormalized =>
+    DagBlockCommentFailClosed =>
       dag_grammar_atom(id: ^dag_trivia_feature_block_comment)
   }
 }
@@ -3953,8 +3927,6 @@ fn dag_type_decl_structural_lex_rules() -> LexRuleSet {
   LexRuleSet {
     rules: [
       dag_whitespace_trivia_rule(),
-      dag_line_comment_trivia_rule(),
-      dag_block_comment_trivia_rule(),
       dag_string_literal_lex_rule(),
       dag_int_literal_lex_rule(),
       dag_literal_lex_rule(token_class: ^dag_token_kw_type, text: "type "),
@@ -5876,17 +5848,17 @@ fn dag_round_trip_grammar_ready(lm: LanguageModel) -> Bool {
   grammar_carries_symbol(grammar: lm.grammar, sym: ^dag_production_fn_decl)
 }
 
-fn dag_round_trip_normalization_declared() -> Bool {
+fn dag_round_trip_trivia_fidelity_resolved() -> Bool {
   dag_whitespace_fidelity() == DeclaredNormalized { feature: DagWhitespaceDeclaredNormalized } &&
-  dag_line_comment_fidelity() == DeclaredNormalized { feature: DagLineCommentDeclaredNormalized } &&
-  dag_block_comment_fidelity() == DeclaredNormalized { feature: DagBlockCommentDeclaredNormalized }
+  dag_line_comment_fidelity() == FailClosed { feature: DagLineCommentFailClosed } &&
+  dag_block_comment_fidelity() == FailClosed { feature: DagBlockCommentFailClosed }
 }
 
 fn dag_round_trip_wave1_authorities_ready() -> Bool {
   let lm = dag_language_model_wave1_modeled()
   dag_round_trip_lex_ready() &&
   dag_round_trip_grammar_ready(lm: lm) &&
-  dag_round_trip_normalization_declared()
+  dag_round_trip_trivia_fidelity_resolved()
 }
 
 fn parse_production_emitted_identity_optional(node: Node) -> Optional<Symbol> {

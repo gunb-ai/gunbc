@@ -13,7 +13,10 @@ is a *wall up to the substrate's expressible abstraction* (anti-unification comp
 minimum relative to the available combinators) and a *ratchet beyond it* (true minimal description is
 Kolmogorov-uncomputable). The frontier advances as the catalog/combinators grow — which is §7's
 "language design opens up," measured. Prerequisite: the minimal form must be *expressible and ergonomic*
-to reference (the Ergonomics lane is what widens this wall).
+to reference (the Ergonomics lane is what widens this wall). The candidate DESIGN.md articulation of this
+crux — held against §1/§2/§7 for the operator's "model §1's axioms + enforce the syllogism" thread — is
+drafted in [intent-linearity design draft](intent-linearity-design-draft.md) (operator-review, not yet a
+DESIGN.md edit).
 
 **Thesis.** A lens that only *flags* concedes the bad state is writable and leaves the fix to a
 human (who pays the §1 time, and re-introduces fail-open arms by hand). The next form of the lens
