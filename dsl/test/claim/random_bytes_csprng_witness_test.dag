@@ -3,7 +3,7 @@ module test.claim.random_bytes_csprng_witness
 import std.logic { Bool }
 import std.types { Int }
 import std.integer { UInt8 }
-import std.bytes { random_bytes }
+import extdeps.entropy
 import std.encoding { Base64Variant, UrlSafe, base64_encode }
 
 fn octet_count(bs: List<UInt8>) -> Int {
@@ -11,15 +11,15 @@ fn octet_count(bs: List<UInt8>) -> Int {
 }
 
 fn mint_base64url_credential(byte_count: Int) -> String {
-  base64_encode(octets: random_bytes(count: byte_count), variant: UrlSafe)
+  base64_encode(octets: Entropy.ReadBytes(count: byte_count).octets, variant: UrlSafe)
 }
 
 test fn random_bytes_count_holds() -> Bool {
-  octet_count(bs: random_bytes(count: 16)) == 16
+  octet_count(bs: Entropy.ReadBytes(count: 16).octets) == 16
 }
 
 test fn random_bytes_zero_holds() -> Bool {
-  octet_count(bs: random_bytes(count: 0)) == 0
+  octet_count(bs: Entropy.ReadBytes(count: 0).octets) == 0
 }
 
 test fn random_bytes_base64url_mint_16_length_holds() -> Bool {
@@ -28,4 +28,8 @@ test fn random_bytes_base64url_mint_16_length_holds() -> Bool {
 
 test fn random_bytes_base64url_mint_20_length_holds() -> Bool {
   string_length(mint_base64url_credential(byte_count: 20)) == 28
+}
+
+test fn random_bytes_distinct_holds() -> Bool {
+  Entropy.ReadBytes(count: 16).octets != Entropy.ReadBytes(count: 16).octets
 }
