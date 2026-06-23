@@ -74,9 +74,10 @@ derives a real decision from it **and** an actuator enforces actual ≤ authored
 
 **consumer-0 — instantiate the real fleet tree.** Author the srv1 budget tree as a `data` instance
 (root = host RAM ~125 GiB → fixed overhead → R concurrent runs → per-run rustc `N` / `.dag`-floor
-spawn-width) with appropriations set from **measured** peaks (#5574 leaf-cgroup: per-run ~24 GiB
-pessimistic, host ~125 GiB), not guesses. Each consumer **imports** its parent allocation
-(divide-once); none re-divides host RAM. neat-dove owns the seam spec.
+spawn-width) with appropriations set from **measured** peaks, not guesses (see §7 for the B5 measured
+numbers — the per-run reservation is the B4-measured ~11.6 GiB whole-run cgroup peak @ width 4 + margin,
+NOT a `totalMem / R` divide and NOT the old ~24 GiB pessimistic guess). Each consumer **imports** its
+parent allocation (divide-once); none re-divides host RAM. neat-dove owns the seam spec.
 
 **Track A — `.dag`-floor spawn-width (in-tree, no fenced apply).** Convert
 `std.realization_width.memory_aware_spawn_width` to take its memory budget from the tree's L2
@@ -94,3 +95,52 @@ srv1 runners (live-fleet apply, fenced). Until one lands, `R` stays conservative
 (`realization_width`, complexity `EffortBudget`) collapse onto `extdeps.accounting.budget`; the
 roadmap then re-homes #5444 / #5559 / #5546 as edge-children of `1-budget-tree` (reflecting reality,
 not aspiration).
+
+## 7. B5 — two-pool split + two-number floor-runner leaf (#5618)
+
+The original consumer-0 tree (§6) gave a single run-pool **all** of `host_ram − fixed_overhead`. That
+is wrong on a host that also runs the dashboard agent sessions: the runner pool and the dashboard
+sessions co-reside and over-commit the host together. B5 makes the co-tenancy structural.
+
+**Two-pool split (divide-once).** `host_ram` is divided **once** into three siblings:
+`fixed_overhead` (a `Guaranteed` claim) · `gha_runner_pool` · `dashboard_session_pool`. Conservation
+is structural (`node_conserves` recurses): `fixed_overhead + gha_runner_pool + dashboard_session_pool ≤
+host_ram`. The runner pool is now the **derived remainder** (the cap):
+`gha_runner_pool = host_ram − fixed_overhead − dashboard_session_pool` (saturating, so an
+over-large dashboard reservation fails closed to a zero runner pool — the tree then refuses to conserve
+rather than silently over-commit). `dashboard_session_pool = per_container_cap × concurrency`
+(measured per-session cgroup `memory.max` = ~31.27 GiB; interim concurrency = 2). deep-otter-528 **reads**
+`srv1_dashboard_session_pool_budget()` to drive dashboard admission; this session is the **single author**
+of the file, deep-otter does not edit it.
+
+**Two numbers, two roles (the floor-runner leaf).** The `ci_run` leaf carries the per-run memory profile
+in two distinct fields — the k8s request-vs-limit shape — and deep-otter derives a different consumer
+from each:
+
+- **run-pool RESERVATION** = `srv1_ci_run_reservation()` = *typical* whole-run peak + margin
+  (B4-measured ~11.6 GiB @ width 4, × 6/5 ≈ 13.92 GiB). This is the bin-packing "request": the `ci_run`
+  leaf appropriation, what `R = floor(gha_runner_pool / reservation)` (`measure_fit_count_floor`) is
+  derived from, and what the `.dag`-floor spawn-width reads (`srv1_floor_memory_budget()`). deep-otter
+  derives the **run-pool reservation** from this.
+- **per-container HARD CAP** = `srv1_ci_run_container_hard_cap()` = *worst-observed-max* peak + margin
+  (interim ~24 GiB × 6/5 ≈ 28.8 GiB). This is the OOM-kill "limit": sizing it off the typical 11.6 would
+  OOM-kill legitimate jobs that spike to their worst peak. deep-otter derives the **per-container cap**
+  from this. The two are never collapsed (`reservation < hard_cap`, a witnessed invariant).
+
+**Construction-first, not validation.** `R` is *derived* from the pool ÷ reservation, so an over-wide
+run count is unwritable (it cannot exceed what the pool floor-divides to); the leaf appropriation is the
+*measured* peak + margin, so the floor's spawn-width is governed by a real number, not a `totalMem / R`
+guess. Conservation across the three siblings is the residue lens (`node_conserves`) over the
+constructed tree.
+
+**Interim values — coordinate with B4 (quick-lynx-78) before freezing.** typical = 11.6 GiB and
+worst-max = 24 GiB are interim. B4 is landing a §2 dedup that drops the peak further (projected
+self 8.7→4.2) and is handing over **both** the verified worst-max and typical cgroup numbers; refine the
+two carriers in `dsl/gunbc/ci_floor_measurement.dag` (`gunbc_ci_floor_measured_peak`,
+`gunbc_ci_floor_runner_worst_max`) to B4's verified figures + margin when they land. The margin is a
+single knob (`gunbc_ci_floor_runner_margin_num/den`, currently 6/5 = 20%).
+
+Carriers: [dsl/gunbc/ci_budget_tree.dag](../../dsl/gunbc/ci_budget_tree.dag) (the two-pool tree +
+two-number leaf accessors), [dsl/gunbc/ci_floor_measurement.dag](../../dsl/gunbc/ci_floor_measurement.dag)
+(the measured carriers), witness
+[dsl/test/claim/ci_budget_tree_witness_test.dag](../../dsl/test/claim/ci_budget_tree_witness_test.dag).

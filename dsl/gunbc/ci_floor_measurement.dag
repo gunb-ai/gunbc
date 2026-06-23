@@ -8,13 +8,26 @@ import std.realization_measurement {
 }
 
 data gunbc_ci_floor_measured_peak: ConcurrentMemoryPeakSample = ConcurrentMemoryPeakSample {
-  peak: byte_size(8400113664)
+  peak: byte_size(12455405158)
   concurrency: 4
 }
 
 fn gunbc_ci_floor_per_shard_peak_rss_bytes() -> ByteSize {
   concurrent_memory_peak_per_share(sample: gunbc_ci_floor_measured_peak)
 }
+
+fn gunbc_ci_floor_whole_run_peak_rss_bytes() -> ByteSize {
+  gunbc_ci_floor_measured_peak.peak
+}
+
+type FloorRunnerWorstMax
+  = FloorRunnerWorstMaxMeasured { bytes: ByteSize }
+  | FloorRunnerWorstMaxUnmeasured
+
+data gunbc_ci_floor_runner_worst_max: FloorRunnerWorstMax = FloorRunnerWorstMaxMeasured { bytes: byte_size(25769803776) }
+
+data gunbc_ci_floor_runner_margin_num: Int = 6
+data gunbc_ci_floor_runner_margin_den: Int = 5
 
 data gunbc_ci_floor_conservative_fallback_width: Int = 4
 
@@ -42,8 +55,7 @@ type DashboardSessionReservation
   = DashboardSessionReservationMeasured { per_container_cap: ByteSize, concurrency: Int }
   | DashboardSessionReservationUnmeasured
 
-data gunbc_ci_dashboard_session_reservation: DashboardSessionReservation =
-  DashboardSessionReservationMeasured { per_container_cap: byte_size(33578549248), concurrency: 2 }
+data gunbc_ci_dashboard_session_reservation: DashboardSessionReservation = DashboardSessionReservationMeasured { per_container_cap: byte_size(33578549248), concurrency: 2 }
 
 data gunbc_ci_concurrent_runs_conservative_high: Int = 10
 
