@@ -62,6 +62,12 @@ fn byte_size_saturating_sub(total: ByteSize, reserved: ByteSize) -> ByteSize {
   if total_bytes > reserved_bytes { byte_size(total_bytes - reserved_bytes) } else { byte_size(0) }
 }
 
+fn hardware_thread_count_saturating_sub(a: HardwareThreadCount, b: HardwareThreadCount) -> HardwareThreadCount {
+  let av = hardware_thread_count_value(t: a)
+  let bv = hardware_thread_count_value(t: b)
+  if av > bv { hardware_thread_count(count: av - bv) } else { hardware_thread_count(count: 0) }
+}
+
 fn memory_effective_budget(budget: ByteSize, reserved: ByteSize) -> ByteSize {
   byte_size_saturating_sub(total: budget_safety_fraction_apply(budget: budget), reserved: reserved)
 }

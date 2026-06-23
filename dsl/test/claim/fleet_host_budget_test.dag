@@ -170,6 +170,19 @@ fn witness_tokens_memory_bound_binds() -> Bool {
   tokens > 0 && tokens < 120
 }
 
+fn oversized_margin_cfg() -> CtrlJobserverConfig {
+  CtrlJobserverConfig {
+    margin: hardware_thread_count(count: 64),
+    mem_reserve: byte_size(8589934592),
+    mib_per_job: byte_size(1879048192),
+  }
+}
+
+fn witness_margin_exceeds_nproc_saturates() -> Bool {
+  let tokens = hardware_thread_count_value(t: derive_jobserver_tokens(nproc: hardware_thread_count(count: 8), mem_total: host_125gib(), cfg: oversized_margin_cfg()))
+  tokens == 0
+}
+
 fn witness_plan_derives_and_conserves() -> Bool {
   match full_plan(citation: fixture_citation(), runner: fixture_runner_measured(), session: fixture_session_measured(), policy: fitting_headroom(), oomd: OomdEnforced) {
     FleetHostPlanDerived { name: _, tree: t, runner_slice_cap: _, effective_build_tokens: tk, build_step: _ } =>
@@ -258,6 +271,7 @@ test fn fleet_model_holds() -> Bool {
     && witness_headroom_below_floor_unsound()
     && witness_headroom_at_or_above_floor_resolved()
     && witness_tokens_memory_bound_binds()
+    && witness_margin_exceeds_nproc_saturates()
     && witness_plan_derives_and_conserves()
     && witness_uncapped_build_pool_overcommits()
     && witness_capped_build_pool_positive_and_bounded()
