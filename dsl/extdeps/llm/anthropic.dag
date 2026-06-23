@@ -3,6 +3,7 @@ module extdeps.llm.anthropic
 import extdeps.llm.llm { llm_snake_wire_contract }
 import std.serialization { CoproductWireContract, VariantEncoding }
 import std.types { NonEmptyStr }
+import std.disposition { Disposition, Scaffold, Terminal, DeclLocator, SingleAuthority }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -130,13 +131,34 @@ type AnthropicToolResultBlock
     }
   | AnthropicToolReferenceBlock { tool_name: String }
 
-data structural_coverage_gap_anthropic_tool_result_nested_block_wire_payloads: List<String> = [
-  "closure:anthropic_tool_result_nested_wire_payload|AnthropicToolResultBlock.AnthropicTextBlock|missing:cache_control|missing:citations|sdk:https://raw.githubusercontent.com/anthropics/anthropic-sdk-python/main/src/anthropic/types/text_block_param.py|trigger:model TextBlockParam cache_control + citations structurally on nested tool_result text rows",
-  "closure:anthropic_tool_result_nested_wire_payload|AnthropicToolResultBlock.AnthropicImageBlock|missing:cache_control|sdk:https://raw.githubusercontent.com/anthropics/anthropic-sdk-python/main/src/anthropic/types/image_block_param.py|trigger:model ImageBlockParam cache_control on nested tool_result image rows",
-  "closure:anthropic_tool_result_nested_wire_payload|AnthropicToolResultBlock.AnthropicToolReferenceBlock|missing:cache_control|sdk:https://raw.githubusercontent.com/anthropics/anthropic-sdk-python/main/src/anthropic/types/tool_reference_block_param.py|trigger:model ToolReferenceBlockParam cache_control on nested tool_result tool_reference rows",
-  "closure:anthropic_tool_result_nested_wire_payload|AnthropicToolResultBlock|carrier:CacheControl|missing:ttl_literal_5m_1h|sdk:https://raw.githubusercontent.com/anthropics/anthropic-sdk-python/main/src/anthropic/types/cache_control_ephemeral_param.py|trigger:align nested-block CacheControlBreakpoint carrier with CacheControlEphemeralParam (ttl) wherever cache_control appears on tool_result nested arms",
-  "closure:anthropic_tool_result_nested_wire_payload|AnthropicToolResultBlock.AnthropicDocumentBlock|residue:plaintext_document_source_only|missing:non_text_document_sources|missing:title_context_citations_cache_control|spec:https://platform.claude.com/docs/en/build-with-claude/citations|trigger:model DocumentBlockParam document sources and citation-facing coordinates structurally",
-  "closure:anthropic_tool_result_nested_wire_payload|AnthropicToolResultBlock.AnthropicSearchResultBlock|external_spec_watch:search_result_block_optional_fields|trigger:citations.cache_control_shape_drift_or_additional_optional_keys_from_OpenAPI"
+data structural_coverage_gap_anthropic_tool_result_nested_block_wire_payloads: List<Disposition> = [
+  Scaffold {
+    dissolves_to: SingleAuthority,
+    bind: DeclLocator { module_path: Present { value: "extdeps.llm.anthropic" }, decl_name: "AnthropicTextBlock", field: Present { value: "cache_control" } }
+  },
+  Scaffold {
+    dissolves_to: SingleAuthority,
+    bind: DeclLocator { module_path: Present { value: "extdeps.llm.anthropic" }, decl_name: "AnthropicTextBlock", field: Present { value: "citations" } }
+  },
+  Scaffold {
+    dissolves_to: SingleAuthority,
+    bind: DeclLocator { module_path: Present { value: "extdeps.llm.anthropic" }, decl_name: "AnthropicImageBlock", field: Present { value: "cache_control" } }
+  },
+  Scaffold {
+    dissolves_to: SingleAuthority,
+    bind: DeclLocator { module_path: Present { value: "extdeps.llm.anthropic" }, decl_name: "AnthropicToolReferenceBlock", field: Present { value: "cache_control" } }
+  },
+  Scaffold {
+    dissolves_to: SingleAuthority,
+    bind: DeclLocator { module_path: Present { value: "extdeps.llm.anthropic" }, decl_name: "CacheControl", field: Present { value: "ttl" } }
+  },
+  Scaffold {
+    dissolves_to: SingleAuthority,
+    bind: DeclLocator { module_path: Present { value: "extdeps.llm.anthropic" }, decl_name: "AnthropicDocumentBlock", field: none }
+  },
+  Terminal {
+    reason: "external_spec_watch: AnthropicSearchResultBlock optional fields track upstream Anthropic OpenAPI; no local construction dissolves this, re-justified by advisory if upstream drifts"
+  }
 ]
 
 type AnthropicToolResultPlainTextDocumentSource {
