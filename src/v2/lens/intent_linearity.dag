@@ -10,7 +10,8 @@ import v2.std.logic { Bool }
 // Intent-linearity enforcer: a program's description should equal its irreducible information content
 // (minimal template + distinct data), recursively at every level -- intent 1:1 with its inputs. This is
 // the registry the redundancy lenses become ROWS of (so the enforcer is itself linear: one engine, N
-// rows, not a fork). Row 1 = the hand-unrolled fold; complexity cost-recurrence rules join later.
+// rows, not a fork). Row 1 = the hand-unrolled fold (change-time); Row 2 = the complexity cost-recurrence
+// catalog (run-time, v2.lens.complexity_rewrite) -- two axes, one engine.
 
 // The §1 time-axis a rule's minimal form reduces (change-time = §2 maintenance; run-time = §1 cost).
 type CostAxis = ChangeTime | RunTime
@@ -31,8 +32,24 @@ fn unroll_to_fold_rule() -> LinearityRule {
   }
 }
 
+// Row 2 — complexity-reducible (run-time). detect computes each statement's runtime cost (cost.dag's
+// fold_node over the AST) and fires when SOME statement's cost is reducible by a catalogued rewrite
+// (the §5 'O(n^2)->O(n)' rewrites) -- the run-time twin of Row 1: a chain whose cost recurrence is not
+// at its decidable minimum. Same engine, second axis (RunTime); minimal form = the lowered class.
+fn chain_has_rewritable_cost(steps: FreeMonoid<Node>) -> Bool {
+  any(xs: steps, predicate: fn(n) { cost_is_rewritable(c: symbolic_cost_of_node(n: n)) })
+}
+
+fn complexity_reducible_rule() -> LinearityRule {
+  LinearityRule {
+    name: ^complexity_reducible,
+    axis: RunTime,
+    detect: fn(s) { chain_has_rewritable_cost(steps: s) }
+  }
+}
+
 fn linearity_registry() -> FreeMonoid<LinearityRule> {
-  [ unroll_to_fold_rule() ]
+  [ unroll_to_fold_rule(), complexity_reducible_rule() ]
 }
 
 // typed projector (avoids field access on a fold lambda element)
@@ -77,7 +94,7 @@ fn body_is_linear(levels: FreeMonoid<FreeMonoid<Node>>) -> Bool {
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: WallAfterGrounding {
     grounding_authority: "the parse/resolve walk + chain projector decomposing a body into its per-level statement-chains (shared with v2.lens.simulated_relationship / v2.lens.structural_similarity)",
-    dissolve_on: "body_is_linear runs over live dsl/** bodies once the walk projects per-level chains; the registry grows by rows (complexity cost-recurrence rules join the change-time rows); until then this is a lens_unit over projected synthetic chains"
+    dissolve_on: "body_is_linear runs over live dsl/** bodies once the walk projects per-level chains; the registry grows by rows (the RunTime-axis complexity cost-recurrence row landed alongside the change-time row -- see v2.lens.complexity_rewrite); until then this is a lens_unit over projected synthetic chains"
   },
   rationale: "Intent-linearity is a wall up to the substrate's expressible abstraction (anti-unification computes the structural minimum) and a ratchet beyond it (global minimal description is Kolmogorov-uncomputable). The registry is the decidable wall-half; complexity.dag keeps the RatchetForever optimality residue. One engine, N rows (§2-horizontal)."
 }
