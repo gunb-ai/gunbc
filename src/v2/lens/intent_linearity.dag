@@ -15,29 +15,37 @@ import v2.std.logic { Bool }
 // The §1 time-axis a rule's minimal form reduces (change-time = §2 maintenance; run-time = §1 cost).
 type CostAxis = ChangeTime | RunTime
 
+// The BINDER: which representation the engine's anti-unification kernel walks for this row. The two
+// binders share one `congruent` engine but project different inputs -- a body's statement chain (the
+// fold's hole is a list element) vs a module's type-declaration forest (the hole is a type parameter).
+type Representation = TermChain | TypeForest
+
 type LinearityRule {
   name: Symbol
   axis: CostAxis
+  representation: Representation
   detect: fn(FreeMonoid<Node>) -> Bool
 }
 
-// Row 1 — the hand-unrolled fold (change-time). detect reuses simulated_relationship; minimal form = one
-// fold over the data the chain spells out by hand.
+// Row 1 — the hand-unrolled fold (term chain, change-time). detect reuses simulated_relationship;
+// minimal form = one fold over the data the chain spells out by hand.
 fn unroll_to_fold_rule() -> LinearityRule {
   LinearityRule {
     name: ^unroll_to_fold,
     axis: ChangeTime,
+    representation: TermChain,
     detect: fn(s) { chain_is_simulated(steps: s) }
   }
 }
 
-// Row 2 — duplicate TYPE declarations (change-time). detect reuses structural_similarity's type-decl
-// binder over the same `congruent` kernel; minimal form = one generic over the leaf that varies across
-// the congruent family (the §3 nickname / `Int8`..`Int128` collapse to one `Compose` axis).
+// Row 2 — duplicate TYPE declarations (type forest, change-time). detect reuses structural_similarity's
+// type-decl binder over the same `congruent` kernel; minimal form = one generic over the leaf that varies
+// across the congruent family (the §3 nickname / `Int8`..`Int128` collapse to one `Compose` axis).
 fn dup_type_to_generic_rule() -> LinearityRule {
   LinearityRule {
     name: ^dup_type_to_generic,
     axis: ChangeTime,
+    representation: TypeForest,
     detect: fn(s) { type_decls_anti_unify(decls: s) }
   }
 }
@@ -46,18 +54,40 @@ fn linearity_registry() -> FreeMonoid<LinearityRule> {
   [ unroll_to_fold_rule(), dup_type_to_generic_rule() ]
 }
 
+fn representation_eq(a: Representation, b: Representation) -> Bool {
+  match a {
+    TermChain => match b { TermChain => true  _ => false }
+    TypeForest => match b { TypeForest => true _ => false }
+  }
+}
+
 // typed projector (avoids field access on a fold lambda element)
 fn rule_fires(rule: LinearityRule, steps: FreeMonoid<Node>) -> Bool {
   rule.detect(steps)
 }
 
-// Is this chain non-linear at this level -- does ANY registry rule fire?
-fn chain_is_redundant(steps: FreeMonoid<Node>) -> Bool {
+// The engine: does ANY row BOUND TO `rep` fire on this input? Filtering by representation keeps each
+// binder's rows off the other binder's projection (a 2-decl congruent type pair is a nickname, but two
+// adjacent congruent statements are not yet a fold), so one registry serves both without contamination.
+fn input_is_redundant_for(rep: Representation, input: FreeMonoid<Node>) -> Bool {
   fold_list(
     xs: linearity_registry(),
     empty: false,
-    cons: fn(acc, rule) { acc || rule_fires(rule: rule, steps: steps) }
+    cons: fn(acc, rule) {
+      acc || (representation_eq(a: rule.representation, b: rep) && rule_fires(rule: rule, steps: input))
+    }
   )
+}
+
+// TERM binder — is this statement chain non-linear at this level (any TermChain row fires)?
+fn chain_is_redundant(steps: FreeMonoid<Node>) -> Bool {
+  input_is_redundant_for(rep: TermChain, input: steps)
+}
+
+// TYPE binder — does this module's type-declaration forest collapse to one generic (any TypeForest row
+// fires)? The same engine, the other binder.
+fn forest_is_redundant(decls: FreeMonoid<Node>) -> Bool {
+  input_is_redundant_for(rep: TypeForest, input: decls)
 }
 
 // Residual redundancy: a flagged chain of N statements collapses to 1 fold over N data, so it carries
