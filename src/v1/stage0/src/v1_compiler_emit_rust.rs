@@ -7239,9 +7239,7 @@ pub fn needs_box_wrapping(
                 if (coerce_primitive_type(RenderTarget::Rust, name.clone()) != name.clone()) {
                     break false;
                 } else {
-                    let __r = v1_rt::set_contains(&recursive_types, name.clone());
-                    eprintln!("DBGBOX leaf name={:?} in_recursive={} children={} card={:?}", name, __r, n.children.clone().len(), n.return_cardinality.clone());
-                    break __r;
+                    break v1_rt::set_contains(&recursive_types, name.clone());
                 }
             }
         } else {
