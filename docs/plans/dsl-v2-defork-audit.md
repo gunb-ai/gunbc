@@ -23,7 +23,7 @@ predicate classifies correctly. Reachability = BFS of all **351** `_test.dag` fl
 import closures testing whether `std.<b>` and `v2.std.<b>` co-occur in one closure (= the guard fires).
 
 | basename | shared type-names | structural verdict | floor co-occurrence | category | unify status |
-|---|---|---|---|---|---|
+| --- | --- | --- | --- | --- | --- |
 | **algebra** | 16 (13 differ; 3 byte-identical `Lattice`/`Magma`/`Ordering`) | same concept, divergent **encoding** (dsl flat records vs v2 compositional/coproduct) | **LIVE — 75 entries** | grounding (Root-A: v2 coproduct authority RULED 2026-06-22) | cant-unify-yet, **has path** (de-fork-resolved, not exempted) |
 | **nat** | 1 (`Nat`: `= CommutativeSemiring<Magnitude>` vs `= Zero \| Succ`) | same concept, divergent **model** | **LIVE — 4 entries** | grounding (#5428 numeric tower; escalated smart-ant-466) | cant-unify-yet, has path; BLOCKED + LAST |
 | **effects** | 3 (`EffectShape`/`KeySource`/`CreateCause`; `EffectShape` body re-modeled on a different axis) | divergent **axis** (operation-kind vs idempotency-class) | latent (0) | grounding | cant-unify-yet, has path (axis-authority decision) |
@@ -38,19 +38,19 @@ import closures testing whether `std.<b>` and `v2.std.<b>` co-occur in one closu
 {node,coercion} HOLDS.** Two scope refinements (strengthen, do not refute the ruling):
 
 1. **The {node,coercion} exemption is VACUOUS for the type-name guard.** node/coercion (and logic,
-   and now verification) share **zero** type names — only the *basename*. The guard keys on a shared
-   unqualified **type name** within one closure, so it never fires on them; their de-fork is a
-   *module-basename* rename (Route-C / v1-delete), a different surface. The guard needs no
-   {node,coercion} roster entry to land green — keeping it would be a dead (non-firing) exemption,
-   itself a §5 smell. Recommend marking the roster entry explicitly "Route-C basename, non-firing"
-   or dropping it from the guard model.
+and now verification) share **zero** type names — only the *basename*. The guard keys on a shared
+unqualified **type name** within one closure, so it never fires on them; their de-fork is a
+*module-basename* rename (Route-C / v1-delete), a different surface. The guard needs no
+{node,coercion} roster entry to land green — keeping it would be a dead (non-firing) exemption,
+itself a §5 smell. Recommend marking the roster entry explicitly "Route-C basename, non-firing"
+or dropping it from the guard model.
 2. **The guard's real lands-green gate is the grounding de-fork of the shared-type-name basenames**,
-   fronted by the LIVE pair `{algebra (75 floor entries), nat (4)}` — they silently fail-open today
-   (benign only because they shadow record-with-record, not the coproduct-variant-drop that broke
-   `verification` under A1), and a flag-ANY wall reds them on landing. `{effects, float, integer}`
-   are latent (no co-occurrence today) but re-arm risks (exactly how verification went latent→LIVE
-   under A1). So the wall lands-already-green only after `{algebra, nat}` (then the latent three)
-   de-fork — that sequence, not the {node,coercion} exemption, gates activation.
+fronted by the LIVE pair `{algebra (75 floor entries), nat (4)}` — they silently fail-open today
+(benign only because they shadow record-with-record, not the coproduct-variant-drop that broke
+`verification` under A1), and a flag-ANY wall reds them on landing. `{effects, float, integer}`
+are latent (no co-occurrence today) but re-arm risks (exactly how verification went latent→LIVE
+under A1). So the wall lands-already-green only after `{algebra, nat}` (then the latent three)
+de-fork — that sequence, not the {node,coercion} exemption, gates activation.
 
 ---
 
