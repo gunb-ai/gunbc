@@ -12,6 +12,8 @@ data conformance_entry: String = "src/v2/compiler/manual/coproduct_reflection_co
 
 data bogus_never_imported: String = "src/v2/std/__bogus_never_imported__.dag"
 
+data no_paths: FreeMonoid<String> = []
+
 fn string_eq(a: String, b: String) -> Bool {
   a == b
 }
@@ -31,7 +33,7 @@ fn declared_paths() -> FreeMonoid<String> {
 fn declared_without_entry() -> FreeMonoid<String> {
   fold_list(
     xs: declared_paths(),
-    empty: [],
+    empty: no_paths,
     cons: fn(acc, p) {
       if string_eq(a: p, b: conformance_entry) {
         acc
