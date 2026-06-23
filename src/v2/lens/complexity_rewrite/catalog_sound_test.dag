@@ -1,0 +1,31 @@
+module v2.test.lens_complexity_rewrite.catalog_sound
+
+import v2.lens.complexity_rewrite { ComplexityRewrite, catalog_is_sound, rewrite_strictly_lowers }
+import v2.lens.cost { ClassLinear, ClassPolynomial, polynomial_degree_two }
+import v2.std.logic { Bool }
+
+test fn catalog_is_sound_holds() -> Bool {
+  catalog_is_sound()
+}
+
+fn bogus_identity_rewrite() -> ComplexityRewrite {
+  ComplexityRewrite {
+    name: ^bogus_identity,
+    before: ClassLinear,
+    after: ClassLinear
+  }
+}
+test fn identity_rewrite_is_rejected() -> Bool {
+  !rewrite_strictly_lowers(r: bogus_identity_rewrite())
+}
+
+fn bogus_widening_rewrite() -> ComplexityRewrite {
+  ComplexityRewrite {
+    name: ^bogus_widening,
+    before: ClassLinear,
+    after: ClassPolynomial { degree: polynomial_degree_two() }
+  }
+}
+test fn widening_rewrite_is_rejected() -> Bool {
+  !rewrite_strictly_lowers(r: bogus_widening_rewrite())
+}
