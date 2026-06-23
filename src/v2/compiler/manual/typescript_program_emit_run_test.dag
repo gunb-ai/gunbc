@@ -1,0 +1,25 @@
+module v2.test.manual.typescript_program_emit_run
+
+import v2.std.diagnostic { Accepted, Rejected }
+import extdeps.communication.medium { Medium }
+import v2.test.manual.mvp1_typescript_add_translate { anchor_mvp1_ts_emit_accepts }
+import v2.test.manual.mvp1_typescript_record_task_translate { anchor_mvp1_ts_task_emit_accepts }
+
+fn ts_program_emit_add_source() -> String {
+  match anchor_mvp1_ts_emit_accepts() {
+    Accepted { value: source, diagnostics: _ } => source.carried
+    Rejected { diagnostics: _ } => "TS_ADD_EMIT_REJECTED"
+  }
+}
+
+fn ts_program_emit_record_source() -> String {
+  match anchor_mvp1_ts_task_emit_accepts() {
+    Accepted { value: source, diagnostics: _ } => source.carried
+    Rejected { diagnostics: _ } => "TS_RECORD_EMIT_REJECTED"
+  }
+}
+
+test fn ts_program_emit_sources_hold() -> Bool {
+  (ts_program_emit_add_source() == "function add(x: number, y: number): number { return x + y; }")
+    && (ts_program_emit_record_source() == "type Task = { id: TaskId, title: string, status: TaskStatus };")
+}
