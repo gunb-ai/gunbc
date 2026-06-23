@@ -1,7 +1,7 @@
 module extdeps.os.systemd
 
 import std.types { NonEmptyStr }
-import std.serialization { CoproductWireContract, StringVariant, KebabCase }
+import std.serialization { CoproductWireContract, StringVariant, SnakeCase }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -22,7 +22,7 @@ type SystemdUnitActiveState
 
 data systemd_unit_active_state_wire_contract: CoproductWireContract = {
   coproduct: "SystemdUnitActiveState",
-  encoding: StringVariant { naming: KebabCase }
+  encoding: StringVariant { naming: SnakeCase }
 }
 
 type SystemdUnitStatus {

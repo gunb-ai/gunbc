@@ -8,35 +8,23 @@ import extdeps.os.systemd {
   Failed,
 }
 
-test fn valid_active_unit {
-  let status: SystemdUnitStatus = SystemdUnitStatus {
+test fn systemd_witnesses() -> Bool {
+  let active_status = SystemdUnitStatus {
     name: "docker.service",
     active_state: Active,
   }
 
-  assert status.name != ""
-}
-
-test fn valid_inactive_unit {
-  let status: SystemdUnitStatus = SystemdUnitStatus {
+  let inactive_status = SystemdUnitStatus {
     name: "some.service",
     active_state: Inactive,
   }
 
-  assert status.name != ""
-}
-
-test fn valid_failed_unit {
-  let status: SystemdUnitStatus = SystemdUnitStatus {
+  let failed_status = SystemdUnitStatus {
     name: "failing.service",
     active_state: Failed,
   }
 
-  assert status.name != ""
-}
-
-test fn active_state_variants_exist {
-  let _active: SystemdUnitActiveState = Active
-  let _inactive: SystemdUnitActiveState = Inactive
-  let _failed: SystemdUnitActiveState = Failed
+  active_status.name != ""
+    && inactive_status.name != ""
+    && failed_status.name != ""
 }
