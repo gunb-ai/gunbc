@@ -3396,8 +3396,7 @@ pub fn extend_scoped_data_items_with_sidecar(
                     if import_is_all(imp.clone()) {
                         acc.clone()
                     } else {
-                        let import_path =
-                            authored_name_at(source_indices.clone(), imp.clone());
+                        let import_path = authored_name_at(source_indices.clone(), imp.clone());
                         import_specific_names_at(imp.clone(), source_indices.clone())
                             .iter()
                             .cloned()
@@ -3409,16 +3408,10 @@ pub fn extend_scoped_data_items_with_sidecar(
                                         Some(_) => inner.clone(),
                                         None => {
                                             let qualified = v1_rt::concat(
-                                                v1_rt::concat(
-                                                    import_path.clone(),
-                                                    ".".to_string(),
-                                                ),
+                                                v1_rt::concat(import_path.clone(), ".".to_string()),
                                                 imported_name.clone(),
                                             );
-                                            match v1_rt::map_get(
-                                                &data_items,
-                                                qualified.clone(),
-                                            ) {
+                                            match v1_rt::map_get(&data_items, qualified.clone()) {
                                                 Some(item) => insert_scoped_data_item(
                                                     inner.clone(),
                                                     imported_name.clone(),
@@ -3636,10 +3629,7 @@ pub fn emit_module_full(
             scope.type_env.clone().source_indices.clone(),
             module_index.clone(),
         );
-        let wire_context_items = v1_rt::concat(
-            typed_module.items.clone(),
-            sidecar_items.clone(),
-        );
+        let wire_context_items = v1_rt::concat(typed_module.items.clone(), sidecar_items.clone());
         let wire_context_imports = v1_rt::concat(
             module_import_items.clone(),
             contracts_imports_for_module(

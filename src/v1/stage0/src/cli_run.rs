@@ -2038,6 +2038,7 @@ struct SidecarPlacementRule {
     required_suffix: &'static str,
     decl_description: &'static str,
     scan: fn(&str) -> Vec<String>,
+    emit_discovery: bool,
 }
 
 const SIDECAR_PLACEMENT_RULES: &[SidecarPlacementRule] = &[
@@ -2045,12 +2046,14 @@ const SIDECAR_PLACEMENT_RULES: &[SidecarPlacementRule] = &[
         required_suffix: "_test.dag",
         decl_description: "`test`-marked decls",
         scan: scan_test_decl_names,
+        emit_discovery: true,
     },
     SidecarPlacementRule {
         required_suffix: "_contracts.dag",
         decl_description:
             "wire-contract decls (`CoproductWireContract` and `VariantEncoding` data items)",
         scan: scan_wire_contract_decl_names,
+        emit_discovery: false,
     },
 ];
 
@@ -2179,15 +2182,15 @@ pub fn discover_floor_corpus_rows(
                 if !names.is_empty() && !entry.ends_with(rule.required_suffix) {
                     sidecar_violations[i].push(entry.clone());
                 }
-            }
-            if entry.ends_with("_test.dag") {
-                for name in &rule_decls[0] {
-                    if seen.insert((entry.clone(), name.clone())) {
-                        rows.push(DiscoveryRow {
-                            label: name.clone(),
-                            entry: entry.clone(),
-                            function: name.clone(),
-                        });
+                if rule.emit_discovery && entry.ends_with(rule.required_suffix) {
+                    for name in names {
+                        if seen.insert((entry.clone(), name.clone())) {
+                            rows.push(DiscoveryRow {
+                                label: name.clone(),
+                                entry: entry.clone(),
+                                function: name.clone(),
+                            });
+                        }
                     }
                 }
             }

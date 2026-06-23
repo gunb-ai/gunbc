@@ -7,7 +7,7 @@ import std.serialization { VariantEncoding, StringVariant, VariantNaming, SnakeC
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
-    locator: "github.com/anthropics/anthropic-sdk-python/blob/main/src/anthropic/types/message_param.py"
+    locator: "github.com/gunb-ai/gunbc/tree/main/dsl/extdeps/llm"
   }
 }
 
