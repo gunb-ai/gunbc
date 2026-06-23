@@ -90,12 +90,12 @@ fn classify_failure_reason(reason: String) -> FloorFailureClass {
 
 type FloorOutcome
   = NoFailure
-  | Failure { class: FloorFailureClass }
+  | FloorFailed { class: FloorFailureClass }
 
 fn classify_floor_exit(e: ProcessExit) -> FloorOutcome {
   match e {
     ExitSuccess => NoFailure
-    ExitFailure { code: _, reason: r } => Failure { class: classify_failure_reason(reason: r) }
+    ExitFailure { code: _, reason: r } => FloorFailed { class: classify_failure_reason(reason: r) }
   }
 }
 
@@ -109,7 +109,7 @@ fn floor_failure_blocks_merge(c: FloorFailureClass) -> Bool {
 fn floor_outcome_blocks_merge(o: FloorOutcome) -> Bool {
   match o {
     NoFailure => false
-    Failure { class: c } => floor_failure_blocks_merge(c: c)
+    FloorFailed { class: c } => floor_failure_blocks_merge(c: c)
   }
 }
 
