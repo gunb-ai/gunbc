@@ -3947,14 +3947,18 @@ fn dispatch_rest(
         }
     };
 
-    if let Some(token) = &auth_token {
+    if let AuthResolution::Resolved {
+        ref header,
+        ref token,
+    } = auth
+    {
         if !token.is_empty() {
-            let header_val = if auth_header_name == "Authorization" {
+            let header_val = if header == "Authorization" {
                 format!("Bearer {}", token)
             } else {
                 token.clone()
             };
-            request = request.set(&auth_header_name, &header_val);
+            request = request.set(header, &header_val);
         }
     }
 
@@ -4004,19 +4008,20 @@ fn dispatch_rest(
     }
 }
 
-fn resolve_auth(
+pub fn resolve_auth(
     service_node: &Rc<Node>,
     _transport: &Rc<Node>,
     param_env: &Rc<Env>,
     si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
     ctx: &InterpContext,
-) -> (String, Option<String>) {
+) -> AuthResolution {
     let mut header_name = "Authorization".to_string();
     let mut env_var_name: Option<String> = None;
     // `auth_input: <field>` (§3): the token is an operation INPUT the caller supplies,
     // not ambient env. Resolve it from the per-call param env. Takes precedence over
     // `auth_source` (env var) when both are present.
     let mut input_field_name: Option<String> = None;
+    let mut auth_declared = false;
 
     for prop in service_node.properties.iter() {
         let name = field_init_node_name_at(prop.clone(), si.clone());
@@ -4024,6 +4029,7 @@ fn resolve_auth(
 
         match name.as_str() {
             "svc_auth" => {
+                auth_declared = true;
                 let scheme = authored_name_at(si.clone(), val_node.clone());
                 if scheme == "Bearer" {
                     header_name = "Authorization".to_string();
@@ -4042,6 +4048,7 @@ fn resolve_auth(
                 }
             }
             "svc_auth_input" => {
+                auth_declared = true;
                 // `auth_input: access_token` — the value node is the input field name (an identifier).
                 let field = authored_name_at(si.clone(), val_node.clone());
                 if !field.is_empty() {
@@ -4051,6 +4058,7 @@ fn resolve_auth(
                 }
             }
             "svc_auth_source" => {
+                auth_declared = true;
                 for child in val_node.children.iter() {
                     let field_name = field_init_node_name_at(child.clone(), si.clone());
                     if field_name == "name" {
@@ -4066,19 +4074,37 @@ fn resolve_auth(
         }
     }
 
+    if !auth_declared {
+        return AuthResolution::NoAuthDeclared;
+    }
+
     // §3: a caller-supplied input token wins over an ambient env var. Extract the String
     // payload explicitly (the token is a Secret = Value::Str) rather than relying on Display —
     // a non-string Value must NOT produce a stringified-debug Bearer header; fall through instead.
-    if let Some(field) = input_field_name {
-        if let Some(Value::Str(tok)) = param_env.lookup(ctx.sym(&field)) {
+    if let Some(ref field) = input_field_name {
+        if let Some(Value::Str(tok)) = param_env.lookup(ctx.sym(field)) {
             if !tok.is_empty() {
-                return (header_name, Some(tok.clone()));
+                return AuthResolution::Resolved {
+                    header: header_name,
+                    token: tok.clone(),
+                };
             }
         }
+        return AuthResolution::DeclaredButUnwired {
+            reason: format!("auth_input field '{}' resolved to no token", field),
+        };
     }
 
-    let token = env_var_name.and_then(|var| resolve_env_var_token(ctx, &var));
-    (header_name, token)
+    match env_var_name.and_then(|var| resolve_env_var_token(ctx, &var)) {
+        Some(tok) if !tok.is_empty() => AuthResolution::Resolved {
+            header: header_name,
+            token: tok,
+        },
+        _ => AuthResolution::DeclaredButUnwired {
+            reason: "auth declared but no token resolved (auth_source env var absent or empty)"
+                .to_string(),
+        },
+    }
 }
 
 fn extract_string_value(node: &Rc<Node>) -> Option<String> {
