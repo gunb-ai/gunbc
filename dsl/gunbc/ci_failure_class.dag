@@ -1,0 +1,74 @@
+module gunbc.ci_failure_class
+
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+
+type InfraSignature
+  = ResourceTemporarilyUnavailable
+  | ProcessSpawnFailure
+  | SccacheFatalError
+
+type FloorFailureClass
+  = Infra { signature: InfraSignature }
+  | Structural { reason: String }
+
+data infra_signatures: List<InfraSignature> = [
+  ResourceTemporarilyUnavailable,
+  ProcessSpawnFailure,
+  SccacheFatalError
+]
+
+fn infra_signature_match_substring(sig: InfraSignature) -> String {
+  match sig {
+    ResourceTemporarilyUnavailable => "Resource temporarily unavailable"
+    ProcessSpawnFailure => "failed to spawn"
+    SccacheFatalError => "sccache: encountered fatal error"
+  }
+}
+
+fn infra_signature_origin(sig: InfraSignature) -> String {
+  match sig {
+    ResourceTemporarilyUnavailable => "POSIX errno EAGAIN strerror; fork/clone under fleet memory+pid pressure"
+    ProcessSpawnFailure => "cargo/rustc child-process spawn failed under fleet pressure"
+    SccacheFatalError => "sccache compiler-cache server fatal error"
+  }
+}
+
+fn infra_retry_grep_alternation() -> String {
+  fold(infra_signatures, init: "", f: fn(acc, sig) {
+    let sub = infra_signature_match_substring(sig: sig)
+    if acc == "" { sub } else { concat(concat(acc, "|"), sub) }
+  })
+}
+
+fn reason_matches_infra_signature(reason: String, sig: InfraSignature) -> Bool {
+  string_contains(s: reason, pattern: infra_signature_match_substring(sig: sig))
+}
+
+fn classify_failure_reason(reason: String) -> FloorFailureClass {
+  fold(infra_signatures, init: Structural { reason: reason }, f: fn(acc, sig) {
+    match acc {
+      Infra { signature: _ } => acc
+      Structural { reason: r } =>
+        if reason_matches_infra_signature(reason: r, sig: sig) {
+          Infra { signature: sig }
+        } else {
+          acc
+        }
+    }
+  })
+}
+
+fn floor_failure_blocks_merge(c: FloorFailureClass) -> Bool {
+  match c {
+    Infra { signature: _ } => false
+    Structural { reason: _ } => true
+  }
+}
+
+fn floor_exit_blocks_merge(e: ProcessExit) -> Bool {
+  match e {
+    ExitSuccess => false
+    ExitFailure { code: _, reason: r } =>
+      floor_failure_blocks_merge(c: classify_failure_reason(reason: r))
+  }
+}
