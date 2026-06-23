@@ -67,6 +67,10 @@ fn ensure_discover_source_root_ingest_built() -> List<ShellStmt> {
   ensure_bin_built_and_verified(var_name: "DISCOVER_SOURCE_ROOT_INGEST", bin_name: "discover_source_root_ingest")
 }
 
+fn ensure_v2_whole_tree_parse_scan_built() -> List<ShellStmt> {
+  ensure_bin_built_and_verified(var_name: "V2_WHOLE_TREE_PARSE_SCAN", bin_name: "v2_whole_tree_parse_scan")
+}
+
 fn toolchain_provision_shell_exec(script: String) -> Bool {
   let result = shell.Exec.Run(script: script)
   result.success

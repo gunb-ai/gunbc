@@ -1,0 +1,98 @@
+module tools.v1_dag_parse_transport
+
+import extdeps.shell
+import gunbc.ci_layer_roots { witness_layer_roots }
+import std.logic { Bool }
+import extdeps.languages.bash.program {
+  ShellProgram, ShellStmt, ShellWord,
+  Command, If, WithRedir, Heredoc, Exit,
+  Lit, VarRef, Concat, CmdSubst,
+  StdoutAndStderrToNull,
+  lit, var_ref, command, assign, serialize_bash
+}
+import tools.host_prelude { ensure_v2_whole_tree_parse_scan_built }
+
+data v1_dag_scan_dir: String = "src/v1"
+
+data v1_dag_stage0_subpath_exclusion: String = "stage0"
+
+fn parse_scan_source_root_flags(extra_roots: List<String>) -> List<ShellWord> {
+  let base = fold(witness_layer_roots, init: [], f: (acc, r) => concat(acc, [lit(text: "--source-root"), lit(text: r)]))
+  fold(extra_roots, init: base, f: (acc, r) => concat(acc, [lit(text: "--source-root"), lit(text: r)]))
+}
+
+fn v1_dag_parse_scan_stmts(scan_dir: ShellWord, extra_roots: List<String>) -> List<ShellStmt> {
+  let root = var_ref(name: "ROOT")
+  let scanner = var_ref(name: "V2_WHOLE_TREE_PARSE_SCAN")
+  concat(ensure_v2_whole_tree_parse_scan_built(), [
+    command(words: [lit(text: "cd"), root]),
+    command(words: concat(
+      [scanner],
+      concat(
+        parse_scan_source_root_flags(extra_roots: extra_roots),
+        [
+          lit(text: "--scan-dir"), scan_dir,
+          lit(text: "--exclude-subpath"), lit(text: v1_dag_stage0_subpath_exclusion)
+        ]
+      )
+    ))
+  ])
+}
+
+fn v1_dag_parse_green_program() -> ShellProgram {
+  ShellProgram {
+    set_e: true,
+    statements: v1_dag_parse_scan_stmts(
+      scan_dir: lit(text: v1_dag_scan_dir),
+      extra_roots: [v1_dag_scan_dir]
+    )
+  }
+}
+
+data perturb_parse_red_source: String = "module v1.perturb.parse_red\ntype Foo {"
+
+fn v1_dag_parse_perturb_red_program() -> ShellProgram {
+  let root = var_ref(name: "ROOT")
+  let scanner = var_ref(name: "V2_WHOLE_TREE_PARSE_SCAN")
+  let tmp = var_ref(name: "TMP")
+  ShellProgram {
+    set_e: true,
+    statements: concat(ensure_v2_whole_tree_parse_scan_built(), [
+      command(words: [lit(text: "cd"), root]),
+      assign(name: "TMP", value: CmdSubst { body: command(words: [lit(text: "mktemp"), lit(text: "-d")]) }),
+      Heredoc {
+        path: Concat { parts: [tmp, lit(text: "/_perturb_parse_red.dag")] },
+        delimiter: "PERTURB",
+        body: perturb_parse_red_source
+      },
+      If {
+        cond: WithRedir {
+          stmt: command(words: concat(
+            [scanner],
+            concat(
+              parse_scan_source_root_flags(extra_roots: []),
+              [lit(text: "--source-root"), tmp, lit(text: "--scan-dir"), tmp]
+            )
+          )),
+          redir: StdoutAndStderrToNull
+        },
+        then: [
+          command(words: [lit(text: "rm"), lit(text: "-rf"), tmp]),
+          Exit { code: 1 }
+        ]
+      },
+      command(words: [lit(text: "rm"), lit(text: "-rf"), tmp]),
+      Exit { code: 0 }
+    ])
+  }
+}
+
+fn run_v1_dag_parse_green() -> Bool {
+  let result = shell.Exec.Run(script: serialize_bash(p: v1_dag_parse_green_program()))
+  result.success
+}
+
+fn run_v1_dag_parse_perturb_red_receipt() -> Bool {
+  let result = shell.Exec.Run(script: serialize_bash(p: v1_dag_parse_perturb_red_program()))
+  result.success
+}
