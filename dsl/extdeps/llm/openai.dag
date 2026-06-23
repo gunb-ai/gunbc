@@ -5,6 +5,7 @@ import std.serialization { CoproductWireContract, VariantEncoding }
 import std.types { NonEmptyStr }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import extdeps.coverage { CoverageClosureEntry, CoverageClosureFact }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -192,13 +193,40 @@ type OpenAiChatCompletion200Body {
   system_fingerprint: String?
 }
 
-data structural_coverage_gap_openai_chat_completion_200_residual: List<String> = [
-  "closure:openai_chat_completion_200_residual|OpenAiChatCompletion200Message|variant_pending:tool_calls|variant_pending:function_call|variant_pending:audio|variant_pending:non_string_content|variant_pending:refusal_without_content|trigger:model response content/tool/audio coproduct surface"
+data structural_coverage_gap_openai_chat_completion_200_residual: List<CoverageClosureEntry> = [
+  {
+    facts: [
+      Subject { path: "OpenAiChatCompletion200Message" },
+      VariantPending { variant: "tool_calls" },
+      VariantPending { variant: "function_call" },
+      VariantPending { variant: "audio" },
+      VariantPending { variant: "non_string_content" },
+      VariantPending { variant: "refusal_without_content" }
+    ],
+    trigger: "model response content/tool/audio coproduct surface"
+  }
 ]
 
-data structural_coverage_gap_openai_chat_message_additive_content_parts: List<String> = [
-  "closure:openai_chat_message_additive_content_parts|OpenAiChatMessagePart|missing:audio_input_part|missing:refusal_part|missing:file_or_custom_parts|trigger:OpenAI Chat Completions request content-part spec extension",
-  "closure:openai_chat_message_additive_tool_calls|ToolCall|missing:custom_tool_call|trigger:OpenAI Chat Completions custom tool-call payload carrier"
+data structural_coverage_gap_openai_chat_message_additive_content_parts: List<CoverageClosureEntry> = [
+  {
+    facts: [
+      Subject { path: "OpenAiChatMessagePart" },
+      Missing { item: "audio_input_part" },
+      Missing { item: "refusal_part" },
+      Missing { item: "file_or_custom_parts" }
+    ],
+    trigger: "OpenAI Chat Completions request content-part spec extension"
+  }
+]
+
+data structural_coverage_gap_openai_chat_message_additive_tool_calls: List<CoverageClosureEntry> = [
+  {
+    facts: [
+      Subject { path: "ToolCall" },
+      Missing { item: "custom_tool_call" }
+    ],
+    trigger: "OpenAI Chat Completions custom tool-call payload carrier"
+  }
 ]
 
 type OpenAiResponsesOutputContentType
@@ -237,15 +265,91 @@ fn openai_responses_output_item_type_label(kind: OpenAiResponsesOutputItemType) 
   }
 }
 
+type OpenAiResponsesStatus
+  = OpenAiResponsesStatusCompleted
+  | OpenAiResponsesStatusFailed
+  | OpenAiResponsesStatusInProgress
+  | OpenAiResponsesStatusIncomplete
+  | OpenAiResponsesStatusCancelled
+  | OpenAiResponsesStatusQueued
+  | OpenAiResponsesStatusOther { raw: NonEmptyStr }
+
+data openai_responses_status_completed_wire: String = "completed"
+data openai_responses_status_failed_wire: String = "failed"
+data openai_responses_status_in_progress_wire: String = "in_progress"
+data openai_responses_status_incomplete_wire: String = "incomplete"
+data openai_responses_status_cancelled_wire: String = "cancelled"
+data openai_responses_status_queued_wire: String = "queued"
+
+fn parse_openai_responses_status(raw: String) -> OpenAiResponsesStatus {
+  if raw == openai_responses_status_completed_wire { OpenAiResponsesStatusCompleted }
+  else if raw == openai_responses_status_failed_wire { OpenAiResponsesStatusFailed }
+  else if raw == openai_responses_status_in_progress_wire { OpenAiResponsesStatusInProgress }
+  else if raw == openai_responses_status_incomplete_wire { OpenAiResponsesStatusIncomplete }
+  else if raw == openai_responses_status_cancelled_wire { OpenAiResponsesStatusCancelled }
+  else if raw == openai_responses_status_queued_wire { OpenAiResponsesStatusQueued }
+  else { OpenAiResponsesStatusOther { raw: raw } }
+}
+
+fn openai_responses_status_label(kind: OpenAiResponsesStatus) -> String {
+  match kind {
+    OpenAiResponsesStatusCompleted => openai_responses_status_completed_wire
+    OpenAiResponsesStatusFailed => openai_responses_status_failed_wire
+    OpenAiResponsesStatusInProgress => openai_responses_status_in_progress_wire
+    OpenAiResponsesStatusIncomplete => openai_responses_status_incomplete_wire
+    OpenAiResponsesStatusCancelled => openai_responses_status_cancelled_wire
+    OpenAiResponsesStatusQueued => openai_responses_status_queued_wire
+    OpenAiResponsesStatusOther { raw: r } => r
+  }
+}
+
+type OpenAiResponsesOutputItemStatus
+  = OpenAiResponsesOutputItemInProgress
+  | OpenAiResponsesOutputItemCompleted
+  | OpenAiResponsesOutputItemIncomplete
+  | OpenAiResponsesOutputItemStatusOther { raw: NonEmptyStr }
+
+fn parse_openai_responses_output_item_status(raw: String) -> OpenAiResponsesOutputItemStatus {
+  if raw == openai_responses_status_in_progress_wire { OpenAiResponsesOutputItemInProgress }
+  else if raw == openai_responses_status_completed_wire { OpenAiResponsesOutputItemCompleted }
+  else if raw == openai_responses_status_incomplete_wire { OpenAiResponsesOutputItemIncomplete }
+  else { OpenAiResponsesOutputItemStatusOther { raw: raw } }
+}
+
+fn openai_responses_output_item_status_label(kind: OpenAiResponsesOutputItemStatus) -> String {
+  match kind {
+    OpenAiResponsesOutputItemInProgress => openai_responses_status_in_progress_wire
+    OpenAiResponsesOutputItemCompleted => openai_responses_status_completed_wire
+    OpenAiResponsesOutputItemIncomplete => openai_responses_status_incomplete_wire
+    OpenAiResponsesOutputItemStatusOther { raw: r } => r
+  }
+}
+
 type OpenAiResponses200OutputContent {
   type: OpenAiResponsesOutputContentType
   text: String
   annotations: List<OpenAiResponses200Annotation>?
 }
 
-data structural_coverage_gap_openai_responses_200_residual: List<String> = [
-  "closure:openai_responses_200_residual|OpenAiResponses200OutputContent|json_pending:logprobs|variant_pending:refusal|trigger:Responses output content coproduct surface",
-  "closure:openai_responses_200_residual|OpenAiResponses200OutputItem|variant_pending:tool_calls|variant_pending:reasoning|variant_pending:error|variant_pending:multimodal_output|trigger:Responses output item coproduct surface"
+data structural_coverage_gap_openai_responses_200_residual: List<CoverageClosureEntry> = [
+  {
+    facts: [
+      Subject { path: "OpenAiResponses200OutputContent" },
+      JsonPending { field: "logprobs" },
+      VariantPending { variant: "refusal" }
+    ],
+    trigger: "Responses output content coproduct surface"
+  },
+  {
+    facts: [
+      Subject { path: "OpenAiResponses200OutputItem" },
+      VariantPending { variant: "tool_calls" },
+      VariantPending { variant: "reasoning" },
+      VariantPending { variant: "error" },
+      VariantPending { variant: "multimodal_output" }
+    ],
+    trigger: "Responses output item coproduct surface"
+  }
 ]
 
 type OpenAiResponses200Annotation
@@ -257,7 +361,7 @@ type OpenAiResponses200Annotation
 type OpenAiResponses200OutputItem {
   id: String?
   type: OpenAiResponsesOutputItemType
-  status: String?
+  status: OpenAiResponsesOutputItemStatus?
   role: String?
   content: List<OpenAiResponses200OutputContent>
 }
@@ -282,7 +386,7 @@ type OpenAiResponses200Body {
   id: String
   object: String
   created_at: Int?
-  status: String?
+  status: OpenAiResponsesStatus?
   model: String
   output: List<OpenAiResponses200OutputItem>
   usage: OpenAiResponses200Usage
