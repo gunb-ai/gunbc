@@ -63,14 +63,9 @@ const INERT_CARRIER_ROSTER: &[&str] = &[
     "FloorWitnessRow", // src/v2/workflow/affected_set_floor_runner.dag — runner row; self-only.
     "FreeOutput", // dsl/extdeps/os/free.dag — host metrics shape; shadow lane, no workflow consumer yet.
     "GitCliReportedVersion", // dsl/extdeps/git/versioning.dag — git --version parse target; unwired.
-    "Kibibyte", // dsl/extdeps/os/proc_meminfo.dag — Measure<Memory,Kibi,Nat> alias; shadow lane, no workflow consumer yet.
-    "MemoryMetric", // dsl/extdeps/os/proc_meminfo.dag — /proc/meminfo key-value row; shadow lane, no workflow consumer yet.
-    "MemoryStats", // dsl/extdeps/os/free.dag — host free output memory block; shadow lane, no workflow consumer yet.
     "ProcMeminfo", // dsl/extdeps/os/proc_meminfo.dag — /proc/meminfo parsed shape; shadow lane, no workflow consumer yet.
     "ReactHookSite", // src/v2/extdeps/frameworks/react.dag — React hook-site model; unwired.
     "SecretValue", // dsl/std/types.dag — secret-string carrier; no redaction consumer wired.
-    "SwapStats", // dsl/extdeps/os/free.dag — host free output swap block; shadow lane, no workflow consumer yet.
-    "SystemdUnitActiveState", // dsl/extdeps/os/systemd.dag — systemctl is-active coproduct; shadow lane, no workflow consumer yet.
     "SystemdUnitStatus", // dsl/extdeps/os/systemd.dag — systemd unit status shape; shadow lane, no workflow consumer yet.
 ];
 
