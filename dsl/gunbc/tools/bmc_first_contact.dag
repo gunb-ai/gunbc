@@ -3,7 +3,7 @@ module gunbc.tools.bmc_first_contact
 import extdeps.shell
 import extdeps.bmc.http
 import extdeps.bmc.openbmc { openbmc_factory_login }
-import std.types { NonEmptyStr, String }
+import std.types { NonEmptyStr, String, Secret }
 import std.resources { Network }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 
@@ -14,7 +14,7 @@ func bmc_first_contact() -> ProcessExit
   resp = redfish.Http.GetSystem(
     bmc_host: host.value as NonEmptyStr,
     username: openbmc_factory_login.username,
-    password: openbmc_factory_login.published_password
+    password: openbmc_factory_login.published_password as Secret
   )
 
   return if resp.success { ExitSuccess } else { exit_failure(reason: resp.body) }
