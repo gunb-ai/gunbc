@@ -1,0 +1,68 @@
+module extdeps.storage.types
+
+import std.measure { ByteSize, Bandwidth }
+import std.types { Int, NonEmptyStr }
+import extdeps.vendor { Vendor }
+import extdeps.hardware { Hardware }
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "en.wikipedia.org/wiki/PCI_Express"
+  }
+}
+
+type PcieGeneration {
+  generation_number: Int
+
+  per_lane_transfer_rate_gtps: Int
+}
+
+data pcie_gen3: PcieGeneration = PcieGeneration {
+  generation_number: 3,
+  per_lane_transfer_rate_gtps: 8,
+}
+data pcie_gen4: PcieGeneration = PcieGeneration {
+  generation_number: 4,
+  per_lane_transfer_rate_gtps: 16,
+}
+data pcie_gen5: PcieGeneration = PcieGeneration {
+  generation_number: 5,
+  per_lane_transfer_rate_gtps: 32,
+}
+
+type PcieLink {
+  generation: PcieGeneration
+
+  lane_count: Int
+}
+
+fn pcie_link_raw_transfer_rate_gtps(link: PcieLink) -> Int {
+  link.generation.per_lane_transfer_rate_gtps * link.lane_count
+}
+
+type NvmeFormFactor =
+    M2_2230
+  | M2_2242
+  | M2_2260
+  | M2_2280
+  | M2_22110
+  | U2
+  | AddInCard
+
+type NvmeDeviceCatalogRow {
+  part_number: NonEmptyStr
+  manufacturer: Vendor<Hardware>
+
+  capacity_bytes: ByteSize
+
+  pcie_link: PcieLink
+
+  form_factor: NvmeFormFactor
+
+  sequential_read: Bandwidth
+  sequential_write: Bandwidth
+}

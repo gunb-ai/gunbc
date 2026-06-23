@@ -227,3 +227,13 @@ fn hardware_thread_count(count: Nat) -> HardwareThreadCount {
 fn hardware_thread_count_value(t: HardwareThreadCount) -> Nat {
   measure_count(t)
 }
+
+type Bandwidth = Measure<DataRate, One, Nat>
+
+fn bandwidth(count: Nat) -> Bandwidth {
+  Bandwidth { count: count }
+}
+
+fn bandwidth_count(b: Bandwidth) -> Nat {
+  measure_count(b)
+}

@@ -19,7 +19,6 @@ import std.float { Float }
 import std.measure {
   Measure,
   Time,
-  DataRate,
   Currency,
   Micro,
   One,
@@ -35,6 +34,7 @@ import std.measure {
   measure_scale_fraction_ceil,
   hertz,
   watt,
+  Bandwidth,
 }
 import std.currency { CurrencyCode }
 import std.verification { NanosecondDuration, nanosecond_duration, nanosecond_duration_count }
@@ -113,7 +113,6 @@ type ContainerRuntime = Docker | Podman | Gvisor | Ubicloud | GcloudRun
 type CostClass = OwnedMarginalZero | PerSecondBilled | Metered | DeveloperAttention
 type OomSignalClass = KillProcess | Throttle | ReportOnly
 
-type Bandwidth = Measure<DataRate, One, Nat>
 type Duration = Measure<Time, One, Nat>
 
 type MoneyMicros = MoneyAmount<Micro>
