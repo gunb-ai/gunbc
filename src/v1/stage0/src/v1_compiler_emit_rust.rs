@@ -2032,12 +2032,10 @@ pub fn coproduct_wire_contract_targets(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     match contract_item.body.clone() {
-        Some(body) => {
-            match coproduct_decl_ref_decl_name(body.clone(), source_indices) {
-                Some(target_name) => (target_name.clone() == coproduct_name),
-                None => false,
-            }
-        }
+        Some(body) => match coproduct_decl_ref_decl_name(body.clone(), source_indices) {
+            Some(target_name) => (target_name.clone() == coproduct_name),
+            None => false,
+        },
         None => false,
     }
 }
@@ -2171,34 +2169,32 @@ pub fn emit_coproduct_wire_contract_target_validation(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     match contract_item.body.clone() {
-        Some(body) => {
-            match coproduct_decl_ref_decl_name(body.clone(), source_indices) {
-                Some(target_name) => {
-                    if {
-                        let mut __found = false;
-                        for name in local_coproduct_names.iter().cloned() {
-                            if (name.clone() == target_name.clone()) {
-                                __found = true;
-                                break;
-                            }
+        Some(body) => match coproduct_decl_ref_decl_name(body.clone(), source_indices) {
+            Some(target_name) => {
+                if {
+                    let mut __found = false;
+                    for name in local_coproduct_names.iter().cloned() {
+                        if (name.clone() == target_name.clone()) {
+                            __found = true;
+                            break;
                         }
-                        __found
-                    } {
-                        "".to_string()
-                    } else {
-                        emit_rust_compile_error_item(v1_rt::concat(
-                            "CoproductWireContract target does not name a local coproduct: "
-                                .to_string(),
-                            target_name.clone(),
-                        ))
                     }
+                    __found
+                } {
+                    "".to_string()
+                } else {
+                    emit_rust_compile_error_item(v1_rt::concat(
+                        "CoproductWireContract target does not name a local coproduct: "
+                            .to_string(),
+                        target_name.clone(),
+                    ))
                 }
-                None => emit_rust_compile_error_item(
-                    "CoproductWireContract.coproduct must be a DeclarationRef with a string decl_name"
-                        .to_string(),
-                ),
             }
-        }
+            None => emit_rust_compile_error_item(
+                "CoproductWireContract.coproduct must be a DeclarationRef with a string decl_name"
+                    .to_string(),
+            ),
+        },
         None => emit_rust_compile_error_item(
             "CoproductWireContract row missing initializer body".to_string(),
         ),

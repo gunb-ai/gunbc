@@ -8188,9 +8188,10 @@ fn anthropic_request_coproduct_wire_contracts_emit_targeted_serde() {
 fn coproduct_wire_contract_target_must_name_local_coproduct() {
     let source = r#"module stale_coproduct_wire_contract
 import std.serialization { CoproductWireContract, VariantEncoding }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data stale_contract: CoproductWireContract = {
-  coproduct: "MissingEnum",
+  coproduct: DeclarationRef { module_path: "stale_coproduct_wire_contract", decl_name: "MissingEnum", field: WholeDeclaration },
   encoding: InternallyTaggedObject { tag_field: "type", naming: SnakeCase }
 }
 
@@ -8355,9 +8356,10 @@ type RealEnum
 fn coproduct_wire_contract_affix_policy_must_match_variant_names() {
     let source = r#"module bad_affix_coproduct_wire_contract
 import std.serialization { CoproductWireContract, VariantEncoding }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data bad_affix_contract: CoproductWireContract = {
-  coproduct: "RealEnum",
+  coproduct: DeclarationRef { module_path: "bad_affix_coproduct_wire_contract", decl_name: "RealEnum", field: WholeDeclaration },
   encoding: InternallyTaggedObject { tag_field: "type", naming: StripPrefixAndSnakeCase { prefix: "Usr" } }
 }
 
@@ -8383,9 +8385,10 @@ type RealEnum
 fn coproduct_wire_contract_string_variant_requires_unit_variants() {
     let source = r#"module fielded_string_variant_coproduct_wire_contract
 import std.serialization { CoproductWireContract, VariantEncoding }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data string_contract: CoproductWireContract = {
-  coproduct: "RealEnum",
+  coproduct: DeclarationRef { module_path: "fielded_string_variant_coproduct_wire_contract", decl_name: "RealEnum", field: WholeDeclaration },
   encoding: StringVariant { naming: SnakeCase }
 }
 
@@ -8415,9 +8418,10 @@ type RealEnum
 fn internally_tagged_coproduct_wire_contract_requires_literal_tag_field() {
     let source = r#"module malformed_internal_coproduct_wire_contract
 import std.serialization { CoproductWireContract, VariantEncoding }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data bad_internal_contract: CoproductWireContract = {
-  coproduct: "RealEnum",
+  coproduct: DeclarationRef { module_path: "malformed_internal_coproduct_wire_contract", decl_name: "RealEnum", field: WholeDeclaration },
   encoding: InternallyTaggedObject { naming: SnakeCase }
 }
 
@@ -8442,14 +8446,15 @@ type RealEnum
 fn coproduct_wire_contract_requires_declared_naming_fields() {
     let source = r#"module malformed_naming_coproduct_wire_contract
 import std.serialization { CoproductWireContract, VariantEncoding }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data missing_naming_contract: CoproductWireContract = {
-  coproduct: "MissingNamingEnum",
+  coproduct: DeclarationRef { module_path: "malformed_naming_coproduct_wire_contract", decl_name: "MissingNamingEnum", field: WholeDeclaration },
   encoding: InternallyTaggedObject { tag_field: "type" }
 }
 
 data missing_prefix_contract: CoproductWireContract = {
-  coproduct: "MissingPrefixEnum",
+  coproduct: DeclarationRef { module_path: "malformed_naming_coproduct_wire_contract", decl_name: "MissingPrefixEnum", field: WholeDeclaration },
   encoding: InternallyTaggedObject { tag_field: "type", naming: StripPrefixAndSnakeCase }
 }
 
