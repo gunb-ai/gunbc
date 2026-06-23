@@ -8,7 +8,7 @@ use v1_compiler::v1_interpreter::{self, Value};
 use crate::helpers::{resolve_imports_transitively_with_source_roots, workspace_root};
 
 fn v2_source_roots() -> Vec<std::path::PathBuf> {
-    vec![workspace_root().join("src/v2")]
+    crate::helpers::v2_layer_roots()
 }
 
 fn assert_resolved_no_hard_errors(result: &ResolvedPipelineResult) {
