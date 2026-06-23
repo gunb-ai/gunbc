@@ -9,7 +9,7 @@ import std.measure {
   measure_scale_fraction_floor, measure_fit_count_floor,
   HardwareThreadCount, hardware_thread_count,
 }
-import std.realization_width { byte_size_saturating_sub }
+import std.realization_width { byte_size_saturating_sub, cpu_cores_available }
 import std.realization { RealizedStep, Placement, LocalFilesystem, Materialization, Share }
 import std.effects { EffectShape, CreateEffect, CreateCause, CreateIfAbsent, KeySource, CompositeKey }
 import std.realization_schedule { CostAccount, CostBasis, Predicted }
@@ -153,7 +153,7 @@ fn fleet_host_budget_tree(
     children: [
       child_node(name: "runner_baseline", b: runner_baseline),
       child_node(name: "session_baseline", b: session_baseline),
-      child_node(name: "build_pool", b: build_pool),
+      child_node(name: "sccache_build_pool", b: build_pool),
       child_node(name: "headroom", b: headroom),
     ],
   }
