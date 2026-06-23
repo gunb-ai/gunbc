@@ -1,6 +1,6 @@
 module test.claim.rust_gates_ci_witness
 
-import tools.rust_gates_ci { gate_diag }
+import tools.rust_gates_ci { gate_diag, rust_gate_reason }
 
 fn w_diag_names_check() -> Bool {
   string_contains(
@@ -23,16 +23,29 @@ fn w_diag_includes_stderr() -> Bool {
   )
 }
 
-fn w_diag_check_name_in_header() -> Bool {
-  string_contains(
-    s: gate_diag(check: "cargo clippy --all-targets -- -D warnings", stdout: "", stderr: "error[E0...]: lint"),
-    pattern: "FAILED ==="
+fn w_quiet_on_passing_fmt() -> Bool {
+  let reason = rust_gate_reason(
+    fmt_success: true, fmt_stdout: "SENTINEL_SHOULD_NOT_APPEAR", fmt_stderr: "",
+    clippy_success: false, clippy_stdout: "", clippy_stderr: "some clippy error",
+    test_success: true, test_stdout: "", test_stderr: ""
   )
+  !string_contains(s: reason, pattern: "SENTINEL_SHOULD_NOT_APPEAR")
+}
+
+fn w_red_surfaces_nextest() -> Bool {
+  let reason = rust_gate_reason(
+    fmt_success: true, fmt_stdout: "", fmt_stderr: "",
+    clippy_success: true, clippy_stdout: "", clippy_stderr: "",
+    test_success: false, test_stdout: "", test_stderr: "FAILED test::x_failure"
+  )
+  string_contains(s: reason, pattern: "FAILED test::x_failure") &&
+  string_contains(s: reason, pattern: "cargo nextest run -p v1-compiler-tests")
 }
 
 test fn rust_gates_ci_witnesses() -> Bool {
   w_diag_names_check() &&
   w_diag_includes_stdout() &&
   w_diag_includes_stderr() &&
-  w_diag_check_name_in_header()
+  w_quiet_on_passing_fmt() &&
+  w_red_surfaces_nextest()
 }
