@@ -25,8 +25,6 @@ fn repeat_string_and_indent_text_semantics_via_interpreter() {
     let src = r#"module test.repeat_string_regression
 import std.render_repeat_string_bootstrap { repeat_string }
 fn repeat_string_returns_n_copies() -> String { repeat_string(s: "x", n: 3) }
-// Same shape as indent_text's pad + text, without string interpolation (interpreter
-// does not expand `"{pad}{text}"` templates yet).
 fn pads_then_text_like_indent() -> String {
   let pad = repeat_string(s: " ", n: 2)
   concat(pad, "a")

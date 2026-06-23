@@ -8,25 +8,6 @@ import v2.std.anti_unification {
 }
 import v2.std.logic { Bool }
 
-// §2 horizontal-redundancy detector. A "simulated relationship" is a chain of
-// statements/expressions that anti-unify to ONE template over varying data holes
-// -- i.e. a hand-unrolled fold: the relationship between elements is acted out in
-// control flow instead of declared as data + a catamorphism. Sibling of
-// v2.lens.structural_similarity (which targets duplicate *type declarations*, the
-// §3 nicknaming smell); this targets repetition *inside a body*.
-//
-// The detector is now DERIVED from the produced minimal form. The anti-unification
-// kernel (v2.std.anti_unification) generalizes the whole chain into a template Node
-// with ^HOLE leaves at every divergence, plus the per-element substitution list.
-// A chain is a simulated relationship iff that whole-chain generalization is a clean
-// fold: at least one hole, and every hole filled by leaf DATA across every element.
-// An internal (non-leaf) filling means the steps diverged in shape, not just data,
-// so it is a genuine variation -- not a fold -- and stays quiet.
-//
-// Semantics note vs the prior revision: this is whole-chain anti-unification (one
-// template common to ALL steps), replacing the earlier adjacent-pairwise congruence.
-// Whole-chain is the stricter, more correct notion; it agrees on every fixture.
-
 fn chain_is_simulated(steps: FreeMonoid<Node>) -> Bool {
   if length(xs: steps) < 3 {
     false
@@ -35,9 +16,6 @@ fn chain_is_simulated(steps: FreeMonoid<Node>) -> Bool {
   }
 }
 
-// `< 3` steps is not yet a relationship. Otherwise: the produced template must hold
-// real variance (>=1 hole) and that variance must be pure leaf data (no structural
-// divergence). Zero holes is pure copy-paste duplication -- a different smell.
 fn chain_generalization_is_fold(g: ChainGeneralization) -> Bool {
   template_has_hole(template: g.template)
     && fillings_all_leaves(per_element: g.per_element)

@@ -11,23 +11,6 @@ import v2.std.algebra {
 import v2.std.exact_structural_equality_zip_fold_predicate { exact_structural_equality_zip_fold }
 import v2.std.logic { Bool }
 
-// Anti-unification (least-general generalization) over Node trees -- the shared
-// structural kernel. Given any two Nodes it produces the most specific common
-// TEMPLATE: a Node identical to both wherever they agree, carrying a ^HOLE leaf at
-// every position where they diverge. This is the *produce* half of the program's
-// generalization engine; `extract_fillings` reads back what each input put at each
-// hole. Both are DOMAIN-AGNOSTIC over Node -- a statement chain and a type-decl
-// forest anti-unify by the same rules; only the BINDER (which Nodes are the peers
-// to generalize) differs, and that lives at the caller, never in this kernel.
-//
-// "Minimal form" = standard LGG: it always succeeds. A structural divergence
-// (leaf-vs-leaf differ, leaf-vs-internal, or kind/arity/label mismatch) does not
-// fail -- it becomes a hole. Whether the resulting generalization is a *clean fold*
-// (every hole filled by leaf data, no structural variance) is a separate question
-// the consumer answers via `fillings_all_leaves` over the produced fillings.
-
-// The generalization-variable marker: a template carries this atom as a leaf at
-// each divergence point.
 data anti_unification_hole_symbol: Symbol = ^HOLE
 
 fn hole_kind() -> NodeKind {
@@ -44,8 +27,6 @@ fn is_leaf(n: Node) -> Bool {
   is_empty(xs: n.children)
 }
 
-// Two internal nodes line up iff same kind and a positionwise label match of equal
-// arity (zip_eq is false on a length mismatch, so it carries the arity check too).
 fn edge_labels_eq(ea: Edge, eb: Edge) -> Bool {
   ea.label == eb.label
 }
@@ -54,8 +35,6 @@ fn children_aligned(a: Node, b: Node) -> Bool {
     && zip_eq(a: a.children, b: b.children, eq: fn(ea, eb) { edge_labels_eq(ea: ea, eb: eb) })
 }
 
-// Edge-level recursion: the kernel matches the v2 "no field on a lambda element"
-// weakness by doing the field access in a typed fn, never in the lambda body.
 fn anti_unify_edge(ea: Edge, eb: Edge) -> Edge {
   Edge { label: ea.label, target: anti_unify(a: ea.target, b: eb.target) }
 }
@@ -63,9 +42,6 @@ fn anti_unify_children(a: FreeMonoid<Edge>, b: FreeMonoid<Edge>) -> FreeMonoid<E
   zip_map(a: a, b: b, f: fn(ea, eb) { anti_unify_edge(ea: ea, eb: eb) })
 }
 
-// The kernel. A ^HOLE on either side already generalizes anything, so it stays a
-// hole (this is what lets chain folding re-anti-unify a running template). Equal
-// leaves are kept (provenance-stripped); every divergence collapses to a hole.
 fn anti_unify(a: Node, b: Node) -> Node {
   if is_hole(a) {
     hole_node()
@@ -98,10 +74,6 @@ fn anti_unify(a: Node, b: Node) -> Node {
   }
 }
 
-// Read the substitution one element put into a template: walk template+element in
-// lockstep; at each ^HOLE emit the element's subtree, elsewhere recurse and flatten
-// (left-to-right template order). The template generalizes the element, so non-hole
-// positions align by construction.
 fn extract_fillings_edge(te: Edge, ee: Edge) -> FreeMonoid<Node> {
   extract_fillings(template: te.target, element: ee.target)
 }
@@ -121,10 +93,6 @@ fn extract_fillings(template: Node, element: Node) -> FreeMonoid<Node> {
   }
 }
 
-// ── chain binder ────────────────────────────────────────────────────────────────
-// One list-shaped use of the kernel: the common template of a whole sequence + the
-// per-element fillings. (The type-decl-forest binder is a sibling caller that reuses
-// anti_unify/extract_fillings the same way over a different element set.)
 type ChainGeneralization {
   template: Node
   per_element: FreeMonoid<FreeMonoid<Node>>
@@ -155,15 +123,10 @@ fn anti_unify_chain(steps: FreeMonoid<Node>) -> ChainGeneralization {
   chain_generalization_for(template: chain_template(steps: steps), steps: steps)
 }
 
-// ── produced-form predicates (consumer-side judgments over a generalization) ──────
 fn template_has_hole(template: Node) -> Bool {
   any(xs: node_subtree_nodes(root: template), predicate: fn(n) { is_hole(n) })
 }
 
-// Every hole was filled by leaf data across every element: the generalization is a
-// clean data fold, not structural variance. (A hole arises at an internal position
-// only when shapes could not be aligned, so an internal filling = structural
-// divergence; aligned internals recurse and never become a hole.)
 fn fillings_all_leaves(per_element: FreeMonoid<FreeMonoid<Node>>) -> Bool {
   for_all(
     xs: per_element,

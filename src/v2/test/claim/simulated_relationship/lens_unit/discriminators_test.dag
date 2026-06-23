@@ -14,7 +14,6 @@ import v2.std.algebra { FreeMonoid, zip_eq }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 
-// ── synthetic Node constructors (no live parse/resolve walk needed) ────────────
 fn atom(id: Symbol) -> Node {
   node_synthetic(kind: TypeNode { connective: Atom { identity: id } }, children: [])
 }
@@ -38,60 +37,41 @@ fn conj3(a: Node, b: Node, c: Node) -> Node {
   )
 }
 
-// ── RED: hand-unrolled folds (must flag) ───────────────────────────────────────
-
-// ci_gates.dag: `let gN = if exit_ok(g{N-1}) { run(GateN) } else { g{N-1} }`.
-// Two stable holes per step: the gate atom + the accumulator reference.
 data red_gate_chain: List<Node> = [
   conj3(a: atom(id: ^run), b: atom(id: ^gate_rust),  c: atom(id: ^acc0)),
   conj3(a: atom(id: ^run), b: atom(id: ^gate_emit),  c: atom(id: ^acc1)),
   conj3(a: atom(id: ^run), b: atom(id: ^gate_layer), c: atom(id: ^acc2))
 ]
 
-// compute_fabric.dag: `skip(n:K).first() == DemandK`, K = 0,1,2. Structurally
-// IDENTICAL to ci_runner_seam's `ls.first()==.. && skip(1).first()==..` which the
-// survey-agent excused as a "negative control" because its values were distinct.
-// Distinct values are the POINT of a fold, not an exemption -> this is also RED.
 data red_positional_typecheck: List<Node> = [
   conj3(a: atom(id: ^eq), b: atom(id: ^skip0), c: atom(id: ^demand_isolation)),
   conj3(a: atom(id: ^eq), b: atom(id: ^skip1), c: atom(id: ^demand_cpu)),
   conj3(a: atom(id: ^eq), b: atom(id: ^skip2), c: atom(id: ^demand_memory))
 ]
 
-// ── GREEN: genuine chains (must NOT flag) ──────────────────────────────────────
-
-// build_artifact_verification: is_if / is_assign / is_loop applied at positions
-// whose accessor SHAPE also differs (.first() vs .skip(1).first()). The operation
-// itself varies -> anti-unification diverges -> not a fold.
 data green_divergent_op: List<Node> = [
   conj2(a: atom(id: ^is_if),     b: atom(id: ^stmt_first)),
   conj2(a: atom(id: ^is_assign), b: conj2(a: atom(id: ^skip), b: atom(id: ^stmt_first))),
   conj2(a: atom(id: ^is_loop),   b: conj2(a: atom(id: ^skip), b: atom(id: ^stmt_first)))
 ]
 
-// pep440 test: same function, but each argument is a structurally different value
-// (a nullary call vs a record literal) -> shape divergence, distinct facts.
 data green_distinct_input: List<Node> = [
   conj2(a: atom(id: ^label), b: atom(id: ^v_nullary)),
   conj2(a: atom(id: ^label), b: conj2(a: atom(id: ^record_ctor), b: atom(id: ^field_a))),
   conj2(a: atom(id: ^label), b: conj2(a: atom(id: ^record_ctor), b: atom(id: ^field_b)))
 ]
 
-// Two steps is not yet a relationship.
 data green_too_short: List<Node> = [
   conj3(a: atom(id: ^run), b: atom(id: ^gate_rust), c: atom(id: ^acc0)),
   conj3(a: atom(id: ^run), b: atom(id: ^gate_emit), c: atom(id: ^acc1))
 ]
 
-// Zero variance: pure copy-paste duplication, a different smell (not an un-modeled
-// fold over varying data). This lens stays quiet; a duplication lens would fire.
 data green_pure_duplication: List<Node> = [
   conj2(a: atom(id: ^x), b: atom(id: ^y)),
   conj2(a: atom(id: ^x), b: atom(id: ^y)),
   conj2(a: atom(id: ^x), b: atom(id: ^y))
 ]
 
-// ── witnesses ──────────────────────────────────────────────────────────────────
 test fn gate_chain_is_simulated() -> Bool {
   chain_is_simulated(steps: red_gate_chain)
 }
@@ -111,12 +91,6 @@ test fn pure_duplication_is_not_simulated() -> Bool {
   !chain_is_simulated(steps: green_pure_duplication)
 }
 
-// ── DISCRIMINATING produced-form witnesses ──────────────────────────────────────
-// The booleans above could pass on a wrong generalization (e.g. the kernel holing
-// the wrong slot). These pin the PRODUCED minimal form itself: the exact template
-// Node and the exact per-element substitution list. They go red if anti_unify holes
-// the wrong position, keeps a differing leaf, drops a filling, or mis-orders them.
-
 fn node_eq(a: Node, b: Node) -> Bool {
   exact_structural_equality_zip_fold(source_facts: a, candidate: b)
 }
@@ -130,12 +104,9 @@ fn per_element_eq(
   zip_eq(a: a, b: b, eq: fn(x, y) { fillings_eq(a: x, b: y) })
 }
 
-// red_gate_chain anti-unifies to conj3(run, ^HOLE, ^HOLE): position 0 (`run`) is
-// common and kept; positions 1 and 2 vary by leaf data and become holes.
 fn expected_gate_template() -> Node {
   conj3(a: atom(id: ^run), b: hole_node(), c: hole_node())
 }
-// Per element, the substitution at each hole in template order: [gateN, accN].
 data expected_gate_fillings: List<List<Node>> = [
   [atom(id: ^gate_rust),  atom(id: ^acc0)],
   [atom(id: ^gate_emit),  atom(id: ^acc1)],
@@ -152,18 +123,12 @@ test fn gate_fillings_are_the_substitution_list() -> Bool {
   )
 }
 
-// Structural divergence is faithfully recorded: green_divergent_op holes position 1
-// where the fillings are an atom in step 0 but a conj2 in steps 1-2, so the produced
-// fillings are NOT all leaves -- this is exactly why the boolean stays quiet.
 test fn divergent_op_fillings_are_not_all_leaves() -> Bool {
   !fillings_all_leaves(per_element: anti_unify_chain(steps: green_divergent_op).per_element)
 }
-// ...and the structure that varies still produces a hole (so the quiet verdict is
-// "has variance but it is structural", not "no variance at all").
 test fn divergent_op_template_still_has_a_hole() -> Bool {
   template_has_hole(template: anti_unify_chain(steps: green_divergent_op).template)
 }
-// Pure duplication generalizes to a hole-free template: no variance to fold.
 test fn pure_duplication_template_has_no_hole() -> Bool {
   !template_has_hole(template: anti_unify_chain(steps: green_pure_duplication).template)
 }

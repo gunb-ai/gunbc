@@ -701,10 +701,6 @@ fn zip_eq<T>(
   }
 }
 
-// Pairing-zip: the constructive sibling of zip_eq. Walks two lists in lockstep,
-// applying f to each aligned pair; stops at the shorter list (no padding). The
-// FreeMonoid variant match stays inside algebra (the v2 cross-module generic
-// variant-pattern weakness), so structural walks elsewhere call this instead.
 fn zip_map<A, B, C>(
   a: FreeMonoid<A>,
   b: FreeMonoid<B>,
@@ -721,9 +717,6 @@ fn zip_map<A, B, C>(
   }
 }
 
-// Reduce a list with a binary combine, seeding from the first element; `fallback`
-// is returned only for the empty list (no identity element required). The variant
-// match stays inside algebra for the same reason as zip_map.
 fn reduce_or<T>(xs: FreeMonoid<T>, fallback: T, combine: fn(T, T) -> T) -> T {
   match xs {
     Empty => fallback
