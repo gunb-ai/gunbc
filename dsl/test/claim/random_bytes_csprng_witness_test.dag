@@ -7,7 +7,7 @@ import std.resources { Entropy }
 import extdeps.entropy
 import std.encoding { Base64Variant, Standard, UrlSafe, base64_encode, base64_decode }
 
-data urandom_decode_absent_unreachable: String = "🟡 SCAFFOLD — Absent arm in mint_base64url_credential is structurally dead: Urandom.ReadBytes fails-closed on nonzero exit (see exit clause), so octets_b64 is always valid standard base64; base64_decode Absent is unreachable. Dissolution trigger: native OS transport that mints octets directly removes the base64 round-trip and this arm."
+data urandom_decode_absent_unreachable: String = "🟡 SCAFFOLD — Absent arm in mint_base64url_credential is structurally dead: Urandom.ReadBytes fails-closed on nonzero exit (see exit clause), so octets_b64 is always valid standard base64; base64_decode Absent is unreachable. Owner: cool-lynx-690 (signed neat-boar-71 2026-06-23). Dissolution trigger: C-side production mint (neat-boar-71 orchestration lane) must fail-closed (exit_failure/typed error, never empty-string); that lane landing dissolves this arm by making the shell-decode round-trip unnecessary."
 
 fn getrandom_octets(count: Int) -> List<UInt8>? {
   base64_decode(s: Urandom.ReadBytes(count: count).octets_b64, variant: Standard)
