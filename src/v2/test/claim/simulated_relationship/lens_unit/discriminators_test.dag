@@ -6,6 +6,11 @@ import v2.std.node {
   NodeKind, TypeNode, Connective, Atom, Conj,
   Symbol, node_synthetic
 }
+import v2.std.anti_unification {
+  ChainGeneralization, anti_unify_chain, hole_node, fillings_all_leaves, template_has_hole
+}
+import v2.std.exact_structural_equality_zip_fold_predicate { exact_structural_equality_zip_fold }
+import v2.std.algebra { FreeMonoid, zip_eq }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 
@@ -32,7 +37,6 @@ fn conj3(a: Node, b: Node, c: Node) -> Node {
   )
 }
 
-
 data red_gate_chain: List<Node> = [
   conj3(a: atom(id: ^run), b: atom(id: ^gate_rust),  c: atom(id: ^acc0)),
   conj3(a: atom(id: ^run), b: atom(id: ^gate_emit),  c: atom(id: ^acc1)),
@@ -44,7 +48,6 @@ data red_positional_typecheck: List<Node> = [
   conj3(a: atom(id: ^eq), b: atom(id: ^skip1), c: atom(id: ^demand_cpu)),
   conj3(a: atom(id: ^eq), b: atom(id: ^skip2), c: atom(id: ^demand_memory))
 ]
-
 
 data green_divergent_op: List<Node> = [
   conj2(a: atom(id: ^is_if),     b: atom(id: ^stmt_first)),
@@ -86,4 +89,46 @@ test fn too_short_chain_is_not_simulated() -> Bool {
 }
 test fn pure_duplication_is_not_simulated() -> Bool {
   !chain_is_simulated(steps: green_pure_duplication)
+}
+
+fn node_eq(a: Node, b: Node) -> Bool {
+  exact_structural_equality_zip_fold(source_facts: a, candidate: b)
+}
+fn fillings_eq(a: FreeMonoid<Node>, b: FreeMonoid<Node>) -> Bool {
+  zip_eq(a: a, b: b, eq: fn(x, y) { node_eq(a: x, b: y) })
+}
+fn per_element_eq(
+  a: FreeMonoid<FreeMonoid<Node>>,
+  b: FreeMonoid<FreeMonoid<Node>>
+) -> Bool {
+  zip_eq(a: a, b: b, eq: fn(x, y) { fillings_eq(a: x, b: y) })
+}
+
+fn expected_gate_template() -> Node {
+  conj3(a: atom(id: ^run), b: hole_node(), c: hole_node())
+}
+data expected_gate_fillings: List<List<Node>> = [
+  [atom(id: ^gate_rust),  atom(id: ^acc0)],
+  [atom(id: ^gate_emit),  atom(id: ^acc1)],
+  [atom(id: ^gate_layer), atom(id: ^acc2)]
+]
+
+test fn gate_template_is_the_minimal_form() -> Bool {
+  node_eq(a: anti_unify_chain(steps: red_gate_chain).template, b: expected_gate_template())
+}
+test fn gate_fillings_are_the_substitution_list() -> Bool {
+  per_element_eq(
+    a: anti_unify_chain(steps: red_gate_chain).per_element,
+    b: expected_gate_fillings
+  )
+}
+
+test fn divergent_op_fillings_are_not_all_leaves() -> Bool {
+  !fillings_all_leaves(per_element: anti_unify_chain(steps: green_divergent_op).per_element)
+}
+test fn divergent_op_template_still_has_a_hole() -> Bool {
+  template_has_hole(template: anti_unify_chain(steps: green_divergent_op).template)
+}
+test fn pure_duplication_template_has_no_hole() -> Bool {
+  !template_has_hole(template: anti_unify_chain(steps: green_pure_duplication).template)
 }

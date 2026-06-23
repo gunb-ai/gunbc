@@ -1,5 +1,8 @@
 module extdeps.languages.dag.syntax
 
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
 import std.syntax {
   ItemForm, ItemFormKind, FuncForm, StructForm, EnumForm, TypeAliasForm, ModuleForm, OtherForm,
   BodyKind,
@@ -9,6 +12,13 @@ import std.syntax {
   BinOp, Add, Sub, Mul, Div, Mod,
   Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce,
   LiteralValue, LitBool, LitNull
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/gunb-ai/gunbc/tree/main/dsl/extdeps/languages/dag"
+  }
 }
 
 data dag_item_forms: List<ItemForm> = [

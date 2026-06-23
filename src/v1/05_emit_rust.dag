@@ -1470,7 +1470,7 @@ fn emit_lib_rs_from_files(all_module_files: List<TextFile>, has_compiler_tests: 
   )
 
   let hand_maintained_mods = if has_compiler_tests {
-    "\npub mod v1_interpreter;\npub mod cli_run;\npub mod rest_transport_facts;\npub mod wire_value_serialize;\npub mod coproduct_reflection;\npub mod resolved_graph_cache;\npub mod recorded_fixture;\npub mod cache_purity_oracle;\npub mod doc_reachability_project;\npub mod medium_structure_project;\npub mod extdeps_shape_transport_policy_project;\npub mod fact_cardinality_census;\npub mod import_resolution_project;\npub mod languages_consumer_census;\npub mod layering_imports_project;\npub mod module_path_index;\npub mod transport_script_position_project;"
+    "\npub mod v1_interpreter;\npub mod cli_run;\npub mod rest_transport_facts;\npub mod wire_value_serialize;\npub mod coproduct_reflection;\npub mod resolved_graph_cache;\npub mod recorded_fixture;\npub mod cache_purity_oracle;\npub mod corpus_lex;\npub mod doc_reachability_project;\npub mod inert_carrier_project;\npub mod medium_structure_project;\npub mod extdeps_shape_transport_policy_project;\npub mod fact_cardinality_census;\npub mod import_resolution_project;\npub mod languages_consumer_census;\npub mod non_fold_residue_project;\npub mod layering_imports_project;\npub mod module_path_index;\npub mod transport_script_position_project;"
   } else {
     ""
   }
@@ -1527,7 +1527,9 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
   let m = typed_module.module
   let scope = module_emit_scope(typed_module: typed_module)
   let scoped_data_items = build_scoped_data_item_index(typed_module: typed_module, data_items: data_items)
-  let prelude = emit_prelude()
+  let prelude_imported_names = module_imports(n: m)
+    |> flat_map(imp => import_specific_names_at(n: imp, source_indices: scope.type_env.source_indices))
+  let prelude = emit_prelude(imported_names: prelude_imported_names)
   let local_type_names = typed_module.items
     |> filter(item =>
       is_type_def_item(item: item)
@@ -2735,16 +2737,31 @@ fn emit_imports(imports: List<Node>, emit_info: EmitGraphInfo, registry: Map<Str
   }
 }
 
-fn emit_prelude() -> String {
-  let use_line = concat(
+fn emit_prelude(imported_names: List<String>) -> String {
+  let base = concat(
     "use std::collections::BTreeSet;\n",
     "use std::collections::HashMap;\n",
     "use std::rc::Rc;\n",
-    "use crate::v1_rt;\n",
-    "use crate::v1_rt::Witness;\n",
-    "use crate::v1_rt::Witness::\{Holds, Violates\};")
-  let wrapper_use = "use crate::NonEmptyVec;\nuse crate::NonEmptyBTreeSet;"
-  concat(use_line, "\n", wrapper_use)
+    "use crate::v1_rt;")
+  let has_witness = imported_names |> any(n => n == "Witness")
+  let has_holds = imported_names |> any(n => n == "Holds")
+  let has_violates = imported_names |> any(n => n == "Violates")
+  let witness_line = if has_witness || has_holds || has_violates {
+    ""
+  } else {
+    "\nuse crate::v1_rt::Witness;"
+  }
+  let variant_line = if has_holds && has_violates {
+    ""
+  } else if has_holds {
+    "\nuse crate::v1_rt::Witness::Violates;"
+  } else if has_violates {
+    "\nuse crate::v1_rt::Witness::Holds;"
+  } else {
+    "\nuse crate::v1_rt::Witness::\{Holds, Violates\};"
+  }
+  let wrapper_use = "\nuse crate::NonEmptyVec;\nuse crate::NonEmptyBTreeSet;"
+  concat(base, witness_line, variant_line, wrapper_use)
 }
 
 fn emit_non_empty_wrappers() -> String {

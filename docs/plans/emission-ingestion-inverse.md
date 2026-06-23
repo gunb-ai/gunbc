@@ -214,9 +214,10 @@ over the same grammar rows?* A row-driven emitter has an ingest that reads the *
 **provable by execution**; a hand-rolled emitter (inline literals) has **no shared-row ingest to
 round-trip against**, and that absence *is* the leak signal. So "is this a leak?" stops being the
 detector's necessarily-heuristic question ("does it grep target syntax?") and becomes a structural one
-("is there a round-trip over shared rows?"). The hand-rolled `serialize_yaml` (confirmed 2026-06-22:
-`emit_yaml_value`/`emit_mapping_body` hardcode `'- '`/`':'`/`'#'`/`'|\n'` as inline literals through
-`concat()` chains) **fails** this oracle — there is no yaml *ingest* over those same spellings to
+("is there a round-trip over shared rows?"). The emit-only `serialize_yaml` (as of 2026-06-22 it renders
+`project_yaml_to_doc` over the shared `std.layout` `Doc` fold — a forward-only layout projection that bakes
+`'- '`/`':'`/`'|'` into `Doc` text nodes at projection time, *not* a round-trippable grammar) **fails**
+this oracle — there is no yaml *ingest* over those same spellings to
 round-trip against; deep-newt's row-driven `serialize_markdown_source` (#5501) **passes** it the moment a
 markdown ingest reads the same construct→spelling rows. This is the §4 "one grammar, both directions"
 turned into the *test* — and it is *why* §5.1 pushes every serializer to be row-driven: only a row-driven

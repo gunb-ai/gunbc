@@ -1,5 +1,8 @@
 module extdeps.realization.parse_table_memo
 
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
 import extdeps.cache.types { CacheInterfaceCatalogFacts, ContentAddressed }
 import std.cache_identity { CacheInterfaceId }
 import std.cache_interface {
@@ -17,6 +20,13 @@ import std.cache_interface {
   OperatorObserved,
   ManualPurge,
   Repo,
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/gunb-ai/gunbc/tree/main/dsl/extdeps/realization"
+  }
 }
 
 data parse_table_memo_id: CacheInterfaceId = "parse_table_memo_cache"

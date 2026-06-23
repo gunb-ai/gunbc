@@ -1,5 +1,15 @@
 module extdeps.gunbc
 
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/gunb-ai/gunbc/tree/main/dsl/extdeps/gunbc"
+  }
+}
+
 type CrateRole
   = TransportBoundary
   | Compiler
