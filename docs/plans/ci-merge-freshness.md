@@ -51,4 +51,3 @@ Until both clear, the verdict is a loaded mechanism left unwired on purpose: a f
 ## Dissolution trigger (DESIGN §6)
 
 Delete this doc when the merge-time freshness requirement of §3 is in force as a witnessed property — a merge-queue (Option 1) or require-up-to-date required-check (Option 2) is wired so that no PR can merge while last-validated against a base that pre-dates current `main` — at which point stale-green is unwritable by construction and this decision record is redundant.
-
