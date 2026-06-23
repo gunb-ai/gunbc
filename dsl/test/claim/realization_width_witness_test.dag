@@ -21,6 +21,10 @@ import std.realization {
   witness_unreadable_budget_falls_back_conservative,
   witness_safety_fraction_is_load_bearing,
   witness_subunit_budget_admits_one,
+  witness_pids_term_binds_below_cores_and_memory,
+  witness_memory_term_still_binds_under_three_term_fold,
+  witness_unreadable_pids_budget_falls_back_conservative,
+  witness_subunit_pids_budget_admits_one,
 }
 
 fn synthetic_plan_total() -> CostAccount<Nano> {
@@ -124,4 +128,8 @@ test fn realization_width_witnesses() -> Bool {
     && witness_unreadable_budget_falls_back_conservative()
     && witness_safety_fraction_is_load_bearing()
     && witness_subunit_budget_admits_one()
+    && witness_pids_term_binds_below_cores_and_memory()
+    && witness_memory_term_still_binds_under_three_term_fold()
+    && witness_unreadable_pids_budget_falls_back_conservative()
+    && witness_subunit_pids_budget_admits_one()
 }
