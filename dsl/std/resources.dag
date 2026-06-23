@@ -66,3 +66,15 @@ resource AuthContext {
   }
   release {}
 }
+
+resource Entropy {
+  kind: Observation
+  mode: Read
+  acquire {}
+  release {}
+
+  capability read_bytes {
+    input { count: Int }
+    output { octets: List<UInt8> }
+  }
+}

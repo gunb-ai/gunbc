@@ -1,0 +1,27 @@
+module extdeps.entropy
+
+import std.integer { UInt8 }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "man7.org/linux/man-pages/man2/getrandom.2.html"
+  }
+}
+
+data entropy_native_transport_seam_note: String = "SEAM: Entropy.ReadBytes transport argv is a fail-closed decoy; native /dev/urandom read is intercepted in eval_service_call before transport dispatch. DISSOLUTION: replace decoy with a real native-entropy transport when getrandom(2) crate support lands in the transport vocabulary."
+
+service Entropy {
+  operation ReadBytes {
+    input { count: Int }
+    output { octets: List<UInt8> from "native" }
+    readonly
+    transport shell { argv: ["false"] }
+    exit {
+      0 => Unit
+      nonzero => String "entropy native transport seam: decoy must not run"
+    }
+  }
+}
