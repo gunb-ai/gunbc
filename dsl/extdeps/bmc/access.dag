@@ -1,0 +1,63 @@
+module extdeps.bmc.access
+
+import extdeps.access.rbac { Permission, PermissionAssignment, RbacPolicy }
+import extdeps.bmc.types {
+  RedfishAccountRole,
+  AccountRoleAdministrator,
+  AccountRoleOperator,
+  AccountRoleReadOnly,
+  redfish_account_role_wire,
+  RedfishPrivilege,
+  PrivilegeLogin,
+  PrivilegeConfigureManager,
+  PrivilegeConfigureUsers,
+  PrivilegeConfigureComponents,
+  PrivilegeConfigureSelf,
+  redfish_privilege_wire,
+}
+import std.types { NonEmptyStr }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.dmtf.org/standards/redfish"
+  }
+}
+
+data redfish_privilege_object: NonEmptyStr = "redfish"
+
+fn redfish_privilege_permission(privilege: RedfishPrivilege) -> Permission {
+  Permission { operation: redfish_privilege_wire(p: privilege), object: redfish_privilege_object }
+}
+
+fn redfish_privilege_assignment(privilege: RedfishPrivilege, role: RedfishAccountRole) -> PermissionAssignment {
+  PermissionAssignment {
+    permission: redfish_privilege_permission(privilege: privilege),
+    role: redfish_account_role_wire(role: role),
+  }
+}
+
+data redfish_rbac_policy: RbacPolicy = RbacPolicy {
+  users: [],
+  roles: [
+    redfish_account_role_wire(role: AccountRoleAdministrator),
+    redfish_account_role_wire(role: AccountRoleOperator),
+    redfish_account_role_wire(role: AccountRoleReadOnly),
+  ],
+  user_assignments: [],
+  permission_assignments: [
+    redfish_privilege_assignment(privilege: PrivilegeLogin, role: AccountRoleAdministrator),
+    redfish_privilege_assignment(privilege: PrivilegeConfigureManager, role: AccountRoleAdministrator),
+    redfish_privilege_assignment(privilege: PrivilegeConfigureUsers, role: AccountRoleAdministrator),
+    redfish_privilege_assignment(privilege: PrivilegeConfigureComponents, role: AccountRoleAdministrator),
+    redfish_privilege_assignment(privilege: PrivilegeConfigureSelf, role: AccountRoleAdministrator),
+    redfish_privilege_assignment(privilege: PrivilegeLogin, role: AccountRoleOperator),
+    redfish_privilege_assignment(privilege: PrivilegeConfigureComponents, role: AccountRoleOperator),
+    redfish_privilege_assignment(privilege: PrivilegeConfigureSelf, role: AccountRoleOperator),
+    redfish_privilege_assignment(privilege: PrivilegeLogin, role: AccountRoleReadOnly),
+    redfish_privilege_assignment(privilege: PrivilegeConfigureSelf, role: AccountRoleReadOnly),
+  ],
+  role_hierarchy: [],
+}

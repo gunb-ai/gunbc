@@ -78,6 +78,8 @@ This window = a few days of STABILITY — shrink the fail-open surface, don't "l
 - [ ] **axiom + syllogism lens** (DESIGN open thread #1) — every claim chains back to an axiom, no orphan/cycle; stays `[ ]` until it runs executably over this doc [scope](docs/plans/axiom-syllogism-lens.md)
 - [ ] **self-applying lenses (detect → generalize → emit → write)** — a lens *produces the correct pattern and applies it via the write API*, not just flags; the §7-recursion upgrade to the whole lens family, unified by **redundant intent** (specification complexity above the essential min). Anti-unification is the shared engine (term-layer fold + `structural_similarity` type-generic = one kernel, two binders); seeded in `v2.lens.simulated_relationship` (#5584). Decidable-wall classes only — ratchet residue stays detect-only. Depends on §6 emit + a write effect + resolve facts [plan](docs/plans/self-applying-lenses.md)
 
+**Dispatch discipline (anti-stale-ledger, §6):** a lever earns a lane only after it is re-measured against CURRENT main — a displaced cost already paid by another merge is the purity trap (e.g. rust-test sharding, ruled out post-#5427's nextest cut). And the lane/parked list is DERIVED from this authority, never hand-typed (a hand-list drifts exactly like a second representation). The authority tracks ALL planned work; work-items dispatch only the active subset.
+
 ## 1. CI as the substrate integration dogfood (the correctness floor)
 
 A flaky or green-but-broken floor means no gate protects anything — so CI is upstream of every §0 claim. CI is also the one workload that flexes *every* substrate layer at once (execution · scheduling · caching · secrets/effects · emission), so it is the forcing function that turns each modeled-but-inert abstraction load-bearing. **Deliverable = shared abstractions proven by CI consuming them** (one Materialization kernel · one Placement authority · one secrets model); faster CI falls *out* of that, it is not the goal (§6 — price the lane in displaced cost, "move with confidence", not elegance).
@@ -104,6 +106,7 @@ A flaky or green-but-broken floor means no gate protects anything — so CI is u
 **Adjacent gaps (smaller, outside the host band):**
 
 - [ ] **G4 dispatch dup** — `workflow_dispatch`+PR fire two same-SHA runs; `run_id` concurrency fallback won't collapse them → OOM [decision record](docs/plans/ci-merge-freshness.md)
+- [ ] **CI inline-shell de-fork** — `RunStep.run` is raw concat'd bash across ~26 sites; #5427 modeled `cargo.Build.Nextest` but bypasses it for the release build (`ci_release_build_script` hand-writes bash) = a model↔realization fork in one file (+ hardcoded `CARGO_BUILD_JOBS`, pinned nextest version, a bash `uname` arch-case we already model as `TargetArchitecture`). Root: `RunStep` carries modeled effects, not a `String`; revive the inline-shell reducibility lens — §3 transport-fusion de-fork (the N×M adapter trap → one shape + N bound handlers). Sequence after #5427/#5546 (same file). [plan](docs/plans/emission-ingestion-inverse.md)
 - [ ] **G5 rust-gate selection** — rust fmt/clippy/run-all is all-or-nothing on `.rs` PRs; no affected-set (the `.dag` floor already has one) [plan](docs/plans/ci-selection-vs-scheduling.md)
 - [ ] **floor runs the right things** — SELECTION (what changed) vs SCHEDULING (by cost); cost never drives selection [plan](docs/plans/ci-selection-vs-scheduling.md)
   - [x] opt-level=3 restores Pop-A to per-PR (#5456) — merged
@@ -116,6 +119,7 @@ A flaky or green-but-broken floor means no gate protects anything — so CI is u
 
 - [ ] **one Materialization kernel** — collapse sccache / resolve / ParseTable-memo / RecordedFixture / BuildBuddy onto `realize(subject)` (§2 P2)
 - [ ] **one Placement authority** — jobs (GitHub) · threads (`spawn_width`) · sessions (ctrl `plans.capacity`) are 3 forks of "put work on a host"
+- [ ] **resource budget tree** (§2 one-concept-every-scale, money→memory→infra) — grounded in real accounting (`extdeps.accounting.budget`, anchored, zero-based) generic over `Measure<Q,S>` (money = instantiation #1, memory = #2); a recursive tree where a child's appropriation is a line item charged at its parent (divide-once, structural). Three §5-distinct verdicts, never conflated: **admission** (`admit_all`, zero-based justified-&-approved) is the **construction** path — the committed set is provably within appropriation, over-commit unwritable on it; `node_conserves` is the honest **residue lens** for raw literals (the unstructurable residue, *not* a wall — the §5 distinction); runtime intent-vs-actual **reconcile** is the fail-closed **handler** (evict by QoS / loud-error on unsatisfiable Guaranteed). Subsumes spawn-width (#5444) · placement (#5559) · compile-jobs (#5546) as consumer leaves; a survey found `realization_width` + complexity `EffortBudget` are the SAME capped-resource→claims concept (§3 convergence candidates onto the one authority). **Protective only paired with an enforcement actuator** (admission cap or cgroup `memory.max`, operator-fenced): the model decides budgets, it does not itself prevent the kernel OOM, so interim the L1 claim-count must be the conservative-HIGH ceiling (carrier #5582). [carrier](dsl/product/budget_tree.dag) [grounding](docs/plans/budget-tree.md)
 - [ ] **shared secrets/effects** — BMC · tokens · sccache-auth modeled once (when the fork is the pain)
 
 **Downstream / parked:**
@@ -191,7 +195,8 @@ Adjacent lane — algorithmic-cost rewrite engine (the §3 construction design; 
   - [ ] real fixed point: `content_hash` stage1==stage2 (dissolve placeholder hashes)
     - [ ] wire `regen_stage0 --verify` lockstep gate into CI — enforces no stage0 hand-edits ← **keystone**
       - [ ] dissolve seed hand-patches (`patch_*` / `HAND_MAINTAINED_STAGE0_FILES`) — the `emit_rust` hand-sync caveat the gate must reproduce: [required facts](docs/plans/regen-verify-gate-required-facts.md)
-  - [ ] TypeScript to first-class (beyond the `add` slice)
+    - [ ] **TypeScript self-host (own lane)** — emit the compiler ITSELF as TypeScript and reproduce a per-realization merkle fixed point (the Rust `regen --verify` gate, mirrored for the TS realization). This is what makes "language design collapses to a row" real at full scale — §7 medium-agnostic proof, emit Rust *and* TypeScript, fixed point *per realization*. `5-ts-first-class` is the emit seed; this is the self-host. Gated on the Rust fixed point.
+  - [ ] TypeScript to first-class (beyond the `add` slice) — the emit SEED
   - [ ] seed-honesty discharge (Diverse Double-Compiling)
   - [ ] collapse `src/v1` → pinned v2-emitted seed; delete the 154k hand-written lines (terminal, not a big-bang `rm`)
 
@@ -203,6 +208,7 @@ A program is a canonical `Node` (the *idea*); ingest / emit / eval across many m
 
 - [x] **medium axis** — `Medium<R>` + `DecodeFidelity`; `LanguageModel` unified (13 forks dissolved); `compile(Eval) → EvalResult{value: Medium<Node>}`
 - [x] **round-trip law (ingest∘emit = id, DecodeFidelity-bounded)** (#5525/#5527) — established across two structurally-different media: markdown (block-document) and GHA-expr (recursive-expression). v2-TargetModel convergence is the deferred single-authority destination; per-medium round-trips are v1-seed interim. Authority for the law: the round-trip oracle #5513 §5.2 [plan](docs/plans/emission-ingestion-inverse.md)
+- [ ] **ingestion as a first-class direction** — fold foreign surface INTO the node tree (the inverse of emit): `Lossless` where decidable, fail-closed `DecodeFidelity` where not, and **emit = ingest⁻¹ over ONE `GrammarRelation`** (§4: one grammar read both directions; the §7 "any language with a typed honesty boundary" payoff). Emission is well-covered (round-trip law, language axis); ingest *at large* — beyond the per-medium round-trips — has no lane. (parser-wall #5553 is one corner; the direction needs an owner.) [plan](docs/plans/emission-ingestion-inverse.md)
 - [ ] **language axis** — 15+ targets wave-1; English emit proven
   - [ ] English vocabulary closure → fail-closed English ingest (today's catch-all is fail-open; also §0)
   - [ ] English ingest round-trip (only emit proven today)

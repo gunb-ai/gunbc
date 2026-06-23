@@ -1,0 +1,97 @@
+// tools.generated_artifact_gate — the ONE universal generated-artifact drift gate (DESIGN §2/§5).
+//
+// Replaces the three byte-identical per-artifact gates (tools.ci_yaml_gate / tools.gitignore_gate /
+// tools.roadmap_gate). One kernel folds over the COMMITTED generated-artifact subset derived in
+// gunbc.generated_artifact: for each (path, generator) it asserts read(path) == generate(), runs the
+// per-artifact red-receipt (clean matches AND a perturbation drifts), and any artifact-specific extra
+// validation (ci.yml must parse as YAML). Fail-closed: a missing/divergent file is a loud RED.
+//
+// main_wet regenerates every committed artifact byte-for-byte (the one regen command that subsumes the
+// three old per-gate main_wet).
+
+module tools.generated_artifact_gate
+
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.generated_artifact {
+  GeneratedArtifact,
+  committed_generated_artifacts,
+  artifact_path,
+  artifact_generate,
+  artifact_extra_valid
+}
+
+// ONE perturbation suffix, parameterized over the registry: any appended bytes drift, since drift is
+// exact byte-inequality `!(committed == generate())`. So one constant gives a discriminating red-receipt
+// for every artifact (the per-artifact teeth the three old gates carried, folded into one).
+data drift_perturb_suffix: String = "\n# gunbc-generated-artifact-drift-receipt-perturb"
+
+fn exit_ok(e: ProcessExit) -> Bool {
+  match e { ExitSuccess => true  _ => false }
+}
+
+fn artifact_drifted(a: GeneratedArtifact, committed: String) -> Bool {
+  !(committed == artifact_generate(a: a))
+}
+
+// Drift check for one artifact: the committed file reads AND matches its generator AND passes any extra
+// per-artifact validation.
+fn artifact_gate_ok(a: GeneratedArtifact) -> Bool {
+  let committed = Filesystem.Read(path: artifact_path(a: a))
+  committed.success
+    && !artifact_drifted(a: a, committed: committed.content)
+    && artifact_extra_valid(a: a)
+}
+
+// Per-artifact red-receipt: on the real committed file the clean bytes do NOT drift, AND the perturbed
+// bytes DO drift — proves the predicate has teeth for this specific artifact, not a vacuous true.
+fn artifact_red_receipt_ok(a: GeneratedArtifact) -> Bool {
+  let committed = Filesystem.Read(path: artifact_path(a: a))
+  let clean_ok = committed.success && !artifact_drifted(a: a, committed: committed.content)
+  let perturb_drifts = artifact_drifted(a: a, committed: concat(artifact_generate(a: a), drift_perturb_suffix))
+  clean_ok && perturb_drifts
+}
+
+fn artifact_fully_ok(a: GeneratedArtifact) -> Bool {
+  artifact_gate_ok(a: a) && artifact_red_receipt_ok(a: a)
+}
+
+// Reason naming the first failing committed artifact path (fail-closed diagnostic).
+fn first_failing_path() -> String {
+  fold(committed_generated_artifacts(), init: "", f: fn(acc, a) {
+    if acc == "" && !artifact_fully_ok(a: a) { artifact_path(a: a) } else { acc }
+  })
+}
+
+func run_generated_artifact_drift_gate_body() -> ProcessExit {
+  let all_ok = all(committed_generated_artifacts(), a => artifact_fully_ok(a: a))
+  return if all_ok {
+    ExitSuccess
+  } else {
+    exit_failure(
+      reason: concat(
+        concat("generated-artifact drift/validation failed: ", first_failing_path()),
+        " — it is a GENERATED projection of its .dag authority; do not hand-edit, regenerate via main_wet on dsl/tools/generated_artifact_gate.dag"
+      )
+    )
+  }
+}
+
+func main() -> ProcessExit {
+  run_generated_artifact_drift_gate_body()
+}
+
+func run_generated_artifact_drift_gate() -> ProcessExit {
+  run_generated_artifact_drift_gate_body()
+}
+
+func main_wet() -> ProcessExit {
+  fold(committed_generated_artifacts(), init: ExitSuccess, f: fn(acc, a) {
+    if exit_ok(e: acc) {
+      let w = Filesystem.Write(path: artifact_path(a: a), content: artifact_generate(a: a))
+      if w.success { ExitSuccess } else { exit_failure(reason: concat(concat("write failed for ", artifact_path(a: a)), concat(": ", w.error))) }
+    } else {
+      acc
+    }
+  })
+}

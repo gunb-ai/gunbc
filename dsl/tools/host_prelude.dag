@@ -11,10 +11,6 @@ import extdeps.languages.bash.program {
 }
 import tools.build_step { BuildArtifact, emit_verifications }
 
-fn host_build_source_roots() -> List<ShellWord> {
-  [Concat { parts: [var_ref(name: "ROOT"), lit(text: "/src")] }]
-}
-
 fn assign_root_stmt() -> ShellStmt {
   assign(name: "ROOT", value: CmdSubst { body: AndOr {
     left: WithRedir {
@@ -58,9 +54,7 @@ fn ensure_bin_built_and_verified(var_name: String, bin_name: String) -> List<She
       build_bin_if_absent_stmt(bin_path: bin, root: root, bin_name: bin_name)
     ],
     emit_verifications(
-      produces: [BuildArtifact { path: bin, name: bin_name }],
-      roots: host_build_source_roots(),
-      patterns: ["*.rs", "Cargo.toml", "Cargo.lock"]
+      produces: [BuildArtifact { path: bin, name: bin_name }]
     )
   )
 }
