@@ -204,11 +204,6 @@ fn corpus_repr_is_faithful(corpus_repr: RustCorpusRepr) -> Bool {
 fn corpus_repr_is_host(corpus_repr: RustCorpusRepr) -> Bool {
   match corpus_repr { HostNative => true  FaithfulFreeMonoid => false }
 }
-// Single authority for the FreeMonoid value-side grounding decision: under HostNative the FreeMonoid
-// coproduct (Empty | Cons) is realized as a `type FreeMonoid<T> = Vec<T>` alias -- structurally a
-// zero-variant type. Every consumer of that decision (the alias render itself, and the import
-// emitters that must NOT generate variant-glob / variant-list imports for a type with no variants)
-// consults THIS predicate, so the "host FreeMonoid has no variants" fact lives in one place.
 fn is_host_freemonoid_vec_alias(name: String, corpus_repr: RustCorpusRepr) -> Bool {
   corpus_repr_is_host(corpus_repr: corpus_repr) && name == "FreeMonoid"
 }
@@ -251,11 +246,6 @@ fn rust_host_string_seam_fn_emit(name: String) -> String? {
   }
 }
 
-// Host text-op grounding (bright-stag-194 ruling 2026-06-23, option A): under HostNative String is native
-// Rust `String`, so the std text ops -- whose .dag bodies fold over the FreeMonoid<Char> representation --
-// must realize on real char ops (NOT byte-index hacks; §5 ground-don't-fake for text). Char = i64 (code
-// point); CharResult/ListTailResult/SourceFold are the emitted enums/struct. Returns a complete native
-// fn body, used in place of the generic-FreeMonoid body only under host (faithful keeps the .dag body).
 fn rust_host_string_op_fn_emit(name: String) -> String? {
   if name == "string_is_empty" {
     Present { value: concat(
@@ -314,10 +304,6 @@ fn rust_seed_host_numeric_alias(name: String, corpus_repr: RustCorpusRepr) -> St
 }
 
 fn rust_seed_host_container_base(name: String, corpus_repr: RustCorpusRepr) -> String? {
-  // FreeMonoid value-side grounding (Root A emit-seam, bright-stag-194 signed 2026-06-23):
-  // List == FreeMonoid (types.dag alias) so the value carrier must realize to the SAME native
-  // type List does (Rc<Vec<T>>) -- the #5428 shape, native form == modeled form. NOT a type-alias-
-  // only change (that regresses +402 E0308): paired with Empty/Cons construct + match grounding below.
   if (name == "List" || name == "FreeMonoid") && corpus_repr_is_host(corpus_repr: corpus_repr) {
     Present { value: "Vec" }
   } else {
@@ -325,13 +311,6 @@ fn rust_seed_host_container_base(name: String, corpus_repr: RustCorpusRepr) -> S
   }
 }
 
-// Host text-carrier grounding (bright-stag-194 ruling 2026-06-23): String = FreeMonoid<Char> is the
-// Char-specialized instantiation of FreeMonoid, and its idiomatic native realization is Rust `String`
-// (the §2-horizontal companion to the general FreeMonoid<T> -> Rc<Vec<T>> arm; NOT a §3 fork -- one
-// authority, element-dispatched carrier). So under HostNative, a Char-element FreeMonoid/List, and the
-// String alias itself, all realize to native `String` (values are already native -- string literals
-// emit `"...".to_string()`). This closes the FreeMonoid<Char> type-vs-native-String straddle (the
-// dominant E0308 sub-bucket) and the String<Char> fn-sig/alias-decl inconsistency.
 fn rust_host_text_carrier_elem_name(n: Node, source_indices: Map<String, NewlineIndex>) -> String {
   match n.children |> first {
     Present { value: ch } => authored_name_at(source_indices: source_indices, node: ch)
@@ -2624,7 +2603,6 @@ fn emit_specific_import_block(import_module: String, mod_name: String, filtered_
       parent_main_lines |> filter(l => l != "")
     }
     let variant_lines = parent_list |> map(parent =>
-      // A host FreeMonoid is a Vec alias with no variants -- it contributes no variant-list import.
       if is_host_freemonoid_vec_alias(name: parent, corpus_repr: emit_info.corpus_repr) { "" } else {
       let variants = deduped_names |> filter(n =>
         if is_import_graph_type_name(name: n, import_module: import_module, typed_modules: typed_modules, registry: registry, export_sets: export_sets, type_summaries: type_summaries, source_indices: source_indices, module_index: module_index) {
@@ -2655,7 +2633,6 @@ fn emit_specific_import_block(import_module: String, mod_name: String, filtered_
       }
     )
     let imported_enums = top_level |> filter(n => is_enum_in_summaries(type_summaries: type_summaries, type_name: n))
-    // A host FreeMonoid is a Vec alias with no variants -- it contributes no variant-glob import.
     let wildcard_enum_lines = imported_enums
       |> filter(en => parent_list |> any(p => p == en) == false
         && !is_host_freemonoid_vec_alias(name: en, corpus_repr: emit_info.corpus_repr))
@@ -2922,11 +2899,6 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
   } else if is_type_alias_item(item: item, source_indices: env.source_indices) {
 
     if corpus_repr_is_host(corpus_repr: emit_info.corpus_repr) && item_text == "String" {
-      // String = FreeMonoid<Char> grounds to native Rust `String` under host (bright-stag ruling
-      // 2026-06-23). Emit a NON-recursive alias to the native carrier (full std path, since
-      // `type String = String;` would be illegal-recursive) so cross-module `use ..::String` imports
-      // still resolve -- the bare type name IS imported (like the `{FreeMonoid}` type import). Every
-      // String *slot* still renders to the native carrier via is_host_text_carrier_type.
       concat(rust_visibility_prefix(), rust_items().type_alias_keyword, " String = std::string::String;")
     } else if (item.params |> count) == 0 && rust_nominal_identity_carrier_type_eligible(type_name: item_text) {
       rust_nominal_identity_carrier_def(name: item_text)
@@ -3111,14 +3083,6 @@ fn emit_type_def_from_connective(item: Node, recursive_types: Set<String>, share
     let generic_param_names = item.params |> map(p => generic_param_name_at(n: p, source_indices: env.source_indices))
     emit_struct_from_children(name: item_text, type_params: type_params, generic_param_names: generic_param_names, children: item.children, recursive_types: recursive_types, shared_types: shared_types, env: env, emit_info: emit_info)
   } else if is_host_freemonoid_vec_alias(name: item_text, corpus_repr: emit_info.corpus_repr) {
-    // FreeMonoid grounding (§3 single authority): under HostNative the coproduct (Empty | Cons) is
-    // realized as the native Rust Vec, so emit a transparent type alias instead of the dead enum.
-    // Every FreeMonoid<T> slot then resolves to Vec<T> via Rust alias transparency (no per-site
-    // type-threading); values are grounded to native Vec at the construct/pattern sites. The
-    // element-specialized text arm (FreeMonoid<Char> -> String) is handled upstream by the
-    // corpus-aware render_rust_* text guards, which keep PRECEDENCE over this default Vec arm. The
-    // enum's auto-impl accessors (head/tail) and the variant-glob imports drop out with the enum
-    // (variant globs are filtered out under host, since a type alias has no variants to glob).
     let elem_csv = item.params |> map(p => generic_param_name_at(n: p, source_indices: env.source_indices)) |> join(separator: ", ")
     concat(rust_visibility_prefix(), "type ", item_text, type_params, " = Vec<", elem_csv, ">;")
   } else {
@@ -3627,7 +3591,6 @@ fn emit_variant_from_child(child: Node, enum_name: String, recursive_types: Set<
 
 fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, registry: Map<String, ItemInfo>, scope: InferScope, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let si = scope.type_env.source_indices
-  // Host text-op grounding: native-String realizations replace the generic-FreeMonoid bodies under host.
   let host_text_op = if corpus_repr_is_host(corpus_repr: emit_info.corpus_repr) {
     rust_host_string_op_fn_emit(name: name)
   } else { none }
@@ -4479,7 +4442,6 @@ fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: Infe
     let ref_str = match variant_parent {
       Present { value: enum_name } =>
         if name == "Empty" && enum_name == "FreeMonoid" && corpus_repr_is_host(corpus_repr: emit_info.corpus_repr) {
-          // FreeMonoid grounding: Empty -> native empty Rc<Vec> (already Rc-wrapped; skip shared wrap)
           "Rc::new(vec![])"
         } else {
         let qualified = if is_optional_variant_name(name: name) && enum_name == "Optional" {
@@ -4539,7 +4501,6 @@ fn emit_typed_expr_base(texpr: Node, registry: Map<String, ItemInfo>, scope: Inf
         match variant_parent {
           Present { value: enum_name } =>
             if n == "Empty" && enum_name == "FreeMonoid" && corpus_repr_is_host(corpus_repr: emit_info.corpus_repr) {
-              // FreeMonoid grounding: Empty -> native empty Rc<Vec> (already Rc-wrapped)
               "Rc::new(vec![])"
             } else {
             let qualified = if is_optional_variant_name(name: n) && enum_name == "Optional" {
@@ -5834,10 +5795,6 @@ fn emit_typed_first_arg(args: List<Node>, registry: Map<String, ItemInfo>, scope
   }
 }
 
-// FreeMonoid grounding: a match on a host FreeMonoid/List scrutinee is rewritten to a native
-// if-else over Rc<Vec> (Empty -> is_empty, Cons{head,tail} -> head/tail by index/slice). The
-// FreeMonoid enum has exactly 2 variants so the 2-arm match maps cleanly; bindings come from the
-// Cons arm's field patterns. Returns "" if the arms are not a clean Empty/Cons pair (caller falls back).
 fn freemonoid_match_arm_for(arms: List<Node>, variant: String) -> Node? {
   arms |> filter(arm => match arm_pattern(n: arm) {
     VariantPattern { name: n, parent_enum: _, field_bindings: _ } => n == variant
@@ -5860,12 +5817,6 @@ fn freemonoid_cons_binding(cons_arm: Node, field: String, source_indices: Map<St
   }
 }
 
-// Structure-not-name detection: a match grounds to native Vec iff its Empty and Cons arms both
-// resolve to the FreeMonoid coproduct -- regardless of how the scrutinee's type is spelled at the
-// match site (a FreeMonoid/List alias, or a downstream alias whose authored name is neither). The
-// variant->parent resolution (pattern_parent_enum, which falls back to the unique enum owning the
-// variant) is the structural source; keying on scrut_type's surface name was the fragile heuristic
-// that let alias-typed scrutinees (e.g. edit_locus loci_from_bindings_for_path) escape to the enum.
 fn arm_resolved_parent_enum(arm: Node, scrut_type: String, type_summaries: Map<String, TypeSummary>) -> String? {
   match arm_pattern(n: arm) {
     VariantPattern { name: n, parent_enum: pe, field_bindings: _ } =>
@@ -5881,8 +5832,6 @@ fn parent_enum_is_freemonoid(p: String?) -> Bool {
   }
 }
 
-// A FreeMonoid match may pair an Empty/Cons variant arm with a WILDCARD/bind catch-all rather than
-// the sibling variant (e.g. `Empty => .. | _ => ..`). The catch-all fills the missing branch.
 fn freemonoid_catchall_arm(arms: List<Node>) -> Node? {
   arms |> filter(arm => match arm_pattern(n: arm) {
     Wildcard => true
@@ -5910,16 +5859,12 @@ fn arms_are_freemonoid_coproduct(arms: List<Node>, scrut_type: String, type_summ
     Absent => false
   }
   let has_catchall = match freemonoid_catchall_arm(arms: arms) { Present { value: _ } => true  Absent => false }
-  // Fire iff at least one genuine FreeMonoid variant arm AND both branches are fillable (the missing
-  // sibling variant supplied by the catch-all). Safe to loosen: the enum is removed, so any real
-  // FreeMonoid match that does NOT ground natively emits a dangling FreeMonoid::Empty/Cons.
   let is_fm = empty_is_fm || cons_is_fm
   let empty_fillable = has_empty || has_catchall
   let cons_fillable = has_cons || has_catchall
   is_fm && empty_fillable && cons_fillable
 }
 
-// Empty-branch body: the Empty arm if present, else the catch-all (binding its name to __fm if Bind).
 fn freemonoid_empty_branch_body(empty_arm: Node?, catchall: Node?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   match empty_arm {
     Present { value: ea } => emit_typed_expr(texpr: arm_body(n: ea), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
@@ -5933,7 +5878,6 @@ fn freemonoid_empty_branch_body(empty_arm: Node?, catchall: Node?, registry: Map
   }
 }
 
-// Non-empty-branch body: the Cons arm (binding head/tail by index/slice) if present, else the catch-all.
 fn freemonoid_nonempty_branch_body(cons_arm: Node?, catchall: Node?, si: Map<String, NewlineIndex>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   match cons_arm {
     Present { value: ca } =>
@@ -5974,7 +5918,6 @@ fn emit_typed_match(scrutinee: Node, arms: List<Node>, registry: Map<String, Ite
       } else { authored_name_at(source_indices: scope.type_env.source_indices, node: rt) }
     _ => ""
   }
-  // FreeMonoid grounding: rewrite a host FreeMonoid/List match into a native Rc<Vec> if-else.
   let native_fm = if corpus_repr_is_host(corpus_repr: emit_info.corpus_repr) && arms_are_freemonoid_coproduct(arms: arms, scrut_type: scrut_type, type_summaries: emit_info.type_summaries) {
     emit_native_freemonoid_match(scrut_str: scrut_str, arms: arms, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
   } else { "" }
@@ -6348,8 +6291,6 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
             parent_enum
           }
       }
-      // FreeMonoid grounding: Cons{head,tail} -> native prepend onto Rc<Vec> (the #5428 shape).
-      // O(n) prepend; carried as a §7-fixpoint item (structure-sharing prepend, benefits List+FreeMonoid).
       let host_freemonoid_cons = tn == "Cons" && corpus_repr_is_host(corpus_repr: emit_info.corpus_repr)
         && (match effective_parent { Present { value: p } => p == "FreeMonoid"  Absent => false })
       if host_freemonoid_cons {
@@ -6361,9 +6302,6 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
           Present { value: f } => emit_typed_expr(texpr: field_init_node_value(n: f), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
           Absent => "compile_error!(\"FreeMonoid Cons missing tail field\")"
         }
-        // Return a BARE Vec; the standard shared-type wrap (emit_typed_expr) adds the single Rc.
-        // Returning Rc<Vec> here double-wraps (the context wraps again -> Rc<Rc<Vec>>). The tail_val is
-        // the context-wrapped Rc<Vec> form (var-ref/Empty/nested-Cons all wrap), so (*tail).clone() = Vec.
         return concat("{ let mut __cons_v = (*", tail_val, ").clone(); __cons_v.insert(0, ", head_val, "); __cons_v }")
       }
       let optional_variant = is_optional_variant_name(name: tn) && (is_optional_parent(parent_enum: parent_enum) || is_optional_parent(parent_enum: effective_parent))
@@ -6641,11 +6579,6 @@ fn emit_rust_tco_if(frame: TcoFrame, fn_name: String, params: List<Node>, regist
   }
 }
 
-// FreeMonoid grounding for the recursion->loop (TCO) path: a FreeMonoid/List match lowered into a
-// `loop { match .. }` is rewritten to a native Rc<Vec> if-else, mirroring emit_native_freemonoid_match
-// but emitting each arm body via emit_typed_tco_expr so the break/reassign lowering is preserved. This
-// path is distinct from emit_typed_match's; without it the loop-lowered std algebra folds (fold_list,
-// skip, ..) and recursive lens walks (edit_locus) keep emitting the removed FreeMonoid::Empty/Cons enum.
 fn freemonoid_tco_empty_branch_body(empty_arm: Node?, catchall: Node?, fn_name: String, params: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   match empty_arm {
     Present { value: ea } => emit_typed_tco_expr(texpr: arm_body(n: ea), fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
