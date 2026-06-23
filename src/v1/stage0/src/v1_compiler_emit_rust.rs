@@ -6880,10 +6880,15 @@ pub fn emit_typed_item(
             if is_type_alias_item(item.clone(), env.source_indices.clone()) {
                 if (corpus_repr_is_host(emit_info.corpus_repr) && (item_text == "String".to_string()))
                 {
-                    // String = FreeMonoid<Char> grounds to native Rust `String` under host
-                    // (bright-stag ruling 2026-06-23); `type String = String;` would be
-                    // illegal-recursive, so suppress -- references render native via is_host_text_carrier_type.
-                    "".to_string()
+                    // String = FreeMonoid<Char> grounds to native Rust `String` under host (bright-stag
+                    // ruling 2026-06-23). Emit a NON-recursive alias to the native carrier (full std
+                    // path, since `type String = String;` would be illegal-recursive) so cross-module
+                    // `use ..::String` imports still resolve. String *slots* still render native via
+                    // is_host_text_carrier_type.
+                    v1_rt::concat(
+                        rust_visibility_prefix(),
+                        "type String = std::string::String;".to_string(),
+                    )
                 } else if (((item.params.clone().len() as i64) == 0)
                     && rust_nominal_identity_carrier_type_eligible(item_text.clone()))
                 {
@@ -18309,6 +18314,92 @@ pub fn emit_rust_tco_if(
     }
 }
 
+// FreeMonoid grounding for the recursion->loop (TCO) path. (See .dag authority.)
+pub fn emit_native_freemonoid_tco_match(
+    scrut_str: String,
+    arms: Rc<Vec<Rc<Node>>>,
+    fn_name: String,
+    params: Rc<Vec<Rc<Node>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    scope: Rc<InferScope>,
+    depth: i64,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
+    emit_info: Rc<EmitGraphInfo>,
+) -> String {
+    let si = scope.type_env.clone().source_indices.clone();
+    match freemonoid_match_arm_for(arms.clone(), "Empty".to_string()) {
+        Some(ea) => match freemonoid_match_arm_for(arms.clone(), "Cons".to_string()) {
+            Some(ca) => {
+                let empty_body = emit_typed_tco_expr(
+                    arm_body(ea.clone()),
+                    fn_name.clone(),
+                    params.clone(),
+                    registry.clone(),
+                    scope.clone(),
+                    depth.clone(),
+                    shared_types.clone(),
+                    emit_info.clone(),
+                );
+                let head_bind = freemonoid_cons_binding(ca.clone(), "head".to_string(), si.clone());
+                let tail_bind = freemonoid_cons_binding(ca.clone(), "tail".to_string(), si.clone());
+                let cons_body = emit_typed_tco_expr(
+                    arm_body(ca.clone()),
+                    fn_name.clone(),
+                    params.clone(),
+                    registry.clone(),
+                    scope.clone(),
+                    depth.clone(),
+                    shared_types.clone(),
+                    emit_info.clone(),
+                );
+                let head_let = if (head_bind.clone() == "_".to_string()) {
+                    "".to_string()
+                } else {
+                    v1_rt::concat(
+                        v1_rt::concat("let ".to_string(), head_bind.clone()),
+                        " = (*__fm)[0].clone(); ".to_string(),
+                    )
+                };
+                let tail_let = if (tail_bind.clone() == "_".to_string()) {
+                    "".to_string()
+                } else {
+                    v1_rt::concat(
+                        v1_rt::concat("let ".to_string(), tail_bind.clone()),
+                        ": Rc<Vec<_>> = Rc::new((*__fm)[1..].to_vec()); ".to_string(),
+                    )
+                };
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        v1_rt::concat(
+                                            v1_rt::concat(
+                                                "{ let __fm = ".to_string(),
+                                                scrut_str,
+                                            ),
+                                            "; if __fm.is_empty() { ".to_string(),
+                                        ),
+                                        empty_body,
+                                    ),
+                                    " } else { ".to_string(),
+                                ),
+                                head_let,
+                            ),
+                            tail_let,
+                        ),
+                        cons_body,
+                    ),
+                    " } }".to_string(),
+                )
+            }
+            None => "".to_string(),
+        },
+        None => "".to_string(),
+    }
+}
+
 pub fn emit_rust_tco_match(
     frame: Rc<TcoFrame>,
     fn_name: String,
@@ -18347,6 +18438,30 @@ pub fn emit_rust_tco_match(
                 }
                 _ => "".to_string(),
             };
+            let native_tco_fm = if (corpus_repr_is_host(emit_info.corpus_repr.clone())
+                && arms_are_freemonoid_coproduct(
+                    arm_list.clone(),
+                    tco_scrut_type.clone(),
+                    emit_info.type_summaries.clone(),
+                ))
+            {
+                emit_native_freemonoid_tco_match(
+                    scrut_str.clone(),
+                    arm_list.clone(),
+                    fn_name.clone(),
+                    params.clone(),
+                    registry.clone(),
+                    frame.scope.clone(),
+                    frame.depth.clone(),
+                    shared_types.clone(),
+                    emit_info.clone(),
+                )
+            } else {
+                "".to_string()
+            };
+            if (native_tco_fm.clone() != "".to_string()) {
+                return native_tco_fm;
+            }
             let rc_match = analyze_rc_match(
                 s.clone(),
                 arm_list.clone(),

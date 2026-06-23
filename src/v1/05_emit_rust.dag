@@ -2923,9 +2923,11 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
 
     if corpus_repr_is_host(corpus_repr: emit_info.corpus_repr) && item_text == "String" {
       // String = FreeMonoid<Char> grounds to native Rust `String` under host (bright-stag ruling
-      // 2026-06-23); emitting `type String = String;` would be illegal-recursive, so suppress the
-      // alias entirely -- every String reference renders to the native carrier via is_host_text_carrier_type.
-      ""
+      // 2026-06-23). Emit a NON-recursive alias to the native carrier (full std path, since
+      // `type String = String;` would be illegal-recursive) so cross-module `use ..::String` imports
+      // still resolve -- the bare type name IS imported (like the `{FreeMonoid}` type import). Every
+      // String *slot* still renders to the native carrier via is_host_text_carrier_type.
+      concat(rust_visibility_prefix(), rust_items().type_alias_keyword, " String = std::string::String;")
     } else if (item.params |> count) == 0 && rust_nominal_identity_carrier_type_eligible(type_name: item_text) {
       rust_nominal_identity_carrier_def(name: item_text)
     } else if is_zero_param_self_referential_opaque_decl(item: item, source_indices: env.source_indices) {
