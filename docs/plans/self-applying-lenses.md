@@ -1,6 +1,6 @@
 # Self-applying lenses — detect → generalize → emit → write
 
-**Crux ([fractal intent-linearity](intent-linearity-design-draft.md)).** A program's *description length should equal its irreducible
+**Crux (fractal intent-linearity).** A program's *description length should equal its irreducible
 information content* — the minimal generative template plus the genuinely-distinct data — **recursively
 at every nesting level**. Equivalently: the intent is 1:1 with its own inputs; the description grows
 *only* with distinct information, never with repetition. This is the decidable, enforceable shadow of
