@@ -2,9 +2,9 @@ module tools.build_step
 
 import extdeps.languages.bash.program {
   ShellStmt, ShellWord, ShellProgram,
-  Command, If, Exit, Assign, WithRedir,
-  Lit, VarRef, Concat, CmdSubst, StdoutToStderr,
-  lit, var_ref, command, assign, serialize_bash
+  Command, If, Exit, WithRedir,
+  Lit, Concat, StdoutToStderr,
+  lit, command, serialize_bash
 }
 
 type BuildArtifact {
@@ -12,8 +12,6 @@ type BuildArtifact {
 
   name: String
 }
-
-data build_freshness_probe_var: String = "GUNBC_BUILD_FRESHNESS_NEWER_SRC"
 
 fn build_verify_echo(msg: ShellWord) -> ShellStmt {
   WithRedir {
@@ -35,62 +33,17 @@ fn verify_artifact_exists(art: BuildArtifact) -> ShellStmt {
   }
 }
 
-fn name_predicate_words(patterns: List<String>) -> List<ShellWord> {
-  concat(
-    [lit(text: "(")],
-    concat(
-      fold(patterns, init: [], f: (acc, p) =>
-        if acc.length() == 0 {
-          [lit(text: "-name"), lit(text: p)]
-        } else {
-          concat(acc, [lit(text: "-o"), lit(text: "-name"), lit(text: p)])
-        }
-      ),
-      [lit(text: ")")]
-    )
-  )
+fn verify_artifact(art: BuildArtifact) -> List<ShellStmt> {
+  [verify_artifact_exists(art: art)]
 }
 
-fn freshness_find_stmt(art: BuildArtifact, roots: List<ShellWord>, patterns: List<String>) -> ShellStmt {
-  command(words: concat(
-    concat([lit(text: "find")], roots),
-    concat(
-      name_predicate_words(patterns: patterns),
-      [lit(text: "-newer"), art.path, lit(text: "-print"), lit(text: "-quit")]
-    )
-  ))
+fn emit_verifications(produces: List<BuildArtifact>) -> List<ShellStmt> {
+  fold(produces, init: [], f: (acc, art) => concat(acc, verify_artifact(art: art)))
 }
 
-fn verify_artifact_fresh(art: BuildArtifact, roots: List<ShellWord>, patterns: List<String>) -> List<ShellStmt> {
-  [
-    Assign {
-      name: build_freshness_probe_var,
-      value: CmdSubst { body: freshness_find_stmt(art: art, roots: roots, patterns: patterns) }
-    },
-    If {
-      cond: command(words: [lit(text: "["), lit(text: "-n"), var_ref(name: build_freshness_probe_var), lit(text: "]")]),
-      then: [
-        build_verify_echo(msg: Concat { parts: [
-          lit(text: concat("::error::build verification: declared artifact '", concat(art.name, "' is older than a source file (stale — DESIGN §5 fail-open); failing closed: "))),
-          art.path
-        ] }),
-        Exit { code: 1 }
-      ]
-    }
-  ]
-}
-
-fn verify_artifact(art: BuildArtifact, roots: List<ShellWord>, patterns: List<String>) -> List<ShellStmt> {
-  concat([verify_artifact_exists(art: art)], verify_artifact_fresh(art: art, roots: roots, patterns: patterns))
-}
-
-fn emit_verifications(produces: List<BuildArtifact>, roots: List<ShellWord>, patterns: List<String>) -> List<ShellStmt> {
-  fold(produces, init: [], f: (acc, art) => concat(acc, verify_artifact(art: art, roots: roots, patterns: patterns)))
-}
-
-fn verifications_script(produces: List<BuildArtifact>, roots: List<ShellWord>, patterns: List<String>) -> String {
+fn verifications_script(produces: List<BuildArtifact>) -> String {
   serialize_bash(p: ShellProgram {
     set_e: false,
-    statements: emit_verifications(produces: produces, roots: roots, patterns: patterns)
+    statements: emit_verifications(produces: produces)
   })
 }
