@@ -1,0 +1,183 @@
+module gunbc.assimilate.bmc_token_federation
+
+import extdeps.cloud.gcp.gcp { ServiceAccountEmail, GcpProjectId, WifPool, WifProvider }
+import extdeps.github.actions {
+  Step, RunStep, UsesStep,
+  Workflow, Job,
+  WorkflowTrigger, WorkflowDispatch,
+  WorkflowPermissions, PermRead, PermWrite,
+  google_auth_action, checkout_action,
+  default_job_timeout_minutes
+}
+import extdeps.formats.yaml { YamlKeyValue, kv, yaml_string, serialize_yaml }
+import gunbc.workflow_yaml_project { project_workflow_to_yaml }
+import gunbc.ci_fleet { gunbc_ci_runner_spec }
+
+data bmc_secrets_project_id: GcpProjectId = "gunbai-secrets"
+
+data bmc_secrets_project_number: String = "582015116396"
+
+data bmc_srv3_secret_name: String = "bmc-srv3-admin"
+
+data bmc_assimilator_sa_email: ServiceAccountEmail = "bmc-assimilator@gunbai-secrets.iam.gserviceaccount.com"
+
+data bmc_assimilator_sa_member: String = "serviceAccount:bmc-assimilator@gunbai-secrets.iam.gserviceaccount.com"
+
+data bmc_wif_pool_id: String = "github-actions"
+
+data bmc_wif_provider_id: String = "github-oidc"
+
+data bmc_federated_github_repo: String = "gunb-ai/gunbc"
+
+data bmc_wif_issuer_uri: String = "https://token.actions.githubusercontent.com"
+
+data bmc_wif_pool: WifPool = WifPool {
+  name: "github-actions"
+  project: "gunbai-secrets"
+  display_name: Present { value: "GitHub Actions OIDC" }
+  disabled: false
+}
+
+data bmc_wif_provider: WifProvider = WifProvider {
+  name: "github-oidc"
+  pool: "github-actions"
+  issuer_uri: "https://token.actions.githubusercontent.com"
+  attribute_mapping: Present {
+    value: {
+      "google.subject": "assertion.sub",
+      "attribute.repository": "assertion.repository",
+      "attribute.ref": "assertion.ref"
+    }
+  }
+}
+
+fn bmc_wif_provider_resource() -> String {
+  concat(
+    concat(concat("projects/", bmc_secrets_project_number), "/locations/global/workloadIdentityPools/"),
+    concat(concat(bmc_wif_pool_id, "/providers/"), bmc_wif_provider_id)
+  )
+}
+
+fn bmc_wif_principal_set() -> String {
+  concat(
+    concat(
+      concat("principalSet://iam.googleapis.com/projects/", bmc_secrets_project_number),
+      "/locations/global/workloadIdentityPools/"
+    ),
+    concat(concat(bmc_wif_pool_id, "/attribute.repository/"), bmc_federated_github_repo)
+  )
+}
+
+fn bmc_wif_attribute_condition() -> String {
+  concat("assertion.repository == '", concat(bmc_federated_github_repo, "'"))
+}
+
+type SecretAccessBinding {
+  member: String
+  role: String
+  secret: String
+  project: GcpProjectId
+}
+
+data bmc_assimilator_bindings: List<SecretAccessBinding> = [
+  {
+    member: "serviceAccount:bmc-assimilator@gunbai-secrets.iam.gserviceaccount.com",
+    role: "roles/secretmanager.secretAccessor",
+    secret: "bmc-srv3-admin",
+    project: "gunbai-secrets"
+  },
+  {
+    member: "serviceAccount:bmc-assimilator@gunbai-secrets.iam.gserviceaccount.com",
+    role: "roles/secretmanager.secretVersionAdder",
+    secret: "bmc-srv3-admin",
+    project: "gunbai-secrets"
+  }
+]
+
+fn gcp_wif_auth_step() -> Step {
+  UsesStep {
+    name: Present { value: "Authenticate to GCP (keyless, Workload Identity Federation)" },
+    id: Present { value: "gcp_auth" },
+    uses: google_auth_action,
+    with: Present {
+      value: [
+        kv(key: "workload_identity_provider", value: yaml_string(s: bmc_wif_provider_resource())),
+        kv(key: "service_account", value: yaml_string(s: bmc_assimilator_sa_email))
+      ]
+    },
+    env: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+fn gcp_token_smoke_step() -> Step {
+  RunStep {
+    name: Present { value: "Verify gcloud access token resolves (keyless)" },
+    id: none,
+    run: concat(
+      "gcloud auth print-access-token >/dev/null\n",
+      "echo \"keyless access token acquired\""
+    ),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+fn bmc_checkout_step() -> Step {
+  UsesStep {
+    name: Present { value: "Checkout" },
+    id: none,
+    uses: checkout_action,
+    with: none,
+    env: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+fn bmc_token_smoke_job() -> Job {
+  Job {
+    id: "bmc_token_smoke",
+    name: none,
+    runner: gunbc_ci_runner_spec(),
+    steps: [bmc_checkout_step(), gcp_wif_auth_step(), gcp_token_smoke_step()],
+    needs: [],
+    env: none,
+    outputs: none,
+    if_condition: none,
+    strategy: none,
+    timeout_minutes: Present { value: default_job_timeout_minutes },
+    continue_on_error: none,
+    concurrency: none
+  }
+}
+
+data bmc_token_smoke_workflow: Workflow = {
+  name: "bmc-token-smoke",
+  on: [
+    WorkflowDispatch { inputs: [] }
+  ],
+  concurrency: none,
+  env: none,
+  permissions: Present {
+    value: WorkflowPermissions {
+      contents: Present { value: PermRead },
+      pull_requests: none,
+      issues: none,
+      actions: none,
+      id_token: Present { value: PermWrite }
+    }
+  },
+  jobs: [bmc_token_smoke_job()]
+}
+
+fn emit_bmc_token_smoke_workflow_yaml() -> String {
+  serialize_yaml(v: project_workflow_to_yaml(workflow: bmc_token_smoke_workflow))
+}

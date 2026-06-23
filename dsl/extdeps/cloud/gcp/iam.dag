@@ -28,6 +28,7 @@ data common_roles: List<GcpRole> = [
   { name: "roles/storage.objectViewer", title: "Storage Object Viewer", permissions: null, predefined: true },
   { name: "roles/storage.objectAdmin", title: "Storage Object Admin", permissions: null, predefined: true },
   { name: "roles/secretmanager.secretAccessor", title: "Secret Manager Secret Accessor", permissions: null, predefined: true },
+  { name: "roles/secretmanager.secretVersionAdder", title: "Secret Manager Secret Version Adder", permissions: null, predefined: true },
   { name: "roles/iam.serviceAccountTokenCreator", title: "Service Account Token Creator", permissions: null, predefined: true },
   { name: "roles/run.invoker", title: "Cloud Run Invoker", permissions: null, predefined: true }
 ]
