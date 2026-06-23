@@ -105,6 +105,36 @@ whereas redundant-intent anti-unifies the source AST directly.)
 - a **filesystem write effect** to apply it (the write twin of the lenses' existing `filesystem_read`).
 - **resolve** facts on the corpus walk (refinement 2) — the shared grounding authority.
 
+## Consolidation map (what merges, what deletes, and when)
+
+The registry must not *itself* be a fork (a linearity enforcer that is non-linear would be the §7 irony).
+So the redundancy lenses become **rows of one engine**, not peers. Nothing below deletes now — each
+deletion is gated on a named trigger (§6); executing them before the trigger would strand the floor/lens
+wiring.
+
+- **`v2.lens.intent_linearity` is the registry** (landed, lens_unit-green). `simulated_relationship`'s
+  `chain_is_simulated` is **row 1** (consumed, not duplicated). No deletion — it's the row-1 detector.
+- **`v2.lens.structural_similarity` → a registry row.** It is today an *unrealized scaffold*
+  (`verdict: Unrealized`, no predicate) — the type-decl-layer twin of the same anti-unification move.
+  **Consolidate:** realize it as an `intent_linearity` row over the type-decl forest (binder = type
+  parameter, not list element), reusing the shared kernel.
+  **DELETE on trigger** `structural_similarity realized as an intent_linearity row`: the bespoke
+  `StructuralSimilarityVerdict` / `TypeShape` / `FnShapeUnrealized` scaffold (`structural_similarity.dag`
+  lines 12–45) — once the row exists, that empty machinery is dead. *(Not before — it carries a live
+  `ConstructionJustification` the hygiene backstop counts.)*
+- **`cost.dag` / `complexity.dag` → run-time rows.** The decidable `(pattern → cheaper-form)` catalog
+  entries become `RunTime`-axis rows in the same registry; `complexity.dag` keeps **only** its
+  `RatchetForever` global-optimality residue. **No file deletion** — `cost.dag`'s `fold_node` cost
+  catamorphism is the row's `detect`; what dissolves is the *separate* notion of "a complexity rewrite
+  engine distinct from a redundancy engine" (they were one).
+- **The flagged instances** (`run_ci_gates_sequential`, `elf/encode` unrolls, the dispatch ladders) are
+  **rewritten, not deleted as files** — the apply-half replaces each hand-unrolled body with its fold/
+  table. Those line-deletions are the *output* of the enforcer, gated on emit + write (§6 + the write
+  effect), not a manual sweep.
+
+**Deletes executed this turn: none.** All gated. The map is the deliverable; the triggers are the
+schedule.
+
 ## Retrofit path (fix all current lenses)
 
 Each existing analytical lens is upgraded from `-> Bool`/`-> count` to *also* produce a corrected
