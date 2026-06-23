@@ -1,6 +1,6 @@
 module gunbc.ci_budget_tree
 
-import std.measure { ByteSize, byte_size, measure_scale_fraction_floor, Memory, One }
+import std.measure { ByteSize, byte_size, measure_scale_fraction_floor, measure_fit_count_floor, Memory, One }
 import std.types { Int, List, String }
 import std.realization_width { byte_size_saturating_sub }
 import extdeps.accounting.budget { Appropriation, LineItem }
@@ -13,17 +13,28 @@ import product.compute_fabric { compute_host_ram_bytes_total }
 import gunbc.fleet_intent { srv1_host }
 import gunbc.ci_floor_measurement {
   HostFixedOverhead, HostFixedOverheadMeasured, HostFixedOverheadUnmeasured,
-  gunbc_ci_host_fixed_overhead
+  gunbc_ci_host_fixed_overhead,
+  DashboardSessionReservation, DashboardSessionReservationMeasured, DashboardSessionReservationUnmeasured,
+  gunbc_ci_dashboard_session_reservation,
+  FloorRunnerWorstMax, FloorRunnerWorstMaxMeasured, FloorRunnerWorstMaxUnmeasured,
+  gunbc_ci_floor_runner_worst_max,
+  gunbc_ci_host_container_memory_cap,
+  gunbc_ci_floor_whole_run_peak_rss_bytes,
+  gunbc_ci_floor_runner_margin_num,
+  gunbc_ci_floor_runner_margin_den
 }
-import gunbc.ci_runner_placement { gunbc_ci_runners_per_host }
 
 
 fn srv1_node_name() -> String {
   "srv1"
 }
 
-fn srv1_run_pool_name() -> String {
-  "ci_run_pool"
+fn srv1_gha_runner_pool_name() -> String {
+  "gha_runner_pool"
+}
+
+fn srv1_dashboard_session_pool_name() -> String {
+  "dashboard_session_pool"
 }
 
 fn srv1_ci_run_name() -> String {
@@ -45,24 +56,46 @@ fn srv1_fixed_overhead_bytes() -> ByteSize {
   }
 }
 
-fn srv1_run_pool_budget() -> ByteSize {
-  byte_size_saturating_sub(total: srv1_host_ram(), reserved: srv1_fixed_overhead_bytes())
-}
-
-fn srv1_runs_per_host() -> Int {
-  gunbc_ci_runners_per_host()
-}
-
-fn per_run_budget_split(pool: ByteSize, r: Int) -> ByteSize {
-  if r <= 0 {
-    measure_scale_fraction_floor(m: pool, num: 0, den: 1)
-  } else {
-    measure_scale_fraction_floor(m: pool, num: 1, den: r)
+fn srv1_dashboard_session_pool_budget() -> ByteSize {
+  match gunbc_ci_dashboard_session_reservation {
+    DashboardSessionReservationUnmeasured => srv1_host_ram()
+    DashboardSessionReservationMeasured { per_container_cap: cap, concurrency: n } =>
+      measure_scale_fraction_floor(m: cap, num: n, den: 1)
   }
 }
 
-fn srv1_per_run_budget() -> ByteSize {
-  per_run_budget_split(pool: srv1_run_pool_budget(), r: srv1_runs_per_host())
+fn srv1_gha_runner_pool_budget() -> ByteSize {
+  byte_size_saturating_sub(
+    total: byte_size_saturating_sub(total: srv1_host_ram(), reserved: srv1_fixed_overhead_bytes()),
+    reserved: srv1_dashboard_session_pool_budget()
+  )
+}
+
+fn srv1_floor_runner_with_margin(b: ByteSize) -> ByteSize {
+  measure_scale_fraction_floor(m: b, num: gunbc_ci_floor_runner_margin_num, den: gunbc_ci_floor_runner_margin_den)
+}
+
+fn srv1_ci_run_reservation() -> ByteSize {
+  srv1_floor_runner_with_margin(b: gunbc_ci_floor_whole_run_peak_rss_bytes())
+}
+
+fn srv1_ci_run_container_hard_cap() -> ByteSize {
+  gunbc_ci_host_container_memory_cap
+}
+
+fn srv1_ci_run_worst_observed() -> ByteSize {
+  match gunbc_ci_floor_runner_worst_max {
+    FloorRunnerWorstMaxUnmeasured => srv1_host_ram()
+    FloorRunnerWorstMaxMeasured { bytes: w } => w
+  }
+}
+
+fn srv1_runs_fit_in_pool() -> Int {
+  measure_fit_count_floor(capacity: srv1_gha_runner_pool_budget(), each: srv1_ci_run_reservation())
+}
+
+fn srv1_runs_hard_guaranteed() -> Int {
+  measure_fit_count_floor(capacity: srv1_gha_runner_pool_budget(), each: srv1_ci_run_container_hard_cap())
 }
 
 fn srv1_overhead_claim() -> BudgetClaim {
@@ -75,7 +108,7 @@ fn srv1_overhead_claim() -> BudgetClaim {
 fn srv1_ci_run_node_value() -> BudgetNode {
   BudgetNode {
     name: srv1_ci_run_name(),
-    appropriation: srv1_appropriation(b: srv1_per_run_budget()),
+    appropriation: srv1_appropriation(b: srv1_ci_run_reservation()),
     claims: [],
     children: []
   }
@@ -86,15 +119,24 @@ fn replicate_budget_node(n: Int, node: BudgetNode) -> List<BudgetNode> {
 }
 
 fn srv1_run_children() -> List<BudgetNode> {
-  replicate_budget_node(n: srv1_runs_per_host(), node: srv1_ci_run_node_value())
+  replicate_budget_node(n: srv1_runs_fit_in_pool(), node: srv1_ci_run_node_value())
 }
 
-fn srv1_run_pool_node_value() -> BudgetNode {
+fn srv1_gha_runner_pool_node_value() -> BudgetNode {
   BudgetNode {
-    name: srv1_run_pool_name(),
-    appropriation: srv1_appropriation(b: srv1_run_pool_budget()),
+    name: srv1_gha_runner_pool_name(),
+    appropriation: srv1_appropriation(b: srv1_gha_runner_pool_budget()),
     claims: [],
     children: srv1_run_children()
+  }
+}
+
+fn srv1_dashboard_session_pool_node_value() -> BudgetNode {
+  BudgetNode {
+    name: srv1_dashboard_session_pool_name(),
+    appropriation: srv1_appropriation(b: srv1_dashboard_session_pool_budget()),
+    claims: [],
+    children: []
   }
 }
 
@@ -103,18 +145,22 @@ fn build_srv1_budget_tree() -> BudgetNode {
     name: srv1_node_name(),
     appropriation: srv1_appropriation(b: srv1_host_ram()),
     claims: [srv1_overhead_claim()],
-    children: [srv1_run_pool_node_value()]
+    children: [srv1_gha_runner_pool_node_value(), srv1_dashboard_session_pool_node_value()]
   }
 }
 
 data srv1_budget_tree: BudgetNode = build_srv1_budget_tree()
 
-fn srv1_run_pool_node() -> BudgetChild {
-  budget_child_named(node: srv1_budget_tree, name: srv1_run_pool_name())
+fn srv1_gha_runner_pool_node() -> BudgetChild {
+  budget_child_named(node: srv1_budget_tree, name: srv1_gha_runner_pool_name())
+}
+
+fn srv1_dashboard_session_pool_node() -> BudgetChild {
+  budget_child_named(node: srv1_budget_tree, name: srv1_dashboard_session_pool_name())
 }
 
 fn srv1_ci_run_node() -> BudgetChild {
-  match srv1_run_pool_node() {
+  match srv1_gha_runner_pool_node() {
     BudgetChildMissing => BudgetChildMissing
     BudgetChildFound { node: pool } => budget_child_named(node: pool, name: srv1_ci_run_name())
   }

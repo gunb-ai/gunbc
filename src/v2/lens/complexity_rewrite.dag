@@ -1,0 +1,80 @@
+module v2.lens.complexity_rewrite
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+
+import v2.lens.cost {
+  AsymptoticClass,
+  ClassLinear,
+  ClassPolynomial,
+  SymbolicCost,
+  asymptotic_class_dominates,
+  asymptotic_class_of_cost,
+  polynomial_degree_two
+}
+import v2.std.algebra { FreeMonoid, any, fold_list, for_all }
+import v2.std.node { Symbol }
+import v2.std.logic { Bool }
+
+type ComplexityRewrite {
+  name: Symbol
+  before: AsymptoticClass
+  after: AsymptoticClass
+}
+
+fn asymptotic_class_equal(a: AsymptoticClass, b: AsymptoticClass) -> Bool {
+  asymptotic_class_dominates(a: a, b: b) && asymptotic_class_dominates(a: b, b: a)
+}
+
+fn rewrite_strictly_lowers(r: ComplexityRewrite) -> Bool {
+  asymptotic_class_dominates(a: r.before, b: r.after)
+    && !asymptotic_class_dominates(a: r.after, b: r.before)
+}
+
+fn loop_invariant_hoist() -> ComplexityRewrite {
+  ComplexityRewrite {
+    name: ^loop_invariant_hoist,
+    before: ClassPolynomial { degree: polynomial_degree_two() },
+    after: ClassLinear
+  }
+}
+
+fn rewrite_catalog() -> FreeMonoid<ComplexityRewrite> {
+  [ loop_invariant_hoist() ]
+}
+
+fn catalog_is_sound() -> Bool {
+  for_all(xs: rewrite_catalog(), predicate: rewrite_strictly_lowers)
+}
+
+fn rewrite_matches_class(r: ComplexityRewrite, cls: AsymptoticClass) -> Bool {
+  asymptotic_class_equal(a: r.before, b: cls)
+}
+
+fn cost_class_is_rewritable(cls: AsymptoticClass) -> Bool {
+  any(xs: rewrite_catalog(), predicate: fn(r) { rewrite_matches_class(r: r, cls: cls) })
+}
+
+fn cost_is_rewritable(c: SymbolicCost) -> Bool {
+  cost_class_is_rewritable(cls: asymptotic_class_of_cost(cost: c))
+}
+
+fn minimized_class(c: SymbolicCost) -> AsymptoticClass {
+  fold_list(
+    xs: rewrite_catalog(),
+    empty: asymptotic_class_of_cost(cost: c),
+    cons: fn(acc, r) {
+      if rewrite_matches_class(r: r, cls: asymptotic_class_of_cost(cost: c)) {
+        r.after
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding {
+    grounding_authority: "the dependency-coupling carrier on InferredFacts that v2.lens.parallelism waits on (feature:T-13-parallelism-relation-unresolved) -- it decides loop-invariance / independence",
+    dissolve_on: "a catalogued rewrite fires on a LIVE realized cost once independence is read from the coupling carrier by construction; until then matching the realized asymptotic class against a rewrite's before-class (O(n^2) = ClassPolynomial degree 2) is the decidable NECESSARY condition and the row over-approximates -- sufficiency (genuine loop-invariant hoist O(n^2)->O(n), not a real all-pairs O(n^2)) waits on the carrier"
+  },
+  rationale: "The DECIDABLE rewrite catalog -- the wall-half carved out of v2.lens.complexity's RatchetForever optimality residue. complexity.dag projects a realized cost onto an AsymptoticClass and surfaces an undecidable GAP (Rice); this module formalizes the opposite-direction decidable fragment: a finite whitelist of cost-recurrence rewrites each PROVABLY strictly lowering the class (the §5 'O(n^2)->O(n)' rewrites). §5 partition: (1) every catalogued rewrite strictly lowers the class -- decidable now, enforced by catalog_is_sound (the rewrite-catalog wall); (2) whether a realized cost matches a rewrite is decided by class-equality against cost.dag's exhaustive asymptotic_class_of_cost (no hand-rolled wildcard match -- single authority, total), but its SUFFICIENCY is grounded by the independence carrier above; (3) global optimality stays the RatchetForever in v2.lens.complexity / v2.lens.synthesis. One catalog, N rows -- the RunTime axis of v2.lens.intent_linearity (the ChangeTime axis is anti-unification)."
+}

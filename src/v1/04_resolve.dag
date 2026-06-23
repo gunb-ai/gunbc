@@ -513,7 +513,8 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
       Absent => NodeResolveResult { resolved: n, diagnostics: [] }
     }
   } else if n.children |> count == 0 {
-    if is_recursive_type_for(env: env, node: n) {
+    let n_target_is_coproduct_container = match n.inferred { Present { value: Resolved { node: target } } => target.connective == NoConnective && target.children |> count > 0 && is_container_type(name: target.name) && resolve_generic_use_decl(env: env, n: target).connective == Disj  _ => false }
+    if is_recursive_type_for(env: env, node: n) || n_target_is_coproduct_container {
       NodeResolveResult { resolved: n, diagnostics: [] }
     } else {
       match lookup_type_for(env: env, node: n) {
