@@ -7,11 +7,21 @@ type ConstructionMechanism
   | RealizationDispatch
   | SubstrateMandatoryTag
 
-type NodeRef {
-  module_path: String
+type DeclLocator {
+  module_path: String?
   decl_name: NonEmptyStr
+  field: NonEmptyStr?
 }
 
 type Disposition
   = Terminal { reason: NonEmptyStr }
-  | Scaffold { dissolves_to: ConstructionMechanism, bind: NodeRef }
+  | Scaffold { dissolves_to: ConstructionMechanism, bind: DeclLocator }
+
+data decl_locator_dissolves_into_declaration_ref: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclLocator {
+    module_path: Present { value: "std.serialization" },
+    decl_name: "DeclarationRef",
+    field: Present { value: "decl_name" }
+  }
+}
