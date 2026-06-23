@@ -1,6 +1,7 @@
 module gunbc.operator_fleet
 
-import gunbc.operator_fleet_network { operator_host_srv1, operator_host_srv2 }
+import gunbc.operator_fleet_network { operator_host_srv1, operator_host_srv2, operator_host_srv3 }
+import extdeps.storage.samsung { samsung_970_evo_plus_1tb_catalog }
 import extdeps.cpu.ampere { altra_max_m12830_catalog }
 import extdeps.cpu.types { CpuFacts, CpuDeploymentFacts }
 import extdeps.boards.asrock_rack { asrock_altrad8ud_1l2t_catalog }
@@ -23,6 +24,9 @@ import product.compute_fabric {
   OwnedMarginalZero,
   PerJobFilesystem,
   Dram,
+  StorageDevice,
+  nvme_storage_device,
+  Persistent,
 }
 
 data operator_fleet_cpu: CpuFacts = CpuFacts {
@@ -46,16 +50,26 @@ data srv2_baseboard: ServerBaseboard = ServerBaseboard {
   catalog: asrock_altrad8ud_1l2t_catalog,
   bmc: BmcEndpoint { host: "192.168.1.184", protocol: Redfish },
 }
+data srv3_baseboard: ServerBaseboard = ServerBaseboard {
+  catalog: asrock_altrad8ud_1l2t_catalog,
+  bmc: BmcEndpoint { host: "192.168.1.192", protocol: Redfish },
+}
 
 data srv1_bmc_credential: CredentialFlow = Stored { secret_name: "bmc-srv1-admin" }
 data srv2_bmc_credential: CredentialFlow = Stored { secret_name: "bmc-srv2-admin" }
+data srv3_bmc_credential: CredentialFlow = Stored { secret_name: "bmc-srv3-admin" }
+
+data operator_nvme_970_evo_plus_1tb: StorageDevice = nvme_storage_device(
+  catalog: samsung_970_evo_plus_1tb_catalog,
+  persistence: Persistent,
+)
 
 data srv1_host: ComputeHost = ComputeHost {
   identity: operator_host_srv1,
   baseboard: Present { value: srv1_baseboard },
   processors: [CpuProcessor { cpu: operator_fleet_cpu }],
   memory: [MemoryDevice { capacity: gibibyte_to_byte_size(g: gibibyte(128)), memory_kind: Dram, bandwidth: none }],
-  storage: [],
+  storage: [operator_nvme_970_evo_plus_1tb, operator_nvme_970_evo_plus_1tb],
   network_interfaces: [],
 }
 data srv2_host: ComputeHost = ComputeHost {
@@ -63,9 +77,19 @@ data srv2_host: ComputeHost = ComputeHost {
   baseboard: Present { value: srv2_baseboard },
   processors: [CpuProcessor { cpu: operator_fleet_cpu }],
   memory: [MemoryDevice { capacity: gibibyte_to_byte_size(g: gibibyte(128)), memory_kind: Dram, bandwidth: none }],
+  storage: [operator_nvme_970_evo_plus_1tb, operator_nvme_970_evo_plus_1tb],
+  network_interfaces: [],
+}
+data srv3_host: ComputeHost = ComputeHost {
+  identity: operator_host_srv3,
+  baseboard: Present { value: srv3_baseboard },
+  processors: [CpuProcessor { cpu: operator_fleet_cpu }],
+  memory: [MemoryDevice { capacity: gibibyte_to_byte_size(g: gibibyte(128)), memory_kind: Dram, bandwidth: none }],
   storage: [],
   network_interfaces: [],
 }
+
+data operator_fleet_known_hosts: List<ComputeHost> = [srv1_host, srv2_host, srv3_host]
 
 fn operator_fleet_execution_surface() -> ExecutionSurface {
   ExecutionSurface {

@@ -23,7 +23,7 @@ test fn operator_fleet_network_container_to_host_lan_denied() -> Bool {
 }
 
 test fn operator_fleet_network_topology_endpoint_count_holds() -> Bool {
-  list_length(items: operator_fleet_network.endpoints) == 7
+  list_length(items: operator_fleet_network.endpoints) == 8
 }
 
 test fn operator_fleet_network_srv1_addresses_holds() -> Bool {

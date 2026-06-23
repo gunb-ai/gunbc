@@ -1,0 +1,26 @@
+module test.claim.operator_fleet_storage
+
+import std.logic { Bool }
+import std.types { list_length }
+import gunbc.operator_fleet { srv1_host, srv2_host, srv3_host, operator_nvme_970_evo_plus_1tb }
+import extdeps.observability { OutOfBand, StorageInventory, route_observation }
+
+test fn in_band_hosts_carry_multiple_grounded_drives() -> Bool {
+  list_length(items: srv1_host.storage) == 2
+    && list_length(items: srv2_host.storage) == 2
+}
+
+test fn fleet_drive_is_catalog_grounded() -> Bool {
+  match operator_nvme_970_evo_plus_1tb.catalog {
+    Present { value: c } => c.pcie_link.lane_count == 4 && c.pcie_link.generation.generation_number == 3
+    Absent => false
+  }
+}
+
+test fn out_of_band_only_host_reports_no_drives() -> Bool {
+  list_length(items: srv3_host.storage) == 0
+    && match route_observation(channel: OutOfBand, class: StorageInventory) {
+      ChannelCannotObserve { channel: _, class: _ } => true
+      RoutedTo { channel: _ } => false
+    }
+}

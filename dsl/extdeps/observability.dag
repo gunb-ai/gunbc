@@ -1,0 +1,54 @@
+module extdeps.observability
+
+import std.types { Bool }
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "en.wikipedia.org/wiki/Out-of-band_management"
+  }
+}
+
+type ObservabilityChannel =
+    InBand
+  | OutOfBand
+
+type ObservationClass =
+    ProcessorInventory
+  | MemoryInventory
+  | PowerState
+  | PowerDraw
+  | Thermal
+  | StorageInventory
+  | NetworkInventory
+
+fn channel_observes(channel: ObservabilityChannel, class: ObservationClass) -> Bool {
+  match channel {
+    InBand => true
+    OutOfBand =>
+      match class {
+        ProcessorInventory => true
+        MemoryInventory => true
+        PowerState => true
+        PowerDraw => true
+        Thermal => true
+        StorageInventory => false
+        NetworkInventory => false
+      }
+  }
+}
+
+type ObservationRoutingOutcome =
+    RoutedTo { channel: ObservabilityChannel }
+  | ChannelCannotObserve { channel: ObservabilityChannel, class: ObservationClass }
+
+fn route_observation(channel: ObservabilityChannel, class: ObservationClass) -> ObservationRoutingOutcome {
+  if channel_observes(channel: channel, class: class) {
+    RoutedTo { channel: channel }
+  } else {
+    ChannelCannotObserve { channel: channel, class: class }
+  }
+}

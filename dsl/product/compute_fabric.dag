@@ -58,6 +58,7 @@ import extdeps.cpu.types {
   CpuSocket,
   SocketPackage,
 }
+import extdeps.storage.types { NvmeDeviceCatalogRow }
 import extdeps.toolchain.types {
   Architecture,
   Aarch64,
@@ -190,9 +191,21 @@ type MemoryDevice {
 type StorageDevice {
   capacity: ByteSize
   medium: StorageMedium
+  catalog: NvmeDeviceCatalogRow?
   read_bandwidth: Bandwidth?
   write_bandwidth: Bandwidth?
   persistence: PersistenceKind
+}
+
+fn nvme_storage_device(catalog: NvmeDeviceCatalogRow, persistence: PersistenceKind) -> StorageDevice {
+  StorageDevice {
+    capacity: catalog.capacity_bytes,
+    medium: Nvme,
+    catalog: Present { value: catalog },
+    read_bandwidth: Present { value: catalog.sequential_read },
+    write_bandwidth: Present { value: catalog.sequential_write },
+    persistence: persistence,
+  }
 }
 
 type NetworkInterface {
