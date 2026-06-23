@@ -18,7 +18,10 @@ import extdeps.formats.dnsmasq {
 data install_server_boot_tag: String = "efihttp"
 
 fn network_address_of_cidr(cidr: String) -> String {
-  fold(split(s: cidr, delimiter: "/"), init: "", f: (acc, seg) => if acc == "" { seg } else { acc })
+  match split(s: cidr, delimiter: "/") |> first {
+    Present { value: network } => network
+    Absent => cidr
+  }
 }
 
 fn install_server_boot_steering(spec: InstallServerSpec) -> List<DnsmasqDirective> {
