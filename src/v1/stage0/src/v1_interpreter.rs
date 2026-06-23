@@ -4803,6 +4803,7 @@ fn eval_builtin(
         },
 
         "random_bytes" => {
+            // /dev/urandom (POSIX); getrandom(2) syscall deferred to when getrandom crate lands
             let count = expect_int(positional.first().copied(), "random_bytes")?;
             if !(0..=65536).contains(&count) {
                 return Err(InterpError::TypeError {

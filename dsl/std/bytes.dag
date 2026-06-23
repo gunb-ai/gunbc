@@ -19,6 +19,7 @@ fn utf8_encode_bytes(s: String) -> Bytes {
   s as Bytes
 }
 
+// dissolve-on: 'ground each primitive into its realization' open thread (DESIGN.md) — converts to PrimitiveContract + builtin_function_registry alongside bytes_octets/utf8_decode_bytes
 fn random_bytes(count: Int) -> List<UInt8> {
   [pure_dag_seam_unreachable()]
 }
