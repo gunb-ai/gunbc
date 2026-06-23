@@ -1,6 +1,6 @@
 module extdeps.bmc.http
 
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, Secret }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -28,7 +28,7 @@ service redfish.Http {
   }
 
   operation GetSystem {
-    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password: NonEmptyStr }
+    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password: Secret }
     output { body: String from "stdout", success: Bool from "exit_success" }
     readonly
     transport shell {
@@ -67,7 +67,7 @@ service redfish.Http {
   }
 
   operation GetPower {
-    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password: NonEmptyStr }
+    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password: Secret }
     output { body: String from "stdout", success: Bool from "exit_success" }
     readonly
     transport shell {
@@ -80,7 +80,7 @@ service redfish.Http {
   }
 
   operation GetThermal {
-    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password: NonEmptyStr }
+    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password: Secret }
     output { body: String from "stdout", success: Bool from "exit_success" }
     readonly
     transport shell {

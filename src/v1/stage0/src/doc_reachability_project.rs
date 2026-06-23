@@ -92,9 +92,9 @@ fn normalize(path: &Path) -> String {
 
 fn dag_comment_bind_doc_refs() -> BTreeSet<String> {
     let mut out = BTreeSet::new();
-    for root in ["dsl", "src"] {
+    for root in crate::module_path_index::witness_layer_roots() {
         let mut dag_files = Vec::new();
-        collect_dag_files(&workspace_root().join(root), &mut dag_files);
+        collect_dag_files(&workspace_root().join(&root), &mut dag_files);
         for path in dag_files {
             let content = match std::fs::read_to_string(&path) {
                 Ok(c) => c,
