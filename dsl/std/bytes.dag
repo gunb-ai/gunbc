@@ -3,8 +3,14 @@ module std.bytes
 import std.types { Bytes }
 import std.integer { UInt8 }
 
+data bytes_seam_host_realization_marker: String = "Bytes is an opaque kernel primitive with no .dag constructor; bytes_octets / octets_bytes / utf8_encode_bytes (and utf8_decode_bytes in std.encoding) are realized by v1 host builtins in eval_builtin. The .dag bodies are fail-closed (loud: division-by-zero or unsupported-cast, never a fabricated value) and are dead while the host shadows them (verified by execution: the iso/round-trip witnesses stay green with the bodies fail-closed). dissolve-on: DESIGN.md open thread 'ground each primitive into its realization' (operator-owned) lands, at which point these convert to PrimitiveContract + builtin_function_registry together with utf8_decode_bytes."
+
+fn pure_dag_seam_unreachable() -> Int {
+  1 / 0
+}
+
 fn bytes_octets(b: Bytes) -> List<UInt8> {
-  []
+  [pure_dag_seam_unreachable()]
 }
 
 fn octets_bytes(o: List<UInt8>) -> Bytes {
