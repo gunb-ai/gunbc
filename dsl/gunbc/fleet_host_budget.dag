@@ -172,6 +172,19 @@ fn runner_slice_cap(host: ByteSize, overhead: ByteSize, baselines: ByteSize, bui
   byte_size_saturating_sub(total: after_build, reserved: headroom)
 }
 
+type RunnerSliceCapEffectiveness
+  = CapEffective { bytes: ByteSize }
+  | CapUnbounded
+
+data gunbc_fleet_runner_slice_drift_marker: String = "the runner-slice cap disk!=live DRIFT detector (the REAL over-commit vector, not sessions). runner_slice_cap_drifted(disk_cap, effective): the live bug is 10-resource-caps.conf setting MemoryMax=70391285350 ON DISK while the effective runtime cgroup is CapUnbounded (MemoryMax=INFINITY) -> drift=true. The ctrl reconciler runner_host_reconcile.mjs is meant to make disk==live (CapEffective with the disk cap) -> drift=false; a different effective value is also drift. This is the SHAPE + a fixture red-receipt; the live-read arm (systemctl show the effective MemoryMax) is the D2 effectful floor gate, fail-closed when the host read is unavailable (never silently pass off-host)."
+
+fn runner_slice_cap_drifted(disk_cap: ByteSize, effective: RunnerSliceCapEffectiveness) -> Bool {
+  match effective {
+    CapUnbounded => true
+    CapEffective { bytes: b } => !(byte_size_count(b: disk_cap) == byte_size_count(b: b))
+  }
+}
+
 type FleetHostPlan
   = FleetHostPlanDerived {
       name: String,

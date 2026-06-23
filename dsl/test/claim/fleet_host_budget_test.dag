@@ -48,15 +48,21 @@ import gunbc.fleet_host_budget {
   baselines_sum,
   nominal_build_pool,
   runner_slice_cap,
+  RunnerSliceCapEffectiveness,
+  CapEffective,
+  CapUnbounded,
+  runner_slice_cap_drifted,
   fleet_build_realization_marker,
   gunbc_fleet_oomd_floor_basis,
   gunbc_fleet_runner_slice_dropin_marker,
   gunbc_fleet_capped_build_pool_marker,
+  gunbc_fleet_runner_slice_drift_marker,
 }
 import gunbc.ci_floor_measurement {
   OomdEnforcementEvidence,
   OomdEnforced,
   OomdUnverified,
+  gunbc_ci_regime2_aggregate_dissolution_marker,
 }
 
 fn fixture_cfg() -> CtrlJobserverConfig {
@@ -209,6 +215,30 @@ fn witness_runner_slice_cap_conserves() -> Bool {
   total <= byte_size_count(b: host_125gib())
 }
 
+fn witness_runner_slice_cap_drift_red_receipt() -> Bool {
+  let disk = byte_size(70391285350)
+  runner_slice_cap_drifted(disk_cap: disk, effective: CapUnbounded)
+    && !runner_slice_cap_drifted(disk_cap: disk, effective: CapEffective { bytes: disk })
+    && runner_slice_cap_drifted(disk_cap: disk, effective: CapEffective { bytes: byte_size(55307438489) })
+}
+
+fn witness_5650_marker_dissolution() -> Bool {
+  let runner = fixture_runner_measured()
+  let session = fixture_session_measured()
+  let baselines = baselines_sum(runner: runner, session: session)
+  let headroom = byte_size(16106127360)
+  let cfg = fixture_cfg()
+  let nominal = nominal_build_pool(nproc: 128, mem_total: host_125gib(), cfg: cfg)
+  let pool = capped_build_pool(host: host_125gib(), overhead: overhead_16gib(), baselines: baselines, headroom: headroom, nominal: nominal)
+  let cap = runner_slice_cap(host: host_125gib(), overhead: overhead_16gib(), baselines: baselines, build_pool: pool, headroom: headroom)
+  let whole = byte_size_count(b: overhead_16gib()) + byte_size_count(b: baselines) + byte_size_count(b: pool) + byte_size_count(b: headroom) + byte_size_count(b: cap)
+  byte_size_count(b: baselines) > 0
+    && byte_size_count(b: pool) > 0
+    && !(byte_size_count(b: baselines) == byte_size_count(b: pool))
+    && whole == byte_size_count(b: host_125gib())
+    && gunbc_ci_regime2_aggregate_dissolution_marker != ""
+}
+
 fn witness_markers_documented() -> Bool {
   ctrl_jobserver_flip_values_marker != ""
     && fleet_container_baseline_provenance != ""
@@ -216,6 +246,7 @@ fn witness_markers_documented() -> Bool {
     && gunbc_fleet_oomd_floor_basis != ""
     && gunbc_fleet_runner_slice_dropin_marker != ""
     && gunbc_fleet_capped_build_pool_marker != ""
+    && gunbc_fleet_runner_slice_drift_marker != ""
 }
 
 test fn fleet_model_holds() -> Bool {
@@ -231,5 +262,7 @@ test fn fleet_model_holds() -> Bool {
     && witness_uncapped_build_pool_overcommits()
     && witness_capped_build_pool_positive_and_bounded()
     && witness_runner_slice_cap_conserves()
+    && witness_runner_slice_cap_drift_red_receipt()
+    && witness_5650_marker_dissolution()
     && witness_markers_documented()
 }
