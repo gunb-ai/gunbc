@@ -7021,8 +7021,13 @@ fn github_token_returns_typed_auth_token_from_credential_source() {
     );
     assert!(
         content.contains("structural_coverage_gap_github_token_metadata_verification")
+<<<<<<< HEAD
             && content.contains(r#""field": "scopes""#)
             && content.contains(r#""field": "expires_at""#),
+=======
+            && content.contains("{\"field\": \"scopes\"}")
+            && content.contains("{\"field\": \"expires_at\"}"),
+>>>>>>> origin/main
         "ROADMAP:376: expected declared token metadata verification gap to stay tracked, got:\n{content}"
     );
     assert!(
@@ -7059,8 +7064,13 @@ fn github_create_review_uses_typed_200_body_projection() {
     );
     assert!(
         content.contains("structural_coverage_gap_github_pull_review_response_residual")
+<<<<<<< HEAD
             && content.contains(r#""field": "user""#)
             && content.contains(r#""field": "submitted_at""#),
+=======
+            && content.contains("{\"field\": \"user\"}")
+            && content.contains("{\"field\": \"submitted_at\"}"),
+>>>>>>> origin/main
         "expected unmodeled GitHub review response fields to stay tracked, got:\n{content}"
     );
 }
