@@ -140,10 +140,7 @@ func all_bind_nodes_have_facts() -> Bool {
 }
 
 fn for_all_have_facts(tree: InferredTree, nodes: FreeMonoid<Node>) -> Bool {
-  match length(xs: filter(xs: nodes, predicate: fn(n) { node_has_facts(tree: tree, n: n) })) == length(xs: nodes) {
-    true => true
-    false => false
-  }
+  length(xs: filter(xs: nodes, predicate: fn(n) { node_has_facts(tree: tree, n: n) })) == length(xs: nodes)
 }
 
 // (c)/(d) coverage: do MOST body nodes have facts, or only the root?
