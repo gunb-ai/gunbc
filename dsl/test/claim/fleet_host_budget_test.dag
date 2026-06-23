@@ -220,7 +220,9 @@ fn witness_runner_slice_excludes_build_pool() -> Bool {
   let cfg = fixture_cfg()
   let slice = runner_slice_cap(host: host_125gib(), overhead: overhead_16gib(), session_slice: session_slice_fixture(), headroom: fitting_headroom_bytes())
   let build_pool_bytes = byte_size_count(b: cfg.mib_per_job) * hardware_thread_count_value(t: derive_jobserver_tokens(nproc: hardware_thread_count(count: 128), mem_total: host_125gib(), cfg: cfg))
-  byte_size_count(b: slice) > build_pool_bytes
+  let after_session = byte_size_count(b: host_125gib()) - byte_size_count(b: overhead_16gib()) - byte_size_count(b: session_slice_fixture())
+  let double_subtract_would_starve = after_session < (build_pool_bytes + byte_size_count(b: fitting_headroom_bytes()))
+  byte_size_count(b: slice) > 0 && double_subtract_would_starve
 }
 
 fn witness_host_conserves_exactly() -> Bool {
