@@ -3628,7 +3628,12 @@ pub fn emit_module_full(
             .first()
             .cloned();
             from_primary.or_else(|| {
+                let module_nm = authored_name(scope.type_env.clone(), m.clone());
+                eprintln!("[wire_contract_sidecar] module={} sidecar_items_len={}", module_nm, sidecar_items.len());
                 sidecar_items.clone().iter().cloned().find(|i| {
+                    let n = i.name.clone();
+                    let authored = authored_name(scope.type_env.clone(), i.clone());
+                    eprintln!("[wire_contract_sidecar]   item name={:?} authored={:?}", n, authored);
                     item_binding_is_named(
                         scope.type_env.clone(),
                         i.clone(),
