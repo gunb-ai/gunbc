@@ -11,7 +11,7 @@ use im_rc::Vector as RrbVector;
 use crate::std_syntax::BinOp;
 use crate::std_syntax::LiteralValue;
 use crate::v1_compiler_emit::{extract_string_interp_parts, has_mock_prefix};
-use crate::v1_compiler_infer_items::{ItemInfo, ItemKind, ResolvedGraph, TypedModule};
+use crate::v1_compiler_infer_items::{item_kind, ItemInfo, ItemKind, ResolvedGraph, TypedModule};
 use crate::v1_rt;
 use crate::v1_rt::{
     rc_empty_set as empty_set, rc_set_insert as set_insert, rc_set_union as set_union, set_contains,
@@ -1007,25 +1007,28 @@ impl InterpContext {
                 if !name.is_empty() {
                     fn_nodes.insert(name.clone(), item.clone());
                 }
-                if let Some(info) = graph.item_registry.get(&name) {
-                    if info.kind == ItemKind::ServiceItem {
-                        for op in item.children.iter() {
-                            let op_name = authored_name_at(source_indices.clone(), op.clone());
-                            if !op_name.is_empty() {
-                                let key = format!("{}.{}", name, op_name);
-                                service_ops.insert(key, (item.clone(), op.clone()));
-                            }
+                // Service-item detection is node-local: the item node carries the
+                // `transport` that *defines* it as a service, so `item_kind` of the
+                // node itself is the single authority. Do NOT gate on a name-keyed
+                // `item_registry` lookup — two top-level items can share one authored
+                // name (the `std.resources` `resource Filesystem` is an OtherItem;
+                // the `extdeps.filesystem` `service Filesystem` is a ServiceItem), and
+                // once both land in the same import closure the non-service entry can
+                // win the registry merge and poison the lookup, silently dropping the
+                // service's operations (-> "unknown service operation" at runtime).
+                if item_kind(item.clone()) == ItemKind::ServiceItem {
+                    for op in item.children.iter() {
+                        let op_name = authored_name_at(source_indices.clone(), op.clone());
+                        if op_name.is_empty() {
+                            continue;
                         }
-                    }
-                }
-                if let Some(info) = graph.item_registry.get(&item.name) {
-                    if info.kind == ItemKind::ServiceItem && !item.name.is_empty() {
-                        for op in item.children.iter() {
-                            let op_name = authored_name_at(source_indices.clone(), op.clone());
-                            if !op_name.is_empty() {
-                                let key = format!("{}.{}", item.name, op_name);
-                                service_ops.insert(key, (item.clone(), op.clone()));
-                            }
+                        if !name.is_empty() {
+                            let key = format!("{}.{}", name, op_name);
+                            service_ops.insert(key, (item.clone(), op.clone()));
+                        }
+                        if !item.name.is_empty() && item.name != name {
+                            let key = format!("{}.{}", item.name, op_name);
+                            service_ops.insert(key, (item.clone(), op.clone()));
                         }
                     }
                 }
