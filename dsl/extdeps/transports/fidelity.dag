@@ -1,5 +1,8 @@
 module extdeps.transports.fidelity
 
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
 import std.types { FermiDepth }
 import std.list { List }
 import std.fidelity {
@@ -11,6 +14,13 @@ import std.fidelity {
 import extdeps.transports.shell { shell_transport_fidelity }
 import extdeps.transports.file { file_transport_fidelity }
 import extdeps.transports.rest { rest_transport_fidelity }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/gunb-ai/gunbc/tree/main/dsl/extdeps/transports"
+  }
+}
 
 data local_direct_transport_fidelity: TransportFidelity = TransportFidelity { depth: Xs, hermetic: true }
 data interface_stub_transport_fidelity: TransportFidelity = TransportFidelity { depth: Xs, hermetic: true }

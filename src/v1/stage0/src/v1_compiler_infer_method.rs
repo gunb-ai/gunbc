@@ -291,6 +291,16 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
+            "extdeps_external_authority_anchor_shadow_masked_for_qualified_name".to_string(),
+            bool_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "extdeps_external_authority_live_shadow_mask_holds".to_string(),
+            bool_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
             "extdeps_external_authority_live_roster_module_count".to_string(),
             int_type(),
         );
@@ -301,6 +311,38 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
             int_type(),
         );
         let m = v1_rt::rc_map_insert(m.clone(), "doc_graph_doc_count".to_string(), int_type());
+        let m = v1_rt::rc_map_insert(m.clone(), "inert_carrier_count".to_string(), int_type());
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "inert_carrier_unrostered_count".to_string(),
+            int_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "inert_carrier_stale_roster_count".to_string(),
+            int_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "inert_carrier_declared_count".to_string(),
+            int_type(),
+        );
+        let m = v1_rt::rc_map_insert(m.clone(), "non_fold_residue_count".to_string(), int_type());
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "non_fold_residue_unrostered_count".to_string(),
+            int_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "non_fold_residue_stale_roster_count".to_string(),
+            int_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "non_fold_residue_coproduct_universe_count".to_string(),
+            int_type(),
+        );
         let m = v1_rt::rc_map_insert(
             m.clone(),
             "transport_script_literal_violation_count_for_path".to_string(),

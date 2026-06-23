@@ -1,12 +1,9 @@
-
 module config.codegen_paths
-
 
 data codegen_out_dir: String = "target/codegen"
 data bin_dir: String = "target/codegen/bin"
 data lib_dir: String = "target/codegen/lib"
 data stamp_file: String = "target/codegen/.codegen-stamp"
-
 
 data generated_roots: List<String> = [
   "core/ir/src",
@@ -14,7 +11,6 @@ data generated_roots: List<String> = [
   "gunbc-app/src",
   "generated"
 ]
-
 
 data path_templates: List<String> = [
   "target/codegen/\{module\}.json",

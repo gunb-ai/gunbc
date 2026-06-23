@@ -1,8 +1,3 @@
-// Scope: D1a receipt — substrate closure superset-safe; dimension + real-diff selectivity
-//   pending receipt + provenance producer.
-// Status: scoped to affected_set_closure(dependencies, edit_locus) only; does NOT claim
-//   dimension-aware selectivity or real-git-diff coverage (D1b: canonical_changed_dimension_receipt).
-
 module v2.test.lens_affected_set.closure_superset_safe
 
 import v2.lens.affected_set { AffectedSetClosureAcc, affected_set_closure }
@@ -31,7 +26,6 @@ fn node_in_closure_frontier(closure: AffectedSetClosureAcc, node: Node) -> Bool 
   )
 }
 
-// Prefix of the deep-chain substrate: three hops from root (strict subset of full reading).
 data closure_superset_safe_prefix_dependencies: List<DependencyView> = [
   DependencyView {
     source: closure_deep_chain_root,

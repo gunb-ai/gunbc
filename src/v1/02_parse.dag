@@ -1,5 +1,3 @@
-// v2 parser -- recursive descent, first-error-halt.
-
 module v1.compiler.parse
 
 import v1.std.core {
@@ -59,10 +57,6 @@ import v1.compiler.languages {
 
 import extdeps.languages.dag.syntax { dag_syntax_spec, dag_non_name_keywords }
 
-// =========================================================================
-// Parser state types
-// =========================================================================
-
 type ParseContext {
   source_indices: Map<String, NewlineIndex>
   intern_table: InternTable
@@ -77,7 +71,6 @@ type ParseWithTableResult {
   result: ParseResult
   intern_table: InternTable
 }
-
 
 type AdvanceResult
   = AdvanceOk { token: Token, tokens: List<Token> }
@@ -118,8 +111,6 @@ type ItemPrefixResult {
   err: ErrorNode?
 }
 
-// Parser-local intermediate: ServiceConfig is dissolved into Node properties at the
-// service Node construction boundary. This type exists only inside the parser.
 type ServiceConfig { endpoint: Node, auth: Node?, auth_input: Node?, auth_source: Node?, rate_limit: Node?, retry: Node? }
 type ConfigResult { config: ServiceConfig, tokens: List<Token>, ctx: ParseContext, err: ErrorNode? }
 
@@ -218,10 +209,6 @@ type ParserResultWitness
 
 type DescResult { desc: String?, tokens: List<Token> }
 
-// =========================================================================
-// Helpers
-// =========================================================================
-
 fn token_span(tok: Token?) -> SourceSpan {
   match tok { Present { value: t } => t.span  Absent => make_span(start: 0, end: 0) }
 }
@@ -292,7 +279,6 @@ fn is_newline_shape(shape: TokenShape) -> Bool { match shape { ShNewline => true
 fn is_eof_shape(shape: TokenShape) -> Bool { match shape { ShEof => true  _ => false } }
 fn is_keyword_shape(shape: TokenShape) -> Bool { match shape { ShKeyword => true  _ => false } }
 
-
 fn is_lbrace_shape(shape: TokenShape) -> Bool { match shape { ShLBrace => true  _ => false } }
 fn is_rbrace_shape(shape: TokenShape) -> Bool { match shape { ShRBrace => true  _ => false } }
 fn is_lparen_shape(shape: TokenShape) -> Bool { match shape { ShLParen => true  _ => false } }
@@ -325,13 +311,6 @@ fn is_null_coalesce_shape(shape: TokenShape) -> Bool { match shape { ShNullCoale
 fn is_pipe_shape(shape: TokenShape) -> Bool { match shape { ShPipe => true  _ => false } }
 fn is_pipe_arrow_shape(shape: TokenShape) -> Bool { match shape { ShPipeArrow => true  _ => false } }
 
-
-// =========================================================================
-// Minimal-information token inspectors: take Token?, not List<Token>.
-// Callers extract the token explicitly — no ambiguity about which list.
-// See INVARIANTS.md "Minimal information per interface".
-// =========================================================================
-
 fn tok_is_keyword(tok: Token?, kw: String) -> Bool {
   match tok { Present { value: t } => is_keyword_shape(shape: t.shape) && t.text == kw  Absent => false }
 }
@@ -351,11 +330,7 @@ fn drop_leading_type_modifier(tokens: List<Token>, modifier: String) -> List<Tok
     tokens
   }
 }
-// Contextual `test` marker for test declarations: `test fn NAME(...)` and
-// `test data NAME: ...`. The leading `test` is dropped here so the declaration
-// parses normally; the CI claim gate discovers tests by the `test fn`/`test data`
-// source marker. `test` stays a normal identifier except immediately before a
-// declaration keyword (same contextual shape as the `nominal_opaque` modifier).
+
 fn drop_leading_test_marker(tokens: List<Token>) -> List<Token> {
   if tok_is_ident_text(tok: tokens |> first, text: "test") && (tok_keyword_text(tok: tokens |> skip(1) |> first) != "") {
     tokens |> skip(1)
@@ -441,9 +416,6 @@ fn tok_keyword_to_name(tok: Token?) -> String? {
 fn tok_is_keyword_name(tok: Token?) -> Bool {
   match tok_keyword_to_name(tok: tok) { Present { value: _ } => true  Absent => false }
 }
-
-
-
 
 fn shape_display_name(shape: TokenShape) -> String {
   match shape {
@@ -610,10 +582,6 @@ fn expect_name(tokens: List<Token>) -> NameResult {
   }
 }
 
-
-// Keywords that are valid as names (field names, type names).
-// Derived structurally: any keyword NOT in dag_non_name_keywords
-// (literals + lifecycle). Single authority: dag/syntax.dag.
 fn is_name_keyword(token: Token) -> Bool {
   if is_keyword_shape(shape: token.shape) {
     match lookup(dag_non_name_keywords, key: token.text) {
@@ -764,17 +732,10 @@ fn parser_result_witness(expr: Node, source_indices: Map<String, NewlineIndex>) 
   }
 }
 
-
-// =========================================================================
-// Node construction helpers
-// =========================================================================
-
 fn leaf_type_node(name: String, span: SourceSpan) -> Node {
   Node { name: name, span: span, ident_span: if name == "" { none } else { Present { value: span } }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
-// Gate #60: decimal width literal inside `<…>` type-argument lists only
-// (e.g. `MachineWidth<8>`). Standalone `let x: 64 = …` must stay a parse error.
 fn literal_width_nat_type_node(value: Int, span: SourceSpan) -> Node {
   Node { name: "", span: span, ident_span: none, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: ExprLiteral { value: LitInt { value: value } } }
 }
@@ -801,9 +762,6 @@ fn is_conj_with_children(n: Node) -> Bool {
   n.connective == Conj && n.children |> count > 0
 }
 
-// Extract the inferred type from a child Node.
-// Typed: use resolved type. All other states: propagate error_type (fail-closed).
-// Note: node_inferred_to_outputs gate ensures only Typed children reach here.
 fn child_inferred_or_empty(ch: Node) -> Node {
   match ch.inferred {
     Present { value: Resolved { node: rt } } => rt
@@ -811,9 +769,6 @@ fn child_inferred_or_empty(ch: Node) -> Node {
   }
 }
 
-// Convert a Node return type to output fields.
-// Fail-closed: if ANY child is not fully typed, return [] (no partial boundaries).
-// Otherwise -> Conj with children extracts fields, scalar wraps as single "value" field.
 fn node_inferred_to_outputs(rt: Node, source_indices: Map<String, NewlineIndex>) -> List<Node> {
   if is_conj_with_children(n: rt) {
     let all_children_typed = rt.children |> all(ch => match ch.inferred { Present { value: Resolved { node: _ } } => true  _ => false })
@@ -827,10 +782,6 @@ fn node_inferred_to_outputs(rt: Node, source_indices: Map<String, NewlineIndex>)
     [make_field_node(name: "value", type_expr: rt, cardinality: Required, default_value: none, from_key: none, span: rt.span, name_span: no_span())]
   }
 }
-
-// =========================================================================
-// Helper: parse a dotted identifier path (e.g., "v1.std.core")
-// =========================================================================
 
 fn parse_dotted_ident(tokens: List<Token>) -> NameResult {
   let r = expect_name(tokens: tokens)
@@ -849,10 +800,6 @@ fn parse_dotted_ident_rest(tokens: List<Token>, acc: String, span: SourceSpan) -
     NameResult { name: acc, span: span, tokens: __eu, err: none }
   }
 }
-
-// =========================================================================
-// 1. Entry point
-// =========================================================================
 
 fn parse_with_table(tokens: List<Token>, source_indices: Map<String, NewlineIndex>, intern_table: InternTable) -> ParseWithTableResult {
   let pre_interned = pre_intern_tokens(tokens: tokens, table: intern_table)
@@ -874,10 +821,6 @@ fn parse_with_table(tokens: List<Token>, source_indices: Map<String, NewlineInde
 fn parse(tokens: List<Token>, source_indices: Map<String, NewlineIndex>) -> ParseResult {
   parse_with_table(tokens: tokens, source_indices: source_indices, intern_table: empty_intern_table()).result
 }
-
-// =========================================================================
-// 2. parse_module
-// =========================================================================
 
 fn parse_module(tokens: List<Token>, ctx: ParseContext) -> ModuleResult {
   let tokens = skip_newlines(tokens: tokens)
@@ -950,10 +893,6 @@ fn parse_items_acc(tokens: List<Token>, ctx: ParseContext, acc: List<Node>) -> I
   }
 }
 
-// =========================================================================
-// 3. parse_import
-// =========================================================================
-
 fn parse_import(tokens: List<Token>, ctx: ParseContext) -> ImportResult {
   let start_span = token_span(tok: tokens |> first)
   let err_import = import_node(module_path: "", is_all: false, specific_names: [], span: start_span, name_span: start_span)
@@ -1014,10 +953,6 @@ fn parse_import_names_acc(tokens: List<Token>, ctx: ParseContext, acc: List<Node
     parse_import_names_acc(tokens: tokens, ctx: ctx, acc: list_push(acc, name_node))
   }
 }
-
-// =========================================================================
-// 4. parse_item -- spec-driven dispatch
-// =========================================================================
 
 fn find_item_form(forms: List<ItemForm>, keyword: String) -> ItemForm? {
   let matches = forms |> filter(f => f.keyword == keyword)
@@ -1120,10 +1055,6 @@ fn parse_item_by_form(tokens: List<Token>, ctx: ParseContext, form: ItemForm) ->
   }
 }
 
-// =========================================================================
-// Type structure -> child Node conversion
-// =========================================================================
-
 fn field_to_child_node(field: Node, source_indices: Map<String, NewlineIndex>) -> Node {
   let ret_type = field_node_type_expr(n: field)
   let props = match field_node_from_key(n: field, source_indices: source_indices) {
@@ -1158,14 +1089,6 @@ fn outputs_to_inferred(outputs: List<Node>, span: SourceSpan, source_indices: Ma
   }
 }
 
-// =========================================================================
-// Operation / Capability Node constructors (D2d/D2e)
-//
-// OperationDef and CapabilityDef were parser intermediates that dissolved
-// into Node at the service/resource parse sites. Now the parser functions
-// construct Node directly using these constructors.
-// =========================================================================
-
 fn make_operation_node(name: String, ident_span: SourceSpan?, inputs: List<Node>, outputs: List<Node>, response_props: List<Node>, mock_props: List<Node>, exit_props: List<Node>, modifier_props: List<Node>, transport: Node?, span: SourceSpan, source_indices: Map<String, NewlineIndex>) -> Node {
   let all_props = concat(modifier_props, response_props, exit_props, mock_props)
   Node { name: name, span: span, ident_span: ident_span,
@@ -1194,10 +1117,6 @@ fn make_capability_node(name: String, ident_span: SourceSpan?, inputs: List<Node
     properties: [], type_annotation: none,
     is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
-
-// =========================================================================
-// 5. parse_type_def
-// =========================================================================
 
 fn parse_type_def(tokens: List<Token>, ctx: ParseContext) -> ItemResult {
   let start_span = token_span(tok: tokens |> first)
@@ -1279,11 +1198,7 @@ fn parse_type_body_from_prefix(prefix: ItemPrefixResult, start_span: SourceSpan)
 
 fn parse_type_body_after_eq(tokens: List<Token>, ctx: ParseContext, name: String, name_span: SourceSpan, start_span: SourceSpan, type_params: List<Node>) -> ItemResult {
   let dummy = Node { name: name, span: start_span, ident_span: Present { value: name_span }, children: [], params: type_params, inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-  // An OPTIONAL leading pipe forces the variant-list interpretation: `= | A`
-  // is a single-variant nullary sum (a deliberate novel-tag introduction), and
-  // `= | A | B` falls out as a normal multi-variant sum. A bare `= A` (no
-  // leading pipe) stays an alias and fails closed (UnresolvedType) when the RHS
-  // is not a declared type — that is the alias-vs-single-variant discriminator.
+
   match eat(tokens: tokens, expected: ExpectPipe) {
   EatConsumed { token: _, tokens: __lead } =>
     let tokens = skip_newlines(tokens: __lead)
@@ -1545,14 +1460,6 @@ fn parse_more_variants_acc(tokens: List<Token>, ctx: ParseContext, acc: List<Nod
   }
 }
 
-// =========================================================================
-// 6. parse_type_body -- Record { fields } vs Sum variants
-// =========================================================================
-
-// =========================================================================
-// 7. parse_type_expr
-// =========================================================================
-
 fn parse_type_expr(tokens: List<Token>, ctx: ParseContext) -> TypeResult {
   let tokens = skip_newlines(tokens: tokens)
   let tok = tokens |> first
@@ -1584,9 +1491,7 @@ fn parse_type_expr(tokens: List<Token>, ctx: ParseContext) -> TypeResult {
 }
 
 fn parse_callable_type_expr(tokens: List<Token>, ctx: ParseContext, start_span: SourceSpan) -> TypeResult {
-  // Error recovery produces an empty-named node, not "Callable" — errors
-  // must be orthogonal to the node graph (invariant #2). A "Callable"-named
-  // dummy would leak into emit and be indistinguishable from a real callable.
+
   let dummy_te = leaf_type_node(name: "", span: start_span)
   let r = expect(tokens: tokens, expected: ExpectLParen)
   if has_err(err: r.err) { return TypeResult { type_expr: dummy_te, tokens: r.tokens, ctx: ctx, err: r.err } }
@@ -1714,10 +1619,6 @@ fn maybe_optional(tokens: List<Token>, ctx: ParseContext, te: Node, start_span: 
   }
 }
 
-// =========================================================================
-// Field list: name: Type, name2: Type?
-// =========================================================================
-
 fn parse_field_list(tokens: List<Token>, ctx: ParseContext) -> FieldsResult {
   parse_field_list_acc(tokens: tokens, ctx: ctx, acc: [])
 }
@@ -1810,10 +1711,6 @@ fn parse_optional_from_key(tokens: List<Token>, ctx: ParseContext) -> FromKeyRes
   }
 }
 
-// =========================================================================
-// 8. parse_fn_def: fn name(params) -> ReturnType = expr | { body }
-// =========================================================================
-
 fn parse_fn_def(tokens: List<Token>, ctx: ParseContext) -> ItemResult {
   let start_span = token_span(tok: tokens |> first)
   let dummy = Node { name: "", span: start_span, ident_span: none, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
@@ -1863,15 +1760,7 @@ fn parse_fn_body_from_prefix(prefix: ItemPrefixResult, start_span: SourceSpan) -
   let params = prefix.params
   let inferred = prefix.inferred
   let ctx = prefix.ctx
-  // Type params prepend to params (same slot as type definitions).
-  // At parse time they're distinguishable via span-identity
-  // (collect_type_param_names builds both the param's name_span and the
-  // type_expr's span from the same token). Post-resolve, consumers use
-  // the grounded invariant installed by resolve_item_types:909 —
-  // type_expr.inferred == TypeVariable && param.name == type_expr.name.
-  // See is_function_type_param in src/v1/05_emit_rust.dag for the
-  // emit-time classifier. Dissolution: partition this slot into
-  // type_params/value_params or add a ParamKind discriminator.
+
   let all_params = concat(type_params, params)
   let named_dummy = Node { name: name, span: start_span, ident_span: Present { value: name_span }, children: [], params: all_params, inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 
@@ -1896,10 +1785,6 @@ fn parse_fn_body_from_prefix(prefix: ItemPrefixResult, start_span: SourceSpan) -
     is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   ItemResult { item: item, tokens: skip_newlines(tokens: body_result.tokens), ctx: body_result.ctx, err: none }
 }
-
-// =========================================================================
-// 9. parse_func_def: func name(params) -> RetType uses res: Type { body }
-// =========================================================================
 
 fn parse_func_def(tokens: List<Token>, ctx: ParseContext) -> ItemResult {
   let start_span = token_span(tok: tokens |> first)
@@ -2095,10 +1980,6 @@ fn parse_optional_inferred(tokens: List<Token>, ctx: ParseContext) -> OptRetResu
   }
 }
 
-// =========================================================================
-// 10. parse_service_def
-// =========================================================================
-
 fn parse_service_def(tokens: List<Token>, ctx: ParseContext) -> ItemResult {
   let start_span = token_span(tok: tokens |> first)
   let dummy = Node { name: "", span: start_span, ident_span: none, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
@@ -2129,9 +2010,6 @@ fn parse_service_after_kw(tokens: List<Token>, ctx: ParseContext, start_span: So
   let r2 = expect(tokens: tokens, expected: ExpectRBrace)
   if has_err(err: r2.err) { return ItemResult { item: named_dummy, tokens: r2.tokens, ctx: r.ctx, err: r2.err } }
 
-  // Operations are already Nodes (D2d dissolution) -- use directly as children
-  // Preserve namespace root as a structural property so downstream stages
-  // don't need to reverse-engineer it by string-splitting.
   let ns_prop = make_field_init_node(name: "namespace_root", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: namespace_root } }, children: [], inferred: none, span: start_span), span: start_span, name_span: no_span())
   let svc_props = match r.config {
     Present { value: cfg } => service_config_properties(endpoint: cfg.endpoint, auth: cfg.auth, auth_input: cfg.auth_input, auth_source: cfg.auth_source, rate_limit: cfg.rate_limit, retry: cfg.retry)
@@ -2583,12 +2461,6 @@ fn parse_op_body_entries(
   }
 }
 
-// =========================================================================
-// PortContract dissolution helpers
-//
-// Convert parsed operation/capability metadata into Node properties.
-// =========================================================================
-
 fn modifier_to_prop(name: String, span: SourceSpan) -> Node {
   make_field_init_node(name: name, value: make_expr_node(expr_data: ExprLiteral { value: LitBool { value: true } }, children: [], inferred: none, span: span), span: span, name_span: span)
 }
@@ -2649,12 +2521,6 @@ fn last_child_or_self(n: Node) -> Node {
   }
 }
 
-// Extract a string name from a Node for use in property values.
-// Keyed-container detection derives from container_type_arity (single authority
-// for container identity and arity) plus structural child count — no parallel name list.
-// Recursion is structurally bounded: all self-calls pass a strict child of n.
-// Optional handling uses with_required_cardinality (TreeSizePreserving wrapper);
-// the CX analyzer sees through this via wrapper transparency in SCC edge classification.
 fn node_to_name_str(n: Node, source_indices: Map<String, NewlineIndex>) -> String {
   let is_optional = n.return_cardinality == CardOptional
   let effective_n = if is_optional { with_required_cardinality(n: n) } else { n }
@@ -2735,9 +2601,6 @@ fn parse_operation_modifiers_acc(tokens: List<Token>, ctx: ParseContext, acc: Li
     ModsResult { modifiers: acc, tokens: tokens, ctx: ctx, err: none }
   }
 }
-
-// =========================================================================
-// =========================================================================
 
 fn parse_status_pattern(tokens: List<Token>, ctx: ParseContext) -> ExprResult {
   let tok = tokens |> first
@@ -2867,10 +2730,6 @@ fn parse_mock_response_entries_acc(tokens: List<Token>, ctx: ParseContext, acc: 
   }
 }
 
-// =========================================================================
-// 11. parse_resource_def
-// =========================================================================
-
 fn parse_resource_def(tokens: List<Token>, ctx: ParseContext) -> ItemResult {
   let start_span = token_span(tok: tokens |> first)
   let dummy = Node { name: "", span: start_span, ident_span: none, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
@@ -2897,7 +2756,6 @@ fn parse_resource_after_kw(tokens: List<Token>, ctx: ParseContext, start_span: S
   let r2 = expect(tokens: skip_newlines(tokens: r.tokens), expected: ExpectRBrace)
   if has_err(err: r2.err) { return ItemResult { item: named_dummy, tokens: r2.tokens, ctx: r.ctx, err: r2.err } }
 
-  // Capabilities are already Nodes (D2e dissolution) -- use directly as children
   let item = Node { name: name, span: start_span, ident_span: Present { value: name_span },
     children: r.capabilities,
     params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective,
@@ -3056,10 +2914,6 @@ fn parse_io_blocks_acc(tokens: List<Token>, ctx: ParseContext, inputs: List<Node
   }
 }
 
-// =========================================================================
-// 12. parse_data_def: data name: Type = value
-// =========================================================================
-
 fn parse_data_def(tokens: List<Token>, ctx: ParseContext) -> ItemResult {
   let start_span = token_span(tok: tokens |> first)
   let dummy = Node { name: "", span: start_span, ident_span: none, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
@@ -3097,10 +2951,6 @@ fn parse_data_after_kw(tokens: List<Token>, ctx: ParseContext, start_span: Sourc
     is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   ItemResult { item: item, tokens: skip_newlines(tokens: r.tokens), ctx: r.ctx, err: none }
 }
-
-// =========================================================================
-// 13. parse_params: (name: Type, name2: Type)
-// =========================================================================
 
 fn parse_params(tokens: List<Token>, ctx: ParseContext) -> ParamsResult {
   let r = expect(tokens: tokens, expected: ExpectLParen)
@@ -3178,10 +3028,6 @@ fn parse_param(tokens: List<Token>, ctx: ParseContext) -> ParamResult {
     ParamResult { param: p, tokens: tokens, ctx: ctx, err: none }
   }
 }
-
-// =========================================================================
-// 14. parse_block: { stmt1 \n stmt2 \n result_expr }
-// =========================================================================
 
 fn parse_block(tokens: List<Token>, ctx: ParseContext) -> ExprResult {
   let dummy_expr = parse_recovery_placeholder()
@@ -3365,17 +3211,9 @@ fn parse_bare_assignment(tokens: List<Token>, ctx: ParseContext) -> ExprResult {
   }
 }
 
-// =========================================================================
-// 15. parse_expr -- Pratt precedence climbing entry
-// =========================================================================
-
 fn parse_expr(tokens: List<Token>, ctx: ParseContext) -> ExprResult {
   parse_expr_bp(tokens: tokens, ctx: ctx, min_bp: 0)
 }
-
-// =========================================================================
-// 16. parse_expr_bp -- precedence climbing core
-// =========================================================================
 
 fn parse_expr_bp(tokens: List<Token>, ctx: ParseContext, min_bp: Int) -> ExprResult {
   let r = parse_prefix(tokens: tokens, ctx: ctx)
@@ -3439,7 +3277,6 @@ fn parse_expr_loop(tokens: List<Token>, ctx: ParseContext, lhs: Node, min_bp: In
   }
 }
 
-
 fn find_operator_bp(ops: List<OperatorSpec>, symbol: String) -> BindingPower? {
   let matching = ops |> filter(op => op.symbol == symbol)
   if matching |> count > 0 {
@@ -3501,10 +3338,6 @@ fn parse_prefix(tokens: List<Token>, ctx: ParseContext) -> ExprResult {
   }
 }
 
-// =========================================================================
-// 16b. parse_caret_expr — `^IDENT` symbol literal | `^(Expr)` discriminant sugar
-// =========================================================================
-
 fn parse_caret_expr(tokens: List<Token>, ctx: ParseContext) -> ExprResult {
   let span = token_span(tok: tokens |> first)
   let dummy_expr = parse_recovery_placeholder()
@@ -3548,10 +3381,6 @@ fn parse_caret_expr(tokens: List<Token>, ctx: ParseContext) -> ExprResult {
     }
   }
 }
-
-// =========================================================================
-// 17. parse_primary
-// =========================================================================
 
 fn parse_primary(tokens: List<Token>, ctx: ParseContext) -> ExprResult {
   let tok = tokens |> first
@@ -3626,10 +3455,6 @@ fn parse_primary(tokens: List<Token>, ctx: ParseContext) -> ExprResult {
   }
 }
 
-// =========================================================================
-// Lambda body -- single expression OR implicit block (let/return start)
-// =========================================================================
-
 fn parse_lambda_body(tokens: List<Token>, ctx: ParseContext) -> ExprResult {
   let tokens = skip_newlines(tokens: tokens)
   let tok = tokens |> first
@@ -3660,10 +3485,6 @@ fn parse_lambda_stmts(tokens: List<Token>, ctx: ParseContext, acc: List<Node>) -
   }
 }
 
-// =========================================================================
-// Identifier-initiated expressions
-// =========================================================================
-
 fn parse_ident_expr(tokens: List<Token>, ctx: ParseContext, name: String) -> ExprResult {
   let span = token_span(tok: tokens |> first)
   let tokens = tokens |> skip(1)
@@ -3686,19 +3507,13 @@ fn is_uppercase_start(name: String) -> Bool {
   ch >= "A" && ch <= "Z"
 }
 
-// =========================================================================
-// 18. try_postfix -- .field, (args), as Type, ?
-// =========================================================================
-
 fn try_postfix(tokens: List<Token>, ctx: ParseContext, lhs: Node, min_bp: Int) -> PostfixResult {
   let tok = tokens |> first
   let sh = match tok { Present { value: t } => Present { value: t.shape }  Absent => none }
   let span = token_span(tok: tok)
   match sh {
     Present { value: ShLParen } => {
-      // Postfix call binds tighter than every binary operator (max right_bp 20);
-      // gate at 21, not 14, or a call in a `*`/`/`/`%` RHS (right_bp 16) is
-      // rejected and its `(...)` mis-attaches to the binop as an `<expr>` call.
+
       if 21 < min_bp {
         PostfixResult { expr: lhs, changed: false, tokens: tokens, ctx: ctx, err: none }
       } else {
@@ -3722,8 +3537,7 @@ fn try_postfix(tokens: List<Token>, ctx: ParseContext, lhs: Node, min_bp: Int) -
       }
     }
     Present { value: ShLBracket } => {
-      // Postfix index binds tighter than every binary operator (see ShLParen);
-      // gate at 21, not 14, for the same `*`/`/`/`%`-RHS reason.
+
       if 21 < min_bp {
         PostfixResult { expr: lhs, changed: false, tokens: tokens, ctx: ctx, err: none }
       } else {
@@ -3824,10 +3638,6 @@ fn make_call_expr(lhs: Node, args: List<Node>, span: SourceSpan, source_indices:
   }
 }
 
-// =========================================================================
-// Index/Slice parsing: base[index] or base[start..end]
-// =========================================================================
-
 fn parse_index_or_slice(tokens: List<Token>, ctx: ParseContext, base: Node, span: SourceSpan) -> ExprResult {
   let dummy_expr = parse_recovery_placeholder()
   let r = expect(tokens: tokens, expected: ExpectLBracket)
@@ -3852,10 +3662,6 @@ fn parse_index_or_slice(tokens: List<Token>, ctx: ParseContext, base: Node, span
     ExprResult { expr: make_expr_node(expr_data: ExprIndex, children: [base, first_expr], inferred: none, span: span), tokens: r.tokens, ctx: ctx, err: none }
   }
 }
-
-// =========================================================================
-// 25. parse_call_args: (arg: val, arg2: val2)
-// =========================================================================
 
 fn parse_call_args(tokens: List<Token>, ctx: ParseContext) -> ArgsResult {
   let r = expect(tokens: tokens, expected: ExpectLParen)
@@ -3928,10 +3734,6 @@ fn parse_single_arg(tokens: List<Token>, ctx: ParseContext) -> ArgResult {
   }
 }
 
-// =========================================================================
-// 19. parse_match
-// =========================================================================
-
 fn parse_match(tokens: List<Token>, ctx: ParseContext) -> ExprResult {
   let span = token_span(tok: tokens |> first)
   let dummy_expr = parse_recovery_placeholder()
@@ -3973,13 +3775,7 @@ fn parse_expr_loop_no_brace(tokens: List<Token>, ctx: ParseContext, lhs: Node, m
   } else {
     let loop_span = token_span(tok: tok)
     let tokens = skip_continuation_newlines(tokens: tokens)
-    // Postfix application/index bind TIGHTER than every binary operator (max
-    // operator right_bp is `.` at 20), so the gate is 21 -- not 14. At 14, a
-    // call/index in the RHS of `*`/`/`/`%` (right_bp 16) was rejected
-    // (`14 >= 16` false) and the trailing `(...)` then attached to the whole
-    // binop via make_call_expr -> an unresolvable `<expr>` call. `+`/`-`
-    // (right_bp 14) masked the bug; multiplication (unused before the numeric
-    // Measure work) exposed it on `a(x) * b(y)`.
+
     if tok_is_lparen(tok: tokens |> first) && 21 >= min_bp {
       let r = parse_call_args(tokens: tokens, ctx: ctx)
       if has_err(err: r.err) { return ExprResult { expr: lhs, tokens: r.tokens, ctx: r.ctx, err: r.err } }
@@ -4049,10 +3845,6 @@ fn parse_match_arms_acc(tokens: List<Token>, ctx: ParseContext, acc: List<Node>)
     parse_match_arms_acc(tokens: tokens, ctx: r.ctx, acc: list_push(acc, r.arm))
   }
 }
-
-// =========================================================================
-// 20. parse_match_arm: Pattern => expr
-// =========================================================================
 
 fn parse_match_arm(tokens: List<Token>, ctx: ParseContext) -> ArmResult {
   let arm_span = token_span(tok: tokens |> first)
@@ -4184,10 +3976,6 @@ fn parse_optional_guard(tokens: List<Token>, ctx: ParseContext) -> GuardResult {
   }
 }
 
-// =========================================================================
-// 21. parse_pattern
-// =========================================================================
-
 fn parse_pattern(tokens: List<Token>, ctx: ParseContext) -> PatternResult {
   let tok = tokens |> first
   let sh = match tok { Present { value: t } => Present { value: t.shape }  Absent => none }
@@ -4281,10 +4069,6 @@ fn parse_variant_bindings_brace_acc(tokens: List<Token>, ctx: ParseContext, acc:
   }
 }
 
-// =========================================================================
-// 22. parse_if
-// =========================================================================
-
 fn parse_if(tokens: List<Token>, ctx: ParseContext) -> ExprResult {
   let span = token_span(tok: tokens |> first)
   let dummy_expr = parse_recovery_placeholder()
@@ -4318,10 +4102,6 @@ fn parse_if(tokens: List<Token>, ctx: ParseContext) -> ExprResult {
   }
 }
 
-// =========================================================================
-// 23. parse_let: let name = value
-// =========================================================================
-
 fn parse_let(tokens: List<Token>, ctx: ParseContext) -> ExprResult {
   let span = token_span(tok: tokens |> first)
   let dummy_expr = parse_recovery_placeholder()
@@ -4342,10 +4122,6 @@ fn parse_let(tokens: List<Token>, ctx: ParseContext) -> ExprResult {
   ExprResult { expr: make_named_expr_node(name: name, expr_data: ExprLet, children: [r.expr], inferred: none, span: span, name_span: name_span), tokens: r.tokens, ctx: r.ctx, err: none }
 }
 
-// =========================================================================
-// Return: return expr or return { field: val }
-// =========================================================================
-
 fn parse_return(tokens: List<Token>, ctx: ParseContext) -> ExprResult {
   let span = token_span(tok: tokens |> first)
   let dummy_expr = parse_recovery_placeholder()
@@ -4356,10 +4132,6 @@ fn parse_return(tokens: List<Token>, ctx: ParseContext) -> ExprResult {
   if has_err(err: r.err) { return r }
   ExprResult { expr: make_expr_node(expr_data: ExprReturn, children: [r.expr], inferred: none, span: span), tokens: r.tokens, ctx: r.ctx, err: none }
 }
-
-// =========================================================================
-// 24. parse_for: for x in collection { body }
-// =========================================================================
 
 fn parse_for(tokens: List<Token>, ctx: ParseContext) -> ExprResult {
   let span = token_span(tok: tokens |> first)
@@ -4386,10 +4158,6 @@ fn parse_for(tokens: List<Token>, ctx: ParseContext) -> ExprResult {
   let for_expr = make_named_expr_node(name: var_name, expr_data: ExprForEach, children: [collection, body], inferred: none, span: span, name_span: var_name_span)
   ExprResult { expr: for_expr, tokens: r.tokens, ctx: r.ctx, err: none }
 }
-
-// =========================================================================
-// 26. parse_record_literal: Name { field: val, field2: val2 }
-// =========================================================================
 
 fn parse_record_literal(tokens: List<Token>, ctx: ParseContext, name: String, span: SourceSpan) -> ExprResult {
   let dummy_expr = parse_recovery_placeholder()
@@ -4459,10 +4227,6 @@ fn parse_field_init(tokens: List<Token>, ctx: ParseContext) -> FieldInitResult {
   }
 }
 
-// =========================================================================
-// 27. parse_list_literal: [expr1, expr2]
-// =========================================================================
-
 fn parse_list_literal(tokens: List<Token>, ctx: ParseContext) -> ExprResult {
   let span = token_span(tok: tokens |> first)
   let dummy_expr = parse_recovery_placeholder()
@@ -4499,14 +4263,6 @@ fn parse_expr_list_until_acc(tokens: List<Token>, ctx: ParseContext, end_expecte
   }
 }
 
-// =========================================================================
-// 28. parse_lambda: x => expr or (x, y) => expr
-// =========================================================================
-
-// =========================================================================
-// Parenthesized expression or multi-param lambda
-// =========================================================================
-
 fn parse_paren_expr(tokens: List<Token>, ctx: ParseContext) -> ExprResult {
   let span = token_span(tok: tokens |> first)
   let dummy_expr = parse_recovery_placeholder()
@@ -4532,9 +4288,6 @@ fn parse_paren_expr(tokens: List<Token>, ctx: ParseContext) -> ExprResult {
     }
   }
 }
-
-// =========================================================================
-// =========================================================================
 
 fn parse_fn_lambda(tokens: List<Token>, ctx: ParseContext) -> ExprResult {
   let span = token_span(tok: tokens |> first)
@@ -4605,10 +4358,6 @@ fn collect_lambda_idents(tokens: List<Token>, ctx: ParseContext, acc: List<Parse
   }
 }
 
-// =========================================================================
-// 29. parse_string_interp: StrBegin + exprs + StrMid/StrEnd
-// =========================================================================
-
 fn parse_string_interp(tokens: List<Token>, ctx: ParseContext) -> ExprResult {
   let tok = tokens |> first
   let span = token_span(tok: tok)
@@ -4664,10 +4413,6 @@ fn parse_interp_parts(tokens: List<Token>, ctx: ParseContext, parts: List<String
       ExprResult { expr: make_expr_node(expr_data: ExprStringInterp, children: new_parts |> map(p => match p { Text { value: v } => make_text_part_node(text: v, span: span)  Interpolation { expr: e } => make_interp_part_node(expr: e, span: span) }), inferred: none, span: span), tokens: tokens, ctx: ctx, err: none }
   }
 }
-
-// =========================================================================
-// Brace expression: could be block or record literal or map literal
-// =========================================================================
 
 fn parse_brace_expr(tokens: List<Token>, ctx: ParseContext) -> ExprResult {
   let span = token_span(tok: tokens |> first)

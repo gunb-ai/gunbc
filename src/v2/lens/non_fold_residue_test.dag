@@ -1,0 +1,15 @@
+module v2.test.lens_non_fold_residue.non_fold_residue_test
+
+import v2.std.logic { Bool }
+import v2.lens.non_fold_residue {
+  non_fold_residue_clean_holds,
+  non_fold_residue_live_coproduct_universe_count
+}
+
+test fn non_fold_residue_no_unrostered_or_stale() -> Bool {
+  return non_fold_residue_clean_holds()
+}
+
+test fn non_fold_residue_coproduct_universe_is_nonempty() -> Bool {
+  return non_fold_residue_live_coproduct_universe_count() > 0
+}
