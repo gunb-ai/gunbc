@@ -4802,6 +4802,27 @@ fn eval_builtin(
             }),
         },
 
+        "random_bytes" => {
+            let count = expect_int(positional.first().copied(), "random_bytes")?;
+            if !(0..=65536).contains(&count) {
+                return Err(InterpError::TypeError {
+                    msg: format!("random_bytes: count must be 0..=65536, got {count}"),
+                });
+            }
+            let n = count as usize;
+            let mut buf = vec![0u8; n];
+            if n > 0 {
+                use std::io::Read;
+                std::fs::File::open("/dev/urandom")
+                    .and_then(|mut f| f.read_exact(&mut buf))
+                    .map_err(|e| InterpError::TypeError {
+                        msg: format!("random_bytes: /dev/urandom: {e}"),
+                    })?;
+            }
+            let items: Vec<Value> = buf.iter().map(|b| Value::Int(*b as i64)).collect();
+            Ok(Some(list_value(items)))
+        }
+
         "filesystem_read" => {
             let path = expect_str(positional.first().copied(), "filesystem_read")?;
             Ok(Some(eval_filesystem_read_builtin(path, ctx)?))

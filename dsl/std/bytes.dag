@@ -18,3 +18,7 @@ fn octets_bytes(o: List<UInt8>) -> Bytes {
 fn utf8_encode_bytes(s: String) -> Bytes {
   s as Bytes
 }
+
+fn random_bytes(count: Int) -> List<UInt8> {
+  [pure_dag_seam_unreachable()]
+}
