@@ -51,6 +51,7 @@ fronted by the LIVE pair `{algebra (75 floor entries), nat (4)}` — they silent
 are latent (no co-occurrence today) but re-arm risks (exactly how verification went latent→LIVE
 under A1). So the wall lands-already-green only after `{algebra, nat}` (then the latent three)
 de-fork — that sequence, not the {node,coercion} exemption, gates activation.
+
 ---
 
 ## 0. Thesis — the only duplication is v2's bootstrap copies of dsl
