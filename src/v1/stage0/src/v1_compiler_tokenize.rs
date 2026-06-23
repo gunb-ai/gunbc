@@ -3,8 +3,8 @@
 
 use self::StringScanResult::*;
 pub use crate::extdeps_languages_dag_syntax::dag_keyword_set;
-use crate::v1_compiler_languages::canonical_emoji_char_escape;
 pub use crate::std_types::SourceSpan;
+use crate::v1_compiler_languages::canonical_emoji_char_escape;
 use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
@@ -947,7 +947,9 @@ pub fn all_hex_upper_in_range(mut text: String, mut pos: i64, mut end: i64) -> b
 pub fn sentinel_prefix_matches(text: String, prefix: String, pos: i64, len: i64) -> bool {
     if pos >= len {
         true
-    } else if v1_rt::code_point(v1_rt::char_at(&text, pos)) != v1_rt::code_point(v1_rt::char_at(&prefix, pos)) {
+    } else if v1_rt::code_point(v1_rt::char_at(&text, pos))
+        != v1_rt::code_point(v1_rt::char_at(&prefix, pos))
+    {
         false
     } else {
         sentinel_prefix_matches(text, prefix, pos + 1, len)
@@ -965,7 +967,9 @@ pub fn is_reserved_emit_sentinel(text: String) -> bool {
         false
     } else if !sentinel_prefix_matches(text.clone(), pfx.clone(), 0, pfx_len) {
         false
-    } else if v1_rt::code_point(v1_rt::char_at(&text, n - sfx_len)) != v1_rt::code_point(v1_rt::char_at(&sfx, 0)) {
+    } else if v1_rt::code_point(v1_rt::char_at(&text, n - sfx_len))
+        != v1_rt::code_point(v1_rt::char_at(&sfx, 0))
+    {
         false
     } else {
         all_hex_upper_in_range(text.clone(), pfx_len, n - sfx_len)

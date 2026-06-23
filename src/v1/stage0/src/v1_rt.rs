@@ -497,7 +497,7 @@ pub fn is_xid_continue(cp: i64) -> bool {
 }
 
 pub fn is_emoji_ident(cp: i64) -> bool {
-    use unicode_properties::emoji::{UnicodeEmoji, EmojiStatus};
+    use unicode_properties::emoji::{EmojiStatus, UnicodeEmoji};
     char::from_u32(cp as u32)
         .map(|c| {
             matches!(
