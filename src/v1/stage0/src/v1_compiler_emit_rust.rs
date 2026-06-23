@@ -3624,6 +3624,13 @@ pub fn emit_module_full(
             })
             .first()
             .cloned();
+            if from_primary.is_none() {
+                eprintln!("[DBG wire_contract] module={} sidecar_items_len={}", this_module_name, sidecar_items.len());
+                for i in sidecar_items.clone().iter() {
+                    let authored = authored_name(scope.type_env.clone(), i.clone());
+                    eprintln!("[DBG wire_contract]   item authored_name={:?} node.name={:?}", authored, i.name);
+                }
+            }
             from_primary.or_else(|| {
                 sidecar_items.clone().iter().cloned().find(|i| {
                     item_binding_is_named(
