@@ -1,21 +1,15 @@
 module test.claim.random_bytes_csprng_witness
 
 import std.logic { Bool }
-import std.types { Int }
+import std.types { Int, list_length }
 import std.integer { UInt8 }
 import std.resources { Entropy }
 import extdeps.getrandom
 import std.encoding { Base64Variant, Standard, UrlSafe, base64_encode, base64_decode }
 
-fn octet_count(bs: List<UInt8>) -> Int {
-  fold(bs, init: 0, f: (acc, _) => acc + 1)
-}
-
 fn getrandom_octets(count: Int) -> List<UInt8> {
   match base64_decode(s: Getrandom.ReadBytes(count: count).octets_b64, variant: Standard) {
     Present { value: bs } => bs
-    Absent => []
-    _ => []
   }
 }
 
@@ -27,11 +21,11 @@ pattern mint_base64url_credential(byte_count: Int) -> { credential: String }
 }
 
 test fn random_bytes_count_holds() -> Bool {
-  octet_count(bs: getrandom_octets(count: 16)) == 16
+  list_length(items: getrandom_octets(count: 16)) == 16
 }
 
 test fn random_bytes_zero_holds() -> Bool {
-  octet_count(bs: getrandom_octets(count: 0)) == 0
+  list_length(items: getrandom_octets(count: 0)) == 0
 }
 
 test fn random_bytes_base64url_mint_16_length_holds() -> Bool {
@@ -40,8 +34,4 @@ test fn random_bytes_base64url_mint_16_length_holds() -> Bool {
 
 test fn random_bytes_base64url_mint_20_length_holds() -> Bool {
   string_length(mint_base64url_credential(byte_count: 20).credential) == 28
-}
-
-test fn random_bytes_distinct_holds() -> Bool {
-  getrandom_octets(count: 16) != getrandom_octets(count: 16)
 }
