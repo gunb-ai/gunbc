@@ -75,6 +75,7 @@ type MarkdownSpellings {
   blockquote_marker: String
   list_indent: String
   block_separator: String
+  thematic_break: String
 }
 
 data commonmark_gfm_spellings: MarkdownSpellings = {
@@ -102,6 +103,7 @@ data commonmark_gfm_spellings: MarkdownSpellings = {
   blockquote_marker: "> ",
   list_indent: "  ",
   block_separator: "\n\n",
+  thematic_break: "---",
 }
 
 fn md_link_form(text: String, url: String, sp: MarkdownSpellings) -> String {
@@ -268,6 +270,8 @@ fn md_block(block: MarkdownBlock, sp: MarkdownSpellings) -> String {
       md_table(header: header, alignments: alignments, rows: rows, sp: sp)
     BlockquoteBlock { blocks } =>
       md_blockquote(blocks: blocks, sp: sp)
+    ThematicBreak =>
+      sp.thematic_break
   }
 }
 

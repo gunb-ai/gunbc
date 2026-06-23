@@ -334,6 +334,12 @@ fn markdown_block_to_fragment(block: MarkdownBlock) -> Fragment {
         attributes: [],
         children: markdown_blocks_to_fragments(blocks: blocks),
       }
+    ThematicBreak =>
+      Element {
+        tag: "hr",
+        attributes: [],
+        children: [],
+      }
   }
 }
 
