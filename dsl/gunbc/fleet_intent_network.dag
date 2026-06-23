@@ -1,4 +1,4 @@
-module gunbc.operator_fleet_network
+module gunbc.fleet_intent_network
 
 import product.network_topology {
   NetworkAttachmentRole,
@@ -17,6 +17,7 @@ import product.placement_supply { HostIdentity }
 
 data operator_host_srv1: HostIdentity = "srv1"
 data operator_host_srv2: HostIdentity = "srv2"
+data operator_host_srv3: HostIdentity = "srv3"
 
 data operator_lan_segment: NetworkSegment = NetworkSegment {
   cidr: "192.168.1.0/24",
@@ -68,6 +69,14 @@ data srv2_bmc_endpoint: NetworkEndpoint = NetworkEndpoint {
   locality: Lan,
 }
 
+data srv3_bmc_endpoint: NetworkEndpoint = NetworkEndpoint {
+  label: "srv3-bmc",
+  host: Present { value: operator_host_srv3 },
+  address: "192.168.1.192",
+  role: BmcOutOfBand,
+  locality: Lan,
+}
+
 data srv1_tailscale_endpoint: NetworkEndpoint = NetworkEndpoint {
   label: "srv1-tailscale",
   host: Present { value: operator_host_srv1 },
@@ -92,7 +101,7 @@ data operator_lan_gateway_endpoint: NetworkEndpoint = NetworkEndpoint {
   locality: Lan,
 }
 
-data operator_fleet_network: NetworkTopology = NetworkTopology {
+data fleet_intent_network: NetworkTopology = NetworkTopology {
   tailnet_domain: Present { value: "tailecbe08.ts.net" },
   segments: [
     operator_lan_segment,
@@ -105,11 +114,12 @@ data operator_fleet_network: NetworkTopology = NetworkTopology {
     srv2_host_lan_endpoint,
     srv1_bmc_endpoint,
     srv2_bmc_endpoint,
+    srv3_bmc_endpoint,
     srv1_tailscale_endpoint,
     srv2_tailscale_endpoint,
   ],
 }
 
-fn operator_fleet_network_topology() -> NetworkTopology {
-  operator_fleet_network
+fn fleet_intent_network_topology() -> NetworkTopology {
+  fleet_intent_network
 }
