@@ -79,12 +79,8 @@ fn main() -> ExitCode {
                 if let Some(ref err) = result.error {
                     errors.lock().unwrap().push(format!(
                         "parse error in {}: {}",
-                        path.file_name()
-                            .unwrap_or_default()
-                            .to_string_lossy(),
-                        v1_compiler::v1_std_core::diagnostic_to_message(
-                            err.diagnostic.clone(),
-                        ),
+                        path.file_name().unwrap_or_default().to_string_lossy(),
+                        v1_compiler::v1_std_core::diagnostic_to_message(err.diagnostic.clone(),),
                     ));
                 } else {
                     count.fetch_add(1, Ordering::Relaxed);
