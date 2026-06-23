@@ -1,7 +1,7 @@
 module test.claim.docker_container_stats_witness
 
 import extdeps.docker.container_stats { CpuStats, CpuUsage, MemoryStats, ContainerStats, PidStats, NetworkStats, NetworkInterface, Networks, container_stats_memory_usage, container_stats_cpu_usage_total, container_stats_online_cpus }
-import extdeps.docker.container_inspect { ContainerState, ContainerStateDetail, HostConfig, ContainerConfig, ContainerInspect, NetworkSettings, container_state_is_running, container_inspect_memory_limit, container_inspect_cpu_quota, container_inspect_cpu_period, parse_container_state, container_state_wire_label, Running, Exited, Paused, Dead, Restarting }
+import extdeps.docker.container_inspect { ContainerState, ContainerStateDetail, HostConfig, ContainerConfig, ContainerInspect, NetworkSettings, container_inspect_memory_limit, container_inspect_cpu_quota, container_inspect_cpu_period, parse_container_state, container_state_wire_label, Running, Exited, Paused, Dead, Restarting }
 import std.measure { byte_size, nanosecond, microsecond }
 
 data sample_cpu_usage: CpuUsage = CpuUsage {
@@ -155,18 +155,6 @@ test fn container_stats_online_cpus_returns_correct_count() -> Bool {
   cpus == 4
 }
 
-test fn container_state_is_running_true_for_running_state() -> Bool {
-  container_state_is_running(Running) == true
-}
-
-test fn container_state_is_running_false_for_exited_state() -> Bool {
-  container_state_is_running(Exited) == false
-}
-
-test fn container_state_is_running_false_for_paused_state() -> Bool {
-  container_state_is_running(Paused) == false
-}
-
 test fn container_inspect_memory_limit_extracts_from_host_config() -> Bool {
   match container_inspect_memory_limit(sample_container_inspect) {
     Present { value: limit } => limit == byte_size(2147483648)
@@ -217,7 +205,7 @@ test fn sample_stats_has_realistic_timestamp() -> Bool {
 }
 
 test fn sample_inspect_has_running_state() -> Bool {
-  container_state_is_running(sample_container_inspect.state.status) == true
+  sample_container_inspect.state.status == Running
 }
 
 test fn parse_container_state_running() -> Bool {

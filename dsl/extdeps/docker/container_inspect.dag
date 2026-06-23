@@ -15,6 +15,11 @@ type ContainerState
   | Dead
   | Restarting
 
+data container_state_wire_contract: CoproductWireContract = {
+  coproduct: "ContainerState"
+  encoding: StringVariant { naming: SnakeCase }
+}
+
 type ErrorMessage = String
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -22,11 +27,6 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
     scheme: Https
     locator: "docs.docker.com/engine/api/v1.47"
   }
-}
-
-data container_state_wire_contract: CoproductWireContract = CoproductWireContract {
-  coproduct: ContainerState
-  encoding: StringVariant { naming: SnakeCase }
 }
 
 type ContainerStateDetail {

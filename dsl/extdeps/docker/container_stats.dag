@@ -112,11 +112,11 @@ service docker.ContainerStats {
 }
 
 data dissolve_on_cpu_percent_ratio_carrier: List<String> = [
-  "closure:ground_cpu_percent_ratio_type|cpu_percent: Float? is a percentage/ratio without a Measure<Quantity, Scale, M> carrier; bare Float cannot encode unit semantics (is it 0–1 normalized or 0–100 scale?); §5 violation on unit-modeling|trigger:B3 introduces Ratio or PercentagePoint typed alias on std.measure and uses instead of bare Float"
+  "closure:ground_cpu_percent_ratio_type|cpu_percent: Float? is a percentage/ratio without a Measure<Quantity, Scale, M> carrier; bare Float cannot encode unit semantics (is it 0–1 normalized or 0–100 scale?); §5 violation on unit-modeling|trigger:Ratio or PercentagePoint typed alias lands in std/measure"
 ]
 
 data dissolve_on_error_responses_opaque_strings: List<String> = [
-  "closure:typed_error_responses|Error responses (404 => String, 500 => String) collapse distinct error shapes (not-found vs server error) to opaque string, violating §5 fail-closed (errors must be typed and located with structured diagnostics). Docker API returns JSON error objects with reason/message; should be modeled as ErrorDetail coproduct or structured record (NotFound | ServerError variants with message and optional retry info)|trigger:B3 models error responses as typed variants with structured failure details, not opaque strings"
+  "closure:typed_error_responses|Error responses (404 => String, 500 => String) collapse distinct error shapes (not-found vs server error) to opaque string, violating §5 fail-closed (errors must be typed and located with structured diagnostics). Docker API returns JSON error objects with reason/message; should be modeled as ErrorDetail coproduct or structured record (NotFound | ServerError variants with message and optional retry info)|trigger:typed error response variants land in extdeps/docker or extdeps/github.errors pattern applied here"
 ]
 
 fn container_stats_memory_usage(stats: ContainerStats) -> ByteSize {
@@ -136,5 +136,5 @@ data structural_coverage_gap_memory_stats_working_set: List<String> = [
 ]
 
 data dissolve_on_blkio_value_unit_ambiguity: List<String> = [
-  "closure:type_blkio_value_units|BlkioValue.value: Nat carries parent-dependent units (bytes under io_service_bytes_recursive, time under io_service_time_recursive, count under io_serviced_recursive); flat Nat smuggles unit invisible to type system (§5 fail-closed unit-modeling); Docker wire format is the constraint; remedy = typed per-list accessors returning ByteSize|Nanosecond|Nat or parent-tagged union|trigger:B3 models BlkioValue with discriminated unit type or typed accessors per parent list"
+  "closure:type_blkio_value_units|BlkioValue.value: Nat carries parent-dependent units (bytes under io_service_bytes_recursive, time under io_service_time_recursive, count under io_serviced_recursive); flat Nat smuggles unit invisible to type system (§5 fail-closed unit-modeling); Docker wire format is the constraint; remedy = typed per-list accessors returning ByteSize|Nanosecond|Nat or parent-tagged union|trigger:typed or tagged union models for BlkioValue land in extdeps/docker"
 ]
