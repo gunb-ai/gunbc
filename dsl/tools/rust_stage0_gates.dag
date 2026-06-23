@@ -58,6 +58,8 @@ fn any_declared_closure_hit(paths: List<String>) -> Bool {
 
 data unit_must_run_failclosed_note: String = "Fail-closed per-unit selection: a unit with NO declared closure must run (absent declaration = run, never skip), keeping the coverage direction sound while declarations are added incrementally. A declared unit runs iff a changed path is in its closure. The fold seeds true (the fail-closed default); the matching declared entry, if any, overrides it with the affected-by-diff verdict."
 
+data unit_must_run_staged_note: String = "STAGED primitive (DESIGN 6 scaffold-with-dissolution-trigger): unit_must_run is the fail-closed PER-UNIT selector but is NOT YET consumed by the live gate -- should_run_gates fires coarsely via any_declared_closure_hit (all-or-nothing: any declared closure hit runs the whole rust suite). It is exercised only by its discriminating witnesses today (proving the fail-closed (iii) direction by execution). DISSOLUTION / CONSUMER TRIGGER: the per-unit rust-test selection slice (the affordability direction) that replaces all-or-nothing should_run_gates with per-test selection -- at which point unit_must_run becomes the live selector and this staged note dissolves. Until then it is an intentionally-staged primitive, not an inert abstraction."
+
 fn unit_must_run(unit: String, paths: List<String>) -> Bool {
   fold(declared_consumed_input_closures, true, fn(acc, c) {
     if c.unit == unit { closure_hit_by_any(closure: c, paths: paths) } else { acc }
