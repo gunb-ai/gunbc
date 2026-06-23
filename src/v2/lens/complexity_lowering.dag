@@ -1,0 +1,80 @@
+module v2.lens.complexity_lowering
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+
+import v2.lens.cost {
+  AsymptoticClass,
+  ClassLinear,
+  ClassPolynomial,
+  SymbolicCost,
+  asymptotic_class_dominates,
+  asymptotic_class_of_cost,
+  polynomial_degree_two
+}
+import v2.std.algebra { FreeMonoid, any, fold_list, for_all }
+import v2.std.node { Symbol }
+import v2.std.logic { Bool }
+
+type ComplexityLowering {
+  name: Symbol
+  before: AsymptoticClass
+  after: AsymptoticClass
+}
+
+fn asymptotic_class_equal(a: AsymptoticClass, b: AsymptoticClass) -> Bool {
+  asymptotic_class_dominates(a: a, b: b) && asymptotic_class_dominates(a: b, b: a)
+}
+
+fn strictly_lowers(r: ComplexityLowering) -> Bool {
+  asymptotic_class_dominates(a: r.before, b: r.after)
+    && !asymptotic_class_dominates(a: r.after, b: r.before)
+}
+
+fn loop_invariant_hoist() -> ComplexityLowering {
+  ComplexityLowering {
+    name: ^loop_invariant_hoist,
+    before: ClassPolynomial { degree: polynomial_degree_two() },
+    after: ClassLinear
+  }
+}
+
+fn lowering_catalog() -> FreeMonoid<ComplexityLowering> {
+  [ loop_invariant_hoist() ]
+}
+
+fn catalog_is_sound() -> Bool {
+  for_all(xs: lowering_catalog(), predicate: strictly_lowers)
+}
+
+fn lowering_matches_class(r: ComplexityLowering, cls: AsymptoticClass) -> Bool {
+  asymptotic_class_equal(a: r.before, b: cls)
+}
+
+fn cost_class_is_lowerable(cls: AsymptoticClass) -> Bool {
+  any(xs: lowering_catalog(), predicate: fn(r) { lowering_matches_class(r: r, cls: cls) })
+}
+
+fn cost_is_lowerable(c: SymbolicCost) -> Bool {
+  cost_class_is_lowerable(cls: asymptotic_class_of_cost(cost: c))
+}
+
+fn minimized_class(c: SymbolicCost) -> AsymptoticClass {
+  fold_list(
+    xs: lowering_catalog(),
+    empty: asymptotic_class_of_cost(cost: c),
+    cons: fn(acc, r) {
+      if lowering_matches_class(r: r, cls: asymptotic_class_of_cost(cost: c)) {
+        r.after
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding {
+    grounding_authority: "the dependency-coupling carrier on InferredFacts that v2.lens.parallelism waits on (feature:T-13-parallelism-relation-unresolved) -- it decides loop-invariance / independence",
+    dissolve_on: "a catalogued lowering fires on a LIVE realized cost once independence is read from the coupling carrier by construction; until then matching the realized asymptotic class against a lowering's before-class (O(n^2) = ClassPolynomial degree 2) is the decidable NECESSARY condition and the row over-approximates -- sufficiency (genuine loop-invariant hoist O(n^2)->O(n), not a real all-pairs O(n^2)) waits on the carrier"
+  },
+  rationale: "The DECIDABLE lowering catalog -- the wall-half carved out of v2.lens.complexity's RatchetForever optimality residue. complexity.dag projects a realized cost onto an AsymptoticClass and surfaces an undecidable GAP (Rice); this module formalizes the opposite-direction decidable fragment: a finite whitelist of cost-recurrence lowerings each PROVABLY strictly lowering the class (the §5 'O(n^2)->O(n)' lowerings). §5 partition: (1) every catalogued lowering strictly lowers the class -- decidable now, enforced by catalog_is_sound (the lowering-catalog wall); (2) whether a realized cost matches a lowering is decided by class-equality against cost.dag's exhaustive asymptotic_class_of_cost (no hand-rolled wildcard match -- single authority, total), but its SUFFICIENCY is grounded by the independence carrier above; (3) global optimality stays the RatchetForever in v2.lens.complexity / v2.lens.synthesis. One catalog, N rows -- the RunTime axis of v2.lens.intent_linearity (the ChangeTime axis is anti-unification)."
+}
