@@ -66,7 +66,7 @@ jobs:
               echo "::warning::cargo/sccache EAGAIN under fleet pressure; cold retry CARGO_BUILD_JOBS=1 (keep sccache)"
               RETRY_LOG=$(mktemp)
               if ! ( CARGO_BUILD_JOBS=1 cargo build -p v1-compiler --release --features text_lookup_work_counter --bins ) 2>&1 | tee "$RETRY_LOG"; then
-                if grep -qiE 'Resource temporarily unavailable|failed to spawn|sccache: encountered fatal error' "$RETRY_LOG"; then
+                if grep -qiE 'Resource temporarily unavailable|failed to spawn|sccache:' "$RETRY_LOG"; then
                   echo "::warning::cargo/sccache still failing; retry without RUSTC_WRAPPER"
                   env -u RUSTC_WRAPPER CARGO_BUILD_JOBS=1 cargo build -p v1-compiler --release --features text_lookup_work_counter --bins || exit 1
                 else
@@ -144,7 +144,7 @@ jobs:
               echo "::warning::cargo/sccache EAGAIN under fleet pressure; cold retry CARGO_BUILD_JOBS=1 (keep sccache)"
               RETRY_LOG=$(mktemp)
               if ! ( CARGO_BUILD_JOBS=1 cargo build -p v1-compiler --release --features text_lookup_work_counter --bins ) 2>&1 | tee "$RETRY_LOG"; then
-                if grep -qiE 'Resource temporarily unavailable|failed to spawn|sccache: encountered fatal error' "$RETRY_LOG"; then
+                if grep -qiE 'Resource temporarily unavailable|failed to spawn|sccache:' "$RETRY_LOG"; then
                   echo "::warning::cargo/sccache still failing; retry without RUSTC_WRAPPER"
                   env -u RUSTC_WRAPPER CARGO_BUILD_JOBS=1 cargo build -p v1-compiler --release --features text_lookup_work_counter --bins || exit 1
                 else
@@ -170,7 +170,7 @@ jobs:
               echo "::warning::cargo/sccache EAGAIN under fleet pressure; cold retry CARGO_BUILD_JOBS=1 (keep sccache)"
               RETRY_LOG=$(mktemp)
               if ! ( CARGO_BUILD_JOBS=1 "$ROOT/target/release/gunbc" run --source-root dsl --source-root src/v2 --entry dsl/tools/rust_gates_ci.dag --function main ) 2>&1 | tee "$RETRY_LOG"; then
-                if grep -qiE 'Resource temporarily unavailable|failed to spawn|sccache: encountered fatal error' "$RETRY_LOG"; then
+                if grep -qiE 'Resource temporarily unavailable|failed to spawn|sccache:' "$RETRY_LOG"; then
                   echo "::warning::cargo/sccache still failing; retry without RUSTC_WRAPPER"
                   env -u RUSTC_WRAPPER CARGO_BUILD_JOBS=1 "$ROOT/target/release/gunbc" run --source-root dsl --source-root src/v2 --entry dsl/tools/rust_gates_ci.dag --function main || exit 1
                 else
