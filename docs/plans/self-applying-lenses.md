@@ -195,6 +195,15 @@ with the detect-only form retained.
   real upstream authority), not synthesized. Each already carries a `dissolve_on: …by construction`
   marker; the correct work is landing that construction, **not** a produce-and-apply retrofit.
 
+  *On `fact_density` specifically* (reconciling the Consolidation-map fork-check, #5591): it is the
+  **conceptual dual** of the registry's over-side — the intent-linearity "*description == information*"
+  read two ways, **redundant** spec (over) vs **hollow** carrier (under). But the duality is conceptual,
+  **not mechanical**, so it stays C2 rather than becoming an A row: the over-side minimal form is
+  *computed* by anti-unification (template + substitution), whereas the under-side fix is *not computable*
+  — grounding a hollow `4926` into a `contact_count` needs domain knowledge (§2-deep DFS, §3-grounding),
+  exactly the construction-residue the fork-check carves out. Same concept, divergent mechanism: that is
+  why one is a registry producer-applier and the other waits on its `dissolve_on` construction.
+
 **D — not a detector to upgrade** (the machinery produce-and-apply *uses*, plus harness/fixtures):
 `application` (the apply/write API — `apply_diff`/`substitute_at`), `application_serializer`
 (re-emit, the §4 grammar-inverse, `WallNow`), `intent_linearity` (the registry engine itself),
