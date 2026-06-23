@@ -53,6 +53,14 @@ data extdeps_fixture_file_anchor_module: QualifiedName = QnCons {
   }
 }
 
+data extdeps_fixture_shadow_masked_module: QualifiedName = QnCons {
+  head: ^extdeps,
+  tail: QnCons {
+    head: ^fixture,
+    tail: QnCons { head: ^external_authority_shadow_masked, tail: QnEmpty }
+  }
+}
+
 data extdeps_external_authority_anchor_machinery_exempt_modules: List<QualifiedName> = [
   extdeps_uri_module,
   extdeps_external_authority_module
