@@ -1,10 +1,5 @@
 module test.claim.bmc_onboard_body_witness
 
-// By-execution witnesses for the PURE content builders of the srv3 onboarding orchestration.
-// The live Redfish/GCP/entropy legs are operator-fenced and cannot run in CI, but the netrc line,
-// the Redfish PATCH/POST JSON bodies, and the GCP secret resource name are pure deterministic strings
-// — a malformed body is a real bug, so these are the discriminating witnesses for the wire shapes.
-
 import std.logic { Bool }
 import gunbc.tools.bmc_onboard {
   netrc_content,
