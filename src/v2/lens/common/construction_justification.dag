@@ -8,13 +8,6 @@ type ConstructionClass
 
   = WallNow { construction: String }
 
-  // INTERIM (dissolves-on: std.decl_ref neutral-locator landing, cool-carp slice-3 + the
-  // bind-widening to a ScaffoldAuthority coproduct). dissolves_to is the mechanism half of the
-  // brief-target Disposition::Scaffold; it migrates straight into
-  //   WallAfterGrounding { dissolve_on: Disposition }  // Scaffold { dissolves_to, bind: <ScaffoldAuthority> }
-  // once the neutral locator settles. Until then bind is deferred (Scaffold.bind is mandatory and
-  // its type is in flux), so this carries the typed mechanism + folds the old grounding_authority /
-  // dissolve_on prose into ConstructionJustification.rationale. Do NOT read this as the final shape.
   | WallAfterGrounding { dissolves_to: ConstructionMechanism }
 
   | RatchetForever { undecidable_because: String }
