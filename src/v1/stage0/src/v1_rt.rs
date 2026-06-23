@@ -152,10 +152,6 @@ pub fn to_string(value: i64) -> String {
     value.to_string()
 }
 
-pub fn utf8_decode_bytes(bytes: &[u8]) -> Result<String, String> {
-    String::from_utf8(bytes.to_vec()).map_err(|e| format!("invalid UTF-8 in access payload: {}", e))
-}
-
 pub fn clamp(val: i64, min_val: i64, max_val: i64) -> i64 {
     val.clamp(min_val, max_val)
 }
@@ -481,25 +477,6 @@ pub fn from_code_point(cp: i64) -> String {
     char::from_u32(cp as u32)
         .map(|c| c.to_string())
         .unwrap_or_default()
-}
-
-pub fn is_xid_start(cp: i64) -> bool {
-    char::from_u32(cp as u32)
-        .map(unicode_ident::is_xid_start)
-        .unwrap_or(false)
-}
-
-pub fn is_xid_continue(cp: i64) -> bool {
-    char::from_u32(cp as u32)
-        .map(unicode_ident::is_xid_continue)
-        .unwrap_or(false)
-}
-
-pub fn is_emoji_ident(cp: i64) -> bool {
-    use unicode_properties::emoji::UnicodeEmoji;
-    char::from_u32(cp as u32)
-        .map(|c| c.is_emoji_char() && !unicode_ident::is_xid_continue(c))
-        .unwrap_or(false)
 }
 
 const FNV1A64_OFFSET: u64 = 0xcbf29ce484222325;
