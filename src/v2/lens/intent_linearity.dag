@@ -50,19 +50,13 @@ fn rule_fires(rule: LinearityRule, steps: FreeMonoid<Node>) -> Bool {
   rule.detect(steps)
 }
 
-<<<<<<< HEAD
 fn input_is_redundant_for(rep: Representation, input: FreeMonoid<Node>) -> Bool {
-  fold_list(
+  any(
     xs: linearity_registry(),
-    empty: false,
-    cons: fn(acc, rule) {
-      acc || (representation_eq(a: rule.representation, b: rep) && rule_fires(rule: rule, steps: input))
+    predicate: fn(rule) {
+      representation_eq(a: rule.representation, b: rep) && rule_fires(rule: rule, steps: input)
     }
   )
-=======
-fn chain_is_redundant(steps: FreeMonoid<Node>) -> Bool {
-  any(xs: linearity_registry(), predicate: fn(rule) { rule_fires(rule: rule, steps: steps) })
->>>>>>> origin/main
 }
 
 fn chain_is_redundant(steps: FreeMonoid<Node>) -> Bool {
@@ -91,7 +85,7 @@ fn body_is_linear(levels: FreeMonoid<FreeMonoid<Node>>) -> Bool {
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: WallAfterGrounding {
-    grounding_authority: "the parse/resolve walk + chain projector decomposing a body into its per-level statement-chains (shared with v2.lens.simulated_relationship / v2.lens.structural_similarity)",
+    grounding_authority: "the parse/resolve walk + chain projector decomposing a body into its per-level statement-chains (shared with v2.lens.simulated_relationship / v2.lens.structural_similarity, all over the v2.std.anti_unification kernel)",
     dissolve_on: "body_is_linear runs over live dsl bodies once the walk projects per-level chains; the registry grows by rows (complexity cost-recurrence rules join the change-time rows); Row 1 is the term-chain hand-unrolled fold, Row 2 the type-decl duplicate-to-generic, one anti-unification engine and two binders; until then this is a lens_unit over projected synthetic chains"
   },
   rationale: "Intent-linearity is a wall up to the substrate's expressible abstraction (anti-unification computes the structural minimum) and a ratchet beyond it (global minimal description is Kolmogorov-uncomputable). The registry is the decidable wall-half; complexity.dag keeps the RatchetForever optimality residue. One engine, N rows; the Representation field tags each row's binder so the term and type rows stay off each other's projection."
