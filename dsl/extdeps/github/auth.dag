@@ -34,7 +34,6 @@ data default_github_auth_source: GitHubAuthSource = {
 
 data structural_coverage_gap_github_token_metadata_verification: List<CoverageClosureEntry> = [
   {
-    closure: "github_token_metadata_verification",
     facts: [
       Subject { path: "GitHubAuthToken" },
       DeclaredMetadata { field: "scopes" },

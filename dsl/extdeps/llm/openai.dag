@@ -195,7 +195,6 @@ type OpenAiChatCompletion200Body {
 
 data structural_coverage_gap_openai_chat_completion_200_residual: List<CoverageClosureEntry> = [
   {
-    closure: "openai_chat_completion_200_residual",
     facts: [
       Subject { path: "OpenAiChatCompletion200Message" },
       VariantPending { variant: "tool_calls" },
@@ -210,7 +209,6 @@ data structural_coverage_gap_openai_chat_completion_200_residual: List<CoverageC
 
 data structural_coverage_gap_openai_chat_message_additive_content_parts: List<CoverageClosureEntry> = [
   {
-    closure: "openai_chat_message_additive_content_parts",
     facts: [
       Subject { path: "OpenAiChatMessagePart" },
       Missing { item: "audio_input_part" },
@@ -218,9 +216,11 @@ data structural_coverage_gap_openai_chat_message_additive_content_parts: List<Co
       Missing { item: "file_or_custom_parts" }
     ],
     trigger: "OpenAI Chat Completions request content-part spec extension"
-  },
+  }
+]
+
+data structural_coverage_gap_openai_chat_message_additive_tool_calls: List<CoverageClosureEntry> = [
   {
-    closure: "openai_chat_message_additive_tool_calls",
     facts: [
       Subject { path: "ToolCall" },
       Missing { item: "custom_tool_call" }
@@ -273,7 +273,6 @@ type OpenAiResponses200OutputContent {
 
 data structural_coverage_gap_openai_responses_200_residual: List<CoverageClosureEntry> = [
   {
-    closure: "openai_responses_200_residual",
     facts: [
       Subject { path: "OpenAiResponses200OutputContent" },
       JsonPending { field: "logprobs" },
@@ -282,7 +281,6 @@ data structural_coverage_gap_openai_responses_200_residual: List<CoverageClosure
     trigger: "Responses output content coproduct surface"
   },
   {
-    closure: "openai_responses_200_residual",
     facts: [
       Subject { path: "OpenAiResponses200OutputItem" },
       VariantPending { variant: "tool_calls" },

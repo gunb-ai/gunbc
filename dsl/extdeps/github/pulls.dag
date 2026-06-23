@@ -258,7 +258,6 @@ type PullReview {
 
 data structural_coverage_gap_github_pull_review_response_residual: List<CoverageClosureEntry> = [
   {
-    closure: "github_pull_review_response_residual",
     facts: [
       Subject { path: "PullReview" },
       JsonPending { field: "node_id" },
