@@ -1,6 +1,6 @@
 module v2.test.simulated_relationship.lens_unit.discriminators
 
-import v2.lens.simulated_relationship { chain_is_simulated_canonical }
+import v2.lens.simulated_relationship { chain_is_simulated }
 import v2.std.node {
   Node, Edge, EdgeLabel, Positional,
   NodeKind, TypeNode, Connective, Atom, Conj,
@@ -88,20 +88,20 @@ data green_pure_duplication: List<Node> = [
 
 // ── witnesses ──────────────────────────────────────────────────────────────────
 test fn gate_chain_is_simulated() -> Bool {
-  chain_is_simulated_canonical(steps: red_gate_chain)
+  chain_is_simulated(steps: red_gate_chain)
 }
 test fn positional_typecheck_is_simulated() -> Bool {
-  chain_is_simulated_canonical(steps: red_positional_typecheck)
+  chain_is_simulated(steps: red_positional_typecheck)
 }
 test fn divergent_operation_is_not_simulated() -> Bool {
-  !chain_is_simulated_canonical(steps: green_divergent_op)
+  !chain_is_simulated(steps: green_divergent_op)
 }
 test fn distinct_input_is_not_simulated() -> Bool {
-  !chain_is_simulated_canonical(steps: green_distinct_input)
+  !chain_is_simulated(steps: green_distinct_input)
 }
 test fn too_short_chain_is_not_simulated() -> Bool {
-  !chain_is_simulated_canonical(steps: green_too_short)
+  !chain_is_simulated(steps: green_too_short)
 }
 test fn pure_duplication_is_not_simulated() -> Bool {
-  !chain_is_simulated_canonical(steps: green_pure_duplication)
+  !chain_is_simulated(steps: green_pure_duplication)
 }

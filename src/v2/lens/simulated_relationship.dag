@@ -68,10 +68,6 @@ fn chain_is_simulated(steps: FreeMonoid<Node>) -> Bool {
   }
 }
 
-fn chain_is_simulated_canonical(steps: FreeMonoid<Node>) -> Bool {
-  chain_is_simulated(steps: steps)
-}
-
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: WallAfterGrounding {
     grounding_authority: "the parse/resolve walk that projects a body's statement chain into List<Node> (shared with v2.lens.structural_similarity)",
