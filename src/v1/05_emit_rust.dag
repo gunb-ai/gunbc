@@ -1650,7 +1650,8 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
   let svc_imports_str = if extern_svc_imports |> count == 0 { "" }
     else { concat("\n", extern_svc_imports |> join(separator: "\n")) }
   let local_enum_uses = typed_module.items
-    |> filter(item => is_type_def_item(item: item) && is_coproduct_type(n: item))
+    |> filter(item => is_type_def_item(item: item) && is_coproduct_type(n: item)
+      && !(corpus_repr_is_host(corpus_repr: emit_info.corpus_repr) && authored_name(env: scope.type_env, node: item) == "FreeMonoid"))
     |> map(item => concat("use self::", authored_name(env: scope.type_env, node: item), "::*;"))
   let local_coproduct_names = typed_module.items
     |> filter(item => is_type_def_item(item: item) && is_coproduct_type(n: item))
@@ -2651,7 +2652,13 @@ fn emit_specific_import_block(import_module: String, mod_name: String, filtered_
       variant_lines |> filter(l => l != ""),
       wildcard_enum_lines
     )
-    all_lines |> join(separator: "\n")
+    // FreeMonoid grounding: under HostNative the coproduct is a `type FreeMonoid<T> = Vec<T>` alias
+    // (no variants), so drop variant-glob / variant-list imports of it (use ...::FreeMonoid::* and
+    // ::FreeMonoid::{Empty, Cons}); the bare type import `{FreeMonoid}` (no `FreeMonoid::`) is kept.
+    let host_filtered = if corpus_repr_is_host(corpus_repr: emit_info.corpus_repr) {
+      all_lines |> filter(l => !contains(line: l, substring: "FreeMonoid::"))
+    } else { all_lines }
+    host_filtered |> join(separator: "\n")
   }
 }
 
@@ -3094,6 +3101,17 @@ fn emit_type_def_from_connective(item: Node, recursive_types: Set<String>, share
   if is_product {
     let generic_param_names = item.params |> map(p => generic_param_name_at(n: p, source_indices: env.source_indices))
     emit_struct_from_children(name: item_text, type_params: type_params, generic_param_names: generic_param_names, children: item.children, recursive_types: recursive_types, shared_types: shared_types, env: env, emit_info: emit_info)
+  } else if item_text == "FreeMonoid" && corpus_repr_is_host(corpus_repr: emit_info.corpus_repr) {
+    // FreeMonoid grounding (§3 single authority): under HostNative the coproduct (Empty | Cons) is
+    // realized as the native Rust Vec, so emit a transparent type alias instead of the dead enum.
+    // Every FreeMonoid<T> slot then resolves to Vec<T> via Rust alias transparency (no per-site
+    // type-threading); values are grounded to native Vec at the construct/pattern sites. The
+    // element-specialized text arm (FreeMonoid<Char> -> String) is handled upstream by the
+    // corpus-aware render_rust_* text guards, which keep PRECEDENCE over this default Vec arm. The
+    // enum's auto-impl accessors (head/tail) and the variant-glob imports drop out with the enum
+    // (variant globs are filtered out under host, since a type alias has no variants to glob).
+    let elem_csv = item.params |> map(p => generic_param_name_at(n: p, source_indices: env.source_indices)) |> join(separator: ", ")
+    concat(rust_visibility_prefix(), "type ", item_text, type_params, " = Vec<", elem_csv, ">;")
   } else {
     let all_unit_variants = item.children |> all(child => child.children |> count == 0)
     let serde_policy = match resolve_local_coproduct_wire_policy(coproduct_name: item_text, all_unit_variants: all_unit_variants, module_items: module_items, imports: imports, source_indices: env.source_indices) {
