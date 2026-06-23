@@ -29,6 +29,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
 // The NAMED exception roster: `file::fn` sites carrying a wildcard over a closed-coproduct param.
 // Per DESIGN §6 each is EITHER (a) un-migrated modeling awaiting its fold OR (b) a named irreducible
@@ -505,14 +506,36 @@ fn residue_sites(files: &[(String, String)]) -> Vec<String> {
     out.into_iter().collect()
 }
 
+/// The memoized live-tree census: residue sites + closed-coproduct universe size, both derived from a
+/// single `dsl/` + `src/v2/` walk. The on-disk corpus is fixed for a process's lifetime, so the four
+/// `non_fold_residue_*_count` builtins (called one-by-one per witness eval) share one walk + scan
+/// instead of re-walking per call. The pure `residue_sites` / `closed_coproduct_names` stay taking
+/// `&[files]` so the synthetic RED/GREEN controls keep driving them with in-memory corpora.
+struct NonFoldReport {
+    sites: Vec<String>,
+    coproduct_universe: usize,
+}
+
+fn build_report() -> &'static NonFoldReport {
+    static REPORT: OnceLock<NonFoldReport> = OnceLock::new();
+    REPORT.get_or_init(|| {
+        let files = corpus_dag_files();
+        NonFoldReport {
+            sites: residue_sites(&files),
+            coproduct_universe: closed_coproduct_names(&files).len(),
+        }
+    })
+}
+
 pub fn non_fold_residue_count() -> i64 {
-    residue_sites(&corpus_dag_files()).len() as i64
+    build_report().sites.len() as i64
 }
 
 /// The fail-closed GATE: residue sites NOT on the named exception roster.
 pub fn non_fold_residue_unrostered_count() -> i64 {
     let roster: BTreeSet<&str> = NON_FOLD_RESIDUE_ROSTER.iter().copied().collect();
-    residue_sites(&corpus_dag_files())
+    build_report()
+        .sites
         .iter()
         .filter(|s| !roster.contains(s.as_str()))
         .count() as i64
@@ -520,16 +543,16 @@ pub fn non_fold_residue_unrostered_count() -> i64 {
 
 /// The RATCHET: roster entries that are no longer residue (migrated to a fold, or deleted).
 pub fn non_fold_residue_stale_roster_count() -> i64 {
-    let live: BTreeSet<String> = residue_sites(&corpus_dag_files()).into_iter().collect();
+    let live: BTreeSet<&str> = build_report().sites.iter().map(|s| s.as_str()).collect();
     NON_FOLD_RESIDUE_ROSTER
         .iter()
-        .filter(|s| !live.contains(&s.to_string()))
+        .filter(|s| !live.contains(*s))
         .count() as i64
 }
 
 /// Closed-coproduct universe size — fail-open oracle (zero means the corpus walk found nothing).
 pub fn non_fold_residue_coproduct_universe_count() -> i64 {
-    closed_coproduct_names(&corpus_dag_files()).len() as i64
+    build_report().coproduct_universe as i64
 }
 
 #[cfg(test)]

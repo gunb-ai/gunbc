@@ -38,6 +38,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
 // The NAMED, SHRINKING exception roster: carriers deliberately modeled ahead of their consumer (the
 // realization loop is model-first by design — docs/plans/inert-layer-lens.md §5). Each entry is a
@@ -315,8 +316,14 @@ fn compute_report(files: &[(String, String)]) -> InertCarrierReport {
     InertCarrierReport { declared, inert }
 }
 
-fn build_report() -> InertCarrierReport {
-    compute_report(&corpus_dag_files())
+/// Memoized live-tree report. The on-disk corpus is fixed for a process's lifetime, so the four
+/// `inert_carrier_*_count` builtins (called one-by-one per witness eval) and the live-tree tests share
+/// a single `dsl/` + `src/v2/` walk + report instead of re-walking per call. The pure `compute_report`
+/// is left taking `&[files]` so the synthetic RED/GREEN controls keep driving it with in-memory corpora
+/// (which never touch this cache).
+fn build_report() -> &'static InertCarrierReport {
+    static REPORT: OnceLock<InertCarrierReport> = OnceLock::new();
+    REPORT.get_or_init(|| compute_report(&corpus_dag_files()))
 }
 
 /// Count of all carriers the census judges inert (defined + zero real consumer). Includes rostered
