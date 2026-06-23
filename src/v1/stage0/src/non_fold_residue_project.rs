@@ -38,7 +38,7 @@ use crate::corpus_lex::{brace_delta, corpus_dag_files, is_test_dag, strip_line_c
 // that a roster entry which STOPS being residue (file deleted, or the match migrated to a total fold)
 // reds until removed. The two §6 categories dissolve differently, so the roster does NOT shrink
 // uniformly to zero:
-//   (a) un-migrated modeling — e.g. `emit_yaml_value`, the `eval_*_node*` Node-interpreter handlers,
+//   (a) un-migrated modeling — e.g. the `eval_*_node*` Node-interpreter handlers,
 //       `dag_grammar_terminal_for_mvp1_*_token` — SHOULD become an exhaustive fold over the
 //       coproduct; dissolve-on is to migrate the match (delete the wildcard). This subset shrinks.
 //   (b) named irreducible kernel — the algebraic totals whose off-diagonal IS the residue the §6
@@ -55,7 +55,6 @@ const NON_FOLD_RESIDUE_ROSTER: &[&str] = &[
     // SEEDED FROM THE LIVE CENSUS 2026-06-22 (re-derive with the live_tree gate below). Each is a
     // `file::fn` with a `match <coproduct-param> { ... _ => ... }` — a wildcard escape over a closed
     // coproduct. This is the honest baseline; the wall is that no NEW residue merges.
-    "dsl/extdeps/formats/yaml.dag::emit_yaml_value",
     "dsl/extdeps/languages/markdown.dag::md_nested",
     "dsl/gunbc/generated_artifact.dag::artifact_eq",
     "dsl/gunbc/generated_artifact.dag::artifact_extra_valid",

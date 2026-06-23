@@ -1,0 +1,87 @@
+module test.claim.base64_rfc4648_witness
+
+import std.logic { Bool }
+import std.integer { UInt8 }
+import std.bytes { bytes_octets, octets_bytes, utf8_encode_bytes }
+import std.encoding { Base64Variant, Standard, UrlSafe, base64_encode, base64_decode, utf8_decode_bytes }
+
+fn b64_std_of_utf8(s: String) -> String {
+  base64_encode(octets: bytes_octets(b: utf8_encode_bytes(s: s)), variant: Standard)
+}
+
+data url_witness_octets: List<UInt8> = [251, 255, 191]
+
+test fn bytes_octets_iso_holds() -> Bool {
+  let b = utf8_encode_bytes(s: "foobar")
+  octets_bytes(o: bytes_octets(b: b)) == b
+}
+
+test fn utf8_total_direction_holds() -> Bool {
+  utf8_decode_bytes(payload: utf8_encode_bytes(s: "naïve")) == "naïve"
+}
+
+test fn base64_octet_roundtrip_holds() -> Bool {
+  let o = bytes_octets(b: utf8_encode_bytes(s: "foobar"))
+  match base64_decode(s: base64_encode(octets: o, variant: Standard), variant: Standard) {
+    Present { value: d } => d == o
+    Absent => false
+  }
+}
+
+test fn base64_decode_rejects_invalid_char_holds() -> Bool {
+  match base64_decode(s: "Zm9*", variant: Standard) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+test fn base64_decode_rejects_cross_variant_char_holds() -> Bool {
+  match base64_decode(s: "Zm9-", variant: Standard) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+test fn base64_decode_rejects_interior_pad_holds() -> Bool {
+  match base64_decode(s: "Zg==Zg==", variant: Standard) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+test fn base64_decode_rejects_lone_sextet_holds() -> Bool {
+  match base64_decode(s: "Zm9vY", variant: Standard) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+test fn base64_decode_accepts_unpadded_holds() -> Bool {
+  let o = bytes_octets(b: utf8_encode_bytes(s: "foob"))
+  match base64_decode(s: "Zm9vYg", variant: Standard) {
+    Present { value: d } => d == o
+    Absent => false
+  }
+}
+
+test fn base64_rfc4648_golden_vectors_holds() -> Bool {
+  b64_std_of_utf8(s: "") == ""
+    && b64_std_of_utf8(s: "f") == "Zg=="
+    && b64_std_of_utf8(s: "fo") == "Zm8="
+    && b64_std_of_utf8(s: "foo") == "Zm9v"
+    && b64_std_of_utf8(s: "foob") == "Zm9vYg=="
+    && b64_std_of_utf8(s: "fooba") == "Zm9vYmE="
+    && b64_std_of_utf8(s: "foobar") == "Zm9vYmFy"
+}
+
+test fn base64url_alphabet_golden_holds() -> Bool {
+  base64_encode(octets: url_witness_octets, variant: Standard) == "+/+/"
+    && base64_encode(octets: url_witness_octets, variant: UrlSafe) == "-_-_"
+}
+
+test fn base64url_roundtrip_holds() -> Bool {
+  match base64_decode(s: base64_encode(octets: url_witness_octets, variant: UrlSafe), variant: UrlSafe) {
+    Present { value: d } => d == url_witness_octets
+    Absent => false
+  }
+}

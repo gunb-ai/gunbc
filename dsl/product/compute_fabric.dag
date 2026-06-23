@@ -19,7 +19,6 @@ import std.float { Float }
 import std.measure {
   Measure,
   Time,
-  DataRate,
   Currency,
   Micro,
   One,
@@ -35,6 +34,7 @@ import std.measure {
   measure_scale_fraction_ceil,
   hertz,
   watt,
+  Bandwidth,
 }
 import std.currency { CurrencyCode }
 import std.verification { NanosecondDuration, nanosecond_duration, nanosecond_duration_count }
@@ -58,6 +58,7 @@ import extdeps.cpu.types {
   CpuSocket,
   SocketPackage,
 }
+import extdeps.storage.types { NvmeDeviceCatalogRow }
 import extdeps.toolchain.types {
   Architecture,
   Aarch64,
@@ -113,7 +114,6 @@ type ContainerRuntime = Docker | Podman | Gvisor | Ubicloud | GcloudRun
 type CostClass = OwnedMarginalZero | PerSecondBilled | Metered | DeveloperAttention
 type OomSignalClass = KillProcess | Throttle | ReportOnly
 
-type Bandwidth = Measure<DataRate, One, Nat>
 type Duration = Measure<Time, One, Nat>
 
 type MoneyMicros = MoneyAmount<Micro>
@@ -191,9 +191,23 @@ type MemoryDevice {
 type StorageDevice {
   capacity: ByteSize
   medium: StorageMedium
+  catalog: NvmeDeviceCatalogRow?
+  serial: NonEmptyStr?
   read_bandwidth: Bandwidth?
   write_bandwidth: Bandwidth?
   persistence: PersistenceKind
+}
+
+fn nvme_storage_device(catalog: NvmeDeviceCatalogRow, persistence: PersistenceKind) -> StorageDevice {
+  StorageDevice {
+    capacity: catalog.capacity_bytes,
+    medium: Nvme,
+    catalog: Present { value: catalog },
+    serial: none,
+    read_bandwidth: Present { value: catalog.sequential_read },
+    write_bandwidth: Present { value: catalog.sequential_write },
+    persistence: persistence,
+  }
 }
 
 type NetworkInterface {

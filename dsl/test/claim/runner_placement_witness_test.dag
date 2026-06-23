@@ -21,7 +21,7 @@ import gunbc.ci_floor_measurement {
   gunbc_ci_runner_cap_enforced,
   gunbc_ci_concurrent_runs_conservative_high,
 }
-import gunbc.operator_fleet { operator_fleet_offers, srv1_offer }
+import gunbc.fleet_intent { fleet_intent_offers, srv1_offer }
 import std.realization_width { memory_effective_budget }
 import std.measure { byte_size, byte_size_count }
 import std.types { Bool, Int, List }
@@ -72,7 +72,7 @@ fn witness_live_carrier_measured_derives_plan() -> Bool {
 }
 
 fn witness_measured_mix_derives_capacity() -> Bool {
-  match runner_deployment_plan_for(job_peaks: fitting_job_mix(), overhead: fitting_overhead(), offers: operator_fleet_offers) {
+  match runner_deployment_plan_for(job_peaks: fitting_job_mix(), overhead: fitting_overhead(), offers: fleet_intent_offers) {
     PlanDerived { hosts: hosts, fleet_concurrent_runs: total } =>
       hosts.length() == 2 && total >= 2
     PlanUnsound { reason: _ } => false
@@ -90,23 +90,23 @@ fn witness_derived_count_respects_host_budget() -> Bool {
 }
 
 fn witness_over_commit_is_refused() -> Bool {
-  is_unsound(plan: runner_deployment_plan_for(job_peaks: oversized_job_mix(), overhead: fitting_overhead(), offers: operator_fleet_offers))
+  is_unsound(plan: runner_deployment_plan_for(job_peaks: oversized_job_mix(), overhead: fitting_overhead(), offers: fleet_intent_offers))
 }
 
 fn witness_zero_peak_is_refused() -> Bool {
-  is_unsound(plan: runner_deployment_plan_for(job_peaks: zero_job_mix(), overhead: fitting_overhead(), offers: operator_fleet_offers))
+  is_unsound(plan: runner_deployment_plan_for(job_peaks: zero_job_mix(), overhead: fitting_overhead(), offers: fleet_intent_offers))
 }
 
 fn witness_partial_unmeasured_is_refused() -> Bool {
-  is_unsound(plan: runner_deployment_plan_for(job_peaks: partial_unmeasured_mix(), overhead: fitting_overhead(), offers: operator_fleet_offers))
+  is_unsound(plan: runner_deployment_plan_for(job_peaks: partial_unmeasured_mix(), overhead: fitting_overhead(), offers: fleet_intent_offers))
 }
 
 fn witness_overhead_unmeasured_is_refused() -> Bool {
-  is_unsound(plan: runner_deployment_plan_for(job_peaks: fitting_job_mix(), overhead: HostFixedOverheadUnmeasured, offers: operator_fleet_offers))
+  is_unsound(plan: runner_deployment_plan_for(job_peaks: fitting_job_mix(), overhead: HostFixedOverheadUnmeasured, offers: fleet_intent_offers))
 }
 
 fn witness_huge_overhead_is_refused() -> Bool {
-  is_unsound(plan: runner_deployment_plan_for(job_peaks: fitting_job_mix(), overhead: huge_overhead(), offers: operator_fleet_offers))
+  is_unsound(plan: runner_deployment_plan_for(job_peaks: fitting_job_mix(), overhead: huge_overhead(), offers: fleet_intent_offers))
 }
 
 fn witness_runners_per_host_fail_closed_pre_cap() -> Bool {
