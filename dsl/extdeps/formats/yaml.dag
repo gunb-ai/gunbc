@@ -228,7 +228,10 @@ fn project_yaml_to_doc(v: YamlValue) -> Doc {
       } else {
         doc_line_of(text: emit_inline_scalar_text(s: s))
       }
-    _ => doc_line_of(text: emit_scalar(v: v))
+    YamlNull => doc_line_of(text: emit_scalar(v: v))
+    YamlBool { value: _ } => doc_line_of(text: emit_scalar(v: v))
+    YamlInt { lexeme: _ } => doc_line_of(text: emit_scalar(v: v))
+    YamlFloat { lexeme: _ } => doc_line_of(text: emit_scalar(v: v))
   }
 }
 
