@@ -1,5 +1,6 @@
 module v2.lens.parallelism
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.disposition { SingleAuthority }
 
 import v2.compiler.infer { InferredFacts, InferredTree, inferred_facts_descent }
 import v2.std.algebra { bag_eq, list_snoc_item }
@@ -227,9 +228,6 @@ fn parallelism_fact_eq(a: ParallelismFact, b: ParallelismFact) -> Bool {
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: WallAfterGrounding {
-    grounding_authority: "a substrate parallelism-coupling carrier on InferredFacts (dissolves feature:T-13-parallelism-relation-unresolved)",
-    dissolve_on: "independence is read from a resolved coupling carrier by construction, not classified per-edge by a lens"
-  },
-  rationale: "Independence is decidable from dependency-graph structure; the lens is a per-edge ratchet until the coupling carrier lands on InferredFacts."
+  class: WallAfterGrounding { dissolves_to: SingleAuthority },
+  rationale: "Independence is decidable from dependency-graph structure; the lens is a per-edge ratchet until the coupling carrier lands on InferredFacts. Grounding authority: a substrate parallelism-coupling carrier on InferredFacts (dissolves feature:T-13-parallelism-relation-unresolved) Dissolves on: independence is read from a resolved coupling carrier by construction, not classified per-edge by a lens"
 }

@@ -1,5 +1,6 @@
 module v2.lens.idempotency
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.disposition { SingleAuthority }
 
 import v2.compiler.infer { InferredFacts, InferredTree }
 import v2.std.algebra { bag_eq, list_snoc_item }
@@ -147,9 +148,6 @@ fn idempotency_fact_eq(a: IdempotencyFact, b: IdempotencyFact) -> Bool {
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: WallAfterGrounding {
-    grounding_authority: "algebraic simplification -- idempotent/cancellation/redundancy collapse derived from the algebra (the per-edge classification becoming substrate)",
-    dissolve_on: "redundant ops collapse structurally by the algebra law, not flagged by a lens"
-  },
-  rationale: "Idempotency/cancellation is algebraic-law-derived and decidable per edge; the lens is a ratchet until the collapse is a structural construction over the closed algebra."
+  class: WallAfterGrounding { dissolves_to: SingleAuthority },
+  rationale: "Idempotency/cancellation is algebraic-law-derived and decidable per edge; the lens is a ratchet until the collapse is a structural construction over the closed algebra. Grounding authority: algebraic simplification -- idempotent/cancellation/redundancy collapse derived from the algebra (the per-edge classification becoming substrate) Dissolves on: redundant ops collapse structurally by the algebra law, not flagged by a lens"
 }

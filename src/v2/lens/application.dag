@@ -1,5 +1,6 @@
 module v2.lens.application
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.disposition { RealizationDispatch }
 
 import v2.std.algebra { Cons, Empty, is_empty, fold_list, list_snoc_item }
 import v2.std.collection { List }
@@ -499,9 +500,6 @@ fn apply_advisory_lens(
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: WallAfterGrounding {
-    grounding_authority: "the substrate lens-attachment surface (apply_lens / CompileLens pipeline-gate adapter) plus section-ref-identity-evidence",
-    dissolve_on: "lens application is a substrate mechanism (the advisory-to-fail-closed bridge by construction) and section_subject resolves via section-ref identity"
-  },
-  rationale: "The lens-application surface is a mechanism, not a bad-state detector; it is staged pending section-ref-identity-evidence and the compile-pipeline gate adapter wiring."
+  class: WallAfterGrounding { dissolves_to: RealizationDispatch },
+  rationale: "The lens-application surface is a mechanism, not a bad-state detector; it is staged pending section-ref-identity-evidence and the compile-pipeline gate adapter wiring. Grounding authority: the substrate lens-attachment surface (apply_lens / CompileLens pipeline-gate adapter) plus section-ref-identity-evidence Dissolves on: lens application is a substrate mechanism (the advisory-to-fail-closed bridge by construction) and section_subject resolves via section-ref identity"
 }

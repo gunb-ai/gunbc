@@ -1,5 +1,6 @@
 module v2.lens.fact_cardinality
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.disposition { SingleAuthority }
 
 import v2.std.collection { List }
 import v2.std.logic { Bool }
@@ -68,9 +69,6 @@ fn fact_cardinality_live_coexistence_ratchet_holds() -> Bool {
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: WallAfterGrounding {
-    grounding_authority: "per-concept single-authority consolidation (the Route-C de-fork) plus substrate content_hash census",
-    dissolve_on: "the cross-tree coexistence ratchet reaches 0 as each duplicated concept is consolidated to one authority"
-  },
-  rationale: "Same-key-in-both-trees coexistence is a decidable census; the lens is a shrinking ratchet until per-concept single authority dissolves the duplication."
+  class: WallAfterGrounding { dissolves_to: SingleAuthority },
+  rationale: "Same-key-in-both-trees coexistence is a decidable census; the lens is a shrinking ratchet until per-concept single authority dissolves the duplication. Grounding authority: per-concept single-authority consolidation (the Route-C de-fork) plus substrate content_hash census Dissolves on: the cross-tree coexistence ratchet reaches 0 as each duplicated concept is consolidated to one authority"
 }

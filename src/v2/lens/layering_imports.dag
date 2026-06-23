@@ -1,5 +1,6 @@
 module v2.lens.layering_imports
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.disposition { SingleAuthority }
 
 import v2.std.algebra {
   fold_list,
@@ -105,9 +106,6 @@ fn layer_import_facts_live(
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: WallAfterGrounding {
-    grounding_authority: "resolver/substrate rejection of a forbidden layer-DAG edge by construction (std <- extdeps <- compiler <- workflow)",
-    dissolve_on: "an import pointing against the layer arrow becomes unresolvable by construction, not flagged by a host scan over LayerImportFact"
-  },
-  rationale: "Cross-layer import direction is a decidable graph property; the lens is interim until the resolver forbids the inverted edge by construction."
+  class: WallAfterGrounding { dissolves_to: SingleAuthority },
+  rationale: "Cross-layer import direction is a decidable graph property; the lens is interim until the resolver forbids the inverted edge by construction. Grounding authority: resolver/substrate rejection of a forbidden layer-DAG edge by construction (std <- extdeps <- compiler <- workflow) Dissolves on: an import pointing against the layer arrow becomes unresolvable by construction, not flagged by a host scan over LayerImportFact"
 }
