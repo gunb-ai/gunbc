@@ -30,17 +30,29 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
-// The NAMED, SHRINKING exception roster: `file::fn` sites carrying a wildcard over a closed-coproduct
-// param that are EITHER a named irreducible kernel (DESIGN §6) OR un-migrated modeling awaiting its
-// fold. dissolve-on per entry: migrate the match to a total fold (delete the wildcard) — the
-// stale-roster ratchet reds the floor until the entry is removed. A NEW such site not listed reds.
+// The NAMED exception roster: `file::fn` sites carrying a wildcard over a closed-coproduct param.
+// Per DESIGN §6 each is EITHER (a) un-migrated modeling awaiting its fold OR (b) a named irreducible
+// kernel — "there is no third." The wall is that no NEW such site merges unlisted; the ratchet is
+// that a roster entry which STOPS being residue (file deleted, or the match migrated to a total fold)
+// reds until removed. The two §6 categories dissolve differently, so the roster does NOT shrink
+// uniformly to zero:
+//   (a) un-migrated modeling — e.g. `emit_yaml_value`, the `eval_*_node*` Node-interpreter handlers,
+//       `dag_grammar_terminal_for_mvp1_*_token` — SHOULD become an exhaustive fold over the
+//       coproduct; dissolve-on is to migrate the match (delete the wildcard). This subset shrinks.
+//   (b) named irreducible kernel — the algebraic totals whose off-diagonal IS the residue the §6
+//       kernel exemption was written for: `*_eq`/`*_relation_eq`/`*_mode_eq` (the `_ => false`
+//       off-diagonal), the lattice `*_join`/`*_meet`/`*_combine` and partial-order `*_dominates`,
+//       the boolean collapses (`exit_ok` = `ExitSuccess => true _ => false`, `program_runtime_bool_*`,
+//       `is_*`/`float_body_is_nan` predicates). Enumerating every off-diagonal pair would NOT make
+//       these "more total" — they wall PERMANENTLY and are expected to remain on the roster.
+// (A per-entry kernel-vs-un-migrated TAG is deferred to the gunbc#5364 dissolution — the pure `.dag`
+// Node-tree reader carries each site's match shape and scrutinee type structurally, so the
+// classification is derived, not hand-maintained here, where a mistag would dishonestly mark
+// migratable debt as a permanent kernel.)
 const NON_FOLD_RESIDUE_ROSTER: &[&str] = &[
     // SEEDED FROM THE LIVE CENSUS 2026-06-22 (re-derive with the live_tree gate below). Each is a
     // `file::fn` with a `match <coproduct-param> { ... _ => ... }` — a wildcard escape over a closed
-    // coproduct. Per DESIGN §6 each is EITHER un-migrated modeling (migrate to a total fold; delete
-    // the wildcard) OR a named irreducible kernel. This is the honest baseline; the wall is that no
-    // NEW residue merges. dissolve-on per entry: migrate that fn's match to an exhaustive fold (the
-    // stale-roster ratchet reds until the entry is removed), shrinking the roster toward zero.
+    // coproduct. This is the honest baseline; the wall is that no NEW residue merges.
     "dsl/extdeps/formats/yaml.dag::emit_yaml_value",
     "dsl/extdeps/languages/markdown.dag::md_nested",
     "dsl/gunbc/generated_artifact.dag::artifact_eq",
