@@ -83,7 +83,7 @@ type ContainerConfig {
 }
 
 data dissolve_on_hostconfig_containerconfig_anemic_leaves: List<String> = [
-  "closure:decompose_hostconfig_containerconfig_string_lists|HostConfig carries structured concepts as List<String>?: cap_add/cap_drop (privilege names), exposed_ports/port_bindings (host:container port specs), volumes/volumes_from (mount source:target:mode), device_requests (structured device specs); ContainerConfig similar: env (KEY=VALUE pairs), cmd/entrypoint (command args), labels (KEY=VALUE metadata), volumes (mount specs), exposed_ports (port specs). All anemic-leaf §2 violations (structured wire shapes flattened to bare strings)|trigger:B3 grounds each as typed coproduct or decomposed record with named axes (e.g. PortBinding = {host_port: Nat, container_port: Nat, protocol: Protocol}, EnvVar = {key: String, value: String})"
+  "closure:decompose_hostconfig_containerconfig_string_lists|HostConfig carries structured concepts as List<String>?: cap_add/cap_drop (privilege names), exposed_ports/port_bindings (host:container port specs), volumes/volumes_from (mount source:target:mode), device_requests (structured device specs); ContainerConfig similar: env (KEY=VALUE pairs), cmd/entrypoint (command args), labels (KEY=VALUE metadata), volumes (mount specs), exposed_ports (port specs). All anemic-leaf §2 violations (structured wire shapes flattened to bare strings)|trigger:B3 grounds each as typed coproduct or decomposed record with named axes (e.g. PortBinding with host_port/container_port/protocol fields, EnvVar with key/value fields)"
 ]
 
 type ContainerInspect {
