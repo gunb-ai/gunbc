@@ -1434,7 +1434,26 @@ pub fn resolve_node_bounded(
                             }
                         } else {
                             if ((n.children.clone().len() as i64) == 0) {
-                                if is_recursive_type_for(env.clone(), n.clone()) {
+                                let n_target_is_coproduct_container =
+                                    match n.inferred.clone().as_deref().cloned() {
+                                        Some(InferredNode::Resolved { node: target, .. }) => {
+                                            (((target.connective.clone()
+                                                == Connective::NoConnective)
+                                                && ((target.children.clone().len() as i64) > 0))
+                                                && is_container_type(target.name.clone()))
+                                                && (resolve_generic_use_decl(
+                                                    env.clone(),
+                                                    target.clone(),
+                                                )
+                                                .connective
+                                                .clone()
+                                                    == Connective::Disj)
+                                        }
+                                        _ => false,
+                                    };
+                                if is_recursive_type_for(env.clone(), n.clone())
+                                    || n_target_is_coproduct_container
+                                {
                                     Rc::new(NodeResolveResult {
                                         resolved: n.clone(),
                                         diagnostics: Rc::new(vec![]),

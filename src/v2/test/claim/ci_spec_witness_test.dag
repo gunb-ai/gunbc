@@ -148,6 +148,20 @@ fn witness_release_build_eagain_cold_retry() -> Bool {
     string_contains(s: script, pattern: "sccache --show-stats")
 }
 
+fn witness_release_build_eagain_tiers_wrap_build_command() -> Bool {
+  let script = ci_release_build_script()
+  let build_cmd = ci_release_build_line()
+  string_contains(s: script, pattern: concat("if ! (", concat(build_cmd, ") 2>&1")))
+    && string_contains(s: script, pattern: concat("CARGO_BUILD_JOBS=1 ", concat(build_cmd, " ) 2>&1")))
+    && string_contains(s: script, pattern: concat("env -u RUSTC_WRAPPER CARGO_BUILD_JOBS=1 ", concat(build_cmd, " || exit 1")))
+}
+
+fn witness_release_build_verifies_nonempty_artifacts() -> Bool {
+  let script = ci_release_build_script()
+  string_contains(s: script, pattern: "-s") &&
+    !string_contains(s: script, pattern: "-newer")
+}
+
 fn witness_scheduler_uses_release_binary() -> Bool {
   string_contains(
     s: scheduler_invoke(spec: gunbc_ci_spec),
@@ -169,6 +183,8 @@ test fn ci_spec_witnesses() -> Bool {
     witness_run_script_invokes_scheduler() &&
     witness_release_build_unifies_features() &&
     witness_release_build_eagain_cold_retry() &&
+    witness_release_build_eagain_tiers_wrap_build_command() &&
+    witness_release_build_verifies_nonempty_artifacts() &&
     witness_scheduler_uses_release_binary() &&
     witness_workflow_run_is_collapsed_script() &&
     witness_gate_roster_matches_coproduct_arms() &&

@@ -1,0 +1,42 @@
+module tools.build_step_transport
+
+import extdeps.shell
+import extdeps.languages.bash.program { var_ref }
+import tools.build_step { BuildArtifact, verifications_script }
+
+fn probe_var_artifact() -> BuildArtifact {
+  BuildArtifact {
+    path: var_ref(name: "PROBE_BIN"),
+    name: "probe_bin"
+  }
+}
+
+fn probe_verification_script() -> String {
+  verifications_script(produces: [probe_var_artifact()])
+}
+
+fn corruption_probe_zero_byte_harness() -> String {
+  let verify = probe_verification_script()
+  concat(
+    concat("TMPDIR=$(mktemp -d)\n", concat("PROBE_BIN=\"$TMPDIR/probe_bin\"\n", "touch \"$PROBE_BIN\" && chmod +x \"$PROBE_BIN\"\n")),
+    concat("! (\n", concat(verify, "\n)\n"))
+  )
+}
+
+fn corruption_probe_nonempty_harness() -> String {
+  let verify = probe_verification_script()
+  concat(
+    concat("set -e\n", concat("TMPDIR=$(mktemp -d)\n", concat("PROBE_BIN=\"$TMPDIR/probe_bin\"\n", "printf 'x' > \"$PROBE_BIN\" && chmod +x \"$PROBE_BIN\"\n"))),
+    verify
+  )
+}
+
+fn witness_zero_byte_artifact_rejected_by_execution() -> Bool {
+  let result = shell.Exec.Run(script: corruption_probe_zero_byte_harness())
+  result.success
+}
+
+fn witness_nonempty_executable_accepted_by_execution() -> Bool {
+  let result = shell.Exec.Run(script: corruption_probe_nonempty_harness())
+  result.success
+}

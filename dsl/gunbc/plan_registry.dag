@@ -1,0 +1,8 @@
+module gunbc.plan_registry
+
+import gunbc.plan { Plan }
+import gunbc.plans.idea_machine { idea_machine_plan }
+
+data all_plans: List<Plan> = [
+  idea_machine_plan
+]
