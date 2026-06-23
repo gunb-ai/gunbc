@@ -73,6 +73,10 @@ type ContainerConfig {
   network_disabled: Bool?
 }
 
+data dissolve_on_hostconfig_containerconfig_anemic_leaves: List<String> = [
+  "closure:decompose_hostconfig_containerconfig_string_lists|HostConfig carries structured concepts as List<String>?: cap_add/cap_drop (privilege names), exposed_ports/port_bindings (host:container port specs), volumes/volumes_from (mount source:target:mode), device_requests (structured device specs); ContainerConfig similar: env (KEY=VALUE pairs), cmd/entrypoint (command args), labels (KEY=VALUE metadata), volumes (mount specs), exposed_ports (port specs). All anemic-leaf §2 violations (structured wire shapes flattened to bare strings)|trigger:B3 grounds each as typed coproduct or decomposed record with named axes (e.g. PortBinding = {host_port: Nat, container_port: Nat, protocol: Protocol}, EnvVar = {key: String, value: String})"
+]
+
 type ContainerInspect {
   id: String
   created: Timestamp
@@ -99,6 +103,10 @@ type NetworkSettings {
   mac_address: String?
   networks: List<String>?
 }
+
+data dissolve_on_network_settings_bare_strings: List<String> = [
+  "closure:ground_network_address_types|NetworkSettings.gateway/ip_address/mac_address are bare String?, should be typed with IP/MAC carriers (e.g. IpAddress, MacAddress, IpCidr); lower stakes since std/network primitives don't exist yet, but structured type system would catch malformed/invalid addresses (§5 fail-closed)|trigger:B3 introduces network address carriers in std/ (IPv4, IPv6, MacAddress with validation) or extdeps/network"
+]
 
 service docker.Container {
   config {
@@ -129,6 +137,10 @@ service docker.Container {
     }
   }
 }
+
+data dissolve_on_error_responses_opaque_strings: List<String> = [
+  "closure:typed_error_responses|Error responses (404 => String, 500 => String) collapse two distinct error shapes (not-found vs server error) to opaque string, violating §5 fail-closed (errors must be typed and located with structured diagnostics). Docker API returns JSON error objects with reason/message; should be modeled as ErrorDetail coproduct or structured record (NotFound | ServerError variants with message and optional retry info)|trigger:B3 models error responses as typed variants with structured failure details, not opaque strings"
+]
 
 fn container_state_is_running(state: ContainerState) -> Bool =
   state == Running
