@@ -290,15 +290,15 @@ data structural_coverage_gap_anthropic_messages_200_residual: List<Disposition> 
     dissolves_to: SingleAuthority,
     bind: DeclLocator {
       module_path: "extdeps.llm.anthropic",
-      decl_name: "AnthropicToolDefinition",
-      field: WholeDeclaration
+      decl_name: "MessagesToolUseBlock",
+      field: NamedField { field_name: "caller_payload" }
     }
   },
   Scaffold {
     dissolves_to: SingleAuthority,
     bind: DeclLocator {
       module_path: "extdeps.llm.anthropic",
-      decl_name: "AnthropicServerToolName",
+      decl_name: "AnthropicServerToolUseSurface",
       field: WholeDeclaration
     }
   },
