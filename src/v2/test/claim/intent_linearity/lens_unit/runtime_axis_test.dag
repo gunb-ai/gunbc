@@ -1,6 +1,11 @@
 module v2.test.intent_linearity.lens_unit.runtime_axis
 
-import v2.lens.intent_linearity { chain_has_rewritable_cost, chain_is_redundant, level_is_linear }
+import v2.lens.intent_linearity {
+  chain_has_rewritable_cost,
+  chain_has_runtime_rewrite_candidate,
+  chain_is_redundant,
+  level_is_linear
+}
 import v2.std.node {
   Cardinality,
   ComputationNode,
@@ -37,9 +42,16 @@ test fn flat_loop_cost_not_rewritable() -> Bool {
   !chain_has_rewritable_cost(steps: flat_chain)
 }
 
-test fn nested_loop_chain_is_redundant() -> Bool {
-  chain_is_redundant(steps: nested_chain)
+test fn nested_loop_is_runtime_candidate() -> Bool {
+  chain_has_runtime_rewrite_candidate(steps: nested_chain)
 }
-test fn flat_loop_chain_is_linear() -> Bool {
+test fn flat_loop_not_runtime_candidate() -> Bool {
+  !chain_has_runtime_rewrite_candidate(steps: flat_chain)
+}
+
+test fn nested_loop_not_changetime_redundant() -> Bool {
+  !chain_is_redundant(steps: nested_chain)
+}
+test fn flat_loop_is_linear() -> Bool {
   level_is_linear(level: flat_chain)
 }

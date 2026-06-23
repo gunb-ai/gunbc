@@ -43,8 +43,29 @@ fn rule_fires(rule: LinearityRule, steps: FreeMonoid<Node>) -> Bool {
   rule.detect(steps)
 }
 
+fn cost_axis_equal(a: CostAxis, b: CostAxis) -> Bool {
+  match a {
+    ChangeTime => match b { ChangeTime => true RunTime => false }
+    RunTime => match b { ChangeTime => false RunTime => true }
+  }
+}
+
+fn rule_on_axis(rule: LinearityRule, axis: CostAxis) -> Bool {
+  cost_axis_equal(a: rule.axis, b: axis)
+}
+
+fn chain_fires_axis(steps: FreeMonoid<Node>, axis: CostAxis) -> Bool {
+  any(xs: linearity_registry(), predicate: fn(rule) {
+    rule_on_axis(rule: rule, axis: axis) && rule_fires(rule: rule, steps: steps)
+  })
+}
+
 fn chain_is_redundant(steps: FreeMonoid<Node>) -> Bool {
-  any(xs: linearity_registry(), predicate: fn(rule) { rule_fires(rule: rule, steps: steps) })
+  chain_fires_axis(steps: steps, axis: ChangeTime)
+}
+
+fn chain_has_runtime_rewrite_candidate(steps: FreeMonoid<Node>) -> Bool {
+  chain_fires_axis(steps: steps, axis: RunTime)
 }
 
 fn chain_residual(steps: FreeMonoid<Node>) -> Int {
@@ -66,7 +87,7 @@ fn body_is_linear(levels: FreeMonoid<FreeMonoid<Node>>) -> Bool {
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: WallAfterGrounding {
     grounding_authority: "the parse/resolve walk + chain projector decomposing a body into its per-level statement-chains (shared with v2.lens.simulated_relationship / v2.lens.structural_similarity)",
-    dissolve_on: "body_is_linear runs over live dsl/** bodies once the walk projects per-level chains; the registry grows by rows (the RunTime-axis complexity cost-recurrence row landed alongside the change-time row -- see v2.lens.complexity_rewrite); until then this is a lens_unit over projected synthetic chains"
+    dissolve_on: "body_is_linear runs over live dsl/** bodies once the walk projects per-level chains; the registry grows by rows (the RunTime-axis complexity cost-recurrence row landed alongside the change-time row -- see v2.lens.complexity_rewrite); until then this is a lens_unit over projected synthetic chains. The RunTime axis is read via chain_has_runtime_rewrite_candidate -- NOT chain_is_redundant -- and graduates from candidate to a redundancy claim only when the independence carrier grounds sufficiency"
   },
-  rationale: "Intent-linearity is a wall up to the substrate's expressible abstraction (anti-unification computes the structural minimum) and a ratchet beyond it (global minimal description is Kolmogorov-uncomputable). The registry is the decidable wall-half; complexity.dag keeps the RatchetForever optimality residue. One engine, N rows (§2-horizontal)."
+  rationale: "Intent-linearity is a wall up to the substrate's expressible abstraction (anti-unification computes the structural minimum) and a ratchet beyond it (global minimal description is Kolmogorov-uncomputable). The two axes compose DIFFERENTLY by §5: chain_is_redundant folds only the ChangeTime rows -- a SOUND wall (anti-unification proves redundancy, no false positive), so level_is_linear / body_is_linear never call a genuine program redundant. The RunTime axis is a CANDIDATE detector (chain_has_runtime_rewrite_candidate): O(n^2) class is the decidable NECESSARY condition, but sufficiency (genuine reducibility, not a real all-pairs O(n^2)) waits on the independence carrier, so it must not feed the wall. complexity.dag keeps the RatchetForever optimality residue. One engine, N rows, two axes (§2-horizontal)."
 }
