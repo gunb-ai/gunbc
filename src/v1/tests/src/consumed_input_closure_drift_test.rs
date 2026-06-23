@@ -61,7 +61,8 @@ fn read_declared_closures() -> Vec<DeclaredClosure> {
     let msgs = blocking_diagnostics(&resolved);
     assert!(msgs.is_empty(), "{GATES_ENTRY} should resolve: {msgs:?}");
     let graph = resolved.graph.as_ref().expect("graph");
-    let ctx = cli_run::make_eval_context(graph, resolved.source_indices.clone(), ExecutionMode::Wet);
+    let ctx =
+        cli_run::make_eval_context(graph, resolved.source_indices.clone(), ExecutionMode::Wet);
     let value = v1_interpreter::eval_data_item_value(&ctx, DECLARED_DATA)
         .unwrap_or_else(|e| panic!("eval {DECLARED_DATA}: {e}"))
         .unwrap_or_else(|| panic!("{DECLARED_DATA} is not a declared data item"));
@@ -124,6 +125,17 @@ fn entry_path_for(closure: &DeclaredClosure) -> String {
 
 /// The minimal/derived side: the transitive import-graph closure the compiler
 /// already walks, as the same workspace-relative .dag path set.
+///
+/// Derived over `v2_layer_roots()` = [src/v2, dsl] -- deliberately the SAME root
+/// set the unit is actually compiled under (the coproduct conformance test's
+/// `cert_sources` resolves via `v2_layer_roots()` too), so derived and declared
+/// describe the same module universe. NOTE (the Axis-2 dependency cool-cat-421
+/// flagged): the *choice* of roots is itself the LayerDAG parallel-representation
+/// -- ImportGraph's derived side is parameterized by where modules are declared,
+/// so Axis-1 sits on top of Axis-2, not beside it. The module index is keyed by
+/// module name (last-scan-wins); a name collision across roots would silently
+/// shift the derived set, which is exactly the LayerDAG roster Axis-2 will
+/// consolidate. Until then this root set is the single authority for both sides.
 fn derive_closure_paths(entry: &str) -> BTreeSet<String> {
     let content = std::fs::read_to_string(workspace_root().join(entry))
         .unwrap_or_else(|e| panic!("read entry {entry}: {e}"));
@@ -179,11 +191,7 @@ fn drift_oracle_goes_red_on_perturbed_declaration() {
     assert_eq!(declared, derived, "baseline must match before perturbation");
 
     // Drop a path -> drift (the under-declared fail-open direction).
-    let dropped: BTreeSet<String> = declared
-        .iter()
-        .filter(|p| **p != entry)
-        .cloned()
-        .collect();
+    let dropped: BTreeSet<String> = declared.iter().filter(|p| **p != entry).cloned().collect();
     assert_ne!(
         dropped, derived,
         "dropping a declared path must break declared == derived"
