@@ -25,7 +25,6 @@ type CoverageClosureFact
   | RequiresArm { arm: NonEmptyStr }
 
 type CoverageClosureEntry {
-  closure: NonEmptyStr
   facts: List<CoverageClosureFact>
   trigger: NonEmptyStr?
 }
