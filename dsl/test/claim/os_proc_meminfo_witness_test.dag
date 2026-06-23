@@ -4,8 +4,8 @@ import extdeps.os.proc_meminfo {
   ProcMeminfo,
   MemoryMetric,
   meminfo_field_names,
-  Kibibyte,
 }
+import std.measure { Kibibyte }
 import std.types { NonEmptyStr }
 
 test fn proc_meminfo_witnesses() -> Bool {

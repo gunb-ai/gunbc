@@ -31,10 +31,8 @@ test fn free_output_witnesses() -> Bool {
   memory_stats.total > 0
     && memory_stats.available <= memory_stats.total
     && memory_stats.free <= memory_stats.total
-    && swap_stats.total >= 0
     && swap_stats.used <= swap_stats.total
     && swap_stats.free <= swap_stats.total
     && output.memory.total > 0
-    && output.swap.total >= 0
     && memory_stats.available >= memory_stats.free
 }
