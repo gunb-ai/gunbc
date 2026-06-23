@@ -5,16 +5,19 @@ import gunbc.ci_yaml_emit { expected_ci_yml }
 import gunbc.ci_yaml_validate { ci_yml_parses }
 import gunbc.gitignore_emit { expected_gitignore, path_is_ignored }
 import gunbc.roadmap_authority { expected_roadmap_md }
+import gunbc.design_document { expected_design_md }
 
 type GeneratedArtifact
   = CiYamlArtifact
   | GitignoreArtifact
   | RoadmapArtifact
+  | DesignArtifact
 
 data generated_artifact_registry: List<GeneratedArtifact> = [
   CiYamlArtifact,
   GitignoreArtifact,
-  RoadmapArtifact
+  RoadmapArtifact,
+  DesignArtifact
 ]
 
 fn artifact_path(a: GeneratedArtifact) -> String {
@@ -22,6 +25,7 @@ fn artifact_path(a: GeneratedArtifact) -> String {
     CiYamlArtifact => ".github/workflows/ci.yml"
     GitignoreArtifact => ".gitignore"
     RoadmapArtifact => "ROADMAP.md"
+    DesignArtifact => "DESIGN.md"
   }
 }
 
@@ -30,6 +34,7 @@ fn artifact_generate(a: GeneratedArtifact) -> String {
     CiYamlArtifact => expected_ci_yml()
     GitignoreArtifact => expected_gitignore()
     RoadmapArtifact => expected_roadmap_md()
+    DesignArtifact => expected_design_md()
   }
 }
 
@@ -53,6 +58,7 @@ fn artifact_eq(a: GeneratedArtifact, b: GeneratedArtifact) -> Bool {
     CiYamlArtifact => match b { CiYamlArtifact => true  _ => false }
     GitignoreArtifact => match b { GitignoreArtifact => true  _ => false }
     RoadmapArtifact => match b { RoadmapArtifact => true  _ => false }
+    DesignArtifact => match b { DesignArtifact => true  _ => false }
   }
 }
 

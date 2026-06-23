@@ -1,0 +1,65 @@
+module v2.test.structural_similarity.lens_unit.discriminators
+
+import v2.lens.structural_similarity { type_decls_anti_unify }
+import v2.std.node {
+  Node, Edge, Positional,
+  TypeNode, Atom, Conj, Disj,
+  Symbol, node_synthetic
+}
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+
+fn atom(id: Symbol) -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: id } }, children: [])
+}
+fn disj2(a: Node, b: Node) -> Node {
+  node_synthetic(kind: TypeNode { connective: Disj }, children: [
+    Edge { label: Positional, target: a }, Edge { label: Positional, target: b } ])
+}
+fn compose2(a: Node, b: Node) -> Node {
+  node_synthetic(kind: TypeNode { connective: Conj }, children: [
+    Edge { label: Positional, target: a }, Edge { label: Positional, target: b } ])
+}
+
+data nickname_pair: List<Node> = [
+  disj2(a: atom(id: ^x86), b: atom(id: ^arm)),
+  disj2(a: atom(id: ^x86), b: atom(id: ^arm))
+]
+
+data width_family: List<Node> = [
+  compose2(a: atom(id: ^int), b: atom(id: ^w8)),
+  compose2(a: atom(id: ^int), b: atom(id: ^w16)),
+  compose2(a: atom(id: ^int), b: atom(id: ^w32))
+]
+
+data distinct_decls: List<Node> = [
+  atom(id: ^unit),
+  disj2(a: atom(id: ^a), b: atom(id: ^b)),
+  compose2(a: atom(id: ^int), b: atom(id: ^w8))
+]
+
+data near_but_divergent: List<Node> = [
+  compose2(a: atom(id: ^int), b: atom(id: ^w8)),
+  compose2(a: atom(id: ^int), b: compose2(a: atom(id: ^ptr), b: atom(id: ^w16))),
+  compose2(a: atom(id: ^int), b: atom(id: ^w32))
+]
+
+data single_decl: List<Node> = [
+  disj2(a: atom(id: ^x), b: atom(id: ^y))
+]
+
+test fn nickname_pair_is_similar() -> Bool {
+  type_decls_anti_unify(decls: nickname_pair)
+}
+test fn width_family_is_similar() -> Bool {
+  type_decls_anti_unify(decls: width_family)
+}
+test fn distinct_decls_are_not_similar() -> Bool {
+  !type_decls_anti_unify(decls: distinct_decls)
+}
+test fn divergent_family_is_not_similar() -> Bool {
+  !type_decls_anti_unify(decls: near_but_divergent)
+}
+test fn single_decl_is_not_similar() -> Bool {
+  !type_decls_anti_unify(decls: single_decl)
+}

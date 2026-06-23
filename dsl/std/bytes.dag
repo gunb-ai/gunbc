@@ -1,0 +1,20 @@
+module std.bytes
+
+import std.types { Bytes }
+import std.integer { UInt8 }
+
+fn pure_dag_seam_unreachable() -> Int {
+  1 / 0
+}
+
+fn bytes_octets(b: Bytes) -> List<UInt8> {
+  [pure_dag_seam_unreachable()]
+}
+
+fn octets_bytes(o: List<UInt8>) -> Bytes {
+  o as Bytes
+}
+
+fn utf8_encode_bytes(s: String) -> Bytes {
+  s as Bytes
+}
