@@ -48,9 +48,6 @@ import gunbc.fleet_host_budget {
   baselines_sum,
   nominal_build_pool,
   runner_slice_cap,
-  RunnerSliceCapEffectiveness,
-  CapEffective,
-  CapUnbounded,
   runner_slice_cap_drifted,
   fleet_build_realization_marker,
   gunbc_fleet_oomd_floor_basis,
@@ -62,6 +59,9 @@ import gunbc.ci_floor_measurement {
   OomdEnforcementEvidence,
   OomdEnforced,
   OomdUnverified,
+  RunnerSliceCapEffectiveness,
+  CapEffective,
+  CapUnbounded,
   gunbc_ci_regime2_aggregate_dissolution_marker,
 }
 
