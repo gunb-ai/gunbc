@@ -277,27 +277,78 @@ type AnthropicMessages200Body {
   container: Json?
 }
 
-data structural_coverage_gap_anthropic_messages_200_residual: List<String> = [
-  "closure:anthropic_messages_200_residual|AnthropicMessages200Body|json_pending:container|AnthropicMessages200ContentBlock.MessagesWebSearchToolResultBlock.content|AnthropicMessages200ContentBlock.MessagesWebSearchToolResultBlock.caller|json_pending:web_search_tool_result_payload|trigger:container-management response surface plus web search result/error payload coproduct plus typed caller carrier for web search tool result",
-  "closure:anthropic_messages_200_residual|AnthropicMessages200ContentBlock.MessagesToolUseBlock|residue:client_tool_name_input_and_optional_caller_payloads_not_bound_to_declared_tool_schema|trigger:tool_use response block references declared AnthropicToolDefinition through typed caller carrier and input payload schema",
-  "closure:anthropic_messages_200_residual|AnthropicMessages200ContentBlock.MessagesServerToolUseBlock|residue:server_tool_input_and_optional_caller_payloads_unmodeled|trigger:fold server_tool_use name and input into a server-tool-use coproduct keyed by AnthropicServerToolName",
-  "closure:anthropic_messages_200_residual|AnthropicServerToolName|external_spec_watch:server_tool_use_name_set|trigger:Anthropic publishes additional server_tool_use.name values beyond the generated SDK literal set",
-  "closure:anthropic_messages_200_residual|AnthropicMessages200ContentBlock|variant_pending:web_fetch_tool_result|variant_pending:code_execution_tool_result|variant_pending:bash_code_execution_tool_result|variant_pending:text_editor_code_execution_tool_result|variant_pending:tool_search_tool_result|variant_pending:advisor_tool_result|variant_pending:mcp_tool_use|variant_pending:mcp_tool_result|variant_pending:container_upload|trigger:Anthropic beta/server-tool content-block surface modeled structurally",
-  "closure:anthropic_messages_200_residual|llm.Anthropic.Messages.output.content|blocked:variant_aware_typed_rest_response_projection|path:content/0/text|requires_arm:AnthropicMessages200ContentBlock.MessagesTextBlock|trigger:structural projection metadata carrier lands"
+data structural_coverage_gap_anthropic_messages_200_residual: List<Disposition> = [
+  Scaffold {
+    dissolves_to: SingleAuthority,
+    bind: DeclLocator {
+      module_path: "extdeps.llm.anthropic",
+      decl_name: "AnthropicContainerResponse",
+      field: WholeDeclaration
+    }
+  },
+  Scaffold {
+    dissolves_to: SingleAuthority,
+    bind: DeclLocator {
+      module_path: "extdeps.llm.anthropic",
+      decl_name: "AnthropicToolDefinition",
+      field: WholeDeclaration
+    }
+  },
+  Scaffold {
+    dissolves_to: SingleAuthority,
+    bind: DeclLocator {
+      module_path: "extdeps.llm.anthropic",
+      decl_name: "AnthropicServerToolName",
+      field: WholeDeclaration
+    }
+  },
+  Terminal {
+    reason: "external_spec_watch: fires when Anthropic publishes additional server_tool_use.name values beyond the typed AnthropicServerToolName closed enum"
+  },
+  Scaffold {
+    dissolves_to: SingleAuthority,
+    bind: DeclLocator {
+      module_path: "extdeps.llm.anthropic",
+      decl_name: "AnthropicBetaContentBlock",
+      field: WholeDeclaration
+    }
+  },
+  Scaffold {
+    dissolves_to: SingleAuthority,
+    bind: DeclLocator {
+      module_path: "extdeps.llm.anthropic",
+      decl_name: "StructuralProjectionMetadata",
+      field: WholeDeclaration
+    }
+  }
 ]
 
-data rest_request_wire_serde_alignment_receipt: List<String> = [
-  "closure:rest_request_wire_serde_alignment|llm.Anthropic.Messages|AnthropicChatMessage|paid:role_internally_tagged_object_user_assistant",
-  "closure:rest_request_wire_serde_alignment|llm.Anthropic.Messages|AnthropicUserContentBlock|paid:type_internally_tagged_object_text_tool_result",
-  "closure:rest_request_wire_serde_alignment|llm.Anthropic.Messages|AnthropicAssistantContentBlock|paid:type_internally_tagged_object_text_tool_use",
-  "closure:rest_request_wire_serde_alignment|llm.Anthropic.Messages|AnthropicUserContentBlock.UserToolResultBlock.content|paid:tool_result_content_untagged_scalar_or_block_array",
-  "closure:rest_request_wire_serde_alignment|llm.Anthropic.Messages|AnthropicToolResultBlock|paid:type_internally_tagged_object_tool_result_nested_blocks"
+data rest_request_wire_serde_alignment_receipt: List<Disposition> = [
+  Terminal { reason: "paid: AnthropicChatMessage role internally-tagged object user/assistant wire serde alignment" },
+  Terminal { reason: "paid: AnthropicUserContentBlock type internally-tagged text/tool_result wire serde alignment" },
+  Terminal { reason: "paid: AnthropicAssistantContentBlock type internally-tagged text/tool_use wire serde alignment" },
+  Terminal { reason: "paid: AnthropicUserContentBlock.UserToolResultBlock.content untagged scalar-or-block-array wire serde alignment" },
+  Terminal { reason: "paid: AnthropicToolResultBlock type internally-tagged tool_result nested blocks wire serde alignment" }
 ]
 
-data structural_coverage_gap_anthropic_messages_file_image_beta_header: List<String> = [
-  "closure:anthropic_messages_file_image|ImageSource|variant_pending:FileImage|residue:file_source_requires_anthropic_beta_on_messages_transport|trigger:add FileImage arm and emit anthropic-beta files-api-2025-04-14 when REST transport binds beta header on FileImage presence"
+data structural_coverage_gap_anthropic_messages_file_image_beta_header: List<Disposition> = [
+  Scaffold {
+    dissolves_to: SingleAuthority,
+    bind: DeclLocator {
+      module_path: "extdeps.llm.anthropic",
+      decl_name: "FileImageSource",
+      field: WholeDeclaration
+    }
+  }
 ]
 
-data structural_coverage_gap_anthropic_messages_200_content_block_wire_shape: List<String> = [
-  "closure:rest_request_wire_serde_alignment|llm.Anthropic.Messages|AnthropicMessages200ContentBlock|residue:messages_200_content_block_internally_tagged_object_unproved|trigger:generated response enum serde/emitter ratchet consumes the type-tagged AnthropicMessages200ContentBlock wire contract"
+data structural_coverage_gap_anthropic_messages_200_content_block_wire_shape: List<Disposition> = [
+  Scaffold {
+    dissolves_to: SingleAuthority,
+    bind: DeclLocator {
+      module_path: "extdeps.llm.anthropic",
+      decl_name: "AnthropicMessages200ContentBlockWireContract",
+      field: WholeDeclaration
+    }
+  }
 ]

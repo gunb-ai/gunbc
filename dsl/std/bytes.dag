@@ -19,3 +19,12 @@ fn octets_bytes(o: List<UInt8>) -> Bytes {
 fn utf8_encode_bytes(s: String) -> Bytes {
   s as Bytes
 }
+
+data bytes_seam_host_realization_marker: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclLocator {
+    module_path: "std.bytes",
+    decl_name: "builtin_function_registry",
+    field: WholeDeclaration
+  }
+}
