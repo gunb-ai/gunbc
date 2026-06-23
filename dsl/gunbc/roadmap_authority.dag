@@ -107,6 +107,7 @@ fn section_0() -> RoadmapSection {
           authored_doc(id: "0-expressibility", done: false, content: "**expressibility frontier** — partition each modeling discipline into wall / lens-residue / undecidable-review *before* gating", path: "docs/plans/expressibility-frontier.md"),
           authored_pp(id: "0-skipped-modeling", done: false, content: "**confront the skipped modeling decisions** — the `🟡` comment backlog", carriers: [ptr(label: "Disposition plan", path: "docs/plans/disposition-carrier.md")]),
           authored_pp(id: "0-axiom-lens", done: false, content: "**axiom + syllogism lens** (DESIGN open thread #1) — every claim chains back to an axiom, no orphan/cycle; stays `[ ]` until it runs executably over this doc", carriers: [ptr(label: "scope", path: "docs/plans/axiom-syllogism-lens.md")]),
+          authored_pp(id: "0-self-applying-lenses", done: false, content: "**self-applying lenses (detect → generalize → emit → write)** — a lens *produces the correct pattern and applies it via the write API*, not just flags; the §7-recursion upgrade to the whole lens family, unified by **redundant intent** (specification complexity above the essential min). Anti-unification is the shared engine (term-layer fold + `structural_similarity` type-generic = one kernel, two binders); seeded in `v2.lens.simulated_relationship` (#5584). Decidable-wall classes only — ratchet residue stays detect-only. Depends on §6 emit + a write effect + resolve facts", carriers: [ptr(label: "plan", path: "docs/plans/self-applying-lenses.md")]),
         ],
         edges: [],
       ),
@@ -277,7 +278,7 @@ fn section_5() -> RoadmapSection {
         nodes: [
           authored(id: "5-rewrite", done: false, content: "rewrite suboptimal patterns to the cheaper equivalent (`O(n²)→O(n)` …) — published finite catalog, bulletproof where it fires"),
           authored(id: "5-unknown-dissolve", done: false, content: "`Unknown` dissolved over time as an anemic atom (reuse the `Disposition` carrier)"),
-          authored(id: "5-on-logn", done: false, content: "`O(n^x)→O(n log n)` substitution as per-idiom rules (open: cleaner shared framing?)"),
+          authored(id: "5-on-logn", done: false, content: "`O(n^x)→O(n log n)` substitution as per-idiom rules (candidate shared framing: **redundant intent** — the anti-unification generalization measures `spec − minimal`; see §0 self-applying lenses)"),
           authored(id: "5-frontend", done: true, content: "front-end (parse / resolve / infer) over the whole tree"),
           authored(id: "5-emit-rust", done: true, content: "emit whole tree `--target rust` (well-typed under CI gate)"),
           authored(id: "5-defork", done: false, content: "de-fork dsl ↔ v2 (one std authority) — **grounding cluster UNPARKED: operator ruled FreeMonoid/algebra single authority** (coproduct = structural authority; dsl record-surface derived-from-inhabitance; grounded-realization wins) → de-fork + self-host fused into one grounding lane ([brief](docs/plans/dsl-v2-defork-audit.md) §3b)"),
