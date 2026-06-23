@@ -75,6 +75,7 @@ type MarkdownSpellings {
   blockquote_marker: String
   list_indent: String
   block_separator: String
+  thematic_break: String
 }
 
 data commonmark_gfm_spellings: MarkdownSpellings = {
@@ -102,6 +103,7 @@ data commonmark_gfm_spellings: MarkdownSpellings = {
   blockquote_marker: "> ",
   list_indent: "  ",
   block_separator: "\n\n",
+  thematic_break: "---",
 }
 
 fn md_link_form(text: String, url: String, sp: MarkdownSpellings) -> String {
@@ -143,7 +145,18 @@ fn md_item(marker: String, blocks: List<MarkdownBlock>, sp: MarkdownSpellings, d
       }
       { idx: 1, out: lead }
     } else {
-      { idx: acc.idx + 1, out: concat(acc.out, concat("\n", md_nested(block: b, sp: sp, depth: depth + 1))) }
+      let cont = match b {
+        UnorderedListBlock { items: _ } => concat("\n", md_nested(block: b, sp: sp, depth: depth + 1))
+        OrderedListBlock { items: _ } => concat("\n", md_nested(block: b, sp: sp, depth: depth + 1))
+        TaskListBlock { items: _ } => concat("\n", md_nested(block: b, sp: sp, depth: depth + 1))
+        HeadingBlock { level: _, inlines: _ } => concat("\n\n", concat(repeat_string(s: sp.list_indent, n: depth + 1), md_block(block: b, sp: sp)))
+        ParagraphBlock { inlines: _ } => concat("\n\n", concat(repeat_string(s: sp.list_indent, n: depth + 1), md_block(block: b, sp: sp)))
+        CodeBlock { code: _ } => concat("\n\n", concat(repeat_string(s: sp.list_indent, n: depth + 1), md_block(block: b, sp: sp)))
+        TableBlock { header: _, alignments: _, rows: _ } => concat("\n\n", concat(repeat_string(s: sp.list_indent, n: depth + 1), md_block(block: b, sp: sp)))
+        BlockquoteBlock { blocks: _ } => concat("\n\n", concat(repeat_string(s: sp.list_indent, n: depth + 1), md_block(block: b, sp: sp)))
+        ThematicBreak => concat("\n\n", concat(repeat_string(s: sp.list_indent, n: depth + 1), md_block(block: b, sp: sp)))
+      }
+      { idx: acc.idx + 1, out: concat(acc.out, cont) }
     }
   }).out
 }
@@ -268,6 +281,8 @@ fn md_block(block: MarkdownBlock, sp: MarkdownSpellings) -> String {
       md_table(header: header, alignments: alignments, rows: rows, sp: sp)
     BlockquoteBlock { blocks } =>
       md_blockquote(blocks: blocks, sp: sp)
+    ThematicBreak =>
+      sp.thematic_break
   }
 }
 

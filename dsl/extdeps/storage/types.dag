@@ -1,0 +1,62 @@
+module extdeps.storage.types
+
+import std.measure { ByteSize, Bandwidth, bandwidth, bandwidth_count }
+import std.types { Int, NonEmptyStr }
+import extdeps.vendor { Vendor }
+import extdeps.hardware { Hardware }
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "en.wikipedia.org/wiki/PCI_Express"
+  }
+}
+
+type PcieGeneration =
+    Gen3
+  | Gen4
+  | Gen5
+
+fn pcie_generation_per_lane_bandwidth(g: PcieGeneration) -> Bandwidth {
+  match g {
+    Gen3 => bandwidth(8000000000 * 128 / 130 / 8)
+    Gen4 => bandwidth(16000000000 * 128 / 130 / 8)
+    Gen5 => bandwidth(32000000000 * 128 / 130 / 8)
+  }
+}
+
+type PcieLink {
+  generation: PcieGeneration
+
+  lane_count: Int
+}
+
+fn pcie_link_bandwidth(link: PcieLink) -> Bandwidth {
+  bandwidth(bandwidth_count(pcie_generation_per_lane_bandwidth(g: link.generation)) * link.lane_count)
+}
+
+type NvmeFormFactor =
+    M2_2230
+  | M2_2242
+  | M2_2260
+  | M2_2280
+  | M2_22110
+  | U2
+  | AddInCard
+
+type NvmeDeviceCatalogRow {
+  part_number: NonEmptyStr
+  manufacturer: Vendor<Hardware>
+
+  capacity_bytes: ByteSize
+
+  pcie_link: PcieLink
+
+  form_factor: NvmeFormFactor
+
+  sequential_read: Bandwidth
+  sequential_write: Bandwidth
+}
