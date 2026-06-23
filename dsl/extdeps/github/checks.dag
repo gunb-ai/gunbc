@@ -43,6 +43,10 @@ data check_conclusion_wire_contract: CoproductWireContract = {
   encoding: StringVariant { naming: SnakeCase }
 }
 
+data structural_coverage_gap_wire_decode_consumed: List<String> = [
+  "closure:wire_decode_consumed|CheckStatus|CheckConclusion|gap:CoproductWireContract declared but no witness exercises the decode path (e.g. snake string -> variant round-trip)|trigger:dispatch_rest transport module decodes against these contracts + witness added for in_progress->InProgress and timed_out->TimedOut"
+]
+
 type CheckOutput {
   title: String?
   summary: String?
