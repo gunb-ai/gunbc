@@ -165,12 +165,53 @@ fn corpus_dag_files() -> Vec<(String, String)> {
     out
 }
 
-fn strip_line_comment(line: &str) -> &str {
-    line.split("//").next().unwrap_or(line)
+/// Lexically normalize one line: drop the trailing `//` comment AND blank the interior of every
+/// `"..."` string literal (each interior byte → a space, delimiters kept). String-literal awareness
+/// is the single authority for "what is code text" here, so a single pass removes three classes of
+/// false signal at once: a `//` inside a URL string (`"https://..."`) is no longer read as a comment
+/// start; and `_ =>`, `{`/`}`, `|` inside a string literal can no longer masquerade as a wildcard
+/// arm, a brace, or a coproduct `|` to any downstream scanner (all of which read this output).
+/// Byte length up to the comment is preserved (interior chars blanked 1:1, including multi-byte
+/// continuation bytes), so byte-offset brace matching stays stable.
+fn strip_line_comment(line: &str) -> String {
+    let bytes = line.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut in_string = false;
+    let mut escaped = false;
+    let mut i = 0;
+    while i < bytes.len() {
+        let b = bytes[i];
+        if in_string {
+            if escaped {
+                out.push(b' ');
+                escaped = false;
+            } else if b == b'\\' {
+                out.push(b' ');
+                escaped = true;
+            } else if b == b'"' {
+                out.push(b'"');
+                in_string = false;
+            } else {
+                out.push(b' ');
+            }
+        } else if b == b'"' {
+            in_string = true;
+            out.push(b'"');
+        } else if b == b'/' && i + 1 < bytes.len() && bytes[i + 1] == b'/' {
+            break; // real (out-of-string) line comment — drop the rest of the line.
+        } else {
+            out.push(b);
+        }
+        i += 1;
+    }
+    // Only ASCII bytes (space, `"`) or original out-of-string bytes are pushed; every string-interior
+    // byte (incl. multi-byte continuation bytes) is replaced with a space, so the result is valid UTF-8.
+    String::from_utf8(out).expect("strip_line_comment output is valid UTF-8")
 }
 
-/// Source with every line's `//` comment removed (positions within a line up to the comment are
-/// preserved; the trailing comment becomes empty). Index-stable enough for brace matching.
+/// Source with every line's `//` comment removed and string-literal interiors blanked (positions
+/// within a line up to the comment are preserved; the trailing comment becomes empty). Index-stable
+/// enough for brace matching.
 fn strip_comments(content: &str) -> String {
     content
         .lines()
@@ -205,7 +246,7 @@ fn closed_coproduct_names(files: &[(String, String)]) -> BTreeSet<String> {
             }
             // Gather the decl block (same convention as inert_carrier_project) and check for `|`.
             let mut block = String::new();
-            block.push_str(strip_line_comment(lines[i]));
+            block.push_str(&strip_line_comment(lines[i]));
             let mut depth = brace_delta(lines[i]);
             i += 1;
             while i < lines.len() {
@@ -214,7 +255,7 @@ fn closed_coproduct_names(files: &[(String, String)]) -> BTreeSet<String> {
                     break;
                 }
                 block.push('\n');
-                block.push_str(strip_line_comment(lines[i]));
+                block.push_str(&strip_line_comment(lines[i]));
                 depth += brace_delta(lines[i]);
                 i += 1;
             }
@@ -570,6 +611,39 @@ mod tests {
         )]);
         let sites = residue_sites(&f);
         assert!(sites.contains(&"m.dag::eq".to_string()));
+    }
+
+    #[test]
+    fn green_control_wildcard_and_slashes_inside_string_literal_are_ignored() {
+        // String-literal awareness: a `_ =>` and a `//` that live INSIDE a `"..."` string literal
+        // are not code. The fn below is a TOTAL fold over `Mode` (arms A and B, no real wildcard); the
+        // only `_ =>` and `//` appear inside a string. A naive scanner would (a) read the `//` as a
+        // comment and truncate, and/or (b) read the in-string `_ =>` as a wildcard arm and false-RED.
+        let f = files(&[(
+            "m.dag",
+            "module m\ntype Mode = A | B\nfn f(x: Mode) -> String {\n  match x {\n    A => \"see https://x/y and _ => z\"\n    B => \"b\"\n  }\n}\n",
+        )]);
+        let sites = residue_sites(&f);
+        assert!(
+            !sites.contains(&"m.dag::f".to_string()),
+            "`_ =>`/`//` inside a string literal must not be read as code; got {sites:?}"
+        );
+    }
+
+    #[test]
+    fn red_control_real_wildcard_survives_an_in_string_decoy() {
+        // Discrimination partner of the green control: the SAME in-string decoy, but now a REAL
+        // top-level `_ =>` wildcard arm is present too. It must still be flagged — string blanking
+        // must not suppress genuine residue.
+        let f = files(&[(
+            "m.dag",
+            "module m\ntype Mode = A | B | C\nfn f(x: Mode) -> String {\n  match x {\n    A => \"see https://x/y and _ => z\"\n    _ => \"rest\"\n  }\n}\n",
+        )]);
+        let sites = residue_sites(&f);
+        assert!(
+            sites.contains(&"m.dag::f".to_string()),
+            "a real wildcard arm must still be flagged despite an in-string decoy; got {sites:?}"
+        );
     }
 
     #[test]

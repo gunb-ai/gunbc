@@ -116,10 +116,44 @@ fn corpus_dag_files() -> Vec<(String, String)> {
     out
 }
 
-/// Strip line comments (`//...`) so a name appearing only in a comment of *another* file still
-/// counts as a (conservative) consumer, but the declaring `type` line's own comment never leaks.
-fn strip_line_comment(line: &str) -> &str {
-    line.split("//").next().unwrap_or(line)
+/// Lexically normalize one line: drop the trailing `//` comment AND blank the interior of every
+/// `"..."` string literal (each interior byte → a space, delimiters kept). String-literal awareness
+/// is the single authority for "what is code text": a `//` inside a URL string (`"https://..."`) is
+/// not a comment start, and a carrier name appearing inside a string literal is text, not a real
+/// consumer — so neither should be read as code. Byte length up to the comment is preserved (interior
+/// chars blanked 1:1, incl. multi-byte continuation bytes) so byte-offset brace matching stays stable.
+fn strip_line_comment(line: &str) -> String {
+    let bytes = line.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut in_string = false;
+    let mut escaped = false;
+    let mut i = 0;
+    while i < bytes.len() {
+        let b = bytes[i];
+        if in_string {
+            if escaped {
+                out.push(b' ');
+                escaped = false;
+            } else if b == b'\\' {
+                out.push(b' ');
+                escaped = true;
+            } else if b == b'"' {
+                out.push(b'"');
+                in_string = false;
+            } else {
+                out.push(b' ');
+            }
+        } else if b == b'"' {
+            in_string = true;
+            out.push(b'"');
+        } else if b == b'/' && i + 1 < bytes.len() && bytes[i + 1] == b'/' {
+            break; // real (out-of-string) line comment — drop the rest of the line.
+        } else {
+            out.push(b);
+        }
+        i += 1;
+    }
+    String::from_utf8(out).expect("strip_line_comment output is valid UTF-8")
 }
 
 /// Extract top-level `type NAME` carrier declarations with their full declaration BLOCK text.
@@ -200,7 +234,7 @@ fn identifier_tokens(line: &str) -> Vec<String> {
 fn count_token(text: &str, name: &str) -> i64 {
     let mut n = 0i64;
     for raw in text.lines() {
-        for tok in identifier_tokens(strip_line_comment(raw)) {
+        for tok in identifier_tokens(&strip_line_comment(raw)) {
             if tok == name {
                 n += 1;
             }
@@ -243,7 +277,7 @@ fn compute_report(files: &[(String, String)]) -> InertCarrierReport {
     for (rel, content) in files {
         let mut local: BTreeMap<String, i64> = BTreeMap::new();
         for raw in content.lines() {
-            for tok in identifier_tokens(strip_line_comment(raw)) {
+            for tok in identifier_tokens(&strip_line_comment(raw)) {
                 if names.contains(&tok) {
                     *local.entry(tok).or_insert(0) += 1;
                 }
