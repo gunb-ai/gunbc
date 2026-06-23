@@ -14,7 +14,7 @@ import std.realization_reconcile {
   NotConverged,
   reconcile,
 }
-import gunbc.fleet_host_budget {
+import gunbc.ci_floor_measurement {
   RunnerSliceCapEffectiveness,
   CapEffective,
   CapUnbounded,
