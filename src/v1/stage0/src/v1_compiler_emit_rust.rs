@@ -1546,6 +1546,18 @@ pub fn naming_policy_node(
     field_value_by_name(encoding, "naming".to_string(), source_indices)
 }
 
+pub fn coproduct_decl_ref_decl_name(
+    body: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
+    match field_value_by_name(body, "coproduct".to_string(), source_indices.clone()) {
+        Some(decl_ref_node) => {
+            record_string_field(decl_ref_node, "decl_name".to_string(), source_indices)
+        }
+        None => None,
+    }
+}
+
 pub fn optional_string_record_field(
     record: Rc<Node>,
     field_name: String,
@@ -2021,7 +2033,7 @@ pub fn coproduct_wire_contract_targets(
 ) -> bool {
     match contract_item.body.clone() {
         Some(body) => {
-            match record_string_field(body.clone(), "coproduct".to_string(), source_indices) {
+            match coproduct_decl_ref_decl_name(body.clone(), source_indices) {
                 Some(target_name) => (target_name.clone() == coproduct_name),
                 None => false,
             }
@@ -2160,7 +2172,7 @@ pub fn emit_coproduct_wire_contract_target_validation(
 ) -> String {
     match contract_item.body.clone() {
         Some(body) => {
-            match record_string_field(body.clone(), "coproduct".to_string(), source_indices) {
+            match coproduct_decl_ref_decl_name(body.clone(), source_indices) {
                 Some(target_name) => {
                     if {
                         let mut __found = false;
@@ -2182,7 +2194,8 @@ pub fn emit_coproduct_wire_contract_target_validation(
                     }
                 }
                 None => emit_rust_compile_error_item(
-                    "CoproductWireContract.coproduct must be a string declaration name".to_string(),
+                    "CoproductWireContract.coproduct must be a DeclarationRef with a string decl_name"
+                        .to_string(),
                 ),
             }
         }
