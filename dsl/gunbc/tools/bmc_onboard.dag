@@ -213,16 +213,33 @@ func bmc_onboard_store_rotate_install(octets: List<UInt8>) -> ProcessExit
   uses net: Network
 {
   let credential = base64_encode(octets: octets, variant: UrlSafe) as Secret
+  let payload_b64 = base64_encode(octets: octets, variant: Standard)
+  let secret_id = onboarding_secret_id()
 
-  // Store the credential to GCP for durability (payload is base64 of the same octets — no utf8 hop).
+  // Store the credential to GCP for durability (payload is base64 of the same octets — no utf8 hop),
+  // then PROVE it is retrievable by reading it back BEFORE rotating. This gate is load-bearing for
+  // §5 fail-closed: if the store fails and we rotate anyway, the BMC password becomes a credential
+  // that exists only in process memory and srv3 is permanently locked out the moment the run ends.
+  // The read-back makes "rotate to an unstored credential" UNWRITABLE — we never reach the
+  // destructive rotate unless the new credential is durably recoverable from GCP. A base64 mismatch
+  // fails closed (refuses to rotate), which is the safe direction: a false block beats a lockout.
   // AddVersion on the existing srv3 secret; new-node enrollment (idempotent CreateSecret) is the
   // assimilate/discovery lane's concern, not srv3's (its secret already exists).
   auth = shell.GCloud.AuthPrintAccessToken()
-  _stored = gcp.SecretManager.AddVersion(
+  stored = gcp.SecretManager.AddVersion(
     access_token: auth.access_token,
-    secret_name: gcp_secret_full_name(project: srv3_gcp_project, secret_id: onboarding_secret_id()),
-    payload_b64: base64_encode(octets: octets, variant: Standard)
+    secret_name: gcp_secret_full_name(project: srv3_gcp_project, secret_id: secret_id),
+    payload_b64: payload_b64
   )
+  readback = gcp.SecretManager.AccessVersion(
+    access_token: auth.access_token,
+    project_id: srv3_gcp_project,
+    secret: secret_id,
+    version: "latest"
+  )
+  if readback.data_b64 != payload_b64 {
+    return exit_failure(reason: concat("store: GCP durability read-back mismatch — refusing to rotate (would lock out srv3); stored version ", stored.name))
+  }
 
   return match bmc_rotate_credential(new_credential: credential) {
     ExitSuccess => bmc_os_install(new_credential: credential)
