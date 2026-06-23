@@ -182,3 +182,68 @@ fn expected_gitignore() -> String {
 fn gitignore_drifted(committed: String) -> Bool {
   !(committed == expected_gitignore())
 }
+
+// The ignore-set as a flat pattern list — the COMMIT-side authority the generated-artifact registry
+// reads to derive `committed = generated AND NOT ignored` (gunbc.generated_artifact). Reuses the same
+// gitignore_authority rows and artifact_pattern producer the file emit already folds over (no second
+// authority for "what we ignore").
+fn group_patterns(g: IgnoreGroup) -> List<String> {
+  fold(g.artifacts, init: [], f: fn(acc, a) { concat(acc, [artifact_pattern(a: a)]) })
+}
+
+fn ignore_patterns() -> List<String> {
+  fold(gitignore_authority, init: [], f: fn(acc, g) { concat(acc, group_patterns(g: g)) })
+}
+
+// path_is_ignored — the INTERPRETER of this authority's patterns, homed beside the producer
+// (artifact_pattern) it reads, so gitignore semantics live in ONE module (DESIGN §3). A path is ignored
+// iff it matches any authority pattern under a FAITHFUL SUBSET of gitignore semantics over the pattern
+// forms the authority actually uses:
+//   - trailing "/"  => directory pattern: path is that dir or sits under it
+//   - leading "/"   => anchored to repo root
+//   - "*.ext"       => basename suffix glob
+//   - plain name    => exact basename, anywhere in the tree
+// FAIL-CLOSED toward "not ignored": an UNCERTAIN match returns false. Its consumer (the generated-artifact
+// commit derivation) treats not-ignored => committed => still drift-gated, so a false negative is loud
+// (read() of an absent path goes RED), never a silent drop. Seed has substring/length, not drop_*.
+fn without_prefix(s: String, prefix: String) -> String {
+  substring(s: s, start: prefix.length(), end: s.length())
+}
+
+fn without_suffix(s: String, suffix: String) -> String {
+  substring(s: s, start: 0, end: s.length() - suffix.length())
+}
+
+fn path_basename(path: String) -> String {
+  fold(split(s: path, delimiter: "/"), init: "", f: fn(_, seg) { seg })
+}
+
+fn dir_pattern_matches(dir: String, path: String) -> Bool {
+  // dir already has leading/trailing slashes stripped.
+  let anchored = concat(dir, "/")
+  path == dir
+    || starts_with(path, prefix: anchored)
+    || string_contains(s: path, pattern: concat("/", anchored))
+}
+
+fn strip_slashes(p: String) -> String {
+  let no_lead = if starts_with(p, prefix: "/") { without_prefix(s: p, prefix: "/") } else { p }
+  if ends_with(s: no_lead, suffix: "/") { without_suffix(s: no_lead, suffix: "/") } else { no_lead }
+}
+
+fn pattern_matches(pattern: String, path: String) -> Bool {
+  if ends_with(s: pattern, suffix: "/") {
+    dir_pattern_matches(dir: strip_slashes(p: pattern), path: path)
+  } else if starts_with(pattern, prefix: "*.") {
+    ends_with(s: path, suffix: without_prefix(s: pattern, prefix: "*"))
+  } else if starts_with(pattern, prefix: "/") {
+    let anchored = without_prefix(s: pattern, prefix: "/")
+    path == anchored || starts_with(path, prefix: concat(anchored, "/"))
+  } else {
+    path == pattern || path_basename(path: path) == pattern || ends_with(s: path, suffix: concat("/", pattern))
+  }
+}
+
+fn path_is_ignored(path: String) -> Bool {
+  any(ignore_patterns(), p => pattern_matches(pattern: p, path: path))
+}

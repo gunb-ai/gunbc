@@ -2,9 +2,8 @@ module gunbc.ci_runner_placement
 
 import product.compute_fabric { ComputeOffer, compute_host_ram_bytes_total }
 import product.placement_supply { HostIdentity }
-import std.realization_width { memory_bounded_fit_count, memory_effective_budget }
+import std.realization_width { memory_bounded_fit_count, memory_effective_budget, measure_max }
 import std.measure { ByteSize, byte_size, byte_size_count, measure_scale_fraction_floor }
-import std.nat { nat_max }
 import std.types { Int, List, String, Bool }
 import extdeps.github.actions { RunnerSpec }
 import gunbc.runner_spec_from_offer { runner_spec_from_offer }
@@ -18,6 +17,8 @@ import gunbc.ci_floor_measurement {
   HostFixedOverheadUnmeasured,
   gunbc_ci_job_peaks,
   gunbc_ci_host_fixed_overhead,
+  gunbc_ci_concurrent_runs_conservative_high,
+  gunbc_ci_runner_cap_enforced,
 }
 import gunbc.operator_fleet { operator_fleet_offers }
 
@@ -37,7 +38,7 @@ type JobPeakResolution
   | JobPeaksUnresolved { reason: String }
 
 type PeakFold {
-  max_bytes: Int
+  max_peak: ByteSize
   any_unmeasured: Bool
   count: Int
 }
@@ -51,10 +52,10 @@ type DeploymentAccumulator {
 fn fold_job_peak(acc: PeakFold, job_peak: CiJobPeak) -> PeakFold {
   match job_peak.peak {
     JobCgroupPeakUnmeasured =>
-      PeakFold { max_bytes: acc.max_bytes, any_unmeasured: true, count: acc.count + 1 }
+      PeakFold { max_peak: acc.max_peak, any_unmeasured: true, count: acc.count + 1 }
     JobCgroupPeakMeasured { cgroup_peak: p } =>
       PeakFold {
-        max_bytes: nat_max(a: acc.max_bytes, b: byte_size_count(b: p)),
+        max_peak: measure_max(a: acc.max_peak, b: p),
         any_unmeasured: acc.any_unmeasured,
         count: acc.count + 1,
       }
@@ -64,7 +65,7 @@ fn fold_job_peak(acc: PeakFold, job_peak: CiJobPeak) -> PeakFold {
 fn resolve_run_unit_peak(job_peaks: List<CiJobPeak>) -> JobPeakResolution {
   let folded = fold(
     job_peaks,
-    init: PeakFold { max_bytes: 0, any_unmeasured: false, count: 0 },
+    init: PeakFold { max_peak: byte_size(0), any_unmeasured: false, count: 0 },
     f: (a, j) => fold_job_peak(acc: a, job_peak: j)
   )
   if folded.count == 0 {
@@ -75,12 +76,12 @@ fn resolve_run_unit_peak(job_peaks: List<CiJobPeak>) -> JobPeakResolution {
     JobPeaksUnresolved {
       reason: "at least one CI job has an unmeasured cgroup whole-tree peak: refuse to derive runner capacity on a missing per-job measurement (self-RSS undercounts child rustc/sccache, an over-commit risk)"
     }
-  } else if folded.max_bytes == 0 {
+  } else if byte_size_count(b: folded.max_peak) == 0 {
     JobPeaksUnresolved {
       reason: "measured per-job peak is zero bytes: refuse to divide host RAM by a zero peak"
     }
   } else {
-    JobPeaksResolved { run_unit_peak: byte_size(folded.max_bytes) }
+    JobPeaksResolved { run_unit_peak: folded.max_peak }
   }
 }
 
@@ -164,4 +165,29 @@ fn runner_deployment_plan() -> RunnerDeploymentPlan {
     overhead: gunbc_ci_host_fixed_overhead,
     offers: operator_fleet_offers
   )
+}
+
+// Parametric core; call via gunbc_ci_runners_per_host() for the live value.
+// Exposed for test fixtures that need to verify the cap_enforced=true branch by construction
+// without mutating the global flag (dissolution trigger: inline once cap is permanently true).
+fn effective_runners_per_host(cap_enforced: Bool) -> Int {
+  if cap_enforced {
+    match runner_deployment_plan() {
+      PlanDerived { hosts: hosts, fleet_concurrent_runs: _ } =>
+        fold(hosts, init: 0, f: (acc, h) => if h.runner_count > acc { h.runner_count } else { acc })
+      PlanUnsound { reason: _ } => gunbc_ci_concurrent_runs_conservative_high
+    }
+  } else {
+    gunbc_ci_concurrent_runs_conservative_high
+  }
+}
+
+// Single authority for effective co-resident run count per host. Downstream lanes (e.g.
+// compile-jobs sizing) derive N from this value: N = floor(host_threads / R) and
+// R x N x per_rustc_peak <= host_ram is the joint safety constraint.
+// Returns conservative_high (10) until the operator applies the 3-runner cap (FENCED);
+// premature use of the model-derived 3 while ~7 co-runners are live is unwritable at
+// gunbc_ci_runner_cap_enforced.
+fn gunbc_ci_runners_per_host() -> Int {
+  effective_runners_per_host(cap_enforced: gunbc_ci_runner_cap_enforced)
 }

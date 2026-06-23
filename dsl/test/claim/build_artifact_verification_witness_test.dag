@@ -3,12 +3,12 @@ module test.claim.build_artifact_verification_witness
 import std.logic { Bool }
 import extdeps.languages.bash.program {
   ShellStmt, ShellWord, ShellProgram,
-  If, Assign, Command, Concat, VarRef, Lit,
+  If, Command, Concat, VarRef, Lit,
   lit, var_ref, serialize_bash
 }
 import tools.build_step { BuildArtifact, emit_verifications, verifications_script }
 import gunbc.ci_spec {
-  ci_floor_required_artifacts, ci_floor_build_verify_script, ci_build_source_roots
+  ci_floor_required_artifacts, ci_floor_build_verify_script
 }
 
 fn probe_artifact() -> BuildArtifact {
@@ -18,12 +18,8 @@ fn probe_artifact() -> BuildArtifact {
   }
 }
 
-fn probe_source_roots() -> List<ShellWord> {
-  [Concat { parts: [var_ref(name: "ROOT"), lit(text: "/src")] }]
-}
-
 fn probe_stmts() -> List<ShellStmt> {
-  emit_verifications(produces: [probe_artifact()], roots: probe_source_roots(), patterns: ["*.rs", "Cargo.toml", "Cargo.lock"])
+  emit_verifications(produces: [probe_artifact()])
 }
 
 fn stmt_text(s: ShellStmt) -> String {
@@ -37,58 +33,39 @@ fn is_if(s: ShellStmt) -> Bool {
   }
 }
 
-fn is_assign(s: ShellStmt) -> Bool {
-  match s {
-    Assign { name: n, value: v } => true
-    _ => false
-  }
-}
-
-fn witness_single_artifact_shape_exists_then_fresh() -> Bool {
+fn witness_single_artifact_shape_exists_only() -> Bool {
   let stmts = probe_stmts()
-  stmts.length() == 3
-    && is_if(s: stmts.first())
-    && is_assign(s: stmts.skip(n: 1).first())
-    && is_if(s: stmts.skip(n: 2).first())
+  stmts.length() == 1 && is_if(s: stmts.first())
 }
 
-fn witness_existence_precedes_freshness() -> Bool {
+fn witness_existence_check_no_mtime() -> Bool {
   let stmts = probe_stmts()
   let existence = stmt_text(s: stmts.first())
-  let probe = stmt_text(s: stmts.skip(n: 1).first())
   string_contains(s: existence, pattern: "-x")
     && !string_contains(s: existence, pattern: "-newer")
-    && string_contains(s: probe, pattern: "-newer")
-    && string_contains(s: probe, pattern: "-quit")
 }
 
 fn witness_serialized_conjuncts_and_teeth() -> Bool {
-  let script = verifications_script(produces: [probe_artifact()], roots: probe_source_roots(), patterns: ["*.rs", "Cargo.toml", "Cargo.lock"])
-  string_contains(s: script, pattern: "-x")                              
-    && string_contains(s: script, pattern: "-newer")                     
-    && string_contains(s: script, pattern: "-print")
-    && string_contains(s: script, pattern: "-quit")
-    && string_contains(s: script, pattern: "'*.rs'")                     
-    && string_contains(s: script, pattern: "Cargo.toml")                 
-    && string_contains(s: script, pattern: "Cargo.lock")                 
-    && string_contains(s: script, pattern: "/target/release/probe_bin") 
-    && string_contains(s: script, pattern: "/src")                       
-    && string_contains(s: script, pattern: "exit 1")                     
+  let script = verifications_script(produces: [probe_artifact()])
+  string_contains(s: script, pattern: "-x")
+    && !string_contains(s: script, pattern: "-newer")
+    && string_contains(s: script, pattern: "/target/release/probe_bin")
+    && string_contains(s: script, pattern: "exit 1")
 }
 
 fn witness_floor_covers_both_release_bins() -> Bool {
-  let stmts = emit_verifications(produces: ci_floor_required_artifacts, roots: ci_build_source_roots(), patterns: ["*.rs", "Cargo.toml", "Cargo.lock"])
+  let stmts = emit_verifications(produces: ci_floor_required_artifacts)
   let script = ci_floor_build_verify_script()
-  stmts.length() == 6
+  stmts.length() == 2
     && string_contains(s: script, pattern: "/target/release/claim_executor")
     && string_contains(s: script, pattern: "/target/release/gunbc")
-    && string_contains(s: script, pattern: "-newer")
+    && !string_contains(s: script, pattern: "-newer")
     && string_contains(s: script, pattern: "exit 1")
 }
 
 test fn build_artifact_verification_holds() -> Bool {
-  witness_single_artifact_shape_exists_then_fresh()
-    && witness_existence_precedes_freshness()
+  witness_single_artifact_shape_exists_only()
+    && witness_existence_check_no_mtime()
     && witness_serialized_conjuncts_and_teeth()
     && witness_floor_covers_both_release_bins()
 }
