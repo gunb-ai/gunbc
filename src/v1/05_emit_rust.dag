@@ -802,10 +802,6 @@ fn naming_policy_node(encoding: Node, source_indices: Map<String, NewlineIndex>)
   field_value_by_name(record: encoding, field_name: "naming", source_indices: source_indices)
 }
 
-# CoproductWireContract.coproduct is now a grounded std.decl_ref.DeclarationRef record
-# (module_path + decl_name + field), no longer a bare String. The wire-contract emit path
-# names a local coproduct *type*, so it reads the decl_name sub-field of that record-init node
-# (the same typed-record-init descent naming_policy_node performs on an encoding value).
 fn coproduct_decl_ref_decl_name(body: Node, source_indices: Map<String, NewlineIndex>) -> String? {
   match field_value_by_name(record: body, field_name: "coproduct", source_indices: source_indices) {
     Present { value: decl_ref_node } => record_string_field(record: decl_ref_node, field_name: "decl_name", source_indices: source_indices)
