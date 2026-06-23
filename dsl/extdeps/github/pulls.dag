@@ -4,7 +4,7 @@ import extdeps.github.github { GitHubUser, default_api_base, default_per_page }
 import std.types { CommitSha, FilePath, GitRef, Timestamp, Url, HttpMethod, AuthScheme }
 import extdeps.github.errors { GitHubErrorShape }
 import std.credentials { CredentialSource, EnvVar }
-import std.serialization { WireFormat, Text, CoproductWireContract, StringVariant, SnakeCase, ScreamingSnakeCase }
+import std.serialization { WireFormat, Text }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -16,22 +16,10 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 }
 
 type PullRequestState = Open | Closed
-data pull_request_state_wire_contract: CoproductWireContract = {
-  coproduct: "PullRequestState",
-  encoding: StringVariant { naming: SnakeCase }
-}
 
 type ReviewState = Pending | Commented | Approved | ChangesRequested | Dismissed
-data review_state_wire_contract: CoproductWireContract = {
-  coproduct: "ReviewState",
-  encoding: StringVariant { naming: ScreamingSnakeCase }
-}
 
 type ReviewEvent = Approve | RequestChanges | Comment | Pending
-data review_event_wire_contract: CoproductWireContract = {
-  coproduct: "ReviewEvent",
-  encoding: StringVariant { naming: ScreamingSnakeCase }
-}
 
 type PullRequestRef {
   ref: GitRef

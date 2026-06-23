@@ -11,23 +11,6 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data wire_contract: VariantEncoding = llm_snake_wire_contract
-
-data openai_chat_message_wire_contract: CoproductWireContract = {
-  coproduct: "OpenAiChatMessage",
-  encoding: InternallyTaggedObject { tag_field: "role", naming: StripPrefixAndSnakeCase { prefix: "OpenAiChatMessage" } }
-}
-
-data openai_chat_message_part_wire_contract: CoproductWireContract = {
-  coproduct: "OpenAiChatMessagePart",
-  encoding: InternallyTaggedObject { tag_field: "type", naming: StripPrefixSuffixAndSnakeCase { prefix: "OpenAiChatMessage", suffix: "Part" } }
-}
-
-data openai_chat_message_content_wire_contract: CoproductWireContract = {
-  coproduct: "OpenAiChatMessageContent",
-  encoding: UntaggedVariant
-}
-
 type OpenAiModel
   = Gpt4o
   | Gpt4oMini
