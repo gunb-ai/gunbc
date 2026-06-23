@@ -12083,14 +12083,14 @@ pub fn build_type_env(
             );
         let all_local_bindings = v1_rt::rc_map_merge(local_bindings.clone(), param_bindings);
         let pre_local_env = Rc::new(TypeEnv {
-            bindings: all_local_bindings,
+            bindings: all_local_bindings.clone(),
             recursive_types: Rc::new(vec![]),
             recursive_type_set: v1_rt::rc_empty_map::<i64, bool>(),
             inductive_fields: v1_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(),
             source_indices: source_indices.clone(),
             intern_table: intern_table.clone(),
         });
-        let merged = merge_envs(Rc::new(vec![kernel, import_env, pre_local_env]));
+        let merged = merge_envs(Rc::new(vec![kernel, import_env.clone(), pre_local_env]));
         let all_deps_map = Rc::new(v1_rt::map_values(&merged.bindings.clone()))
             .iter()
             .cloned()
@@ -12104,7 +12104,7 @@ pub fn build_type_env(
                     )
                 },
             );
-        let str_bindings = Rc::new(v1_rt::map_values(&merged.bindings.clone()))
+        let local_str_bindings = Rc::new(v1_rt::map_values(&all_local_bindings.clone()))
             .iter()
             .cloned()
             .fold(
@@ -12113,18 +12113,28 @@ pub fn build_type_env(
                     v1_rt::rc_map_insert(acc, b.name.clone(), b.clone())
                 },
             );
-        let cycle_set_str = detect_type_cycles_kahn(all_deps_map.clone(), str_bindings);
+        let local_cycle_str = detect_type_cycles_kahn(all_deps_map.clone(), local_str_bindings);
+        let import_recursive_names = Rc::new(v1_rt::map_keys(&import_env.recursive_type_set))
+            .iter()
+            .cloned()
+            .fold(
+                Rc::new(vec![]),
+                |acc: Rc<Vec<String>>, id: i64| match v1_rt::map_get(&merged.bindings, id) {
+                    Some(b) => v1_rt::rc_list_push(acc, b.name.clone()),
+                    None => acc,
+                },
+            );
+        let cross_type_all_names = v1_rt::concat(
+            v1_rt::concat(local_cycle_str.clone(), import_recursive_names),
+            Rc::new(v1_rt::map_keys(&compiler_recursive_types())),
+        );
         let cycle_set = Rc::new({
             let mut __result = Vec::new();
-            for name in cycle_set_str.clone().iter().cloned() {
+            for name in cross_type_all_names.clone().iter().cloned() {
                 __result.push(intern(intern_table.clone(), name.clone()).id.clone());
             }
             __result
         });
-        let cross_type_all_names = v1_rt::concat(
-            cycle_set_str.clone(),
-            Rc::new(v1_rt::map_keys(&compiler_recursive_types())),
-        );
         let cross_type_set_str = cross_type_all_names
             .clone()
             .iter()
@@ -12551,14 +12561,14 @@ pub fn build_type_env_unresolved(
             },
         );
         let pre_local_env = Rc::new(TypeEnv {
-            bindings: local_bindings,
+            bindings: local_bindings.clone(),
             recursive_types: Rc::new(vec![]),
             recursive_type_set: v1_rt::rc_empty_map::<i64, bool>(),
             inductive_fields: v1_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(),
             source_indices: source_indices.clone(),
             intern_table: intern_table.clone(),
         });
-        let merged = merge_envs(Rc::new(vec![kernel, import_env, pre_local_env]));
+        let merged = merge_envs(Rc::new(vec![kernel, import_env.clone(), pre_local_env]));
         let all_deps_map = Rc::new(v1_rt::map_values(&merged.bindings.clone()))
             .iter()
             .cloned()
@@ -12572,7 +12582,7 @@ pub fn build_type_env_unresolved(
                     )
                 },
             );
-        let str_bindings = Rc::new(v1_rt::map_values(&merged.bindings.clone()))
+        let local_str_bindings = Rc::new(v1_rt::map_values(&local_bindings.clone()))
             .iter()
             .cloned()
             .fold(
@@ -12581,18 +12591,28 @@ pub fn build_type_env_unresolved(
                     v1_rt::rc_map_insert(acc, b.name.clone(), b.clone())
                 },
             );
-        let cycle_set_str = detect_type_cycles_kahn(all_deps_map, str_bindings);
+        let local_cycle_str = detect_type_cycles_kahn(all_deps_map.clone(), local_str_bindings);
+        let import_recursive_names = Rc::new(v1_rt::map_keys(&import_env.recursive_type_set))
+            .iter()
+            .cloned()
+            .fold(
+                Rc::new(vec![]),
+                |acc: Rc<Vec<String>>, id: i64| match v1_rt::map_get(&merged.bindings, id) {
+                    Some(b) => v1_rt::rc_list_push(acc, b.name.clone()),
+                    None => acc,
+                },
+            );
+        let cross_type_all_names = v1_rt::concat(
+            v1_rt::concat(local_cycle_str.clone(), import_recursive_names),
+            Rc::new(v1_rt::map_keys(&compiler_recursive_types())),
+        );
         let cycle_set = Rc::new({
             let mut __result = Vec::new();
-            for name in cycle_set_str.clone().iter().cloned() {
+            for name in cross_type_all_names.clone().iter().cloned() {
                 __result.push(intern(intern_table.clone(), name.clone()).id.clone());
             }
             __result
         });
-        let cross_type_all_names = v1_rt::concat(
-            cycle_set_str.clone(),
-            Rc::new(v1_rt::map_keys(&compiler_recursive_types())),
-        );
         let cross_type_set_str = cross_type_all_names
             .clone()
             .iter()

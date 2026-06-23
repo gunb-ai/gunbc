@@ -5483,12 +5483,15 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
     map_insert(acc, b.name, node_type_deps(n: b.resolved, source_indices: source_indices))
   )
 
-  let str_bindings = fold(merged.bindings |> map_values, init: empty_map(), f: (acc, b) =>
+  let local_str_bindings = fold(all_local_bindings |> map_values, init: empty_map(), f: (acc, b) =>
     map_insert(acc, b.name, b)
   )
-  let cycle_set_str = detect_type_cycles_kahn(deps_map: all_deps_map, bindings: str_bindings)
-  let cycle_set = cycle_set_str |> map(name => intern(table: intern_table, s: name).id)
-  let cross_type_all_names = concat(cycle_set_str, map_keys(compiler_recursive_types))
+  let local_cycle_str = detect_type_cycles_kahn(deps_map: all_deps_map, bindings: local_str_bindings)
+  let import_recursive_names = fold(map_keys(import_recursive_set), init: [], f: (acc, id) =>
+    match map_get(merged.bindings, id) { Present { value: b } => list_push(acc, b.name)  Absent => acc }
+  )
+  let cross_type_all_names = concat(concat(local_cycle_str, import_recursive_names), map_keys(compiler_recursive_types))
+  let cycle_set = cross_type_all_names |> map(name => intern(table: intern_table, s: name).id)
   let cross_type_set_str = fold(cross_type_all_names, init: empty_set(), f: (acc, name) => set_insert(acc, name))
   let cross_type_set = fold(cross_type_all_names, init: empty_map(), f: (acc, name) => map_insert(acc, intern(table: intern_table, s: name).id, true))
   let local_inductive_fields = build_item_inductive_fields(items: module_items(n: module.module), recursive_type_set: cross_type_set_str, source_indices: source_indices)
@@ -5575,12 +5578,15 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
     map_insert(acc, b.name, node_type_deps(n: b.resolved, source_indices: source_indices))
   )
 
-  let str_bindings = fold(merged.bindings |> map_values, init: empty_map(), f: (acc, b) =>
+  let local_str_bindings = fold(local_bindings |> map_values, init: empty_map(), f: (acc, b) =>
     map_insert(acc, b.name, b)
   )
-  let cycle_set_str = detect_type_cycles_kahn(deps_map: all_deps_map, bindings: str_bindings)
-  let cycle_set = cycle_set_str |> map(name => intern(table: intern_table, s: name).id)
-  let cross_type_all_names = concat(cycle_set_str, map_keys(compiler_recursive_types))
+  let local_cycle_str = detect_type_cycles_kahn(deps_map: all_deps_map, bindings: local_str_bindings)
+  let import_recursive_names = fold(map_keys(import_recursive_set), init: [], f: (acc, id) =>
+    match map_get(merged.bindings, id) { Present { value: b } => list_push(acc, b.name)  Absent => acc }
+  )
+  let cross_type_all_names = concat(concat(local_cycle_str, import_recursive_names), map_keys(compiler_recursive_types))
+  let cycle_set = cross_type_all_names |> map(name => intern(table: intern_table, s: name).id)
   let cross_type_set_str = fold(cross_type_all_names, init: empty_set(), f: (acc, name) => set_insert(acc, name))
   let cross_type_set = fold(cross_type_all_names, init: empty_map(), f: (acc, name) => map_insert(acc, intern(table: intern_table, s: name).id, true))
   let local_inductive_fields = build_item_inductive_fields(items: module_items(n: module.module), recursive_type_set: cross_type_set_str, source_indices: source_indices)

@@ -1,0 +1,28 @@
+module v2.test.claim.algebra.witness_alias_recursion_independent
+
+import v2.std.witness { Witness, Holds, Violates }
+import v2.std.node { Node, NodeKind, TypeNode, Connective, Conj, NodeOccurrenceId, SyntheticOccurrence }
+
+data witness_floor_intent: String = "StageEmissionEquality = Witness<StructurallyEqual> resolves Holds/Violates BY CONSTRUCTION, INDEPENDENT OF recursion-marking. NodePairEquality mirrors that exact shape: a LOCAL Witness alias over a LOCAL struct (NodePair) whose only recursion is the IMPORTED-recursive Node. The cross-module import-merge lever correctly un-marks NodePairEquality as non-recursive (local cycle detection does not propagate imported Node's recursion up to the local alias), so its coproduct arms must resolve via the resolved-alias path, not the recursive-type path. Revert the 04_resolve resolved-alias fix with the lever held and this witness goes RED with VariantNotFound at the Holds/Violates match."
+
+type NodePair {
+  left: Node
+  right: Node
+}
+
+type NodePairEquality = Witness<NodePair>
+
+fn trivial_type_node() -> Node {
+  Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: SyntheticOccurrence }
+}
+
+fn make_node_pair_equality(pair: NodePair) -> NodePairEquality {
+  Holds { value: pair }
+}
+
+test fn witness_alias_resolves_holds_violates_independent_of_recursion() -> Bool {
+  match make_node_pair_equality(pair: NodePair { left: trivial_type_node(), right: trivial_type_node() }) {
+    Holds { value: _ } => true
+    Violates { diagnostic: _ } => false
+  }
+}
