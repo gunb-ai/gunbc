@@ -1,6 +1,7 @@
 module v2.lens.intent_linearity
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import v2.lens.simulated_relationship { chain_is_simulated }
+import v2.lens.structural_similarity { type_decls_anti_unify }
 import v2.lens.complexity_rewrite { cost_is_rewritable }
 import v2.lens.cost { symbolic_cost_of_node }
 import v2.std.node { Node, Symbol }
@@ -9,9 +10,12 @@ import v2.std.logic { Bool }
 
 type CostAxis = ChangeTime | RunTime
 
+type Representation = TermChain | TypeForest
+
 type LinearityRule {
   name: Symbol
   axis: CostAxis
+  representation: Representation
   detect: fn(FreeMonoid<Node>) -> Bool
 }
 
@@ -19,6 +23,7 @@ fn unroll_to_fold_rule() -> LinearityRule {
   LinearityRule {
     name: ^unroll_to_fold,
     axis: ChangeTime,
+    representation: TermChain,
     detect: fn(s) { chain_is_simulated(steps: s) }
   }
 }
@@ -31,12 +36,22 @@ fn complexity_reducible_rule() -> LinearityRule {
   LinearityRule {
     name: ^complexity_reducible,
     axis: RunTime,
+    representation: TermChain,
     detect: fn(s) { chain_has_rewritable_cost(steps: s) }
   }
 }
 
+fn dup_type_to_generic_rule() -> LinearityRule {
+  LinearityRule {
+    name: ^dup_type_to_generic,
+    axis: ChangeTime,
+    representation: TypeForest,
+    detect: fn(s) { type_decls_anti_unify(decls: s) }
+  }
+}
+
 fn linearity_registry() -> FreeMonoid<LinearityRule> {
-  [ unroll_to_fold_rule(), complexity_reducible_rule() ]
+  [ unroll_to_fold_rule(), complexity_reducible_rule(), dup_type_to_generic_rule() ]
 }
 
 fn rule_fires(rule: LinearityRule, steps: FreeMonoid<Node>) -> Bool {
@@ -50,22 +65,34 @@ fn cost_axis_equal(a: CostAxis, b: CostAxis) -> Bool {
   }
 }
 
-fn rule_on_axis(rule: LinearityRule, axis: CostAxis) -> Bool {
-  cost_axis_equal(a: rule.axis, b: axis)
+fn representation_eq(a: Representation, b: Representation) -> Bool {
+  match a {
+    TermChain => match b { TermChain => true  TypeForest => false }
+    TypeForest => match b { TermChain => false TypeForest => true }
+  }
 }
 
-fn chain_fires_axis(steps: FreeMonoid<Node>, axis: CostAxis) -> Bool {
-  any(xs: linearity_registry(), predicate: fn(rule) {
-    rule_on_axis(rule: rule, axis: axis) && rule_fires(rule: rule, steps: steps)
-  })
+fn input_fires(axis: CostAxis, rep: Representation, input: FreeMonoid<Node>) -> Bool {
+  any(
+    xs: linearity_registry(),
+    predicate: fn(rule) {
+      cost_axis_equal(a: rule.axis, b: axis)
+        && representation_eq(a: rule.representation, b: rep)
+        && rule_fires(rule: rule, steps: input)
+    }
+  )
 }
 
 fn chain_is_redundant(steps: FreeMonoid<Node>) -> Bool {
-  chain_fires_axis(steps: steps, axis: ChangeTime)
+  input_fires(axis: ChangeTime, rep: TermChain, input: steps)
+}
+
+fn forest_is_redundant(decls: FreeMonoid<Node>) -> Bool {
+  input_fires(axis: ChangeTime, rep: TypeForest, input: decls)
 }
 
 fn chain_has_runtime_rewrite_candidate(steps: FreeMonoid<Node>) -> Bool {
-  chain_fires_axis(steps: steps, axis: RunTime)
+  input_fires(axis: RunTime, rep: TermChain, input: steps)
 }
 
 fn chain_residual(steps: FreeMonoid<Node>) -> Int {
@@ -86,8 +113,8 @@ fn body_is_linear(levels: FreeMonoid<FreeMonoid<Node>>) -> Bool {
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: WallAfterGrounding {
-    grounding_authority: "the parse/resolve walk + chain projector decomposing a body into its per-level statement-chains (shared with v2.lens.simulated_relationship / v2.lens.structural_similarity)",
-    dissolve_on: "body_is_linear runs over live dsl/** bodies once the walk projects per-level chains; the registry grows by rows (the RunTime-axis complexity cost-recurrence row landed alongside the change-time row -- see v2.lens.complexity_rewrite); until then this is a lens_unit over projected synthetic chains. The RunTime axis is read via chain_has_runtime_rewrite_candidate -- NOT chain_is_redundant -- and graduates from candidate to a redundancy claim only when the independence carrier grounds sufficiency"
+    grounding_authority: "the parse/resolve walk + chain projector decomposing a body into its per-level statement-chains (shared with v2.lens.simulated_relationship / v2.lens.structural_similarity, all over the v2.std.anti_unification kernel)",
+    dissolve_on: "body_is_linear runs over live dsl bodies once the walk projects per-level chains; the registry grows by rows -- Row 1 the term-chain hand-unrolled fold (ChangeTime/TermChain), Row 2 the type-decl duplicate-to-generic (ChangeTime/TypeForest), Row 3 the complexity cost-recurrence (RunTime/TermChain, see v2.lens.complexity_rewrite); until then this is a lens_unit over projected synthetic chains. The RunTime axis is read via chain_has_runtime_rewrite_candidate -- NOT chain_is_redundant -- and graduates from candidate to a redundancy claim only when the independence carrier grounds sufficiency"
   },
-  rationale: "Intent-linearity is a wall up to the substrate's expressible abstraction (anti-unification computes the structural minimum) and a ratchet beyond it (global minimal description is Kolmogorov-uncomputable). The two axes compose DIFFERENTLY by §5: chain_is_redundant folds only the ChangeTime rows -- a SOUND wall (anti-unification proves redundancy, no false positive), so level_is_linear / body_is_linear never call a genuine program redundant. The RunTime axis is a CANDIDATE detector (chain_has_runtime_rewrite_candidate): O(n^2) class is the decidable NECESSARY condition, but sufficiency (genuine reducibility, not a real all-pairs O(n^2)) waits on the independence carrier, so it must not feed the wall. complexity.dag keeps the RatchetForever optimality residue. One engine, N rows, two axes (§2-horizontal)."
+  rationale: "Intent-linearity is a wall up to the substrate's expressible abstraction (anti-unification computes the structural minimum) and a ratchet beyond it (global minimal description is Kolmogorov-uncomputable). One engine, N rows, two tag-axes (§2-horizontal): Representation tags each row's binder (term-chain vs type-forest) so the rows stay off each other's projection; CostAxis tags each row's §5 status. The two compose DIFFERENTLY by §5: chain_is_redundant / forest_is_redundant fold only the ChangeTime rows -- a SOUND wall (anti-unification proves redundancy, no false positive), so level_is_linear / body_is_linear never call a genuine program redundant. The RunTime axis is a CANDIDATE detector (chain_has_runtime_rewrite_candidate): O(n^2) class is the decidable NECESSARY condition, but sufficiency (genuine reducibility, not a real all-pairs O(n^2)) waits on the independence carrier, so it must not feed the wall. complexity.dag keeps the RatchetForever optimality residue."
 }

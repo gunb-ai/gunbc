@@ -51,6 +51,7 @@ type MarkdownBlock
       rows: List<MarkdownTableRow>,
     }
   | BlockquoteBlock { blocks: List<MarkdownBlock> }
+  | ThematicBreak
 
 type MarkdownDocument { blocks: List<MarkdownBlock> }
 
@@ -156,6 +157,7 @@ fn find_first_rejected_url_in_block(block: MarkdownBlock) -> RejectedUrlScheme? 
       }
     BlockquoteBlock { blocks } =>
       find_first_rejected_url_in_blocks(blocks: blocks)
+    ThematicBreak => Absent
   }
 }
 
@@ -331,6 +333,12 @@ fn markdown_block_to_fragment(block: MarkdownBlock) -> Fragment {
         tag: "blockquote",
         attributes: [],
         children: markdown_blocks_to_fragments(blocks: blocks),
+      }
+    ThematicBreak =>
+      Element {
+        tag: "hr",
+        attributes: [],
+        children: [],
       }
   }
 }
