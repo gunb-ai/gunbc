@@ -5919,22 +5919,48 @@ fn arms_are_freemonoid_coproduct(arms: List<Node>, scrut_type: String, type_summ
   is_fm && empty_fillable && cons_fillable
 }
 
+// Empty-branch body: the Empty arm if present, else the catch-all (binding its name to __fm if Bind).
+fn freemonoid_empty_branch_body(empty_arm: Node?, catchall: Node?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
+  match empty_arm {
+    Present { value: ea } => emit_typed_expr(texpr: arm_body(n: ea), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+    Absent => match catchall {
+      Present { value: wa } =>
+        let bn = freemonoid_catchall_bind_name(arm: wa)
+        let bind_let = if bn == "" { "" } else { concat("let ", bn, " = __fm.clone(); ") }
+        concat(bind_let, emit_typed_expr(texpr: arm_body(n: wa), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024))
+      Absent => ""
+    }
+  }
+}
+
+// Non-empty-branch body: the Cons arm (binding head/tail by index/slice) if present, else the catch-all.
+fn freemonoid_nonempty_branch_body(cons_arm: Node?, catchall: Node?, si: Map<String, NewlineIndex>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
+  match cons_arm {
+    Present { value: ca } =>
+      let head_bind = freemonoid_cons_binding(cons_arm: ca, field: "head", source_indices: si)
+      let tail_bind = freemonoid_cons_binding(cons_arm: ca, field: "tail", source_indices: si)
+      let head_let = if head_bind == "_" { "" } else { concat("let ", head_bind, " = (*__fm)[0].clone(); ") }
+      let tail_let = if tail_bind == "_" { "" } else { concat("let ", tail_bind, ": Rc<Vec<_>> = Rc::new((*__fm)[1..].to_vec()); ") }
+      concat(head_let, tail_let, emit_typed_expr(texpr: arm_body(n: ca), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024))
+    Absent => match catchall {
+      Present { value: wa } =>
+        let bn = freemonoid_catchall_bind_name(arm: wa)
+        let bind_let = if bn == "" { "" } else { concat("let ", bn, " = __fm.clone(); ") }
+        concat(bind_let, emit_typed_expr(texpr: arm_body(n: wa), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024))
+      Absent => ""
+    }
+  }
+}
+
 fn emit_native_freemonoid_match(scrut_str: String, arms: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let si = scope.type_env.source_indices
-  match freemonoid_match_arm_for(arms: arms, variant: "Empty") {
-    Present { value: ea } =>
-      match freemonoid_match_arm_for(arms: arms, variant: "Cons") {
-        Present { value: ca } =>
-          let empty_body = emit_typed_expr(texpr: arm_body(n: ea), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
-          let head_bind = freemonoid_cons_binding(cons_arm: ca, field: "head", source_indices: si)
-          let tail_bind = freemonoid_cons_binding(cons_arm: ca, field: "tail", source_indices: si)
-          let cons_body = emit_typed_expr(texpr: arm_body(n: ca), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
-          let head_let = if head_bind == "_" { "" } else { concat("let ", head_bind, " = (*__fm)[0].clone(); ") }
-          let tail_let = if tail_bind == "_" { "" } else { concat("let ", tail_bind, ": Rc<Vec<_>> = Rc::new((*__fm)[1..].to_vec()); ") }
-          concat("{ let __fm = ", scrut_str, "; if __fm.is_empty() { ", empty_body, " } else { ", head_let, tail_let, cons_body, " } }")
-        Absent => ""
-      }
-    Absent => ""
+  let empty_arm = freemonoid_match_arm_for(arms: arms, variant: "Empty")
+  let cons_arm = freemonoid_match_arm_for(arms: arms, variant: "Cons")
+  let catchall = freemonoid_catchall_arm(arms: arms)
+  let empty_body = freemonoid_empty_branch_body(empty_arm: empty_arm, catchall: catchall, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+  let nonempty_body = freemonoid_nonempty_branch_body(cons_arm: cons_arm, catchall: catchall, si: si, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+  if empty_body == "" || nonempty_body == "" { "" } else {
+    concat("{ let __fm = ", scrut_str, "; if __fm.is_empty() { ", empty_body, " } else { ", nonempty_body, " } }")
   }
 }
 
@@ -6620,22 +6646,46 @@ fn emit_rust_tco_if(frame: TcoFrame, fn_name: String, params: List<Node>, regist
 // but emitting each arm body via emit_typed_tco_expr so the break/reassign lowering is preserved. This
 // path is distinct from emit_typed_match's; without it the loop-lowered std algebra folds (fold_list,
 // skip, ..) and recursive lens walks (edit_locus) keep emitting the removed FreeMonoid::Empty/Cons enum.
+fn freemonoid_tco_empty_branch_body(empty_arm: Node?, catchall: Node?, fn_name: String, params: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
+  match empty_arm {
+    Present { value: ea } => emit_typed_tco_expr(texpr: arm_body(n: ea), fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+    Absent => match catchall {
+      Present { value: wa } =>
+        let bn = freemonoid_catchall_bind_name(arm: wa)
+        let bind_let = if bn == "" { "" } else { concat("let ", bn, " = __fm.clone(); ") }
+        concat(bind_let, emit_typed_tco_expr(texpr: arm_body(n: wa), fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info))
+      Absent => ""
+    }
+  }
+}
+
+fn freemonoid_tco_nonempty_branch_body(cons_arm: Node?, catchall: Node?, si: Map<String, NewlineIndex>, fn_name: String, params: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
+  match cons_arm {
+    Present { value: ca } =>
+      let head_bind = freemonoid_cons_binding(cons_arm: ca, field: "head", source_indices: si)
+      let tail_bind = freemonoid_cons_binding(cons_arm: ca, field: "tail", source_indices: si)
+      let head_let = if head_bind == "_" { "" } else { concat("let ", head_bind, " = (*__fm)[0].clone(); ") }
+      let tail_let = if tail_bind == "_" { "" } else { concat("let ", tail_bind, ": Rc<Vec<_>> = Rc::new((*__fm)[1..].to_vec()); ") }
+      concat(head_let, tail_let, emit_typed_tco_expr(texpr: arm_body(n: ca), fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info))
+    Absent => match catchall {
+      Present { value: wa } =>
+        let bn = freemonoid_catchall_bind_name(arm: wa)
+        let bind_let = if bn == "" { "" } else { concat("let ", bn, " = __fm.clone(); ") }
+        concat(bind_let, emit_typed_tco_expr(texpr: arm_body(n: wa), fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info))
+      Absent => ""
+    }
+  }
+}
+
 fn emit_native_freemonoid_tco_match(scrut_str: String, arms: List<Node>, fn_name: String, params: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let si = scope.type_env.source_indices
-  match freemonoid_match_arm_for(arms: arms, variant: "Empty") {
-    Present { value: ea } =>
-      match freemonoid_match_arm_for(arms: arms, variant: "Cons") {
-        Present { value: ca } =>
-          let empty_body = emit_typed_tco_expr(texpr: arm_body(n: ea), fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
-          let head_bind = freemonoid_cons_binding(cons_arm: ca, field: "head", source_indices: si)
-          let tail_bind = freemonoid_cons_binding(cons_arm: ca, field: "tail", source_indices: si)
-          let cons_body = emit_typed_tco_expr(texpr: arm_body(n: ca), fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
-          let head_let = if head_bind == "_" { "" } else { concat("let ", head_bind, " = (*__fm)[0].clone(); ") }
-          let tail_let = if tail_bind == "_" { "" } else { concat("let ", tail_bind, ": Rc<Vec<_>> = Rc::new((*__fm)[1..].to_vec()); ") }
-          concat("{ let __fm = ", scrut_str, "; if __fm.is_empty() { ", empty_body, " } else { ", head_let, tail_let, cons_body, " } }")
-        Absent => ""
-      }
-    Absent => ""
+  let empty_arm = freemonoid_match_arm_for(arms: arms, variant: "Empty")
+  let cons_arm = freemonoid_match_arm_for(arms: arms, variant: "Cons")
+  let catchall = freemonoid_catchall_arm(arms: arms)
+  let empty_body = freemonoid_tco_empty_branch_body(empty_arm: empty_arm, catchall: catchall, fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+  let nonempty_body = freemonoid_tco_nonempty_branch_body(cons_arm: cons_arm, catchall: catchall, si: si, fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+  if empty_body == "" || nonempty_body == "" { "" } else {
+    concat("{ let __fm = ", scrut_str, "; if __fm.is_empty() { ", empty_body, " } else { ", nonempty_body, " } }")
   }
 }
 

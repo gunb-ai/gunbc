@@ -16059,11 +16059,38 @@ pub fn parent_enum_is_freemonoid(p: Option<String>) -> bool {
     }
 }
 
+// A FreeMonoid match may pair an Empty/Cons variant arm with a WILDCARD/bind catch-all rather than the
+// sibling variant; the catch-all fills the missing branch. (See .dag authority.)
+pub fn freemonoid_catchall_arm(arms: Rc<Vec<Rc<Node>>>) -> Option<Rc<Node>> {
+    arms.iter()
+        .cloned()
+        .find(|arm| match (*arm_pattern(arm.clone())).clone() {
+            MatchPattern::Wildcard => true,
+            MatchPattern::Bind { .. } => true,
+            _ => false,
+        })
+}
+
+pub fn freemonoid_catchall_bind_name(arm: Rc<Node>) -> String {
+    match (*arm_pattern(arm.clone())).clone() {
+        MatchPattern::Bind { name: nm, .. } => nm,
+        _ => "".to_string(),
+    }
+}
+
 pub fn arms_are_freemonoid_coproduct(
     arms: Rc<Vec<Rc<Node>>>,
     scrut_type: String,
     type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
 ) -> bool {
+    let has_empty = match freemonoid_match_arm_for(arms.clone(), "Empty".to_string()) {
+        Some(_) => true,
+        None => false,
+    };
+    let has_cons = match freemonoid_match_arm_for(arms.clone(), "Cons".to_string()) {
+        Some(_) => true,
+        None => false,
+    };
     let empty_is_fm = match freemonoid_match_arm_for(arms.clone(), "Empty".to_string()) {
         Some(ea) => parent_enum_is_freemonoid(arm_resolved_parent_enum(
             ea,
@@ -16080,7 +16107,137 @@ pub fn arms_are_freemonoid_coproduct(
         )),
         None => false,
     };
-    (empty_is_fm && cons_is_fm)
+    let has_catchall = match freemonoid_catchall_arm(arms.clone()) {
+        Some(_) => true,
+        None => false,
+    };
+    // Fire iff at least one genuine FreeMonoid variant arm AND both branches fillable (missing sibling
+    // supplied by the catch-all). Safe to loosen: the enum is removed, so a real FreeMonoid match that
+    // does NOT ground natively emits a dangling FreeMonoid::Empty/Cons.
+    let is_fm = (empty_is_fm || cons_is_fm);
+    let empty_fillable = (has_empty || has_catchall);
+    let cons_fillable = (has_cons || has_catchall);
+    (is_fm && (empty_fillable && cons_fillable))
+}
+
+pub fn freemonoid_empty_branch_body(
+    empty_arm: Option<Rc<Node>>,
+    catchall: Option<Rc<Node>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    scope: Rc<InferScope>,
+    depth: i64,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
+    emit_info: Rc<EmitGraphInfo>,
+) -> String {
+    match empty_arm {
+        Some(ea) => emit_typed_expr(
+            arm_body(ea.clone()),
+            registry.clone(),
+            scope.clone(),
+            depth.clone(),
+            shared_types.clone(),
+            emit_info.clone(),
+            1024,
+        ),
+        None => match catchall {
+            Some(wa) => {
+                let bn = freemonoid_catchall_bind_name(wa.clone());
+                let bind_let = if (bn.clone() == "".to_string()) {
+                    "".to_string()
+                } else {
+                    v1_rt::concat(
+                        v1_rt::concat("let ".to_string(), bn.clone()),
+                        " = __fm.clone(); ".to_string(),
+                    )
+                };
+                v1_rt::concat(
+                    bind_let,
+                    emit_typed_expr(
+                        arm_body(wa.clone()),
+                        registry.clone(),
+                        scope.clone(),
+                        depth.clone(),
+                        shared_types.clone(),
+                        emit_info.clone(),
+                        1024,
+                    ),
+                )
+            }
+            None => "".to_string(),
+        },
+    }
+}
+
+pub fn freemonoid_nonempty_branch_body(
+    cons_arm: Option<Rc<Node>>,
+    catchall: Option<Rc<Node>>,
+    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    scope: Rc<InferScope>,
+    depth: i64,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
+    emit_info: Rc<EmitGraphInfo>,
+) -> String {
+    match cons_arm {
+        Some(ca) => {
+            let head_bind = freemonoid_cons_binding(ca.clone(), "head".to_string(), si.clone());
+            let tail_bind = freemonoid_cons_binding(ca.clone(), "tail".to_string(), si.clone());
+            let head_let = if (head_bind.clone() == "_".to_string()) {
+                "".to_string()
+            } else {
+                v1_rt::concat(
+                    v1_rt::concat("let ".to_string(), head_bind.clone()),
+                    " = (*__fm)[0].clone(); ".to_string(),
+                )
+            };
+            let tail_let = if (tail_bind.clone() == "_".to_string()) {
+                "".to_string()
+            } else {
+                v1_rt::concat(
+                    v1_rt::concat("let ".to_string(), tail_bind.clone()),
+                    ": Rc<Vec<_>> = Rc::new((*__fm)[1..].to_vec()); ".to_string(),
+                )
+            };
+            v1_rt::concat(
+                v1_rt::concat(head_let, tail_let),
+                emit_typed_expr(
+                    arm_body(ca.clone()),
+                    registry.clone(),
+                    scope.clone(),
+                    depth.clone(),
+                    shared_types.clone(),
+                    emit_info.clone(),
+                    1024,
+                ),
+            )
+        }
+        None => match catchall {
+            Some(wa) => {
+                let bn = freemonoid_catchall_bind_name(wa.clone());
+                let bind_let = if (bn.clone() == "".to_string()) {
+                    "".to_string()
+                } else {
+                    v1_rt::concat(
+                        v1_rt::concat("let ".to_string(), bn.clone()),
+                        " = __fm.clone(); ".to_string(),
+                    )
+                };
+                v1_rt::concat(
+                    bind_let,
+                    emit_typed_expr(
+                        arm_body(wa.clone()),
+                        registry.clone(),
+                        scope.clone(),
+                        depth.clone(),
+                        shared_types.clone(),
+                        emit_info.clone(),
+                        1024,
+                    ),
+                )
+            }
+            None => "".to_string(),
+        },
+    }
 }
 
 pub fn emit_native_freemonoid_match(
@@ -16093,74 +16250,47 @@ pub fn emit_native_freemonoid_match(
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     let si = scope.type_env.clone().source_indices.clone();
-    match freemonoid_match_arm_for(arms.clone(), "Empty".to_string()) {
-        Some(ea) => match freemonoid_match_arm_for(arms.clone(), "Cons".to_string()) {
-            Some(ca) => {
-                let empty_body = emit_typed_expr(
-                    arm_body(ea.clone()),
-                    registry.clone(),
-                    scope.clone(),
-                    depth.clone(),
-                    shared_types.clone(),
-                    emit_info.clone(),
-                    1024,
-                );
-                let head_bind = freemonoid_cons_binding(ca.clone(), "head".to_string(), si.clone());
-                let tail_bind = freemonoid_cons_binding(ca.clone(), "tail".to_string(), si.clone());
-                let cons_body = emit_typed_expr(
-                    arm_body(ca.clone()),
-                    registry.clone(),
-                    scope.clone(),
-                    depth.clone(),
-                    shared_types.clone(),
-                    emit_info.clone(),
-                    1024,
-                );
-                let head_let = if (head_bind.clone() == "_".to_string()) {
-                    "".to_string()
-                } else {
-                    v1_rt::concat(
-                        v1_rt::concat("let ".to_string(), head_bind.clone()),
-                        " = (*__fm)[0].clone(); ".to_string(),
-                    )
-                };
-                let tail_let = if (tail_bind.clone() == "_".to_string()) {
-                    "".to_string()
-                } else {
-                    v1_rt::concat(
-                        v1_rt::concat("let ".to_string(), tail_bind.clone()),
-                        ": Rc<Vec<_>> = Rc::new((*__fm)[1..].to_vec()); ".to_string(),
-                    )
-                };
+    let empty_arm = freemonoid_match_arm_for(arms.clone(), "Empty".to_string());
+    let cons_arm = freemonoid_match_arm_for(arms.clone(), "Cons".to_string());
+    let catchall = freemonoid_catchall_arm(arms.clone());
+    let empty_body = freemonoid_empty_branch_body(
+        empty_arm,
+        catchall.clone(),
+        registry.clone(),
+        scope.clone(),
+        depth.clone(),
+        shared_types.clone(),
+        emit_info.clone(),
+    );
+    let nonempty_body = freemonoid_nonempty_branch_body(
+        cons_arm,
+        catchall.clone(),
+        si.clone(),
+        registry.clone(),
+        scope.clone(),
+        depth.clone(),
+        shared_types.clone(),
+        emit_info.clone(),
+    );
+    if ((empty_body.clone() == "".to_string()) || (nonempty_body.clone() == "".to_string())) {
+        "".to_string()
+    } else {
+        v1_rt::concat(
+            v1_rt::concat(
                 v1_rt::concat(
                     v1_rt::concat(
                         v1_rt::concat(
-                            v1_rt::concat(
-                                v1_rt::concat(
-                                    v1_rt::concat(
-                                        v1_rt::concat(
-                                            v1_rt::concat(
-                                                "{ let __fm = ".to_string(),
-                                                scrut_str,
-                                            ),
-                                            "; if __fm.is_empty() { ".to_string(),
-                                        ),
-                                        empty_body,
-                                    ),
-                                    " } else { ".to_string(),
-                                ),
-                                head_let,
-                            ),
-                            tail_let,
+                            v1_rt::concat("{ let __fm = ".to_string(), scrut_str),
+                            "; if __fm.is_empty() { ".to_string(),
                         ),
-                        cons_body,
+                        empty_body,
                     ),
-                    " } }".to_string(),
-                )
-            }
-            None => "".to_string(),
-        },
-        None => "".to_string(),
+                    " } else { ".to_string(),
+                ),
+                nonempty_body,
+            ),
+            v1_rt::concat(" } }".to_string(), "".to_string()),
+        )
     }
 }
 
