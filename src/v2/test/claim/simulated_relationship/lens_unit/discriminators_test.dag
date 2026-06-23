@@ -9,7 +9,6 @@ import v2.std.node {
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 
-// ── synthetic Node constructors (no live parse/resolve walk needed) ────────────
 fn atom(id: Symbol) -> Node {
   node_synthetic(kind: TypeNode { connective: Atom { identity: id } }, children: [])
 }
@@ -33,60 +32,43 @@ fn conj3(a: Node, b: Node, c: Node) -> Node {
   )
 }
 
-// ── RED: hand-unrolled folds (must flag) ───────────────────────────────────────
 
-// ci_gates.dag: `let gN = if exit_ok(g{N-1}) { run(GateN) } else { g{N-1} }`.
-// Two stable holes per step: the gate atom + the accumulator reference.
 data red_gate_chain: List<Node> = [
   conj3(a: atom(id: ^run), b: atom(id: ^gate_rust),  c: atom(id: ^acc0)),
   conj3(a: atom(id: ^run), b: atom(id: ^gate_emit),  c: atom(id: ^acc1)),
   conj3(a: atom(id: ^run), b: atom(id: ^gate_layer), c: atom(id: ^acc2))
 ]
 
-// compute_fabric.dag: `skip(n:K).first() == DemandK`, K = 0,1,2. Structurally
-// IDENTICAL to ci_runner_seam's `ls.first()==.. && skip(1).first()==..` which the
-// survey-agent excused as a "negative control" because its values were distinct.
-// Distinct values are the POINT of a fold, not an exemption -> this is also RED.
 data red_positional_typecheck: List<Node> = [
   conj3(a: atom(id: ^eq), b: atom(id: ^skip0), c: atom(id: ^demand_isolation)),
   conj3(a: atom(id: ^eq), b: atom(id: ^skip1), c: atom(id: ^demand_cpu)),
   conj3(a: atom(id: ^eq), b: atom(id: ^skip2), c: atom(id: ^demand_memory))
 ]
 
-// ── GREEN: genuine chains (must NOT flag) ──────────────────────────────────────
 
-// build_artifact_verification: is_if / is_assign / is_loop applied at positions
-// whose accessor SHAPE also differs (.first() vs .skip(1).first()). The operation
-// itself varies -> anti-unification diverges -> not a fold.
 data green_divergent_op: List<Node> = [
   conj2(a: atom(id: ^is_if),     b: atom(id: ^stmt_first)),
   conj2(a: atom(id: ^is_assign), b: conj2(a: atom(id: ^skip), b: atom(id: ^stmt_first))),
   conj2(a: atom(id: ^is_loop),   b: conj2(a: atom(id: ^skip), b: atom(id: ^stmt_first)))
 ]
 
-// pep440 test: same function, but each argument is a structurally different value
-// (a nullary call vs a record literal) -> shape divergence, distinct facts.
 data green_distinct_input: List<Node> = [
   conj2(a: atom(id: ^label), b: atom(id: ^v_nullary)),
   conj2(a: atom(id: ^label), b: conj2(a: atom(id: ^record_ctor), b: atom(id: ^field_a))),
   conj2(a: atom(id: ^label), b: conj2(a: atom(id: ^record_ctor), b: atom(id: ^field_b)))
 ]
 
-// Two steps is not yet a relationship.
 data green_too_short: List<Node> = [
   conj3(a: atom(id: ^run), b: atom(id: ^gate_rust), c: atom(id: ^acc0)),
   conj3(a: atom(id: ^run), b: atom(id: ^gate_emit), c: atom(id: ^acc1))
 ]
 
-// Zero variance: pure copy-paste duplication, a different smell (not an un-modeled
-// fold over varying data). This lens stays quiet; a duplication lens would fire.
 data green_pure_duplication: List<Node> = [
   conj2(a: atom(id: ^x), b: atom(id: ^y)),
   conj2(a: atom(id: ^x), b: atom(id: ^y)),
   conj2(a: atom(id: ^x), b: atom(id: ^y))
 ]
 
-// ── witnesses ──────────────────────────────────────────────────────────────────
 test fn gate_chain_is_simulated() -> Bool {
   chain_is_simulated(steps: red_gate_chain)
 }
