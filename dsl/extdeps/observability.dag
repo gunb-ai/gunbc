@@ -27,8 +27,6 @@ type ObservationRoutingOutcome =
     RoutedTo { channel: ObservabilityChannel }
   | ChannelCannotObserve { channel: ObservabilityChannel, class: ObservationClass }
 
-// The single public answer to "can this channel observe this class?" is the structured outcome — no
-// separate Bool predicate over the coproducts (the typed RoutedTo/ChannelCannotObserve subsumes it).
 fn route_observation(channel: ObservabilityChannel, class: ObservationClass) -> ObservationRoutingOutcome {
   match channel {
     InBand => RoutedTo { channel: channel }

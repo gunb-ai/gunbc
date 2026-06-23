@@ -13,9 +13,6 @@ import extdeps.observability {
   route_observation,
 }
 
-// The structured ObservationRoutingOutcome is the only public answer (channel_observes was dissolved into
-// route_observation), so every assertion reads that typed surface directly — no Bool projection.
-
 test fn out_of_band_cannot_observe_storage() -> Bool {
   match route_observation(channel: OutOfBand, class: StorageInventory) {
     ChannelCannotObserve { channel: _, class: _ } => true
