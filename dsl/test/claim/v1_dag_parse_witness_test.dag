@@ -1,0 +1,19 @@
+module test.claim.v1_dag_parse_witness
+
+import tools.v1_dag_parse_transport {
+  run_v1_dag_parse_green,
+  run_v1_dag_parse_perturb_red_receipt
+}
+
+fn witness_v1_dag_parse_green_holds() -> Bool {
+  run_v1_dag_parse_green()
+}
+
+fn witness_v1_dag_parse_perturb_goes_red() -> Bool {
+  run_v1_dag_parse_perturb_red_receipt()
+}
+
+test fn v1_dag_parse_witnesses() -> Bool {
+  witness_v1_dag_parse_green_holds()
+    && witness_v1_dag_parse_perturb_goes_red()
+}
