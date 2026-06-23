@@ -1,9 +1,9 @@
-module test.claim.operator_fleet_storage
+module test.claim.fleet_intent_storage
 
 import std.logic { Bool }
 import std.types { list_length }
 import std.measure { byte_size_count }
-import gunbc.operator_fleet { srv1_host, srv2_host, srv3_host, srv1_nvme0 }
+import gunbc.fleet_intent { srv1_host, srv2_host, srv3_host, srv1_nvme0 }
 import extdeps.observability { OutOfBand, StorageInventory, route_observation }
 
 test fn in_band_hosts_carry_their_real_drive() -> Bool {

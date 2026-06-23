@@ -1,6 +1,6 @@
-module gunbc.operator_fleet
+module gunbc.fleet_intent
 
-import gunbc.operator_fleet_network { operator_host_srv1, operator_host_srv2, operator_host_srv3 }
+import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2, operator_host_srv3 }
 import extdeps.storage.western_digital { wd_black_sn850x_2tb_catalog }
 import extdeps.cpu.ampere { altra_max_m12830_catalog }
 import extdeps.cpu.types { CpuFacts, CpuDeploymentFacts }
@@ -29,12 +29,12 @@ import product.compute_fabric {
   Persistent,
 }
 
-data operator_fleet_cpu: CpuFacts = CpuFacts {
+data fleet_intent_cpu: CpuFacts = CpuFacts {
   catalog: altra_max_m12830_catalog,
   deployment: CpuDeploymentFacts { sustained_per_thread_hz: hertz(3000000000) },
 }
 
-data operator_fleet_os_surface: OperatingSystemSurface = OperatingSystemSurface {
+data fleet_intent_os_surface: OperatingSystemSurface = OperatingSystemSurface {
   kernel: Linux,
   distro_or_product: none,
   version: none,
@@ -71,7 +71,7 @@ data srv2_nvme0: StorageDevice = nvme_storage_device(
 data srv1_host: ComputeHost = ComputeHost {
   identity: operator_host_srv1,
   baseboard: Present { value: srv1_baseboard },
-  processors: [CpuProcessor { cpu: operator_fleet_cpu }],
+  processors: [CpuProcessor { cpu: fleet_intent_cpu }],
   memory: [MemoryDevice { capacity: gibibyte_to_byte_size(g: gibibyte(128)), memory_kind: Dram, bandwidth: none }],
   storage: [srv1_nvme0],
   network_interfaces: [],
@@ -79,7 +79,7 @@ data srv1_host: ComputeHost = ComputeHost {
 data srv2_host: ComputeHost = ComputeHost {
   identity: operator_host_srv2,
   baseboard: Present { value: srv2_baseboard },
-  processors: [CpuProcessor { cpu: operator_fleet_cpu }],
+  processors: [CpuProcessor { cpu: fleet_intent_cpu }],
   memory: [MemoryDevice { capacity: gibibyte_to_byte_size(g: gibibyte(128)), memory_kind: Dram, bandwidth: none }],
   storage: [srv2_nvme0],
   network_interfaces: [],
@@ -87,17 +87,17 @@ data srv2_host: ComputeHost = ComputeHost {
 data srv3_host: ComputeHost = ComputeHost {
   identity: operator_host_srv3,
   baseboard: Present { value: srv3_baseboard },
-  processors: [CpuProcessor { cpu: operator_fleet_cpu }],
+  processors: [CpuProcessor { cpu: fleet_intent_cpu }],
   memory: [MemoryDevice { capacity: gibibyte_to_byte_size(g: gibibyte(128)), memory_kind: Dram, bandwidth: none }],
   storage: [],
   network_interfaces: [],
 }
 
-data operator_fleet_known_hosts: List<ComputeHost> = [srv1_host, srv2_host, srv3_host]
+data fleet_intent_known_hosts: List<ComputeHost> = [srv1_host, srv2_host, srv3_host]
 
-fn operator_fleet_execution_surface() -> ExecutionSurface {
+fn fleet_intent_execution_surface() -> ExecutionSurface {
   ExecutionSurface {
-    os: operator_fleet_os_surface,
+    os: fleet_intent_os_surface,
     isolation: PerJobFilesystem,
     container_runtime: none,
     toolchains: [],
@@ -114,7 +114,7 @@ data srv1_offer: ComputeOffer = ComputeOffer {
   provider: "gunbc-operator-srv1",
   supply: ComputeSupplyFacts {
     physical: srv1_host,
-    execution: operator_fleet_execution_surface(),
+    execution: fleet_intent_execution_surface(),
     cost: Present { value: operator_owned_cost() },
     observed_performance: [],
   },
@@ -126,7 +126,7 @@ data srv2_offer: ComputeOffer = ComputeOffer {
   provider: "gunbc-operator-srv2",
   supply: ComputeSupplyFacts {
     physical: srv2_host,
-    execution: operator_fleet_execution_surface(),
+    execution: fleet_intent_execution_surface(),
     cost: Present { value: operator_owned_cost() },
     observed_performance: [],
   },
@@ -135,4 +135,4 @@ data srv2_offer: ComputeOffer = ComputeOffer {
   constraints: [],
 }
 
-data operator_fleet_offers: List<ComputeOffer> = [srv1_offer, srv2_offer]
+data fleet_intent_offers: List<ComputeOffer> = [srv1_offer, srv2_offer]

@@ -1,4 +1,4 @@
-module gunbc.operator_fleet_network
+module gunbc.fleet_intent_network
 
 import product.network_topology {
   NetworkAttachmentRole,
@@ -101,7 +101,7 @@ data operator_lan_gateway_endpoint: NetworkEndpoint = NetworkEndpoint {
   locality: Lan,
 }
 
-data operator_fleet_network: NetworkTopology = NetworkTopology {
+data fleet_intent_network: NetworkTopology = NetworkTopology {
   tailnet_domain: Present { value: "tailecbe08.ts.net" },
   segments: [
     operator_lan_segment,
@@ -120,6 +120,6 @@ data operator_fleet_network: NetworkTopology = NetworkTopology {
   ],
 }
 
-fn operator_fleet_network_topology() -> NetworkTopology {
-  operator_fleet_network
+fn fleet_intent_network_topology() -> NetworkTopology {
+  fleet_intent_network
 }
