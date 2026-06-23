@@ -3762,3 +3762,73 @@ mod construction_justification_hygiene_tests {
         );
     }
 }
+
+#[cfg(test)]
+mod sidecar_placement_hygiene_tests {
+    use super::{discover_floor_corpus_rows, scan_wire_contract_decl_names};
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static SEQ: AtomicU64 = AtomicU64::new(0);
+    fn tmp_dir() -> std::path::PathBuf {
+        let id = SEQ.fetch_add(1, Ordering::Relaxed);
+        std::env::temp_dir().join(format!(
+            "sidecar_placement_test_{}_{}",
+            std::process::id(),
+            id
+        ))
+    }
+
+    #[test]
+    fn scan_detects_coproduct_wire_contract_data() {
+        let content =
+            "data foo: CoproductWireContract = { coproduct: \"X\", encoding: UntaggedVariant }";
+        assert_eq!(
+            scan_wire_contract_decl_names(content),
+            vec!["foo".to_string()]
+        );
+    }
+
+    #[test]
+    fn scan_detects_variant_encoding_data() {
+        let content = "data bar: VariantEncoding = llm_snake_wire_contract";
+        assert_eq!(
+            scan_wire_contract_decl_names(content),
+            vec!["bar".to_string()]
+        );
+    }
+
+    #[test]
+    fn scan_ignores_non_wire_contract_data() {
+        let content =
+            "data baz: Int = 42\ndata qux: String = \"hello\"\ndata flag: Bool = true";
+        assert!(
+            scan_wire_contract_decl_names(content).is_empty(),
+            "should not fire on non-wire-contract data decls"
+        );
+    }
+
+    #[test]
+    fn misplaced_wire_contract_decl_drives_discover_to_err() {
+        let dir = tmp_dir();
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        let file = dir.join("anthropic.dag");
+        std::fs::write(
+            &file,
+            "data anthropic_chat_message_wire_contract: CoproductWireContract = { \
+             coproduct: \"AnthropicChatMessage\", encoding: UntaggedVariant }\n",
+        )
+        .expect("write temp file");
+        let root = dir.to_string_lossy().into_owned();
+        let result = discover_floor_corpus_rows(&[root], &[]);
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(
+            result.is_err(),
+            "misplaced wire-contract decl must drive discover_floor_corpus_rows to Err"
+        );
+        let msg = result.unwrap_err();
+        assert!(
+            msg.contains("wire-contract decls") && msg.contains("_contracts.dag"),
+            "error must name the decl type and required suffix: {msg}"
+        );
+    }
+}
