@@ -14,8 +14,8 @@ tower #5428 and the model↔realization grounding), not a mechanical sweep. The 
 ("11 mechanical PRs / 5 collapses / `Classical`↔`Bool` nickname") was wrong by execution and is
 superseded below.
 
-**Re-confirmed by execution 2026-06-23 (post-#5640), for the #2 resolver-wall (PR #5652) Q2 ruling
-— see §2A.** Net distribution now: **2 true mirrors** (`reducible` DONE #5507, `measure` in-flight
+**Re-confirmed by execution 2026-06-23 (post-#5640), for the
+[#2 resolver-wall](resolver-type-name-collision-wall.md) (PR #5652) Q2 ruling — see §2A.** Net distribution now: **2 true mirrors** (`reducible` DONE #5507, `measure` in-flight
 #5509) **+ 6 divergent groundings** (`algebra`/`logic`/`nat`/`integer`/`float`/`effects`) **+ 2
 v1-artifact name-collisions** (`node`, `coercion`) **+ 1 RESOLVED** (`verification`, #5640 — it was a
 name-collision resolved by rename-apart, *not* a grounding-merge, so it leaves the cluster). **Executed
