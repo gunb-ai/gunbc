@@ -28,6 +28,10 @@ type ContainerStateDetail {
   finished_at: Timestamp?
 }
 
+data dissolve_on_container_state_detail_redundant_bools: List<String> = [
+  "closure:ground_container_state_via_coproduct_not_bools|ContainerStateDetail carries status: ContainerState coproduct AND parallel running/paused/restarting/dead bools, allowing illegal states (status=Running, running=false). Faithful to Docker wire shape at extdeps boundary, but redundancy should be resolved inward — callers should derive bool predicates from status coproduct, not trust duplicated bools (§2 horizontal DRY)|trigger:B3 defines container_state_is_running/paused/etc predicates over status (pattern-matched) not cached bools, and wire deserialization reconstructs status authority only, deriving bools on read"
+]
+
 type HostConfig {
   cpu_shares: Nat?
   memory: ByteSize?
@@ -145,6 +149,10 @@ data dissolve_on_error_responses_opaque_strings: List<String> = [
 
 fn container_state_is_running(state: ContainerState) -> Bool =
   state == Running
+
+data dissolve_on_container_state_predicate_family: List<String> = [
+  "closure:model_state_predicate_family|container_state_is_running is a textbook predicate-dissolution helper (coproduct match returning true for one variant); symmetric family (container_state_is_paused, container_state_is_exited, etc.) not modeled together; single authority should be a predicate rowset or accessor family rather than hand-rolled functions (consistency with parse/wire-label consolidation)|trigger:B3 models state predicates as single derived rowset"
+]
 
 fn container_inspect_memory_limit(inspect: ContainerInspect) -> ByteSize? {
   match inspect.host_config {
