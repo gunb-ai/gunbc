@@ -2,6 +2,7 @@ module std.encoding
 
 import std.algebra { BoundedLattice }
 import std.types { Bytes }
+import std.integer { UInt8 }
 
 type Encoding
   = ASCII
@@ -111,4 +112,161 @@ data encoding_bounded_lattice: BoundedLattice<Encoding> = {
 
 fn utf8_decode_bytes(payload: Bytes) -> String {
   ""
+}
+
+type Base64Variant = Standard | UrlSafe
+
+fn base64_alphabet(variant: Base64Variant) -> String {
+  match variant {
+    Standard => "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+    UrlSafe => "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+  }
+}
+
+type Base64EncodeState {
+  out: String
+  count: Int
+  b0: Int
+  b1: Int
+}
+
+fn base64_octet_int(b: UInt8) -> Int {
+  b + 0
+}
+
+fn base64_sextet_char(alphabet: String, n: Int, divisor: Int) -> String {
+  char_at(alphabet, (n / divisor) % 64)
+}
+
+fn base64_encode_step(st: Base64EncodeState, octet: Int, alphabet: String) -> Base64EncodeState {
+  if st.count == 0 {
+    Base64EncodeState { out: st.out, count: 1, b0: octet, b1: 0 }
+  } else if st.count == 1 {
+    Base64EncodeState { out: st.out, count: 2, b0: st.b0, b1: octet }
+  } else {
+    let n = st.b0 * 65536 + st.b1 * 256 + octet
+    let quad = concat(
+      base64_sextet_char(alphabet: alphabet, n: n, divisor: 262144),
+      base64_sextet_char(alphabet: alphabet, n: n, divisor: 4096),
+      base64_sextet_char(alphabet: alphabet, n: n, divisor: 64),
+      char_at(alphabet, n % 64)
+    )
+    Base64EncodeState { out: concat(st.out, quad), count: 0, b0: 0, b1: 0 }
+  }
+}
+
+fn base64_encode_flush(st: Base64EncodeState, alphabet: String) -> String {
+  if st.count == 1 {
+    let n = st.b0 * 65536
+    concat(
+      st.out,
+      base64_sextet_char(alphabet: alphabet, n: n, divisor: 262144),
+      base64_sextet_char(alphabet: alphabet, n: n, divisor: 4096),
+      "=="
+    )
+  } else if st.count == 2 {
+    let n = st.b0 * 65536 + st.b1 * 256
+    concat(
+      st.out,
+      base64_sextet_char(alphabet: alphabet, n: n, divisor: 262144),
+      base64_sextet_char(alphabet: alphabet, n: n, divisor: 4096),
+      base64_sextet_char(alphabet: alphabet, n: n, divisor: 64),
+      "="
+    )
+  } else {
+    st.out
+  }
+}
+
+fn base64_encode(octets: List<UInt8>, variant: Base64Variant) -> String {
+  let alphabet = base64_alphabet(variant: variant)
+  let st = fold(octets,
+    init: Base64EncodeState { out: "", count: 0, b0: 0, b1: 0 },
+    f: (acc, octet) => base64_encode_step(st: acc, octet: base64_octet_int(b: octet), alphabet: alphabet)
+  )
+  base64_encode_flush(st: st, alphabet: alphabet)
+}
+
+fn base64_char_value(c: String, variant: Base64Variant) -> Int {
+  let cp = code_point(c)
+  if cp >= 65 && cp <= 90 {
+    cp - 65
+  } else if cp >= 97 && cp <= 122 {
+    cp - 71
+  } else if cp >= 48 && cp <= 57 {
+    cp + 4
+  } else {
+    match variant {
+      Standard => if cp == 43 { 62 } else { 63 }
+      UrlSafe => if cp == 45 { 62 } else { 63 }
+    }
+  }
+}
+
+fn base64_collect_values(s: String, i: Int, len: Int, variant: Base64Variant, acc: List<Int>) -> List<Int> {
+  if i >= len {
+    acc
+  } else {
+    let c = char_at(s, i)
+    if c == "=" {
+      base64_collect_values(s: s, i: i + 1, len: len, variant: variant, acc: acc)
+    } else {
+      base64_collect_values(s: s, i: i + 1, len: len, variant: variant, acc: acc |> list_push(base64_char_value(c: c, variant: variant)))
+    }
+  }
+}
+
+type Base64DecodeState {
+  out: List<Int>
+  count: Int
+  v0: Int
+  v1: Int
+  v2: Int
+}
+
+fn base64_decode_step(st: Base64DecodeState, v: Int) -> Base64DecodeState {
+  if st.count == 0 {
+    Base64DecodeState { out: st.out, count: 1, v0: v, v1: 0, v2: 0 }
+  } else if st.count == 1 {
+    Base64DecodeState { out: st.out, count: 2, v0: st.v0, v1: v, v2: 0 }
+  } else if st.count == 2 {
+    Base64DecodeState { out: st.out, count: 3, v0: st.v0, v1: st.v1, v2: v }
+  } else {
+    let n = st.v0 * 262144 + st.v1 * 4096 + st.v2 * 64 + v
+    let byte0 = (n / 65536) % 256
+    let byte1 = (n / 256) % 256
+    let byte2 = n % 256
+    Base64DecodeState {
+      out: st.out |> list_push(byte0) |> list_push(byte1) |> list_push(byte2),
+      count: 0,
+      v0: 0,
+      v1: 0,
+      v2: 0
+    }
+  }
+}
+
+fn base64_decode_flush(st: Base64DecodeState) -> List<Int> {
+  if st.count == 2 {
+    let n = st.v0 * 262144 + st.v1 * 4096
+    st.out |> list_push((n / 65536) % 256)
+  } else if st.count == 3 {
+    let n = st.v0 * 262144 + st.v1 * 4096 + st.v2 * 64
+    st.out |> list_push((n / 65536) % 256) |> list_push((n / 256) % 256)
+  } else {
+    st.out
+  }
+}
+
+fn base64_octet_of_int(n: Int) -> UInt8 {
+  n
+}
+
+fn base64_decode(s: String, variant: Base64Variant) -> List<UInt8> {
+  let vals = base64_collect_values(s: s, i: 0, len: string_length(s), variant: variant, acc: [])
+  let st = fold(vals,
+    init: Base64DecodeState { out: [], count: 0, v0: 0, v1: 0, v2: 0 },
+    f: (acc, v) => base64_decode_step(st: acc, v: v)
+  )
+  base64_decode_flush(st: st) |> map(n => base64_octet_of_int(n: n))
 }
