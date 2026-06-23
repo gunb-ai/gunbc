@@ -131,6 +131,75 @@ fn filesystem_write_witness_record_then_hermetic_replay_holds() {
     );
 }
 
+// Regression: a large import closure that pulls BOTH the `extdeps.filesystem`
+// `service Filesystem` and the `std.resources` `resource Filesystem` used to drop
+// the service's operations at runtime (-> "unknown service operation:
+// Filesystem.Write"), because runtime service-op registration gated on a
+// name-keyed `item_registry` lookup that the same-named non-service entry won the
+// merge of. The record phase below is wet (live I/O) and exercises that
+// registration; pre-fix it fails at record time, post-fix it records then replays.
+fn closure_scale_witness_entry(ws: &Path, scratch: &Path) -> PathBuf {
+    let src =
+        fs::read_to_string(ws.join("dsl/test/claim/filesystem_write_closure_scale_witness.dag"))
+            .expect("read closure-scale witness dag");
+    let live = scratch.join("fs_closure_scale_witness.txt");
+    let rewritten = src.replace(
+        "/tmp/gunbc_fs_closure_scale_witness.txt",
+        live.to_str().expect("utf8 scratch path"),
+    );
+    let entry = scratch.join("filesystem_write_closure_scale_witness.dag");
+    fs::write(&entry, rewritten).expect("write rewritten closure-scale witness dag");
+    entry
+}
+
+#[test]
+fn filesystem_write_closure_scale_record_then_hermetic_replay_holds() {
+    let ws = workspace_root();
+    let store_dir = fixture_store_dir("fs-closure-scale-record-replay");
+    fs::create_dir_all(&store_dir).expect("fixture dir");
+    let entry = closure_scale_witness_entry(&ws, &store_dir);
+
+    let record = run_claim_batch(&[
+        "--source-root",
+        ws.to_str().expect("workspace"),
+        "--source-root",
+        ws.join("dsl").to_str().expect("dsl root"),
+        "--entry",
+        entry.to_str().expect("entry"),
+        "--function",
+        "filesystem_write_closure_scale_holds",
+        "--record",
+        "--fixture-store",
+        store_dir.to_str().expect("store path"),
+    ]);
+    assert!(
+        record.status.success(),
+        "closure-scale record capture must pass: the Filesystem service must register \
+         even when std.resources' resource Filesystem is in the same import closure; stderr={}",
+        String::from_utf8_lossy(&record.stderr)
+    );
+
+    let hermetic = run_claim_batch(&[
+        "--source-root",
+        ws.to_str().expect("workspace"),
+        "--source-root",
+        ws.join("dsl").to_str().expect("dsl root"),
+        "--entry",
+        entry.to_str().expect("entry"),
+        "--function",
+        "filesystem_write_closure_scale_holds",
+        "--hermetic",
+        "--fixture-store",
+        store_dir.to_str().expect("store path"),
+    ]);
+    let _ = fs::remove_dir_all(&store_dir);
+    assert!(
+        hermetic.status.success(),
+        "hermetic replay of the closure-scale witness must pass from recorded fixtures; stderr={}",
+        String::from_utf8_lossy(&hermetic.stderr)
+    );
+}
+
 #[test]
 fn hermetic_fixture_staleness_fails_closed() {
     let ws = workspace_root();

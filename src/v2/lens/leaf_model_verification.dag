@@ -1,5 +1,6 @@
 module v2.lens.leaf_model_verification
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.disposition { RealizationDispatch }
 
 import v2.extdeps.languages.go {
   go_facts_int,
@@ -798,9 +799,6 @@ fn python_l1_static_mypy_fixture() -> LeafModelPythonStaticFixturePair {
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: WallAfterGrounding {
-    grounding_authority: "T-22 run_target_verification -- behavioral host-exec verdicts",
-    dissolve_on: "emitted-code behavior is verified by host execution (R1-R3 fixtures run), replacing the structural pair-readiness witness"
-  },
-  rationale: "For the specific R1-R3 fixtures, emitted-code behavior is decidable by execution; the structural pair-readiness witness is the interim floor guarantee until behavioral host-exec (T-22) lands."
+  class: WallAfterGrounding { dissolves_to: RealizationDispatch },
+  rationale: "For the specific R1-R3 fixtures, emitted-code behavior is decidable by execution; the structural pair-readiness witness is the interim floor guarantee until behavioral host-exec (T-22) lands. Grounding authority: T-22 run_target_verification -- behavioral host-exec verdicts. Dissolves on: emitted-code behavior is verified by host execution (R1-R3 fixtures run), replacing the structural pair-readiness witness"
 }
