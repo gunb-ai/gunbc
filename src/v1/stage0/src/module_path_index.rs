@@ -30,7 +30,8 @@ pub(crate) fn witness_layer_roots_from_source(content: &str) -> Vec<String> {
 
     let filename = CI_LAYER_ROOTS_AUTHORITY_REL.to_string();
     let tokens = crate::v1_compiler_tokenize::tokenize(content.to_string(), filename.clone());
-    let source_index = crate::v1_std_core::build_newline_index(filename.clone(), content.to_string());
+    let source_index =
+        crate::v1_std_core::build_newline_index(filename.clone(), content.to_string());
     let mut source_indices = HashMap::new();
     source_indices.insert(filename.clone(), source_index);
     let result = crate::v1_compiler_parse::parse(tokens, std::rc::Rc::new(source_indices));
@@ -53,7 +54,9 @@ pub(crate) fn witness_layer_roots_from_source(content: &str) -> Vec<String> {
             panic!("ci_layer_roots authority: `{WITNESS_LAYER_ROOTS_DATA_NAME}` has no value body")
         });
         if !matches!(body.expr_data.as_ref(), ExprData::ExprListLit) {
-            panic!("ci_layer_roots authority: `{WITNESS_LAYER_ROOTS_DATA_NAME}` is not a list literal");
+            panic!(
+                "ci_layer_roots authority: `{WITNESS_LAYER_ROOTS_DATA_NAME}` is not a list literal"
+            );
         }
         let mut roots = Vec::new();
         for el in body.children.iter() {
@@ -92,7 +95,10 @@ pub(crate) fn witness_layer_roots() -> Vec<String> {
         .get_or_init(|| {
             let path = workspace_root().join(CI_LAYER_ROOTS_AUTHORITY_REL);
             let content = std::fs::read_to_string(&path).unwrap_or_else(|e| {
-                panic!("ci_layer_roots authority: failed to read {}: {e}", path.display())
+                panic!(
+                    "ci_layer_roots authority: failed to read {}: {e}",
+                    path.display()
+                )
             });
             witness_layer_roots_from_source(&content)
         })
