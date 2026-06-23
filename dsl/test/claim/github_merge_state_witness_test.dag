@@ -7,42 +7,45 @@ import extdeps.github.merge_state {
   Dirty,
   Draft,
 }
-import std.types { Bool }
 
-fn merge_state_is_clean(s: MergeStateStatus) -> Bool {
-  match s {
+test fn witness_merge_state_clean_recognized() -> Bool {
+  match Clean {
     Clean => true
     _ => false
   }
 }
 
-fn merge_state_is_blocked(s: MergeStateStatus) -> Bool {
-  match s {
+test fn witness_merge_state_blocked_not_clean() -> Bool {
+  match Blocked {
+    Clean => false
+    _ => true
+  }
+}
+
+test fn witness_merge_state_dirty_not_clean() -> Bool {
+  match Dirty {
+    Clean => false
+    _ => true
+  }
+}
+
+test fn witness_merge_state_blocked_recognized() -> Bool {
+  match Blocked {
     Blocked => true
     _ => false
   }
 }
 
-test fn witness_merge_state_clean_recognized() -> Bool {
-  merge_state_is_clean(s: Clean)
-}
-
-test fn witness_merge_state_blocked_not_clean() -> Bool {
-  !merge_state_is_clean(s: Blocked)
-}
-
-test fn witness_merge_state_dirty_not_clean() -> Bool {
-  !merge_state_is_clean(s: Dirty)
-}
-
-test fn witness_merge_state_blocked_recognized() -> Bool {
-  merge_state_is_blocked(s: Blocked)
-}
-
 test fn witness_merge_state_clean_not_blocked() -> Bool {
-  !merge_state_is_blocked(s: Clean)
+  match Clean {
+    Blocked => false
+    _ => true
+  }
 }
 
 test fn witness_merge_state_draft_not_blocked() -> Bool {
-  !merge_state_is_blocked(s: Draft)
+  match Draft {
+    Blocked => false
+    _ => true
+  }
 }

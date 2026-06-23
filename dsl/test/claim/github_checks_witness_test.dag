@@ -16,8 +16,6 @@ import extdeps.github.checks {
   check_status_wire_label,
   check_conclusion_wire_label,
 }
-import std.types { Bool }
-
 data sample_check_output: CheckOutput = CheckOutput {
   title: "CI passed",
   summary: "All checks green",
@@ -57,30 +55,25 @@ data sample_check_list_one: CheckRunList = CheckRunList {
   check_runs: [sample_check_run_success],
 }
 
-fn check_run_is_complete(run: CheckRun) -> Bool {
-  match run.status {
+test fn witness_completed_run_is_complete() -> Bool {
+  match sample_check_run_success.status {
     Completed => true
     _ => false
   }
 }
 
-fn check_run_succeeded(run: CheckRun) -> Bool {
-  match run.conclusion {
-    Success => true
-    _ => false
+test fn witness_in_progress_run_is_not_complete() -> Bool {
+  match sample_check_run_pending.status {
+    Completed => false
+    _ => true
   }
 }
 
-test fn witness_completed_run_is_complete() -> Bool {
-  check_run_is_complete(run: sample_check_run_success)
-}
-
-test fn witness_in_progress_run_is_not_complete() -> Bool {
-  !check_run_is_complete(run: sample_check_run_pending)
-}
-
 test fn witness_success_conclusion_recognized() -> Bool {
-  check_run_succeeded(run: sample_check_run_success)
+  match sample_check_run_success.conclusion {
+    Success => true
+    _ => false
+  }
 }
 
 test fn witness_pending_has_no_conclusion() -> Bool {

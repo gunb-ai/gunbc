@@ -43,6 +43,13 @@ data check_conclusion_wire_contract: CoproductWireContract = {
   encoding: StringVariant { naming: SnakeCase }
 }
 
+data structural_coverage_gap_check_codec_hand_rolled: List<String> = [
+  "parse_check_status/check_status_wire_label and parse_check_conclusion/check_conclusion_wire_label",
+  "hand-roll the SnakeCase mappings already declared in check_status_wire_contract and",
+  "check_conclusion_wire_contract. Dissolve when the codec-from-contract bridge derives",
+  "decode and encode from CoproductWireContract rows directly, making these fns redundant."
+]
+
 fn parse_check_status(raw: String) -> CheckStatus? {
   if raw == "queued" { Present { value: Queued } }
   else { if raw == "in_progress" { Present { value: InProgress } }
