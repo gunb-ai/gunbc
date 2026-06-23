@@ -44,13 +44,13 @@ data check_conclusion_wire_contract: CoproductWireContract = {
 }
 
 fn parse_check_status(raw: String) -> CheckStatus? {
-  if raw == "queued" { Queued }
-  else { if raw == "in_progress" { InProgress }
-  else { if raw == "completed" { Completed }
-  else { if raw == "waiting" { Waiting }
-  else { if raw == "pending" { Pending }
-  else { if raw == "requested" { Requested }
-  else { null } } } } } }
+  if raw == "queued" { Present { value: Queued } }
+  else { if raw == "in_progress" { Present { value: InProgress } }
+  else { if raw == "completed" { Present { value: Completed } }
+  else { if raw == "waiting" { Present { value: Waiting } }
+  else { if raw == "pending" { Present { value: Pending } }
+  else { if raw == "requested" { Present { value: Requested } }
+  else { none } } } } } }
 }
 
 fn check_status_wire_label(s: CheckStatus) -> String {
@@ -65,15 +65,15 @@ fn check_status_wire_label(s: CheckStatus) -> String {
 }
 
 fn parse_check_conclusion(raw: String) -> CheckConclusion? {
-  if raw == "action_required" { ActionRequired }
-  else { if raw == "cancelled" { Cancelled }
-  else { if raw == "failure" { Failure }
-  else { if raw == "neutral" { Neutral }
-  else { if raw == "skipped" { Skipped }
-  else { if raw == "stale" { Stale }
-  else { if raw == "success" { Success }
-  else { if raw == "timed_out" { TimedOut }
-  else { null } } } } } } } }
+  if raw == "action_required" { Present { value: ActionRequired } }
+  else { if raw == "cancelled" { Present { value: Cancelled } }
+  else { if raw == "failure" { Present { value: Failure } }
+  else { if raw == "neutral" { Present { value: Neutral } }
+  else { if raw == "skipped" { Present { value: Skipped } }
+  else { if raw == "stale" { Present { value: Stale } }
+  else { if raw == "success" { Present { value: Success } }
+  else { if raw == "timed_out" { Present { value: TimedOut } }
+  else { none } } } } } } } }
 }
 
 fn check_conclusion_wire_label(c: CheckConclusion) -> String {

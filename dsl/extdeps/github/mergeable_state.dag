@@ -20,3 +20,18 @@ data mergeable_state_wire_contract: CoproductWireContract = {
   coproduct: "MergeableState",
   encoding: StringVariant { naming: ScreamingSnakeCase }
 }
+
+fn parse_mergeable_state(raw: String) -> MergeableState? {
+  if raw == "MERGEABLE" { Present { value: Mergeable } }
+  else { if raw == "CONFLICTING" { Present { value: Conflicting } }
+  else { if raw == "UNKNOWN" { Present { value: Unknown } }
+  else { none } } }
+}
+
+fn mergeable_state_wire_label(s: MergeableState) -> String {
+  match s {
+    Mergeable => "MERGEABLE"
+    Conflicting => "CONFLICTING"
+    Unknown => "UNKNOWN"
+  }
+}

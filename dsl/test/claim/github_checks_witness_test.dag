@@ -10,6 +10,11 @@ import extdeps.github.checks {
   Completed,
   Success,
   Failure,
+  TimedOut,
+  parse_check_status,
+  parse_check_conclusion,
+  check_status_wire_label,
+  check_conclusion_wire_label,
 }
 import std.types { Bool }
 
@@ -87,5 +92,55 @@ test fn witness_pending_has_no_conclusion() -> Bool {
 
 test fn witness_check_list_has_one_run() -> Bool {
   count(sample_check_list_one.check_runs) == 1
+}
+
+test fn witness_in_progress_wire_decodes_to_in_progress() -> Bool {
+  match parse_check_status(raw: "in_progress") {
+    Present { value: InProgress } => true
+    _ => false
+  }
+}
+
+test fn witness_completed_wire_decodes_to_completed() -> Bool {
+  match parse_check_status(raw: "completed") {
+    Present { value: Completed } => true
+    _ => false
+  }
+}
+
+test fn witness_wrong_case_status_does_not_decode() -> Bool {
+  match parse_check_status(raw: "IN_PROGRESS") {
+    none => true
+    _ => false
+  }
+}
+
+test fn witness_check_status_roundtrip_in_progress() -> Bool {
+  check_status_wire_label(s: InProgress) == "in_progress"
+}
+
+test fn witness_timed_out_wire_decodes_to_timed_out() -> Bool {
+  match parse_check_conclusion(raw: "timed_out") {
+    Present { value: TimedOut } => true
+    _ => false
+  }
+}
+
+test fn witness_success_wire_decodes_to_success() -> Bool {
+  match parse_check_conclusion(raw: "success") {
+    Present { value: Success } => true
+    _ => false
+  }
+}
+
+test fn witness_wrong_case_conclusion_does_not_decode() -> Bool {
+  match parse_check_conclusion(raw: "TIMED_OUT") {
+    none => true
+    _ => false
+  }
+}
+
+test fn witness_check_conclusion_roundtrip_timed_out() -> Bool {
+  check_conclusion_wire_label(c: TimedOut) == "timed_out"
 }
 

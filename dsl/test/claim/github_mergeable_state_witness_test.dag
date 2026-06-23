@@ -4,6 +4,9 @@ import extdeps.github.mergeable_state {
   MergeableState,
   Mergeable,
   Conflicting,
+  Unknown,
+  parse_mergeable_state,
+  mergeable_state_wire_label,
 }
 import std.types { Bool }
 
@@ -35,4 +38,29 @@ test fn witness_mergeable_state_conflicting_recognized() -> Bool {
 
 test fn witness_mergeable_state_mergeable_not_conflicting() -> Bool {
   !mergeable_state_is_conflicting(s: Mergeable)
+}
+
+test fn witness_mergeable_wire_decodes_to_mergeable() -> Bool {
+  match parse_mergeable_state(raw: "MERGEABLE") {
+    Present { value: Mergeable } => true
+    _ => false
+  }
+}
+
+test fn witness_conflicting_wire_decodes_to_conflicting() -> Bool {
+  match parse_mergeable_state(raw: "CONFLICTING") {
+    Present { value: Conflicting } => true
+    _ => false
+  }
+}
+
+test fn witness_lowercase_mergeable_does_not_decode() -> Bool {
+  match parse_mergeable_state(raw: "mergeable") {
+    none => true
+    _ => false
+  }
+}
+
+test fn witness_mergeable_state_roundtrip_conflicting() -> Bool {
+  mergeable_state_wire_label(s: Conflicting) == "CONFLICTING"
 }
