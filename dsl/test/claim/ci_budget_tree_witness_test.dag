@@ -52,9 +52,9 @@ fn witness_admission_matches_placement() -> Bool {
 // Divide-once: the floor imports exactly one run slot (per-run peak) and that slot fits inside
 // the parent run-pool budget. The floor never re-divides host RAM.
 fn witness_floor_run_imports_one_slot() -> Bool {
-  (byte_size_count(b: gunbc_ci_floor_run_node().appropriation.ceiling)
-      == byte_size_count(b: gunbc_ci_per_run_peak()))
-    && measure_le(a: gunbc_ci_floor_run_node().appropriation.ceiling, b: gunbc_ci_run_pool_budget())
+  let slot_is_peak = byte_size_count(b: gunbc_ci_floor_run_node().appropriation.ceiling) == byte_size_count(b: gunbc_ci_per_run_peak())
+  let fits = measure_le(a: gunbc_ci_floor_run_node().appropriation.ceiling, b: gunbc_ci_run_pool_budget())
+  return slot_is_peak && fits
 }
 
 test fn ci_budget_tree_holds() -> Bool {
