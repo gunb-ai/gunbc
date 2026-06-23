@@ -180,12 +180,14 @@ fn resolve_session_slice(mode: SessionReservationMode) -> SessionSliceResolution
 
 data gunbc_ci_runner_count_from_budget_marker: String = "the runner-slot count now divides the CONSERVING fleet_host_budget.runner_slice_cap (host - overhead - per-type idle baselines - sccache_build_pool - oomd headroom), NOT the old host - overhead - session_slice. That dissolves the §3 fork: the runner slice had two homes (this module's host_runner_slice and fleet_host_budget's runner_slice_cap) that decomposed host RAM differently; runner_slice_cap is the single authority and this module is its count CONSUMER. Sessions reserve the idle session_baseline + share the sccache pool inside the budget, so the runner count is INDEPENDENT of the session operating point (REGIME-1/2 cap*concurrency now drives only the dashboard session reservation, not runner capacity). ci_budget_tree.runner_pool_bytes_at remains a parallel non-conserving slice (separate memory-budget-tree consumer) — its convergence onto runner_slice_cap is the named follow-up, out of this PR's scope."
 
+data gunbc_ci_runner_cpu_cap_marker: String = "the runner count is int_min(memory_fit, cpu_cores_available) -- the SAME min-over-cpu-core-authority shape as std.realization_width.bounded_host_spawn_width (spawn width = int_min(demand, cores)), reading the SAME cpu_cores_available(nproc, margin) authority that the ctrl jobserver cpu_bound reads (one CPU-core authority, §3). It deliberately does NOT call bounded_host_spawn_width: that helper floors demand at 1 (shard_count_positive) because a spawn WIDTH is always >= 1 worker, whereas a runner COUNT of 0 (host too small for one whole-run peak) is valid and must fail closed (any_unfit -> PlanUnsound). So the cpu_cores_available authority is shared; the >=1 floor is the one piece that correctly differs between a width and a count."
+
 fn host_runner_count_from_cap(runner_slice_cap: ByteSize, run_unit_peak: ByteSize, cpu_cap: HardwareThreadCount) -> Int {
   let mem_count = measure_fit_count_floor(capacity: runner_slice_cap, each: run_unit_peak)
   if mem_count <= 0 {
     0
   } else {
-    hardware_thread_count_value(t: bounded_host_spawn_width(shard_count: mem_count, hardware_threads: cpu_cap))
+    int_min(a: mem_count, b: hardware_thread_count_value(t: cpu_cap))
   }
 }
 

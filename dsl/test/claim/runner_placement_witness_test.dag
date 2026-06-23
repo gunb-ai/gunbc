@@ -14,6 +14,7 @@ import gunbc.ci_runner_placement {
   gunbc_ci_runner_slot_enforcement,
   gunbc_ci_runner_slot_enforcement_marker,
   gunbc_ci_runner_count_from_budget_marker,
+  gunbc_ci_runner_cpu_cap_marker,
   gunbc_ci_operating_curve_session_only_marker,
   SessionSliceResolution,
   SessionSliceResolved,
@@ -33,7 +34,7 @@ import gunbc.ci_runner_placement {
   samples_covered,
   gunbc_ci_count_field_measure_followup,
 }
-import gunbc.runner_deploy_emit { expected_runner_deploy_manifest, runner_deploy_drifted }
+import gunbc.runner_deploy_emit { expected_runner_deploy_manifest, runner_deploy_drifted, manifest_host_text }
 import gunbc.fleet_host_budget {
   FleetHostPlan,
   FleetHostPlanDerived,
@@ -290,6 +291,17 @@ fn witness_sound_plan_derives_per_host_capacity() -> Bool {
   }
 }
 
+fn witness_sound_manifest_line_is_populated() -> Bool {
+  match fully_sound_plan() {
+    PlanDerived { hosts: hosts, fleet_concurrent_runs: _ } =>
+      hosts.length() > 0
+        && all(hosts, h =>
+            starts_with(manifest_host_text(h: h), prefix: concat(concat("host=", h.identity), " runner_count="))
+          )
+    PlanUnsound { reason: _ } => false
+  }
+}
+
 fn witness_count_respects_conserved_runner_slice() -> Bool {
   let peak = 24000000000
   match fully_sound_plan() {
@@ -397,6 +409,7 @@ fn witness_followup_markers_documented() -> Bool {
   gunbc_ci_count_field_measure_followup != ""
     && gunbc_ci_runner_slot_enforcement_marker != ""
     && gunbc_ci_runner_count_from_budget_marker != ""
+    && gunbc_ci_runner_cpu_cap_marker != ""
     && gunbc_ci_operating_curve_session_only_marker != ""
     && gunbc_ci_job_cgroup_peak_provenance != ""
     && gunbc_ci_per_session_peak_provenance != ""
@@ -421,6 +434,7 @@ test fn runner_placement_holds() -> Bool {
     && witness_partial_unmeasured_is_refused()
     && witness_over_commit_is_refused()
     && witness_sound_plan_derives_per_host_capacity()
+    && witness_sound_manifest_line_is_populated()
     && witness_count_respects_conserved_runner_slice()
     && witness_runner_count_memory_term_binds()
     && witness_runner_count_cpu_term_binds()
