@@ -2,6 +2,7 @@ module std.resources
 
 import std.filesystem { FileClassification }
 import std.types { Timestamp, FilePath, TextFilePath }
+import std.measure { ByteSize }
 
 type ResourceHandle {
   type: String
@@ -65,4 +66,16 @@ resource AuthContext {
 
   }
   release {}
+}
+
+resource Entropy {
+  kind: Observation
+  mode: Read
+  acquire {}
+  release {}
+
+  capability read_bytes {
+    input { count: ByteSize }
+    output { octets: List<UInt8> }
+  }
 }

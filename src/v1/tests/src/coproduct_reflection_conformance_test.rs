@@ -11,7 +11,7 @@ const CONFORMANCE_ENTRY: &str = "src/v2/compiler/manual/coproduct_reflection_con
 const WITNESS_FN: &str = "coproduct_reflection_conformance_holds";
 
 fn v2_source_roots() -> Vec<std::path::PathBuf> {
-    vec![workspace_root().join("src/v2")]
+    crate::helpers::v2_layer_roots()
 }
 
 fn cert_sources() -> Vec<Rc<SourceFile>> {
