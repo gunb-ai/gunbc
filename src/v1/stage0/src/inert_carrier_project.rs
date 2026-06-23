@@ -68,7 +68,7 @@ const INERT_CARRIER_ROSTER: &[&str] = &[
     "MemoryStats", // dsl/extdeps/os/free.dag — host free output memory block; shadow lane, no workflow consumer yet.
     "ProcMeminfo", // dsl/extdeps/os/proc_meminfo.dag — /proc/meminfo parsed shape; shadow lane, no workflow consumer yet.
     "ReactHookSite", // src/v2/extdeps/frameworks/react.dag — React hook-site model; unwired.
-    "SecretValue",   // dsl/std/types.dag — secret-string carrier; no redaction consumer wired.
+    "SecretValue", // dsl/std/types.dag — secret-string carrier; no redaction consumer wired.
     "SwapStats", // dsl/extdeps/os/free.dag — host free output swap block; shadow lane, no workflow consumer yet.
     "SystemdUnitActiveState", // dsl/extdeps/os/systemd.dag — systemctl is-active coproduct; shadow lane, no workflow consumer yet.
     "SystemdUnitStatus", // dsl/extdeps/os/systemd.dag — systemd unit status shape; shadow lane, no workflow consumer yet.
