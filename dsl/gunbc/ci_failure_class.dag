@@ -6,22 +6,30 @@ type InfraSignature
   = ResourceTemporarilyUnavailable
   | ProcessSpawnFailure
   | SccacheFatalError
+  | OutOfMemoryKill
+  | RunnerLost
 
 type FloorFailureClass
   = Infra { signature: InfraSignature }
   | Structural { reason: String }
 
-data infra_signatures: List<InfraSignature> = [
+data verdict_infra_signatures: List<InfraSignature> = [
   ResourceTemporarilyUnavailable,
   ProcessSpawnFailure,
-  SccacheFatalError
+  SccacheFatalError,
+  OutOfMemoryKill,
+  RunnerLost
 ]
+
+data oom_exit_code: Int = 137
 
 fn infra_signature_match_substring(sig: InfraSignature) -> String {
   match sig {
     ResourceTemporarilyUnavailable => "Resource temporarily unavailable"
     ProcessSpawnFailure => "failed to spawn"
     SccacheFatalError => "sccache: encountered fatal error"
+    OutOfMemoryKill => "signal: 9 (SIGKILL)"
+    RunnerLost => "The runner has received a shutdown signal"
   }
 }
 
@@ -30,11 +38,33 @@ fn infra_signature_origin(sig: InfraSignature) -> String {
     ResourceTemporarilyUnavailable => "POSIX errno EAGAIN strerror; fork/clone under fleet memory+pid pressure"
     ProcessSpawnFailure => "cargo/rustc child-process spawn failed under fleet pressure"
     SccacheFatalError => "sccache compiler-cache server fatal error"
+    OutOfMemoryKill => "SIGKILL (exit 137); cgroup/kernel OOM-kill under co-residence"
+    RunnerLost => "GitHub Actions runner disconnect / host-uptime reset mid-job"
   }
 }
 
+fn signature_appears_in_build_log(sig: InfraSignature) -> Bool {
+  match sig {
+    ResourceTemporarilyUnavailable => true
+    ProcessSpawnFailure => true
+    SccacheFatalError => true
+    OutOfMemoryKill => false
+    RunnerLost => false
+  }
+}
+
+fn build_retry_infra_signatures() -> List<InfraSignature> {
+  fold(verdict_infra_signatures, init: [], f: fn(acc, sig) {
+    if signature_appears_in_build_log(sig: sig) {
+      concat(acc, [sig])
+    } else {
+      acc
+    }
+  })
+}
+
 fn infra_retry_grep_alternation() -> String {
-  fold(infra_signatures, init: "", f: fn(acc, sig) {
+  fold(build_retry_infra_signatures(), init: "", f: fn(acc, sig) {
     let sub = infra_signature_match_substring(sig: sig)
     if acc == "" { sub } else { concat(concat(acc, "|"), sub) }
   })
@@ -45,7 +75,7 @@ fn reason_matches_infra_signature(reason: String, sig: InfraSignature) -> Bool {
 }
 
 fn classify_failure_reason(reason: String) -> FloorFailureClass {
-  fold(infra_signatures, init: Structural { reason: reason }, f: fn(acc, sig) {
+  fold(verdict_infra_signatures, init: Structural { reason: reason }, f: fn(acc, sig) {
     match acc {
       Infra { signature: _ } => acc
       Structural { reason: r } =>
@@ -58,6 +88,18 @@ fn classify_failure_reason(reason: String) -> FloorFailureClass {
   })
 }
 
+fn classify_floor_exit(e: ProcessExit) -> FloorFailureClass {
+  match e {
+    ExitSuccess => Structural { reason: "" }
+    ExitFailure { code: c, reason: r } =>
+      if c == oom_exit_code {
+        Infra { signature: OutOfMemoryKill }
+      } else {
+        classify_failure_reason(reason: r)
+      }
+  }
+}
+
 fn floor_failure_blocks_merge(c: FloorFailureClass) -> Bool {
   match c {
     Infra { signature: _ } => false
@@ -68,7 +110,7 @@ fn floor_failure_blocks_merge(c: FloorFailureClass) -> Bool {
 fn floor_exit_blocks_merge(e: ProcessExit) -> Bool {
   match e {
     ExitSuccess => false
-    ExitFailure { code: _, reason: r } =>
-      floor_failure_blocks_merge(c: classify_failure_reason(reason: r))
+    ExitFailure { code: _, reason: _ } =>
+      floor_failure_blocks_merge(c: classify_floor_exit(e: e))
   }
 }

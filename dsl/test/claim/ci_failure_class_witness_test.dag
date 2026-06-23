@@ -1,0 +1,103 @@
+module test.claim.ci_failure_class_witness
+
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import gunbc.ci_failure_class {
+  InfraSignature, OutOfMemoryKill,
+  FloorFailureClass, Infra, Structural,
+  classify_failure_reason, classify_floor_exit,
+  floor_failure_blocks_merge, floor_exit_blocks_merge,
+  infra_retry_grep_alternation, build_retry_infra_signatures,
+  verdict_infra_signatures, infra_signature_match_substring
+}
+
+fn class_is_infra(c: FloorFailureClass) -> Bool {
+  match c {
+    Infra { signature: _ } => true
+    Structural { reason: _ } => false
+  }
+}
+
+fn class_is_structural(c: FloorFailureClass) -> Bool {
+  match c {
+    Infra { signature: _ } => false
+    Structural { reason: _ } => true
+  }
+}
+
+fn reason_classifies_infra(reason: String) -> Bool {
+  class_is_infra(c: classify_failure_reason(reason: reason))
+}
+
+fn list_len(xs: List<InfraSignature>) -> Int {
+  fold(xs, init: 0, f: fn(acc, _) { acc + 1 })
+}
+
+fn list_has_signature(xs: List<InfraSignature>, target: InfraSignature) -> Bool {
+  fold(xs, init: false, f: fn(acc, sig) { acc || (sig == target) })
+}
+
+fn witness_real_infra_reasons_are_non_blocking() -> Bool {
+  let eagain = "error: failed to run custom build command\nResource temporarily unavailable (os error 11)"
+  let spawn = "error: could not compile; caused by: failed to spawn process"
+  let sccache = "sccache: encountered fatal error\nsccache: error: Connection refused (os error 111)"
+  reason_classifies_infra(reason: eagain)
+    && reason_classifies_infra(reason: spawn)
+    && reason_classifies_infra(reason: sccache)
+    && (floor_failure_blocks_merge(c: classify_failure_reason(reason: eagain)) == false)
+    && (floor_failure_blocks_merge(c: classify_failure_reason(reason: sccache)) == false)
+}
+
+fn witness_oom_exit_137_is_infra_via_code() -> Bool {
+  let oom = ExitFailure { code: 137, reason: "Process completed with exit code 137." }
+  class_is_infra(c: classify_floor_exit(e: oom))
+    && (floor_exit_blocks_merge(e: oom) == false)
+}
+
+fn witness_runner_lost_is_infra() -> Bool {
+  reason_classifies_infra(reason: "The runner has received a shutdown signal. Stopping current job.")
+}
+
+fn witness_structural_gate_violation_blocks() -> Bool {
+  let layering = "layering_imports gate: upward import std -> extdeps at dsl/std/credentials.dag:7"
+  let drift = "generated_artifact_drift gate: .github/workflows/ci.yml differs from gunbc ci output"
+  class_is_structural(c: classify_failure_reason(reason: layering))
+    && class_is_structural(c: classify_floor_exit(e: ExitFailure { code: 1, reason: drift }))
+    && floor_failure_blocks_merge(c: classify_failure_reason(reason: layering))
+    && floor_exit_blocks_merge(e: ExitFailure { code: 1, reason: drift })
+}
+
+fn witness_unknown_reason_fails_closed() -> Bool {
+  let unknown = "some entirely novel failure mode we have never grounded"
+  class_is_structural(c: classify_failure_reason(reason: unknown))
+    && floor_exit_blocks_merge(e: ExitFailure { code: 1, reason: unknown })
+}
+
+fn witness_floor_green_does_not_block() -> Bool {
+  (floor_exit_blocks_merge(e: ExitSuccess) == false)
+    && class_is_structural(c: classify_floor_exit(e: ExitSuccess))
+}
+
+fn witness_grep_alternation_is_single_authority() -> Bool {
+  let expected = "Resource temporarily unavailable|failed to spawn|sccache: encountered fatal error"
+  (infra_retry_grep_alternation() == expected)
+    && string_contains(s: infra_retry_grep_alternation(), pattern: "Resource temporarily unavailable|failed to spawn")
+}
+
+fn witness_build_retry_subset_excludes_job_signals() -> Bool {
+  let build = build_retry_infra_signatures()
+  (list_len(xs: build) == 3)
+    && (list_len(xs: verdict_infra_signatures) == 5)
+    && (list_has_signature(xs: build, target: OutOfMemoryKill) == false)
+    && (string_contains(s: infra_retry_grep_alternation(), pattern: infra_signature_match_substring(sig: OutOfMemoryKill)) == false)
+}
+
+test fn ci_failure_class_witnesses() -> Bool {
+  witness_real_infra_reasons_are_non_blocking()
+    && witness_oom_exit_137_is_infra_via_code()
+    && witness_runner_lost_is_infra()
+    && witness_structural_gate_violation_blocks()
+    && witness_unknown_reason_fails_closed()
+    && witness_floor_green_does_not_block()
+    && witness_grep_alternation_is_single_authority()
+    && witness_build_retry_subset_excludes_job_signals()
+}
