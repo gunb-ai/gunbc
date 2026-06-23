@@ -1,32 +1,58 @@
 module gunbc.tools.bmc_onboard
 
 // Executable onboarding orchestration for the new Altra server (BMC 192.168.1.192).
-// Composes the lifecycle legs over new_altra_onboarding_plan + the BmcOnboardingPhase machine.
+// Composes the full lifecycle over new_altra_onboarding_plan + srv3_os_install_plan, walking
+// the phases acquire -> gen+store -> rotate -> reauth -> os-install entirely in .dag.
 //
-// Leg status:
-//   acquire      — PROVEN live (gunbc.tools.bmc_onboard_validate ran -> ExitSuccess)
-//   gen+store    — entropy mint (#5633 extdeps.entropy) -> base64 -> GCP store (secret_manager);
-//                  wired once #5633 lands on main (this file stays free of that import until then).
-//   rotate+reauth — THIS FILE: materialize netrc + PATCH body, SetAccountPassword, reauth-verify.
-//                  Compile-verified here; LIVE EXECUTION IS OPERATOR-FENCED (first destructive write).
-//                  Live-correctness of account_id (= factory username) and the Redfish PATCH body
-//                  shape is confirmed only by the gated live run against .192, not by this typecheck.
-//   os-install   — Lane E (#5638 PXE) — pending.
+// Leg realization:
+//   acquire      — GetServiceRoot + factory-login GetSystem (read; PROVEN live via bmc_onboard_validate)
+//   gen+store    — mint a credential from OS entropy (extdeps.entropy Urandom), fail-CLOSED, then store
+//                  it to GCP Secret Manager for durability (AddVersion on the existing srv3 secret)
+//   rotate+reauth — materialize netrc + PATCH body via Filesystem.Write, SetAccountPassword (Redfish
+//                  write), reauth with the NEW credential to VERIFY the rotation took (fail-closed)
+//   os-install   — re-materialize netrc with the NEW credential, SetBootSourceOverride(Pxe,Once) +
+//                  ResetSystem(ForceRestart) to boot srv3 into the Lane-E PXE/autoinstall path
+//
+// Verification posture: the whole graph is COMPILE-VERIFIED. LIVE EXECUTION IS OPERATOR-FENCED
+// (the first SetAccountPassword is destructive). Live-correctness of account_id (= factory username),
+// the Redfish PATCH/POST body shapes, and the GCP store round-trip is confirmed only by the gated run
+// against .192, not by this typecheck. This is a tool (no test fn), so it does NOT auto-enroll as a
+// floor witness — no false CI-coverage claim.
 
 import extdeps.bmc.http
+import extdeps.bmc.types { redfish_boot_target_wire, redfish_boot_override_enabled_wire, redfish_reset_type_wire }
 import extdeps.filesystem.filesystem_io
+import extdeps.entropy
+import extdeps.cloud.gcp.secret_manager
+import extdeps.cloud.gcp.gcp { GcpProjectId }
+import extdeps.shell
 import gunbc.bmc_onboarding { new_altra_onboarding_plan }
+import gunbc.os_install { srv3_os_install_plan }
+import std.credentials { Stored }
+import std.encoding { base64_encode, base64_decode, Base64Variant, Standard, UrlSafe }
+import std.integer { UInt8 }
 import std.types { NonEmptyStr, Secret, String }
+import std.logic { Bool }
 import std.resources { Network }
-import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure, exit_code_general_error }
 
-// Runtime materialization paths for the credential-rotation files.
+// Runtime materialization paths for the credential + boot files.
 // SECURITY (§5): these transiently hold the BMC credential on disk under the default umask.
-// DEBT (named dissolution): Filesystem.Write cannot set mode 0600 today, and there is no post-run
+// DEBT (named dissolution): Filesystem.Write cannot set mode 0600 today and there is no post-run
 // unlink — dissolution = a mode-aware file-write effect + an unlink leg, so the secret-on-disk
 // window is 0600 and bounded. Tracked for the live-go review, NOT a silent leak.
 data bmc_onboard_netrc_path: String = "/tmp/bmc_onboard_netrc"
 data bmc_onboard_pwbody_path: String = "/tmp/bmc_onboard_pwbody.json"
+data bmc_onboard_bootbody_path: String = "/tmp/bmc_onboard_bootbody.json"
+data bmc_onboard_resetbody_path: String = "/tmp/bmc_onboard_resetbody.json"
+
+// GCP project that homes the srv3 BMC admin secret (the secret_id rides on the onboarding plan).
+data srv3_gcp_project: GcpProjectId = "gunbai-secrets"
+
+// Credential byte count (20 octets -> 28-char base64url credential).
+data bmc_credential_bytes: Int = 20
+
+// --- pure content builders ---------------------------------------------------
 
 // One curl netrc line authenticating as `account` with `password` at `host`.
 fn netrc_content(host: String, account: String, password: String) -> String {
@@ -38,11 +64,50 @@ fn account_password_body(new_password: String) -> String {
   concat("{\"Password\": \"", concat(new_password, "\"}"))
 }
 
-// ROTATE + REAUTH leg.
-// Authenticate with the factory credential, PATCH the admin account to `new_credential`, then
-// reauth with the new credential to VERIFY the rotation took — fail-closed if it did not.
-// `new_credential` is the minted+stored Secret (gen+store leg); declassified to String exactly once,
-// explicitly, to write the PATCH body (the Secret type forbids accidental exposure).
+// Redfish PATCH body that overrides the boot source (target + enablement).
+fn boot_override_body(target: String, enabled: String) -> String {
+  concat("{\"Boot\": {\"BootSourceOverrideTarget\": \"",
+    concat(target, concat("\", \"BootSourceOverrideEnabled\": \"", concat(enabled, "\"}}"))))
+}
+
+// Redfish POST body that resets the system.
+fn reset_body(reset_type: String) -> String {
+  concat("{\"ResetType\": \"", concat(reset_type, "\"}"))
+}
+
+// Fully-qualified GCP secret resource name from a project + short secret id.
+fn gcp_secret_full_name(project: String, secret_id: String) -> String {
+  concat("projects/", concat(project, concat("/secrets/", secret_id)))
+}
+
+// The short secret id the rotated credential is stored under (from the onboarding plan).
+fn onboarding_secret_id() -> NonEmptyStr {
+  match new_altra_onboarding_plan.rotated_credential {
+    Stored { secret_name: sn } => sn
+    Chained { steps: _ } => "bmc-srv3-admin" as NonEmptyStr
+  }
+}
+
+// --- mint (fail-closed) ------------------------------------------------------
+
+// Read `byte_count` octets of OS entropy via the Urandom realization and decode to raw octets.
+// Optional: Absent only if the base64 round-trip fails (structurally unreachable — Urandom.ReadBytes
+// fails closed on nonzero exit). The CALLER fails closed on Absent, never fabricating a credential.
+fn mint_credential_octets(byte_count: Int) -> List<UInt8>? {
+  base64_decode(s: Urandom.ReadBytes(count: byte_count).octets_b64, variant: Standard)
+}
+
+// --- write a netrc authenticating as `account` with `password` --------------
+
+fn write_netrc(host: String, account: String, password: String) -> Bool {
+  Filesystem.Write(path: bmc_onboard_netrc_path, content: netrc_content(host: host, account: account, password: password)).success
+}
+
+// --- rotate + reauth leg -----------------------------------------------------
+
+// Authenticate with the factory credential, PATCH the admin account to `new_credential`, then reauth
+// with the new credential to VERIFY the rotation took. The Secret is declassified to String exactly
+// once, explicitly, to write the PATCH body (the Secret type forbids accidental exposure).
 func bmc_rotate_credential(new_credential: Secret) -> ProcessExit
   uses net: Network
 {
@@ -50,12 +115,9 @@ func bmc_rotate_credential(new_credential: Secret) -> ProcessExit
   let host = plan.bmc.host
   let account = plan.factory_login.username
 
-  let netrc = Filesystem.Write(
-    path: bmc_onboard_netrc_path,
-    content: netrc_content(host: host, account: account, password: plan.factory_login.published_password)
-  )
-  if netrc.success == false {
-    return exit_failure(reason: concat("netrc write failed: ", netrc.error))
+  // netrc authenticates the PATCH as the CURRENT (factory) credential.
+  if write_netrc(host: host, account: account, password: plan.factory_login.published_password) == false {
+    return exit_failure(reason: "rotate: netrc write failed")
   }
 
   let body = Filesystem.Write(
@@ -63,10 +125,10 @@ func bmc_rotate_credential(new_credential: Secret) -> ProcessExit
     content: account_password_body(new_password: new_credential as String)
   )
   if body.success == false {
-    return exit_failure(reason: concat("password body write failed: ", body.error))
+    return exit_failure(reason: concat("rotate: password body write failed: ", body.error))
   }
 
-  let rot = redfish.Http.SetAccountPassword(
+  rot = redfish.Http.SetAccountPassword(
     bmc_host: host,
     netrc_file: bmc_onboard_netrc_path as NonEmptyStr,
     account_id: account,
@@ -76,10 +138,127 @@ func bmc_rotate_credential(new_credential: Secret) -> ProcessExit
     return exit_failure(reason: rot.body)
   }
 
-  let verify = redfish.Http.GetSystem(bmc_host: host, username: account, password: new_credential)
+  verify = redfish.Http.GetSystem(bmc_host: host, username: account, password: new_credential)
   return if verify.success {
     ExitSuccess
   } else {
-    exit_failure(reason: concat("rotation verify failed (new credential rejected): ", verify.body))
+    exit_failure(reason: concat("rotate: reauth with new credential rejected: ", verify.body))
+  }
+}
+
+// --- os-install leg ----------------------------------------------------------
+
+// Point srv3 at the PXE/autoinstall path (Lane E) and reboot. Authenticates with the NEW credential
+// (the factory netrc from the rotate leg is now stale), so it re-materializes netrc first.
+func bmc_os_install(new_credential: Secret) -> ProcessExit
+  uses net: Network
+{
+  let plan = new_altra_onboarding_plan
+  let host = plan.bmc.host
+  let account = plan.factory_login.username
+  let system_id = plan.redfish_system_id
+  let install = srv3_os_install_plan
+
+  if write_netrc(host: host, account: account, password: new_credential as String) == false {
+    return exit_failure(reason: "os-install: netrc (new credential) write failed")
+  }
+
+  let boot_body = Filesystem.Write(
+    path: bmc_onboard_bootbody_path,
+    content: boot_override_body(
+      target: redfish_boot_target_wire(t: install.bmc_boot_target),
+      enabled: redfish_boot_override_enabled_wire(e: install.bmc_boot_enabled)
+    )
+  )
+  if boot_body.success == false {
+    return exit_failure(reason: concat("os-install: boot body write failed: ", boot_body.error))
+  }
+
+  boot = redfish.Http.SetBootSourceOverride(
+    bmc_host: host,
+    netrc_file: bmc_onboard_netrc_path as NonEmptyStr,
+    system_id: system_id,
+    request_body_file: bmc_onboard_bootbody_path as NonEmptyStr
+  )
+  if boot.success == false {
+    return exit_failure(reason: concat("os-install: boot source override failed: ", boot.body))
+  }
+
+  let reset_body_w = Filesystem.Write(
+    path: bmc_onboard_resetbody_path,
+    content: reset_body(reset_type: redfish_reset_type_wire(r: install.post_stage_reset))
+  )
+  if reset_body_w.success == false {
+    return exit_failure(reason: concat("os-install: reset body write failed: ", reset_body_w.error))
+  }
+
+  reset = redfish.Http.ResetSystem(
+    bmc_host: host,
+    netrc_file: bmc_onboard_netrc_path as NonEmptyStr,
+    system_id: system_id,
+    request_body_file: bmc_onboard_resetbody_path as NonEmptyStr
+  )
+  return if reset.success {
+    ExitSuccess
+  } else {
+    exit_failure(reason: concat("os-install: system reset failed: ", reset.body))
+  }
+}
+
+// --- gen+store -> rotate -> os-install continuation --------------------------
+
+// Given freshly-minted entropy octets: derive the credential, store it to GCP for durability, rotate
+// the BMC password, then drive the OS install. Chained on ProcessExit so any leg's failure short-circuits.
+func bmc_onboard_store_rotate_install(octets: List<UInt8>) -> ProcessExit
+  uses net: Network
+{
+  let credential = base64_encode(octets: octets, variant: UrlSafe) as Secret
+
+  // Store the credential to GCP for durability (payload is base64 of the same octets — no utf8 hop).
+  // AddVersion on the existing srv3 secret; new-node enrollment (idempotent CreateSecret) is the
+  // assimilate/discovery lane's concern, not srv3's (its secret already exists).
+  auth = shell.GCloud.AuthPrintAccessToken()
+  _stored = gcp.SecretManager.AddVersion(
+    access_token: auth.access_token,
+    secret_name: gcp_secret_full_name(project: srv3_gcp_project, secret_id: onboarding_secret_id()),
+    payload_b64: base64_encode(octets: octets, variant: Standard)
+  )
+
+  return match bmc_rotate_credential(new_credential: credential) {
+    ExitSuccess => bmc_os_install(new_credential: credential)
+    ExitFailure { code: c, reason: r } => ExitFailure { code: c, reason: r }
+  }
+}
+
+// --- top-level orchestration -------------------------------------------------
+
+// Full srv3 onboarding: acquire -> gen+store -> rotate -> reauth -> os-install.
+// LIVE EXECUTION OPERATOR-FENCED. Run: gunbc run dsl/gunbc/tools/bmc_onboard.dag --function bmc_onboard_srv3
+func bmc_onboard_srv3() -> ProcessExit
+  uses net: Network
+{
+  let plan = new_altra_onboarding_plan
+  let host = plan.bmc.host
+  let account = plan.factory_login.username
+
+  // 1. ACQUIRE — service root reachable + factory login valid (read-only; safe).
+  root_resp = redfish.Http.GetServiceRoot(bmc_host: host)
+  if root_resp.success == false {
+    return exit_failure(reason: concat("acquire: service root unreachable: ", root_resp.body))
+  }
+  acq = redfish.Http.GetSystem(
+    bmc_host: host,
+    username: account,
+    password: plan.factory_login.published_password as Secret
+  )
+  if acq.success == false {
+    return exit_failure(reason: concat("acquire: factory login failed: ", acq.body))
+  }
+
+  // 2. GEN — mint a credential from OS entropy, FAIL-CLOSED (never a fabricated/empty credential).
+  octets_opt = mint_credential_octets(byte_count: bmc_credential_bytes)
+  return match octets_opt {
+    Absent => exit_failure(reason: "gen: entropy mint failed (fail-closed)")
+    Present { value: octets } => bmc_onboard_store_rotate_install(octets: octets)
   }
 }
