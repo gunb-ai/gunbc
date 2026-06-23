@@ -1,42 +1,46 @@
 module test.claim.srv3_os_install
 
-
 import std.logic { Bool }
 import std.types { Int }
 import std.os.types { UbuntuOs, WindowsOs, MacosOs, NobleNumbat2404Lts }
-import extdeps.toolchain.types { Aarch64, X86_64, Riscv64 }
-import extdeps.uri { Uri, Https }
+import extdeps.toolchain.types { X86_64, Riscv64 }
 import extdeps.provisioning.network_boot {
   network_uefi_bootloader_artifact,
-  network_boot_mode_needs_tftp,
-  network_boot_chain_tftp_coherent,
   DhcpBootDirection,
-  UefiHttpBoot,
-  LegacyBiosPxe,
   NativeDhcpBootOptions,
   ProxyDhcp,
+  UefiHttpBoot,
+  LegacyBiosPxe,
+  UefiPxe,
 }
 import extdeps.os.ubuntu_autoinstall {
-  ubuntu_autoinstall_is_unattended_network,
   NoCloudNet,
 }
 import gunbc.os_install {
-  VirtualMediaPresent,
-  VirtualMediaAbsent,
-  NetworkBootDelivery,
-  VirtualMediaDelivery,
   LanInstallInfraSurvey,
-  os_delivery_is_coherent_for_board,
   survey_implied_dhcp_direction,
+  srv3_network_boot_chain,
   srv3_os_install_plan,
 }
 import extdeps.bmc.types {
   redfish_boot_target_wire,
   redfish_boot_override_enabled_wire,
+  VirtualMediaSupported,
+  VirtualMediaUnsupported,
+}
+import extdeps.boards.asrock_rack {
+  asrock_altrad8ud_virtual_media_support,
+}
+
+fn dhcp_direction_tag(d: DhcpBootDirection) -> Int {
+  match d {
+    NativeDhcpBootOptions => 0
+    ProxyDhcp => 1
+  }
 }
 
 test fn srv3_bootloader_artifact_is_arch_grounded() -> Bool {
-  match network_uefi_bootloader_artifact(arch: Aarch64) {
+  match network_uefi_bootloader_artifact(arch: srv3_os_install_plan.host_architecture) {
     Present { value: a } => a == "grubnetaa64.efi"
     Absent => false
   }
@@ -50,17 +54,16 @@ test fn srv3_bootloader_artifact_is_arch_grounded() -> Bool {
     }
 }
 
-test fn srv3_chain_is_uefi_http_boot_no_tftp() -> Bool {
-  network_boot_mode_needs_tftp(mode: UefiHttpBoot) == false
-    && network_boot_mode_needs_tftp(mode: LegacyBiosPxe) == true
-    && match srv3_os_install_plan.delivery {
-      NetworkBootDelivery { chain: c, autoinstall: _ } => network_boot_chain_tftp_coherent(chain: c)
-      VirtualMediaDelivery { image: _ } => false
-    }
+test fn srv3_chain_is_uefi_http_boot() -> Bool {
+  match srv3_network_boot_chain.boot_mode {
+    UefiHttpBoot => true
+    LegacyBiosPxe { tftp_root: _ } => false
+    UefiPxe { tftp_root: _ } => false
+  }
 }
 
 test fn srv3_survey_forces_proxy_dhcp() -> Bool {
-  dhcp_direction_tag(survey_implied_dhcp_direction(survey: srv3_os_install_plan.lan_survey)) == 1
+  dhcp_direction_tag(srv3_network_boot_chain.dhcp_direction) == 1
     && dhcp_direction_tag(
       survey_implied_dhcp_direction(
         survey: LanInstallInfraSurvey {
@@ -71,30 +74,11 @@ test fn srv3_survey_forces_proxy_dhcp() -> Bool {
     ) == 0
 }
 
-fn dhcp_direction_tag(d: DhcpBootDirection) -> Int {
-  match d {
-    NativeDhcpBootOptions => 0
-    ProxyDhcp => 1
+test fn srv3_board_has_no_virtual_media() -> Bool {
+  match asrock_altrad8ud_virtual_media_support {
+    VirtualMediaSupported => false
+    VirtualMediaUnsupported => true
   }
-}
-
-test fn srv3_no_virtual_media_forces_network_boot() -> Bool {
-  os_delivery_is_coherent_for_board(
-    vm: VirtualMediaAbsent,
-    delivery: srv3_os_install_plan.delivery,
-  )
-    && os_delivery_is_coherent_for_board(
-      vm: VirtualMediaAbsent,
-      delivery: VirtualMediaDelivery {
-        image: Uri { scheme: Https, locator: "example.invalid/ubuntu.iso" },
-      },
-    ) == false
-    && os_delivery_is_coherent_for_board(
-      vm: VirtualMediaPresent,
-      delivery: VirtualMediaDelivery {
-        image: Uri { scheme: Https, locator: "example.invalid/ubuntu.iso" },
-      },
-    )
 }
 
 test fn srv3_plan_targets_ubuntu_2404_aarch64_pxe_once() -> Bool {
@@ -108,14 +92,10 @@ test fn srv3_plan_targets_ubuntu_2404_aarch64_pxe_once() -> Bool {
   }
     && redfish_boot_target_wire(t: srv3_os_install_plan.bmc_boot_target) == "Pxe"
     && redfish_boot_override_enabled_wire(e: srv3_os_install_plan.bmc_boot_enabled) == "Once"
-    && match srv3_os_install_plan.delivery {
-      NetworkBootDelivery { chain: _, autoinstall: a } =>
-        ubuntu_autoinstall_is_unattended_network(payload: a)
-          && a.autoinstall_version == 1
-          && match a.delivery {
-            NoCloudNet { seed_url: _ } => true
-            _ => false
-          }
-      VirtualMediaDelivery { image: _ } => false
+    && srv3_os_install_plan.network_boot_delivery.autoinstall.fully_automated
+    && srv3_os_install_plan.network_boot_delivery.autoinstall.autoinstall_version == 1
+    && match srv3_os_install_plan.network_boot_delivery.autoinstall.delivery {
+      NoCloudNet { seed_url: _ } => true
+      _ => false
     }
 }
