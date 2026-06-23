@@ -66,6 +66,24 @@ fn sentinel_detection() {
 }
 
 #[test]
+fn target_glyphs_are_emoji_idents() {
+    // U+1F7E2 🟢 (large green circle) and U+1F7E1 🟡 (large yellow circle) —
+    // the operator's actual target codepoints. Prove Emoji_Presentation narrowing
+    // did NOT exclude them (they have EmojiPresentation status, unlike keycap bases).
+    assert!(v1_rt::is_emoji_ident(0x1F7E2), "U+1F7E2 🟢 must be emoji_ident");
+    assert!(v1_rt::is_emoji_ident(0x1F7E1), "U+1F7E1 🟡 must be emoji_ident");
+    // Sentinel round-trip: emit escapes these as _Eu<UPPER-HEX>_
+    assert!(
+        is_reserved_emit_sentinel("_Eu1F7E2_".to_string()),
+        "_Eu1F7E2_ (🟢 sentinel) must be recognised"
+    );
+    assert!(
+        is_reserved_emit_sentinel("_Eu1F7E1_".to_string()),
+        "_Eu1F7E1_ (🟡 sentinel) must be recognised"
+    );
+}
+
+#[test]
 fn star_and_hash_are_not_ident_chars() {
     // Extended_Pictographic excludes keycap bases # (U+0023) and * (U+002A)
     assert!(!v1_rt::is_emoji_ident(35), "U+0023 # must NOT be emoji_ident");
