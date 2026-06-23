@@ -1,5 +1,6 @@
 module v2.lens.table_decision_tree
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.disposition { SingleAuthority }
 
 import std.lens_verdict {
   LensVerdict,
@@ -33,9 +34,6 @@ fn table_decision_tree_fact_for_fn(fn_node: Node) -> TableDecisionTreeFact {
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: WallAfterGrounding {
-    grounding_authority: "v2.lens.decision_tree_shape (the producer record exposing per-branch resolved identity and body shape) plus TotalMap/TotalPolicy substrate rows",
-    dissolve_on: "a fn-encoded total table over a closed vocabulary is replaced by a substrate TotalMap/TotalPolicy data row by construction"
-  },
-  rationale: "A function-encoded total table over a closed key vocabulary is a decidable shape; a scaffold gated on the decision-tree-shape producer until total tables are substrate rows."
+  class: WallAfterGrounding { dissolves_to: SingleAuthority },
+  rationale: "A function-encoded total table over a closed key vocabulary is a decidable shape; a scaffold gated on the decision-tree-shape producer until total tables are substrate rows. Grounding authority: v2.lens.decision_tree_shape (the producer record exposing per-branch resolved identity and body shape) plus TotalMap/TotalPolicy substrate rows. Dissolves on: a fn-encoded total table over a closed vocabulary is replaced by a substrate TotalMap/TotalPolicy data row by construction"
 }
