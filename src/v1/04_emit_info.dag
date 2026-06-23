@@ -276,12 +276,6 @@ fn build_type_summary(item: Node, source_indices: Map<String, NewlineIndex>) -> 
   }
 }
 
-// Transitive has_fn_fields. The per-item check in build_type_summary only flags a DIRECT
-// function field (Magma's `op: fn(T,T)->T`), so it misses a struct that EMBEDS a fn-bearing
-// type (Semigroup { magma: Magma } -> Monoid { semigroup: Semigroup } -> ...). Such a struct
-// is equally underivable for Debug/PartialEq/serde (the `dyn Fn` is reachable through the
-// field), so it must also emit `#[derive(Clone)]` only. DFS over field_type_map edges, base
-// case = the direct has_fn_fields flag, cycle-guarded for recursive types.
 fn type_summary_reaches_fn(name: String, summaries: Map<String, TypeSummary>, visited: Set<String>) -> Bool {
   if set_contains(visited, name) {
     false
@@ -299,8 +293,6 @@ fn type_summary_reaches_fn(name: String, summaries: Map<String, TypeSummary>, vi
   }
 }
 
-// Close has_fn_fields under field embedding. Reachability is computed against the ORIGINAL
-// (direct) map so base cases stay stable regardless of which summary is visited first.
 fn close_fn_fields(summaries: Map<String, TypeSummary>) -> Map<String, TypeSummary> {
   fold(map_keys(summaries), init: summaries, f: (acc, name) =>
     match map_get(summaries, name) {
