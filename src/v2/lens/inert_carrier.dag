@@ -1,44 +1,24 @@
-// The inert-abstraction lens (Lane 7 — DESIGN.md §5/§6, docs/plans/inert-layer-lens.md,
-// docs/plans/fold-ergonomics.md §3 #3). Generalizes the #5433 inert-LENS floor backstop (which
-// walls unreached `v2.lens.*` MODULES) to type CARRIERS in general: a carrier that is DEFINED +
-// SELF-TESTED + has ZERO real consumer is DESIGN §5 coverage-by-illusion (a green test, no
-// production consumer) / §6 inert ("the machinery exists but nothing gates on it").
-//
-// The census is host-fed today (no whole-corpus reference/`BindsTo` enumeration exists in `.dag` —
-// docs/plans/inert-layer-lens.md §3 Tier 2). This module is the agnostic `.dag` SURFACE over the
-// `inert_carrier_*` host bridges (inert_carrier_project.rs), sibling to v2.lens.fact_cardinality
-// over its census builtins. DISSOLUTION: when `.dag` gains compile-graph access (gunbc#5364) the
-// token scan folds into a pure `.dag` reader over reference edges and the Rust census deletes.
-
 module v2.lens.inert_carrier
 
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import v2.std.logic { Bool }
 
-// The fail-closed GATE verdict: zero self-tested-but-unconsumed carriers OFF the exception roster,
-// and zero stale roster entries (a rostered carrier that gained a consumer or was deleted). A NEW
-// inert carrier reds the floor; the stale half forces the roster to SHRINK as the realization loop
-// wires each carrier's consumer (the #5433 ratchet-during-migration -> wall-when-empty shape).
 fn inert_carrier_clean_holds() -> Bool {
   inert_carrier_unrostered_count() == 0 && inert_carrier_stale_roster_count() == 0
 }
 
-// The raw census count (rostered + unrostered) -- observability, not the gate.
 fn inert_carrier_live_count() -> Int {
   inert_carrier_count()
 }
 
-// Off-roster inert carriers -- the wall. Zero on a clean tree.
 fn inert_carrier_live_unrostered_count() -> Int {
   inert_carrier_unrostered_count()
 }
 
-// Stale roster entries -- the ratchet. Zero on a clean tree.
 fn inert_carrier_live_stale_roster_count() -> Int {
   inert_carrier_stale_roster_count()
 }
 
-// Total declared type carriers -- the fail-open oracle (zero means the corpus walk found nothing).
 fn inert_carrier_live_declared_count() -> Int {
   inert_carrier_declared_count()
 }

@@ -1,14 +1,3 @@
-// Floor witness for the inert-abstraction lens (Lane 7 — DESIGN.md §5/§6). Floor-discovered
-// (`test fn` in a `*_test.dag`), fail-closed: a new self-tested-but-unconsumed type carrier (off the
-// exception roster), or a stale roster entry, reds CI. Importing the lens module makes
-// `v2.lens.inert_carrier` REACHED, so it is not itself flagged inert-lens (#5433) — the lens is not
-// the very thing it detects.
-//
-// Discrimination (inert -> RED, consumed -> GREEN) is proven by execution in the host census's
-// synthetic RED/GREEN controls (inert_carrier_project.rs: red_control_self_tested_zero_consumer...,
-// green_control_carrier_with_real_consumer..., green_control_same_file_consumer...). This witness is
-// the live wall those controls back.
-
 module v2.test.lens_inert_carrier.inert_carrier_test
 
 import v2.std.logic { Bool }
