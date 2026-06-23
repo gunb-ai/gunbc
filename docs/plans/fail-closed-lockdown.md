@@ -32,7 +32,7 @@ the executable hygiene backstop — see §4 meta.)
 | RustMonolithGate | `.rs` + manifest | `ci_spec.dag:37`; `rust_gates_ci.dag` |
 | LayeringImportsGate | whole tree | `ci_spec.dag:39`; `layering_imports_gate.dag:39` |
 | ResolvedImportsGate | whole tree | `ci_spec.dag:40`; `resolved_imports_gate.dag:47` |
-| CiYamlGate | `ci.yml` byte-drift + perturb | `ci_spec.dag:42`; `ci_yaml_gate.dag` |
+| GeneratedArtifactDriftGate | `ci.yml` / `ROADMAP.md` / `.gitignore` byte-drift + per-artifact perturb, over the committed (= generated AND not-ignored) registry | `ci_spec.dag` `GeneratedArtifactDriftGate`; `generated_artifact_gate.dag`; registry+commit-derivation `gunbc/generated_artifact.dag` |
 
 These are the **structural** gates. The gap is everything *analytical* and the *bootstrap purity* gate.
 

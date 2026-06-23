@@ -382,6 +382,16 @@ pub fn rust_seed_host_container_base(name: String, corpus_repr: RustCorpusRepr) 
     }
 }
 
+pub fn rust_seed_host_freemonoid_empty(
+    carrier_name: String,
+    corpus_repr: RustCorpusRepr,
+) -> Option<String> {
+    match rust_seed_host_container_base(carrier_name, corpus_repr) {
+        Some(_) => Some("Rc::new(vec![])".to_string()),
+        None => None,
+    }
+}
+
 pub fn rust_named_type_base(name: String, corpus_repr: RustCorpusRepr) -> String {
     if ((name.clone() == "Witness".to_string()) || (name.clone() == "witness".to_string())) {
         "Witness".to_string()

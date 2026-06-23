@@ -2,7 +2,7 @@ module tools.floor_effect_gate_witness
 
 import gunbc.ci_spec {
   RustMonolithGate, EmitHostGate, LayeringImportsGate, ResolvedImportsGate,
-  ExtdepsExternalAuthorityGate, DslCompileCleanGate, CiYamlGate, GitignoreGate, RoadmapGate
+  ExtdepsExternalAuthorityGate, DslCompileCleanGate, GeneratedArtifactDriftGate
 }
 import tools.ci_gates { exit_ok, run_spec_gate }
 
@@ -30,14 +30,6 @@ func dsl_compile_clean_gate_passes() -> Bool {
   exit_ok(e: run_spec_gate(g: DslCompileCleanGate))
 }
 
-func ci_yaml_gate_passes() -> Bool {
-  exit_ok(e: run_spec_gate(g: CiYamlGate))
-}
-
-func gitignore_gate_passes() -> Bool {
-  exit_ok(e: run_spec_gate(g: GitignoreGate))
-}
-
-func roadmap_gate_passes() -> Bool {
-  exit_ok(e: run_spec_gate(g: RoadmapGate))
+func generated_artifact_drift_gate_passes() -> Bool {
+  exit_ok(e: run_spec_gate(g: GeneratedArtifactDriftGate))
 }
