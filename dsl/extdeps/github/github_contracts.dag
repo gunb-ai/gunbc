@@ -1,0 +1,5 @@
+module extdeps.github.github_contracts
+
+import std.serialization { VariantEncoding, StringVariant, VariantNaming, AsAuthored }
+
+data wire_contract: VariantEncoding = StringVariant { naming: AsAuthored }

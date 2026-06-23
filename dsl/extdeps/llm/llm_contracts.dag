@@ -1,0 +1,5 @@
+module extdeps.llm.llm_contracts
+
+import std.serialization { VariantEncoding, StringVariant, VariantNaming, SnakeCase }
+
+data llm_snake_wire_contract: VariantEncoding = StringVariant { naming: SnakeCase }

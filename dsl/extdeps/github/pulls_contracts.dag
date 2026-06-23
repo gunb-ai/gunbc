@@ -1,0 +1,18 @@
+module extdeps.github.pulls_contracts
+
+import std.serialization { CoproductWireContract, StringVariant, SnakeCase, ScreamingSnakeCase }
+
+data pull_request_state_wire_contract: CoproductWireContract = {
+  coproduct: "PullRequestState",
+  encoding: StringVariant { naming: SnakeCase }
+}
+
+data review_state_wire_contract: CoproductWireContract = {
+  coproduct: "ReviewState",
+  encoding: StringVariant { naming: ScreamingSnakeCase }
+}
+
+data review_event_wire_contract: CoproductWireContract = {
+  coproduct: "ReviewEvent",
+  encoding: StringVariant { naming: ScreamingSnakeCase }
+}

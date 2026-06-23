@@ -1,0 +1,36 @@
+module extdeps.llm.anthropic_contracts
+
+import extdeps.llm.llm_contracts { llm_snake_wire_contract }
+import std.serialization { CoproductWireContract, VariantEncoding, InternallyTaggedObject, StripSuffixAndSnakeCase, StripPrefixSuffixAndSnakeCase, UntaggedVariant }
+
+data wire_contract: VariantEncoding = llm_snake_wire_contract
+
+data anthropic_chat_message_wire_contract: CoproductWireContract = {
+  coproduct: "AnthropicChatMessage",
+  encoding: InternallyTaggedObject { tag_field: "role", naming: StripSuffixAndSnakeCase { suffix: "Message" } }
+}
+
+data anthropic_user_content_block_wire_contract: CoproductWireContract = {
+  coproduct: "AnthropicUserContentBlock",
+  encoding: InternallyTaggedObject { tag_field: "type", naming: StripPrefixSuffixAndSnakeCase { prefix: "User", suffix: "Block" } }
+}
+
+data anthropic_assistant_content_block_wire_contract: CoproductWireContract = {
+  coproduct: "AnthropicAssistantContentBlock",
+  encoding: InternallyTaggedObject { tag_field: "type", naming: StripPrefixSuffixAndSnakeCase { prefix: "Assistant", suffix: "Block" } }
+}
+
+data anthropic_messages_200_content_block_wire_contract: CoproductWireContract = {
+  coproduct: "AnthropicMessages200ContentBlock",
+  encoding: InternallyTaggedObject { tag_field: "type", naming: StripPrefixSuffixAndSnakeCase { prefix: "Messages", suffix: "Block" } }
+}
+
+data anthropic_tool_result_content_wire_contract: CoproductWireContract = {
+  coproduct: "AnthropicToolResultContent",
+  encoding: UntaggedVariant
+}
+
+data anthropic_tool_result_block_wire_contract: CoproductWireContract = {
+  coproduct: "AnthropicToolResultBlock",
+  encoding: InternallyTaggedObject { tag_field: "type", naming: StripPrefixSuffixAndSnakeCase { prefix: "Anthropic", suffix: "Block" } }
+}
