@@ -122,7 +122,10 @@ mod tests {
         // `//` inside a string survives as blanked interior; the trailing real comment is dropped.
         let got = strip_line_comment("data u = \"https://x // y\" // real comment");
         assert!(got.starts_with("data u = \""));
-        assert!(!got.contains("real comment"), "trailing // comment dropped: {got:?}");
+        assert!(
+            !got.contains("real comment"),
+            "trailing // comment dropped: {got:?}"
+        );
         assert!(!got.contains("https"), "string interior blanked: {got:?}");
         // byte length preserved up to the dropped comment (interior chars → spaces 1:1).
         assert!(got.len() <= "data u = \"https://x // y\" // real comment".len());
