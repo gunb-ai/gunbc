@@ -579,6 +579,7 @@ pub enum InterpError {
     DivisionByZero,
     Unimplemented { what: String },
     EarlyReturn { value: Value },
+    AuthDeclaredButUnwired { service: String, reason: String },
 }
 
 impl fmt::Display for InterpError {
@@ -600,8 +601,26 @@ impl fmt::Display for InterpError {
             InterpError::DivisionByZero => write!(f, "division by zero"),
             InterpError::Unimplemented { what } => write!(f, "not yet implemented: {}", what),
             InterpError::EarlyReturn { .. } => write!(f, "internal: uncaught early return"),
+            InterpError::AuthDeclaredButUnwired { service, reason } => write!(
+                f,
+                "auth declared but unwired for '{}': {} — refusing to send unauthenticated request",
+                service, reason
+            ),
         }
     }
+}
+
+/// Three-way auth resolution: splits the conflated `Option<String>` into named states so the
+/// dispatch site cannot reach the send path with auth declared but no token (§5 construction).
+#[derive(Debug, Clone)]
+pub enum AuthResolution {
+    /// The service declares no auth; unauthenticated send is correct.
+    NoAuthDeclared,
+    /// Auth is declared and a non-empty token was resolved; attach the header.
+    Resolved { header: String, token: String },
+    /// Auth is declared (svc_auth / svc_auth_input / svc_auth_source present) but no token
+    /// resolved — the caller must raise a typed error, never send unauthenticated.
+    DeclaredButUnwired { reason: String },
 }
 
 pub type InterpResult<T> = Result<T, InterpError>;
@@ -3849,7 +3868,14 @@ fn dispatch_rest(
         None => "GET".to_string(),
     };
 
-    let (auth_header_name, auth_token) = resolve_auth(service_node, transport, param_env, &si, ctx);
+    let auth = resolve_auth(service_node, transport, param_env, &si, ctx);
+    if let AuthResolution::DeclaredButUnwired { ref reason } = auth {
+        return Err(InterpError::AuthDeclaredButUnwired {
+            service: find_service_config_string(service_node, "svc_endpoint", &si)
+                .unwrap_or_else(|| "<unknown>".to_string()),
+            reason: reason.clone(),
+        });
+    }
 
     let reserved_props = [
         "base_url",
