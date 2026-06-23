@@ -1,6 +1,6 @@
 module test.claim.design_argument_witness
 
-import gunbc.design_argument { design_section_1_argument, design_axioms }
+import gunbc.design_argument { design_section_1_argument, design_argument, design_axioms }
 import std.syllogism {
   Axiom, NonLogicalAxiom, Proposition, Argument,
   argument_has_no_orphan, argument_is_acyclic,
@@ -13,6 +13,22 @@ test fn design_s1_argument_form_is_valid() -> Bool {
 
 test fn design_s1_argument_is_non_vacuous() -> Bool {
   argument_is_non_vacuous(design_section_1_argument)
+}
+
+test fn design_full_argument_form_is_valid() -> Bool {
+  argument_form_is_valid(design_argument)
+}
+
+test fn design_full_argument_has_no_orphan() -> Bool {
+  argument_has_no_orphan(design_argument)
+}
+
+test fn design_full_argument_is_acyclic() -> Bool {
+  argument_is_acyclic(design_argument)
+}
+
+test fn design_full_argument_axiom_set_is_closed() -> Bool {
+  argument_axiom_set_is_closed(design_argument)
 }
 
 fn orphaned_variant() -> Argument {

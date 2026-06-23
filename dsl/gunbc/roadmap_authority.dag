@@ -138,7 +138,7 @@ fn section_1() -> RoadmapSection {
         label: "Host-operation band — off-fabric, unmodeled, unenforced (G1–G3, NOW)",
         nodes: [
           authored_doc(id: "1-g1-placement", done: false, content: "**G1 placement** — which host a job lands on is GitHub-native, demand-blind, first-idle → heavy runs co-reside, other host idles (the underutilization root)", path: "docs/plans/compute-envelope-model.md"),
-          authored(id: "1-g2-runner", done: false, content: "**G2 runner deployment + cross-host placement** *(dispatched proud-tern-439: model + drift-gate; live-fleet apply fenced for operator)* — runners/host + registration are hand-run shell, **no repo artifact**; derive from `operator_fleet`+envelope, generate + drift-gate (the `ci.yml` pattern, for the host)"),
+          authored(id: "1-g2-runner", done: false, content: "**G2 runner deployment + cross-host placement** *(dispatched proud-tern-439: model + drift-gate; live-fleet apply fenced for operator)* — runners/host + registration are hand-run shell, **no repo artifact**; derive from `fleet_intent`+envelope, generate + drift-gate (the `ci.yml` pattern, for the host)"),
           authored(id: "1-g3-caps", done: false, content: "**G3 cgroup caps** — `TasksMax`/`MemoryMax` host-set by hand, only *read* live; derive + reconcile-gate so a hand-edit reds"),
           authored_doc(id: "1-ci-fabric", done: false, content: "**CI on compute fabric** — derive every host knob from one measured `ResourceEnvelope`; ends the crash-or-idle swing", path: "docs/plans/compute-envelope-model.md"),
         ],

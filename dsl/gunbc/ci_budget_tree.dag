@@ -10,7 +10,7 @@ import product.budget_tree {
   budget_child_named
 }
 import product.compute_fabric { compute_host_ram_bytes_total }
-import gunbc.operator_fleet { srv1_host }
+import gunbc.fleet_intent { srv1_host }
 import gunbc.ci_floor_measurement {
   HostFixedOverhead, HostFixedOverheadMeasured, HostFixedOverheadUnmeasured,
   gunbc_ci_host_fixed_overhead,
