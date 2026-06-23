@@ -4,13 +4,13 @@ import std.logic { Bool }
 import std.types { Int, list_length }
 import std.integer { UInt8 }
 import std.resources { Entropy }
-import extdeps.getrandom
+import extdeps.entropy
 import std.encoding { Base64Variant, Standard, UrlSafe, base64_encode, base64_decode }
 
-data getrandom_decode_absent_unreachable: String = "🟡 SCAFFOLD — Absent arm in mint_base64url_credential is structurally dead: Getrandom.ReadBytes fails-closed on nonzero exit (see exit clause), so octets_b64 is always valid standard base64; base64_decode Absent is unreachable. Dissolution trigger: native OS transport that mints octets directly removes the base64 round-trip and this arm."
+data urandom_decode_absent_unreachable: String = "🟡 SCAFFOLD — Absent arm in mint_base64url_credential is structurally dead: Urandom.ReadBytes fails-closed on nonzero exit (see exit clause), so octets_b64 is always valid standard base64; base64_decode Absent is unreachable. Dissolution trigger: native OS transport that mints octets directly removes the base64 round-trip and this arm."
 
 fn getrandom_octets(count: Int) -> List<UInt8>? {
-  base64_decode(s: Getrandom.ReadBytes(count: count).octets_b64, variant: Standard)
+  base64_decode(s: Urandom.ReadBytes(count: count).octets_b64, variant: Standard)
 }
 
 pattern mint_base64url_credential(byte_count: Int) -> { credential: String }
