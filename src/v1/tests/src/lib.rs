@@ -57,6 +57,8 @@ mod fold_list_generic_instantiation_test;
 #[cfg(test)]
 mod generator_match_arm_test;
 #[cfg(test)]
+mod gunbhub_serve_program_test;
+#[cfg(test)]
 mod html_markup_smoke_test;
 #[cfg(test)]
 mod infer_semantics;

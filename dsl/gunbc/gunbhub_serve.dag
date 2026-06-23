@@ -197,10 +197,9 @@ type GunbhubComposeResult
   | ComposeRejected { reason: String }
 
 fn gunbhub_compose_body(node: MarkupNode) -> GunbhubComposeResult {
-  match serialize_react_markup(node: node) {
+  match try_serialize_html_source(node: node) {
     EmitOk { html: h } => ComposedOk { html: h }
-    EmitRejected { reason: UntrustedUrlScheme { url: u } } =>
-      ComposeRejected { reason: concat("react markup rejected: ", u) }
+    EmitRejected { reason: r } => ComposeRejected { reason: r }
   }
 }
 
@@ -282,10 +281,9 @@ fn path_matches_template(template: PathTemplate, path: String) -> Bool {
 fn render_gunbhub_page(source: GunbhubPageSource) -> GunbhubRenderResult {
   match source {
     ReactPage { node } =>
-      match serialize_react_markup(node: node) {
+      match try_serialize_html_source(node: node) {
         EmitOk { html: h } => RenderedHtml { html: h }
-        EmitRejected { reason: UntrustedUrlScheme { url: u } } =>
-          RenderRejected { reason: concat("react markup rejected: ", u) }
+        EmitRejected { reason: r } => RenderRejected { reason: r }
       }
   }
 }
@@ -352,12 +350,10 @@ fn gunbhub_served_static_route_table() -> ServedStaticRouteTable {
     xs: gunbhub_route_table(),
     init: [],
     f: (acc, row) =>
-      match gunbhub_compose_body(
-        node: match row.page {
-          ReactPage { node: n } => n
-        }
+      match try_serialize_html_source(
+        node: match row.page { ReactPage { node: n } => n }
       ) {
-        ComposedOk { html: h } =>
+        EmitOk { html: h } =>
           concat(
             acc,
             [
@@ -370,7 +366,7 @@ fn gunbhub_served_static_route_table() -> ServedStaticRouteTable {
               },
             ]
           )
-        ComposeRejected { reason: _ } => acc
+        EmitRejected { reason: _ } => acc
       }
   )
   ServedStaticRouteTable { routes: routes }
