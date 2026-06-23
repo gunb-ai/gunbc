@@ -479,6 +479,25 @@ pub fn from_code_point(cp: i64) -> String {
         .unwrap_or_default()
 }
 
+pub fn is_xid_start(cp: i64) -> bool {
+    char::from_u32(cp as u32)
+        .map(unicode_ident::is_xid_start)
+        .unwrap_or(false)
+}
+
+pub fn is_xid_continue(cp: i64) -> bool {
+    char::from_u32(cp as u32)
+        .map(unicode_ident::is_xid_continue)
+        .unwrap_or(false)
+}
+
+pub fn is_emoji_ident(cp: i64) -> bool {
+    use unicode_properties::emoji::UnicodeEmoji;
+    char::from_u32(cp as u32)
+        .map(|c| c.is_emoji_char() && !unicode_ident::is_xid_continue(c))
+        .unwrap_or(false)
+}
+
 const FNV1A64_OFFSET: u64 = 0xcbf29ce484222325;
 const FNV1A64_PRIME: u64 = 0x100000001b3;
 
