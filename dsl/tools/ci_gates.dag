@@ -2,9 +2,9 @@ module tools.ci_gates
 
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import gunbc.ci_spec {
-  gunbc_ci_spec, CiSpec, Gate,
+  gunbc_ci_gates, CiSpec, Gate,
   RustMonolithGate, EmitHostGate, LayeringImportsGate, ResolvedImportsGate,
-  ExtdepsExternalAuthorityGate, DslCompileCleanGate, CiYamlGate, GitignoreGate, RoadmapGate,
+  ExtdepsExternalAuthorityGate, DslCompileCleanGate, GeneratedArtifactDriftGate,
   SourceRootIngestGate
 }
 import tools.rust_gates_ci { run_rust_monolith_gate }
@@ -13,9 +13,7 @@ import tools.layering_imports_gate { run_layering_imports_ci_gate }
 import tools.resolved_imports_gate { run_resolved_imports_ci_gate }
 import tools.extdeps_external_authority_gate { run_extdeps_external_authority_ci_gate }
 import tools.dsl_compile_clean_gate { run_dsl_compile_clean_gate }
-import tools.ci_yaml_gate { run_ci_yaml_gate }
-import tools.gitignore_gate { run_gitignore_gate }
-import tools.roadmap_gate { run_roadmap_gate }
+import tools.generated_artifact_gate { run_generated_artifact_drift_gate }
 
 fn exit_ok(e: ProcessExit) -> Bool {
   match e { ExitSuccess => true  _ => false }
@@ -29,28 +27,28 @@ fn run_spec_gate(g: Gate) -> ProcessExit {
     ResolvedImportsGate => run_resolved_imports_ci_gate()
     ExtdepsExternalAuthorityGate => run_extdeps_external_authority_ci_gate()
     DslCompileCleanGate => run_dsl_compile_clean_gate()
-    CiYamlGate => run_ci_yaml_gate()
-    GitignoreGate => run_gitignore_gate()
-    RoadmapGate => run_roadmap_gate()
+    GeneratedArtifactDriftGate => run_generated_artifact_drift_gate()
     SourceRootIngestGate => exit_failure(
       reason: "SourceRootIngestGate: run via ci_floor_plan v2.workflow.source_root_ingest_gate (slice 3)"
     )
   }
 }
 
-func run_ci_gates_sequential(spec: CiSpec) -> ProcessExit {
-  let g0 = run_spec_gate(g: RustMonolithGate)
-  let g1 = if exit_ok(g0) { run_spec_gate(g: EmitHostGate) } else { g0 }
-  let g2 = if exit_ok(g1) { run_spec_gate(g: LayeringImportsGate) } else { g1 }
-  let g3 = if exit_ok(g2) { run_spec_gate(g: ResolvedImportsGate) } else { g2 }
-  let g4 = if exit_ok(g3) { run_spec_gate(g: ExtdepsExternalAuthorityGate) } else { g3 }
-  let g5 = if exit_ok(g4) { run_spec_gate(g: DslCompileCleanGate) } else { g4 }
-  let g6 = if exit_ok(g5) { run_spec_gate(g: CiYamlGate) } else { g5 }
-  let g7 = if exit_ok(g6) { run_spec_gate(g: GitignoreGate) } else { g6 }
-  let g8 = if exit_ok(g7) { run_spec_gate(g: RoadmapGate) } else { g7 }
-  if exit_ok(g8) { run_spec_gate(g: SourceRootIngestGate) } else { g8 }
+// Run a gate list in order, short-circuiting on the first failure (once a gate fails, later gates are not
+// run and that failure propagates). One fold over the gate-list authority — adding/removing a gate is a
+// list edit in ci_spec, never an edit here (DESIGN §2/§3: the sequence is DERIVED from spec.gates, not
+// re-listed by hand).
+fn run_gate_list(gates: List<Gate>) -> ProcessExit {
+  fold(gates, init: ExitSuccess, f: fn(acc, g) {
+    if exit_ok(e: acc) { run_spec_gate(g: g) } else { acc }
+  })
 }
 
+func run_ci_gates_sequential(spec: CiSpec) -> ProcessExit {
+  run_gate_list(gates: spec.gates)
+}
+
+// Run ALL CI gates (floor + rust job), the gunbc_ci_gates authority.
 func main() -> ProcessExit {
-  run_ci_gates_sequential(spec: gunbc_ci_spec)
+  run_gate_list(gates: gunbc_ci_gates)
 }

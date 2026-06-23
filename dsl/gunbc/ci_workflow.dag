@@ -176,6 +176,26 @@ fn ci_rust_gate_step() -> Step {
   }
 }
 
+fn ci_rust_cgroup_measurement_step() -> Step {
+  RunStep {
+    name: Present { value: "rust_tests cgroup peak (placement divisor)" },
+    id: none,
+    run: concat(
+      "BIN=\"$(git rev-parse --show-toplevel 2>/dev/null || pwd)/target/release/claim_executor\"\n",
+      concat(
+        "if [ -x \"$BIN\" ]; then \"$BIN\" --measure-cgroup-peak; ",
+        "else echo \"[measurement] cgroup peak: unavailable (claim_executor not built)\"; fi"
+      )
+    ),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: Present { value: "always()" },
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
 fn ci_job() -> Job {
   Job {
     id: "ci",
@@ -198,7 +218,7 @@ fn rust_tests_job() -> Job {
     id: "rust_tests",
     name: none,
     runner: gunbc_ci_runner_spec(),
-    steps: concat(ci_prelude_steps(), [ci_nextest_install_step(), ci_rust_gate_step()]),
+    steps: concat(ci_prelude_steps(), [ci_nextest_install_step(), ci_rust_gate_step(), ci_rust_cgroup_measurement_step()]),
     needs: [],
     env: none,
     outputs: none,
