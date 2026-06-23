@@ -8,7 +8,7 @@ import v2.extdeps.languages.dag {
   dag_round_trip_bool_node,
   dag_round_trip_grammar_ready,
   dag_round_trip_lex_ready,
-  dag_round_trip_normalization_declared,
+  dag_round_trip_trivia_fidelity_resolved,
   dag_round_trip_wave1_authorities_ready
 }
 import v2.std.verification {
@@ -45,7 +45,7 @@ fn dag_round_trip_input_node() -> Node {
       ),
       dag_round_trip_edge(
         name: ^dag_round_trip_normalization_axis,
-        target: dag_round_trip_bool_node(pass: dag_round_trip_normalization_declared())
+        target: dag_round_trip_bool_node(pass: dag_round_trip_trivia_fidelity_resolved())
       )
     ],
     occurrence_id: SyntheticOccurrence
