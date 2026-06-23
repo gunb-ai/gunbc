@@ -1,0 +1,214 @@
+module v2.std.fold_assembly
+
+// The APPLY-HALF of the v2.std.anti_unification kernel (threshold-model option #1).
+//
+// anti_unification is the ANALYZE half: it folds a chain of N steps into a
+// ChainGeneralization { template, per_element } -- the generative pattern (once,
+// with holes) plus, per step, the genuinely-distinct sub-nodes that fill those holes.
+//
+// This module is the inverse direction over the SAME kernel data (DESIGN.md §4,
+// one grammar read both ways; the (pattern -> minimal-form) application of the
+// intent-linearity registry, docs/plans/intent-linearity-design-draft.md line 49):
+//   - apply_fills  : fill a template's holes with a fill-list, recovering one element.
+//                    This is the structural inverse of anti_unification.extract_fillings.
+//   - assemble_fold: build the minimal FOLD-FORM Node = the template ONCE plus the
+//                    per_element fill data. The template logic stops being copied N
+//                    times (the chain) and is stated once (1:1 with its inputs, §2).
+//   - expand_fold  : read the fold-form back and reconstruct the original chain.
+//
+// The round-trip law expand_fold(assemble_fold(g)) == steps holds for ANY chain g
+// came from (anti_unify is a faithful generalize-with-fills decomposition, not only
+// for leaf-variant chains) -- so the fold-form is a LOSSLESS factored representation.
+// Whether folding is WORTH it (a simulated fold vs genuine divergence) is the lens's
+// judgment (v2.lens.simulated_relationship); this kernel-peer only does the faithful
+// assembly. It does NOT edit the load-bearing anti_unification kernel.
+//
+// The fold-form root is a synthetic Conj record { ^fold_template, ^fold_elements },
+// NOT a ComputationNode{Loop}: binding the factored data to a conformant Loop
+// behavior (^loop_bound_edge discipline, v2.std.node) is a separate downstream step;
+// claiming a Loop node here without that conformance would be a fail-open overclaim.
+
+import v2.std.node {
+  Node, Edge, EdgeLabel, Named,
+  NodeKind, TypeNode, Connective, Conj,
+  Symbol, node_synthetic,
+  NamedEdgeTargetLookup, Found, Ambiguous, Absent, named_edge_target_lookup
+}
+import v2.std.algebra {
+  FreeMonoid, freemonoid_empty, fold_list, fold_list_right,
+  list_append, list_snoc_item,
+  ListHeadResult, HeadFound, HeadAbsent, list_head,
+  ListTailResult, TailFound, TailAbsent, list_tail
+}
+import v2.std.anti_unification { ChainGeneralization, is_hole, hole_node }
+import v2.std.logic { Bool }
+
+data fold_template_edge: Symbol = ^fold_template
+data fold_elements_edge: Symbol = ^fold_elements
+data fold_cons_head_edge: Symbol = ^fold_cons_head
+data fold_cons_tail_edge: Symbol = ^fold_cons_tail
+
+fn named_edge(name: Symbol, target: Node) -> Edge {
+  Edge { label: Named { name: name }, target: target }
+}
+
+fn conj_record(children: FreeMonoid<Edge>) -> Node {
+  node_synthetic(kind: TypeNode { connective: Conj }, children: children)
+}
+
+// ---- apply-half: fill template holes left-to-right (inverse of extract_fillings) ----
+
+type ApplyResult {
+  node: Node
+  rest: FreeMonoid<Node>
+}
+type ApplyEdgesAcc {
+  edges: FreeMonoid<Edge>
+  rest: FreeMonoid<Node>
+}
+
+// extract_fillings produces fills in left-to-right DFS hole order; apply_fills_into
+// consumes them in exactly that order, so the two compose to the identity on any
+// element the template generalizes. `rest` threads the not-yet-consumed fills.
+fn apply_fills_into(template: Node, fills: FreeMonoid<Node>) -> ApplyResult {
+  if is_hole(template) {
+    match list_head(xs: fills) {
+      HeadFound { value: h } =>
+        match list_tail(xs: fills) {
+          TailFound { tail: t } => ApplyResult { node: h, rest: t }
+          TailAbsent => ApplyResult { node: h, rest: freemonoid_empty() }
+        }
+      // Fail-visible: a malformed (template, fills) pair underflows; the hole is left
+      // intact so the round-trip oracle goes red rather than fabricating a fill.
+      HeadAbsent => ApplyResult { node: template, rest: fills }
+    }
+  } else {
+    apply_fills_rebuild(
+      kind_source: template,
+      acc: fold_list(
+        xs: template.children,
+        empty: ApplyEdgesAcc { edges: freemonoid_empty(), rest: fills },
+        cons: fn(acc, e) { apply_fills_step(acc: acc, e: e) }
+      )
+    )
+  }
+}
+
+fn apply_fills_step(acc: ApplyEdgesAcc, e: Edge) -> ApplyEdgesAcc {
+  apply_fills_step_with(acc: acc, e: e, r: apply_fills_into(template: e.target, fills: acc.rest))
+}
+fn apply_fills_step_with(acc: ApplyEdgesAcc, e: Edge, r: ApplyResult) -> ApplyEdgesAcc {
+  ApplyEdgesAcc {
+    edges: list_snoc_item(xs: acc.edges, item: Edge { label: e.label, target: r.node }),
+    rest: r.rest
+  }
+}
+
+fn apply_fills_rebuild(kind_source: Node, acc: ApplyEdgesAcc) -> ApplyResult {
+  ApplyResult {
+    node: node_synthetic(kind: kind_source.kind, children: acc.edges),
+    rest: acc.rest
+  }
+}
+
+fn apply_fills(template: Node, fills: FreeMonoid<Node>) -> Node {
+  apply_fills_into(template: template, fills: fills).node
+}
+
+// ---- the fold-form encoding (a Node list, read in both directions) ----
+
+fn fold_nil_node() -> Node {
+  conj_record(children: [])
+}
+
+fn encode_node_list(xs: FreeMonoid<Node>) -> Node {
+  fold_list_right(
+    xs: xs,
+    empty: fold_nil_node(),
+    snoc: fn(tail_node, item) {
+      conj_record(children: [
+        named_edge(name: fold_cons_head_edge, target: item),
+        named_edge(name: fold_cons_tail_edge, target: tail_node),
+      ])
+    }
+  )
+}
+
+fn encode_per_element(per_element: FreeMonoid<FreeMonoid<Node>>) -> Node {
+  fold_list_right(
+    xs: per_element,
+    empty: fold_nil_node(),
+    snoc: fn(tail_node, fills) {
+      conj_record(children: [
+        named_edge(name: fold_cons_head_edge, target: encode_node_list(xs: fills)),
+        named_edge(name: fold_cons_tail_edge, target: tail_node),
+      ])
+    }
+  )
+}
+
+fn decode_node_list(node: Node) -> FreeMonoid<Node> {
+  match named_edge_target_lookup(children: node.children, name: fold_cons_head_edge) {
+    Found { target: head } =>
+      match named_edge_target_lookup(children: node.children, name: fold_cons_tail_edge) {
+        Found { target: tail } =>
+          list_append(
+            left: list_snoc_item(xs: freemonoid_empty(), item: head),
+            right: decode_node_list(node: tail)
+          )
+        Absent => list_snoc_item(xs: freemonoid_empty(), item: head)
+        Ambiguous => freemonoid_empty()
+      }
+    Absent => freemonoid_empty()
+    Ambiguous => freemonoid_empty()
+  }
+}
+
+fn decode_per_element(node: Node) -> FreeMonoid<FreeMonoid<Node>> {
+  fold_list(
+    xs: decode_node_list(node: node),
+    empty: freemonoid_empty(),
+    cons: fn(acc, elem_node) {
+      list_snoc_item(xs: acc, item: decode_node_list(node: elem_node))
+    }
+  )
+}
+
+// ---- assemble (the deliverable) and its read-back ----
+
+fn assemble_fold(g: ChainGeneralization) -> Node {
+  conj_record(children: [
+    named_edge(name: fold_template_edge, target: g.template),
+    named_edge(name: fold_elements_edge, target: encode_per_element(per_element: g.per_element)),
+  ])
+}
+
+fn fold_template_of(fold_form: Node) -> Node {
+  match named_edge_target_lookup(children: fold_form.children, name: fold_template_edge) {
+    Found { target: t } => t
+    Absent => hole_node()
+    Ambiguous => hole_node()
+  }
+}
+
+fn fold_per_element_of(fold_form: Node) -> FreeMonoid<FreeMonoid<Node>> {
+  match named_edge_target_lookup(children: fold_form.children, name: fold_elements_edge) {
+    Found { target: e } => decode_per_element(node: e)
+    Absent => freemonoid_empty()
+    Ambiguous => freemonoid_empty()
+  }
+}
+
+// Reconstruct the original chain: apply each element's fills back into the template.
+fn expand_fold(fold_form: Node) -> FreeMonoid<Node> {
+  expand_with_template(template: fold_template_of(fold_form: fold_form), fold_form: fold_form)
+}
+fn expand_with_template(template: Node, fold_form: Node) -> FreeMonoid<Node> {
+  fold_list(
+    xs: fold_per_element_of(fold_form: fold_form),
+    empty: freemonoid_empty(),
+    cons: fn(acc, fills) {
+      list_snoc_item(xs: acc, item: apply_fills(template: template, fills: fills))
+    }
+  )
+}
