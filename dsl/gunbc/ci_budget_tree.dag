@@ -13,7 +13,9 @@ import product.compute_fabric { compute_host_ram_bytes_total }
 import gunbc.operator_fleet { srv1_host }
 import gunbc.ci_floor_measurement {
   HostFixedOverhead, HostFixedOverheadMeasured, HostFixedOverheadUnmeasured,
-  gunbc_ci_host_fixed_overhead
+  gunbc_ci_host_fixed_overhead,
+  DashboardSessionReservation, DashboardSessionReservationMeasured, DashboardSessionReservationUnmeasured,
+  gunbc_ci_dashboard_session_reservation
 }
 import gunbc.ci_runner_placement { gunbc_ci_runners_per_host }
 
@@ -22,8 +24,12 @@ fn srv1_node_name() -> String {
   "srv1"
 }
 
-fn srv1_run_pool_name() -> String {
-  "ci_run_pool"
+fn srv1_gha_runner_pool_name() -> String {
+  "gha_runner_pool"
+}
+
+fn srv1_dashboard_session_pool_name() -> String {
+  "dashboard_session_pool"
 }
 
 fn srv1_ci_run_name() -> String {
@@ -45,8 +51,19 @@ fn srv1_fixed_overhead_bytes() -> ByteSize {
   }
 }
 
-fn srv1_run_pool_budget() -> ByteSize {
-  byte_size_saturating_sub(total: srv1_host_ram(), reserved: srv1_fixed_overhead_bytes())
+fn srv1_dashboard_session_pool_budget() -> ByteSize {
+  match gunbc_ci_dashboard_session_reservation {
+    DashboardSessionReservationUnmeasured => srv1_host_ram()
+    DashboardSessionReservationMeasured { per_container_cap: cap, concurrency: n } =>
+      measure_scale_fraction_floor(m: cap, num: n, den: 1)
+  }
+}
+
+fn srv1_gha_runner_pool_budget() -> ByteSize {
+  byte_size_saturating_sub(
+    total: byte_size_saturating_sub(total: srv1_host_ram(), reserved: srv1_fixed_overhead_bytes()),
+    reserved: srv1_dashboard_session_pool_budget()
+  )
 }
 
 fn srv1_runs_per_host() -> Int {

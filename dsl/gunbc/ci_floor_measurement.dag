@@ -38,6 +38,13 @@ type HostFixedOverhead
 
 data gunbc_ci_host_fixed_overhead: HostFixedOverhead = HostFixedOverheadMeasured { bytes: byte_size(17179869184) }
 
+type DashboardSessionReservation
+  = DashboardSessionReservationMeasured { per_container_cap: ByteSize, concurrency: Int }
+  | DashboardSessionReservationUnmeasured
+
+data gunbc_ci_dashboard_session_reservation: DashboardSessionReservation =
+  DashboardSessionReservationMeasured { per_container_cap: byte_size(33578549248), concurrency: 2 }
+
 data gunbc_ci_concurrent_runs_conservative_high: Int = 10
 
 data gunbc_ci_runner_cap_enforced: Bool = false
