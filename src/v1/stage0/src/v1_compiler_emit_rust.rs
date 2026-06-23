@@ -3253,7 +3253,22 @@ pub fn emit_module_full(
         let m = typed_module.module.clone();
         let scope = module_emit_scope(typed_module.clone());
         let scoped_data_items = build_scoped_data_item_index(typed_module.clone(), data_items);
-        let prelude = emit_prelude();
+        let prelude_imported_names = Rc::new({
+            let mut __result = Vec::new();
+            for imp in module_imports(m.clone()).iter().cloned() {
+                for name in import_specific_names_at(
+                    imp.clone(),
+                    scope.type_env.clone().source_indices.clone(),
+                )
+                .iter()
+                .cloned()
+                {
+                    __result.push(name);
+                }
+            }
+            __result
+        });
+        let prelude = emit_prelude(prelude_imported_names);
         let local_type_names = Rc::new({
             let mut __result = Vec::new();
             for item in Rc::new({
@@ -6626,26 +6641,39 @@ pub fn emit_imports(
     }
 }
 
-pub fn emit_prelude() -> String {
+pub fn emit_prelude(imported_names: Rc<Vec<String>>) -> String {
     {
-        let use_line = v1_rt::concat(
+        let base = v1_rt::concat(
             v1_rt::concat(
                 v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            "use std::collections::BTreeSet;\n".to_string(),
-                            "use std::collections::HashMap;\n".to_string(),
-                        ),
-                        "use std::rc::Rc;\n".to_string(),
-                    ),
-                    "use crate::v1_rt;\n".to_string(),
+                    "use std::collections::BTreeSet;\n".to_string(),
+                    "use std::collections::HashMap;\n".to_string(),
                 ),
-                "use crate::v1_rt::Witness;\n".to_string(),
+                "use std::rc::Rc;\n".to_string(),
             ),
-            "use crate::v1_rt::Witness::{Holds, Violates};".to_string(),
+            "use crate::v1_rt;".to_string(),
         );
-        let wrapper_use = "use crate::NonEmptyVec;\nuse crate::NonEmptyBTreeSet;".to_string();
-        v1_rt::concat(v1_rt::concat(use_line, "\n".to_string()), wrapper_use)
+        let witness_line = if imported_names.iter().any(|n| n.as_str() == "Witness") {
+            "".to_string()
+        } else {
+            "\nuse crate::v1_rt::Witness;".to_string()
+        };
+        let has_holds = imported_names.iter().any(|n| n.as_str() == "Holds");
+        let has_violates = imported_names.iter().any(|n| n.as_str() == "Violates");
+        let variant_line = if has_holds && has_violates {
+            "".to_string()
+        } else if has_holds {
+            "\nuse crate::v1_rt::Witness::Violates;".to_string()
+        } else if has_violates {
+            "\nuse crate::v1_rt::Witness::Holds;".to_string()
+        } else {
+            "\nuse crate::v1_rt::Witness::{Holds, Violates};".to_string()
+        };
+        let wrapper_use = "\nuse crate::NonEmptyVec;\nuse crate::NonEmptyBTreeSet;".to_string();
+        v1_rt::concat(
+            v1_rt::concat(v1_rt::concat(base, witness_line), variant_line),
+            wrapper_use,
+        )
     }
 }
 
