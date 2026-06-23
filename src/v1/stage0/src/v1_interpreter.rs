@@ -4860,6 +4860,23 @@ fn eval_builtin(
             Ok(Some(list_value(items)))
         }
 
+        "module_declaration_facts" => {
+            let pool_roots =
+                expect_str_list(positional.first().copied(), "module_declaration_facts")?;
+            let facts = crate::import_resolution_project::module_declaration_facts(&pool_roots);
+            let mut items: Vec<Value> = Vec::new();
+            for f in facts {
+                let mut fields = HashMap::new();
+                fields.insert(ctx.sym("module"), Value::Str(f.module));
+                fields.insert(ctx.sym("path"), Value::Str(f.path));
+                items.push(Value::Record {
+                    type_name: ctx.sym("ModuleDeclarationFact"),
+                    fields: Rc::new(fields),
+                });
+            }
+            Ok(Some(list_value(items)))
+        }
+
         "medium_structure_leak_facts" => {
             let emit_roots =
                 expect_str_list_flex(positional.first().copied(), "medium_structure_leak_facts")?;
