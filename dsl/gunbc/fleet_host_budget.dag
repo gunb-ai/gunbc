@@ -15,7 +15,8 @@ import std.effects { EffectShape, CreateEffect, CreateCause, CreateIfAbsent, Key
 import std.realization_schedule { CostAccount, CostBasis, Predicted }
 import extdeps.accounting.budget { Appropriation, LineItem }
 import product.budget_tree { BudgetNode, BudgetClaim, Guaranteed, node_conserves }
-import product.compute_fabric { ComputeOffer, compute_host_ram_bytes_total }
+import product.compute_fabric { ComputeOffer, compute_host_ram_bytes_total, compute_host_primary_cpu }
+import extdeps.cpu { cpu_facts_threads }
 import extdeps.ctrl.jobserver {
   CtrlJobserverConfig,
   CtrlJobserverCitation,
@@ -185,6 +186,7 @@ type FleetHostPlan
       tree: BudgetNode,
       runner_slice_cap: ByteSize,
       effective_build_tokens: HardwareThreadCount,
+      effective_runner_cpu_cap: HardwareThreadCount,
       build_step: RealizedStep<Nano>
     }
   | FleetHostPlanUnsound { reason: String }
@@ -228,6 +230,7 @@ fn fleet_host_plan_for(
                         tree: tree,
                         runner_slice_cap: runner_slice_cap(host: host, overhead: overhead, baselines: baselines, build_pool: pool, headroom: hr),
                         effective_build_tokens: tokens,
+                        effective_runner_cpu_cap: cpu_cores_available(nproc: nproc, margin: cfg.margin),
                         build_step: build_realization(cfg: cfg),
                       }
                     }
@@ -251,4 +254,29 @@ fn fleet_host_plan() -> FleetHostPlan {
     policy: gunbc_fleet_headroom_policy,
     oomd: gunbc_fleet_oomd_evidence
   )
+}
+
+fn fleet_host_plan_for_offer(
+  offer: ComputeOffer,
+  overhead: ByteSize,
+  citation: CtrlJobserverCitation,
+  policy: HeadroomPolicy,
+  oomd: OomdEnforcementEvidence
+) -> FleetHostPlan {
+  match compute_host_primary_cpu(host: offer.supply.physical) {
+    Absent =>
+      FleetHostPlanUnsound { reason: "compute offer has no primary CPU facts: refuse to derive a host plan without a measured core count (the CPU-core runner cap needs nproc; fail closed)" }
+    Present { value: cpu } =>
+      fleet_host_plan_for(
+        name: offer.supply.physical.identity,
+        host: compute_host_ram_bytes_total(host: offer.supply.physical),
+        overhead: overhead,
+        nproc: cpu_facts_threads(cpu: cpu),
+        runner: gha_runner_container,
+        session: agent_session_container,
+        citation: citation,
+        policy: policy,
+        oomd: oomd
+      )
+  }
 }

@@ -116,7 +116,7 @@ fn fitting_headroom() -> HeadroomPolicy {
 fn is_unsound(plan: FleetHostPlan) -> Bool {
   match plan {
     FleetHostPlanUnsound { reason: _ } => true
-    FleetHostPlanDerived { name: _, tree: _, runner_slice_cap: _, effective_build_tokens: _, build_step: _ } => false
+    FleetHostPlanDerived { name: _, tree: _, runner_slice_cap: _, effective_build_tokens: _, effective_runner_cpu_cap: _, build_step: _ } => false
   }
 }
 
@@ -197,8 +197,16 @@ fn witness_margin_exceeds_nproc_saturates() -> Bool {
 
 fn witness_plan_derives_and_conserves() -> Bool {
   match full_plan(citation: fixture_citation(), runner: fixture_runner_measured(), session: fixture_session_measured(), policy: fitting_headroom(), oomd: OomdEnforced) {
-    FleetHostPlanDerived { name: _, tree: t, runner_slice_cap: _, effective_build_tokens: tk, build_step: _ } =>
-      node_conserves(node: t) && hardware_thread_count_value(t: tk) > 0
+    FleetHostPlanDerived { name: _, tree: t, runner_slice_cap: _, effective_build_tokens: tk, effective_runner_cpu_cap: cpu, build_step: _ } =>
+      node_conserves(node: t) && hardware_thread_count_value(t: tk) > 0 && hardware_thread_count_value(t: cpu) > 0
+    FleetHostPlanUnsound { reason: _ } => false
+  }
+}
+
+fn witness_runner_cpu_cap_is_cores_minus_margin() -> Bool {
+  match full_plan(citation: fixture_citation(), runner: fixture_runner_measured(), session: fixture_session_measured(), policy: fitting_headroom(), oomd: OomdEnforced) {
+    FleetHostPlanDerived { name: _, tree: _, runner_slice_cap: _, effective_build_tokens: _, effective_runner_cpu_cap: cpu, build_step: _ } =>
+      hardware_thread_count_value(t: cpu) == 120
     FleetHostPlanUnsound { reason: _ } => false
   }
 }
@@ -275,6 +283,7 @@ test fn fleet_model_holds() -> Bool {
     && witness_headroom_at_or_above_floor_resolved()
     && witness_tokens_memory_bound_binds()
     && witness_margin_exceeds_nproc_saturates()
+    && witness_runner_cpu_cap_is_cores_minus_margin()
     && witness_plan_derives_and_conserves()
     && witness_uncapped_build_pool_overcommits()
     && witness_capped_build_pool_positive_and_bounded()
