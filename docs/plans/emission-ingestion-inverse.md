@@ -214,9 +214,10 @@ over the same grammar rows?* A row-driven emitter has an ingest that reads the *
 **provable by execution**; a hand-rolled emitter (inline literals) has **no shared-row ingest to
 round-trip against**, and that absence *is* the leak signal. So "is this a leak?" stops being the
 detector's necessarily-heuristic question ("does it grep target syntax?") and becomes a structural one
-("is there a round-trip over shared rows?"). The hand-rolled `serialize_yaml` (confirmed 2026-06-22:
-`emit_yaml_value`/`emit_mapping_body` hardcode `'- '`/`':'`/`'#'`/`'|\n'` as inline literals through
-`concat()` chains) **fails** this oracle — there is no yaml *ingest* over those same spellings to
+("is there a round-trip over shared rows?"). The emit-only `serialize_yaml` (as of 2026-06-22 it renders
+`project_yaml_to_doc` over the shared `std.layout` `Doc` fold — a forward-only layout projection that bakes
+`'- '`/`':'`/`'|'` into `Doc` text nodes at projection time, *not* a round-trippable grammar) **fails**
+this oracle — there is no yaml *ingest* over those same spellings to
 round-trip against; deep-newt's row-driven `serialize_markdown_source` (#5501) **passes** it the moment a
 markdown ingest reads the same construct→spelling rows. This is the §4 "one grammar, both directions"
 turned into the *test* — and it is *why* §5.1 pushes every serializer to be row-driven: only a row-driven
@@ -254,6 +255,19 @@ decidability check).
 test); (B) the partition decides *which* sites are walled now vs flagged vs fenced. Together they bound the
 guard against the purity trap (§6 of DESIGN): a medium earns a wall only when it is the cheapest path to a
 real displaced cost (a grep that goes fail-open on an unanticipated surface form), never for elegance.
+
+### 5.3 The ② lens-residue slice, generalized — regime-2 emission
+
+The ② lens-residue emitters above (`serialize_yaml`, plus the `serialize_gitignore` /
+`serialize_runner_deploy` projections) share a sharper boundary than "hand-rolled-but-closeable": they are
+**emit-only** — we *never ingest* a `.gitignore` or a `ci.yml`-as-config, so the round-trip oracle (A) has
+nothing to gate against and faithfulness rests on the authored projection (§5 honesty boundary). That is a
+distinct regime from the grammar-inverse ① wall (markdown/languages), and collapsing the three hand-rolled
+projection serializers into **one** `render(doc, protocol)` fold over a shared `std.layout` `Doc` IR is the
+§2 de-boutique-ing of exactly this slice — detailed in
+[regime-2 shared emission fold](regime2-shared-emission-fold.md). It stays a ② scaffold (a forward-only
+subset of the ① grammar rows) with dissolution into the v2 `TargetModel` rows; whether `yaml` ever crosses
+into regime-1 (parseable, round-trip-gated) is the separate decision that doc fences off.
 
 ## 6. Independent §3-hygiene cleanup (not a roadmap item)
 

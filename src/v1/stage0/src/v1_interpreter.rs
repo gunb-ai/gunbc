@@ -5224,6 +5224,20 @@ fn eval_builtin(
         "extdeps_external_authority_live_clean_tree_holds" => Ok(Some(Value::Bool(
             crate::extdeps_shape_transport_policy_project::external_authority_live_clean_tree_holds(),
         ))),
+        "extdeps_external_authority_anchor_shadow_masked_for_qualified_name" => {
+            let module = positional.first().ok_or_else(|| InterpError::TypeError {
+                msg: "extdeps_external_authority_anchor_shadow_masked_for_qualified_name requires a QualifiedName"
+                    .to_string(),
+            })?;
+            Ok(Some(Value::Bool(
+                crate::extdeps_shape_transport_policy_project::external_authority_anchor_shadow_masked_for_qualified_name(
+                    module,
+                ),
+            )))
+        }
+        "extdeps_external_authority_live_shadow_mask_holds" => Ok(Some(Value::Bool(
+            crate::extdeps_shape_transport_policy_project::external_authority_live_shadow_mask_holds(),
+        ))),
         "extdeps_external_authority_live_roster_module_count" => Ok(Some(Value::Int(
             crate::extdeps_shape_transport_policy_project::external_authority_live_roster_module_count(),
         ))),
@@ -5236,6 +5250,32 @@ fn eval_builtin(
         ))),
         "doc_graph_doc_count" => Ok(Some(Value::Int(
             crate::doc_reachability_project::doc_graph_doc_count(),
+        ))),
+
+        "inert_carrier_count" => Ok(Some(Value::Int(
+            crate::inert_carrier_project::inert_carrier_count(),
+        ))),
+        "inert_carrier_unrostered_count" => Ok(Some(Value::Int(
+            crate::inert_carrier_project::inert_carrier_unrostered_count(),
+        ))),
+        "inert_carrier_stale_roster_count" => Ok(Some(Value::Int(
+            crate::inert_carrier_project::inert_carrier_stale_roster_count(),
+        ))),
+        "inert_carrier_declared_count" => Ok(Some(Value::Int(
+            crate::inert_carrier_project::inert_carrier_declared_count(),
+        ))),
+
+        "non_fold_residue_count" => Ok(Some(Value::Int(
+            crate::non_fold_residue_project::non_fold_residue_count(),
+        ))),
+        "non_fold_residue_unrostered_count" => Ok(Some(Value::Int(
+            crate::non_fold_residue_project::non_fold_residue_unrostered_count(),
+        ))),
+        "non_fold_residue_stale_roster_count" => Ok(Some(Value::Int(
+            crate::non_fold_residue_project::non_fold_residue_stale_roster_count(),
+        ))),
+        "non_fold_residue_coproduct_universe_count" => Ok(Some(Value::Int(
+            crate::non_fold_residue_project::non_fold_residue_coproduct_universe_count(),
         ))),
 
         _ => Ok(None),

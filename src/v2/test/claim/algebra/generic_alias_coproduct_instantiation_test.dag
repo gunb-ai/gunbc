@@ -1,0 +1,38 @@
+module v2.test.claim.algebra.generic_alias_coproduct_instantiation
+
+import v2.std.algebra { Cons, Empty, FreeMonoid, length }
+import v2.std.node { Symbol }
+
+type SymbolPath = FreeMonoid<Symbol>
+
+fn symbol_path_of_three() -> SymbolPath {
+  Cons { head: ^a, tail: Cons { head: ^b, tail: Cons { head: ^c, tail: Empty } } }
+}
+
+fn empty_symbol_path() -> SymbolPath {
+  Empty
+}
+
+fn symbol_path_len(path: SymbolPath) -> Int {
+  match path {
+    Empty => 0
+    Cons { head: _, tail: rest } => 1 + symbol_path_len(path: rest)
+  }
+}
+
+fn first_symbol(path: SymbolPath) -> Symbol? {
+  match path {
+    Empty => none
+    Cons { head: h, tail: _ } => Present { value: h }
+  }
+}
+
+test fn generic_alias_coproduct_resolves() -> Bool {
+  symbol_path_len(path: symbol_path_of_three()) == 3
+    && symbol_path_len(path: empty_symbol_path()) == 0
+    && length(xs: symbol_path_of_three()) == 3
+    && match first_symbol(path: symbol_path_of_three()) {
+         Present { value: s } => s == ^a
+         Absent => false
+       }
+}

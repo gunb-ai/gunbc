@@ -770,6 +770,9 @@ pub fn is_clean_tree_roster_excluded_for_module_path(module_path: &str) -> bool 
     if module_path.starts_with("extdeps.fixture.") {
         return true;
     }
+    if module_path.ends_with(".mock_corpus") {
+        return true;
+    }
     clean_tree_roster_exclusion_paths().contains(&module_path)
 }
 
@@ -810,6 +813,73 @@ pub fn external_authority_live_roster_module_count() -> i64 {
         .into_iter()
         .filter(|path| !is_clean_tree_roster_excluded_for_module_path(path))
         .count() as i64
+}
+
+fn anchor_present_in_any_source_root(module_path: &str) -> bool {
+    let ws = crate::module_path_index::workspace_root();
+    for root in crate::module_path_index::default_source_roots() {
+        let root_path = std::path::PathBuf::from(&root);
+        if !root_path.is_dir() {
+            continue;
+        }
+        let mut files = Vec::new();
+        crate::cli_run::collect_dag_files_tolerant(&root_path, &mut files);
+        for file in files {
+            let Ok(content) = std::fs::read_to_string(&file) else {
+                continue;
+            };
+            let declares = content.lines().find_map(|l| {
+                l.trim()
+                    .strip_prefix("module ")
+                    .map(|m| m.trim().to_string())
+            });
+            if declares.as_deref() != Some(module_path) {
+                continue;
+            }
+            let rel = file
+                .strip_prefix(&ws)
+                .map(|p| p.to_string_lossy().replace('\\', "/"))
+                .unwrap_or_else(|_| file.to_string_lossy().into_owned());
+            let (items, source_indices) = parse_module_items(&rel);
+            if matches!(
+                read_external_authority_anchor_from_items(&items, &source_indices),
+                ExternalAuthorityAnchorProjection::Present { .. }
+            ) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+pub fn external_authority_anchor_shadow_masked_for_module_path(module_path: String) -> bool {
+    match project_external_authority_anchor(&module_path) {
+        ExternalAuthorityAnchorProjection::Present { .. } => false,
+        ExternalAuthorityAnchorProjection::Absent => {
+            anchor_present_in_any_source_root(&module_path)
+        }
+    }
+}
+
+pub fn external_authority_anchor_shadow_masked_for_qualified_name(
+    qn: &crate::v1_interpreter::Value,
+) -> bool {
+    let module_path = crate::module_path_index::qualified_name_value_to_module_path(qn);
+    external_authority_anchor_shadow_masked_for_module_path(module_path)
+}
+
+pub fn external_authority_live_shadow_mask_holds() -> bool {
+    for path in derived_extdeps_module_paths() {
+        if is_clean_tree_roster_excluded_for_module_path(&path)
+            || is_machinery_exempt_for_module_path(&path)
+        {
+            continue;
+        }
+        if external_authority_anchor_shadow_masked_for_module_path(path) {
+            return false;
+        }
+    }
+    true
 }
 
 #[cfg(test)]
@@ -1046,9 +1116,44 @@ service github.Gist {
     }
 
     #[test]
+    fn mock_corpus_excluded_but_real_sibling_still_in_roster() {
+        assert!(
+            is_clean_tree_roster_excluded_for_module_path("extdeps.git.mock_corpus"),
+            "a *.mock_corpus hermetic replay fixture must be excluded from the anchor roster"
+        );
+        assert!(
+            is_clean_tree_roster_excluded_for_module_path("extdeps.github.mock_corpus"),
+            "*.mock_corpus exclusion must hold across services"
+        );
+        assert!(
+            !is_clean_tree_roster_excluded_for_module_path("extdeps.git.git"),
+            "the real sibling that the mock replays must stay in the roster (exclusion is not fail-open)"
+        );
+        assert!(
+            !is_clean_tree_roster_excluded_for_module_path("extdeps.cloud.cloud"),
+            "a real external-dependency module must stay in the roster"
+        );
+    }
+
+    #[test]
     fn external_authority_live_clean_tree_holds_via_host() {
         assert!(external_authority_live_clean_tree_holds());
         assert!(external_authority_live_roster_module_count() > 150);
+    }
+
+    #[test]
+    fn external_authority_shadow_mask_detector_has_teeth() {
+        assert!(
+            external_authority_anchor_shadow_masked_for_module_path(
+                "extdeps.fixture.external_authority_shadow_masked".to_string()
+            ),
+            "the two-tree shadow fixture (anchor in dsl copy, none in index-resolved src/v2 copy) \
+             must read as masked -- proves the detector is not inert"
+        );
+        assert!(
+            external_authority_live_shadow_mask_holds(),
+            "no live extdeps module may carry an anchor only in a non-index-resolved shadow copy"
+        );
     }
 
     #[test]

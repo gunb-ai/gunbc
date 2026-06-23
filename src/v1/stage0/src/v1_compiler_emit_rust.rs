@@ -382,6 +382,16 @@ pub fn rust_seed_host_container_base(name: String, corpus_repr: RustCorpusRepr) 
     }
 }
 
+pub fn rust_seed_host_freemonoid_empty(
+    carrier_name: String,
+    corpus_repr: RustCorpusRepr,
+) -> Option<String> {
+    match rust_seed_host_container_base(carrier_name, corpus_repr) {
+        Some(_) => Some("Rc::new(vec![])".to_string()),
+        None => None,
+    }
+}
+
 pub fn rust_named_type_base(name: String, corpus_repr: RustCorpusRepr) -> String {
     if ((name.clone() == "Witness".to_string()) || (name.clone() == "witness".to_string())) {
         "Witness".to_string()
@@ -3140,7 +3150,7 @@ pub fn emit_lib_rs_from_files(
             __result
         });
         let hand_maintained_mods = if has_compiler_tests.clone() {
-            "\npub mod v1_interpreter;\npub mod cli_run;\npub mod rest_transport_facts;\npub mod wire_value_serialize;\npub mod coproduct_reflection;\npub mod resolved_graph_cache;\npub mod recorded_fixture;\npub mod cache_purity_oracle;\npub mod doc_reachability_project;\npub mod medium_structure_project;\npub mod extdeps_shape_transport_policy_project;\npub mod fact_cardinality_census;\npub mod import_resolution_project;\npub mod languages_consumer_census;\npub mod layering_imports_project;\npub mod module_path_index;\npub mod transport_script_position_project;".to_string()
+            "\npub mod v1_interpreter;\npub mod cli_run;\npub mod rest_transport_facts;\npub mod wire_value_serialize;\npub mod coproduct_reflection;\npub mod resolved_graph_cache;\npub mod recorded_fixture;\npub mod cache_purity_oracle;\npub mod corpus_lex;\npub mod doc_reachability_project;\npub mod inert_carrier_project;\npub mod medium_structure_project;\npub mod extdeps_shape_transport_policy_project;\npub mod fact_cardinality_census;\npub mod import_resolution_project;\npub mod languages_consumer_census;\npub mod non_fold_residue_project;\npub mod layering_imports_project;\npub mod module_path_index;\npub mod transport_script_position_project;".to_string()
         } else {
             "".to_string()
         };
@@ -5416,6 +5426,73 @@ pub fn is_emittable_parametric_type_alias_item(
     }
 }
 
+pub fn import_variant_parent_for_name(
+    n: String,
+    import_module: String,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    typed_modules: Rc<Vec<Rc<TypedModule>>>,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    module_index: Rc<ModuleIndex>,
+    imported_enums: Rc<Vec<String>>,
+    import_module_enums: Rc<Vec<String>>,
+) -> String {
+    if is_import_graph_type_name(
+        n.clone(),
+        import_module.clone(),
+        typed_modules.clone(),
+        registry.clone(),
+        export_sets.clone(),
+        type_summaries.clone(),
+        source_indices.clone(),
+        module_index.clone(),
+    ) {
+        "".to_string()
+    } else {
+        if is_enum_in_summaries(type_summaries.clone(), n.clone()) {
+            "".to_string()
+        } else {
+            match find_variant_parent_in_module(
+                n.clone(),
+                import_module.clone(),
+                typed_modules.clone(),
+                source_indices.clone(),
+                module_index.clone(),
+            ) {
+                Some(parent) => parent.clone(),
+                None => match reexport_variant_parent_in_import_module(
+                    n.clone(),
+                    import_module.clone(),
+                    registry.clone(),
+                    type_summaries.clone(),
+                    typed_modules.clone(),
+                    export_sets.clone(),
+                    source_indices.clone(),
+                    module_index.clone(),
+                ) {
+                    Some(parent) => parent.clone(),
+                    None => match find_variant_parent(
+                        type_summaries.clone(),
+                        n.clone(),
+                        imported_enums.clone(),
+                    ) {
+                        Some(parent) => parent.clone(),
+                        None => match find_variant_parent(
+                            type_summaries.clone(),
+                            n.clone(),
+                            import_module_enums.clone(),
+                        ) {
+                            Some(parent) => parent.clone(),
+                            None => "".to_string(),
+                        },
+                    },
+                },
+            }
+        }
+    }
+}
+
 pub fn emit_specific_import_block(
     import_module: String,
     mod_name: String,
@@ -5517,61 +5594,18 @@ pub fn emit_specific_import_block(
                     for p in Rc::new({
                         let mut __result = Vec::new();
                         for n in deduped_names.clone().iter().cloned() {
-                            __result.push(
-                                if is_import_graph_type_name(
-                                    n.clone(),
-                                    import_module.clone(),
-                                    typed_modules.clone(),
-                                    registry.clone(),
-                                    export_sets.clone(),
-                                    type_summaries.clone(),
-                                    source_indices.clone(),
-                                    module_index.clone(),
-                                ) {
-                                    "".to_string()
-                                } else {
-                                    if is_enum_in_summaries(type_summaries.clone(), n.clone()) {
-                                        "".to_string()
-                                    } else {
-                                        match find_variant_parent_in_module(
-                                            n.clone(),
-                                            import_module.clone(),
-                                            typed_modules.clone(),
-                                            source_indices.clone(),
-                                            module_index.clone(),
-                                        ) {
-                                            Some(parent) => parent.clone(),
-                                            None => match reexport_variant_parent_in_import_module(
-                                                n.clone(),
-                                                import_module.clone(),
-                                                registry.clone(),
-                                                type_summaries.clone(),
-                                                typed_modules.clone(),
-                                                export_sets.clone(),
-                                                source_indices.clone(),
-                                                module_index.clone(),
-                                            ) {
-                                                Some(parent) => parent.clone(),
-                                                None => match find_variant_parent(
-                                                    type_summaries.clone(),
-                                                    n.clone(),
-                                                    imported_enums.clone(),
-                                                ) {
-                                                    Some(parent) => parent.clone(),
-                                                    None => match find_variant_parent(
-                                                        type_summaries.clone(),
-                                                        n.clone(),
-                                                        import_module_enums.clone(),
-                                                    ) {
-                                                        Some(parent) => parent.clone(),
-                                                        None => "".to_string(),
-                                                    },
-                                                },
-                                            },
-                                        }
-                                    }
-                                },
-                            );
+                            __result.push(import_variant_parent_for_name(
+                                n.clone(),
+                                import_module.clone(),
+                                registry.clone(),
+                                type_summaries.clone(),
+                                typed_modules.clone(),
+                                export_sets.clone(),
+                                source_indices.clone(),
+                                module_index.clone(),
+                                imported_enums.clone(),
+                                import_module_enums.clone(),
+                            ));
                         }
                         __result
                     })
@@ -5588,7 +5622,21 @@ pub fn emit_specific_import_block(
                 let non_variant_top = Rc::new({
                     let mut __result = Vec::new();
                     for n in top_level.clone().iter().cloned() {
-                        if if is_known_variant(type_summaries.clone(), n.clone()) {
+                        if if import_variant_parent_for_name(
+                            n.clone(),
+                            import_module.clone(),
+                            registry.clone(),
+                            type_summaries.clone(),
+                            typed_modules.clone(),
+                            export_sets.clone(),
+                            source_indices.clone(),
+                            module_index.clone(),
+                            imported_enums.clone(),
+                            import_module_enums.clone(),
+                        ) != "".to_string()
+                        {
+                            false
+                        } else if is_known_variant(type_summaries.clone(), n.clone()) {
                             is_enum_in_summaries(type_summaries.clone(), n.clone())
                         } else {
                             true
