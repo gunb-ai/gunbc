@@ -13,8 +13,6 @@ import v2.std.logic { Bool }
 import v2.std.nat { Nat, Succ, Zero, nat_add }
 import v2.std.algebra { Cons, Empty }
 
-// --- grounded reconciliation: native form == modeled form, plain Bool(true) ---
-// (these were the §5 fail-open forks before the numeric tower was grounded)
 fn reconciles_nat_add_eq_int() -> Bool { nat_add(a: 85, b: 32) == 117 }
 fn reconciles_nat_add_1_1_eq_2() -> Bool { nat_add(a: 1, b: 1) == 2 }
 fn reconciles_nat_add_noncanon() -> Bool { nat_add(a: 85, b: 32) == nat_add(a: 100, b: 17) }
@@ -23,14 +21,12 @@ fn reconciles_succ_zero_eq_one() -> Bool { (Succ { prev: Zero }) == 1 }
 fn reconciles_zero_eq_int() -> Bool { Zero == 0 }
 fn reconciles_ne_path_false() -> Bool { nat_add(a: 1, b: 1) != 2 }
 
-// --- other reconciled / native controls, must stay Bool(true) ---
 fn ok_native_int_eq() -> Bool { (85 + 32) == 117 }
 fn ok_nat_add_reflexive() -> Bool { nat_add(a: 85, b: 32) == nat_add(a: 85, b: 32) }
 fn ok_list_freemonoid_reconciled() -> Bool {
   [1, 2, 3] == Cons { head: 1, tail: Cons { head: 2, tail: Cons { head: 3, tail: Empty } } }
 }
 
-// --- genuine differences: must stay Bool(false), NOT error (no false positives) ---
 fn diff_int() -> Bool { 1 == 2 }
 fn diff_succ_zero_vs_zero() -> Bool { (Succ { prev: Zero }) == Zero }
 fn diff_nat_add() -> Bool { nat_add(a: 1, b: 1) == 3 }
