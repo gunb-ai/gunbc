@@ -106,6 +106,39 @@ fn memory_aware_spawn_width(
   }
 }
 
+fn process_bounded_job_count(pids_budget: Int, procs_per_job: Int) -> Int {
+  if procs_per_job <= 0 {
+    1
+  } else {
+    let fits = pids_budget / procs_per_job
+    if fits < 1 { 1 } else { fits }
+  }
+}
+
+fn process_memory_aware_spawn_width(
+  hardware_threads: HardwareThreadCount,
+  memory_budget: ByteSize,
+  per_job_peak: ByteSize,
+  pids_budget: Int,
+  procs_per_job: Int,
+  conservative_fallback_width: Int
+) -> HardwareThreadCount {
+  let mem_bytes = byte_size_count(b: memory_budget)
+  if mem_bytes == 0 {
+    hardware_thread_count(count: conservative_fallback_width)
+  } else if pids_budget == 0 {
+    hardware_thread_count(count: conservative_fallback_width)
+  } else {
+    let cores = hardware_thread_count_value(t: hardware_threads)
+    let mem_width = memory_bounded_shard_count(
+      memory_budget: memory_budget,
+      per_shard_peak: per_job_peak
+    )
+    let pids_width = process_bounded_job_count(pids_budget: pids_budget, procs_per_job: procs_per_job)
+    hardware_thread_count(count: int_min(a: int_min(a: cores, b: mem_width), b: pids_width))
+  }
+}
+
 fn width_fold_objective_goals() -> List<AxisGoal> {
   [LowerIsBetter, LowerIsBetter]
 }
@@ -242,6 +275,70 @@ fn witness_subunit_budget_admits_one() -> Bool {
     hardware_threads: hardware_thread_count(128),
     memory_budget: byte_size(1000000000),
     per_shard_peak: byte_size(2100028416),
+    conservative_fallback_width: 4
+  ) == 1
+}
+
+fn process_memory_aware_width_value(
+  hardware_threads: HardwareThreadCount,
+  memory_budget: ByteSize,
+  per_job_peak: ByteSize,
+  pids_budget: Int,
+  procs_per_job: Int,
+  conservative_fallback_width: Int
+) -> Int {
+  hardware_thread_count_value(
+    t: process_memory_aware_spawn_width(
+      hardware_threads: hardware_threads,
+      memory_budget: memory_budget,
+      per_job_peak: per_job_peak,
+      pids_budget: pids_budget,
+      procs_per_job: procs_per_job,
+      conservative_fallback_width: conservative_fallback_width
+    )
+  )
+}
+
+fn witness_pids_term_binds_below_cores_and_memory() -> Bool {
+  process_memory_aware_width_value(
+    hardware_threads: hardware_thread_count(128),
+    memory_budget: byte_size(137438953472),
+    per_job_peak: byte_size(2100028416),
+    pids_budget: 24,
+    procs_per_job: 3,
+    conservative_fallback_width: 1
+  ) == 8
+}
+
+fn witness_memory_term_still_binds_under_three_term_fold() -> Bool {
+  process_memory_aware_width_value(
+    hardware_threads: hardware_thread_count(128),
+    memory_budget: byte_size(6442450944),
+    per_job_peak: byte_size(2100028416),
+    pids_budget: 4096,
+    procs_per_job: 3,
+    conservative_fallback_width: 1
+  ) == 2
+}
+
+fn witness_unreadable_pids_budget_falls_back_conservative() -> Bool {
+  process_memory_aware_width_value(
+    hardware_threads: hardware_thread_count(128),
+    memory_budget: byte_size(137438953472),
+    per_job_peak: byte_size(2100028416),
+    pids_budget: 0,
+    procs_per_job: 3,
+    conservative_fallback_width: 4
+  ) == 4
+}
+
+fn witness_subunit_pids_budget_admits_one() -> Bool {
+  process_memory_aware_width_value(
+    hardware_threads: hardware_thread_count(128),
+    memory_budget: byte_size(137438953472),
+    per_job_peak: byte_size(2100028416),
+    pids_budget: 2,
+    procs_per_job: 3,
     conservative_fallback_width: 4
   ) == 1
 }

@@ -17,27 +17,22 @@ fn leaf(id: Symbol) -> Node {
   node_synthetic(kind: TypeNode { connective: Atom { identity: id } }, children: [])
 }
 
-// O(n^2): a product of two linear factors -- the nested-iteration signature.
 data quadratic_cost: SymbolicCost = ProductCost {
   lhs: LinearCost { variable: SizeVariable { source: leaf(id: ^outer) } },
   rhs: LinearCost { variable: SizeVariable { source: leaf(id: ^inner) } }
 }
-// O(n): already at its run-time minimum.
 data linear_cost: SymbolicCost = LinearCost { variable: SizeVariable { source: leaf(id: ^single) } }
-// O(n): a SEQUENCE of two linear scans (sum, not product) -- not nested, not reducible by this rewrite.
 data sum_cost: SymbolicCost = SumCost {
   lhs: LinearCost { variable: SizeVariable { source: leaf(id: ^a) } },
   rhs: LinearCost { variable: SizeVariable { source: leaf(id: ^b) } }
 }
 
-// ── positive: the O(n^2) product-of-linears is recognized and reducible ─────────────────────────────
 test fn quadratic_is_nested_product() -> Bool {
   cost_is_nested_product(c: quadratic_cost)
 }
 test fn quadratic_is_rewritable() -> Bool {
   cost_is_rewritable(c: quadratic_cost)
 }
-// the rewrite strictly lowers the realized class: realized = Polynomial(2), minimized = Linear.
 test fn quadratic_minimizes_strictly_below_realized() -> Bool {
   asymptotic_class_dominates(
     a: asymptotic_class_of_cost(cost: quadratic_cost),
@@ -49,14 +44,12 @@ test fn quadratic_minimizes_strictly_below_realized() -> Bool {
   )
 }
 
-// ── discriminating negatives: already-minimal costs are NOT flagged ─────────────────────────────────
 test fn linear_not_rewritable() -> Bool {
   !cost_is_rewritable(c: linear_cost)
 }
 test fn sum_of_linears_not_rewritable() -> Bool {
   !cost_is_rewritable(c: sum_cost)
 }
-// minimizing an already-minimal cost leaves the class unchanged (mutual domination = equal).
 test fn linear_minimized_unchanged() -> Bool {
   asymptotic_class_dominates(
     a: minimized_class(c: linear_cost),

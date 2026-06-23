@@ -4,12 +4,10 @@ import v2.lens.complexity_rewrite { ComplexityRewrite, catalog_is_sound, rewrite
 import v2.lens.cost { ClassLinear, ClassPolynomial, polynomial_degree_two }
 import v2.std.logic { Bool }
 
-// The catalog soundness WALL: every catalogued rewrite STRICTLY lowers the asymptotic class.
 test fn catalog_is_sound_holds() -> Bool {
   catalog_is_sound()
 }
 
-// Discriminating RED control #1 -- a non-lowering "rewrite" (before == after) is rejected.
 fn bogus_identity_rewrite() -> ComplexityRewrite {
   ComplexityRewrite {
     name: ^bogus_identity,
@@ -22,7 +20,6 @@ test fn identity_rewrite_is_rejected() -> Bool {
   !rewrite_strictly_lowers(r: bogus_identity_rewrite())
 }
 
-// Discriminating RED control #2 -- a WIDENING "rewrite" (after dominates before) is rejected.
 fn bogus_widening_rewrite() -> ComplexityRewrite {
   ComplexityRewrite {
     name: ^bogus_widening,

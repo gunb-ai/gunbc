@@ -17,39 +17,18 @@ import v2.std.algebra { FreeMonoid, any, fold_list, for_all }
 import v2.std.node { Symbol }
 import v2.std.logic { Bool }
 
-// The DECIDABLE rewrite catalog -- the §5 wall-half carved out of v2.lens.complexity's RatchetForever
-// optimality residue. complexity.dag projects a realized cost onto an AsymptoticClass and surfaces a GAP
-// vs a lower bound (undecidable to close, by Rice). This module formalizes the OPPOSITE-direction,
-// DECIDABLE fragment: a finite whitelist of cost-recurrence rewrites each of which PROVABLY lowers the
-// class (the 'O(n^2)->O(n)' rewrites). One catalog, N rows -- the RunTime-axis source the
-// intent_linearity registry folds over (the change-time axis is anti-unification; this is the run-time
-// axis). The undecidable residue (which programs are AT their optimum) stays the ratchet in complexity.dag.
-
 type ComplexityRewrite {
   name: Symbol
-  // the cost-recurrence class this rewrite recognizes, and the strictly-lower class it reduces it to
   before: AsymptoticClass
   after: AsymptoticClass
-  // decidable precondition: does this realized cost exhibit the rewrite's reducible structural signature?
   applies: fn(SymbolicCost) -> Bool
 }
 
-// ── the catalog soundness WALL (decidable now, witness-enforced) ────────────────────────────────────
-// A catalog row is admissible only if it STRICTLY lowers the asymptotic class: before dominates after
-// AND after does not dominate before. A 'rewrite' that doesn't reduce complexity (before == after, or a
-// widening) makes catalog_is_sound() go red -- it is the discriminating control, not a real rewrite.
 fn rewrite_strictly_lowers(r: ComplexityRewrite) -> Bool {
   asymptotic_class_dominates(a: r.before, b: r.after)
     && !asymptotic_class_dominates(a: r.after, b: r.before)
 }
 
-// ── Row 1 — loop-invariant hoist / repeated-rescan elimination (O(n^2) -> O(n)) ─────────────────────
-// The structural signature of a nested iteration: a ProductCost of two linear factors (asymptotic class
-// = ClassPolynomial degree 2). When the inner factor is loop-invariant (recomputed every outer
-// iteration but independent of the outer index) it hoists out, collapsing the product to a sum: O(n).
-// The DECIDABLE part -- the cost is a product-of-linears -- is read here from the cost tree. The
-// SUFFICIENCY (that the inner factor is genuinely independent, not a real all-pairs O(n^2)) is the
-// grounding this row waits on: the same dependency-coupling carrier v2.lens.parallelism waits on.
 fn cost_is_nested_product(c: SymbolicCost) -> Bool {
   match c {
     ProductCost { lhs: lhs, rhs: rhs } =>
@@ -82,19 +61,14 @@ fn catalog_is_sound() -> Bool {
   for_all(xs: rewrite_catalog(), predicate: rewrite_strictly_lowers)
 }
 
-// ── application (the engine the registry calls) ─────────────────────────────────────────────────────
-// typed projector (avoids field-access on a fold lambda element); mirrors v2.lens.intent_linearity.rule_fires.
 fn rewrite_applies(r: ComplexityRewrite, c: SymbolicCost) -> Bool {
   r.applies(c)
 }
 
-// Is this realized cost reducible by SOME catalogued rewrite -- i.e. non-minimal at run-time?
 fn cost_is_rewritable(c: SymbolicCost) -> Bool {
   any(xs: rewrite_catalog(), predicate: fn(r) { rewrite_applies(r: r, c: c) })
 }
 
-// The minimized class: the realized class lowered by the first applicable rewrite (the cost-recurrence
-// at its decidable run-time minimum). No rewrite applies -> the realized class is returned unchanged.
 fn minimized_class(c: SymbolicCost) -> AsymptoticClass {
   fold_list(
     xs: rewrite_catalog(),
@@ -112,7 +86,7 @@ fn minimized_class(c: SymbolicCost) -> AsymptoticClass {
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: WallAfterGrounding {
     grounding_authority: "the dependency-coupling carrier on InferredFacts that v2.lens.parallelism waits on (feature:T-13-parallelism-relation-unresolved) -- it decides loop-invariance / independence",
-    dissolve_on: "a catalogued rewrite fires on a LIVE realized cost once independence is read from the coupling carrier by construction; until then the structural signature (cost_is_nested_product) is the decidable NECESSARY condition and the row over-approximates -- sufficiency waits on the carrier"
+    dissolve_on: "a catalogued rewrite fires on a LIVE realized cost once independence is read from the coupling carrier by construction; until then the structural signature (cost_is_nested_product: a ProductCost of two linear factors, the nested-iteration shape O(n^2)) is the decidable NECESSARY condition and the row over-approximates -- sufficiency (genuine loop-invariant hoist O(n^2)->O(n), not a real all-pairs O(n^2)) waits on the carrier"
   },
-  rationale: "§5 partition of the complexity ratchet into its decidable wall-fragments: (1) every catalogued rewrite STRICTLY lowers the asymptotic class -- decidable now, enforced by catalog_is_sound (the rewrite-catalog wall the brief formalizes); (2) whether a realized cost matches a rewrite's reducible signature is decidable from the cost tree, but its SUFFICIENCY (genuine reducibility, not a real all-pairs O(n^2)) is grounded by the independence carrier; (3) global optimality stays the RatchetForever in v2.lens.complexity / v2.lens.synthesis. One catalog, N rows -- the run-time axis of v2.lens.intent_linearity."
+  rationale: "The DECIDABLE rewrite catalog -- the wall-half carved out of v2.lens.complexity's RatchetForever optimality residue. complexity.dag projects a realized cost onto an AsymptoticClass and surfaces an undecidable GAP (Rice); this module formalizes the opposite-direction decidable fragment: a finite whitelist of cost-recurrence rewrites each PROVABLY strictly lowering the class (the §5 'O(n^2)->O(n)' rewrites). §5 partition: (1) every catalogued rewrite strictly lowers the class -- decidable now, enforced by catalog_is_sound (the rewrite-catalog wall); (2) whether a realized cost matches a rewrite's reducible signature is decidable from the cost tree, but its SUFFICIENCY is grounded by the independence carrier above; (3) global optimality stays the RatchetForever in v2.lens.complexity / v2.lens.synthesis. One catalog, N rows -- the RunTime axis of v2.lens.intent_linearity (the ChangeTime axis is anti-unification)."
 }
