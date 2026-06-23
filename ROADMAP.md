@@ -86,6 +86,8 @@ A flaky or green-but-broken floor means no gate protects anything — so CI is u
 
 → [charter: causal-chain gap analysis](docs/plans/ci-process-end-to-end.md) — what's on `.dag` today vs not, push→execute.
 
+→ [CI humming](docs/plans/ci-humming.md) — the throughput/wall-clock/reliability operations plan for the **▸ NOW** milestone: un-throttle runner slots from the modeled budget (fix the build-pool double-count), verified-effective caps, the carrier, SessionSliceEnforcement, oomd demoted to backstop.
+
 **◆ Milestones:** execution-as-DAG ✓ (the floor *is* a bounded forward graph walk) · width on `.dag` ✓ (#5444) → **▸ NOW — host-operation on `.dag` (placement · runner deployment · caps are hand-managed, off-fabric)** → resolve-cache enabled → one Materialization kernel (collapse the 5 caches) → one Placement authority (jobs · threads · sessions = 3 forks) → shared secrets · gunbhub closes the GitHub engine (G6, parked)
 
 **What's on `.dag` today (the gap map — detail in the charter §2/§4):**
@@ -164,14 +166,21 @@ Operator decision (2026-06-21): budget-gate validation is the in-window tool; th
 
 Prevent the next class, not the last instance: generate witnesses from declared structure. → [audit + method](docs/plans/testgen-oracle.md)
 
-**◆ Milestones:** output gated ✓ (#5434) · coproduct-exhaustiveness structural ✓ (#5441) · cross-rep-equality ✓ (#5449) · oracle-method mapped ✓ (#5471) → anemia lens? *(parked, likely advisory)*
+**◆ Milestones:** output gated ✓ (#5434) · coproduct-exhaustiveness structural ✓ (#5441) · cross-rep-equality ✓ (#5449) · oracle-method mapped ✓ (#5471) → **▸ NOW: wiring-liveness oracle (compile-time lens · fail compilation)** → anemia lens? *(parked, likely advisory)*
+
+Motivating instance: a prod rotation 401'd `CREDENTIALS_MISSING` because `auth_input: access_token` was modeled (§3-correct) but the interpreter REST realization (`resolve_auth`) only realizes the env-var path — a declared input wired into nothing, typechecking but dead, and the only "auth tests" were `.contains("Bearer")` greps on emitted source (§5 spec-without-execution). The general class is **wiring-liveness**: a declared input must influence the output it feeds — the cache-purity oracle read backwards (purity: *same* in ⇒ *same* out; liveness: *different* in ⇒ *different* out — one perturbation kernel, two readings). → [audit + design](docs/plans/wiring-liveness-preflight.md)
 
 - [x] gate the generated output (#5434) — floor-discover `generated/` (or regen==committed drift gate)
 - [x] CoproductExhaustiveness made structural (#5441) — over every declared coproduct, not a hand-roster
 - [x] cross-representation-equality category (#5449) — straddle witness per coproduct × native realization
 - [x] **the oracle method (retro)** (#5471) — bug-class→mechanism map (generator/lens/wall); testgen owns A + B-routing only, rest are lenses/walls ([map](docs/plans/testgen-oracle.md) §2)
-- [x] affected-set = the completeness half (#5430) — model the full repo-process universe
+- [x] affected-set = the completeness half (#5430) — model the full repo-process universe — frontier now has a paying consumer: the wiring residue-preflight (below)
   - [ ] *anemia lens?* (parked, DESIGN §2 leaf-side) — likely advisory, not a hard gate; decide whether to elevate
+- [ ] **wiring-liveness oracle** — a declared input must influence its output; the cache-purity oracle read backwards (perturbation-response, one kernel two readings). Decidability split (§5): static dataflow reachability over the Node DAG is the **compile-time wall** (declared input with no path to an output = unwired → fail compilation, no runtime gate); perturbation/fuzz is the runtime **confirmation** for the opaque-seed residue (`resolve_auth` is Rust, invisible to `.dag` reflection today). [plan](docs/plans/wiring-liveness-preflight.md)
+  - [ ] **pre-send fail-closed guard** (narrowest seam) — declared-auth-but-no-token ⇒ typed `AuthDeclaredButUnwired` refusal before send. HANDED to the `resolve_auth` realization-fix lane; **this lane must confirm it landed** (perturb to drop the token → typed error, not a remote 401)
+  - [ ] **wiring lens — static reachability, compile-time** — over `.dag`-modeled input→output relations; fails compilation on a dead wire. Primary mechanism; grows to subsume the seed realizations as they self-host (§5/§7)
+  - [ ] **wiring witness — opaque-realization generator** — perturbation witness over declared service input→request relations; RED when an input is dropped (the execution-grounded generalization of the auth case, for realizations the compile-time lens can't see)
+  - [ ] **runtime preflight — residue only** — run the wiring check over the `affected_set` `ReExecFrontier` (the about-to-run slice) before execution; `FailClosed` on a dead wire. Needed only for opaque realizations; dissolves into the compile-time lens as they self-host
 
 ## 5. Self-host v2 → delete `src/v1` (expansion)
 

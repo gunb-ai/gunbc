@@ -11,7 +11,7 @@ use im_rc::Vector as RrbVector;
 use crate::std_syntax::BinOp;
 use crate::std_syntax::LiteralValue;
 use crate::v1_compiler_emit::{extract_string_interp_parts, has_mock_prefix};
-use crate::v1_compiler_infer_items::{ItemInfo, ItemKind, ResolvedGraph, TypedModule};
+use crate::v1_compiler_infer_items::{item_kind, ItemInfo, ItemKind, ResolvedGraph, TypedModule};
 use crate::v1_rt;
 use crate::v1_rt::{
     rc_empty_set as empty_set, rc_set_insert as set_insert, rc_set_union as set_union, set_contains,
@@ -1007,25 +1007,28 @@ impl InterpContext {
                 if !name.is_empty() {
                     fn_nodes.insert(name.clone(), item.clone());
                 }
-                if let Some(info) = graph.item_registry.get(&name) {
-                    if info.kind == ItemKind::ServiceItem {
-                        for op in item.children.iter() {
-                            let op_name = authored_name_at(source_indices.clone(), op.clone());
-                            if !op_name.is_empty() {
-                                let key = format!("{}.{}", name, op_name);
-                                service_ops.insert(key, (item.clone(), op.clone()));
-                            }
+                // Service-item detection is node-local: the item node carries the
+                // `transport` that *defines* it as a service, so `item_kind` of the
+                // node itself is the single authority. Do NOT gate on a name-keyed
+                // `item_registry` lookup — two top-level items can share one authored
+                // name (the `std.resources` `resource Filesystem` is an OtherItem;
+                // the `extdeps.filesystem` `service Filesystem` is a ServiceItem), and
+                // once both land in the same import closure the non-service entry can
+                // win the registry merge and poison the lookup, silently dropping the
+                // service's operations (-> "unknown service operation" at runtime).
+                if item_kind(item.clone()) == ItemKind::ServiceItem {
+                    for op in item.children.iter() {
+                        let op_name = authored_name_at(source_indices.clone(), op.clone());
+                        if op_name.is_empty() {
+                            continue;
                         }
-                    }
-                }
-                if let Some(info) = graph.item_registry.get(&item.name) {
-                    if info.kind == ItemKind::ServiceItem && !item.name.is_empty() {
-                        for op in item.children.iter() {
-                            let op_name = authored_name_at(source_indices.clone(), op.clone());
-                            if !op_name.is_empty() {
-                                let key = format!("{}.{}", item.name, op_name);
-                                service_ops.insert(key, (item.clone(), op.clone()));
-                            }
+                        if !name.is_empty() {
+                            let key = format!("{}.{}", name, op_name);
+                            service_ops.insert(key, (item.clone(), op.clone()));
+                        }
+                        if !item.name.is_empty() && item.name != name {
+                            let key = format!("{}.{}", item.name, op_name);
+                            service_ops.insert(key, (item.clone(), op.clone()));
                         }
                     }
                 }
@@ -3846,7 +3849,7 @@ fn dispatch_rest(
         None => "GET".to_string(),
     };
 
-    let (auth_header_name, auth_token) = resolve_auth(service_node, transport, &si, ctx);
+    let (auth_header_name, auth_token) = resolve_auth(service_node, transport, param_env, &si, ctx);
 
     let reserved_props = [
         "base_url",
@@ -3978,11 +3981,16 @@ fn dispatch_rest(
 fn resolve_auth(
     service_node: &Rc<Node>,
     _transport: &Rc<Node>,
+    param_env: &Rc<Env>,
     si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
     ctx: &InterpContext,
 ) -> (String, Option<String>) {
     let mut header_name = "Authorization".to_string();
     let mut env_var_name: Option<String> = None;
+    // `auth_input: <field>` (§3): the token is an operation INPUT the caller supplies,
+    // not ambient env. Resolve it from the per-call param env. Takes precedence over
+    // `auth_source` (env var) when both are present.
+    let mut input_field_name: Option<String> = None;
 
     for prop in service_node.properties.iter() {
         let name = field_init_node_name_at(prop.clone(), si.clone());
@@ -4007,6 +4015,15 @@ fn resolve_auth(
                     }
                 }
             }
+            "svc_auth_input" => {
+                // `auth_input: access_token` — the value node is the input field name (an identifier).
+                let field = authored_name_at(si.clone(), val_node.clone());
+                if !field.is_empty() {
+                    input_field_name = Some(field);
+                } else {
+                    input_field_name = extract_string_value(&val_node);
+                }
+            }
             "svc_auth_source" => {
                 for child in val_node.children.iter() {
                     let field_name = field_init_node_name_at(child.clone(), si.clone());
@@ -4020,6 +4037,17 @@ fn resolve_auth(
                 }
             }
             _ => {}
+        }
+    }
+
+    // §3: a caller-supplied input token wins over an ambient env var. Extract the String
+    // payload explicitly (the token is a Secret = Value::Str) rather than relying on Display —
+    // a non-string Value must NOT produce a stringified-debug Bearer header; fall through instead.
+    if let Some(field) = input_field_name {
+        if let Some(Value::Str(tok)) = param_env.lookup(ctx.sym(&field)) {
+            if !tok.is_empty() {
+                return (header_name, Some(tok.clone()));
+            }
         }
     }
 
@@ -4851,6 +4879,23 @@ fn eval_builtin(
                 fields.insert(ctx.sym("target_declared"), Value::Bool(f.target_declared));
                 items.push(Value::Record {
                     type_name: ctx.sym("ImportResolutionFact"),
+                    fields: Rc::new(fields),
+                });
+            }
+            Ok(Some(list_value(items)))
+        }
+
+        "module_declaration_facts" => {
+            let pool_roots =
+                expect_str_list(positional.first().copied(), "module_declaration_facts")?;
+            let facts = crate::import_resolution_project::module_declaration_facts(&pool_roots);
+            let mut items: Vec<Value> = Vec::new();
+            for f in facts {
+                let mut fields = HashMap::new();
+                fields.insert(ctx.sym("module"), Value::Str(f.module));
+                fields.insert(ctx.sym("path"), Value::Str(f.path));
+                items.push(Value::Record {
+                    type_name: ctx.sym("ModuleDeclarationFact"),
                     fields: Rc::new(fields),
                 });
             }
