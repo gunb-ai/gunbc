@@ -78,6 +78,36 @@ fn probe() -> String {
 }
 "#;
 
+// Dual-declare: both auth_input (caller-supplied) and auth_source (env-var fallback) declared.
+// Used by the two fallback-regression witnesses below.
+const SERVICE_DUAL_DECLARE: &str = r#"module auth_unwired_t4
+
+service test.Svc {
+  config {
+    endpoint: "https://unreachable.invalid.example"
+    auth: Bearer
+    auth_input: api_key
+    auth_source: "TEST_AUTH_GUARD_DUAL_FALLBACK_VAR"
+  }
+  operation GetData {
+    input { api_key: String }
+    output { data: String }
+    transport rest { method: GET, path: "/data" }
+    response {
+      200 => String
+    }
+    mock_response {
+      200 => { data: "ok" }
+    }
+  }
+}
+
+fn probe() -> String {
+  let r = test.Svc.GetData(api_key: "")
+  r.data
+}
+"#;
+
 const SERVICE_NO_AUTH: &str = r#"module auth_unwired_t3
 
 service test.Svc {
@@ -180,6 +210,51 @@ fn resolve_auth_three_way_split_matches_dispatch_behavior() {
             is_unwired, *expect_unwired,
             "{label}: expect_unwired={expect_unwired} but got {result:?}"
         );
+    }
+}
+
+// Regression guard: dual-declare (auth_input + auth_source), api_key empty but env var present →
+// must fall through to auth_source and NOT raise AuthDeclaredButUnwired.
+#[test]
+fn dual_declare_env_var_fallback_resolves_when_input_empty() {
+    // Set a synthetic env var the service fixture reads.
+    std::env::set_var("TEST_AUTH_GUARD_DUAL_FALLBACK_VAR", "test-token-sentinel");
+    let resolved = resolve(SERVICE_DUAL_DECLARE);
+    let graph = resolved.graph.as_ref().expect("graph");
+    let ctx = v1_interpreter::InterpContext::new(
+        graph,
+        resolved.source_indices.clone(),
+        ExecutionMode::Wet,
+    );
+    let result = v1_interpreter::run_in_context(&ctx, "probe", false);
+    std::env::remove_var("TEST_AUTH_GUARD_DUAL_FALLBACK_VAR");
+    // Auth resolved via env-var fallback → guard must NOT fire; a network error is acceptable
+    // (the endpoint is unreachable) but AuthDeclaredButUnwired is the regression.
+    if let Err(InterpError::AuthDeclaredButUnwired { service, reason }) = result {
+        panic!(
+            "regression: guard fired on dual-declare with env-var present; \
+             auth_input→auth_source fallback broken. service='{service}' reason='{reason}'"
+        );
+    }
+}
+
+// Dual-declare, api_key empty AND env var absent → guard must still fire (fail-closed).
+#[test]
+fn dual_declare_both_empty_fails_closed() {
+    std::env::remove_var("TEST_AUTH_GUARD_DUAL_FALLBACK_VAR");
+    let resolved = resolve(SERVICE_DUAL_DECLARE);
+    let graph = resolved.graph.as_ref().expect("graph");
+    let ctx = v1_interpreter::InterpContext::new(
+        graph,
+        resolved.source_indices.clone(),
+        ExecutionMode::Wet,
+    );
+    match v1_interpreter::run_in_context(&ctx, "probe", false) {
+        Err(InterpError::AuthDeclaredButUnwired { .. }) => {}
+        other => panic!(
+            "expected AuthDeclaredButUnwired when both auth_input and auth_source fail, \
+             got {other:?}"
+        ),
     }
 }
 
