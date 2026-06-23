@@ -1,5 +1,10 @@
 #![allow(clippy::disallowed_macros)]
 
+#[allow(dead_code)]
+const SCAFFOLD_NOTE: &str = "SCAFFOLD \u{2014} dissolve-on: when src/v1 .dag is parsed by the \
+    modeled pipeline / when the seed shrinks to zero (\u{a7}7; src/v1 is the bootstrap seed; \
+    parsing the seed currently requires the seed parser itself).";
+
 use std::collections::HashMap;
 use std::process::ExitCode;
 use std::rc::Rc;
