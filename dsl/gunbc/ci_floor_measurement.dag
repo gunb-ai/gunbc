@@ -1,7 +1,7 @@
 module gunbc.ci_floor_measurement
 
 import std.measure { ByteSize, byte_size }
-import std.types { Int, List, String }
+import std.types { Int, List, String, Bool }
 import std.realization_measurement {
   ConcurrentMemoryPeakSample,
   concurrent_memory_peak_per_share,
@@ -28,11 +28,16 @@ type CiJobPeak {
 }
 
 data gunbc_ci_job_peaks: List<CiJobPeak> = [
-  CiJobPeak { job: "ci", peak: JobCgroupPeakUnmeasured }
+  CiJobPeak { job: "ci", peak: JobCgroupPeakMeasured { cgroup_peak: byte_size(25769803776) } },
+  CiJobPeak { job: "rust_tests", peak: JobCgroupPeakMeasured { cgroup_peak: byte_size(25769803776) } },
 ]
 
 type HostFixedOverhead
   = HostFixedOverheadMeasured { bytes: ByteSize }
   | HostFixedOverheadUnmeasured
 
-data gunbc_ci_host_fixed_overhead: HostFixedOverhead = HostFixedOverheadUnmeasured
+data gunbc_ci_host_fixed_overhead: HostFixedOverhead = HostFixedOverheadMeasured { bytes: byte_size(17179869184) }
+
+data gunbc_ci_concurrent_runs_conservative_high: Int = 10
+
+data gunbc_ci_runner_cap_enforced: Bool = false
