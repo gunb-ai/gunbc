@@ -145,6 +145,7 @@ import v1.compiler.emit_core_support {
 }
 
 fn render_rust_type(n: Node, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>) -> String {
+  if is_host_text_carrier_type(n: n, source_indices: source_indices, corpus_repr: corpus_repr) { return "String" }
   match n.inferred {
     Present { value: TypeVariable { id: tv } } => tv
     _ =>
@@ -161,6 +162,7 @@ fn render_rust_type(n: Node, shared_types: Set<String>, corpus_repr: RustCorpusR
 }
 
 fn render_rust_type_without_applied_binding(n: Node, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>) -> String {
+  if is_host_text_carrier_type(n: n, source_indices: source_indices, corpus_repr: corpus_repr) { return "String" }
   if n.connective == NoConnective && n.children |> count > 0 && !is_container_type(name: authored_name_at(source_indices: source_indices, node: n)) {
     render_rust_applied_type_shared(n: n, generic_param_names: [], shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: empty_map(), env: TypeEnv { bindings: empty_map(), recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_indices: source_indices, intern_table: empty_intern_table() })
   } else if node_is_set_collection(n: n, source_indices: source_indices) {
@@ -241,6 +243,52 @@ fn rust_host_string_seam_fn_emit(name: String) -> String? {
   }
 }
 
+// Host text-op grounding (bright-stag-194 ruling 2026-06-23, option A): under HostNative String is native
+// Rust `String`, so the std text ops -- whose .dag bodies fold over the FreeMonoid<Char> representation --
+// must realize on real char ops (NOT byte-index hacks; §5 ground-don't-fake for text). Char = i64 (code
+// point); CharResult/ListTailResult/SourceFold are the emitted enums/struct. Returns a complete native
+// fn body, used in place of the generic-FreeMonoid body only under host (faithful keeps the .dag body).
+fn rust_host_string_op_fn_emit(name: String) -> String? {
+  if name == "string_is_empty" {
+    Present { value: concat(
+      "pub fn string_is_empty(s: String) -> bool {\n",
+      "    s.is_empty()\n",
+      "}\n"
+    ) }
+  } else if name == "string_head" {
+    Present { value: concat(
+      "pub fn string_head(s: String) -> Rc<CharResult> {\n",
+      "    match s.chars().next() {\n",
+      "        Some(c) => Rc::new(CharResult::CharFound { value: Box::new(c as i64) }),\n",
+      "        None => Rc::new(CharResult::CharAbsent),\n",
+      "    }\n",
+      "}\n"
+    ) }
+  } else if name == "string_tail" {
+    Present { value: concat(
+      "pub fn string_tail(s: String) -> Rc<ListTailResult<Char>> {\n",
+      "    let mut __it = s.chars();\n",
+      "    match __it.next() {\n",
+      "        Some(_) => Rc::new(ListTailResult::TailFound { tail: Rc::new(__it.map(|c| c as i64).collect::<Vec<i64>>()) }),\n",
+      "        None => Rc::new(ListTailResult::TailAbsent),\n",
+      "    }\n",
+      "}\n"
+    ) }
+  } else if name == "fold_source" {
+    Present { value: concat(
+      "pub fn fold_source<R: Clone>(src: String, algebra: Rc<SourceFold<R>>) -> R {\n",
+      "    let mut __acc = (algebra.init)(src.clone());\n",
+      "    for _ in src.chars() {\n",
+      "        __acc = if (algebra.is_done)(__acc.clone()) { __acc } else { (algebra.step)(__acc) };\n",
+      "    }\n",
+      "    __acc\n",
+      "}\n"
+    ) }
+  } else {
+    none
+  }
+}
+
 fn rust_opaque_kernel_alias_carrier(name: String) -> String? {
   if name == "Json" || name == "Bytes" {
     Present { value: coerce_primitive_type(target: Rust, dag_name: name) }
@@ -258,10 +306,51 @@ fn rust_seed_host_numeric_alias(name: String, corpus_repr: RustCorpusRepr) -> St
 }
 
 fn rust_seed_host_container_base(name: String, corpus_repr: RustCorpusRepr) -> String? {
-  if name == "List" && corpus_repr_is_host(corpus_repr: corpus_repr) {
+  // FreeMonoid value-side grounding (Root A emit-seam, bright-stag-194 signed 2026-06-23):
+  // List == FreeMonoid (types.dag alias) so the value carrier must realize to the SAME native
+  // type List does (Rc<Vec<T>>) -- the #5428 shape, native form == modeled form. NOT a type-alias-
+  // only change (that regresses +402 E0308): paired with Empty/Cons construct + match grounding below.
+  if (name == "List" || name == "FreeMonoid") && corpus_repr_is_host(corpus_repr: corpus_repr) {
     Present { value: "Vec" }
   } else {
     none
+  }
+}
+
+// Host text-carrier grounding (bright-stag-194 ruling 2026-06-23): String = FreeMonoid<Char> is the
+// Char-specialized instantiation of FreeMonoid, and its idiomatic native realization is Rust `String`
+// (the §2-horizontal companion to the general FreeMonoid<T> -> Rc<Vec<T>> arm; NOT a §3 fork -- one
+// authority, element-dispatched carrier). So under HostNative, a Char-element FreeMonoid/List, and the
+// String alias itself, all realize to native `String` (values are already native -- string literals
+// emit `"...".to_string()`). This closes the FreeMonoid<Char> type-vs-native-String straddle (the
+// dominant E0308 sub-bucket) and the String<Char> fn-sig/alias-decl inconsistency.
+fn rust_host_text_carrier_elem_name(n: Node, source_indices: Map<String, NewlineIndex>) -> String {
+  match n.children |> first {
+    Present { value: ch } => authored_name_at(source_indices: source_indices, node: ch)
+    Absent =>
+      match find_property(props: n.properties, prop_name: "__applied_type_args", source_indices: source_indices) {
+        Present { value: applied } =>
+          match applied.children |> first {
+            Present { value: ach } => authored_name_at(source_indices: source_indices, node: ach)
+            Absent => ""
+          }
+        Absent => ""
+      }
+  }
+}
+
+fn is_host_text_carrier_type(n: Node, source_indices: Map<String, NewlineIndex>, corpus_repr: RustCorpusRepr) -> Bool {
+  if !corpus_repr_is_host(corpus_repr: corpus_repr) {
+    false
+  } else {
+    let nm = authored_name_at(source_indices: source_indices, node: n)
+    if nm == "String" {
+      true
+    } else if nm == "FreeMonoid" || nm == "List" {
+      rust_host_text_carrier_elem_name(n: n, source_indices: source_indices) == "Char"
+    } else {
+      false
+    }
   }
 }
 
@@ -342,6 +431,7 @@ fn render_rust_applied_type_arg(n: Node, generic_param_names: List<String>, shar
 }
 
 fn render_rust_applied_type(n: Node, generic_param_names: List<String>, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
+  if is_host_text_carrier_type(n: n, source_indices: source_indices, corpus_repr: corpus_repr) { return "String" }
   let base_name = authored_name_at(source_indices: source_indices, node: n)
   if n.children |> count == 0 {
 
@@ -380,6 +470,7 @@ fn render_rust_applied_type_shared(n: Node, generic_param_names: List<String>, s
 }
 
 fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
+  if is_host_text_carrier_type(n: n, source_indices: source_indices, corpus_repr: corpus_repr) { return "String" }
   let applied_prop = find_property(props: n.properties, prop_name: "__applied_type_args", source_indices: source_indices)
   let applied_overlay = match applied_prop {
     Present { value: applied } =>
@@ -438,6 +529,7 @@ fn rust_fn_sig_peel_closed_alias(env: TypeEnv, n: Node) -> Bool {
 }
 
 fn render_rust_fn_sig_type(n: Node, generic_param_names: List<String>, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
+  if is_host_text_carrier_type(n: n, source_indices: source_indices, corpus_repr: corpus_repr) { return "String" }
   let name = authored_name_at(source_indices: source_indices, node: n)
   if n.connective == NoConnective && n.children |> count == 0 && name == "String" && corpus_repr_is_faithful(corpus_repr: corpus_repr) {
     render_rust_text_carrier(shared_types: shared_types)
@@ -468,6 +560,7 @@ fn render_rust_fn_sig_type_applied_binding(n: Node, shared_types: Set<String>, c
 }
 
 fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>, scope: InferScope, imports: List<Node>, registry: Map<String, ItemInfo>, module_name: String, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, module_index: ModuleIndex, variant_to_enum: Map<String, String>) -> String {
+  if is_host_text_carrier_type(n: n, source_indices: source_indices, corpus_repr: corpus_repr) { return "String" }
   let name = authored_name_at(source_indices: source_indices, node: n)
   if n.connective == NoConnective && n.children |> count == 0 && (generic_param_names |> any(g => g == name)) {
     name
@@ -2797,7 +2890,12 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
     emit_type_def_from_connective(item: item, recursive_types: emit_info.recursive_type_set, shared_types: shared_types, env: env, emit_info: emit_info, wire_contract_item: wire_contract_item, data_items: data_items, module_items: module_items, imports: imports)
   } else if is_type_alias_item(item: item, source_indices: env.source_indices) {
 
-    if (item.params |> count) == 0 && rust_nominal_identity_carrier_type_eligible(type_name: item_text) {
+    if corpus_repr_is_host(corpus_repr: emit_info.corpus_repr) && item_text == "String" {
+      // String = FreeMonoid<Char> grounds to native Rust `String` under host (bright-stag ruling
+      // 2026-06-23); emitting `type String = String;` would be illegal-recursive, so suppress the
+      // alias entirely -- every String reference renders to the native carrier via is_host_text_carrier_type.
+      ""
+    } else if (item.params |> count) == 0 && rust_nominal_identity_carrier_type_eligible(type_name: item_text) {
       rust_nominal_identity_carrier_def(name: item_text)
     } else if is_zero_param_self_referential_opaque_decl(item: item, source_indices: env.source_indices) {
       emit_zero_param_phantom_opaque_struct(item: item, source_indices: env.source_indices)
@@ -3069,6 +3167,7 @@ fn emit_struct_from_children(name: String, type_params: String, generic_param_na
 }
 
 fn render_rust_type_with_applied_binding(n: Node, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>) -> String {
+  if is_host_text_carrier_type(n: n, source_indices: source_indices, corpus_repr: corpus_repr) { return "String" }
   match find_property(props: n.properties, prop_name: "__applied_type_args", source_indices: source_indices) {
     Present { value: applied } =>
       if applied.children |> count > 0 {
@@ -3484,6 +3583,16 @@ fn emit_variant_from_child(child: Node, enum_name: String, recursive_types: Set<
 
 fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, registry: Map<String, ItemInfo>, scope: InferScope, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let si = scope.type_env.source_indices
+  // Host text-op grounding: native-String realizations replace the generic-FreeMonoid bodies under host.
+  let host_text_op = if corpus_repr_is_host(corpus_repr: emit_info.corpus_repr) {
+    rust_host_string_op_fn_emit(name: name)
+  } else { none }
+  if host_text_op != none {
+    return match host_text_op {
+      Present { value: op_fn } => op_fn
+      Absent => ""
+    }
+  }
   match rust_host_string_seam_fn_emit(name: name) {
     Present { value: seam_fn } =>
       if corpus_repr_is_faithful(corpus_repr: emit_info.corpus_repr) { seam_fn } else { "" }
@@ -4325,6 +4434,10 @@ fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: Infe
     let variant_parent = effective_variant_parent(name: name, binding_kind: binding_kind, resolved_type: resolved_type, emit_info: emit_info, source_indices: source_indices)
     let ref_str = match variant_parent {
       Present { value: enum_name } =>
+        if name == "Empty" && enum_name == "FreeMonoid" && corpus_repr_is_host(corpus_repr: emit_info.corpus_repr) {
+          // FreeMonoid grounding: Empty -> native empty Rc<Vec> (already Rc-wrapped; skip shared wrap)
+          "Rc::new(vec![])"
+        } else {
         let qualified = if is_optional_variant_name(name: name) && enum_name == "Optional" {
           if name == "Present" { "Some" } else { "None" }
         } else {
@@ -4333,6 +4446,7 @@ fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: Infe
         if set_contains(shared_types, enum_name) {
           concat("Rc::new(", qualified, ")")
         } else { qualified }
+        }
       Absent =>
         match map_get(registry, name) {
           Present { value: info } =>
@@ -4380,6 +4494,10 @@ fn emit_typed_expr_base(texpr: Node, registry: Map<String, ItemInfo>, scope: Inf
         let variant_parent = effective_variant_parent(name: n, binding_kind: binding_kind, resolved_type: texpr.inferred, emit_info: emit_info, source_indices: si)
         match variant_parent {
           Present { value: enum_name } =>
+            if n == "Empty" && enum_name == "FreeMonoid" && corpus_repr_is_host(corpus_repr: emit_info.corpus_repr) {
+              // FreeMonoid grounding: Empty -> native empty Rc<Vec> (already Rc-wrapped)
+              "Rc::new(vec![])"
+            } else {
             let qualified = if is_optional_variant_name(name: n) && enum_name == "Optional" {
               if n == "Present" { "Some" } else { "None" }
             } else {
@@ -4388,6 +4506,7 @@ fn emit_typed_expr_base(texpr: Node, registry: Map<String, ItemInfo>, scope: Inf
             if set_contains(shared_types, enum_name) {
               concat("Rc::new(", qualified, ")")
             } else { qualified }
+            }
           Absent =>
             match map_get(registry, n) {
               Present { value: info } =>
@@ -5671,6 +5790,51 @@ fn emit_typed_first_arg(args: List<Node>, registry: Map<String, ItemInfo>, scope
   }
 }
 
+// FreeMonoid grounding: a match on a host FreeMonoid/List scrutinee is rewritten to a native
+// if-else over Rc<Vec> (Empty -> is_empty, Cons{head,tail} -> head/tail by index/slice). The
+// FreeMonoid enum has exactly 2 variants so the 2-arm match maps cleanly; bindings come from the
+// Cons arm's field patterns. Returns "" if the arms are not a clean Empty/Cons pair (caller falls back).
+fn freemonoid_match_arm_for(arms: List<Node>, variant: String) -> Node? {
+  arms |> filter(arm => match arm_pattern(n: arm) {
+    VariantPattern { name: n, parent_enum: _, field_bindings: _ } => n == variant
+    _ => false
+  }) |> first
+}
+
+fn freemonoid_cons_binding(cons_arm: Node, field: String, source_indices: Map<String, NewlineIndex>) -> String {
+  match arm_pattern(n: cons_arm) {
+    VariantPattern { name: _, parent_enum: _, field_bindings: fbs } =>
+      match fbs |> filter(fb => field_binding_name_at(n: fb, source_indices: source_indices) == field) |> first {
+        Present { value: fb } =>
+          match field_binding_pattern(n: fb) {
+            Bind { name: nm } => nm
+            _ => "_"
+          }
+        Absent => "_"
+      }
+    _ => "_"
+  }
+}
+
+fn emit_native_freemonoid_match(scrut_str: String, arms: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
+  let si = scope.type_env.source_indices
+  match freemonoid_match_arm_for(arms: arms, variant: "Empty") {
+    Present { value: ea } =>
+      match freemonoid_match_arm_for(arms: arms, variant: "Cons") {
+        Present { value: ca } =>
+          let empty_body = emit_typed_expr(texpr: arm_body(n: ea), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+          let head_bind = freemonoid_cons_binding(cons_arm: ca, field: "head", source_indices: si)
+          let tail_bind = freemonoid_cons_binding(cons_arm: ca, field: "tail", source_indices: si)
+          let cons_body = emit_typed_expr(texpr: arm_body(n: ca), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+          let head_let = if head_bind == "_" { "" } else { concat("let ", head_bind, " = (*__fm)[0].clone(); ") }
+          let tail_let = if tail_bind == "_" { "" } else { concat("let ", tail_bind, ": Rc<Vec<_>> = Rc::new((*__fm)[1..].to_vec()); ") }
+          concat("{ let __fm = ", scrut_str, "; if __fm.is_empty() { ", empty_body, " } else { ", head_let, tail_let, cons_body, " } }")
+        Absent => ""
+      }
+    Absent => ""
+  }
+}
+
 fn emit_typed_match(scrutinee: Node, arms: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let scrut_str = emit_typed_expr(texpr: scrutinee, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
   let scrut_type = match scrutinee.inferred {
@@ -5681,6 +5845,11 @@ fn emit_typed_match(scrutinee: Node, arms: List<Node>, registry: Map<String, Ite
       } else { authored_name_at(source_indices: scope.type_env.source_indices, node: rt) }
     _ => ""
   }
+  // FreeMonoid grounding: rewrite a host FreeMonoid/List match into a native Rc<Vec> if-else.
+  let native_fm = if corpus_repr_is_host(corpus_repr: emit_info.corpus_repr) && (scrut_type == "FreeMonoid" || scrut_type == "List") {
+    emit_native_freemonoid_match(scrut_str: scrut_str, arms: arms, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+  } else { "" }
+  if native_fm != "" { return native_fm }
   let rc_match = analyze_rc_match(scrutinee: scrutinee, arms: arms, scrut_type: scrut_type, shared_types: shared_types, emit_info: emit_info, source_indices: scope.type_env.source_indices)
   let match_result_type = match arms |> first {
     Present { value: first_arm } => resolved_type(n: arm_body(n: first_arm))
@@ -6049,6 +6218,24 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
           } else {
             parent_enum
           }
+      }
+      // FreeMonoid grounding: Cons{head,tail} -> native prepend onto Rc<Vec> (the #5428 shape).
+      // O(n) prepend; carried as a §7-fixpoint item (structure-sharing prepend, benefits List+FreeMonoid).
+      let host_freemonoid_cons = tn == "Cons" && corpus_repr_is_host(corpus_repr: emit_info.corpus_repr)
+        && (match effective_parent { Present { value: p } => p == "FreeMonoid"  Absent => false })
+      if host_freemonoid_cons {
+        let head_val = match fields |> filter(f => field_init_node_name_at(n: f, source_indices: si) == "head") |> first {
+          Present { value: f } => emit_typed_expr(texpr: field_init_node_value(n: f), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+          Absent => "compile_error!(\"FreeMonoid Cons missing head field\")"
+        }
+        let tail_val = match fields |> filter(f => field_init_node_name_at(n: f, source_indices: si) == "tail") |> first {
+          Present { value: f } => emit_typed_expr(texpr: field_init_node_value(n: f), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+          Absent => "compile_error!(\"FreeMonoid Cons missing tail field\")"
+        }
+        // Return a BARE Vec; the standard shared-type wrap (emit_typed_expr) adds the single Rc.
+        // Returning Rc<Vec> here double-wraps (the context wraps again -> Rc<Rc<Vec>>). The tail_val is
+        // the context-wrapped Rc<Vec> form (var-ref/Empty/nested-Cons all wrap), so (*tail).clone() = Vec.
+        return concat("{ let mut __cons_v = (*", tail_val, ").clone(); __cons_v.insert(0, ", head_val, "); __cons_v }")
       }
       let optional_variant = is_optional_variant_name(name: tn) && (is_optional_parent(parent_enum: parent_enum) || is_optional_parent(parent_enum: effective_parent))
       let rust_tn = if optional_variant {
