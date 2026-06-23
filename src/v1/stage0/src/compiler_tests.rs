@@ -1638,4 +1638,40 @@ mod compiler_tests {
             .join();
         result.expect("profile_reconcile_per_module panicked");
     }
+
+    #[test]
+    fn contracts_sidecar_wired_into_emit_scope() {
+        let result = std::thread::Builder::new()
+            .stack_size(64 * 1024 * 1024)
+            .spawn(|| {
+                let entry_pairs = discover_dag_files("dsl/extdeps/llm");
+                let sources = std::rc::Rc::new(resolve_source_closure(entry_pairs, &["dsl"]));
+                let result = crate::v1_compiler_compile::compile_sources(
+                    sources,
+                    crate::v1_compiler_artifact::RenderTarget::Rust,
+                );
+                let anthropic_file = result
+                    .files
+                    .iter()
+                    .find(|f| {
+                        f.path.contains("extdeps_llm_anthropic")
+                            && !f.path.contains("_contracts")
+                    })
+                    .expect(
+                        "emitted file for extdeps.llm.anthropic not found — \
+                         module must be present in dsl/extdeps/llm source closure",
+                    );
+                assert!(
+                    anthropic_file.content.contains("#[serde(tag = \"role\""),
+                    "AnthropicChatMessage serde tag annotation must be present in emitted Rust — \
+                     contracts_items_for_module must be merged into emit scope; \
+                     missing from: {}\nfile content (first 2000 chars):\n{}",
+                    anthropic_file.path,
+                    &anthropic_file.content[..anthropic_file.content.len().min(2000)]
+                );
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result.expect("contracts_sidecar_wired_into_emit_scope panicked");
+    }
 }
