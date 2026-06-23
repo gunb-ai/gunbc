@@ -27,8 +27,6 @@ type CiJobPeak {
   peak: JobCgroupPeakMeasurement
 }
 
-// live srv1 cgroup read 2026-06-22, pessimistic max-over-snapshot; refined by the CI measurement emit
-// dissolution trigger: replace with per-job-type peaks once CI emit is wired and green
 data gunbc_ci_job_peaks: List<CiJobPeak> = [
   CiJobPeak { job: "ci", peak: JobCgroupPeakMeasured { cgroup_peak: byte_size(25769803776) } },
   CiJobPeak { job: "rust_tests", peak: JobCgroupPeakMeasured { cgroup_peak: byte_size(25769803776) } },
@@ -38,20 +36,8 @@ type HostFixedOverhead
   = HostFixedOverheadMeasured { bytes: ByteSize }
   | HostFixedOverheadUnmeasured
 
-// 16 GiB: OS + sccache daemon (sibling cgroup outside per-job subtree) + ctrl-session docker
-// + media co-tenancy headroom on srv1 (multi-tenant interim); distinct from the 0.8 safety
-// fraction in memory_effective_budget which reserves peak-variance headroom for transient spikes
-// above the steady-state cgroup measurement — both reserves are intentional and non-overlapping
-// dissolution trigger: replace with exact per-service cgroup measurements once co-tenancy is modeled
 data gunbc_ci_host_fixed_overhead: HostFixedOverhead = HostFixedOverheadMeasured { bytes: byte_size(17179869184) }
 
-// conservative upper bound on concurrent heavy builds while fleet runner cap is unenforced
-// derived from: observed max ~7 concurrent heavy on srv1 (119 GiB slice peak / ~17 GiB avg) + headroom
-// dissolution trigger: remove once gunbc_ci_runner_cap_enforced = true
 data gunbc_ci_concurrent_runs_conservative_high: Int = 10
 
-// operator flips to true once the 3-runner-per-host cap is live-applied on the fleet
-// until then gunbc_ci_runners_per_host() returns conservative_high; premature R=3 with
-// ~7 observed co-runners -> N x 7 x 24 GiB >> host_ram is unwritable at this flag
-// dissolution trigger: delete interim branch in gunbc_ci_runners_per_host once true
 data gunbc_ci_runner_cap_enforced: Bool = false

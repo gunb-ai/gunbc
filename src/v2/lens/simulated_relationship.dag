@@ -6,23 +6,7 @@ import v2.std.algebra { FreeMonoid, is_empty, length, skip, zip_eq, is_prefix_of
 import v2.std.exact_structural_equality_zip_fold_predicate { exact_structural_equality_zip_fold }
 import v2.std.logic { Bool }
 
-// §2 horizontal-redundancy detector. A "simulated relationship" is a chain of
-// statements/expressions that anti-unify to ONE template over a varying data hole
-// -- i.e. a hand-unrolled fold: the relationship between elements is acted out in
-// control flow instead of declared as data + a catamorphism. Sibling of
-// v2.lens.structural_similarity (which targets duplicate *type declarations*, the
-// §3 nicknaming smell); this targets repetition *inside a body*.
-//
-// Variant-matching on FreeMonoid/List must stay inside v2.std.algebra (the v2
-// generic-instantiation weakness rejects cross-module variant patterns), so every
-// list walk here goes through algebra's combinators (zip_eq, is_prefix_of, skip).
 
-// Two Node trees are CONGRUENT iff they share one skeleton: identical internal
-// shape (same kind, same arity at every internal position), free to differ only at
-// leaves. The leaves are the fold's data holes; a differing *operator* or *arity*
-// is a genuine shape divergence, never a hole.
-// Typed projector: field access on a lambda element trips the v2 "no field on type
-// T" weakness, so the comparison lives in this typed fn and the lambda only calls it.
 fn edges_match(ea: Edge, eb: Edge) -> Bool {
   ea.label == eb.label && congruent(a: ea.target, b: eb.target)
 }
@@ -44,18 +28,11 @@ fn congruent(a: Node, b: Node) -> Bool {
   }
 }
 
-// Congruent AND actually different: same skeleton, differing at >=1 leaf. (Reuses
-// the std structural-equality authority; identical steps are pure duplication, a
-// different smell, so they are not flagged here.)
 fn pair_is_unrolled(later: Node, earlier: Node) -> Bool {
   congruent(a: earlier, b: later)
     && !exact_structural_equality_zip_fold(source_facts: earlier, candidate: later)
 }
 
-// A chain is a SIMULATED RELATIONSHIP iff every adjacent pair is unrolled.
-// `< 3` steps is not yet a relationship. Adjacency is `skip(1)` zipped against the
-// original as a prefix: prefix[i] = steps[i+1] is paired with steps[i], and the
-// shorter prefix stops cleanly without a length-mismatch false.
 fn chain_is_simulated(steps: FreeMonoid<Node>) -> Bool {
   if length(xs: steps) < 3 {
     false
