@@ -44,12 +44,15 @@ pub(crate) fn collect_dag_files(dir: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
-/// The live `.dag` corpus: every `*.dag` under `dsl/` + `src/v2/`, keyed by repo-relative path,
-/// sorted and deduped. The two trees match `gunbc.ci_layer_roots` (`witness_layer_roots`).
+/// The live `.dag` corpus: every `*.dag` under the witness layer roots, keyed by repo-relative path,
+/// sorted and deduped. The roots are DERIVED from the single authority
+/// `gunbc.ci_layer_roots.witness_layer_roots` (via `module_path_index::witness_layer_roots`), never a
+/// hardcoded copy — so a sibling extending the authority cannot leave this census blind to a new root
+/// (anchor-completeness by construction; see the `module_path_index` note).
 pub(crate) fn corpus_dag_files() -> Vec<(String, String)> {
     let mut paths = Vec::new();
-    for root in ["dsl", "src/v2"] {
-        collect_dag_files(&workspace_root().join(root), &mut paths);
+    for root in crate::module_path_index::witness_layer_roots() {
+        collect_dag_files(&workspace_root().join(&root), &mut paths);
     }
     let mut out = Vec::new();
     for p in paths {
