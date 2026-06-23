@@ -7,7 +7,8 @@ import gunbc.ci_failure_class {
   classify_failure_reason, classify_floor_exit,
   floor_failure_blocks_merge, floor_exit_blocks_merge,
   infra_retry_grep_alternation, build_retry_infra_signatures,
-  verdict_infra_signatures, infra_signature_match_substring
+  verdict_infra_signatures, infra_signature_match_substring,
+  infra_signature_origin
 }
 
 fn class_is_infra(c: FloorFailureClass) -> Bool {
@@ -91,7 +92,16 @@ fn witness_build_retry_subset_excludes_job_signals() -> Bool {
     && (string_contains(s: infra_retry_grep_alternation(), pattern: infra_signature_match_substring(sig: OutOfMemoryKill)) == false)
 }
 
+fn witness_every_signature_is_grounded() -> Bool {
+  fold(verdict_infra_signatures, init: true, f: fn(acc, sig) {
+    acc
+      && (infra_signature_origin(sig: sig) != "")
+      && (infra_signature_match_substring(sig: sig) != "")
+  })
+}
+
 test fn ci_failure_class_witnesses() -> Bool {
+  witness_every_signature_is_grounded() &&
   witness_real_infra_reasons_are_non_blocking()
     && witness_oom_exit_137_is_infra_via_code()
     && witness_runner_lost_is_infra()
