@@ -1,0 +1,77 @@
+module test.claim.unicode_ident_xid_grounding
+
+import std.logic { Bool }
+import std.unicode {
+  CharClass,
+  IdentContinue,
+  IdentStart,
+  char_in_class
+}
+
+// Discriminating inputs:
+//   - ASCII letters (A-Z, a-z): must pass IdentStart and IdentContinue
+//   - Underscore U+005F: must pass IdentStart (UAX31 §2.5 programming extension)
+//   - ASCII digits (0-9): must pass IdentContinue but NOT IdentStart (UAX31)
+//   - U+00E9 é (LATIN SMALL LETTER E WITH ACUTE, in XID_Start): must pass IdentStart
+//   - U+03B1 α (GREEK SMALL LETTER ALPHA, in XID_Start): must pass IdentStart
+//   - U+0041 A: IdentStart (XID_Start)
+//   - U+0660 ٠ (ARABIC-INDIC DIGIT ZERO, XID_Continue-only): must pass IdentContinue, not IdentStart
+//   - U+1F600 😀 (EMOJI, in emoji_ident_ranges): must pass IdentStart and IdentContinue
+//   - U+0020 SPACE: must fail both IdentStart and IdentContinue
+//   - U+002B + PLUS SIGN: must fail both (not XID, not emoji, not underscore)
+//
+// This test goes RED when reverted to ASCII-only: é (U+00E9=233), α (U+03B1=945),
+// and 😀 (U+1F600=128512) would all fail IdentStart with ASCII-only ranges.
+
+test fn unicode_ident_xid_grounding_holds() -> Bool {
+  // ASCII letters — IdentStart
+  let ascii_upper_start = char_in_class(c: 65, class: IdentStart)
+  let ascii_lower_start = char_in_class(c: 97, class: IdentStart)
+
+  // Underscore — IdentStart (UAX31 §2.5 programming extension, XID_Continue only per UAX31)
+  let underscore_start = char_in_class(c: 95, class: IdentStart)
+
+  // ASCII digit — NOT IdentStart, but IS IdentContinue
+  let digit_not_start = char_in_class(c: 48, class: IdentStart) == false
+  let digit_is_continue = char_in_class(c: 48, class: IdentContinue)
+
+  // U+00E9 é — Latin Extended, in XID_Start (discriminating: fails ASCII-only)
+  let e_acute_start = char_in_class(c: 233, class: IdentStart)
+  let e_acute_continue = char_in_class(c: 233, class: IdentContinue)
+
+  // U+03B1 α — Greek Small Letter Alpha, in XID_Start (discriminating: fails ASCII-only)
+  let alpha_start = char_in_class(c: 945, class: IdentStart)
+
+  // U+0660 ٠ — Arabic-Indic Digit Zero, XID_Continue only (not XID_Start)
+  let arabic_digit_not_start = char_in_class(c: 1632, class: IdentStart) == false
+  let arabic_digit_continue = char_in_class(c: 1632, class: IdentContinue)
+
+  // U+1F600 😀 — Emoji, in emoji_ident_ranges (discriminating: fails ASCII-only)
+  let emoji_start = char_in_class(c: 128512, class: IdentStart)
+  let emoji_continue = char_in_class(c: 128512, class: IdentContinue)
+
+  // U+0020 SPACE — must fail both
+  let space_not_start = char_in_class(c: 32, class: IdentStart) == false
+  let space_not_continue = char_in_class(c: 32, class: IdentContinue) == false
+
+  // U+002B + PLUS SIGN — must fail both
+  let plus_not_start = char_in_class(c: 43, class: IdentStart) == false
+  let plus_not_continue = char_in_class(c: 43, class: IdentContinue) == false
+
+  ascii_upper_start
+    && ascii_lower_start
+    && underscore_start
+    && digit_not_start
+    && digit_is_continue
+    && e_acute_start
+    && e_acute_continue
+    && alpha_start
+    && arabic_digit_not_start
+    && arabic_digit_continue
+    && emoji_start
+    && emoji_continue
+    && space_not_start
+    && space_not_continue
+    && plus_not_start
+    && plus_not_continue
+}
