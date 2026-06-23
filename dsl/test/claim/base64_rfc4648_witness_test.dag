@@ -42,6 +42,28 @@ test fn base64_decode_rejects_cross_variant_char_holds() -> Bool {
   }
 }
 
+test fn base64_decode_rejects_interior_pad_holds() -> Bool {
+  match base64_decode(s: "Zg==Zg==", variant: Standard) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+test fn base64_decode_rejects_lone_sextet_holds() -> Bool {
+  match base64_decode(s: "Zm9vY", variant: Standard) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+test fn base64_decode_accepts_unpadded_holds() -> Bool {
+  let o = bytes_octets(b: utf8_encode_bytes(s: "foob"))
+  match base64_decode(s: "Zm9vYg", variant: Standard) {
+    Present { value: d } => d == o
+    Absent => false
+  }
+}
+
 test fn base64_rfc4648_golden_vectors_holds() -> Bool {
   b64_std_of_utf8(s: "") == ""
     && b64_std_of_utf8(s: "f") == "Zg=="

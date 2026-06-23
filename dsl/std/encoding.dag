@@ -209,18 +209,20 @@ fn base64_char_value(c: String, variant: Base64Variant) -> Int? {
   }
 }
 
-fn base64_collect_values(s: String, i: Int, len: Int, variant: Base64Variant, acc: List<Int>) -> List<Int>? {
+fn base64_collect_values(s: String, i: Int, len: Int, variant: Base64Variant, seen_pad: Bool, acc: List<Int>) -> List<Int>? {
   if i >= len {
     Present { value: acc }
   } else {
     let c = char_at(s, i)
     if c == "=" {
-      base64_collect_values(s: s, i: i + 1, len: len, variant: variant, acc: acc)
+      base64_collect_values(s: s, i: i + 1, len: len, variant: variant, seen_pad: true, acc: acc)
+    } else if seen_pad {
+      none
     } else {
       match base64_char_value(c: c, variant: variant) {
         Absent => none
         Present { value: v } =>
-          base64_collect_values(s: s, i: i + 1, len: len, variant: variant, acc: acc |> list_push(v))
+          base64_collect_values(s: s, i: i + 1, len: len, variant: variant, seen_pad: false, acc: acc |> list_push(v))
       }
     }
   }
@@ -256,15 +258,17 @@ fn base64_decode_step(st: Base64DecodeState, v: Int) -> Base64DecodeState {
   }
 }
 
-fn base64_decode_flush(st: Base64DecodeState) -> List<Int> {
-  if st.count == 2 {
+fn base64_decode_flush(st: Base64DecodeState) -> List<Int>? {
+  if st.count == 0 {
+    Present { value: st.out }
+  } else if st.count == 2 {
     let n = st.v0 * 262144 + st.v1 * 4096
-    st.out |> list_push((n / 65536) % 256)
+    Present { value: st.out |> list_push((n / 65536) % 256) }
   } else if st.count == 3 {
     let n = st.v0 * 262144 + st.v1 * 4096 + st.v2 * 64
-    st.out |> list_push((n / 65536) % 256) |> list_push((n / 256) % 256)
+    Present { value: st.out |> list_push((n / 65536) % 256) |> list_push((n / 256) % 256) }
   } else {
-    st.out
+    none
   }
 }
 
@@ -272,17 +276,24 @@ fn base64_octet_of_int(n: Int) -> UInt8 {
   n
 }
 
-fn base64_decode_values(vals: List<Int>) -> List<UInt8> {
+fn base64_decode_values(vals: List<Int>) -> List<UInt8>? {
   let st = fold(vals,
     init: Base64DecodeState { out: [], count: 0, v0: 0, v1: 0, v2: 0 },
     f: (acc, v) => base64_decode_step(st: acc, v: v)
   )
-  base64_decode_flush(st: st) |> map(n => base64_octet_of_int(n: n))
+  match base64_decode_flush(st: st) {
+    Absent => none
+    Present { value: octets } => Present { value: octets |> map(n => base64_octet_of_int(n: n)) }
+  }
 }
 
 fn base64_decode(s: String, variant: Base64Variant) -> List<UInt8>? {
-  match base64_collect_values(s: s, i: 0, len: string_length(s), variant: variant, acc: []) {
+  match base64_collect_values(s: s, i: 0, len: string_length(s), variant: variant, seen_pad: false, acc: []) {
     Absent => none
-    Present { value: vals } => Present { value: base64_decode_values(vals: vals) }
+    Present { value: vals } =>
+      match base64_decode_values(vals: vals) {
+        Absent => none
+        Present { value: octets } => Present { value: octets }
+      }
   }
 }
