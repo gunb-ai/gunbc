@@ -16,6 +16,7 @@ import v1.std.core {
 }
 
 import extdeps.languages.dag.syntax { dag_keyword_set }
+import v1.compiler.languages { EmojiCharEscape, canonical_emoji_char_escape }
 
 fn is_keyword_text(text: String) -> Bool {
   match lookup(dag_keyword_set, key: text) {
@@ -412,12 +413,21 @@ fn all_hex_upper_in_range(text: String, pos: Int, end: Int) -> Bool {
   }
 }
 
+fn sentinel_prefix_matches(text: String, prefix: String, pos: Int, len: Int) -> Bool {
+  if pos >= len { true }
+  else if code_point(c: char_at(s: text, pos: pos)) != code_point(c: char_at(s: prefix, pos: pos)) { false }
+  else { sentinel_prefix_matches(text: text, prefix: prefix, pos: pos + 1, len: len) }
+}
+
 fn is_reserved_emit_sentinel(text: String) -> Bool {
+  let rule = canonical_emoji_char_escape()
+  let pfx = rule.prefix
+  let sfx = rule.suffix
+  let pfx_len = string_length(s: pfx)
+  let sfx_len = string_length(s: sfx)
   let n = string_length(s: text)
-  if n < 5 { false }
-  else if code_point(c: char_at(s: text, pos: 0)) != 95 { false }
-  else if code_point(c: char_at(s: text, pos: 1)) != 69 { false }
-  else if code_point(c: char_at(s: text, pos: 2)) != 117 { false }
-  else if code_point(c: char_at(s: text, pos: n - 1)) != 95 { false }
-  else { all_hex_upper_in_range(text: text, pos: 3, end: n - 1) }
+  if n < pfx_len + sfx_len + 1 { false }
+  else if !sentinel_prefix_matches(text: text, prefix: pfx, pos: 0, len: pfx_len) { false }
+  else if code_point(c: char_at(s: text, pos: n - sfx_len)) != code_point(c: char_at(s: sfx, pos: 0)) { false }
+  else { all_hex_upper_in_range(text: text, pos: pfx_len, end: n - sfx_len) }
 }

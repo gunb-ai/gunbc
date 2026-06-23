@@ -21,7 +21,6 @@ const GENERATED_STAGE0_FILES: &[&str] = &[
     "compiler_tests.rs",
     "extdeps_cargo.rs",
     "extdeps_cargo_version.rs",
-    "extdeps_external_authority.rs",
     "extdeps_languages_dag_emit.rs",
     "extdeps_languages_dag_syntax.rs",
     "extdeps_languages_dag_types.rs",
@@ -34,7 +33,6 @@ const GENERATED_STAGE0_FILES: &[&str] = &[
     "extdeps_languages_rust_emit.rs",
     "extdeps_languages_rust_syntax.rs",
     "extdeps_languages_rust_types.rs",
-    "extdeps_uri.rs",
     "extdeps_version.rs",
     "extdeps_version_semver.rs",
     "lib.rs",
@@ -100,10 +98,8 @@ const GENERATED_STAGE0_FILES: &[&str] = &[
     "v1_compiler_tokenize.rs",
     "v1_compiler_trace.rs",
     "v1_compiler_workspace_members.rs",
-    "v1_probe_emit_interp.rs",
     "v1_rt.rs",
     "v1_std_core.rs",
-    "v1_test_non_ascii_perf_fixture.rs",
 ];
 
 const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
