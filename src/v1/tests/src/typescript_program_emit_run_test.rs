@@ -87,13 +87,23 @@ fn resolve_witness() -> Rc<v1_compiler::v1_compiler_compile::ResolvedPipelineRes
 }
 
 fn node_strip_types_available() -> bool {
-    // node >= 22 ships `--experimental-strip-types`; bail (don't false-fail) if the
-    // runner has no compatible `node` on PATH.
+    // `--experimental-strip-types` needs node >= ~22.6. A bare `node --version` is not
+    // enough (older node accepts that but rejects the flag), so probe the actual
+    // capability and SKIP — rather than false-fail — where it is unavailable.
+    let dir = std::env::temp_dir().join(format!("gunbc_ts_probe_{}", std::process::id()));
+    if std::fs::create_dir_all(&dir).is_err() {
+        return false;
+    }
+    let probe = dir.join("probe.ts");
+    if std::fs::write(&probe, "const x: number = 1; console.log(x);\n").is_err() {
+        return false;
+    }
     std::process::Command::new("node")
-        .arg("--version")
+        .arg("--experimental-strip-types")
+        .arg(&probe)
         .output()
         .ok()
-        .map(|o| o.status.success())
+        .map(|o| o.status.success() && String::from_utf8_lossy(&o.stdout).trim() == "1")
         .unwrap_or(false)
 }
 
