@@ -13,7 +13,6 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data oomd_surface_doc: String = "systemd-oomd is the userspace OOM manager: it watches cgroup memory pressure (PSI) and swap usage and kills the worst-offending cgroup BEFORE the kernel OOM killer / OOM livelock fires. That livelock is the srv2-reboot vector. This module models what oomd PROVIDES (the config knobs it reads and the eviction backstop it gives), with the real key names from oomd.conf(5) and systemd.resource-control(5). It sits beside extdeps.os.systemd / extdeps.os.systemctl under the one systemd home. WHICH cgroups to protect at WHICH thresholds is workflow policy (gunbc), not a fact about systemd-oomd."
 
 data systemd_oomd_unit: NonEmptyStr = "systemd-oomd.service"
 data oomd_conf_path: FilePath = "/etc/systemd/oomd.conf"

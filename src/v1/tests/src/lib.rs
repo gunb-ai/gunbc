@@ -35,6 +35,8 @@ mod dag_comment_wall_test;
 #[cfg(test)]
 mod data_cache_scoping_test;
 #[cfg(test)]
+mod data_def_brand_alias_type_test;
+#[cfg(test)]
 mod dependency_pool_index_compile_test;
 #[cfg(test)]
 mod derive_bound_fail_closed_test;
@@ -104,6 +106,8 @@ mod measure_value_arg_unit_collapse_test;
 mod module_authority_resolution_test;
 #[cfg(test)]
 mod money_carrier_cost_witness_test;
+#[cfg(test)]
+mod nested_list_alias_emit_test;
 #[cfg(test)]
 mod nodefold_generic_instantiation_test;
 #[cfg(test)]

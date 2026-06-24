@@ -153,6 +153,40 @@ pub fn is_declared_container_alias_spelling(name: String) -> bool {
     }
 }
 
+pub fn reground_alias_carrier_identity(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Node> {
+    if (((n.name.clone().as_str() != "".to_string().as_str())
+        && (n.name.clone().as_str()
+            != authored_name_at(source_indices.clone(), n.clone()).as_str()))
+        && is_declared_container_alias_spelling(n.name.clone()))
+    {
+        Rc::new(Node {
+            name: n.name.clone(),
+            span: n.span.clone(),
+            ident_span: Some(kernel_span(n.name.clone())),
+            children: n.children.clone(),
+            connective: n.connective.clone(),
+            params: n.params.clone(),
+            inferred: n.inferred.clone(),
+            return_cardinality: n.return_cardinality.clone(),
+            uses: n.uses.clone(),
+            body: n.body.clone(),
+            transport: n.transport.clone(),
+            properties: n.properties.clone(),
+            type_annotation: n.type_annotation.clone(),
+            is_self_recursive: n.is_self_recursive.clone(),
+            has_non_tail_self_call: n.has_non_tail_self_call.clone(),
+            match_pattern: n.match_pattern.clone(),
+            expr_data: n.expr_data.clone(),
+            ident: None,
+        })
+    } else {
+        n.clone()
+    }
+}
+
 pub fn structural_carrier_template_name(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,

@@ -20,7 +20,6 @@ import gunbc.ci_floor_measurement {
   CapUnbounded,
 }
 
-data gunbc_runner_slot_enforcement_doc: String = "Instance of std.realization_reconcile (sibling to gunbc.oomd_install), the FIRST line of the per-slot OOM defense (oomd is the second). It grounds RunnerSlotEnforced ONLY from an OBSERVED effective per-slot memory cap (systemctl show -p MemoryMax <runner-slot> / cgroup memory.max read) that equals the model-emitted per_runner_memory_cap and is FINITE. The live srv1 ground-truth this closes: every active runner slot reads MemoryMax=infinity (CapUnbounded) today, so two concurrent heavy jobs (35.3GiB measured uncapped) exceed the 64GiB shared runner slice = the inert-cap OOM-reboot vector (the srv2 incident). Per DESIGN section 5 the evidence is constructible ONLY via the carrier's read-presence gate over a real read: a ReadAbsent show_read yields RunnerSlotUnenforced regardless, and a CapUnbounded read NEVER grounds enforcement. WHICH slot unit and the expected cap are gunbc policy and live here; the live systemctl read is threaded in at apply time. Distinct from gunbc.fleet_host_budget.runner_slice_cap_drifted, which is the SLICE-level drift Bool; this is the per-SLOT enforcement evidence on the canonical reconcile carrier (do-not-fork)."
 
 type RunnerSlotEnforcement
   = RunnerSlotEnforced
