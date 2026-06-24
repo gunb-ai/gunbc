@@ -1109,6 +1109,22 @@ pub fn render_rust_fn_sig_type_applied_binding(
     }
 }
 
+pub fn alias_rhs_container_arg(
+    arg: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Node> {
+    match arg.inferred.clone().as_deref().cloned() {
+        Some(InferredNode::Resolved { node: rt, .. }) => {
+            if node_is_collection(rt.clone(), source_indices.clone()) {
+                rt.clone()
+            } else {
+                arg.clone()
+            }
+        }
+        _ => arg.clone(),
+    }
+}
+
 pub fn render_rust_alias_rhs_type(
     n: Rc<Node>,
     generic_param_names: Rc<Vec<String>>,
@@ -1240,7 +1256,10 @@ pub fn render_rust_alias_rhs_type(
                                     )
                                 } else {
                                     render_rust_alias_rhs_type(
-                                        arg.clone(),
+                                        alias_rhs_container_arg(
+                                            arg.clone(),
+                                            source_indices.clone(),
+                                        ),
                                         generic_param_names.clone(),
                                         shared_types.clone(),
                                         corpus_repr.clone(),
