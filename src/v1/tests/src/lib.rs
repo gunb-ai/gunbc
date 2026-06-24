@@ -102,6 +102,7 @@ mod measure_field_access_test;
 mod measure_grounded_deref_test;
 #[cfg(test)]
 mod measure_periphery_emit_test;
+mod measure_phantom_probe_test;
 #[cfg(test)]
 mod module_authority_resolution_test;
 #[cfg(test)]
