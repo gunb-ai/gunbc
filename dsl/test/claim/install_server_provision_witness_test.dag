@@ -3,14 +3,20 @@ module test.claim.install_server_provision_witness
 import std.logic { Bool }
 import std.types { String }
 import gunbc.install_server_provision {
-  provision_prep_fetch_script,
+  iso_resolve_prelude,
+  host_exec,
+  step_apt_install,
+  step_disable_stock_dnsmasq,
+  step_resolve_and_fetch_iso,
+  step_verify_iso,
+  install_server_host,
   ubuntu_iso_series,
   ubuntu_iso_flavor,
   ubuntu_iso_arch
 }
 
 test fn iso_url_is_discovered_not_pinned() -> Bool {
-  let s = provision_prep_fetch_script()
+  let s = iso_resolve_prelude()
   string_contains(s: s, pattern: "sort -V | tail -1")
     && string_contains(s: s, pattern: "NO_MATCHING_ISO_FAIL_CLOSED")
     && string_contains(s: s, pattern: "exit 2")
@@ -19,8 +25,42 @@ test fn iso_url_is_discovered_not_pinned() -> Bool {
 }
 
 test fn iso_url_carries_modeled_parts() -> Bool {
-  let s = provision_prep_fetch_script()
+  let s = iso_resolve_prelude()
   string_contains(s: s, pattern: ubuntu_iso_series)
     && string_contains(s: s, pattern: ubuntu_iso_flavor)
     && string_contains(s: s, pattern: ubuntu_iso_arch)
+}
+
+test fn host_exec_applies_fail_closed_preamble() -> Bool {
+  let s = host_exec(host: install_server_host, command: step_apt_install())
+  string_contains(s: s, pattern: "set -e")
+    && string_contains(s: s, pattern: "ssh ")
+}
+
+test fn apt_step_does_not_fail_open() -> Bool {
+  let s = step_apt_install()
+  string_contains(s: s, pattern: "apt-get install -y dnsmasq")
+    && (string_contains(s: s, pattern: "|| true") == false)
+    && (string_contains(s: s, pattern: "/tmp/isrv-apt.log") == false)
+}
+
+test fn steps_are_transport_agnostic() -> Bool {
+  (string_contains(s: step_apt_install(), pattern: "ssh ") == false)
+    && (string_contains(s: step_resolve_and_fetch_iso(), pattern: "ssh ") == false)
+    && (string_contains(s: step_verify_iso(), pattern: "ssh ") == false)
+}
+
+test fn fetch_distinguishes_presence_from_completeness() -> Bool {
+  let f = step_resolve_and_fetch_iso()
+  let v = step_verify_iso()
+  string_contains(s: f, pattern: "ISO_FETCH_IN_PROGRESS")
+    && string_contains(s: f, pattern: "ISO_FILE_PRESENT")
+    && string_contains(s: v, pattern: "ISO_CHECKSUM_MISMATCH_FAIL_CLOSED")
+    && string_contains(s: v, pattern: "sha256sum")
+}
+
+test fn dnsmasq_disable_idempotency_is_narrow() -> Bool {
+  let s = step_disable_stock_dnsmasq()
+  string_contains(s: s, pattern: "systemctl disable --now dnsmasq")
+    && string_contains(s: s, pattern: "|| true")
 }
