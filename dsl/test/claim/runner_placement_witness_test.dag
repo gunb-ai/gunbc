@@ -34,13 +34,11 @@ import gunbc.ci_runner_placement {
   evaluate_operating_point,
   operating_curve,
   samples_covered,
-  gunbc_ci_count_field_measure_followup,
   WorkloadClass,
   BatchLatencyTolerant,
   InteractiveLatencySensitive,
   workload_class_cpu_weight,
   gunbc_ci_cpu_weight_workload_class_marker,
-  gunbc_ci_cpu_weight_unit_modeling_marker,
 }
 import gunbc.fleet_host_budget {
   FleetHostPlan,
@@ -79,7 +77,6 @@ import gunbc.ci_floor_measurement {
   SessionReservationModeUnset,
   gunbc_ci_footprint_granularity_note,
   gunbc_ci_footprint_bridge_followup,
-  gunbc_ci_regime2_aggregate_dissolution_marker,
   gunbc_ci_run_count_divisor,
   gunbc_ci_runner_unit_cap_safety_margin_num,
   gunbc_ci_runner_unit_cap_safety_margin_den,

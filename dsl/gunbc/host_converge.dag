@@ -2,6 +2,8 @@ module gunbc.host_converge
 
 import std.types { String, List, Int, Bool }
 import std.measure { ByteSize, byte_size_count, hardware_thread_count_value, percent_count }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import product.placement_supply { HostIdentity }
 import gunbc.ci_runner_placement {
   RunnerDeploymentPlan,
@@ -90,7 +92,14 @@ type ConvergeKnob {
   target: ConvergeTarget
 }
 
-data gunbc_host_converge_runner_sessions_coupling_marker: String = "DECISION (wise-eagle-664 model authority + fierce-carp-462 consumer + sharp-heron-321 plan, 2026-06-24; SHIP v1-coupled, SPLIT is the named end-state): host_converge_of folds ALL knobs + the sessions-membership probe into ONE HostConverge with ONE host_summary per host. The §4 de-conflation the end-state wants: a host has THREE INDEPENDENTLY-GROUNDED converge targets that should fingerprint-settle independently -- (T1) sessions.slice CAPS (slice_max / per_session / ManagedOOM kill+limit / cpu_weight), the UNGATED bootstrap (#5706), settleable as soon as set-property+verify-effective succeed; (T2) sessions MEMBERSHIP (sessions_in_slice>0), genuinely gated on ctrl #1804 populating the slice; (T3) runner COUNT+CAPS+width, gated on the full sound plan (RunnerSlotEnforced + OomdEnforced). Folding all three into one host_summary means the T2 membership HOLD blocks the already-settleable T1/T3 from fingerprint-settling, so ctrl re-runs the full privileged converge each pass (re-applying the runner-width 12->7) until #1804 lands. SHIP v1-coupled because: (a) it is SAFE and SAFE-BY-the-right-reason, not just expedient -- decoupling membership from the host verdict WITHOUT splitting the fingerprint would be FAIL-OPEN (the host would fingerprint converged while sessions.slice has no members for oomd to evict = zero actual protection, the §5 fail-open fierce-carp's defense-in-depth guards); (b) every apply is idempotent so the re-runs are harmless; (c) the runner-width decrease DOES apply each pass and we WANT it; (d) the bite-window (runner-plan-SOUND AND pre-#1804) does not exist yet (runner plan is RunnerSlotUnenforced today). ALTERNATIVE = the SPLIT end-state (split the host fingerprint by grounding-target T1/T2/T3 -- separate per-(host,target) HostConverge entries or per-target fingerprints -- so T1/T3 settle while only the genuinely-blocked T2/oomd part HOLDs, KEEPING the membership gate on the sessions-protection verdict so it stays fail-closed). This REQUIRES a receipt-grammar v2 (the SUMMARY line gains a grounding-target discriminator and the ctrl converged-decision keys on (host,target) not host) + re-coordination with fierce-carp's frozen v1 parser + 22 tests. dissolve-on: when the runner-sound-AND-pre-#1804 window becomes real and long enough that the redundant privileged re-runs matter (or sooner if a per-target settled receipt is wanted for observability), do the T1/T2/T3 fingerprint split + bump the receipt grammar to v2, co-designed with fierce-carp."
+data gunbc_host_converge_runner_sessions_coupling_marker: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.host_converge",
+    decl_name: "HostConverge",
+    field: WholeDeclaration
+  }
+}
 
 type SessionsMembershipProbe
   = MembershipProbe { slice_cgroup: String, legacy_cgroup: String }
