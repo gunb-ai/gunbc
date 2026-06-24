@@ -871,7 +871,10 @@ pub fn render_rust_decl_type(
                         && (name.clone() == "String".to_string()))
                         && corpus_repr_is_faithful(corpus_repr.clone()))
                     {
-                        rust_carrier_optional_wrap(n.clone(), render_rust_text_carrier(shared_types.clone()))
+                        rust_carrier_optional_wrap(
+                            n.clone(),
+                            render_rust_text_carrier(shared_types.clone()),
+                        )
                     } else {
                         if ((((n.connective.clone() == Connective::NoConnective)
                             && ((n.children.clone().len() as i64) == 0))
@@ -992,7 +995,10 @@ pub fn rust_fn_sig_peel_closed_alias(env: Rc<TypeEnv>, n: Rc<Node>) -> bool {
 
 pub fn rust_carrier_optional_wrap(n: Rc<Node>, rendered: String) -> String {
     if (n.return_cardinality.clone() == Cardinality::CardOptional) {
-        v1_rt::concat(v1_rt::concat("Option<".to_string(), rendered), ">".to_string())
+        v1_rt::concat(
+            v1_rt::concat("Option<".to_string(), rendered),
+            ">".to_string(),
+        )
     } else {
         rendered
     }
@@ -1147,7 +1153,10 @@ pub fn render_rust_alias_rhs_type(
                         if ((name.clone() == "String".to_string())
                             && corpus_repr_is_faithful(corpus_repr.clone()))
                         {
-                            rust_carrier_optional_wrap(n.clone(), render_rust_text_carrier(shared_types.clone()))
+                            rust_carrier_optional_wrap(
+                                n.clone(),
+                                render_rust_text_carrier(shared_types.clone()),
+                            )
                         } else {
                             match rust_opaque_kernel_alias_carrier(name.clone()) {
                                 Some(carrier) => carrier.clone(),
