@@ -112,8 +112,8 @@ fn step_verify_iso() -> ShellProgram {
     cmd(words: [lit(text: "curl"), lit(text: "-sLO"), Concat { parts: [var_ref(name: "BASE"), lit(text: "/SHA256SUMS")] }]),
     Assign { name: "LINE", value: CmdSubst { body: cmd(words: [lit(text: "grep"), Concat { parts: [lit(text: "[* ]"), var_ref(name: "ISO"), lit(text: "$")] }, lit(text: "SHA256SUMS")]) } },
     If { cond: cmd(words: [lit(text: "["), lit(text: "-z"), var_ref(name: "LINE"), lit(text: "]")]), then: [echo1(msg: "NO_CHECKSUM_LINE_FAIL_CLOSED"), Exit { code: 4 }] },
-    Assign { name: "WANT", value: CmdSubst { body: pipe2(left: echo_words(parts: [var_ref(name: "LINE")]), right: cmd(words: [lit(text: "cut"), lit(text: "-d "), lit(text: "-f1")])) } },
-    Assign { name: "GOT", value: CmdSubst { body: pipe2(left: cmd(words: [lit(text: "sha256sum"), lit(text: "/srv/ubuntu.iso")]), right: cmd(words: [lit(text: "cut"), lit(text: "-d "), lit(text: "-f1")])) } },
+    Assign { name: "WANT", value: CmdSubst { body: pipe2(left: echo_words(parts: [var_ref(name: "LINE")]), right: cmd(words: [lit(text: "cut"), lit(text: "-d"), lit(text: " "), lit(text: "-f1")])) } },
+    Assign { name: "GOT", value: CmdSubst { body: pipe2(left: cmd(words: [lit(text: "sha256sum"), lit(text: "/srv/ubuntu.iso")]), right: cmd(words: [lit(text: "cut"), lit(text: "-d"), lit(text: " "), lit(text: "-f1")])) } },
     If { cond: cmd(words: [lit(text: "["), var_ref(name: "WANT"), lit(text: "!="), var_ref(name: "GOT"), lit(text: "]")]), then: [echo1(msg: "ISO_CHECKSUM_MISMATCH_FAIL_CLOSED"), Exit { code: 3 }] },
     echo_words(parts: [lit(text: "ISO_VERIFIED "), var_ref(name: "GOT")]),
   ]))
