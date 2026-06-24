@@ -836,6 +836,13 @@ fn naming_policy_node(encoding: Node, source_indices: Map<String, NewlineIndex>)
   field_value_by_name(record: encoding, field_name: "naming", source_indices: source_indices)
 }
 
+fn coproduct_decl_ref_decl_name(body: Node, source_indices: Map<String, NewlineIndex>) -> String? {
+  match field_value_by_name(record: body, field_name: "coproduct", source_indices: source_indices) {
+    Present { value: decl_ref_node } => record_string_field(record: decl_ref_node, field_name: "decl_name", source_indices: source_indices)
+    Absent => none
+  }
+}
+
 fn optional_string_record_field(record: Node, field_name: String, source_indices: Map<String, NewlineIndex>) -> String? {
   match field_value_by_name(record: record, field_name: field_name, source_indices: source_indices) {
     Present { value: n } => literal_string_value(n: n)
@@ -1115,7 +1122,7 @@ fn variant_encoding_is_string_variant(encoding: Node, source_indices: Map<String
 fn coproduct_wire_contract_targets(contract_item: Node, coproduct_name: String, source_indices: Map<String, NewlineIndex>) -> Bool {
   match contract_item.body {
     Present { value: body } =>
-      match record_string_field(record: body, field_name: "coproduct", source_indices: source_indices) {
+      match coproduct_decl_ref_decl_name(body: body, source_indices: source_indices) {
         Present { value: target_name } => target_name == coproduct_name
         Absent => false
       }
@@ -1179,7 +1186,7 @@ fn is_coproduct_wire_contract_row(item: Node, module_items: List<Node>, imports:
 fn emit_coproduct_wire_contract_target_validation(contract_item: Node, local_coproduct_names: List<String>, source_indices: Map<String, NewlineIndex>) -> String {
   match contract_item.body {
     Present { value: body } =>
-      match record_string_field(record: body, field_name: "coproduct", source_indices: source_indices) {
+      match coproduct_decl_ref_decl_name(body: body, source_indices: source_indices) {
         Present { value: target_name } =>
           if any(local_coproduct_names, predicate: name => name == target_name) {
             ""
@@ -1187,7 +1194,7 @@ fn emit_coproduct_wire_contract_target_validation(contract_item: Node, local_cop
             emit_rust_compile_error_item(message: concat("CoproductWireContract target does not name a local coproduct: ", target_name))
           }
         Absent =>
-          emit_rust_compile_error_item(message: "CoproductWireContract.coproduct must be a string declaration name")
+          emit_rust_compile_error_item(message: "CoproductWireContract.coproduct must be a DeclarationRef with a string decl_name")
       }
     Absent =>
       emit_rust_compile_error_item(message: "CoproductWireContract row missing initializer body")

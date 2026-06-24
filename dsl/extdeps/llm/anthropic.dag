@@ -1,7 +1,8 @@
 module extdeps.llm.anthropic
 
 import std.types { NonEmptyStr }
-import std.disposition { Disposition, Scaffold, Terminal, DeclLocator, WholeDeclaration, NamedField, SingleAuthority }
+import std.disposition { Disposition, Scaffold, Terminal, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.coverage { CoverageClosureEntry, CoverageClosureFact }
@@ -110,27 +111,27 @@ type AnthropicToolResultBlock
 data structural_coverage_gap_anthropic_tool_result_nested_block_wire_payloads: List<Disposition> = [
   Scaffold {
     dissolves_to: SingleAuthority,
-    bind: DeclLocator { module_path: "extdeps.llm.anthropic", decl_name: "AnthropicTextBlock", field: NamedField { field_name: "cache_control" } }
+    bind: DeclarationRef { module_path: "extdeps.llm.anthropic", decl_name: "AnthropicTextBlock", field: NamedField { field_name: "cache_control" } }
   },
   Scaffold {
     dissolves_to: SingleAuthority,
-    bind: DeclLocator { module_path: "extdeps.llm.anthropic", decl_name: "AnthropicTextBlock", field: NamedField { field_name: "citations" } }
+    bind: DeclarationRef { module_path: "extdeps.llm.anthropic", decl_name: "AnthropicTextBlock", field: NamedField { field_name: "citations" } }
   },
   Scaffold {
     dissolves_to: SingleAuthority,
-    bind: DeclLocator { module_path: "extdeps.llm.anthropic", decl_name: "AnthropicImageBlock", field: NamedField { field_name: "cache_control" } }
+    bind: DeclarationRef { module_path: "extdeps.llm.anthropic", decl_name: "AnthropicImageBlock", field: NamedField { field_name: "cache_control" } }
   },
   Scaffold {
     dissolves_to: SingleAuthority,
-    bind: DeclLocator { module_path: "extdeps.llm.anthropic", decl_name: "AnthropicToolReferenceBlock", field: NamedField { field_name: "cache_control" } }
+    bind: DeclarationRef { module_path: "extdeps.llm.anthropic", decl_name: "AnthropicToolReferenceBlock", field: NamedField { field_name: "cache_control" } }
   },
   Scaffold {
     dissolves_to: SingleAuthority,
-    bind: DeclLocator { module_path: "extdeps.llm.anthropic", decl_name: "CacheControl", field: NamedField { field_name: "ttl" } }
+    bind: DeclarationRef { module_path: "extdeps.llm.anthropic", decl_name: "CacheControl", field: NamedField { field_name: "ttl" } }
   },
   Scaffold {
     dissolves_to: SingleAuthority,
-    bind: DeclLocator { module_path: "extdeps.llm.anthropic", decl_name: "AnthropicDocumentBlock", field: WholeDeclaration }
+    bind: DeclarationRef { module_path: "extdeps.llm.anthropic", decl_name: "AnthropicDocumentBlock", field: WholeDeclaration }
   },
   Terminal {
     reason: "external_spec_watch: AnthropicSearchResultBlock optional fields track upstream Anthropic OpenAPI; no local construction dissolves this, re-justified by advisory if upstream drifts"

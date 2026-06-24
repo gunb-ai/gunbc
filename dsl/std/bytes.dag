@@ -2,7 +2,8 @@ module std.bytes
 
 import std.types { Bytes }
 import std.integer { UInt8 }
-import std.disposition { Disposition, Scaffold, DeclLocator, WholeDeclaration, SingleAuthority }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 fn pure_dag_seam_unreachable() -> Int {
   1 / 0
@@ -22,7 +23,7 @@ fn utf8_encode_bytes(s: String) -> Bytes {
 
 data bytes_seam_host_realization_marker: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: DeclLocator {
+  bind: DeclarationRef {
     module_path: "std.bytes",
     decl_name: "builtin_function_registry",
     field: WholeDeclaration

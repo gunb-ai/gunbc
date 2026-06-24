@@ -43,6 +43,7 @@ pub mod rest_transport_facts;
 pub mod std_algebra;
 pub mod std_coercion;
 pub mod std_computation;
+pub mod std_decl_ref;
 pub mod std_effects;
 pub mod std_emit_model;
 pub mod std_error_primitives;
