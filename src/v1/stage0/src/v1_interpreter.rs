@@ -3849,7 +3849,7 @@ fn dispatch_rest(
         None => "GET".to_string(),
     };
 
-    let (auth_header_name, auth_token) = resolve_auth(service_node, transport, &si, ctx);
+    let (auth_header_name, auth_token) = resolve_auth(service_node, transport, param_env, &si, ctx);
 
     let reserved_props = [
         "base_url",
@@ -3981,11 +3981,16 @@ fn dispatch_rest(
 fn resolve_auth(
     service_node: &Rc<Node>,
     _transport: &Rc<Node>,
+    param_env: &Rc<Env>,
     si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
     ctx: &InterpContext,
 ) -> (String, Option<String>) {
     let mut header_name = "Authorization".to_string();
     let mut env_var_name: Option<String> = None;
+    // `auth_input: <field>` (§3): the token is an operation INPUT the caller supplies,
+    // not ambient env. Resolve it from the per-call param env. Takes precedence over
+    // `auth_source` (env var) when both are present.
+    let mut input_field_name: Option<String> = None;
 
     for prop in service_node.properties.iter() {
         let name = field_init_node_name_at(prop.clone(), si.clone());
@@ -4010,6 +4015,15 @@ fn resolve_auth(
                     }
                 }
             }
+            "svc_auth_input" => {
+                // `auth_input: access_token` — the value node is the input field name (an identifier).
+                let field = authored_name_at(si.clone(), val_node.clone());
+                if !field.is_empty() {
+                    input_field_name = Some(field);
+                } else {
+                    input_field_name = extract_string_value(&val_node);
+                }
+            }
             "svc_auth_source" => {
                 for child in val_node.children.iter() {
                     let field_name = field_init_node_name_at(child.clone(), si.clone());
@@ -4023,6 +4037,17 @@ fn resolve_auth(
                 }
             }
             _ => {}
+        }
+    }
+
+    // §3: a caller-supplied input token wins over an ambient env var. Extract the String
+    // payload explicitly (the token is a Secret = Value::Str) rather than relying on Display —
+    // a non-string Value must NOT produce a stringified-debug Bearer header; fall through instead.
+    if let Some(field) = input_field_name {
+        if let Some(Value::Str(tok)) = param_env.lookup(ctx.sym(&field)) {
+            if !tok.is_empty() {
+                return (header_name, Some(tok.clone()));
+            }
         }
     }
 

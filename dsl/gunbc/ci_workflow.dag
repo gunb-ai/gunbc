@@ -259,7 +259,8 @@ data ci_workflow: Workflow = {
       contents: Present { value: PermRead },
       pull_requests: Present { value: PermRead },
       issues: none,
-      actions: none
+      actions: none,
+      id_token: none
     }
   },
   jobs: [ci_job(), rust_tests_job()]
