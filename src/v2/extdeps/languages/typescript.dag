@@ -142,7 +142,8 @@ import v2.std.compilers.target_model {
   grammar_relation_row_attach_bodied_scaffold,
   target_operator_realization_node,
   target_operator_realizations_catalog_node,
-  value_expr_projection_bundle_node
+  value_expr_projection_bundle_node,
+  Omit
 }
 import v2.std.node {
   Arrow,
@@ -592,7 +593,8 @@ fn ts_value_expression_projection() -> TargetValueExpressionProjection {
       open: ^ts_token_lbrace,
       close: ^ts_token_rbrace,
       separator: ^ts_token_comma,
-      assign: ^ts_token_colon
+      assign: ^ts_token_colon,
+      record_literal_names_type: Omit
     },
     field_access_form: TargetFieldAccessShape {
       dot: ^ts_token_dot
