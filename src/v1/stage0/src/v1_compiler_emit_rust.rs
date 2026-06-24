@@ -638,32 +638,37 @@ pub fn is_parametric_opaque_type_base(
 // == None` guard keeps it fail-closed: a name that IS a real type in scope (e.g. `Temperature` in
 // the examples corpus) renders normally, never collapses.
 pub fn is_value_variant_type_arg(env: Rc<TypeEnv>, name: String) -> bool {
-    let r = match lookup_type_by_name(env.clone(), name.clone()) {
+    match lookup_type_by_name(env.clone(), name.clone()) {
         Some(_) => false,
-        None => ((collect_unit_variant_phantom_matches(env.clone(), name.clone()).len() as i64) >= 1),
-    };
-    if (name.clone() == "Time".to_string()) {
-        eprintln!(
-            "DBGVV name={} lookup_some={} matches={} -> {}",
-            name.clone(),
-            match lookup_type_by_name(env.clone(), name.clone()) { Some(_) => "Y", None => "N" },
-            collect_unit_variant_phantom_matches(env.clone(), name.clone()).len(),
-            r
-        );
+        None => ((collect_unit_variant_phantom_matches(env, name).len() as i64) >= 1),
     }
-    r
 }
 
 // A type-ARGUMENT position that is occupied by a value collapses to `()` in the emitted Rust: a Nat
 // width LITERAL (`MachineWidth<8>`, the pre-existing `is_width_nat_type_literal` case) or a value
 // enum-variant (`Measure<Time, ...>`, `Measure<Memory, One, ...>`) -- the same lossy-but-sound move.
+// A type-leaf name that survives resolution: the authored span text when present, else the node's
+// own `name` field. A RESOLVED type-arg (in a fn-signature or struct-field node) often loses its
+// `ident_span`, so `authored_name_at` returns "" while `n.name` still carries e.g. "Time".
+pub fn type_leaf_name_for_collapse(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    let a = authored_name_at(source_indices, n.clone());
+    if (a.clone() == "".to_string()) {
+        n.name.clone()
+    } else {
+        a
+    }
+}
+
 pub fn rust_type_arg_renders_as_unit(
     n: Rc<Node>,
     env: Rc<TypeEnv>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     is_width_nat_type_literal(n.clone())
-        || is_value_variant_type_arg(env, authored_name_at(source_indices, n.clone()))
+        || is_value_variant_type_arg(env, type_leaf_name_for_collapse(n.clone(), source_indices))
 }
 
 // Does a type-expr tree contain a value enum-variant in any (possibly nested) type-arg position?
@@ -673,18 +678,32 @@ pub fn type_node_has_value_variant_arg(n: Rc<Node>, env: Rc<TypeEnv>) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if is_value_variant_type_arg(
             env.clone(),
-            authored_name_at(env.source_indices.clone(), n.clone()),
+            type_leaf_name_for_collapse(n.clone(), env.source_indices.clone()),
         ) {
-            true
-        } else {
-            let mut __found = false;
-            for c in n.children.clone().iter().cloned() {
-                if type_node_has_value_variant_arg(c.clone(), env.clone()) {
-                    __found = true;
-                    break;
-                }
+            return true;
+        }
+        for c in n.children.clone().iter().cloned() {
+            if type_node_has_value_variant_arg(c.clone(), env.clone()) {
+                return true;
             }
-            __found
+        }
+        // Applied-type args frequently live in the `__applied_type_args` property overlay rather
+        // than in `children` (e.g. a resolved `Measure<Time, S, Nat>` field type), so the value
+        // variant `Time` would otherwise be missed.
+        match find_property(
+            n.properties.clone(),
+            "__applied_type_args".to_string(),
+            env.source_indices.clone(),
+        ) {
+            Some(applied) => {
+                for c in applied.children.clone().iter().cloned() {
+                    if type_node_has_value_variant_arg(c.clone(), env.clone()) {
+                        return true;
+                    }
+                }
+                false
+            }
+            None => false,
         }
     })
 }
@@ -758,12 +777,6 @@ pub fn render_rust_applied_type_arg(
     variant_to_enum: Rc<HashMap<String, String>>,
     env: Rc<TypeEnv>,
 ) -> String {
-    {
-        let __an = authored_name_at(source_indices.clone(), n.clone());
-        if (__an.clone() == "Time".to_string()) {
-            eprintln!("DBGARG render_rust_applied_type_arg called for Time");
-        }
-    }
     if rust_type_arg_renders_as_unit(n.clone(), env.clone(), source_indices.clone()) {
         "()".to_string()
     } else {
@@ -1088,6 +1101,54 @@ pub fn render_rust_fn_sig_type(
 ) -> String {
     if is_host_text_carrier_type(n.clone(), source_indices.clone(), corpus_repr) {
         return rust_carrier_optional_wrap(n.clone(), "String".to_string());
+    }
+    // A value enum-variant in a type-arg slot (`Measure<Time, S, Nat>`) must collapse to `()`. The
+    // ordinary fn-sig paths render applied-type args env-free (render_rust_type_with_applied_binding
+    // / render_node_type), so route any value-variant-bearing signature type through the env-aware
+    // decl renderer (its `render_rust_applied_type_arg` collapses the slot). Same renderer the
+    // generic-params branch below already uses; gated on value-variant presence so every other
+    // signature type keeps its existing render path.
+    {
+        let __an = authored_name_at(source_indices.clone(), n.clone());
+        if ((__an.clone() == "Measure".to_string()) || (n.name.clone() == "Measure".to_string())) {
+            let __ap = match find_property(
+                n.properties.clone(),
+                "__applied_type_args".to_string(),
+                source_indices.clone(),
+            ) {
+                Some(a) => {
+                    let mut s = String::new();
+                    for c in a.children.clone().iter().cloned() {
+                        s.push_str(&format!(
+                            "[an={} name={}]",
+                            authored_name_at(source_indices.clone(), c.clone()),
+                            c.name.clone()
+                        ));
+                    }
+                    s
+                }
+                None => "NOPROP".to_string(),
+            };
+            eprintln!(
+                "DBGFNSIG an={} name={} nchild={} vv={} applied_args={}",
+                __an,
+                n.name.clone(),
+                n.children.clone().len(),
+                type_node_has_value_variant_arg(n.clone(), env.clone()),
+                __ap
+            );
+        }
+    }
+    if type_node_has_value_variant_arg(n.clone(), env.clone()) {
+        return render_rust_decl_type(
+            n.clone(),
+            generic_param_names.clone(),
+            shared_types.clone(),
+            corpus_repr.clone(),
+            source_indices.clone(),
+            variant_to_enum.clone(),
+            env.clone(),
+        );
     }
     {
         let name = authored_name_at(source_indices.clone(), n.clone());
