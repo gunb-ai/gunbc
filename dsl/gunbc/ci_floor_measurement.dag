@@ -6,7 +6,8 @@ import std.realization_measurement {
   ConcurrentMemoryPeakSample,
   concurrent_memory_peak_per_share,
 }
-import std.disposition { Disposition, Scaffold, DeclLocator, WholeDeclaration, SingleAuthority }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data gunbc_ci_floor_measured_peak: ConcurrentMemoryPeakSample = ConcurrentMemoryPeakSample {
   peak: byte_size(11592347648)
@@ -121,7 +122,7 @@ data gunbc_ci_host_fixed_overhead: HostFixedOverhead = HostFixedOverheadMeasured
 
 data gunbc_ci_floor_measured_peak_disposition: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: DeclLocator {
+  bind: DeclarationRef {
     module_path: "gunbc.ci_floor_measurement",
     decl_name: "gunbc_ci_job_peaks",
     field: WholeDeclaration
@@ -130,7 +131,7 @@ data gunbc_ci_floor_measured_peak_disposition: Disposition = Scaffold {
 
 data gunbc_ci_host_fixed_overhead_disposition: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: DeclLocator {
+  bind: DeclarationRef {
     module_path: "gunbc.ci_floor_measurement",
     decl_name: "gunbc_ci_per_service_overhead",
     field: WholeDeclaration
@@ -139,7 +140,7 @@ data gunbc_ci_host_fixed_overhead_disposition: Disposition = Scaffold {
 
 data gunbc_ci_concurrent_runs_conservative_high_disposition: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: DeclLocator {
+  bind: DeclarationRef {
     module_path: "gunbc.ci_runner_placement",
     decl_name: "runner_deployment_plan",
     field: WholeDeclaration

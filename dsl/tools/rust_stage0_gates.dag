@@ -1,7 +1,8 @@
 module tools.rust_stage0_gates
 
 import std.list { List }
-import std.disposition { Disposition, Scaffold, Terminal, DeclLocator, WholeDeclaration, SingleAuthority }
+import std.disposition { Disposition, Scaffold, Terminal, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 fn rust_monolith_suffixes() -> List<String> {
   [".rs", "Cargo.toml", "Cargo.lock", "rust-toolchain.toml",
@@ -22,7 +23,7 @@ data consumed_input_closure_concept_note: Disposition = Terminal {
 
 data consumed_input_closure_convergence_candidate: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: DeclLocator {
+  bind: DeclarationRef {
     module_path: "std.consumed_input",
     decl_name: "ConsumedInputClosure",
     field: WholeDeclaration
@@ -31,7 +32,7 @@ data consumed_input_closure_convergence_candidate: Disposition = Scaffold {
 
 data consumed_input_closure_slice1_status: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: DeclLocator {
+  bind: DeclarationRef {
     module_path: "tools.rust_stage0_gates",
     decl_name: "structural_closure_derivation",
     field: WholeDeclaration
@@ -79,7 +80,7 @@ data unit_must_run_failclosed_note: Disposition = Terminal {
 
 data unit_must_run_staged_note: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: DeclLocator {
+  bind: DeclarationRef {
     module_path: "tools.rust_stage0_gates",
     decl_name: "per_unit_test_selector",
     field: WholeDeclaration
