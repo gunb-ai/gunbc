@@ -140,9 +140,18 @@ fn nonfn_unique_single_field_stays_collapsed() {
         "data hv: Holder = {\n  item: leafv\n}\n"
     );
     let body = fn_body_no_sig(&emit(source), "hv");
+    // Negative: no nominal wrapper emitted for the value.
     assert!(
         !body.contains("Holder {"),
         "a unique non-fn single field must stay collapsed (un-collapse gated on fn-ness), not wrap in `Holder {{ }}`, got:\n{body}"
+    );
+    // Positive: the bare-collapsed inner form IS present — the field's cross-ref value
+    // (`leafv`) is emitted directly. Absence of `Holder {` alone would also be satisfied by a
+    // value that serde'd PAST the collapse branch; requiring the collapsed inner form proves
+    // the fixture REACHED the collapse branch AND returned the bare value (collapse, not skip).
+    assert!(
+        body.contains("leafv"),
+        "the collapsed value must emit the bare inner cross-ref `leafv` (reached-collapse-and-returned-bare, not serde'd past), got:\n{body}"
     );
 }
 
