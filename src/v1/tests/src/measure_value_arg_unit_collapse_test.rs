@@ -28,18 +28,12 @@ use crate::helpers::compile_dag_named;
 use v1_compiler::v1_compiler_artifact::RenderTarget;
 
 fn emit_host(path: &str, src: &str) -> String {
-    let result = compile_dag_named(path, src, RenderTarget::Rust);
-    let out = result
+    compile_dag_named(path, src, RenderTarget::Rust)
         .files
         .iter()
         .map(|f| f.content.clone())
         .collect::<Vec<_>>()
-        .join("\n");
-    eprintln!(
-        "DBG diags={:?}",
-        crate::helpers::diagnostic_messages(&result)
-    );
-    out
+        .join("\n")
 }
 
 // Mirrors the measure tower: a 3-param product whose first two params are phantom (used only in

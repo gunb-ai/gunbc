@@ -635,7 +635,21 @@ pub fn is_parametric_opaque_type_base(
 // type `Nat`/`Int` likewise. The `.dag` keeps these phantom slots (Q/S give a real type-level
 // distinction between e.g. a Time and a Length measure); Rust cannot carry a value in a type slot,
 // so the seed projection collapses each such slot to `()`.
-pub fn is_value_variant_type_arg(variant_to_enum: Rc<HashMap<String, String>>, name: String) -> bool {
+pub fn is_value_variant_type_arg(
+    generic_param_names: Rc<Vec<String>>,
+    variant_to_enum: Rc<HashMap<String, String>>,
+    name: String,
+) -> bool {
+    // A generic type-PARAM in scope shadows any value-variant of the same name. The collision is
+    // real: `S` and `M` are both `FermiDepth` variants (std/types.dag) AND the conventional
+    // measure type-param names (`Measure<Q, S, M>`), so keying on `variant_to_enum` alone would
+    // wrongly collapse a genuine type-param to `()` (turning `measure_count<Q, S, M>` into
+    // `Measure<Q, (), ()>` -- E0308). The param name wins.
+    for g in generic_param_names.iter().cloned() {
+        if (g.clone() == name.clone()) {
+            return false;
+        }
+    }
     match v1_rt::map_get(&variant_to_enum, name) {
         Some(_) => true,
         None => false,
@@ -662,11 +676,13 @@ pub fn type_leaf_name_for_collapse(
 // enum-variant (`Measure<Time, ...>`, `Measure<Memory, One, ...>`) -- the same lossy-but-sound move.
 pub fn rust_type_arg_renders_as_unit(
     n: Rc<Node>,
+    generic_param_names: Rc<Vec<String>>,
     variant_to_enum: Rc<HashMap<String, String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     is_width_nat_type_literal(n.clone())
         || is_value_variant_type_arg(
+            generic_param_names,
             variant_to_enum,
             type_leaf_name_for_collapse(n.clone(), source_indices),
         )
@@ -1018,6 +1034,17 @@ pub fn render_rust_decl_type(
                                                         variant_to_enum.clone(),
                                                         env.clone(),
                                                     )
+                                                } else if rust_type_arg_renders_as_unit(
+                                                    arg.clone(),
+                                                    variant_to_enum.clone(),
+                                                    source_indices.clone(),
+                                                ) {
+                                                    // A value enum-variant (`Time`) or Nat width
+                                                    // literal in a type-arg slot collapses to `()`:
+                                                    // these children ARE type-arg positions, and the
+                                                    // bare leaf renderer below would otherwise emit
+                                                    // the variant name (E0573, `expected type`).
+                                                    "()".to_string()
                                                 } else {
                                                     render_rust_decl_type(
                                                         arg.clone(),
@@ -1112,28 +1139,6 @@ pub fn render_rust_fn_sig_type(
     // decl renderer (its `render_rust_applied_type_arg` collapses the slot). Same renderer the
     // generic-params branch below already uses; gated on value-variant presence so every other
     // signature type keeps its existing render path.
-    {
-        let __an = authored_name_at(source_indices.clone(), n.clone());
-        if ((__an.clone() == "Measure".to_string()) || (n.name.clone() == "Measure".to_string())) {
-            let mut __kids = String::new();
-            for c in n.children.clone().iter().cloned() {
-                __kids.push_str(&format!(
-                    "[an={} name={}]",
-                    authored_name_at(source_indices.clone(), c.clone()),
-                    c.name.clone()
-                ));
-            }
-            eprintln!(
-                "DBG2 an={} name={} nchild={} vtoe_has_Time={} vtoe_len={} kids={}",
-                __an,
-                n.name.clone(),
-                n.children.clone().len(),
-                is_value_variant_type_arg(variant_to_enum.clone(), "Time".to_string()),
-                variant_to_enum.len(),
-                __kids
-            );
-        }
-    }
     if type_node_has_value_variant_arg(
         n.clone(),
         variant_to_enum.clone(),
