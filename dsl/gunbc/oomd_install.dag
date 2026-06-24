@@ -1,6 +1,7 @@
 module gunbc.oomd_install
 
 import std.types { NonEmptyStr, String, Bool, Int }
+import std.nat { Nat }
 import std.measure { ByteSize, byte_size_count, second, Percent, percent, percent_count }
 import std.realization_reconcile {
   ShowEffectiveRead,
@@ -104,11 +105,9 @@ data gunbc_oomd_install_plan: OomdInstallPlan = OomdInstallPlan {
 }
 
 type SliceMembershipSignal {
-  sessions_in_slice: Int
-  sessions_legacy_flat: Int
+  sessions_in_slice: Nat
+  sessions_legacy_flat: Nat
 }
-
-data oomd_membership_conjunct_doc: String = "The membership-signal contract for the OomdEnforced grounding guard. Fail-closed: OomdEnforced is NOT satisfiable when sessions.slice has no session-container scopes parented under it. The guard reads SliceMembershipSignal — two live-observable Int counts from the host cgroup hierarchy: sessions_in_slice (scopes currently under sessions.slice) and sessions_legacy_flat (session-container scopes still under the legacy flat system.slice docker-*.scope path). The conjunct covers three properties — (1) parented-into-slice: sessions ARE placed under sessions.slice in the cgroup hierarchy; (2) non-empty: the managed cgroup has live processes; (3) not-100%-legacy: not all running session containers bypass sessions.slice via the legacy path — all three reduce to sessions_in_slice > 0 in the integer-count model. Making (1)/(2)/(3) separate grounding checks would be a §3/§5 violation: each would check the same predicate, making two of the three unreachable failure arms (DESIGN §5 forbids fake walls that concede the bad state is independently reachable when it is not). The sessions_legacy_flat count does NOT add a second check; it discriminates TWO distinct failure modes in the single failure reason so the operator can distinguish 100%-legacy (all sessions bypass the slice) from empty-host (no sessions are running at all) without adding a structurally unreachable second arm."
 
 type OomdEffectiveRead {
   slice_present: Bool
