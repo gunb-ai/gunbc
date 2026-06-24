@@ -1,0 +1,88 @@
+module v2.test.lens_wiring_liveness.wiring_liveness_test
+
+import v2.std.collection { Absent, List, Present, list_at_optional }
+import v2.std.logic { Bool }
+import v2.std.node {
+  Atom,
+  Conj,
+  Edge,
+  Named,
+  Node,
+  Positional,
+  SyntheticOccurrence,
+  Symbol,
+  TypeNode,
+  resolve_type_node
+}
+import v2.std.node_query { node_labeled_child_edges }
+import v2.lens.wiring_liveness { wiring_input_is_wired }
+
+fn wl_atom(identity: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: identity } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn wl_input_leaf() -> Node {
+  wl_atom(identity: ^wiring_liveness_input_leaf)
+}
+
+fn wl_mid_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^wiring_liveness_mid } },
+    children: [
+      Edge { label: Positional, target: wl_input_leaf() }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn wl_output_tree() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Named { name: ^wiring_liveness_output_field }, target: wl_mid_node() }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn wl_disconnected_declared_input() -> Node {
+  wl_atom(identity: ^wiring_liveness_dangling_input)
+}
+
+test fn wiring_liveness_wired_input_reaches_output() -> Bool {
+  return wiring_input_is_wired(
+    output: wl_output_tree(),
+    declared_input: wl_input_leaf()
+  )
+}
+
+test fn wiring_liveness_dead_input_is_unwired() -> Bool {
+  return wiring_input_is_wired(
+    output: wl_output_tree(),
+    declared_input: wl_disconnected_declared_input()
+  ) == false
+}
+
+fn wl_reflected_dependency_kind() -> Node {
+  resolve_type_node(type_name: ^DependencyKind)
+}
+
+fn wl_edge_target(e: Edge) -> Node {
+  e.target
+}
+
+fn wl_first_field_reachable(root: Node, edges: List<Edge>) -> Bool {
+  match list_at_optional(xs: edges, index: 0) {
+    Present { value: e } => wiring_input_is_wired(output: root, declared_input: wl_edge_target(e: e))
+    Absent => false
+  }
+}
+
+test fn wiring_liveness_real_reflected_type_field_reachable() -> Bool {
+  let root = wl_reflected_dependency_kind()
+  return wl_first_field_reachable(root: root, edges: node_labeled_child_edges(node: root))
+}
