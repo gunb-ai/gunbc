@@ -4,8 +4,8 @@ use std::rc::Rc;
 use crate::v1_compiler_infer_items::ItemKind;
 use crate::v1_interpreter::{InterpContext, InterpError, InterpResult, Value};
 use crate::v1_std_core::{
-    authored_name_at, expr_var_name_at, field_node_type_expr, inferred_to_node,
-    param_node_name_at, Connective, ExprData, NewlineIndex, Node, VarBindingKind,
+    authored_name_at, expr_var_name_at, field_node_type_expr, inferred_to_node, param_node_name_at,
+    Connective, ExprData, NewlineIndex, Node, VarBindingKind,
 };
 
 pub(crate) const NULLARY_PAYLOAD_TYPE_NAME: &str = "coproduct_nullary_payload";
@@ -537,7 +537,9 @@ fn node_references_param(node: &Rc<Node>, name: &str, param_names: &[String]) ->
         return false;
     }
     match node.expr_data.as_ref() {
-        ExprData::ExprVar { binding_kind: Some(bk) } => {
+        ExprData::ExprVar {
+            binding_kind: Some(bk),
+        } => {
             matches!(bk.as_ref(), VarBindingKind::LocalValueBinding)
         }
         ExprData::ExprCall { .. } => true,

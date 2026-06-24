@@ -209,7 +209,7 @@ fn readiness_fold_init(n: Node) -> ReadinessFoldState {
   }
 }
 
-fn ready_set_fold_step(acc: ReadinessFoldState, edge: Edge, child_state: ReadinessFoldState) -> ReadinessFoldState {
+fn ready_set_fold_step(acc: ReadinessFoldState, _edge: Edge, child_state: ReadinessFoldState) -> ReadinessFoldState {
   ReadinessFoldState {
     current: acc.current,
     ready: append_nodes(left: acc.ready, right: child_state.ready),
