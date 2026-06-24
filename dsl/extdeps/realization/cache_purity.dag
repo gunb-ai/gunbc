@@ -4,6 +4,12 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
 import std.types { NonEmptyStr, ContentHash, Bool }
+import std.perturbation {
+  ForwardSameInSameOut,
+  ResponseConsistent,
+  ResponseViolation,
+  perturbation_verdict,
+}
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -24,9 +30,11 @@ type CachePurityVerdict
   | Impure { violation: CachePurityViolation }
 
 fn cache_purity_verdict(warm_equals_cold: Bool, violation: CachePurityViolation) -> CachePurityVerdict {
-  if warm_equals_cold {
-    Pure
-  } else {
-    Impure { violation: violation }
+  match perturbation_verdict(
+    reading: ForwardSameInSameOut,
+    output_responded: warm_equals_cold == false
+  ) {
+    ResponseConsistent => Pure
+    ResponseViolation => Impure { violation: violation }
   }
 }
