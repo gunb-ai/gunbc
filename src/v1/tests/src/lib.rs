@@ -81,6 +81,8 @@ mod languages_consumer_census_lens_test;
 #[cfg(test)]
 mod list_free_monoid_chokepoint_test;
 #[cfg(test)]
+mod map_literal_string_key_test;
+#[cfg(test)]
 mod map_lookup_dual_dispatch_test;
 #[cfg(test)]
 mod measure_field_access_test;
