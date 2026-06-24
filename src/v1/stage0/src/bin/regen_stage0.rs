@@ -43,6 +43,7 @@ const GENERATED_STAGE0_FILES: &[&str] = &[
     "std_coercion.rs",
     "std_computation.rs",
     "std_constructors.rs",
+    "std_decl_ref.rs",
     "std_effects.rs",
     "std_emit_model.rs",
     "std_error_primitives.rs",
