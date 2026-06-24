@@ -17733,6 +17733,27 @@ pub fn emit_typed_record_lit(
             }
             Some(tn) => {
                 let si = scope.type_env.clone().source_indices.clone();
+                let alias_expanded = expand_type_for_field_access(
+                    resolved_type.clone(),
+                    scope.type_env.clone(),
+                    scope.module_name.clone(),
+                );
+                let alias_canonical = authored_name_at(si.clone(), alias_expanded.clone());
+                let tn_is_known_struct =
+                    v1_rt::map_contains_key(&emit_info.type_summaries.clone(), tn.clone());
+                let ctor_alias_resolved = !tn_is_known_struct
+                    && (alias_canonical.clone() != "".to_string())
+                    && (alias_canonical.clone() != tn.clone())
+                    && (alias_expanded.connective.clone() == Connective::Conj)
+                    && v1_rt::map_contains_key(
+                        &emit_info.type_summaries.clone(),
+                        alias_canonical.clone(),
+                    );
+                let ctor_name = if ctor_alias_resolved.clone() {
+                    alias_canonical.clone()
+                } else {
+                    tn.clone()
+                };
                 let context_lookup = contextual_variant_parent(
                     tn.clone(),
                     parent_enum.clone(),
@@ -17840,7 +17861,7 @@ pub fn emit_typed_record_lit(
                             v1_rt::concat(resolved_parent_enum.clone(), "::".to_string()),
                             rust_tn,
                         ),
-                        None => rust_tn,
+                        None => ctor_name.clone(),
                     }
                 };
                 if ((optional_variant.clone() && (tn.clone() == "Present".to_string()))
@@ -17878,7 +17899,7 @@ pub fn emit_typed_record_lit(
                         {
                             let variant_summary_name = match effective_parent.clone() {
                                 Some(parent) => variant_summary_key(parent.clone(), tn.clone()),
-                                None => tn.clone(),
+                                None => ctor_name.clone(),
                             };
                             let is_positional_ctor = (((fields.clone().len() as i64) == 1)
                                 && match fields.clone().first().cloned() {
@@ -17977,7 +17998,7 @@ pub fn emit_typed_record_lit(
                                                     scope.clone(),
                                                     emit_info.clone(),
                                                     shared_types.clone(),
-                                                    tn.clone(),
+                                                    ctor_name.clone(),
                                                     f_name.clone(),
                                                 );
                                                 v1_rt::concat(
