@@ -3,6 +3,10 @@ module v2.std.compilers.target_model
 import v2.std.algebra {
   Cons,
   Empty,
+  Equal,
+  Greater,
+  Less,
+  Ordering,
   FreeMonoid,
   fold_list,
   fold_list_node,
@@ -546,11 +550,98 @@ type TargetValueTemplate {
   node: Node
 }
 
+type OrderingPredicate
+  = IsLess
+  | IsLessOrEqual
+  | IsGreater
+  | IsGreaterOrEqual
+
+type EqualityPredicate
+  = IsEqual
+  | IsNotEqual
+
 type CanonicalOperation
-  = OpAdd { algebra_field: Symbol }
+  = AlgebraPrimitive { algebra_field: Symbol }
+  | AlgebraInverseCompose { binary_field: Symbol, inverse_field: Symbol }
+  | OrderingComparison { compare_field: Symbol, predicate: OrderingPredicate }
+  | EqualityComparison { eq_field: Symbol, predicate: EqualityPredicate }
+
+fn ordering_predicate_accepts(predicate: OrderingPredicate) -> List<Ordering> {
+  match predicate {
+    IsLess => [Less]
+    IsLessOrEqual => [Less, Equal]
+    IsGreater => [Greater]
+    IsGreaterOrEqual => [Equal, Greater]
+  }
+}
+
+fn equality_predicate_accepts(predicate: EqualityPredicate) -> Bool {
+  match predicate {
+    IsEqual => true
+    IsNotEqual => false
+  }
+}
 
 fn canonical_operation_op_add() -> CanonicalOperation {
-  OpAdd { algebra_field: ^ring_field_add }
+  AlgebraPrimitive { algebra_field: ^ring_field_add }
+}
+
+fn canonical_operation_op_mul() -> CanonicalOperation {
+  AlgebraPrimitive { algebra_field: ^ring_field_mul }
+}
+
+fn canonical_operation_op_negate() -> CanonicalOperation {
+  AlgebraPrimitive { algebra_field: ^group_field_inverse }
+}
+
+fn canonical_operation_op_and() -> CanonicalOperation {
+  AlgebraPrimitive { algebra_field: ^lattice_field_meet }
+}
+
+fn canonical_operation_op_or() -> CanonicalOperation {
+  AlgebraPrimitive { algebra_field: ^lattice_field_join }
+}
+
+fn canonical_operation_op_not() -> CanonicalOperation {
+  AlgebraPrimitive { algebra_field: ^boolean_algebra_field_complement }
+}
+
+fn canonical_operation_op_sub() -> CanonicalOperation {
+  AlgebraInverseCompose {
+    binary_field: ^ring_field_add,
+    inverse_field: ^group_field_inverse
+  }
+}
+
+fn canonical_operation_op_div() -> CanonicalOperation {
+  AlgebraInverseCompose {
+    binary_field: ^ring_field_mul,
+    inverse_field: ^field_field_reciprocal
+  }
+}
+
+fn canonical_operation_op_lt() -> CanonicalOperation {
+  OrderingComparison { compare_field: ^ordered_ring_field_compare, predicate: IsLess }
+}
+
+fn canonical_operation_op_le() -> CanonicalOperation {
+  OrderingComparison { compare_field: ^ordered_ring_field_compare, predicate: IsLessOrEqual }
+}
+
+fn canonical_operation_op_gt() -> CanonicalOperation {
+  OrderingComparison { compare_field: ^ordered_ring_field_compare, predicate: IsGreater }
+}
+
+fn canonical_operation_op_ge() -> CanonicalOperation {
+  OrderingComparison { compare_field: ^ordered_ring_field_compare, predicate: IsGreaterOrEqual }
+}
+
+fn canonical_operation_op_eq() -> CanonicalOperation {
+  EqualityComparison { eq_field: ^equivalence_field_eq, predicate: IsEqual }
+}
+
+fn canonical_operation_op_ne() -> CanonicalOperation {
+  EqualityComparison { eq_field: ^equivalence_field_eq, predicate: IsNotEqual }
 }
 
 type TargetOperatorShape
@@ -619,11 +710,23 @@ type TargetLoopShape {
   loop_token: Symbol
 }
 
+type BlockEvaluationMode
+  = ValueProducing
+  | StatementSequenced {
+      return_token: Symbol
+      statement_terminator: Symbol
+    }
+
+type RecordLiteralTypeNaming
+  = Prepend
+  | Omit
+
 type TargetRecordConstructShape {
   open: Symbol
   close: Symbol
   separator: Symbol
   assign: Symbol
+  record_literal_names_type: RecordLiteralTypeNaming
 }
 
 type TargetFieldAccessShape {
@@ -650,11 +753,40 @@ type TargetValueExpressionProjection {
   record_construct_form: TargetRecordConstructShape
   field_access_form: TargetFieldAccessShape
   match_form: TargetMatchShape
+  block_evaluation_mode: BlockEvaluationMode
 }
 
 type TargetBodiedArrowStatementScaffold {
   prefix: List<ConcreteSyntaxToken>
   suffix: List<ConcreteSyntaxToken>
+}
+
+fn derive_bodied_arrow_scaffold(
+  signature_with_open: List<ConcreteSyntaxToken>,
+  block_close: List<ConcreteSyntaxToken>,
+  mode: BlockEvaluationMode
+) -> TargetBodiedArrowStatementScaffold {
+  match mode {
+    ValueProducing =>
+      TargetBodiedArrowStatementScaffold {
+        prefix: signature_with_open,
+        suffix: block_close
+      }
+    StatementSequenced {
+      return_token: return_token,
+      statement_terminator: statement_terminator
+    } =>
+      TargetBodiedArrowStatementScaffold {
+        prefix: list_snoc_item(
+          xs: signature_with_open,
+          item: FixedToken { token_class: return_token }
+        ),
+        suffix: list_append(
+          left: [FixedToken { token_class: statement_terminator }],
+          right: block_close
+        )
+      }
+  }
 }
 
 fn target_model_type_atom_node(identity: Symbol) -> Node {
@@ -681,7 +813,10 @@ fn target_canonical_operation_wire_malformed_diagnostic(wire: Node) -> Diagnosti
   }
 }
 
-fn target_model_canonical_operation_algebra_field_from_wire(wire: Node) -> Optional<Symbol> {
+fn target_model_canonical_operation_atom_field_from_wire(
+  wire: Node,
+  field_name: Symbol
+) -> Optional<Symbol> {
   match fold(
     wire.children,
     init: optional_absent(),
@@ -691,7 +826,7 @@ fn target_model_canonical_operation_algebra_field_from_wire(wire: Node) -> Optio
         Absent =>
           match edge.label {
             Named { name: n } =>
-              if n == ^target_canonical_operation_field_algebra_field {
+              if n == field_name {
                 match edge.target.kind {
                   TypeNode { connective: Atom { identity: id } } =>
                     optional_present(value: id)
@@ -710,15 +845,116 @@ fn target_model_canonical_operation_algebra_field_from_wire(wire: Node) -> Optio
   }
 }
 
+fn ordering_predicate_wire_symbol(predicate: OrderingPredicate) -> Symbol {
+  match predicate {
+    IsLess => ^ordering_predicate_is_less
+    IsLessOrEqual => ^ordering_predicate_is_less_or_equal
+    IsGreater => ^ordering_predicate_is_greater
+    IsGreaterOrEqual => ^ordering_predicate_is_greater_or_equal
+  }
+}
+
+fn ordering_predicate_from_wire_symbol(id: Symbol) -> Optional<OrderingPredicate> {
+  if id == ^ordering_predicate_is_less {
+    optional_present(value: IsLess)
+  } else {
+    if id == ^ordering_predicate_is_less_or_equal {
+      optional_present(value: IsLessOrEqual)
+    } else {
+      if id == ^ordering_predicate_is_greater {
+        optional_present(value: IsGreater)
+      } else {
+        if id == ^ordering_predicate_is_greater_or_equal {
+          optional_present(value: IsGreaterOrEqual)
+        } else {
+          optional_absent()
+        }
+      }
+    }
+  }
+}
+
+fn ordering_predicate_equal(left: OrderingPredicate, right: OrderingPredicate) -> Bool {
+  ordering_predicate_wire_symbol(predicate: left) == ordering_predicate_wire_symbol(predicate: right)
+}
+
+fn equality_predicate_wire_symbol(predicate: EqualityPredicate) -> Symbol {
+  match predicate {
+    IsEqual => ^equality_predicate_is_equal
+    IsNotEqual => ^equality_predicate_is_not_equal
+  }
+}
+
+fn equality_predicate_from_wire_symbol(id: Symbol) -> Optional<EqualityPredicate> {
+  if id == ^equality_predicate_is_equal {
+    optional_present(value: IsEqual)
+  } else {
+    if id == ^equality_predicate_is_not_equal {
+      optional_present(value: IsNotEqual)
+    } else {
+      optional_absent()
+    }
+  }
+}
+
+fn equality_predicate_equal(left: EqualityPredicate, right: EqualityPredicate) -> Bool {
+  equality_predicate_wire_symbol(predicate: left) == equality_predicate_wire_symbol(predicate: right)
+}
+
 fn target_model_canonical_operation_wire_node(operation: CanonicalOperation) -> Node {
   match operation {
-    OpAdd { algebra_field: f } =>
+    AlgebraPrimitive { algebra_field: f } =>
       Node {
-        kind: TypeNode { connective: Atom { identity: discriminant(v: OpAdd {}) } },
+        kind: TypeNode { connective: Atom { identity: discriminant(v: AlgebraPrimitive {}) } },
         children: [
           target_model_named_edge(
             name: ^target_canonical_operation_field_algebra_field,
             target: target_model_type_atom_node(identity: f)
+          )
+        ],
+        occurrence_id: SyntheticOccurrence
+      }
+    AlgebraInverseCompose { binary_field: b, inverse_field: i } =>
+      Node {
+        kind: TypeNode { connective: Atom { identity: discriminant(v: AlgebraInverseCompose {}) } },
+        children: [
+          target_model_named_edge(
+            name: ^target_canonical_operation_field_binary_field,
+            target: target_model_type_atom_node(identity: b)
+          ),
+          target_model_named_edge(
+            name: ^target_canonical_operation_field_inverse_field,
+            target: target_model_type_atom_node(identity: i)
+          )
+        ],
+        occurrence_id: SyntheticOccurrence
+      }
+    OrderingComparison { compare_field: c, predicate: p } =>
+      Node {
+        kind: TypeNode { connective: Atom { identity: discriminant(v: OrderingComparison {}) } },
+        children: [
+          target_model_named_edge(
+            name: ^target_canonical_operation_field_compare_field,
+            target: target_model_type_atom_node(identity: c)
+          ),
+          target_model_named_edge(
+            name: ^target_canonical_operation_field_predicate,
+            target: target_model_type_atom_node(identity: ordering_predicate_wire_symbol(predicate: p))
+          )
+        ],
+        occurrence_id: SyntheticOccurrence
+      }
+    EqualityComparison { eq_field: e, predicate: p } =>
+      Node {
+        kind: TypeNode { connective: Atom { identity: discriminant(v: EqualityComparison {}) } },
+        children: [
+          target_model_named_edge(
+            name: ^target_canonical_operation_field_eq_field,
+            target: target_model_type_atom_node(identity: e)
+          ),
+          target_model_named_edge(
+            name: ^target_canonical_operation_field_predicate,
+            target: target_model_type_atom_node(identity: equality_predicate_wire_symbol(predicate: p))
           )
         ],
         occurrence_id: SyntheticOccurrence
@@ -731,9 +967,36 @@ fn canonical_operation_equal(
   right: CanonicalOperation
 ) -> Bool {
   match left {
-    OpAdd { algebra_field: lf } =>
+    AlgebraPrimitive { algebra_field: lf } =>
       match right {
-        OpAdd { algebra_field: rf } => lf == rf
+        AlgebraPrimitive { algebra_field: rf } => lf == rf
+        AlgebraInverseCompose { binary_field: _, inverse_field: _ } => false
+        OrderingComparison { compare_field: _, predicate: _ } => false
+        EqualityComparison { eq_field: _, predicate: _ } => false
+      }
+    AlgebraInverseCompose { binary_field: lb, inverse_field: li } =>
+      match right {
+        AlgebraPrimitive { algebra_field: _ } => false
+        AlgebraInverseCompose { binary_field: rb, inverse_field: ri } =>
+          lb == rb && li == ri
+        OrderingComparison { compare_field: _, predicate: _ } => false
+        EqualityComparison { eq_field: _, predicate: _ } => false
+      }
+    OrderingComparison { compare_field: lc, predicate: lp } =>
+      match right {
+        AlgebraPrimitive { algebra_field: _ } => false
+        AlgebraInverseCompose { binary_field: _, inverse_field: _ } => false
+        OrderingComparison { compare_field: rc, predicate: rp } =>
+          lc == rc && ordering_predicate_equal(left: lp, right: rp)
+        EqualityComparison { eq_field: _, predicate: _ } => false
+      }
+    EqualityComparison { eq_field: le, predicate: lp } =>
+      match right {
+        AlgebraPrimitive { algebra_field: _ } => false
+        AlgebraInverseCompose { binary_field: _, inverse_field: _ } => false
+        OrderingComparison { compare_field: _, predicate: _ } => false
+        EqualityComparison { eq_field: re, predicate: rp } =>
+          le == re && equality_predicate_equal(left: lp, right: rp)
       }
   }
 }
@@ -741,19 +1004,123 @@ fn canonical_operation_equal(
 fn canonical_operation_from_wire_node(wire: Node) -> Outcome<CanonicalOperation> {
   match wire.kind {
     TypeNode { connective: Atom { identity: id } } =>
-      if id == discriminant(v: OpAdd {}) {
-        match target_model_canonical_operation_algebra_field_from_wire(wire: wire) {
+      if id == discriminant(v: AlgebraPrimitive {}) {
+        match target_model_canonical_operation_atom_field_from_wire(
+          wire: wire,
+          field_name: ^target_canonical_operation_field_algebra_field
+        ) {
           Present { value: algebra_field } =>
-            outcome_accepted(OpAdd { algebra_field: algebra_field })
+            outcome_accepted(AlgebraPrimitive { algebra_field: algebra_field })
           Absent =>
             outcome_rejected(
               target_canonical_operation_wire_malformed_diagnostic(wire: wire)
             )
         }
       } else {
-        outcome_rejected(
-          target_canonical_operation_wire_malformed_diagnostic(wire: wire)
-        )
+        if id == discriminant(v: AlgebraInverseCompose {}) {
+          match target_model_canonical_operation_atom_field_from_wire(
+            wire: wire,
+            field_name: ^target_canonical_operation_field_binary_field
+          ) {
+            Present { value: binary_field } =>
+              match target_model_canonical_operation_atom_field_from_wire(
+                wire: wire,
+                field_name: ^target_canonical_operation_field_inverse_field
+              ) {
+                Present { value: inverse_field } =>
+                  outcome_accepted(
+                    AlgebraInverseCompose {
+                      binary_field: binary_field,
+                      inverse_field: inverse_field
+                    }
+                  )
+                Absent =>
+                  outcome_rejected(
+                    target_canonical_operation_wire_malformed_diagnostic(wire: wire)
+                  )
+              }
+            Absent =>
+              outcome_rejected(
+                target_canonical_operation_wire_malformed_diagnostic(wire: wire)
+              )
+          }
+        } else {
+          if id == discriminant(v: OrderingComparison {}) {
+            match target_model_canonical_operation_atom_field_from_wire(
+              wire: wire,
+              field_name: ^target_canonical_operation_field_compare_field
+            ) {
+              Present { value: compare_field } =>
+                match target_model_canonical_operation_atom_field_from_wire(
+                  wire: wire,
+                  field_name: ^target_canonical_operation_field_predicate
+                ) {
+                  Present { value: predicate_id } =>
+                    match ordering_predicate_from_wire_symbol(id: predicate_id) {
+                      Present { value: predicate } =>
+                        outcome_accepted(
+                          OrderingComparison {
+                            compare_field: compare_field,
+                            predicate: predicate
+                          }
+                        )
+                      Absent =>
+                        outcome_rejected(
+                          target_canonical_operation_wire_malformed_diagnostic(wire: wire)
+                        )
+                    }
+                  Absent =>
+                    outcome_rejected(
+                      target_canonical_operation_wire_malformed_diagnostic(wire: wire)
+                    )
+                }
+              Absent =>
+                outcome_rejected(
+                  target_canonical_operation_wire_malformed_diagnostic(wire: wire)
+                )
+            }
+          } else {
+            if id == discriminant(v: EqualityComparison {}) {
+              match target_model_canonical_operation_atom_field_from_wire(
+                wire: wire,
+                field_name: ^target_canonical_operation_field_eq_field
+              ) {
+                Present { value: eq_field } =>
+                  match target_model_canonical_operation_atom_field_from_wire(
+                    wire: wire,
+                    field_name: ^target_canonical_operation_field_predicate
+                  ) {
+                    Present { value: predicate_id } =>
+                      match equality_predicate_from_wire_symbol(id: predicate_id) {
+                        Present { value: predicate } =>
+                          outcome_accepted(
+                            EqualityComparison {
+                              eq_field: eq_field,
+                              predicate: predicate
+                            }
+                          )
+                        Absent =>
+                          outcome_rejected(
+                            target_canonical_operation_wire_malformed_diagnostic(wire: wire)
+                          )
+                      }
+                    Absent =>
+                      outcome_rejected(
+                        target_canonical_operation_wire_malformed_diagnostic(wire: wire)
+                      )
+                  }
+                Absent =>
+                  outcome_rejected(
+                    target_canonical_operation_wire_malformed_diagnostic(wire: wire)
+                  )
+              }
+            } else {
+              outcome_rejected(
+                target_canonical_operation_wire_malformed_diagnostic(wire: wire)
+              )
+            }
+          }
+        }
       }
     _ =>
       outcome_rejected(
@@ -1183,6 +1550,108 @@ fn decode_loop_shape_bundle(bundle: Node) -> Outcome<TargetLoopShape> {
   )
 }
 
+fn record_literal_type_naming_to_symbol(naming: RecordLiteralTypeNaming) -> Symbol {
+  match naming {
+    Prepend => ^record_literal_type_naming_prepend
+    Omit => ^record_literal_type_naming_omit
+  }
+}
+
+fn record_literal_type_naming_from_symbol(symbol: Symbol) -> Outcome<RecordLiteralTypeNaming> {
+  if symbol == ^record_literal_type_naming_prepend {
+    outcome_accepted(Prepend)
+  } else if symbol == ^record_literal_type_naming_omit {
+    outcome_accepted(Omit)
+  } else {
+    outcome_rejected(
+      target_value_expr_operand_wire_malformed_diagnostic(
+        wire: target_model_type_atom_node(identity: symbol)
+      )
+    )
+  }
+}
+
+fn block_evaluation_mode_to_node(mode: BlockEvaluationMode) -> Node {
+  match mode {
+    ValueProducing =>
+      target_model_type_conj_node(
+        children: [
+          target_model_named_edge(
+            name: ^target_value_expr_field_block_eval_kind,
+            target: target_model_type_atom_node(
+              identity: ^block_evaluation_mode_value_producing
+            )
+          )
+        ]
+      )
+    StatementSequenced {
+      return_token: return_token,
+      statement_terminator: statement_terminator
+    } =>
+      target_model_type_conj_node(
+        children: [
+          target_model_named_edge(
+            name: ^target_value_expr_field_block_eval_kind,
+            target: target_model_type_atom_node(
+              identity: ^block_evaluation_mode_statement_sequenced
+            )
+          ),
+          target_model_named_edge(
+            name: ^target_value_expr_field_block_eval_return_token,
+            target: target_model_type_atom_node(identity: return_token)
+          ),
+          target_model_named_edge(
+            name: ^target_value_expr_field_block_eval_terminator,
+            target: target_model_type_atom_node(identity: statement_terminator)
+          )
+        ]
+      )
+  }
+}
+
+fn decode_block_evaluation_mode(bundle: Node) -> Outcome<BlockEvaluationMode> {
+  bind_outcome(
+    o: projection_bundle_symbol_field(
+      bundle: bundle,
+      field: ^target_value_expr_field_block_eval_kind
+    ),
+    f: fn(kind) {
+      if kind == ^block_evaluation_mode_value_producing {
+        outcome_accepted(ValueProducing)
+      } else if kind == ^block_evaluation_mode_statement_sequenced {
+        bind_outcome(
+          o: projection_bundle_symbol_field(
+            bundle: bundle,
+            field: ^target_value_expr_field_block_eval_return_token
+          ),
+          f: fn(return_token) {
+            bind_outcome(
+              o: projection_bundle_symbol_field(
+                bundle: bundle,
+                field: ^target_value_expr_field_block_eval_terminator
+              ),
+              f: fn(statement_terminator) {
+                outcome_accepted(
+                  StatementSequenced {
+                    return_token: return_token,
+                    statement_terminator: statement_terminator
+                  }
+                )
+              }
+            )
+          }
+        )
+      } else {
+        outcome_rejected(
+          target_value_expr_operand_wire_malformed_diagnostic(
+            wire: bundle
+          )
+        )
+      }
+    }
+  )
+}
+
 fn decode_record_construct_shape_bundle(bundle: Node) -> Outcome<TargetRecordConstructShape> {
   bind_outcome(
     o: projection_bundle_symbol_field(bundle: bundle, field: ^target_value_expr_field_record_open),
@@ -1196,12 +1665,26 @@ fn decode_record_construct_shape_bundle(bundle: Node) -> Outcome<TargetRecordCon
               bind_outcome(
                 o: projection_bundle_symbol_field(bundle: bundle, field: ^target_value_expr_field_record_assign),
                 f: fn(assign) {
-                  outcome_accepted(
-                    TargetRecordConstructShape {
-                      open: open,
-                      close: close,
-                      separator: separator,
-                      assign: assign
+                  bind_outcome(
+                    o: projection_bundle_symbol_field(
+                      bundle: bundle,
+                      field: ^target_value_expr_field_record_names_type
+                    ),
+                    f: fn(names_type_symbol) {
+                      bind_outcome(
+                        o: record_literal_type_naming_from_symbol(symbol: names_type_symbol),
+                        f: fn(names_type) {
+                          outcome_accepted(
+                            TargetRecordConstructShape {
+                              open: open,
+                              close: close,
+                              separator: separator,
+                              assign: assign,
+                              record_literal_names_type: names_type
+                            }
+                          )
+                        }
+                      )
                     }
                   )
                 }
@@ -1558,6 +2041,48 @@ fn decode_vep_chain_match(
   bind_outcome(
     o: decode_vep_parent_match(bundle: bundle),
     f: fn(match_form) {
+      decode_vep_chain_block_eval(
+        bundle: bundle,
+        binding_ref_form: binding_ref_form,
+        primitive_apply_form: primitive_apply_form,
+        callable_apply_form: callable_apply_form,
+        closure_form: closure_form,
+        effect_apply_form: effect_apply_form,
+        conditional_form: conditional_form,
+        let_form: let_form,
+        loop_form: loop_form,
+        record_construct_form: record_construct_form,
+        field_access_form: field_access_form,
+        match_form: match_form
+      )
+    }
+  )
+}
+
+fn decode_vep_parent_block_eval(bundle: Node) -> Outcome<BlockEvaluationMode> {
+  bind_outcome(
+    o: projection_bundle_child(bundle: bundle, name: ^target_value_expr_field_block_eval),
+    f: decode_block_evaluation_mode
+  )
+}
+
+fn decode_vep_chain_block_eval(
+  bundle: Node,
+  binding_ref_form: TargetBindingRefShape,
+  primitive_apply_form: TargetPrimitiveApplyShape,
+  callable_apply_form: TargetCallApplyShape,
+  closure_form: TargetClosureShape,
+  effect_apply_form: TargetEffectApplyShape,
+  conditional_form: TargetConditionalShape,
+  let_form: TargetBindLetShape,
+  loop_form: TargetLoopShape,
+  record_construct_form: TargetRecordConstructShape,
+  field_access_form: TargetFieldAccessShape,
+  match_form: TargetMatchShape
+) -> Outcome<TargetValueExpressionProjection> {
+  bind_outcome(
+    o: decode_vep_parent_block_eval(bundle: bundle),
+    f: fn(block_evaluation_mode) {
       outcome_accepted(
         TargetValueExpressionProjection {
           binding_ref_form: binding_ref_form,
@@ -1570,7 +2095,8 @@ fn decode_vep_chain_match(
           loop_form: loop_form,
           record_construct_form: record_construct_form,
           field_access_form: field_access_form,
-          match_form: match_form
+          match_form: match_form,
+          block_evaluation_mode: block_evaluation_mode
         }
       )
     }
@@ -4161,6 +4687,83 @@ fn target_value_expr_bind_let_child_from_wire(
   target_value_expr_conditional_child_from_wire(wire: wire, field: field)
 }
 
+fn bind_let_value_producing_tokens(
+  projection: TargetValueExpressionProjection,
+  key_tokens: List<ConcreteSyntaxToken>,
+  value_tokens: List<ConcreteSyntaxToken>,
+  body_tokens: List<ConcreteSyntaxToken>
+) -> List<ConcreteSyntaxToken> {
+  list_append(
+    left: list_append(
+      left: list_append(
+        left: list_append(
+          left: list_append(
+            left: [
+              FixedToken { token_class: projection.let_form.let_token }
+            ],
+            right: key_tokens
+          ),
+          right: [
+            FixedToken { token_class: projection.let_form.assign_token }
+          ]
+        ),
+        right: value_tokens
+      ),
+      right: [
+        FixedToken { token_class: projection.let_form.in_token }
+      ]
+    ),
+    right: body_tokens
+  )
+}
+
+fn bind_let_statement_sequenced_tokens(
+  projection: TargetValueExpressionProjection,
+  key_tokens: List<ConcreteSyntaxToken>,
+  value_tokens: List<ConcreteSyntaxToken>,
+  body_tokens: List<ConcreteSyntaxToken>,
+  return_token: Symbol,
+  statement_terminator: Symbol
+) -> List<ConcreteSyntaxToken> {
+  list_append(
+    left: list_append(
+      left: list_append(
+        left: list_append(
+          left: list_append(
+            left: list_append(
+              left: [
+                FixedToken { token_class: projection.primitive_apply_form.open },
+                FixedToken { token_class: projection.closure_form.fn_token },
+                FixedToken { token_class: projection.closure_form.open },
+                FixedToken { token_class: projection.closure_form.close },
+                FixedToken { token_class: projection.closure_form.body_open },
+                FixedToken { token_class: projection.let_form.let_token }
+              ],
+              right: key_tokens
+            ),
+            right: [
+              FixedToken { token_class: projection.let_form.assign_token }
+            ]
+          ),
+          right: value_tokens
+        ),
+        right: [
+          FixedToken { token_class: statement_terminator },
+          FixedToken { token_class: return_token }
+        ]
+      ),
+      right: body_tokens
+    ),
+    right: [
+      FixedToken { token_class: statement_terminator },
+      FixedToken { token_class: projection.closure_form.body_close },
+      FixedToken { token_class: projection.primitive_apply_form.close },
+      FixedToken { token_class: projection.primitive_apply_form.open },
+      FixedToken { token_class: projection.primitive_apply_form.close }
+    ]
+  )
+}
+
 fn target_value_expression_bind_let_to_concrete_tokens(
   expr: TargetValueExpression,
   projection: TargetValueExpressionProjection,
@@ -4208,39 +4811,31 @@ fn target_value_expression_bind_let_to_concrete_tokens(
                               catalog: catalog
                             ),
                             f: fn(body_tokens) {
-                              outcome_accepted(
-                                list_append(
-                                  left: list_append(
-                                    left: list_append(
-                                      left: list_append(
-                                        left: list_append(
-                                          left: Cons {
-                                            head: FixedToken {
-                                              token_class: projection.let_form.let_token
-                                            },
-                                            tail: Empty
-                                          },
-                                          right: key_tokens
-                                        ),
-                                        right: Cons {
-                                          head: FixedToken {
-                                            token_class: projection.let_form.assign_token
-                                          },
-                                          tail: Empty
-                                        }
-                                      ),
-                                      right: value_tokens
-                                    ),
-                                    right: Cons {
-                                      head: FixedToken {
-                                        token_class: projection.let_form.in_token
-                                      },
-                                      tail: Empty
-                                    }
-                                  ),
-                                  right: body_tokens
-                                )
-                              )
+                              match projection.block_evaluation_mode {
+                                ValueProducing =>
+                                  outcome_accepted(
+                                    bind_let_value_producing_tokens(
+                                      projection: projection,
+                                      key_tokens: key_tokens,
+                                      value_tokens: value_tokens,
+                                      body_tokens: body_tokens
+                                    )
+                                  )
+                                StatementSequenced {
+                                  return_token: return_token,
+                                  statement_terminator: statement_terminator
+                                } =>
+                                  outcome_accepted(
+                                    bind_let_statement_sequenced_tokens(
+                                      projection: projection,
+                                      key_tokens: key_tokens,
+                                      value_tokens: value_tokens,
+                                      body_tokens: body_tokens,
+                                      return_token: return_token,
+                                      statement_terminator: statement_terminator
+                                    )
+                                  )
+                              }
                             }
                           )
                         }
@@ -4288,7 +4883,51 @@ fn target_value_expr_loop_child_from_wire(wire: Node) -> Outcome<TargetValueExpr
   )
 }
 
+fn statement_sequenced_block_construct_unwired_diagnostic(wire: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^statement_sequenced_block_construct_unwired,
+    at: node_locus(node: wire),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn statement_sequenced_block_construct_guard(
+  block_evaluation_mode: BlockEvaluationMode,
+  wire: Node
+) -> Outcome<Bool> {
+  match block_evaluation_mode {
+    ValueProducing => outcome_accepted(true)
+    StatementSequenced {
+      return_token: _,
+      statement_terminator: _
+    } =>
+      outcome_rejected(
+        statement_sequenced_block_construct_unwired_diagnostic(wire: wire)
+      )
+  }
+}
+
 fn target_value_expression_loop_to_concrete_tokens(
+  expr: TargetValueExpression,
+  projection: TargetValueExpressionProjection,
+  catalog: Node
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  bind_outcome(
+    o: statement_sequenced_block_construct_guard(
+      block_evaluation_mode: projection.block_evaluation_mode,
+      wire: expr.node
+    ),
+    f: fn(_) {
+      target_value_expression_loop_to_concrete_tokens_inner(
+        expr: expr,
+        projection: projection,
+        catalog: catalog
+      )
+    }
+  )
+}
+
+fn target_value_expression_loop_to_concrete_tokens_inner(
   expr: TargetValueExpression,
   projection: TargetValueExpressionProjection,
   catalog: Node
@@ -4537,35 +5176,36 @@ fn target_value_expression_record_construct_to_concrete_tokens(
                   catalog: catalog
                 ),
                 f: fn(field_tokens) {
+                  let type_name_prefix_tokens = match projection.record_construct_form.record_literal_names_type {
+                    Prepend => Cons {
+                      head: target_value_expression_binding_ref_token(
+                        binding: type_name,
+                        projection: projection
+                      ),
+                      tail: Empty
+                    }
+                    Omit => Empty
+                  }
                   outcome_accepted(
                     list_append(
                       left: list_append(
                         left: list_append(
-                          left: list_append(
-                            left: Cons {
-                              head: target_value_expression_binding_ref_token(
-                                binding: type_name,
-                                projection: projection
-                              ),
-                              tail: Empty
+                          left: type_name_prefix_tokens,
+                          right: Cons {
+                            head: FixedToken {
+                              token_class: projection.record_construct_form.open
                             },
-                            right: Cons {
-                              head: FixedToken {
-                                token_class: projection.record_construct_form.open
-                              },
-                              tail: Empty
-                            }
-                          ),
-                          right: field_tokens
+                            tail: Empty
+                          }
                         ),
-                        right: Cons {
-                          head: FixedToken {
-                            token_class: projection.record_construct_form.close
-                          },
-                          tail: Empty
-                        }
+                        right: field_tokens
                       ),
-                      right: Empty
+                      right: Cons {
+                        head: FixedToken {
+                          token_class: projection.record_construct_form.close
+                        },
+                        tail: Empty
+                      }
                     )
                   )
                 }
@@ -4962,6 +5602,26 @@ fn target_value_expr_match_arm_tokens(
 }
 
 fn target_value_expression_match_to_concrete_tokens(
+  expr: TargetValueExpression,
+  projection: TargetValueExpressionProjection,
+  catalog: Node
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  bind_outcome(
+    o: statement_sequenced_block_construct_guard(
+      block_evaluation_mode: projection.block_evaluation_mode,
+      wire: expr.node
+    ),
+    f: fn(_) {
+      target_value_expression_match_to_concrete_tokens_inner(
+        expr: expr,
+        projection: projection,
+        catalog: catalog
+      )
+    }
+  )
+}
+
+fn target_value_expression_match_to_concrete_tokens_inner(
   expr: TargetValueExpression,
   projection: TargetValueExpressionProjection,
   catalog: Node
@@ -5375,6 +6035,26 @@ fn target_value_expr_closure_param_tokens(
 }
 
 fn target_value_expression_closure_to_concrete_tokens(
+  expr: TargetValueExpression,
+  projection: TargetValueExpressionProjection,
+  catalog: Node
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  bind_outcome(
+    o: statement_sequenced_block_construct_guard(
+      block_evaluation_mode: projection.block_evaluation_mode,
+      wire: expr.node
+    ),
+    f: fn(_) {
+      target_value_expression_closure_to_concrete_tokens_inner(
+        expr: expr,
+        projection: projection,
+        catalog: catalog
+      )
+    }
+  )
+}
+
+fn target_value_expression_closure_to_concrete_tokens_inner(
   expr: TargetValueExpression,
   projection: TargetValueExpressionProjection,
   catalog: Node
@@ -5922,6 +6602,14 @@ fn value_expr_projection_bundle_node(projection: TargetValueExpressionProjection
               target: target_model_type_atom_node(
                 identity: projection.record_construct_form.assign
               )
+            ),
+            target_model_named_edge(
+              name: ^target_value_expr_field_record_names_type,
+              target: target_model_type_atom_node(
+                identity: record_literal_type_naming_to_symbol(
+                  naming: projection.record_construct_form.record_literal_names_type
+                )
+              )
             )
           ]
         )
@@ -5974,6 +6662,12 @@ fn value_expr_projection_bundle_node(projection: TargetValueExpressionProjection
               )
             )
           ]
+        )
+      ),
+      target_model_named_edge(
+        name: ^target_value_expr_field_block_eval,
+        target: block_evaluation_mode_to_node(
+          mode: projection.block_evaluation_mode
         )
       )
     ]

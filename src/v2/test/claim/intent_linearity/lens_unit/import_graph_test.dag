@@ -1,0 +1,78 @@
+module v2.test.intent_linearity.lens_unit.import_graph
+
+import v2.lens.intent_linearity {
+  ParallelRepresentationRule,
+  ChangeTime,
+  ImportGraph,
+  import_graph_rule,
+  closure_is_clean_for_representation,
+  closure_drift,
+  closure_is_clean,
+  closures_match
+}
+import v2.lens.common.construction_justification { WallAfterGrounding }
+import std.disposition { SingleAuthority }
+import v2.std.collection { List }
+import v2.std.text { String }
+import v2.std.logic { Bool }
+
+data clean_declared: List<String> = ["self.dag", "a.dag", "b.dag"]
+data clean_derived: List<String> = ["self.dag", "a.dag", "b.dag"]
+
+data under_declared: List<String> = ["self.dag", "a.dag"]
+data under_derived: List<String> = ["self.dag", "a.dag", "b.dag"]
+
+data over_declared: List<String> = ["self.dag", "a.dag", "b.dag", "stale.dag"]
+data over_derived: List<String> = ["self.dag", "a.dag", "b.dag"]
+
+data reordered_declared: List<String> = ["b.dag", "self.dag", "a.dag"]
+data reordered_derived: List<String> = ["self.dag", "a.dag", "b.dag"]
+
+test fn clean_closure_is_clean() -> Bool {
+  closure_is_clean_for_representation(rep: ImportGraph, declared: clean_declared, derived: clean_derived)
+}
+
+test fn clean_closure_has_no_drift() -> Bool {
+  !closure_drift(declared: clean_declared, derived: clean_derived)
+}
+
+test fn under_declared_is_not_clean() -> Bool {
+  !closure_is_clean_for_representation(rep: ImportGraph, declared: under_declared, derived: under_derived)
+}
+
+test fn under_declared_drifts() -> Bool {
+  closure_drift(declared: under_declared, derived: under_derived)
+}
+
+test fn over_declared_is_not_clean() -> Bool {
+  !closure_is_clean_for_representation(rep: ImportGraph, declared: over_declared, derived: over_derived)
+}
+
+test fn over_declared_drifts() -> Bool {
+  closure_drift(declared: over_declared, derived: over_derived)
+}
+
+test fn drift_is_set_not_list_order() -> Bool {
+  closures_match(declared: reordered_declared, derived: reordered_derived)
+    && closure_is_clean_for_representation(rep: ImportGraph, declared: reordered_declared, derived: reordered_derived)
+}
+
+test fn import_graph_rule_is_wall_now() -> Bool {
+  closure_is_clean(rule: import_graph_rule(), declared: clean_declared, derived: clean_derived)
+    && !closure_is_clean(rule: import_graph_rule(), declared: under_declared, derived: under_derived)
+}
+
+fn shrinking_scaffold_rule() -> ParallelRepresentationRule {
+  ParallelRepresentationRule {
+    name: ^exception_roster,
+    axis: ChangeTime,
+    representation: ImportGraph,
+    class: WallAfterGrounding { dissolves_to: SingleAuthority },
+    derive: fn(entry, roots) { [] }
+  }
+}
+
+test fn wall_after_grounding_tracks_drift_not_fails() -> Bool {
+  closure_drift(declared: under_declared, derived: under_derived)
+    && closure_is_clean(rule: shrinking_scaffold_rule(), declared: under_declared, derived: under_derived)
+}

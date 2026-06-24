@@ -423,6 +423,9 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
             "languages_consumer_census_has_external_consumer".to_string(),
             bool_type(),
         );
+        let m = v1_rt::rc_map_insert(m.clone(), "is_xid_start".to_string(), bool_type());
+        let m = v1_rt::rc_map_insert(m.clone(), "is_xid_continue".to_string(), bool_type());
+        let m = v1_rt::rc_map_insert(m.clone(), "is_emoji_ident".to_string(), bool_type());
         m.clone()
     }
 }

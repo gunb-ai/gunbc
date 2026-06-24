@@ -142,7 +142,14 @@ import v2.std.compilers.target_model {
   grammar_relation_row_attach_bodied_scaffold,
   target_operator_realization_node,
   target_operator_realizations_catalog_node,
-  value_expr_projection_bundle_node
+  value_expr_projection_bundle_node,
+  RecordLiteralTypeNaming,
+  Omit,
+  Prepend,
+  BlockEvaluationMode,
+  ValueProducing,
+  StatementSequenced,
+  derive_bodied_arrow_scaffold
 }
 import v2.std.node {
   Arrow,
@@ -533,6 +540,34 @@ fn ts_mvp1_emitted_add_fn_with_body_node() -> Node {
 }
 
 fn ts_value_expression_projection() -> TargetValueExpressionProjection {
+  ts_value_expression_projection_full(
+    record_literal_names_type: Omit,
+    block_evaluation_mode: ts_block_evaluation_mode()
+  )
+}
+
+fn ts_value_expression_projection_with_record_literal_naming(
+  record_literal_names_type: RecordLiteralTypeNaming
+) -> TargetValueExpressionProjection {
+  ts_value_expression_projection_full(
+    record_literal_names_type: record_literal_names_type,
+    block_evaluation_mode: ts_block_evaluation_mode()
+  )
+}
+
+fn ts_value_expression_projection_with_block_evaluation_mode(
+  block_evaluation_mode: BlockEvaluationMode
+) -> TargetValueExpressionProjection {
+  ts_value_expression_projection_full(
+    record_literal_names_type: Omit,
+    block_evaluation_mode: block_evaluation_mode
+  )
+}
+
+fn ts_value_expression_projection_full(
+  record_literal_names_type: RecordLiteralTypeNaming,
+  block_evaluation_mode: BlockEvaluationMode
+) -> TargetValueExpressionProjection {
   TargetValueExpressionProjection {
     binding_ref_form: TargetBindingRefShape { ident_token: ^ts_token_ident },
     primitive_apply_form: TargetPrimitiveApplyShape {
@@ -548,13 +583,13 @@ fn ts_value_expression_projection() -> TargetValueExpressionProjection {
     },
 
     closure_form: TargetClosureShape {
-      fn_token: ^ts_closure_emit_unsupported,
-      open: ^ts_closure_emit_unsupported,
-      separator: ^ts_closure_emit_unsupported,
-      close: ^ts_closure_emit_unsupported,
-      body_open: ^ts_closure_emit_unsupported,
-      body_close: ^ts_closure_emit_unsupported,
-      param_ident_token: ^ts_closure_emit_unsupported
+      fn_token: ^ts_token_kw_function,
+      open: ^ts_token_lparen,
+      separator: ^ts_token_comma,
+      close: ^ts_token_rparen,
+      body_open: ^ts_token_lbrace,
+      body_close: ^ts_token_rbrace,
+      param_ident_token: ^ts_token_ident
     },
 
     effect_apply_form: TargetEffectApplyShape {
@@ -592,10 +627,11 @@ fn ts_value_expression_projection() -> TargetValueExpressionProjection {
       open: ^ts_token_lbrace,
       close: ^ts_token_rbrace,
       separator: ^ts_token_comma,
-      assign: ^ts_token_colon
+      assign: ^ts_token_colon,
+      record_literal_names_type: record_literal_names_type
     },
     field_access_form: TargetFieldAccessShape {
-      dot: ^ts_token_unwired_dot
+      dot: ^ts_token_dot
     },
     match_form: TargetMatchShape {
       match_token: ^ts_token_unwired_match,
@@ -603,7 +639,8 @@ fn ts_value_expression_projection() -> TargetValueExpressionProjection {
       close: ^ts_token_rbrace,
       fat_arrow: ^ts_token_fat_arrow,
       arm_separator: ^ts_token_comma
-    }
+    },
+    block_evaluation_mode: block_evaluation_mode
   }
 }
 
@@ -618,7 +655,14 @@ fn ts_operator_realizations_catalog_node() -> Node {
   target_operator_realizations_catalog_node(rows: [ts_add_operator_realization_row()])
 }
 
-fn ts_mvp1_fn_add_statement_prefix_tokens() -> List<ConcreteSyntaxToken> {
+fn ts_block_evaluation_mode() -> BlockEvaluationMode {
+  StatementSequenced {
+    return_token: ^ts_token_kw_return,
+    statement_terminator: ^ts_token_semicolon
+  }
+}
+
+fn ts_add_signature_with_open() -> List<ConcreteSyntaxToken> {
   [
     FixedToken { token_class: ^ts_token_kw_function },
     BoundToken { token_class: ^ts_token_ident, binding: ^ts_binding_fn_add },
@@ -633,23 +677,32 @@ fn ts_mvp1_fn_add_statement_prefix_tokens() -> List<ConcreteSyntaxToken> {
     FixedToken { token_class: ^ts_token_rparen },
     FixedToken { token_class: ^ts_token_colon },
     FixedToken { token_class: ^ts_token_ty_number },
-    FixedToken { token_class: ^ts_token_lbrace },
-    FixedToken { token_class: ^ts_token_kw_return }
+    FixedToken { token_class: ^ts_token_lbrace }
   ]
 }
 
-fn ts_mvp1_fn_add_statement_suffix_tokens() -> List<ConcreteSyntaxToken> {
+fn ts_add_block_close() -> List<ConcreteSyntaxToken> {
   [
-    FixedToken { token_class: ^ts_token_semicolon },
     FixedToken { token_class: ^ts_token_rbrace }
   ]
 }
 
 fn ts_mvp1_bodied_arrow_statement_scaffold() -> TargetBodiedArrowStatementScaffold {
-  TargetBodiedArrowStatementScaffold {
-    prefix: ts_mvp1_fn_add_statement_prefix_tokens(),
-    suffix: ts_mvp1_fn_add_statement_suffix_tokens()
-  }
+  derive_bodied_arrow_scaffold(
+    signature_with_open: ts_add_signature_with_open(),
+    block_close: ts_add_block_close(),
+    mode: ts_block_evaluation_mode()
+  )
+}
+
+fn ts_mvp1_fn_add_statement_prefix_tokens() -> List<ConcreteSyntaxToken> {
+  let scaffold = ts_mvp1_bodied_arrow_statement_scaffold()
+  scaffold.prefix
+}
+
+fn ts_mvp1_fn_add_statement_suffix_tokens() -> List<ConcreteSyntaxToken> {
+  let scaffold = ts_mvp1_bodied_arrow_statement_scaffold()
+  scaffold.suffix
 }
 
 fn ts_mvp1_compose_add_fn_tokens(body_tokens: List<ConcreteSyntaxToken>) -> List<ConcreteSyntaxToken> {
@@ -2002,6 +2055,7 @@ fn ts_wave1_lex_rules() -> LexRuleSet {
       ts_lex_rule(token_class: ^ts_token_rparen, text: ")"),
       ts_lex_rule(token_class: ^ts_token_comma, text: ", "),
       ts_lex_rule(token_class: ^ts_token_colon, text: ": "),
+      ts_lex_rule(token_class: ^ts_token_dot, text: "."),
       ts_lex_rule(token_class: ^ts_token_semicolon, text: ";"),
       ts_lex_rule(token_class: ^ts_token_effect_read_callee, text: "__gunbc_effect_read"),
       ts_lex_rule(token_class: ^ts_token_effect_write_callee, text: "__gunbc_effect_write")

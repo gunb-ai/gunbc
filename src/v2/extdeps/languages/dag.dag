@@ -119,7 +119,11 @@ import v2.std.compilers.target_model {
   TargetValueExpressionProjection,
   grammar_relation_row_attach_bodied_scaffold,
   target_operator_realizations_catalog_node,
-  value_expr_projection_bundle_node, target_model_emit_transforms_empty}
+  value_expr_projection_bundle_node, target_model_emit_transforms_empty,
+  Prepend,
+  BlockEvaluationMode,
+  ValueProducing,
+  derive_bodied_arrow_scaffold}
 import v2.std.logic { Bool }
 import v2.std.algebra { Cons, Empty, fold_list, for_all, list_append, list_snoc_item }
 import v2.std.diagnostic {
@@ -4939,7 +4943,8 @@ fn dag_value_expression_projection() -> TargetValueExpressionProjection {
       open: ^dag_token_lbrace,
       close: ^dag_token_rbrace,
       separator: ^dag_token_comma,
-      assign: ^dag_token_colon
+      assign: ^dag_token_colon,
+      record_literal_names_type: Prepend
     },
     field_access_form: TargetFieldAccessShape {
       dot: ^dag_token_dot
@@ -4950,8 +4955,13 @@ fn dag_value_expression_projection() -> TargetValueExpressionProjection {
       close: ^dag_token_rbrace,
       fat_arrow: ^dag_token_fat_arrow,
       arm_separator: ^dag_token_comma
-    }
+    },
+    block_evaluation_mode: dag_block_evaluation_mode()
   }
+}
+
+fn dag_block_evaluation_mode() -> BlockEvaluationMode {
+  ValueProducing
 }
 
 fn dag_operator_realizations_catalog_node() -> Node {
@@ -4975,10 +4985,11 @@ fn dag_mvp1_pick_statement_suffix_tokens() -> List<ConcreteSyntaxToken> {
 }
 
 fn dag_mvp1_pick_bodied_arrow_statement_scaffold() -> TargetBodiedArrowStatementScaffold {
-  TargetBodiedArrowStatementScaffold {
-    prefix: dag_mvp1_pick_statement_prefix_tokens(),
-    suffix: dag_mvp1_pick_statement_suffix_tokens()
-  }
+  derive_bodied_arrow_scaffold(
+    signature_with_open: dag_mvp1_pick_statement_prefix_tokens(),
+    block_close: dag_mvp1_pick_statement_suffix_tokens(),
+    mode: dag_block_evaluation_mode()
+  )
 }
 
 fn dag_mvp1_pick_grammar_relation_row_node() -> Node {
@@ -5117,10 +5128,11 @@ fn dag_mvp1_bind_statement_prefix_tokens() -> List<ConcreteSyntaxToken> {
 }
 
 fn dag_mvp1_bind_bodied_arrow_statement_scaffold() -> TargetBodiedArrowStatementScaffold {
-  TargetBodiedArrowStatementScaffold {
-    prefix: dag_mvp1_bind_statement_prefix_tokens(),
-    suffix: dag_mvp1_pick_statement_suffix_tokens()
-  }
+  derive_bodied_arrow_scaffold(
+    signature_with_open: dag_mvp1_bind_statement_prefix_tokens(),
+    block_close: dag_mvp1_pick_statement_suffix_tokens(),
+    mode: dag_block_evaluation_mode()
+  )
 }
 
 fn dag_mvp1_bind_grammar_relation_row_node() -> Node {
@@ -5259,10 +5271,11 @@ fn dag_mvp1_loop_statement_prefix_tokens() -> List<ConcreteSyntaxToken> {
 }
 
 fn dag_mvp1_loop_bodied_arrow_statement_scaffold() -> TargetBodiedArrowStatementScaffold {
-  TargetBodiedArrowStatementScaffold {
-    prefix: dag_mvp1_loop_statement_prefix_tokens(),
-    suffix: dag_mvp1_pick_statement_suffix_tokens()
-  }
+  derive_bodied_arrow_scaffold(
+    signature_with_open: dag_mvp1_loop_statement_prefix_tokens(),
+    block_close: dag_mvp1_pick_statement_suffix_tokens(),
+    mode: dag_block_evaluation_mode()
+  )
 }
 
 fn dag_mvp1_loop_grammar_relation_row_node() -> Node {
@@ -5523,10 +5536,11 @@ fn dag_mvp1_rec_statement_prefix_tokens() -> List<ConcreteSyntaxToken> {
 }
 
 fn dag_mvp1_rec_bodied_arrow_statement_scaffold() -> TargetBodiedArrowStatementScaffold {
-  TargetBodiedArrowStatementScaffold {
-    prefix: dag_mvp1_rec_statement_prefix_tokens(),
-    suffix: dag_mvp1_pick_statement_suffix_tokens()
-  }
+  derive_bodied_arrow_scaffold(
+    signature_with_open: dag_mvp1_rec_statement_prefix_tokens(),
+    block_close: dag_mvp1_pick_statement_suffix_tokens(),
+    mode: dag_block_evaluation_mode()
+  )
 }
 
 fn dag_mvp1_rec_grammar_relation_row_node() -> Node {
@@ -5667,10 +5681,11 @@ fn dag_mvp1_field_access_statement_prefix_tokens() -> List<ConcreteSyntaxToken> 
 }
 
 fn dag_mvp1_field_access_bodied_arrow_statement_scaffold() -> TargetBodiedArrowStatementScaffold {
-  TargetBodiedArrowStatementScaffold {
-    prefix: dag_mvp1_field_access_statement_prefix_tokens(),
-    suffix: dag_mvp1_pick_statement_suffix_tokens()
-  }
+  derive_bodied_arrow_scaffold(
+    signature_with_open: dag_mvp1_field_access_statement_prefix_tokens(),
+    block_close: dag_mvp1_pick_statement_suffix_tokens(),
+    mode: dag_block_evaluation_mode()
+  )
 }
 
 fn dag_mvp1_field_access_grammar_relation_row_node() -> Node {

@@ -1,0 +1,64 @@
+module v2.test.intent_linearity.lens_unit.import_graph_live
+
+import v2.lens.intent_linearity { import_closure_is_clean_live }
+import gunbc.ci_layer_roots { witness_layer_roots }
+import tools.rust_stage0_gates { coproduct_reflection_conformance_consumed_closure }
+import v2.std.algebra { FreeMonoid, list_snoc_item, fold_list }
+import v2.std.text { String }
+import v2.std.logic { Bool }
+
+data conformance_entry: String = "src/v2/compiler/manual/coproduct_reflection_conformance_test.dag"
+
+data bogus_never_imported: String = "src/v2/std/__bogus_never_imported__.dag"
+
+data no_paths: FreeMonoid<String> = []
+
+fn string_eq(a: String, b: String) -> Bool {
+  a == b
+}
+
+fn declared_paths() -> FreeMonoid<String> {
+  coproduct_reflection_conformance_consumed_closure.consumed_dag_paths
+}
+
+fn declared_without_entry() -> FreeMonoid<String> {
+  fold_list(
+    xs: declared_paths(),
+    empty: no_paths,
+    cons: fn(acc, p) {
+      if string_eq(a: p, b: conformance_entry) {
+        acc
+      } else {
+        list_snoc_item(xs: acc, item: p)
+      }
+    }
+  )
+}
+
+fn declared_with_bogus() -> FreeMonoid<String> {
+  list_snoc_item(xs: declared_paths(), item: bogus_never_imported)
+}
+
+test fn live_lens_row_clean_when_declared_equals_derived() -> Bool {
+  import_closure_is_clean_live(
+    declared: declared_paths(),
+    entry_path: conformance_entry,
+    pool_roots: witness_layer_roots
+  )
+}
+
+test fn live_lens_row_red_under_declared() -> Bool {
+  import_closure_is_clean_live(
+    declared: declared_without_entry(),
+    entry_path: conformance_entry,
+    pool_roots: witness_layer_roots
+  ) == false
+}
+
+test fn live_lens_row_red_over_declared() -> Bool {
+  import_closure_is_clean_live(
+    declared: declared_with_bogus(),
+    entry_path: conformance_entry,
+    pool_roots: witness_layer_roots
+  ) == false
+}

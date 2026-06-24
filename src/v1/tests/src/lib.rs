@@ -21,6 +21,8 @@ mod bug_sentinel_ratchet;
 #[cfg(test)]
 mod cache_purity_oracle_test;
 #[cfg(test)]
+mod consumed_input_closure_drift_test;
+#[cfg(test)]
 mod coproduct_reflection_conformance_test;
 #[cfg(test)]
 mod coverage_completeness_lens_test;
@@ -85,6 +87,8 @@ mod languages_consumer_census_lens_test;
 #[cfg(test)]
 mod list_free_monoid_chokepoint_test;
 #[cfg(test)]
+mod map_literal_string_key_test;
+#[cfg(test)]
 mod map_lookup_dual_dispatch_test;
 #[cfg(test)]
 mod measure_field_access_test;
@@ -94,6 +98,10 @@ mod module_authority_resolution_test;
 mod money_carrier_cost_witness_test;
 #[cfg(test)]
 mod nodefold_generic_instantiation_test;
+#[cfg(test)]
+mod optional_carrier_signature_test;
+#[cfg(test)]
+mod optional_consumer_fail_closed_test;
 #[cfg(test)]
 mod parse;
 #[cfg(test)]
@@ -117,6 +125,8 @@ mod resolve_expr_types_retraversal_guard_test;
 #[cfg(test)]
 mod resolve_typed_cache_equivalence_test;
 #[cfg(test)]
+mod route_a_final_six_test;
+#[cfg(test)]
 mod source_audit;
 #[cfg(test)]
 mod source_root_ingest_manifest_host_test;
@@ -126,6 +136,8 @@ mod sub_value_lattice_factor_test;
 mod target_model_runtime_import_repro;
 #[cfg(test)]
 mod typescript_effect_io_receipt_test;
+#[cfg(test)]
+mod typescript_field_access_typecheck_test;
 #[cfg(test)]
 mod typescript_program_emit_run_test;
 #[cfg(test)]

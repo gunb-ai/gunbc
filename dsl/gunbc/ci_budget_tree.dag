@@ -24,6 +24,7 @@ import gunbc.ci_runner_placement {
   SessionSliceResolution, SessionSliceResolved, SessionSliceUnresolved,
   resolve_session_slice
 }
+import gunbc.fleet_host_budget { gunbc_fleet_oomd_evidence }
 
 data gunbc_ci_budget_tree_deconfliction_note: String = "this conserving host BudgetNode governs INTER-run co-residence (host_ram -> overhead + sessions_slice + runner_slice; REGIME-1 conservation by construction via byte_size_saturating_sub). It is intentionally NOT the within-run spawn-width budget: within_run_spawn_budget (whole-run RSS x margin) is a separate carrier feeding memory_aware_spawn_width (#5444) for parallelism INSIDE one run, and must stay non-fail-closed so the live floor keeps running when the inter-run operating point is unset. Do not fold the two back together (see gunbc_ci_footprint_granularity_note)."
 
@@ -43,7 +44,7 @@ fn host_allocatable_bytes(offer: ComputeOffer) -> ByteSize {
 }
 
 fn session_pool_bytes_live(offer: ComputeOffer) -> ByteSize {
-  match resolve_session_slice(mode: gunbc_ci_session_reservation_mode) {
+  match resolve_session_slice(mode: gunbc_ci_session_reservation_mode, oomd: gunbc_fleet_oomd_evidence) {
     SessionSliceResolved { bytes: s, per_session_cap: _, concurrency: _ } => s
     SessionSliceUnresolved { reason: _ } => host_allocatable_bytes(offer: offer)
   }
