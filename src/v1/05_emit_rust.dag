@@ -5078,6 +5078,24 @@ fn emit_typed_call_expr(func: String, args: List<Node>, inferred: InferredNode?,
   } else { call_str }
 }
 
+fn rust_call_arg_fail_closed_unwrap(arg_str: String, arg: Node, callee: ItemInfo?, idx: Int, func: String) -> String {
+  match callee {
+    Present { value: info } =>
+      match info.params |> skip(idx) |> first {
+        Present { value: param } =>
+          let param_required = param_node_type_expr(n: param).return_cardinality != CardOptional
+          let arg_optional = resolved_type(n: arg).return_cardinality == CardOptional
+          if param_required && arg_optional {
+            concat(arg_str, ".expect(\"fail-closed: an optional value flowed into non-optional parameter ", to_string(value: idx), " of ", func, " (empty Optional at runtime)\")")
+          } else {
+            arg_str
+          }
+        Absent => arg_str
+      }
+    Absent => arg_str
+  }
+}
+
 fn emit_typed_call(func: String, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   if func == "get" {
     let get_args = order_typed_call_args(args: args, func: func, scope: scope)
@@ -5182,7 +5200,8 @@ fn emit_typed_call(func: String, args: List<Node>, registry: Map<String, ItemInf
       let base = emit_typed_expr_base(texpr: arg_value(n: a), registry: registry, scope: collection_scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
       apply_type_template1(template: sharing_for_target(target: Rust).borrow_arg_template, arg0: base)
     } else {
-      emit_cloned_arg(texpr: arg_value(n: a), registry: registry, scope: collection_scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+      let base = emit_cloned_arg(texpr: arg_value(n: a), registry: registry, scope: collection_scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+      rust_call_arg_fail_closed_unwrap(arg_str: base, arg: arg_value(n: a), callee: callee, idx: idx, func: func)
     }
   )
   let extra_args = match callee {
