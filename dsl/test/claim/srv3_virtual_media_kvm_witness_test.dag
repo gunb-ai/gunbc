@@ -1,20 +1,11 @@
 module test.claim.srv3_virtual_media_kvm
 
 import std.logic { Bool }
-import extdeps.bmc.types { VirtualMediaSupported, VirtualMediaUnsupported }
-import extdeps.boards.asrock_rack { asrock_altrad8ud_virtual_media_support }
 import extdeps.bmc.webui_kvm {
   NbdWebsocketLocalFile,
   RedfishConfiguredRemoteUri,
   webui_kvm_media_transport_wire,
-  webui_kvm_realizes_virtual_media_for,
   openbmc_webui_local_file_virtual_media,
-}
-
-test fn srv3_webui_kvm_is_the_arm_redfish_lacks() -> Bool {
-  webui_kvm_realizes_virtual_media_for(support: asrock_altrad8ud_virtual_media_support)
-    && webui_kvm_realizes_virtual_media_for(support: VirtualMediaUnsupported)
-    && !webui_kvm_realizes_virtual_media_for(support: VirtualMediaSupported)
 }
 
 test fn srv3_webui_kvm_transport_is_local_file_nbd() -> Bool {

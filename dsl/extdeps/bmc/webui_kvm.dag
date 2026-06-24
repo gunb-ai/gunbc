@@ -5,7 +5,6 @@ import std.types { NonEmptyStr }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import extdeps.bmc.types { RedfishVirtualMediaSupport, VirtualMediaUnsupported }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -57,11 +56,4 @@ data openbmc_webui_local_file_virtual_media: WebuiVirtualMediaSurface = WebuiVir
     attach_file_input_id: "virtual_media_device",
     attach_start_button_label: "Start",
   },
-}
-
-fn webui_kvm_realizes_virtual_media_for(support: RedfishVirtualMediaSupport) -> Bool {
-  match support {
-    VirtualMediaUnsupported => true
-    _ => false
-  }
 }
