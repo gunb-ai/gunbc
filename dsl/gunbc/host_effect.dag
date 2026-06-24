@@ -1,0 +1,24 @@
+module gunbc.host_effect
+
+import std.types { String, Int }
+import extdeps.bmc.types { RedfishSystemAction }
+import product.compute_fabric { ComputeHost }
+
+type HostEffect =
+    ShellCommand { script: String }
+  | RedfishAction { action: RedfishSystemAction }
+
+type NodeControlPlane =
+    HostOs { node: ComputeHost }
+  | BmcController { node: ComputeHost }
+
+type Policy = OneShotIdempotent | ConvergeToFixpoint
+
+type HostEffectIntent {
+  target: NodeControlPlane
+  effect: HostEffect
+  policy: Policy
+}
+
+type HostEffectEvidence =
+    ShellEffectApplied { exit_code: Int, stdout: String }
