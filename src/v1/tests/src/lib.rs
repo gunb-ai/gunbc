@@ -91,7 +91,13 @@ mod map_literal_string_key_test;
 #[cfg(test)]
 mod map_lookup_dual_dispatch_test;
 #[cfg(test)]
+mod measure_alias_ctor_test;
+#[cfg(test)]
 mod measure_field_access_test;
+#[cfg(test)]
+mod measure_grounded_deref_test;
+#[cfg(test)]
+mod measure_periphery_emit_test;
 #[cfg(test)]
 mod module_authority_resolution_test;
 #[cfg(test)]

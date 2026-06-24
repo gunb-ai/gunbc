@@ -12077,12 +12077,26 @@ pub fn field_access_field_is_boxed(
             field,
             scope.type_env.clone().source_indices.clone(),
         ) {
-            Some(field_child) => needs_box_wrapping(
-                resolved_type(field_child.clone()),
-                emit_info.recursive_type_set.clone(),
-                shared_types,
-                scope.type_env.clone().source_indices.clone(),
-            ),
+            Some(field_child) => {
+                let field_ty = resolved_type(field_child.clone());
+                let field_ty_name = authored_name_at(
+                    scope.type_env.clone().source_indices.clone(),
+                    field_ty.clone(),
+                );
+                let grounds_to_host_scalar =
+                    rust_seed_host_numeric_alias(field_ty_name, emit_info.corpus_repr.clone())
+                        != None;
+                if grounds_to_host_scalar {
+                    false
+                } else {
+                    needs_box_wrapping(
+                        field_ty,
+                        emit_info.recursive_type_set.clone(),
+                        shared_types,
+                        scope.type_env.clone().source_indices.clone(),
+                    )
+                }
+            }
             None => false,
         }
     }
@@ -15945,10 +15959,22 @@ pub fn emit_typed_method_call(
                 fold_accumulator_type,
                 ..
             } => {
-                let method_name = authored_name_at(
+                let method_name_raw = authored_name_at(
                     scope.type_env.clone().source_indices.clone(),
                     method_def.clone(),
                 );
+                let method_name = if (method_name_raw.clone() == "length".to_string()) {
+                    if is_string_typed_expr(
+                        receiver.clone(),
+                        scope.type_env.clone().source_indices.clone(),
+                    ) {
+                        "string_length".to_string()
+                    } else {
+                        "count".to_string()
+                    }
+                } else {
+                    method_name_raw.clone()
+                };
                 if (method_name.clone() == "fold".to_string()) {
                     emit_rust_fold_method_call(
                         method_call_node,
@@ -17728,6 +17754,53 @@ pub fn emit_typed_record_lit(
             }
             Some(tn) => {
                 let si = scope.type_env.clone().source_indices.clone();
+                let tn_is_known_struct =
+                    v1_rt::map_contains_key(&emit_info.type_summaries.clone(), tn.clone());
+                let ctor_name = if tn_is_known_struct {
+                    tn.clone()
+                } else {
+                    // Resolve the alias use-site one bounded step via resolve_node (the resolution
+                    // primitive; a single call is bounded — unlike the recursive
+                    // peel_alias_once_for_field_access, which has no cycle guard and can diverge on
+                    // a non-progressing corpus literal). One step yields the Conj struct for a
+                    // single-hop alias (the measure case). The resolved node wears the alias's
+                    // identity ("Giga"), so recover the canonical struct NAME by its field set via
+                    // the existing find_unique_struct_name_by_fields (fail-closed to `tn` on
+                    // ambiguity / non-Conj -> loud E0560, never a silent wrong struct).
+                    let resolved_struct = crate::v1_compiler_infer_resolve::resolve_node(
+                        resolved_type.clone(),
+                        scope.type_env.clone(),
+                        scope.module_name.clone(),
+                    )
+                    .resolved
+                    .clone();
+                    if (resolved_struct.connective.clone() == Connective::Conj) {
+                        let resolved_field_names = Rc::new({
+                            let mut __r = Vec::new();
+                            for c in resolved_struct.children.clone().iter().cloned() {
+                                __r.push(authored_name_at(si.clone(), c.clone()));
+                            }
+                            __r
+                        });
+                        let recovered = find_unique_struct_name_by_fields(
+                            resolved_field_names.clone(),
+                            emit_info.type_summaries.clone(),
+                        );
+                        match recovered {
+                            Some(canonical) => {
+                                if (canonical.clone() != tn.clone()) {
+                                    canonical.clone()
+                                } else {
+                                    tn.clone()
+                                }
+                            }
+                            None => tn.clone(),
+                        }
+                    } else {
+                        tn.clone()
+                    }
+                };
+                let ctor_alias_resolved = (ctor_name.clone() != tn.clone());
                 let context_lookup = contextual_variant_parent(
                     tn.clone(),
                     parent_enum.clone(),
@@ -17835,7 +17908,7 @@ pub fn emit_typed_record_lit(
                             v1_rt::concat(resolved_parent_enum.clone(), "::".to_string()),
                             rust_tn,
                         ),
-                        None => rust_tn,
+                        None => ctor_name.clone(),
                     }
                 };
                 if ((optional_variant.clone() && (tn.clone() == "Present".to_string()))
@@ -17873,7 +17946,7 @@ pub fn emit_typed_record_lit(
                         {
                             let variant_summary_name = match effective_parent.clone() {
                                 Some(parent) => variant_summary_key(parent.clone(), tn.clone()),
-                                None => tn.clone(),
+                                None => ctor_name.clone(),
                             };
                             let is_positional_ctor = (((fields.clone().len() as i64) == 1)
                                 && match fields.clone().first().cloned() {
@@ -17972,7 +18045,7 @@ pub fn emit_typed_record_lit(
                                                     scope.clone(),
                                                     emit_info.clone(),
                                                     shared_types.clone(),
-                                                    tn.clone(),
+                                                    ctor_name.clone(),
                                                     f_name.clone(),
                                                 );
                                                 v1_rt::concat(
@@ -18089,7 +18162,7 @@ pub fn emit_typed_record_lit(
                                     };
                                     let phantom_strs = match lookup_type_by_name(
                                         scope.type_env.clone(),
-                                        tn.clone(),
+                                        ctor_name.clone(),
                                     ) {
                                         Some(struct_decl) => {
                                             let is_struct = (struct_decl.connective.clone()
@@ -18137,7 +18210,16 @@ pub fn emit_typed_record_lit(
                                         ),
                                         "\n}".to_string(),
                                     );
-                                    raw
+                                    if (ctor_alias_resolved.clone()
+                                        && v1_rt::set_contains(&shared_types, ctor_name.clone()))
+                                    {
+                                        v1_rt::concat(
+                                            v1_rt::concat("Rc::new(".to_string(), raw),
+                                            ")".to_string(),
+                                        )
+                                    } else {
+                                        raw
+                                    }
                                 }
                             }
                         }
@@ -22454,7 +22536,37 @@ pub fn emit_data_def_body(
                             "compile_error!(\"BoundedLattice data missing bottom\")".to_string()
                         }
                     };
-                    v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("            Rc::new(BoundedLattice {\n".to_string(), "                meet: Rc::new(".to_string()), meet_str), "),\n".to_string()), "                join: Rc::new(".to_string()), join_str), "),\n".to_string()), "                top: ".to_string()), top_str), ",\n".to_string()), "                bottom: ".to_string()), bottom_str), ",\n".to_string()), "            })".to_string())
+                    let phantom_line = match lookup_type_by_name(
+                        scope.type_env.clone(),
+                        "BoundedLattice".to_string(),
+                    ) {
+                        Some(struct_decl) => {
+                            let pnames = Rc::new({
+                                let mut __result = Vec::new();
+                                for p in struct_decl.params.clone().iter().cloned() {
+                                    __result.push(generic_param_name_at(
+                                        p.clone(),
+                                        scope.type_env.clone().source_indices.clone(),
+                                    ));
+                                }
+                                __result
+                            });
+                            let unused = struct_unused_param_names(
+                                pnames,
+                                struct_decl.children.clone(),
+                                scope.type_env.clone().source_indices.clone(),
+                            );
+                            if (struct_decl.connective.clone() == Connective::Conj)
+                                && ((unused.len() as i64) > 0)
+                            {
+                                "                _phantom: std::marker::PhantomData,\n".to_string()
+                            } else {
+                                "".to_string()
+                            }
+                        }
+                        None => "".to_string(),
+                    };
+                    v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("            Rc::new(BoundedLattice {\n".to_string(), "                meet: Rc::new(".to_string()), meet_str), "),\n".to_string()), "                join: Rc::new(".to_string()), join_str), "),\n".to_string()), "                top: ".to_string()), top_str), ",\n".to_string()), "                bottom: ".to_string()), bottom_str), ",\n".to_string()), phantom_line), "            })".to_string())
                 }
                 _ => "            compile_error!(\"BoundedLattice data must be a record\")"
                     .to_string(),

@@ -102,7 +102,7 @@ import v1.compiler.infer_emit_info {
   variant_belongs_to_enum, variant_summary_key
 }
 import v1.compiler.resolve { get_exported_names }
-import v1.compiler.infer_resolve { lookup_unit_variant_phantom_type, is_width_nat_type_literal }
+import v1.compiler.infer_resolve { resolve_node, lookup_unit_variant_phantom_type, is_width_nat_type_literal }
 import v1.compiler.ownership { OwnershipProof, analyze_ownership, analyze_single_fold, build_movable_set, build_read_only_params, collect_callable_refs }
 import std.induction { SubValueUnknown, InductiveField }
 
@@ -4592,7 +4592,13 @@ fn field_access_field_is_boxed(base: Node, field: String, scope: InferScope, sha
   let base_struct = expand_type_for_field_access(n: resolved_type(n: base), env: scope.type_env, module_name: scope.module_name)
   match find_child_named(n: base_struct, name: field, source_indices: scope.type_env.source_indices) {
     Present { value: field_child } =>
-      needs_box_wrapping(n: resolved_type(n: field_child), recursive_types: emit_info.recursive_type_set, shared_types: shared_types, source_indices: scope.type_env.source_indices)
+      let field_ty = resolved_type(n: field_child)
+      let field_ty_name = authored_name_at(source_indices: scope.type_env.source_indices, node: field_ty)
+      let grounds_to_host_scalar = rust_seed_host_numeric_alias(name: field_ty_name, corpus_repr: emit_info.corpus_repr) != none
+      if grounds_to_host_scalar { false }
+      else {
+        needs_box_wrapping(n: field_ty, recursive_types: emit_info.recursive_type_set, shared_types: shared_types, source_indices: scope.type_env.source_indices)
+      }
     Absent => false
   }
 }
@@ -5817,7 +5823,10 @@ fn emit_typed_method_call(method_call_node: Node, receiver: Node, method: String
     }
     AlgebraMethodSemantics { method_def: method_def, fold_accumulator_type: fold_accumulator_type, size_effect: _, cost_shape: _, algebra_template: _ } => {
 
-      let method_name = authored_name_at(source_indices: scope.type_env.source_indices, node: method_def)
+      let method_name_raw = authored_name_at(source_indices: scope.type_env.source_indices, node: method_def)
+      let method_name = if method_name_raw == "length" {
+        if is_string_typed_expr(e: receiver, source_indices: scope.type_env.source_indices) { "string_length" } else { "count" }
+      } else { method_name_raw }
       if method_name == "fold" {
         emit_rust_fold_method_call(method_call_node: method_call_node, fold_accumulator_type: fold_accumulator_type, result_type: result_type, receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
       } else if method_name == "sort_by" {
@@ -6389,6 +6398,19 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
       }
     Present { value: tn } =>
       let si = scope.type_env.source_indices
+      let tn_is_known_struct = map_contains_key(emit_info.type_summaries, tn)
+      let ctor_name = if tn_is_known_struct { tn }
+        else {
+          let resolved_struct = resolve_node(n: resolved_type, env: scope.type_env, module_name: scope.module_name).resolved
+          if (resolved_struct.connective == Conj) {
+            let resolved_field_names = resolved_struct.children |> map(c => authored_name_at(source_indices: si, node: c))
+            match find_unique_struct_name_by_fields(field_names: resolved_field_names, type_summaries: emit_info.type_summaries) {
+              Present { value: canonical } => if (canonical != tn) { canonical } else { tn }
+              Absent => tn
+            }
+          } else { tn }
+        }
+      let ctor_alias_resolved = ctor_name != tn
       let context_lookup = contextual_variant_parent(variant_name: tn, parent_enum: parent_enum, resolved_type: resolved_type, emit_info: emit_info, source_indices: si)
       let effective_parent = match context_lookup {
         Present { value: context_parent } => Present { value: context_parent }
@@ -6424,7 +6446,7 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
         else {
           match effective_parent {
             Present { value: resolved_parent_enum } => concat(resolved_parent_enum, "::", rust_tn)
-            Absent => rust_tn
+            Absent => ctor_name
           }
         }
       if optional_variant && tn == "Present" && fields |> count == 1 {
@@ -6443,7 +6465,7 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
       } else {
         let variant_summary_name = match effective_parent {
           Present { value: parent } => variant_summary_key(enum_name: parent, variant_name: tn)
-          Absent => tn
+          Absent => ctor_name
         }
         let is_positional_ctor = fields |> count == 1 && match fields |> first {
           Present { value: f } => field_init_node_name_at(n: f, source_indices: si) == "0"
@@ -6472,7 +6494,7 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
           let field_val = if needs_wrap {
             concat("Some(", val_str, ")")
           } else { val_str }
-          let stored_val = wrap_rust_record_field_value(raw: field_val, scope: scope, emit_info: emit_info, shared_types: shared_types, struct_name: tn, field_name: f_name)
+          let stored_val = wrap_rust_record_field_value(raw: field_val, scope: scope, emit_info: emit_info, shared_types: shared_types, struct_name: ctor_name, field_name: f_name)
           concat("    ", emit_ident(name: f_name, target: Rust), ": ", stored_val, ",")
         )
         let provided_names = fields |> map(f => field_init_node_name_at(n: f, source_indices: scope.type_env.source_indices))
@@ -6509,7 +6531,7 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
           Absent => []
         }
 
-        let phantom_strs = match lookup_type_by_name(env: scope.type_env, name: tn) {
+        let phantom_strs = match lookup_type_by_name(env: scope.type_env, name: ctor_name) {
           Present { value: struct_decl } =>
             let is_struct = struct_decl.connective == Conj
             let pnames = struct_decl.params |> map(p => generic_param_name_at(n: p, source_indices: si))
@@ -6523,7 +6545,9 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
         let all_field_strs = concat(concat(field_strs, default_strs), phantom_strs)
         let fields_str = all_field_strs |> join(separator: "\n")
         let raw = concat(display_tn, " {\n", fields_str, "\n}")
-        raw
+        if ctor_alias_resolved && set_contains(shared_types, ctor_name) {
+          concat("Rc::new(", raw, ")")
+        } else { raw }
         }
       }
   }
@@ -7932,11 +7956,21 @@ fn emit_data_def_body(type_node: Node, value: Node, registry: Map<String, ItemIn
           Present { value: n } => emit_typed_expr(texpr: n, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
           Absent => "compile_error!(\"BoundedLattice data missing bottom\")"
         }
+        let phantom_line = match lookup_type_by_name(env: scope.type_env, name: "BoundedLattice") {
+          Present { value: struct_decl } =>
+            let pnames = struct_decl.params |> map(p => generic_param_name_at(n: p, source_indices: scope.type_env.source_indices))
+            let unused = struct_unused_param_names(generic_param_names: pnames, children: struct_decl.children, source_indices: scope.type_env.source_indices)
+            if (struct_decl.connective == Conj) && ((unused |> count) > 0) {
+              "                _phantom: std::marker::PhantomData,\n"
+            } else { "" }
+          Absent => ""
+        }
         concat("            Rc::new(BoundedLattice {\n",
           "                meet: Rc::new(", meet_str, "),\n",
           "                join: Rc::new(", join_str, "),\n",
           "                top: ", top_str, ",\n",
           "                bottom: ", bottom_str, ",\n",
+          phantom_line,
           "            })")
       _ => "            compile_error!(\"BoundedLattice data must be a record\")"
     }
