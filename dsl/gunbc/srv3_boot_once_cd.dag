@@ -1,0 +1,86 @@
+module gunbc.srv3_boot_once_cd
+
+import extdeps.bmc.http
+import extdeps.filesystem.filesystem_io
+import extdeps.bmc.types {
+  BootTargetCd,
+  BootOverrideOnce,
+  ResetForceRestart,
+  redfish_boot_target_wire,
+  redfish_boot_override_enabled_wire,
+  redfish_reset_type_wire,
+}
+import extdeps.boards.asrock_rack { asrock_altrad8ud_redfish_system_id }
+import gunbc.bmc_onboarding { new_altra_onboarding_plan }
+import gunbc.tools.bmc_onboard { boot_override_body, reset_body, netrc_content }
+import std.types { NonEmptyStr, String }
+import std.logic { Bool }
+import std.resources { Network }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+
+data srv3_boot_once_cd_doc: String = "The boot-once-to-CD + reset leg for the srv3 WebUI-NBD install (gunbc.os_install_mechanism WebUiKvmNbdInstall arm). The Playwright runner (extdeps.bmc.webui_kvm realization, owned by the KVM lane) attaches the install ISO as a local-file NBD virtual CD and KEEPS its browser session alive; this entrypoint is the boot_hook_command the runner exec's SYNCHRONOUSLY between attach and wait. It is short-lived and out-of-band to the host: PATCH /Systems/system with Boot BootSourceOverrideTarget=Cd and Enabled=Once, then POST ComputerSystem.Reset ForceRestart, so the host reboots once into the NBD-backed CD while the media stays mounted. FAIL-CLOSED + EXIT-CODED: any staging/PATCH/POST failure returns exit_failure (nonzero) so the runner ABORTS without proceeding to wait/teardown -- a failed boot-set with media attached is a loud stop. Boot-to-Cd is LIVE on this board's BMC firmware (02.07.00) even though VirtualMedia/BIOS-attrs are not (the probe showed BootSourceOverride supports None/Pxe/Hdd/Cd/Diags/BiosSetup -- see extdeps.bmc.capability). Creds: srv3 factory login (not yet rotated; rotation is a later operator-fenced lifecycle step). The Cd/Once/ForceRestart wire shapes are pinned by-execution in the witness; the body builders are the forward-staged boot_override_body/reset_body in gunbc.tools.bmc_onboard (their named os-install consumer, per that module's bmc_redfish_json_concat_debt)."
+
+data srv3_boot_secret_on_disk_debt: String = "🟡 SCAFFOLD — srv3_boot_netrc_path transiently holds the BMC credential on disk under the default umask: Filesystem.Write cannot set mode 0600 today and there is no post-run unlink. Operator-fenced (the runner gates the real boot behind --attach), not a silent leak. Same debt as gunbc.tools.bmc_onboard's bmc_onboard_secret_on_disk_debt. Dissolve-on: feature:mode-aware-file-write — a mode-0600 file-write effect + an unlink leg bound the secret-on-disk window."
+
+data srv3_boot_netrc_path: String = "/tmp/srv3_boot_netrc"
+
+data srv3_boot_override_body_path: String = "/tmp/srv3_boot_override.json"
+
+data srv3_boot_reset_body_path: String = "/tmp/srv3_boot_reset.json"
+
+func srv3_boot_once_cd() -> ProcessExit
+  uses net: Network
+{
+  let plan = new_altra_onboarding_plan
+  let host = plan.bmc.host
+  let account = plan.factory_login.username
+
+  let netrc = Filesystem.Write(
+    path: srv3_boot_netrc_path,
+    content: netrc_content(host: host, account: account, password: plan.factory_login.published_password as String)
+  )
+  if netrc.success == false {
+    return exit_failure(reason: concat("boot: netrc write failed: ", netrc.error))
+  }
+
+  let ovbody = Filesystem.Write(
+    path: srv3_boot_override_body_path,
+    content: boot_override_body(
+      target: redfish_boot_target_wire(t: BootTargetCd) as String,
+      enabled: redfish_boot_override_enabled_wire(e: BootOverrideOnce) as String
+    )
+  )
+  if ovbody.success == false {
+    return exit_failure(reason: concat("boot: override body write failed: ", ovbody.error))
+  }
+
+  ov = redfish.Http.SetBootSourceOverride(
+    bmc_host: host,
+    netrc_file: srv3_boot_netrc_path as NonEmptyStr,
+    system_id: asrock_altrad8ud_redfish_system_id,
+    request_body_file: srv3_boot_override_body_path as NonEmptyStr
+  )
+  if ov.success == false {
+    return exit_failure(reason: concat("boot: SetBootSourceOverride(Cd/Once) failed: ", ov.body))
+  }
+
+  let rsbody = Filesystem.Write(
+    path: srv3_boot_reset_body_path,
+    content: reset_body(reset_type: redfish_reset_type_wire(r: ResetForceRestart) as String)
+  )
+  if rsbody.success == false {
+    return exit_failure(reason: concat("boot: reset body write failed: ", rsbody.error))
+  }
+
+  rs = redfish.Http.ResetSystem(
+    bmc_host: host,
+    netrc_file: srv3_boot_netrc_path as NonEmptyStr,
+    system_id: asrock_altrad8ud_redfish_system_id,
+    request_body_file: srv3_boot_reset_body_path as NonEmptyStr
+  )
+  return if rs.success {
+    ExitSuccess
+  } else {
+    exit_failure(reason: concat("boot: ComputerSystem.Reset(ForceRestart) failed: ", rs.body))
+  }
+}
