@@ -137,12 +137,16 @@ const AMBIG_FIXTURE: &str = concat!(
 
 #[test]
 fn ambiguous_field_set_alias_ctor_fails_closed_to_alias_not_a_guessed_struct() {
-    let emitted = compile_dag_named("src/v1/ambig_ctor_fixture.dag", AMBIG_FIXTURE, RenderTarget::Rust)
-        .files
-        .iter()
-        .map(|f| f.content.clone())
-        .collect::<Vec<_>>()
-        .join("\n");
+    let emitted = compile_dag_named(
+        "src/v1/ambig_ctor_fixture.dag",
+        AMBIG_FIXTURE,
+        RenderTarget::Rust,
+    )
+    .files
+    .iter()
+    .map(|f| f.content.clone())
+    .collect::<Vec<_>>()
+    .join("\n");
     let body = fn_body_no_sig(&emitted, "mka");
     // The two structs share the field set {count}, so find_unique returns None -> the resolver
     // must NOT pick either candidate struct as the literal head.
