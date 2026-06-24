@@ -7,7 +7,6 @@ import std.baseboard {
 import std.bmc { OpenBmc }
 import std.types { NonEmptyStr }
 
-import extdeps.bmc.types { RedfishVirtualMediaSupport, VirtualMediaUnsupported }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -26,5 +25,3 @@ data asrock_altrad8ud_1l2t_catalog: BaseboardCatalogRow = BaseboardCatalogRow {
 
 data asrock_altrad8ud_redfish_system_id: NonEmptyStr = "system"
 data asrock_altrad8ud_redfish_chassis_id: NonEmptyStr = "ALTRAD8UD_1L2T"
-
-data asrock_altrad8ud_virtual_media_support: RedfishVirtualMediaSupport = VirtualMediaUnsupported

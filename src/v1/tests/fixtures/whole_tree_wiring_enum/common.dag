@@ -1,0 +1,3 @@
+module wt.common
+
+type Flag = On | Off

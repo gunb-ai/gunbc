@@ -16,7 +16,6 @@ import gunbc.ci_runner_placement {
   RunnerSlotEnforced,
   RunnerSlotUnenforced,
   gunbc_ci_runner_slot_enforcement,
-  gunbc_ci_runner_count_from_budget_marker,
   SessionSliceResolution,
   SessionSliceResolved,
   SessionSliceUnresolved,
@@ -75,8 +74,6 @@ import gunbc.ci_floor_measurement {
   Regime1WorstCase,
   Regime2AggregateOomd,
   SessionReservationModeUnset,
-  gunbc_ci_footprint_granularity_note,
-  gunbc_ci_footprint_bridge_followup,
   gunbc_ci_run_count_divisor,
   gunbc_ci_runner_unit_cap_safety_margin_num,
   gunbc_ci_runner_unit_cap_safety_margin_den,
@@ -88,7 +85,6 @@ import gunbc.runner_deploy_emit {
   runner_deploy_drifted,
   manifest_host_text,
   session_host_text,
-  gunbc_runner_deploy_manifest_contract_marker,
 }
 import std.measure { ByteSize, byte_size, byte_size_count, HardwareThreadCount, hardware_thread_count, hardware_thread_count_value }
 import std.types { Bool, Int, List, String }

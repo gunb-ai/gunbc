@@ -1,0 +1,131 @@
+module test.claim.host_effect_apply_witness
+
+import std.logic { Bool }
+import gunbc.host_effect {
+  HostEffect, ShellCommand, RedfishAction,
+  NodeControlPlane, HostOs, BmcController,
+  Policy, OneShotIdempotent, ConvergeToFixpoint
+}
+import gunbc.host_effect_realize {
+  host_effect_apply, host_effect_policy_directive,
+  ConvergeDirective, Settled, ReDrive, Refused
+}
+import std.realization_reconcile { Reconciliation, reconciliation_converged }
+import gunbc.fleet_intent { srv1_host }
+import extdeps.bmc.types { RedfishSystemAction, GetSystem }
+
+fn host_os_target() -> NodeControlPlane {
+  HostOs { node: srv1_host }
+}
+
+fn bmc_target() -> NodeControlPlane {
+  BmcController { node: srv1_host }
+}
+
+fn directive_is_settled(d: ConvergeDirective) -> Bool {
+  match d {
+    Settled => true
+    ReDrive => false
+    Refused { reason: _ } => false
+  }
+}
+
+fn directive_is_redrive(d: ConvergeDirective) -> Bool {
+  match d {
+    Settled => false
+    ReDrive => true
+    Refused { reason: _ } => false
+  }
+}
+
+fn directive_is_refused(d: ConvergeDirective) -> Bool {
+  match d {
+    Settled => false
+    ReDrive => false
+    Refused { reason: _ } => true
+  }
+}
+
+fn witness_shell_on_host_success_converges() -> Bool {
+  reconciliation_converged(r: host_effect_apply(
+    target: host_os_target(),
+    effect: ShellCommand { script: "true" },
+    policy: OneShotIdempotent
+  ))
+}
+
+fn witness_shell_on_host_failure_fails_closed() -> Bool {
+  !reconciliation_converged(r: host_effect_apply(
+    target: host_os_target(),
+    effect: ShellCommand { script: "exit 1" },
+    policy: OneShotIdempotent
+  ))
+}
+
+fn witness_redfish_on_bmc_unimplemented_fails_closed() -> Bool {
+  !reconciliation_converged(r: host_effect_apply(
+    target: bmc_target(),
+    effect: RedfishAction { action: GetSystem },
+    policy: OneShotIdempotent
+  ))
+}
+
+fn witness_redfish_on_hostos_typed_mismatch() -> Bool {
+  !reconciliation_converged(r: host_effect_apply(
+    target: host_os_target(),
+    effect: RedfishAction { action: GetSystem },
+    policy: OneShotIdempotent
+  ))
+}
+
+fn witness_shell_on_bmc_typed_mismatch() -> Bool {
+  !reconciliation_converged(r: host_effect_apply(
+    target: bmc_target(),
+    effect: ShellCommand { script: "true" },
+    policy: OneShotIdempotent
+  ))
+}
+
+fn witness_converge_policy_redrives_not_converged() -> Bool {
+  directive_is_redrive(d: host_effect_policy_directive(r: host_effect_apply(
+    target: host_os_target(),
+    effect: ShellCommand { script: "exit 1" },
+    policy: ConvergeToFixpoint
+  )))
+}
+
+fn witness_oneshot_policy_terminal_not_converged() -> Bool {
+  directive_is_settled(d: host_effect_policy_directive(r: host_effect_apply(
+    target: host_os_target(),
+    effect: ShellCommand { script: "exit 1" },
+    policy: OneShotIdempotent
+  )))
+}
+
+fn witness_incompatible_is_refused_terminal() -> Bool {
+  directive_is_refused(d: host_effect_policy_directive(r: host_effect_apply(
+    target: host_os_target(),
+    effect: RedfishAction { action: GetSystem },
+    policy: ConvergeToFixpoint
+  )))
+}
+
+fn witness_converged_is_settled() -> Bool {
+  directive_is_settled(d: host_effect_policy_directive(r: host_effect_apply(
+    target: host_os_target(),
+    effect: ShellCommand { script: "true" },
+    policy: ConvergeToFixpoint
+  )))
+}
+
+test fn host_effect_apply_holds() -> Bool {
+  witness_shell_on_host_success_converges()
+    && witness_shell_on_host_failure_fails_closed()
+    && witness_redfish_on_bmc_unimplemented_fails_closed()
+    && witness_redfish_on_hostos_typed_mismatch()
+    && witness_shell_on_bmc_typed_mismatch()
+    && witness_converge_policy_redrives_not_converged()
+    && witness_oneshot_policy_terminal_not_converged()
+    && witness_incompatible_is_refused_terminal()
+    && witness_converged_is_settled()
+}
