@@ -638,10 +638,20 @@ pub fn is_parametric_opaque_type_base(
 // == None` guard keeps it fail-closed: a name that IS a real type in scope (e.g. `Temperature` in
 // the examples corpus) renders normally, never collapses.
 pub fn is_value_variant_type_arg(env: Rc<TypeEnv>, name: String) -> bool {
-    match lookup_type_by_name(env.clone(), name.clone()) {
+    let r = match lookup_type_by_name(env.clone(), name.clone()) {
         Some(_) => false,
-        None => ((collect_unit_variant_phantom_matches(env, name).len() as i64) >= 1),
+        None => ((collect_unit_variant_phantom_matches(env.clone(), name.clone()).len() as i64) >= 1),
+    };
+    if (name.clone() == "Time".to_string()) {
+        eprintln!(
+            "DBGVV name={} lookup_some={} matches={} -> {}",
+            name.clone(),
+            match lookup_type_by_name(env.clone(), name.clone()) { Some(_) => "Y", None => "N" },
+            collect_unit_variant_phantom_matches(env.clone(), name.clone()).len(),
+            r
+        );
     }
+    r
 }
 
 // A type-ARGUMENT position that is occupied by a value collapses to `()` in the emitted Rust: a Nat
@@ -748,6 +758,12 @@ pub fn render_rust_applied_type_arg(
     variant_to_enum: Rc<HashMap<String, String>>,
     env: Rc<TypeEnv>,
 ) -> String {
+    {
+        let __an = authored_name_at(source_indices.clone(), n.clone());
+        if (__an.clone() == "Time".to_string()) {
+            eprintln!("DBGARG render_rust_applied_type_arg called for Time");
+        }
+    }
     if rust_type_arg_renders_as_unit(n.clone(), env.clone(), source_indices.clone()) {
         "()".to_string()
     } else {
