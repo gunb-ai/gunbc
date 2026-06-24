@@ -11785,6 +11785,17 @@ pub fn effective_variant_parent(
     }
 }
 
+pub fn variant_ref_self_wraps(
+    name: String,
+    enum_name: String,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
+    corpus_repr: RustCorpusRepr,
+) -> bool {
+    (((name.clone() == "Empty".to_string()) && (enum_name.clone() == "FreeMonoid".to_string()))
+        && corpus_repr_is_host(corpus_repr.clone()))
+        || v1_rt::set_contains(&shared_types, enum_name.clone())
+}
+
 pub fn emit_var_ref(
     name: String,
     binding_kind: Option<Rc<VarBindingKind>>,
@@ -11812,35 +11823,37 @@ pub fn emit_var_ref(
                 );
                 let ref_str = match variant_parent {
                     Some(enum_name) => {
-                        if ((name.clone() == "Empty".to_string())
+                        let body = if ((name.clone() == "Empty".to_string())
                             && (enum_name.clone() == "FreeMonoid".to_string())
                             && corpus_repr_is_host(emit_info.corpus_repr.clone()))
                         {
-                            // FreeMonoid grounding: Empty -> native empty Rc<Vec> (already Rc-wrapped)
-                            "Rc::new(vec![])".to_string()
-                        } else {
-                            let qualified = if (is_optional_variant_name(name.clone())
-                                && (enum_name.clone() == "Optional".to_string()))
-                            {
-                                if (name.clone() == "Present".to_string()) {
-                                    "Some".to_string()
-                                } else {
-                                    "None".to_string()
-                                }
+                            "vec![]".to_string()
+                        } else if (is_optional_variant_name(name.clone())
+                            && (enum_name.clone() == "Optional".to_string()))
+                        {
+                            if (name.clone() == "Present".to_string()) {
+                                "Some".to_string()
                             } else {
-                                v1_rt::concat(
-                                    v1_rt::concat(enum_name.clone(), "::".to_string()),
-                                    name.clone(),
-                                )
-                            };
-                            if v1_rt::set_contains(&shared_types, enum_name.clone()) {
-                                v1_rt::concat(
-                                    v1_rt::concat("Rc::new(".to_string(), qualified),
-                                    ")".to_string(),
-                                )
-                            } else {
-                                qualified
+                                "None".to_string()
                             }
+                        } else {
+                            v1_rt::concat(
+                                v1_rt::concat(enum_name.clone(), "::".to_string()),
+                                name.clone(),
+                            )
+                        };
+                        if variant_ref_self_wraps(
+                            name.clone(),
+                            enum_name.clone(),
+                            shared_types.clone(),
+                            emit_info.corpus_repr.clone(),
+                        ) {
+                            v1_rt::concat(
+                                v1_rt::concat("Rc::new(".to_string(), body),
+                                ")".to_string(),
+                            )
+                        } else {
+                            body
                         }
                     }
                     None => match v1_rt::map_get(&registry, name.clone()) {
@@ -22324,6 +22337,29 @@ pub fn emit_data_def_body(
                             let is_already_wrapped = match (*value.expr_data.clone()).clone() {
                                 ExprData::ExprRecordLit { parent_enum: _, .. } => true,
                                 ExprData::ExprListLit => true,
+                                ExprData::ExprVar {
+                                    binding_kind: bk, ..
+                                } => {
+                                    let vname = expr_var_name_at(
+                                        value.clone(),
+                                        scope.type_env.source_indices.clone(),
+                                    );
+                                    match effective_variant_parent(
+                                        vname.clone(),
+                                        bk.clone(),
+                                        value.inferred.clone(),
+                                        emit_info.clone(),
+                                        scope.type_env.source_indices.clone(),
+                                    ) {
+                                        Some(enum_name) => variant_ref_self_wraps(
+                                            vname.clone(),
+                                            enum_name.clone(),
+                                            shared_types.clone(),
+                                            emit_info.corpus_repr.clone(),
+                                        ),
+                                        None => false,
+                                    }
+                                }
                                 _ => false,
                             };
                             let wrap_start = if (needs_rc.clone() && !is_already_wrapped.clone()) {
