@@ -1,5 +1,7 @@
 module v2.lens.wiring_liveness_preflight
 
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.disposition { RealizationDispatch }
 import v2.lens.affected_set {
   ChangedSubgraphFrontier,
   FailClosed,
@@ -9,7 +11,7 @@ import v2.lens.affected_set {
   ReasonDiagnostics
 }
 import v2.lens.wiring_liveness { wiring_reaches }
-import v2.std.collection { Absent, List, Optional, Present }
+import v2.std.collection { Absent, List, Optional, Present, optional_absent, optional_present }
 import v2.std.algebra { list_snoc_item }
 import v2.std.dependency { DependencyView }
 import v2.std.diagnostic {
@@ -24,32 +26,17 @@ import v2.std.diagnostic {
 import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol }
 
-// A wiring obligation the about-to-run slice must satisfy: a declared input must
-// reach the output it is declared to feed. This is the (output, declared_input)
-// pair WITHOUT its own dependence graph -- the preflight checks it against the
-// slice's *realized* wiring (the frontier), not against a re-derived static tree.
-// (WiringRelation in v2.lens.wiring_liveness bundles its own dependence and is the
-// compile-time-lens carrier; the obligation deliberately omits it so the frontier
-// is the single source of the dependence graph here -- §3, one authority for the
-// runtime wiring.)
 type FrontierWiringObligation {
   output: Node
   declared_input: Node
 }
 
-// The realized wiring graph of the about-to-run slice: project each
-// FrontierDependency to its DependencyView. The frontier IS the dependence carrier
-// -- this is the affected-set frontier's first paying consumer (§3, no new dep type).
 fn frontier_slice_dependence(dependencies: List<FrontierDependency>) -> List<DependencyView> {
   fold(dependencies, init: [], f: fn(acc, fd) {
     list_snoc_item(xs: acc, item: fd.dependency)
   })
 }
 
-// One obligation is live iff its declared input reaches the output over the slice's
-// realized wiring. Reuses wiring_reaches (the cache-purity reachability kernel read
-// backwards) -- NOT wiring_input_is_wired, which would re-derive the graph from the
-// static output tree instead of the about-to-run slice.
 fn obligation_is_wired(dependence: List<DependencyView>, obligation: FrontierWiringObligation) -> Bool {
   wiring_reaches(
     dependence: dependence,
@@ -58,31 +45,23 @@ fn obligation_is_wired(dependence: List<DependencyView>, obligation: FrontierWir
   )
 }
 
-// The first dead wire in the slice, if any -- the obligation whose declared input has
-// no path to its output over the slice's realized wiring. Fail-closed locates the
-// FIRST one (deterministic), rather than collapsing to a bare boolean.
 fn first_dead_wire(
   dependence: List<DependencyView>,
   obligations: List<FrontierWiringObligation>
 ) -> Optional<FrontierWiringObligation> {
-  fold(obligations, init: Absent, f: fn(acc, obligation) {
+  fold(obligations, init: optional_absent(), f: fn(acc, obligation) {
     match acc {
-      Present { value: v } => Present { value: v }
+      Present { value: v } => optional_present(value: v)
       Absent =>
         if obligation_is_wired(dependence: dependence, obligation: obligation) {
-          Absent
+          optional_absent()
         } else {
-          Present { value: obligation }
+          optional_present(value: obligation)
         }
     }
   })
 }
 
-// A dead wire becomes a typed, located, pre-execution diagnostic anchored at the
-// declared input that reaches nothing (§5: loud error, never a silent skip, never a
-// fabricated plausible output). The correction is Unavailable/ExternalContractUnknown
-// because the missing wire lives in an opaque (Rust-seed) realization the compile-time
-// lens cannot see into -- exactly the residue this preflight exists to catch.
 fn dead_wire_reason(obligation: FrontierWiringObligation) -> FailClosedReason {
   ReasonDiagnostics {
     diagnostics: diagnostics_singleton(d: Diagnostic {
@@ -93,16 +72,6 @@ fn dead_wire_reason(obligation: FrontierWiringObligation) -> FailClosedReason {
   }
 }
 
-// THE PREFLIGHT. Run the wiring-liveness check over the affected-set ReExecFrontier
-// (the about-to-run slice) BEFORE the interpreter executes a section:
-//   - an already-FailClosed frontier passes through unchanged (do not mask a prior
-//     failure with a wiring verdict);
-//   - a ChangedSubgraphFrontier with a dead wire in its slice FailCloses with a typed,
-//     located reason -- BEFORE any execution;
-//   - a fully-wired slice runs (frontier returned unchanged).
-// Negligible compute: static reachability over the affected slice's own dependence
-// list, no fixture round-trip per effect (§6 altitude -- this is the residue path that
-// dissolves into the compile-time lens as realizations self-host, §5/§7).
 fn preflight_reexec_frontier(
   frontier: ReExecFrontier,
   dependencies: List<FrontierDependency>,
@@ -119,4 +88,9 @@ fn preflight_reexec_frontier(
         Present { value: dead } => FailClosed { reason: dead_wire_reason(obligation: dead) }
       }
   }
+}
+
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding { dissolves_to: RealizationDispatch },
+  rationale: "Runtime preflight over the affected_set ReExecFrontier -- the first paying consumer of the frontier (DESIGN-linked plan dsl/gunbc/plans/wiring_liveness_preflight.dag, item 4). It runs the wiring-liveness check over the about-to-run slice BEFORE the interpreter executes a section and FailCloses on a dead wire (a declared input with no structural path to the output it feeds), with a typed, located, pre-execution diagnostic anchored at the dead input (DESIGN 5: a loud error, never a silent skip, never a fabricated plausible output). It reuses the merged compile-time lens v2.lens.wiring_liveness (wiring_reaches -- the cache-purity reachability kernel read backwards) and the existing affected_set ReExecFrontier / FrontierDependency / DependencyView carriers -- no new dependence type minted (DESIGN 3). It checks obligations against the slice's REALIZED wiring (the frontier dependencies) rather than re-deriving a static tree, which is why it consumes wiring_reaches directly and not wiring_input_is_wired. RESIDUE PATH (DESIGN 6 altitude): negligible compute -- static reachability over the affected slice's own dependence list, NOT a fixture round-trip per effect. It exists only where a realization stays OPAQUE to compile-time reflection (the Rust seed resolve_auth, the motivating GCP IAM auth_input fork): the compile-time lens (the wall) cannot see into the seed, so the runtime preflight catches the residue before firing. Grounding authority: realization self-host (DESIGN 5/7) bringing opaque realizations into .dag. Dissolves on: every input->output realization being .dag-reflectable, at which point the compile-time wiring lens makes a declared-but-unwired input unwritable by construction and this preflight's residue is empty."
 }
