@@ -1,0 +1,13 @@
+module std.decl_ref
+
+import std.types { NonEmptyStr }
+
+type DeclField
+  = WholeDeclaration
+  | NamedField { field_name: NonEmptyStr }
+
+type DeclarationRef {
+  module_path: NonEmptyStr
+  decl_name: NonEmptyStr
+  field: DeclField
+}

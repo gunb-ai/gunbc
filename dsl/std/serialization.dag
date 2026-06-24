@@ -1,6 +1,6 @@
 module std.serialization
 
-type DeclarationRef = String
+import std.decl_ref { DeclarationRef }
 
 type VariantNaming
   = AsAuthored

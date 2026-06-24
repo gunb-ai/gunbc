@@ -1,0 +1,149 @@
+module extdeps.github.checks
+
+import extdeps.github.github { default_api_base, default_per_page }
+import std.types { CommitSha, Timestamp, Url }
+import extdeps.github.errors { GitHubErrorShape }
+import std.credentials { EnvVar }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.github.checks_contracts {
+  check_status_wire_contract,
+  check_conclusion_wire_contract,
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/rest/checks/runs"
+  }
+}
+
+type CheckStatus
+  = Queued
+  | InProgress
+  | Completed
+  | Waiting
+  | Pending
+  | Requested
+
+type CheckConclusion
+  = ActionRequired
+  | Cancelled
+  | Failure
+  | Neutral
+  | Skipped
+  | Stale
+  | Success
+  | TimedOut
+
+data structural_coverage_gap_check_codec_hand_rolled: List<String> = [
+  "parse_check_status/check_status_wire_label and parse_check_conclusion/check_conclusion_wire_label",
+  "hand-roll the SnakeCase mappings already declared in check_status_wire_contract and",
+  "check_conclusion_wire_contract. Dissolve when the codec-from-contract bridge derives",
+  "decode and encode from CoproductWireContract rows directly, making these fns redundant."
+]
+
+fn parse_check_status(raw: String) -> CheckStatus? {
+  if raw == "queued" { Present { value: Queued } }
+  else { if raw == "in_progress" { Present { value: InProgress } }
+  else { if raw == "completed" { Present { value: Completed } }
+  else { if raw == "waiting" { Present { value: Waiting } }
+  else { if raw == "pending" { Present { value: Pending } }
+  else { if raw == "requested" { Present { value: Requested } }
+  else { none } } } } } }
+}
+
+fn check_status_wire_label(s: CheckStatus) -> String {
+  match s {
+    Queued => "queued"
+    InProgress => "in_progress"
+    Completed => "completed"
+    Waiting => "waiting"
+    Pending => "pending"
+    Requested => "requested"
+  }
+}
+
+fn parse_check_conclusion(raw: String) -> CheckConclusion? {
+  if raw == "action_required" { Present { value: ActionRequired } }
+  else { if raw == "cancelled" { Present { value: Cancelled } }
+  else { if raw == "failure" { Present { value: Failure } }
+  else { if raw == "neutral" { Present { value: Neutral } }
+  else { if raw == "skipped" { Present { value: Skipped } }
+  else { if raw == "stale" { Present { value: Stale } }
+  else { if raw == "success" { Present { value: Success } }
+  else { if raw == "timed_out" { Present { value: TimedOut } }
+  else { none } } } } } } } }
+}
+
+fn check_conclusion_wire_label(c: CheckConclusion) -> String {
+  match c {
+    ActionRequired => "action_required"
+    Cancelled => "cancelled"
+    Failure => "failure"
+    Neutral => "neutral"
+    Skipped => "skipped"
+    Stale => "stale"
+    Success => "success"
+    TimedOut => "timed_out"
+  }
+}
+
+type CheckOutput {
+  title: String?
+  summary: String?
+  annotations_count: Int
+}
+
+type CheckRun {
+  id: Int
+  name: String
+  head_sha: CommitSha
+  status: CheckStatus
+  conclusion: CheckConclusion?
+  started_at: Timestamp?
+  completed_at: Timestamp?
+  output: CheckOutput
+  html_url: Url
+}
+
+type CheckRunList {
+  total_count: Int
+  check_runs: List<CheckRun>
+}
+
+service github.Checks {
+  config {
+    endpoint: default_api_base
+    auth: Bearer
+    auth_source: EnvVar { name: "GITHUB_TOKEN" }
+
+    rate_limit: { requests: 5000, per: hour, scope: core }
+    retry: { max_attempts: 3, backoff: exponential, retry_on: [429, 500, 502, 503, 504] }
+  }
+
+  operation ListForRef {
+    input {
+      auth_token: Secret
+      owner: String
+      repo: String
+      ref: String
+      per_page: Int = default_per_page
+    }
+    output {
+      result: CheckRunList
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/repos/\{owner\}/\{repo\}/commits/\{ref\}/check-runs",
+      query: { per_page: per_page }
+    }
+    response {
+      200 => CheckRunList
+      401 => GitHubErrorShape
+      404 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
+  }
+}

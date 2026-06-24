@@ -1,10 +1,9 @@
 module v2.test.lens_disposition_redundancy.disposition_redundancy_test
 
 import v2.lens.disposition_redundancy { disposition_redundancy_violation_count }
-import std.disposition { Disposition, Scaffold, Terminal, DeclLocator, NamedField, WholeDeclaration, SingleAuthority }
-import extdeps.llm.anthropic {
-  structural_coverage_gap_anthropic_tool_result_nested_block_wire_payloads
-}
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, NamedField, WholeDeclaration }
+import extdeps.llm.anthropic { structural_coverage_gap_anthropic_tool_result_nested_block_wire_payloads }
 import std.bytes { bytes_seam_host_realization_marker }
 import std.encoding { utf8_decode_bytes_host_realization_marker, base64_group_fill_carrier_debt_marker }
 import gunbc.ci_floor_measurement {
@@ -24,7 +23,7 @@ import v2.std.collection { List }
 import v2.std.algebra { length }
 import v2.std.logic { Bool }
 
-data redundancy_present_successor_locator: DeclLocator = DeclLocator {
+data redundancy_present_successor_locator: DeclarationRef = DeclarationRef {
   module_path: "std.disposition",
   decl_name: "Disposition",
   field: NamedField { field_name: "marker" }
@@ -32,7 +31,7 @@ data redundancy_present_successor_locator: DeclLocator = DeclLocator {
 
 data redundancy_red_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: DeclLocator {
+  bind: DeclarationRef {
     module_path: "std.disposition",
     decl_name: "Disposition",
     field: NamedField { field_name: "marker" }
@@ -40,11 +39,11 @@ data redundancy_red_scaffold: Disposition = Scaffold {
 }
 
 data redundancy_red_dispositions: List<Disposition> = [redundancy_red_scaffold]
-data redundancy_present_with_successor: List<DeclLocator> = [redundancy_present_successor_locator]
-data redundancy_present_empty: List<DeclLocator> = []
+data redundancy_present_with_successor: List<DeclarationRef> = [redundancy_present_successor_locator]
+data redundancy_present_empty: List<DeclarationRef> = []
 
-data redundancy_region1_real_successor_present: List<DeclLocator> = [
-  DeclLocator {
+data redundancy_region1_real_successor_present: List<DeclarationRef> = [
+  DeclarationRef {
     module_path: "extdeps.llm.anthropic",
     decl_name: "AnthropicTextBlock",
     field: NamedField { field_name: "cache_control" }
@@ -89,8 +88,8 @@ data redundancy_region_bytes_marks: List<Disposition> = [
   base64_group_fill_carrier_debt_marker
 ]
 
-data redundancy_region_bytes_synthetic_present: List<DeclLocator> = [
-  DeclLocator {
+data redundancy_region_bytes_synthetic_present: List<DeclarationRef> = [
+  DeclarationRef {
     module_path: "std.bytes",
     decl_name: "builtin_function_registry",
     field: WholeDeclaration
@@ -121,7 +120,7 @@ data redundancy_region_budget_marks: List<Disposition> = [
   gunbc_ci_concurrent_runs_conservative_high_disposition
 ]
 
-data redundancy_region_budget_job_peaks_locator: DeclLocator = DeclLocator {
+data redundancy_region_budget_job_peaks_locator: DeclarationRef = DeclarationRef {
   module_path: "gunbc.ci_floor_measurement",
   decl_name: "gunbc_ci_job_peaks",
   field: WholeDeclaration
@@ -154,8 +153,8 @@ data redundancy_region_rust_gates_marks: List<Disposition> = [
   should_run_gates_coverage_note
 ]
 
-data redundancy_region_rust_gates_synthetic_present: List<DeclLocator> = [
-  DeclLocator {
+data redundancy_region_rust_gates_synthetic_present: List<DeclarationRef> = [
+  DeclarationRef {
     module_path: "std.consumed_input",
     decl_name: "ConsumedInputClosure",
     field: WholeDeclaration
