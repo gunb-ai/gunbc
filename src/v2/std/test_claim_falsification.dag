@@ -1,32 +1,20 @@
-// src/v2/std/test_claim_falsification.dag
-// Scope: falsification receipts + execution evidence (PR #3961 verdict-surface-contract).
-// Authority: docs/planning/verdict-surface-contract-2026-05-30.md
-// Layering: no v2.compiler imports — Subj is bound to TestClaimEvalSubject at compiler call sites.
-
 module v2.std.test_claim_falsification
-
 
 import v2.std.collection { List }
 import v2.std.diagnostic { Diagnostic }
 import v2.std.host_run { EmitHostRunReceipt, ValueDiff }
 import v2.std.node { Symbol }
 
-
 type InterpreterTrace {
   pinned_eval_call: Symbol
   diagnostics: List<Diagnostic>
 }
 
-// 🟡 coproduct dissolution — feature:verdict-surface-execution-evidence (#3961);
-// bound task: W3 wires `run_emit_host_rust` (dissolves `emit_host_transport_not_wired`) and
-// interpreter trace population for emit-vs-eval rows; `EvidenceNone` is the fail-closed empty arm.
 type ExecutionEvidence
   = Host { receipt: EmitHostRunReceipt }
   | Interpreter { trace: InterpreterTrace }
   | EvidenceNone
 
-// Subj: eval subject carrier (compiler binds TestClaimEvalSubject<S> at TestClaimRun boundary).
-// Keeps std/ free of v2.compiler imports (P2 layering; breaks verdict→falsification→eval cycle).
 type FalsificationReceipt<Subj, A> {
   subject: Subj
   expected: A

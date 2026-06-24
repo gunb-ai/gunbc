@@ -1,0 +1,46 @@
+module gunbc.bmc_onboarding
+
+import std.bmc { BmcEndpoint, Redfish }
+import std.credentials { FactoryLogin, CredentialFlow, Stored }
+import std.os.types { OperatingSystemProduct, UbuntuOs, NobleNumbat2404Lts }
+import std.types { NonEmptyStr }
+import extdeps.bmc.types { RedfishBootSourceOverrideTarget, BootTargetPxe, RedfishAccountRole, AccountRoleAdministrator }
+import extdeps.bmc.openbmc { openbmc_factory_login }
+import extdeps.boards.asrock_rack { asrock_altrad8ud_redfish_system_id }
+
+type BmcOnboardingPhase =
+    FactoryDefault
+  | CredentialsRotated
+  | OsInstalled
+  | FabricJoined
+
+fn bmc_onboarding_next_phase(phase: BmcOnboardingPhase) -> BmcOnboardingPhase? {
+  match phase {
+    FactoryDefault => Present { value: CredentialsRotated }
+    CredentialsRotated => Present { value: OsInstalled }
+    OsInstalled => Present { value: FabricJoined }
+    FabricJoined => Absent
+  }
+}
+
+type BmcOnboardingPlan {
+  bmc: BmcEndpoint
+  redfish_system_id: NonEmptyStr
+  factory_login: FactoryLogin
+  rotated_credential: CredentialFlow
+  rotated_account_role: RedfishAccountRole
+  os_target: OperatingSystemProduct
+  os_install_boot_target: RedfishBootSourceOverrideTarget
+  start_phase: BmcOnboardingPhase
+}
+
+data new_altra_onboarding_plan: BmcOnboardingPlan = BmcOnboardingPlan {
+  bmc: BmcEndpoint { host: "192.168.1.192", protocol: Redfish },
+  redfish_system_id: asrock_altrad8ud_redfish_system_id,
+  factory_login: openbmc_factory_login,
+  rotated_credential: Stored { secret_name: "bmc-srv3-admin" },
+  rotated_account_role: AccountRoleAdministrator,
+  os_target: UbuntuOs { distro: NobleNumbat2404Lts },
+  os_install_boot_target: BootTargetPxe,
+  start_phase: FactoryDefault,
+}

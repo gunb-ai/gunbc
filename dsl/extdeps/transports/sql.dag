@@ -1,26 +1,16 @@
-// extdeps/transports/sql.dag -- SQL database transport definition
-//
-// Spec: ISO/IEC 9075 SQL overview
-//       https://www.iso.org/standard/76583.html
-// SQLite bind parameters
-//       https://www.sqlite.org/lang_expr.html#parameters
-// PostgreSQL PREPARE / EXECUTE
-//       https://www.postgresql.org/docs/current/sql-prepare.html
-// MySQL prepared statements
-//       https://dev.mysql.com/doc/refman/8.4/en/sql-prepared-statements.html
-//
-// Configuration schema for service operations bound to relational database
-// access. A service operation with `transport sql { ... }` executes a
-// parameterized SQL statement through the configured database connection.
-
 module extdeps.transports.sql
 
 import std.serialization { WireFormat }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
 
-// 🟢 TERMINAL. SQL statement classes used by common relational engines.
-// These variants name the statement's externally observable behavior, not an
-// emitter preference. The partition is retained because SELECT / mutation / DDL
-// / transaction-control statements have distinct transport behavior.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.iso.org/standard/76583.html"
+  }
+}
+
 type SqlStatementKind
   = Select
   | Insert
@@ -29,25 +19,18 @@ type SqlStatementKind
   | Ddl
   | TransactionControl
 
-// 🟢 TERMINAL. Prepared statement parameter styles used by SQLite, PostgreSQL,
-// and MySQL. This is a transport fact because client libraries need to render
-// bind sites without turning SQL strings into target-language policy. The
-// variants are externally specified marker syntaxes, not local aliases.
 type SqlParameterStyle
-  = QuestionMark      // SQLite/MySQL: ?
-  | NumberedDollar    // PostgreSQL: $1, $2, ...
-  | NamedColon        // SQLite: :name
-  | NamedAt           // SQLite: @name
-  | NamedDollar       // SQLite: $name
+  = QuestionMark
+  | NumberedDollar
+  | NamedColon
+  | NamedAt
+  | NamedDollar
 
-// 🟢 TERMINAL. Transaction boundary expected by an operation. These variants are
-// the irreducible transport-level ownership modes for transaction scope.
 type SqlTransactionMode
   = Autocommit
   | ExistingTransaction
   | BeginCommit
 
-// Configuration type for SQL transport bindings.
 type SqlTransportConfig {
   connection_name: String
   statement_kind: SqlStatementKind

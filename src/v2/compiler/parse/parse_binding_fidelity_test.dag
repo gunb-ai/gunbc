@@ -1,6 +1,3 @@
-// Scope: parse-stage per-identifier binding fidelity + resolve / cross-file admission receipts.
-// Anchor: DESIGN.md §5 — executed claim-run witnesses; discriminating RED arms flip when behavior regresses.
-
 module v2.test.parse.parse_binding_fidelity
 
 import v2.compiler.name_resolve {
@@ -50,7 +47,6 @@ import v2.std.node {
   SyntheticOccurrence
 }
 import v2.std.qualified_name { QnCons, QnEmpty, QualifiedName }
-
 
 fn pbf_parse_root() -> GrammarRoot {
   GrammarRoot {
@@ -388,7 +384,6 @@ fn pbf_ambiguous_export_rejects() -> Bool {
   }
 }
 
-// RED control: collapsing bindings would make param_x/param_y witnesses false.
 test fn witness_parse_binding_fidelity_distinct_identifiers_holds() -> Bool {
   pbf_parse_preserves_param_x_binding()
     && pbf_parse_preserves_param_y_binding()

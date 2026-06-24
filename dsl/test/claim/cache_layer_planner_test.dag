@@ -1,9 +1,3 @@
-// dsl/test/claim/cache_layer_planner_test.dag
-//
-// Phase-2 cache-layer planner: cost-aware Pareto fold + discriminating red witness.
-//
-// Run: gunbc run --source-root dsl --entry <this> --function cache_layer_planner_witnesses --claim-run
-
 module test.claim.cache_layer_planner
 
 import std.types { Bool }

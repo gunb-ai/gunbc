@@ -1,45 +1,8 @@
-// std/verification.dag -- Verifiable claims about program behavior.
-//
-// A test is a named conjunction of verifiable claims. A claim is a
-// proposition that a program state satisfies a predicate. This is the
-// logical structure of verification — no testing philosophy, no
-// fixtures, no mocking opinions.
-//
-// RELATIONSHIP TO std/termination.dag:
-//   termination.dag proves well-founded descent via ranking functions.
-//   This file proves specification compliance via test evidence.
-//   Both are proof structures — the former for termination, the latter
-//   for behavioral correctness.
-//
-// RELATIONSHIP TO std/logic.dag:
-//   A TestClaim is a proposition (true or false). AssertKind encodes
-//   the predicate form. A TestCase is a conjunction (all claims must hold).
-//
-// Consumers:
-//   v2/coercion.dag         -- structural coercion tests from data declarations
-//   v2/05_emit.dag          -- test extraction and rendering (future)
-
 module std.verification
 
 import std.nat { Nat }
 import std.measure { Measure, Time, Nano, measure_count }
 
-// --- Timing authority: the NANOSECOND scale CHOICE -------------------------
-//
-// std.verification is the single timing-authority CONSUMER (Phase-0 convergence,
-// header below). The scale-FIXED nanosecond time alias is homed HERE, not in the
-// generic std.measure carrier and not in the scale-AGNOSTIC realization framework
-// (std.realization_measurement / std.realization_schedule operate over `Measure<Time,
-// S, Nat>` / `CostAccount<S>` and name no scale). The nanosecond decision EMERGES at
-// this consumer because the timing authority is verification's: budget/measured facts
-// are nanosecond thresholds (DESIGN §3 — the scale that selects a realization sits
-// peripheral, never in the agnostic shape). Parallel to `Milliwatt` homed at its
-// product consumer (#5235), not to base SI units `Watt`/`Hertz` that stay in measure.
-// Other consumers (std.cache_interface, product.compute_fabric) import this alias FROM
-// here, the single authority — never re-coining the Nano choice.
-//
-// `<M>` is fixed at `Nat`; magnitude-genericity is the documented where-clause substrate
-// gap (see std.measure.time_measure).
 type NanosecondDuration = Measure<Time, Nano, Nat>
 
 fn nanosecond_duration(count: Nat) -> NanosecondDuration {
@@ -50,43 +13,20 @@ fn nanosecond_duration_count(d: NanosecondDuration) -> Nat {
   measure_count(m: d)
 }
 
-// The predicate form of an assertion.
-// Each variant corresponds to a standard verification predicate
-// that every test framework supports.
 type AssertKind
-  = AssertEqual    // actual == expected
-  | AssertTrue     // condition holds
-  | AssertSome     // value is present (not None/nil/null)
-  | AssertNone     // value is absent
+  = AssertEqual
+  | AssertTrue
+  | AssertSome
+  | AssertNone
 
-// A single verifiable claim about program behavior.
-// The label describes what is being verified — it becomes the
-// failure message when the claim does not hold.
-type TestClaim {
+type AssertionClaim {
   kind: AssertKind
   label: String
 }
 
-// R3 T-Workflow-As-Data gate #101 (`test_cost_dimension_landed`).
-//
-// Test execution cost is a first-class structural fact attached to a
-// modeled test node. This deliberately does not reuse compiler-internal
-// `SymbolicCost`: the slow-test ratchet needs observed/budgeted wall-clock
-// cost for the test node itself. **Target:** #102 derives ratchet policy from
-// those substrate facts. **Interim (not #102 closure):** warn-token rows live in
-// `dsl/gunbc/test_node_wall_clock_ratchet.dag` and are projected for shell/JQ until
-// the runner routes policy off `TestNodeCostDimension` facts instead of a parallel
-// warn-name list. **Follow-on:** attach explicit `TimingBudget` / `TimingMeasurement`
-// rows per test where paydown replaces warn-only policy.
-//
-// Phase-0 convergence: `NanosecondDuration` (homed in this module, above) is the timing
-// authority; budget/measured facts are nanosecond thresholds, not parallel Milliseconds.
-
-// A named test case — a conjunction of claims.
-// All claims must hold for the test to pass.
 type TestCase {
   name: String
-  claims: List<TestClaim>
+  claims: List<AssertionClaim>
   ignored: Bool
 }
 

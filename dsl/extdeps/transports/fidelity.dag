@@ -1,18 +1,7 @@
-// extdeps/transports/fidelity.dag -- Transport fidelity dispatch hub.
-//
-// §3 SEAM (pattern: extdeps/os/os.dag): the dispatch that selects a
-// realization is itself realization, so it sits peripheral (extdeps/), never
-// in the std interface. std/fidelity.dag holds the agnostic shape
-// (TransportFidelity / DerivedClassification) and the dispatch-free fold
-// (classify_fidelities); this file holds the per-realization catalog rows and
-// the `match` over TransportClass that names them.
-//
-// transport_depth / transport_hermetic kept here as the realization API
-// (their match bodies moved out of std). classify_transports is the
-// List<TransportClass> entry point — it dispatches each class to its cited
-// fidelity row, then defers to the std fold.
-
 module extdeps.transports.fidelity
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
 
 import std.types { FermiDepth }
 import std.list { List }
@@ -26,18 +15,17 @@ import extdeps.transports.shell { shell_transport_fidelity }
 import extdeps.transports.file { file_transport_fidelity }
 import extdeps.transports.rest { rest_transport_fidelity }
 
-// Degenerate (non-externally-cited) transport classes have no dedicated
-// transport file — their rows live with the dispatch they belong to.
-//   LocalDirect   — in-process direct call: negligible cost, hermetic.
-//   InterfaceStub — test/interface stub: negligible cost, hermetic.
-//   Unknown       — unclassified: fail-closed (max cost, non-hermetic).
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/gunb-ai/gunbc/tree/main/dsl/extdeps/transports"
+  }
+}
+
 data local_direct_transport_fidelity: TransportFidelity = TransportFidelity { depth: Xs, hermetic: true }
 data interface_stub_transport_fidelity: TransportFidelity = TransportFidelity { depth: Xs, hermetic: true }
 data unknown_transport_fidelity: TransportFidelity = TransportFidelity { depth: Xl, hermetic: false }
 
-// The dispatch: realization-name -> cited fidelity row. This `match` is why
-// the row catalog lives here and not in std (naming a realization is
-// realization; std cannot import extdeps).
 fn transport_fidelity(tc: TransportClass) -> TransportFidelity {
   match tc {
     LocalDirect    => local_direct_transport_fidelity
@@ -49,18 +37,14 @@ fn transport_fidelity(tc: TransportClass) -> TransportFidelity {
   }
 }
 
-// Transport -> magnitude (the cost projection of the dispatched row).
 fn transport_depth(tc: TransportClass) -> FermiDepth {
   transport_fidelity(tc: tc).depth
 }
 
-// Transport -> hermetic flag (the hermeticity projection of the dispatched row).
 fn transport_hermetic(tc: TransportClass) -> Bool {
   transport_fidelity(tc: tc).hermetic
 }
 
-// List<TransportClass> entry point: dispatch each class to its fidelity row,
-// then defer to the std dispatch-free fold (the "big-O" max-dominates rule).
 fn classify_transports(transports: List<TransportClass>) -> DerivedClassification {
   classify_fidelities(fidelities: map(transports, tc => transport_fidelity(tc: tc)))
 }

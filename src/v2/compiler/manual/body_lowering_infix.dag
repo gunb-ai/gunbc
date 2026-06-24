@@ -1,11 +1,3 @@
-// Scope: by-execution receipt for the structured-normalize emit in std/compilers/body_lowering.dag
-// (lower_block_body_atoms / lower_binary_infix) — slice (i) of the normalize-to-dispatch
-// dissolution (node://adhoc-87678e9b-420). Proves the binary-infix body `[a, op, b]` lowers to a
-// Transform call AND — the coherence witness — that the emitted node IS recognized by the slice-(i)
-// call-carrier (node_is_call / call_callee_target / call_argument_targets): the emit and the
-// body_producer dispatch agree on the carrier shape by construction, not by coincidence.
-// Status: unit-tier by-execution TestClaim (no pipeline; synthetic body atoms).
-
 module v2.test.manual.body_lowering_infix
 
 import v2.std.node {
@@ -47,7 +39,6 @@ fn body_lowering_bool_node(pass: Bool) -> Node {
   }
 }
 
-// Surface body atoms of `{ x + y }` (pre-resolve): operand `x`, operator `+`, operand `y`.
 fn body_lowering_atom_x() -> Node {
   node_synthetic(kind: TypeNode { connective: Atom { identity: ^body_lowering_x } }, children: [])
 }
@@ -69,7 +60,6 @@ fn body_lowering_emitted() -> Outcome<Node> {
   )
 }
 
-// The emitted body is recognized by the carrier as a call.
 fn body_lowering_emit_is_call() -> Bool {
   match body_lowering_emitted() {
     Accepted { value: body, diagnostics: _ } => node_is_call(node: body)
@@ -77,7 +67,6 @@ fn body_lowering_emit_is_call() -> Bool {
   }
 }
 
-// Callee carrier == the operator `+`; the emit puts the operator at child[0] (the callee slot).
 fn body_lowering_emit_callee_is_operator() -> Bool {
   match body_lowering_emitted() {
     Accepted { value: body, diagnostics: _ } =>
@@ -89,7 +78,6 @@ fn body_lowering_emit_callee_is_operator() -> Bool {
   }
 }
 
-// Argument carrier == the two operands in surface order [x, y].
 fn body_lowering_emit_args_are_operands() -> Bool {
   match body_lowering_emitted() {
     Accepted { value: body, diagnostics: _ } =>
@@ -108,7 +96,6 @@ fn body_lowering_emit_args_are_operands() -> Bool {
   }
 }
 
-// A non-binary (here single-atom) body is the unsupported-form reject.
 fn body_lowering_rejects_non_binary() -> Bool {
   match lower_block_body_atoms(
     atoms: [body_lowering_atom_plus()],

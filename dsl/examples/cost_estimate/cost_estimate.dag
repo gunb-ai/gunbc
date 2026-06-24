@@ -1,49 +1,15 @@
-// examples/cost_estimate -- Float-in-v2 consumer witness (cost projection).
-//
-// PURPOSE: an INTERIM, evaluable v2 consumer proving `Float` parses,
-// type-checks, AND evaluates end-to-end on the v2 interpreter (#4825 landed
-// Float-in-v2; this is the consumer that exercises it). It pairs genuinely
-// real-valued cost fields (`Float`) with the ISO 4217 `CurrencyCode` enum
-// from `std.currency`.
-//
-// WHY A STANDALONE WITNESS (not the real `product.compute_fabric.CostEstimate`):
-//   - `compute_fabric.dag` does NOT resolve on v2 today: its closure's
-//     `extdeps.cpu.types` / `std.os.types` import `Option`, which has no v2
-//     resolution yet. #4831 (in flight) lands it as an explicit `std.option`
-//     module (`Option = Absent | Present{value}`) and repoints those
-//     consumers to `import std.option { Option }`.
-//   - The real `CostEstimate.unit_price: MoneyMicros` consumer is now proven by
-//     `test.claim.hetzner_cost_quote_witness` (extdeps Hetzner CAX41 catalog row
-//     → `product.compute_fabric.per_second_billed_cost_quote`). This Float witness
-//     remains as the genuinely-real-valued fields exercise until folded.
-//
-// NOTE: money is fixed-point (`MoneyMicros` = `Measure<Currency, Micro>`),
-// NEVER `Float` -- floating point for money is a representation defect
-// (rounding, non-associativity). The `Float` fields here are the genuinely
-// real-valued ones (a fractional duration, a dimensionless utilization
-// ratio); the price magnitude lives in the money carrier, not here.
-//
-// Gate (claim-run):
-//   gunbc run --source-root dsl \
-//     --function cost_projection_float_witness \
-//     --entry dsl/examples/cost_estimate/cost_estimate.dag --claim-run
-
 module examples.cost_estimate
 
 import std.float { Float }
 import std.logic { Bool }
 import std.currency { CurrencyCode, Eur, Usd, currency_minor_unit_exponent }
 
-// A cost projection's genuinely real-valued inputs. The price itself is money
-// (fixed-point `MoneyMicros`), carried elsewhere -- NOT a field here.
 type CostProjection {
-  expected_hours: Float   // fractional expected billing duration (genuine real)
-  utilization: Float      // dimensionless efficiency factor in [0, 1] (genuine real)
-  currency: CurrencyCode  // ISO 4217 settlement currency
+  expected_hours: Float
+  utilization: Float
+  currency: CurrencyCode
 }
 
-// Billable hours = expected duration scaled by utilization. Real-valued by
-// construction (a fractional product), so `Float` is the correct carrier.
 fn billable_hours(p: CostProjection) -> Float {
   p.expected_hours * p.utilization
 }
@@ -56,15 +22,10 @@ fn demo_projection() -> CostProjection {
   }
 }
 
-// Bool witness: exercises Float fields, a float literal, Float multiplication,
-// Float comparison, and the ISO 4217 minor-unit query over two currencies.
-// All of these evaluate on the v2 interpreter today.
 fn cost_projection_float_witness() -> Bool {
   let p = demo_projection()
   let hours = billable_hours(p: p)
-  // 3.0 * 0.75 = 2.25
   let float_evaluates = (hours > 2.24) && (hours < 2.26)
-  // ISO 4217 minor units: EUR and USD both subdivide into 100 cents (10^-2).
   let currency_evaluates = (currency_minor_unit_exponent(c: Eur) == 2) && (currency_minor_unit_exponent(c: Usd) == 2)
   float_evaluates && currency_evaluates
 }

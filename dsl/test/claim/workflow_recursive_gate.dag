@@ -1,7 +1,3 @@
-// test/claim/workflow_recursive_gate.dag — ProcessExit gate (ctrl gate parity).
-//
-// DISCRIMINATING (DESIGN.md §5): Bool false / ExitFailure when latch or axis wrong.
-
 module test.claim.workflow_recursive_gate
 
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_code_general_error }

@@ -1,6 +1,3 @@
-// Scope: COMPREP wave-2 M0-Bind runtime keystone — source-gated let-in Bind body executes through eval.
-// Status: executable --claim-run witness; value perturbation is the discriminating red.
-
 module v2.test.manual.comprep_bind_eval_by_execution
 
 import v2.compiler.body_producer {
@@ -421,13 +418,6 @@ fn comprep_bind_fixture_wrong_value_red_holds() -> Bool {
   }
 }
 
-// COMPREP wave-2 M0-Bind runtime keystone:
-//   1. source-driven-executes — let x = 1 in x executes to 1;
-//   2. direct-runtime — same bridged callee through eval directly;
-//   3. source-pipeline-admits — source fn tokenizes→parses→normalizes→resolves→body_producer;
-//   4. value-perturbation-red — canonical source expecting 2 fails (not arm-order only);
-//   5. fixture-producer — direct fixture path also executes (sanity);
-//   6. fixture-wrong-value-red — fixture value swap fails the run.
 test fn comprep_bind_eval_by_execution_keystone_holds() -> Bool {
   comprep_bind_source_driven_executes_holds()
     && comprep_bind_direct_runtime_holds()

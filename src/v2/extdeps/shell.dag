@@ -1,17 +1,14 @@
-// src/v2/extdeps/shell.dag — v2 overlay for extdeps.shell (slice 3 migration).
-//
-// Same module name as dsl/extdeps/shell/shell.dag so Wet dispatch is unchanged.
-// Intentionally omits std.types (FilePath/NonEmptyStr) so co-rooted v2 transports
-// that also pull v2.compiler.emit do not transitively load dsl/std.algebra and
-// collide with v2.std.algebra's FreeMonoid coproduct. Indexed after dsl/ in
-// witness_layer_roots so this row wins on module-path overlay.
-//
-// DISSOLUTION TRIGGER: this v2-local extdeps.shell overlay + the witness_layer_roots dsl-first flip are a
-// transitional bridge for the dsl<->v2 FreeMonoid co-rooting collision. Both dissolve at the FINAL migration
-// slice — when the last dsl transport is migrated and dsl/extdeps/shell/shell.dag is deleted, v2.extdeps.shell
-// becomes the sole shell.Exec authority and this overlay + the witness_layer_roots flip are removed.
-
 module extdeps.shell
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "pubs.opengroup.org/onlinepubs/9699919799/utilities/V3_chap02.html"
+  }
+}
 
 service shell.Exec {
   operation Run {

@@ -1,19 +1,9 @@
-//! Diagnostic output quality tests.
-//!
-//! These tests verify that compiler diagnostics are:
-//! 1. Typed (correct CompilerDiagnostic variant)
-//! 2. Precisely located (file:line:col points at the right token)
-//! 3. Actionable (message tells the user what to fix)
-
 use crate::helpers::{compile_multi, diagnostic_messages};
 use std::rc::Rc;
 use v1_compiler::v1_std_core::{
     build_newline_index, byte_to_line_col, diagnostic_to_message, CompilerDiagnostic, ErrorNode,
 };
 
-// ── Helpers ─────────────────────────────────────────────────────────────
-
-/// Extract the first diagnostic from a compilation result, panicking if none.
 fn first_diag(files: &[(&str, &str)]) -> Rc<ErrorNode> {
     let result = compile_multi(files);
     assert!(
@@ -23,15 +13,12 @@ fn first_diag(files: &[(&str, &str)]) -> Rc<ErrorNode> {
     result.diagnostics[0].clone()
 }
 
-/// Resolve a diagnostic's span to (line, col) using the source text.
 fn diag_line_col(diag: &ErrorNode, source: &str, file: &str) -> (i64, i64) {
     let span = v1_compiler::v1_std_core::diagnostic_to_span(diag.diagnostic.clone());
     let idx = build_newline_index(file.to_string(), source.to_string());
     let lc = byte_to_line_col(idx, span.start);
     (lc.line, lc.col)
 }
-
-// ── Missing export: precise span on the missing name ────────────────────
 
 #[test]
 fn missing_export_points_at_name() {
@@ -42,14 +29,12 @@ fn missing_export_points_at_name() {
     assert_eq!(result.diagnostics.len(), 1);
     let d = &result.diagnostics[0];
 
-    // Correct variant.
     assert!(
         matches!(&*d.diagnostic, CompilerDiagnostic::MissingExport { .. }),
         "expected MissingExport, got: {:?}",
         d.diagnostic
     );
 
-    // Message includes name, module, and importer.
     let msg = diagnostic_to_message(d.diagnostic.clone());
     assert!(
         msg.contains("NonExistent"),
@@ -67,7 +52,6 @@ fn missing_export_points_at_name() {
         msg
     );
 
-    // Span points at "NonExistent", not at "import".
     let (line, col) = diag_line_col(d, bad, "consumer.dag");
     assert_eq!(line, 2, "should be on line 2 (the import line)");
     assert_eq!(
@@ -134,7 +118,6 @@ fn multiple_missing_exports_each_have_own_span() {
         msg1
     );
 
-    // Different columns.
     let (_, col0) = diag_line_col(&result.diagnostics[0], bad, "consumer.dag");
     let (_, col1) = diag_line_col(&result.diagnostics[1], bad, "consumer.dag");
     assert_ne!(
@@ -142,8 +125,6 @@ fn multiple_missing_exports_each_have_own_span() {
         "Foo and Bar should have different column positions"
     );
 }
-
-// ── Unresolved import: module not found ─────────────────────────────────
 
 #[test]
 fn unresolved_import_names_module() {
@@ -168,8 +149,6 @@ fn unresolved_import_names_module() {
         msg
     );
 }
-
-// ── Unresolved type ─────────────────────────────────────────────────────
 
 #[test]
 fn unresolved_type_in_field() {
@@ -196,10 +175,8 @@ fn unresolved_type_in_field() {
     );
 }
 
-// ── Duplicate module ────────────────────────────────────────────────────
-
 #[test]
-#[ignore] // 78s — hanging in compile pipeline; triage under PERF track
+#[ignore = "78s — hanging in compile pipeline; triage under PERF track"]
 fn duplicate_module_detected() {
     let a = "module dup\ntype A { x: Int }\n";
     let b = "module dup\ntype B { y: Int }\n";
@@ -224,8 +201,6 @@ fn duplicate_module_detected() {
         msg
     );
 }
-
-// ── Bare container types ───────────────────────────────────────────────
 
 #[test]
 fn bare_container_type_detected() {
@@ -272,8 +247,6 @@ fn parameterized_container_no_false_positive() {
 
 #[test]
 fn unknown_type_name_no_arity_false_positive() {
-    // A user-defined type with no children should NOT trigger ArityMismatch.
-    // container_expected_arity returns None for unknown names → no arity check.
     let source = "module custom\ntype Widget { label: String }\ntype Bag { item: Widget }\n";
     let result = compile_multi(&[("custom.dag", source)]);
 
@@ -290,11 +263,8 @@ fn unknown_type_name_no_arity_false_positive() {
     );
 }
 
-// ── Empty list without type context ────────────────────────────────────
-
 #[test]
 fn empty_list_wrong_expected_type() {
-    // [] in result position where expected type is non-collection → diagnostic.
     let source = "module elist\nfn make_stuff() -> String {\n  []\n}\n";
     let result = compile_multi(&[("elist.dag", source)]);
 
@@ -346,8 +316,6 @@ fn empty_list_with_type_context_no_false_positive() {
     );
 }
 
-// ── No false positives ─────────────────────────────────────────────────
-
 #[test]
 fn clean_compile_produces_zero_diagnostics() {
     let source = "module clean\ntype Widget { label: String, count: Int }\n";
@@ -358,9 +326,3 @@ fn clean_compile_produces_zero_diagnostics() {
         diagnostic_messages(&result)
     );
 }
-
-// NOTE: NonEmptyList and NonEmptySet were removed from metadata tables
-// but the compiler does not yet reject undeclared type names in field
-// positions (no unresolved-type diagnostic). Negative tests for
-// fail-closed behavior deferred until the resolve stage emits
-// diagnostics for unresolved type references.

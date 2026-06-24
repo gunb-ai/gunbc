@@ -1,67 +1,105 @@
-// gunbc/ci_floor_measurement.dag — the CI floor's MEASURED per-shard memory peak (§1-C).
-//
-// This is the committed half of the §1 measurement→plan loop (realization-measurement-loop.md
-// Phase 0/1). The spawn-width derivation (src/v2/workflow/ci_floor_plan.dag) divides the LIVE
-// host memory budget by the per-shard peak recorded HERE. Per DESIGN §3 (measured⇒peripheral):
-//   - the per-shard peak is OUR measurement → we COMMIT it, provenance-stamped (this file);
-//   - the cgroup budget is authored by an EXTERNAL system (the host/scheduler) → the host
-//     realizer READS it live (claim_executor), never committed.
-// This file is the peripheral measured realization; the v2 plan stays pure topology.
-//
-// NOT a hand-grounded literal: the number below is claim_executor's MEASURED VmHWM emit
-// ("[measurement] floor peak RSS: <bytes> (VmHWM) at spawn_width=N", added in #5431). It
-// replaces — does not re-add — the ~14GB hand-grounded literal #5419 deleted as unwired.
-//
-// ── PROVENANCE (re-stamp on every re-measure) ────────────────────────────────
-//   source emit : "[measurement] floor peak RSS: 8400113664 bytes (VmHWM) at spawn_width=4"
-//   run         : GitHub Actions run 27893441091 (#5431 PR CI, job 82540829121)
-//   commit      : cb71163cf2 (the #5431 merge that landed the VmHWM emit)
-//   corpus      : 616 discovery witnesses (0 skipped)
-//   date        : 2026-06-21
-// Each DiscoveryBatch shard does a WHOLE-TREE resolve, so the per-shard peak ≈ the whole-floor
-// VmHWM ÷ the spawn_width it was measured at (the concurrency). It scales with TREE size, not
-// witnesses-per-shard — which is why a larger tree (the old ~2900-row era) peaked far higher.
-//
-// 🟡 SCAFFOLD — feature:measured-peak-drift-gate —
-// consumer: ci_floor_plan.gunbc_ci_floor_spawn_width (via std.realization_width).
-// RESIDUE (DESIGN §6, legit unstructurable-before-execution): the committed peak is stale in
-// exactly ONE dangerous direction — the tree grows un-re-stamped → committed peak too LOW →
-// ⌊budget ÷ peak⌋ too HIGH → OOM. A peak is fundamentally a runtime OUTPUT (you cannot know a
-// run's peak before running it), so a committed-prior-measurement + a drift-check is the legit
-// §6 residue, not a construction wall. The #5431 emit each run is the drift MONITOR but nothing
-// GATES on it yet (observe-by-eyeball = validation, not construction).
-// dissolve-on: a cheap CI gate compares this committed peak against the live emit's VmHWM÷width
-// and fails closed when committed is stale-LOW beyond a margin (re-stamp required). Out of scope
-// for the §1-C width PR; this marker keeps the committed fact from being a silent staleness trap.
-
 module gunbc.ci_floor_measurement
 
 import std.measure { ByteSize, byte_size }
-import std.types { Int }
+import std.types { Int, List, String, Bool }
 import std.realization_measurement {
   ConcurrentMemoryPeakSample,
   concurrent_memory_peak_per_share,
 }
 
-// The measured whole-floor concurrent peak (VmHWM) bundled with the concurrency it was sampled
-// at — ONE fact (a ConcurrentMemoryPeakSample), the single authority for the §1-C derivation.
-// Peak and concurrency are only meaningful together (per-share = peak ÷ concurrency), so they
-// live in one carrier rather than as two loose rows that could drift apart. Re-stamp the pair
-// here on every re-measure (provenance above).
 data gunbc_ci_floor_measured_peak: ConcurrentMemoryPeakSample = ConcurrentMemoryPeakSample {
-  peak: byte_size(8400113664)
+  peak: byte_size(11592347648)
   concurrency: 4
 }
 
-// Per-shard peak: each DiscoveryBatch shard does a whole-tree resolve, so the per-shard peak is
-// the measured concurrent peak distributed across its sample concurrency. Delegates to the std
-// measure-algebra derivation (std.realization_measurement) — no inline unwrap/divide/re-ground
-// here; the division is a grounded measure operation, not a one-off expression.
 fn gunbc_ci_floor_per_shard_peak_rss_bytes() -> ByteSize {
   concurrent_memory_peak_per_share(sample: gunbc_ci_floor_measured_peak)
 }
 
-// Fail-closed fallback width when the host cannot read a live memory budget: the last
-// known-safe MEASURED width (the run above passed at width 4 = 8.40 GB concurrent on the real
-// fleet). A bounded, grounded fallback — never fabricated, never an unbounded memory-blind width.
+fn gunbc_ci_floor_whole_run_peak_rss_bytes() -> ByteSize {
+  gunbc_ci_floor_measured_peak.peak
+}
+
+data gunbc_ci_host_container_memory_cap: ByteSize = byte_size(33578549248)
+
+data gunbc_ci_floor_runner_margin_num: Int = 6
+data gunbc_ci_floor_runner_margin_den: Int = 5
+
 data gunbc_ci_floor_conservative_fallback_width: Int = 4
+
+type JobCgroupPeakMeasurement
+  = JobCgroupPeakMeasured { cgroup_peak: ByteSize }
+  | JobCgroupPeakUnmeasured
+
+type CiJobPeak {
+  job: String
+  peak: JobCgroupPeakMeasurement
+}
+
+data gunbc_ci_job_peaks: List<CiJobPeak> = [
+  CiJobPeak { job: "ci", peak: JobCgroupPeakMeasured { cgroup_peak: byte_size(25769803776) } },
+  CiJobPeak { job: "rust_tests", peak: JobCgroupPeakMeasured { cgroup_peak: byte_size(25769803776) } },
+]
+
+data gunbc_ci_job_cgroup_peak_provenance: String = "measured-conservative: 24GiB round-up over observed 16-23GiB heavy ci/rust_tests cgroup whole-tree peaks; dissolve-on a per-job measured cgroup whole-tree VmHWM (a lower number only -> the over-commit-safe direction)"
+
+data gunbc_ci_per_session_peak_samples: List<ByteSize> = [
+  byte_size(8879844884),
+  byte_size(4584877588),
+  byte_size(4370129224),
+  byte_size(4284229878),
+  byte_size(3167538381),
+  byte_size(3103113871),
+  byte_size(2952790016),
+  byte_size(2211908157),
+  byte_size(1352914698),
+  byte_size(579820585),
+  byte_size(504658657),
+  byte_size(397284475),
+  byte_size(300647711),
+]
+
+data gunbc_ci_per_session_peak_provenance: String = "measured live (read-only srv2 session-container cgroup memory.peak, 13 concurrent sessions, real high-water marks): min 0.28 / median ~2.06 / max 8.27 GiB. Replaces two non-measurements: the 31.25GiB container cap (~4x the observed max) and the 4GiB live admission knob (below the heavy sessions -> over-commits when a build-heavy session peaks)."
+
+type SessionOperatingPoint
+  = SessionOperatingPointSet { per_session_cap: ByteSize, session_concurrency: Int }
+  | SessionOperatingPointUnset
+
+type SessionAggregateReservation
+  = SessionAggregateMeasured { bytes: ByteSize }
+  | SessionAggregateUnmeasured
+
+type OomdEnforcementEvidence
+  = OomdEnforced
+  | OomdUnverified
+
+data gunbc_ci_effective_memory_max_home_note: String = "RunnerSliceCapEffectiveness is the result of a live systemd MemoryMax effective read: CapEffective\{bytes\} (a finite cgroup cap) or CapUnbounded (MemoryMax=infinity, the inert-cap OOM-reboot vector). It is homed here (a budget_tree-free measurement module), not in fleet_host_budget, so BOTH the slice-level drift detector (fleet_host_budget.runner_slice_cap_drifted) AND the per-slot enforcement carrier (gunbc.runner_slot_enforcement, which also imports std.realization_reconcile) can share the ONE authority without the flat-namespace Reconciliation collision that co-loading fleet_host_budget (-> product.budget_tree.Reconciliation) and std.realization_reconcile.Reconciliation would otherwise trigger. Single effective-MemoryMax-read concept, one home; the name keeps Slice for git-history continuity, it reads any systemd MemoryMax (slice or slot)."
+
+type RunnerSliceCapEffectiveness
+  = CapEffective { bytes: ByteSize }
+  | CapUnbounded
+
+type SessionReservationMode
+  = Regime1WorstCase { point: SessionOperatingPoint }
+  | Regime2AggregateOomd { oomd_eviction_ceiling: ByteSize, session_concurrency: Int, aggregate_reservation: SessionAggregateReservation, oomd_enforcement: OomdEnforcementEvidence }
+  | SessionReservationModeUnset
+
+data gunbc_ci_session_reservation_mode: SessionReservationMode = SessionReservationModeUnset
+
+data gunbc_ci_regime2_aggregate_dissolution_marker: String = "dissolve-on stage:per-type-baseline-build-pool -- Regime2AggregateOomd.aggregate_reservation is the COARSE single-aggregate stand-in. It DISSOLVES into the grounded decomposition host = overhead + Sigma(container-type baselines: GhaRunnerContainer idle ~0.2-0.3GiB + AgentSessionContainer idle ~0.35-0.5GiB, each a measured ResourceEnvelope) + ONE capped shared_build_pool + headroom. The shared build pool is NOT new infra: it is the EXISTING host-wide ctrl-jobserver (scheduling arm) + ctrl-sccache (caching arm) = the two arms of std.realization RealizedStep already unifying GHA-CI builds and session ctrl-builds; its authority is the ctrl-jobserver instance config (build_pool_budget = TOKENS x MIB_PER_JOB, gunbc owns the SHAPE, ctrl owns the values, cited in extdeps per shapes-vs-instances). Coarse-form scaffold per DESIGN sec 6: honest forward-composing, NOT parallel-representation debt; the single aggregate is exactly Sigma(baselines)+build_pool collapsed."
+
+data gunbc_ci_per_run_peak_sharpen_followup: String = "highest-leverage follow-up: gunbc_ci_job_peaks 24GiB is a conservative round-up (observed heavy 16-23GiB); a measured cgroup whole-tree VmHWM per job would LOWER it, freeing host budget for BOTH more runners and more sessions. The per-run footprint is the dominant constraint (24GiB/run is why only ~2-4 runners fit regardless of the session cap), so sharpening it dominates the operating curve."
+
+data gunbc_ci_session_regime_model: String = "REGIME-1 (Regime1WorstCase mode, shipping, safe-now, no runtime floor required): sessions_slice = per_session_cap C * concurrency N -- reserve as if all N sessions sit at their cap simultaneously. This is what the operating curve renders. It forces the hard tension visible in the curve: on a 128GiB host at 24GiB/run you cannot get high concurrency AND full peak coverage AND 3 runners at once. Both regimes are now SELECTABLE via the SessionReservationMode authority (gunbc_ci_session_reservation_mode): resolve_session_slice dispatches REGIME-1 -> C*N and REGIME-2 -> measured aggregate; the committed mode stays SessionReservationModeUnset (fail-closed) until the operator picks."
+
+data gunbc_ci_session_regime2_followup: String = "REGIME-2 (high-concurrency unlock, now a SETTABLE mode = Regime2AggregateOomd, fail-closed pending two inputs): sessions_slice = measured realistic AGGREGATE concurrent peak (the sessions do not all peak together: the 13 samples sum to ~15GiB vs C*N ~128GiB), with C kept only as the per-session OOM CEILING (oomd_eviction_ceiling). The far-smaller aggregate reservation lets high concurrency (16+) AND full coverage (C=8GiB, no kills) AND 3 runners coexist. resolve_session_slice DERIVES it: Regime2AggregateOomd { oomd_eviction_ceiling: C, session_concurrency: N, aggregate_reservation, oomd_enforcement }. TWO fail-closed gates, neither guessed: (a) aggregate_reservation = SessionAggregateUnmeasured until a measured aggregate-concurrent-peak series lands (no aggregate sample committed yet); (b) oomd_enforcement = OomdUnverified until per-cgroup memory.max + systemd-oomd is live and verified on the hosts (operator fix-manifest item 8). That oomd floor is the KEYSTONE: it is both the srv2-reboot fix and the REGIME-2 enabler. REGIME-1 ships now; REGIME-2 unlocks the moment both gates flip to SessionAggregateMeasured + OomdEnforced -- a 1-line mode set, no structural change."
+
+data gunbc_ci_footprint_granularity_note: String = "two distinct memory footprints, intentionally separate carriers (a de-conflation, not a fork): (1) INTER-run whole-run cgroup peak gunbc_ci_job_peaks (~24GiB) decides how many runs/runners CO-RESIDE per host -> the conserving budget tree; (2) WITHIN-run per-shard peak gunbc_ci_floor_per_shard_peak_rss_bytes (~2.9GiB) decides parallelism INSIDE one run against its container cap -> memory_aware_spawn_width (#5444). Different granularity (whole-run vs per-shard) and different decision, so two carriers. Do not consolidate them into one authority."
+
+data gunbc_ci_footprint_bridge_followup: String = "deferred unification (named follow-up, NOT done here): the inter-run whole-run peak is plausibly width x per-shard-peak + base, so the INTER-run footprint could eventually DERIVE from the within-run model once both are measured -- the real single authority. Not attempted in this PR: it would re-couple the two carriers and risk zeroing the live floor width. Also a future derive-target: the within-run spawn width (~4) is itself a conservative/hand value under the all-spawns-through-dag end-state."
+
+type HostFixedOverhead
+  = HostFixedOverheadMeasured { bytes: ByteSize }
+  | HostFixedOverheadUnmeasured
+
+data gunbc_ci_host_fixed_overhead: HostFixedOverhead = HostFixedOverheadMeasured { bytes: byte_size(17179869184) }

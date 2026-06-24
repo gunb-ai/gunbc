@@ -1,50 +1,20 @@
-// extdeps/rust/rustup.dag — The Rust toolchain installer.
-//
-// Spec: https://rust-lang.github.io/rustup/
-// Version: rustup 1.27+ (current stable as of 2026)
-//
-// This is a STUB. It documents the rustup-managed dependencies our
-// workflows actually rely on. Cargo itself is modeled separately in
-// extdeps/rust/cargo.dag — this file describes how cargo gets onto a
-// system in the first place.
-//
-// What we actually depend on from rustup:
-//   - cargo binary, installed by default with the stable toolchain
-//   - rustc, installed by default
-//   - Pinned toolchain channel: **single authority** is `rust-toolchain.toml`
-//     `[toolchain].channel` only (this stub does not duplicate that string).
-//
-// What we do NOT currently depend on:
-//   - Extra rustup components beyond rust-toolchain.toml (rustfmt + clippy today)
-//   - Cross-compilation targets (gunbc only builds for the host)
-//   - Multiple toolchains (no toolchain switching)
-//
-// CI uses actions-rust-lang/setup-rust-toolchain (see .github/workflows/ci.yml), which
-// reads rust-toolchain.toml. Local dev uses rust-toolchain.toml when present, else
-// whatever rustup ships as stable.
-//
-// Future:
-//   When we model toolchain switching, channels, components, or
-//   cross-targets, this file gets full coverage. For now it's the
-//   dependency declaration.
-
 module extdeps.rustup
 
 import std.types { NonEmptyStr }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
 
-// ── Channel ─────────────────────────────────────────────────────────
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "rust-lang.github.io/rustup/"
+  }
+}
 
-// Closed set of well-known channels. Custom date-pinned channels
-// (e.g., "nightly-2025-01-15") are out of scope until we need them.
 type RustChannel = Stable | Beta | Nightly
 
-// ── Documented dependencies ─────────────────────────────────────────
-
-// Where to install rustup if missing. Used by extdeps.tools install_hint.
 data rustup_install_url: NonEmptyStr = "https://rustup.rs"
 
-// Default channel we expect when "rustup default" is queried.
 data default_channel: RustChannel = Stable
 
-// Rustup docs URL for reference.
 data rustup_docs: NonEmptyStr = "https://rust-lang.github.io/rustup/"

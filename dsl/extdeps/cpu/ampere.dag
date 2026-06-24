@@ -1,18 +1,19 @@
-// extdeps/cpu/ampere.dag — Ampere CPU model catalog (vendor data authority).
-//
-// Ampere's published Altra-family parts, as extdeps.cpu CpuModelCatalogRow values.
-// Vendor hardware is an external dependency: it lives in extdeps/, importing the
-// catalog SHAPE from extdeps/cpu. extdeps/cpu owns only the shape; it does not enumerate
-// any one vendor's lineup. Which specific part a given host runs is an operator
-// deployment fact (ctrl), not a fact about Ampere.
-
 module extdeps.cpu.ampere
 
 import extdeps.cpu.types { Architecture, CpuModelCatalogRow, CpuSocket, SocketPackage }
 import extdeps.vendor.ampere { ampere }
 import std.measure { hardware_thread_count, hertz, watt }
 
-// Ampere Altra Max M128-30 — 128c/128t, 183W, Neoverse-N1.
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "en.wikipedia.org/wiki/Ampere_Altra"
+  }
+}
+
 data altra_max_m12830_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
   model_number: "M128-30",
   oem_listing_id: none,
@@ -25,7 +26,6 @@ data altra_max_m12830_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
   tdp_watts: watt(183),
 }
 
-// Ampere Altra Q64-30 — 64c/64t, 124W.
 data altra_q6430_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
   model_number: "Q64-30",
   oem_listing_id: "AC-106418002",

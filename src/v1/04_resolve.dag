@@ -1,5 +1,3 @@
-// Type resolution walk for the v2 namespace reconciler.
-
 module v1.compiler.infer_resolve
 
 import std.types { SourceSpan, container_param_name }
@@ -42,9 +40,6 @@ import v1.compiler.infer_env {
   TypeEnv, TypeBinding, lookup_type, lookup_type_by_name, lookup_type_for, is_recursive_type, is_recursive_type_by_name, is_recursive_type_for, authored_name
 }
 
-// G1 Measure phantom tags: unit coproduct variants (Quantity Memory,
-// Scale One) are valid phantom type arguments even though they are not
-// standalone type declarations.
 fn is_unit_variant_node(variant: Node) -> Bool {
   (variant.children |> count) == 0
 }
@@ -71,13 +66,6 @@ fn structural_type_for_variant_lookup(env: TypeEnv, ty: Node) -> Node {
   } else { ty }
 }
 
-// Fail-closed phantom-tag resolution: scan all type bindings, collect EVERY
-// coproduct whose unit-variant name matches, and resolve ONLY when exactly one
-// matches. An ambiguous tag (>1 coproduct defining the same short variant name,
-// e.g. two unrelated coproducts both with `One`) resolves to `none` rather than
-// silently picking the first by map-key iteration order — the unresolved
-// phantom then surfaces a downstream diagnostic instead of a nondeterministic
-// shadow. (Was: first-match-wins fold; see #4868 review.)
 fn lookup_unit_variant_phantom_type(env: TypeEnv, variant_name: String) -> Node? {
   let matches = collect_unit_variant_phantom_matches(env: env, variant_name: variant_name)
   if matches |> count == 1 {
@@ -105,7 +93,6 @@ fn collect_unit_variant_phantom_matches(env: TypeEnv, variant_name: String) -> L
   )
 }
 
-// Gate #60 Slice Z: anonymous decimal width literals in `<…>` type-arg position.
 fn is_width_nat_type_literal(n: Node) -> Bool {
   match n.expr_data {
     ExprLiteral { value: LitInt { value: _ } } => true
@@ -119,9 +106,6 @@ fn is_type_variable(inferred: InferredNode) -> Bool {
   }
 }
 
-// When peeling a one-level type alias to its structural target, keep the
-// declaration/reference ident_span so authored_name_at still reports the brand
-// name (UserId vs AccountId) instead of the shared carrier (Refined).
 fn with_authored_identity(identity: Node, structural: Node) -> Node {
   Node {
     name: structural.name, ident: structural.ident, span: structural.span, ident_span: identity.ident_span,
@@ -134,7 +118,6 @@ fn with_authored_identity(identity: Node, structural: Node) -> Node {
   }
 }
 
-// After env binding resolve, keep declaration-site brand on the structural carrier.
 fn preserve_nominal_brand_on_resolve(
   identity: Node,
   structural: Node,
@@ -147,8 +130,6 @@ fn preserve_nominal_brand_on_resolve(
   } else { structural }
 }
 
-// Peel alias bindings for call-site arg check: structural carrier with
-// reference-site brand identity (bounded A3 — not a full re-resolve).
 fn peel_nominal_alias_identity(n: Node, env: TypeEnv, module_name: String) -> Node {
   let source_indices = env.source_indices
   let brand = authored_name_at(source_indices: source_indices, node: n)
@@ -177,10 +158,6 @@ fn peel_nominal_alias_identity(n: Node, env: TypeEnv, module_name: String) -> No
     Absent => n
   }
 }
-
-// =========================================================================
-// Result types for type resolution
-// =========================================================================
 
 type NodeResolveResult {
   resolved: Node
@@ -237,18 +214,10 @@ type ResourceUseResult {
   diagnostics: List<ErrorNode>
 }
 
-// =========================================================================
-// Resolve a Node type reference
-// =========================================================================
-
 fn resolve_node(n: Node, env: TypeEnv, module_name: String) -> NodeResolveResult {
   resolve_node_bounded(n: n, env: env, module_name: module_name, depth: 0)
 }
 
-// Applied-generic use sites may still carry the alias brand in ident_span
-// (ByteSize) while the authored carrier name is structural (Measure). Env
-// lookup by brand returns the alias decl (0 params); generic instantiation
-// must resolve the structural decl instead.
 fn resolve_generic_use_decl(env: TypeEnv, n: Node) -> Node {
   let brand = authored_name(env: env, node: n)
   match lookup_type_for(env: env, node: n) {
@@ -350,9 +319,6 @@ fn is_parametric_type_alias_decl(item: Node) -> Bool {
   (item.params |> count) > 0 && item.connective == NoConnective && item.body == none && item.transport == none && item.inferred != none
 }
 
-// Parametric alias RHS (`type List<T> = FreeMonoid<T>`) must keep the authored
-// applied-type shell for emit; full resolve expands the base into its structural
-// definition and erases nominal base/type-arg/module facts (P2/P3).
 fn resolve_nominal_alias_rhs(n: Node, env: TypeEnv, module_name: String) -> NodeResolveResult {
   if n.connective == NoConnective && n.children |> count > 0 {
     let arg_results = n.children |> map(child => resolve_nominal_alias_rhs(n: child, env: env, module_name: module_name))
@@ -547,30 +513,19 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
       Absent => NodeResolveResult { resolved: n, diagnostics: [] }
     }
   } else if n.children |> count == 0 {
-    if is_recursive_type_for(env: env, node: n) {
+    let n_target_is_coproduct_container = match n.inferred { Present { value: Resolved { node: target } } => target.connective == NoConnective && target.children |> count > 0 && is_container_type(name: target.name) && resolve_generic_use_decl(env: env, n: target).connective == Disj  _ => false }
+    if is_recursive_type_for(env: env, node: n) || n_target_is_coproduct_container {
       NodeResolveResult { resolved: n, diagnostics: [] }
     } else {
       match lookup_type_for(env: env, node: n) {
         Present { value: resolved } =>
-          // Topological resolution ensures bindings are fully resolved before
-          // any dependent type is processed. Re-resolving the looked-up node
-          // would redundantly walk the entire expanded subtree, causing
-          // exponential blowup on diamond-shaped dependency graphs (OOM).
-          //
-          // C2.3: For alias nodes (leaf with .inferred but no structure),
-          // follow ONE level of .inferred to return the structural target.
-          // This is O(1), not recursive — the target is already resolved
-          // by topo ordering. Without this, downstream consumers see an
-          // alias_node wrapper and must re-resolve through TypeEnv (layer
-          // downgrade from structural to name-based).
-          //
-          // Preserve CardOptional from the reference node: the env binding
-          // always stores the canonical (Required) definition, but the
-          // reference site may carry CardOptional (e.g. String? → String
-          // in env). Without this, optionality is silently discarded.
           let structurally_resolved = if resolved.connective == NoConnective && resolved.children |> count == 0 && resolved.inferred != none {
             match resolved.inferred {
-              Present { value: Resolved { node: target } } => target
+              Present { value: Resolved { node: target } } =>
+                let target_is_coproduct_use = target.connective == NoConnective && target.children |> count > 0 && is_user_generic_use_site(n: target, env: env) && resolve_generic_use_decl(env: env, n: target).connective == Disj
+                if target_is_coproduct_use {
+                  resolve_node_bounded(n: target, env: env, module_name: module_name, depth: depth + 1).resolved
+                } else { target }
               _ => resolved
             }
           } else { resolved }
@@ -581,8 +536,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
           let n_is_error = if n.inferred != none { is_compiler_error(inferred: n.inferred.value) } else { false }
           let n_is_callable = n.params |> count > 0
           let n_is_type_var = if n.inferred != none { is_type_variable(inferred: n.inferred.value) } else { false }
-          // Arrow nodes (callable types) handled by has_structure above.
-          // Dynamic/Error sentinel names dissolved — no .dag source declares them.
+
           if is_width_nat_type_literal(n: n) || is_kernel_type(name: authored_name(env: env, node: n)) || n_is_type_var || n_is_error || n_is_callable {
             NodeResolveResult { resolved: n, diagnostics: [] }
           } else {
@@ -629,10 +583,6 @@ fn resolve_optional_node(n: InferredNode?, env: TypeEnv, module_name: String) ->
   }
 }
 
-// =========================================================================
-// Field resolution
-// =========================================================================
-
 fn resolve_field(field: Node, env: TypeEnv, module_name: String) -> FieldResult {
   let authored_type = field_node_type_expr(n: field)
   let type_result = resolve_node(n: authored_type, env: env, module_name: module_name)
@@ -661,10 +611,6 @@ fn resolve_field(field: Node, env: TypeEnv, module_name: String) -> FieldResult 
     diagnostics: concat(type_diags, default_diags)
   }
 }
-
-// =========================================================================
-// Param resolution
-// =========================================================================
 
 fn resolve_param(param: Node, env: TypeEnv, module_name: String) -> ParamResult {
   let authored_type = param_node_type_expr(n: param)
@@ -700,14 +646,6 @@ fn resolve_param(param: Node, env: TypeEnv, module_name: String) -> ParamResult 
     diagnostics: concat(type_diags, default_diags)
   }
 }
-
-// =========================================================================
-// Operation resolution
-// =========================================================================
-
-// =========================================================================
-// ResourceUse resolution
-// =========================================================================
 
 fn resolve_resource_use(ru: Node, env: TypeEnv, module_name: String) -> ResourceUseResult {
   let type_result = resolve_node(n: resource_use_resource(n: ru), env: env, module_name: module_name)
@@ -784,10 +722,6 @@ fn resolve_string_part(part: StringPart, env: TypeEnv, module_name: String) -> S
   }
 }
 
-// resolve_header_def, resolve_env_def, resolve_auth_config, resolve_service_config
-// deleted — transport and service config dissolution. Config properties are now
-// resolved by the generic resolve_field_init loop in resolve_item_types.
-
 fn resolve_transport_binding(transport: Node, env: TypeEnv, module_name: String) -> TransportResolveResult {
   if is_local_transport(t: transport, source_indices: env.source_indices) {
     TransportResolveResult { transport: transport, diagnostics: [] }
@@ -815,8 +749,6 @@ fn resolve_transport_binding(transport: Node, env: TypeEnv, module_name: String)
   }
 }
 
-// P5.11: resolve_expr_types uses map_children for single-child cases,
-// make_expr_node with explicit children for multi-child cases.
 fn resolve_expr_types(texpr: Node, env: TypeEnv, module_name: String) -> ExprResolveResult {
   match texpr.expr_data {
     ExprLiteral { value: _ } => ExprResolveResult { expr: texpr, diagnostics: [] }
@@ -833,9 +765,7 @@ fn resolve_expr_types(texpr: Node, env: TypeEnv, module_name: String) -> ExprRes
       }
       ExprResolveResult { expr: map_children(node: texpr, transform: child => r.expr), diagnostics: r.diagnostics }
     ExprCall { call_semantics: cs, descent_evidence: de } =>
-      // bind-once: resolve each arg child a SINGLE time, then split into
-      // resolved children + diagnostics (resolving twice makes a nested
-      // constructor literal O(2^depth) — see ExprListLit/resolve_node_bounded).
+
       let arg_results = texpr.children |> map(arg_node =>
         let val = match arg_node.children |> first { Present { value: v } => v  Absent => arg_node }
         let vr = resolve_expr_types(texpr: val, env: env, module_name: module_name)
@@ -845,7 +775,7 @@ fn resolve_expr_types(texpr: Node, env: TypeEnv, module_name: String) -> ExprRes
       let all_diags = flat_map(arg_results, r => r.diagnostics)
       ExprResolveResult { expr: make_named_expr_node(name: expr_call_func_at(texpr: texpr, source_indices: env.source_indices), expr_data: ExprCall { call_semantics: cs, descent_evidence: de }, children: resolved_children, inferred: texpr.inferred, span: texpr.span, name_span: node_name_span(n: texpr)), diagnostics: all_diags }
     ExprMethodCall { method_semantics: ms } =>
-      // bind-once: resolve each child a SINGLE time (see ExprCall).
+
       let mc_results = texpr.children |> enumerate |> map(pair =>
         let idx = pair.first
         let child = pair.second
@@ -862,7 +792,7 @@ fn resolve_expr_types(texpr: Node, env: TypeEnv, module_name: String) -> ExprRes
       let all_diags = flat_map(mc_results, r => r.diagnostics)
       ExprResolveResult { expr: make_named_expr_node(name: expr_method_name_at(texpr: texpr, source_indices: env.source_indices), expr_data: ExprMethodCall { method_semantics: ms }, children: resolved_children, inferred: texpr.inferred, span: texpr.span, name_span: node_name_span(n: texpr)), diagnostics: all_diags }
     ExprMatch =>
-      // bind-once: resolve each scrutinee/arm a SINGLE time (see ExprCall).
+
       let match_results = texpr.children |> enumerate |> map(pair =>
         let idx = pair.first
         let child = pair.second
@@ -899,9 +829,7 @@ fn resolve_expr_types(texpr: Node, env: TypeEnv, module_name: String) -> ExprRes
       let resolved_children = match br { Present { value: r } => [vr.expr, r.expr]  Absent => [vr.expr] }
       ExprResolveResult { expr: make_named_expr_node(name: let_binding_name_at(texpr: texpr, source_indices: env.source_indices), expr_data: ExprLet, children: resolved_children, inferred: texpr.inferred, span: texpr.span, name_span: node_name_span(n: texpr)), diagnostics: concat(vr.diagnostics, match br { Present { value: r } => r.diagnostics  Absent => [] }) }
     ExprRecordLit { parent_enum: pe } =>
-      // bind-once: resolve each field-init value a SINGLE time (see ExprCall).
-      // This is the arm hit by deep nested constructor literals (Cons/record
-      // chains) — resolving twice per field was O(2^depth).
+
       let fi_results = texpr.children |> map(fi_node =>
         let val = match fi_node.children |> first { Present { value: v } => v  Absent => fi_node }
         let vr = resolve_expr_types(texpr: val, env: env, module_name: module_name)
@@ -928,7 +856,7 @@ fn resolve_expr_types(texpr: Node, env: TypeEnv, module_name: String) -> ExprRes
       let r = match texpr.children |> first { Present { value: b } => resolve_expr_types(texpr: b, env: env, module_name: module_name)  Absent => ExprResolveResult { expr: texpr, diagnostics: [] } }
       ExprResolveResult { expr: make_expr_node(expr_data: ExprLambda, children: concat([r.expr], lam_param_nodes), inferred: texpr.inferred, span: texpr.span), diagnostics: r.diagnostics }
     ExprStringInterp =>
-      // bind-once: resolve each interpolation part a SINGLE time (see ExprCall).
+
       let part_results = texpr.children |> map(part_node =>
         match part_node.expr_data {
           ExprLiteral { value: _ } => ExprResolveResult { expr: part_node, diagnostics: [] }
@@ -977,22 +905,12 @@ fn resolve_expr_types(texpr: Node, env: TypeEnv, module_name: String) -> ExprRes
   }
 }
 
-// =========================================================================
-// Resolve all type expressions within a single Node
-// =========================================================================
-
 fn fn_type_param_names(item: Node, source_indices: Map<String, NewlineIndex>) -> List<String> {
   item.params |> filter(p =>
     param_node_name_at(n: p, source_indices: source_indices) == authored_name_at(source_indices: source_indices, node: param_node_type_expr(n: p))
   ) |> map(p => param_node_name_at(n: p, source_indices: source_indices))
 }
 
-// Detect the `fn f<T>(T: T)` name-shadowing ambiguity. Both the declared
-// type param and the value param satisfy the self-reference heuristic, so
-// fn_type_param_names returns duplicate entries. Surface as a gunbc
-// Diagnostic at the detection point (P3 / modeling-discipline §1):
-// fail-closed means the compiler boundary rejects with a typed diagnostic,
-// not that it succeeds and outsources rejection to rustc.
 fn has_duplicate_type_param_name(names: List<String>) -> Bool {
   names |> enumerate |> any(pair =>
     let idx = pair.first
@@ -1068,7 +986,6 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemResu
   let resolved_transport = if item.transport == none { none } else { Present { value: transport_resolved.transport } }
   let transport_diags = transport_resolved.diagnostics
 
-  // Resolve properties (includes svc_* config properties after ServiceConfig dissolution)
   let prop_results = map(item.properties, p => resolve_field_init(field_init: p, env: env, module_name: module_name))
   let resolved_props = map(prop_results, pr => pr.field_init)
   let prop_diags = flat_map(prop_results, pr => pr.diagnostics)

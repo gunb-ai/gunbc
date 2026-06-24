@@ -1,5 +1,3 @@
-// Service call analysis -- pure graph walks for detecting and expanding
-
 module v1.compiler.infer_service
 
 import std.types { SourceSpan }
@@ -25,10 +23,6 @@ import v1.compiler.infer_items {
   inferred_to_outputs
 }
 
-// =========================================================================
-// Types
-// =========================================================================
-
 type UniqueAccum {
   seen: Map<String, Bool>
   result: List<String>
@@ -44,10 +38,6 @@ type ServiceMethodResult {
   result_type: Node
   op_params: List<Node>
 }
-
-// =========================================================================
-// Typed-receiver service call detection
-// =========================================================================
 
 fn is_typed_service_call_receiver(receiver: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   match receiver.expr_data {
@@ -180,10 +170,6 @@ fn expand_transitive_services(modules: List<TypedModule>, registry: Map<String, 
     else { expand_transitive_services(modules: modules, registry: next, remaining_passes: remaining_passes - 1) }
   }
 }
-
-// =========================================================================
-// Service registry lookups
-// =========================================================================
 
 fn check_service_field_access_node(base_type: Node, field: String, service_registry: Map<String, List<OpEntry>>, source_indices: Map<String, NewlineIndex>) -> Node? {
   if base_type.connective == NoConnective && base_type.children |> count == 0 {

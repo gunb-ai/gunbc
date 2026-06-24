@@ -1,5 +1,3 @@
-// Status: modeled claim + fixture pair, exercising rustc.
-
 module v2.test.language_model.rust_r1
 
 import v2.lens.leaf_model_verification {
@@ -99,7 +97,6 @@ data claim_rust_r1_surface_spelling_fact_ids_stable: TestClaim = EqualsClaim {
   classification: TestClassification { tier: Tier1, layer: Boundary }
 }
 
-// Modeled expectation for falsification probe (rustc E0308).
 data rust_r1_modeled_falsification_expectation: TargetCompileVerdict = TargetCompileRejected {
   diagnostic_code: ^target_diagnostic_e0308_type_mismatch
 }

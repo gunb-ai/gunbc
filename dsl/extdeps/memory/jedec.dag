@@ -1,13 +1,3 @@
-// extdeps/memory/jedec.dag — JEDEC SDRAM generation catalog (cited spec authority).
-//
-// Per-generation monolithic die-density ceilings and standard document ids, as
-// extdeps.memory.types.JedecDdrGenerationCatalogRow values. JEDEC publishes the spec;
-// it is an external dependency: it lives in extdeps/, importing the catalog SHAPE
-// from extdeps/memory. extdeps/memory owns only the shape + the generation taxonomy; it does
-// not carry cited JEDEC document ids or per-generation ceiling magnitudes.
-//
-// Dispatch lives here (DESIGN §3: product → cited catalog row → std projection).
-
 module extdeps.memory.jedec
 
 import std.measure { byte_size }
@@ -21,24 +11,28 @@ import extdeps.memory.types {
   dram_generation_number,
   dram_generation_signaling_family,
 }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
 
-// JESD79-4 (DDR4 SDRAM): monolithic device densities 2/4/8/16 Gbit; 16 Gbit = 2 GiB max.
-// Anchor: JEDEC JESD79-4 § device density organization.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "en.wikipedia.org/wiki/JEDEC_memory_standards"
+  }
+}
+
 data ddr4_generation_catalog: JedecDdrGenerationCatalogRow = JedecDdrGenerationCatalogRow {
   generation: dram_generation_ddr4,
   max_monolithic_die_density: byte_size(count: 2147483648),
   jedec_standard: "JESD79-4",
 }
 
-// JESD79-5 (DDR5 SDRAM): monolithic device densities up to 64 Gbit; 64 Gbit = 8 GiB max.
-// Anchor: JEDEC JESD79-5 § device density organization.
 data ddr5_generation_catalog: JedecDdrGenerationCatalogRow = JedecDdrGenerationCatalogRow {
   generation: dram_generation_ddr5,
   max_monolithic_die_density: byte_size(count: 8589934592),
   jedec_standard: "JESD79-5",
 }
 
-// Fail-closed dispatch fallback: unknown generation → zero ceiling so realizability rejects.
 data unknown_ddr_generation_catalog: JedecDdrGenerationCatalogRow = JedecDdrGenerationCatalogRow {
   generation: dram_generation_unknown,
   max_monolithic_die_density: byte_size(count: 0),

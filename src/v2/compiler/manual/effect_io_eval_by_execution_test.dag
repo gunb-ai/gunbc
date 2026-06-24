@@ -1,9 +1,3 @@
-// Scope: V4-EFFECTS-IO gate — eval-observed ReadResource→WriteResource round-trip through
-//   declare-per-claim EffectIoEvalBundle + inject-per-run handler binding (05_eval consumer).
-// Wave-2 scope: proves handler resume + receipt append on a single fixture slot (locator identity
-//   is singleton-pin interim per v2_effect_io_pure.dag — not distinct-key preservation).
-// Status: executable --claim-run witness; discriminating red: unbound effect_io fails closed.
-
 module v2.test.manual.effect_io_eval_by_execution
 
 import v2.compiler.eval {
@@ -103,11 +97,6 @@ fn effect_io_eval_termination_proof() -> TerminationProof {
   }
 }
 
-// M5 (node://adhoc-7e32be31-47c): the effect-IO roundtrip locator is now content-addressed — it
-// keys on content_hash(runtime_value_node_projection(arg)), which fails closed on an unrepresentable
-// RuntimeUnit. So literals in this roundtrip must reify faithfully: a RuntimePrimitive (always
-// representable) replaces the former unit literal, and the write/read-back hit now exercises the
-// real value-derived key (same literal node → same eval value → same content digest).
 fn effect_io_eval_literal_value() -> RuntimeValue {
   RuntimePrimitive {
     value: RuntimePrimitiveValue {
@@ -258,7 +247,6 @@ test fn effect_io_eval_roundtrip_holds() -> Bool {
   }
 }
 
-// Discriminating red: declare-per-claim bundle absent — effectful roundtrip falls through to call_primitive refusal.
 test fn effect_io_eval_unbound_fail_closed_holds() -> Bool {
   match eval_with_context(
     tree: effect_io_eval_tree(),

@@ -1,6 +1,3 @@
-//! Node-tree projection for `v2.lens.extdeps_shape_transport_policy`.
-//! Parses extdeps `.dag` modules: dead input params per operation + embedded policy literals in data rows.
-
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -71,7 +68,6 @@ fn argv_token_references_param(token: &str, param_name: &str) -> bool {
     token == param_name || token.contains(&format!("{{{param_name}}}"))
 }
 
-// dissolve-on: v2.lens.extdeps_shape_transport_policy.extdeps_input_param_is_transport_bound
 fn input_param_is_transport_bound(param_name: &str) -> bool {
     param_name == "env"
 }
@@ -139,7 +135,6 @@ fn parse_module_items(
     (module.children.clone(), source_indices)
 }
 
-/// Shell-transport argv expression nodes for one `(service, operation)` in an extdeps file.
 pub fn shell_argv_nodes_for_operation(
     path: String,
     service: String,
@@ -169,7 +164,6 @@ pub fn shell_argv_nodes_for_operation(
     panic!("shell argv projection: operation {service}.{operation} not found in {path}");
 }
 
-/// Count dead input params for one `(service, operation)` in a parsed extdeps file.
 pub fn dead_param_count_for_operation(path: String, service: String, operation: String) -> i64 {
     let (items, source_indices) = parse_module_items(&path);
     for item in items.iter() {
@@ -191,7 +185,6 @@ pub fn dead_param_count_for_operation(path: String, service: String, operation: 
     panic!("extdeps argv projection: operation {service}.{operation} not found in {path}");
 }
 
-/// Whole-file dead-param count across all service operations with shell argv.
 pub fn dead_param_count_for_path(path: String) -> i64 {
     let (items, source_indices) = parse_module_items(&path);
     let mut total = 0i64;
@@ -224,7 +217,6 @@ fn literal_string_value(node: &Rc<Node>) -> Option<String> {
     }
 }
 
-// dissolve-on: v2.lens.extdeps_shape_transport_policy.extdeps_argv_token_is_consumer_policy_literal
 fn argv_token_is_consumer_policy_literal(token: &str) -> bool {
     if token.contains('{') && token.contains('}') {
         return false;
@@ -243,7 +235,6 @@ fn argv_token_is_consumer_policy_literal(token: &str) -> bool {
         || token.contains("...")
 }
 
-// dissolve-on: v2.lens.extdeps_shape_transport_policy.extdeps_data_literal_is_embedded_policy_literal
 fn data_literal_is_embedded_policy_literal(value: &str) -> bool {
     if value.contains(' ') {
         true
@@ -275,7 +266,6 @@ fn embedded_policy_literal_count_for_data_node(
     count
 }
 
-/// Count embedded transport/policy literals across all `data` rows in an extdeps file.
 pub fn embedded_policy_literal_count_for_path(path: String) -> i64 {
     let (items, source_indices) = parse_module_items(&path);
     let mut total = 0i64;
@@ -287,7 +277,6 @@ pub fn embedded_policy_literal_count_for_path(path: String) -> i64 {
     total
 }
 
-/// QualifiedName is in the derived module set (build_module_index); path never surfaces to .dag.
 pub fn qualified_name_resolves_in_derived_module_set(qn: &crate::v1_interpreter::Value) -> bool {
     let module_path = crate::module_path_index::qualified_name_value_to_module_path(qn);
     !module_path.is_empty()
@@ -333,8 +322,6 @@ fn module_source_nickname_literal_count_in_node(
     count
 }
 
-/// Count `LitStr` nodes whose value is an exact member of `build_module_path_index().values()`.
-/// dissolve-on: ROADMAP Lane 3a SourceRootIngest (#5126).
 pub fn module_source_nickname_literal_count_for_qualified_name(
     qn: &crate::v1_interpreter::Value,
 ) -> i64 {
@@ -421,7 +408,6 @@ fn policy_leak_count_for_parsed_module(
     count
 }
 
-/// Structural argv projection — consumer-policy literals in operation argv.
 pub fn policy_leak_count_for_module_path(module_path: String) -> i64 {
     let path = source_path_for_module_path(&module_path);
     let (items, source_indices) = parse_module_items(&path);
@@ -445,14 +431,12 @@ fn transport_fusion_fork_count_for_parsed_module(items: &Rc<Vec<Rc<Node>>>) -> i
     }
 }
 
-/// Structural service-decl projection — transport-fusion fork across handlers.
 pub fn transport_fusion_fork_count_for_module_path(module_path: String) -> i64 {
     let path = source_path_for_module_path(&module_path);
     let (items, _) = parse_module_items(&path);
     transport_fusion_fork_count_for_parsed_module(&items)
 }
 
-/// Gist Create op declares `filename` input (structural — not a filepath nickname check).
 pub fn gist_create_declares_filename_input(module_path: String) -> bool {
     let path = source_path_for_module_path(&module_path);
     let (items, source_indices) = parse_module_items(&path);
@@ -518,7 +502,6 @@ fn map_literal_keys_use_filename_placeholder(
     true
 }
 
-/// Gist Create REST body `files` map keys use `{filename}` — no hardcoded workflow filename.
 pub fn gist_create_files_keyed_by_filename_placeholder(module_path: String) -> bool {
     let path = source_path_for_module_path(&module_path);
     let (items, source_indices) = parse_module_items(&path);
@@ -562,11 +545,6 @@ pub fn gist_create_files_keyed_by_filename_placeholder_for_qualified_name(
     let module_path = crate::module_path_index::qualified_name_value_to_module_path(qn);
     gist_create_files_keyed_by_filename_placeholder(module_path)
 }
-
-// ── extdeps external-authority anchor projection (dissolve-on #5126) ─────────
-// Structural read of `data extdeps_external_authority_anchor` record values — same
-// cohort as embedded_policy_literal_count_for_data_node; scheme is constructor
-// identity (e.g. `Https`), never a URL prefix string.
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum ExternalAuthorityAnchorProjection {
@@ -678,7 +656,6 @@ pub fn external_authority_locator_for_qualified_name(qn: &crate::v1_interpreter:
     external_authority_locator_for_module_path(module_path)
 }
 
-/// Sorted `extdeps.*` module paths from the derived module index (live roster authority).
 pub fn derived_extdeps_module_paths() -> Vec<String> {
     let index = crate::module_path_index::build_module_path_index();
     let mut paths: Vec<String> = index
@@ -727,11 +704,6 @@ pub fn derived_extdeps_modules_value(
     list_value(items)
 }
 
-/// The frozen backfill-pending roster ENTRIES (the `.txt` lines), as `List<QualifiedName>` —
-/// the single authority a `.dag` reverse-soundness witness validates against the INDEPENDENT
-/// live extdeps-module enumeration (`derived_extdeps_modules_value`). A `.txt` entry whose
-/// module is no longer live is a STALE excuse (§5 fail-open: it would silently re-excuse a
-/// future re-added-unanchored module at that path). Sorted for a deterministic projection.
 pub fn backfill_pending_entries_value(
     ctx: &crate::v1_interpreter::InterpContext,
 ) -> crate::v1_interpreter::Value {
@@ -763,8 +735,6 @@ fn backfill_pending_module_paths() -> &'static std::collections::HashSet<String>
     })
 }
 
-/// Slice-1 seed: explicit shrinking exclusion roster for unanchored extdeps modules.
-/// New modules NOT on this list are fail-closed RED until anchored.
 pub fn is_backfill_pending_for_module_path(module_path: &str) -> bool {
     backfill_pending_module_paths().contains(module_path)
 }
@@ -800,6 +770,9 @@ pub fn is_clean_tree_roster_excluded_for_module_path(module_path: &str) -> bool 
     if module_path.starts_with("extdeps.fixture.") {
         return true;
     }
+    if module_path.ends_with(".mock_corpus") {
+        return true;
+    }
     clean_tree_roster_exclusion_paths().contains(&module_path)
 }
 
@@ -831,7 +804,6 @@ fn live_violation_module_paths() -> Vec<String> {
     violations
 }
 
-/// Host-backed live clean-tree verdict (single authority for CI + lens).
 pub fn external_authority_live_clean_tree_holds() -> bool {
     live_violation_module_paths().is_empty()
 }
@@ -843,14 +815,79 @@ pub fn external_authority_live_roster_module_count() -> i64 {
         .count() as i64
 }
 
+fn anchor_present_in_any_source_root(module_path: &str) -> bool {
+    let ws = crate::module_path_index::workspace_root();
+    for root in crate::module_path_index::default_source_roots() {
+        let root_path = std::path::PathBuf::from(&root);
+        if !root_path.is_dir() {
+            continue;
+        }
+        let mut files = Vec::new();
+        crate::cli_run::collect_dag_files_tolerant(&root_path, &mut files);
+        for file in files {
+            let Ok(content) = std::fs::read_to_string(&file) else {
+                continue;
+            };
+            let declares = content.lines().find_map(|l| {
+                l.trim()
+                    .strip_prefix("module ")
+                    .map(|m| m.trim().to_string())
+            });
+            if declares.as_deref() != Some(module_path) {
+                continue;
+            }
+            let rel = file
+                .strip_prefix(&ws)
+                .map(|p| p.to_string_lossy().replace('\\', "/"))
+                .unwrap_or_else(|_| file.to_string_lossy().into_owned());
+            let (items, source_indices) = parse_module_items(&rel);
+            if matches!(
+                read_external_authority_anchor_from_items(&items, &source_indices),
+                ExternalAuthorityAnchorProjection::Present { .. }
+            ) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+pub fn external_authority_anchor_shadow_masked_for_module_path(module_path: String) -> bool {
+    match project_external_authority_anchor(&module_path) {
+        ExternalAuthorityAnchorProjection::Present { .. } => false,
+        ExternalAuthorityAnchorProjection::Absent => {
+            anchor_present_in_any_source_root(&module_path)
+        }
+    }
+}
+
+pub fn external_authority_anchor_shadow_masked_for_qualified_name(
+    qn: &crate::v1_interpreter::Value,
+) -> bool {
+    let module_path = crate::module_path_index::qualified_name_value_to_module_path(qn);
+    external_authority_anchor_shadow_masked_for_module_path(module_path)
+}
+
+pub fn external_authority_live_shadow_mask_holds() -> bool {
+    for path in derived_extdeps_module_paths() {
+        if is_clean_tree_roster_excluded_for_module_path(&path)
+            || is_machinery_exempt_for_module_path(&path)
+        {
+            continue;
+        }
+        if external_authority_anchor_shadow_masked_for_module_path(path) {
+            return false;
+        }
+    }
+    true
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn coverage_domain_module_source_nickname_literal_count_is_zero_after_qn_migration() {
-        // Slice 2 migrated coverage_domain_equivalence `entry:` fields String -> QualifiedName,
-        // so it no longer carries module-path nickname literals: the gate must count zero.
         let path = crate::module_path_index::source_path_for_module_path(
             "v2.test.extdeps_shape_transport_policy.coverage_domain_equivalence".to_string(),
         );
@@ -869,8 +906,6 @@ mod tests {
 
     #[test]
     fn local_red_module_source_nickname_literal_count_is_positive() {
-        // Dedicated RED fixture embeds a real index-member path literal, so the gate stays
-        // discriminating after coverage_domain migrates away its nicknames.
         let path = crate::module_path_index::source_path_for_module_path(
             "v2.test.extdeps_shape_transport_policy.lens_unit.module_source_nickname_literal_local_red"
                 .to_string(),
@@ -967,7 +1002,6 @@ mod tests {
         ));
     }
 
-    /// §5 perturbation: hardcoded `snapshot.md` body key must fail placeholder projection.
     #[test]
     fn gist_create_hardcoded_snapshot_md_red_under_perturbation() {
         let ws = crate::module_path_index::workspace_root();
@@ -1007,7 +1041,6 @@ service github.Gist {
         let _ = std::fs::remove_file(&path);
     }
 
-    /// §5 perturbation: benign no-space env-var name must not flag; shell command must.
     #[test]
     fn embedded_policy_predicate_discriminates_benign_env_var() {
         assert!(
@@ -1083,9 +1116,44 @@ service github.Gist {
     }
 
     #[test]
+    fn mock_corpus_excluded_but_real_sibling_still_in_roster() {
+        assert!(
+            is_clean_tree_roster_excluded_for_module_path("extdeps.git.mock_corpus"),
+            "a *.mock_corpus hermetic replay fixture must be excluded from the anchor roster"
+        );
+        assert!(
+            is_clean_tree_roster_excluded_for_module_path("extdeps.github.mock_corpus"),
+            "*.mock_corpus exclusion must hold across services"
+        );
+        assert!(
+            !is_clean_tree_roster_excluded_for_module_path("extdeps.git.git"),
+            "the real sibling that the mock replays must stay in the roster (exclusion is not fail-open)"
+        );
+        assert!(
+            !is_clean_tree_roster_excluded_for_module_path("extdeps.cloud.cloud"),
+            "a real external-dependency module must stay in the roster"
+        );
+    }
+
+    #[test]
     fn external_authority_live_clean_tree_holds_via_host() {
         assert!(external_authority_live_clean_tree_holds());
         assert!(external_authority_live_roster_module_count() > 150);
+    }
+
+    #[test]
+    fn external_authority_shadow_mask_detector_has_teeth() {
+        assert!(
+            external_authority_anchor_shadow_masked_for_module_path(
+                "extdeps.fixture.external_authority_shadow_masked".to_string()
+            ),
+            "the two-tree shadow fixture (anchor in dsl copy, none in index-resolved src/v2 copy) \
+             must read as masked -- proves the detector is not inert"
+        );
+        assert!(
+            external_authority_live_shadow_mask_holds(),
+            "no live extdeps module may carry an anchor only in a non-index-resolved shadow copy"
+        );
     }
 
     #[test]

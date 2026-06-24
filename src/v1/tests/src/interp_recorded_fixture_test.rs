@@ -1,8 +1,3 @@
-//! Phase 2 hermetic rollout: record/replay faithfulness for service operations.
-//!
-//! RecordedFixture is keyed by content_hash(inputs). `--record` wet-captures;
-//! `--hermetic --fixture-store` replays. Staleness is fail-closed.
-
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -35,12 +30,6 @@ fn fixture_store_dir(name: &str) -> PathBuf {
     ))
 }
 
-/// Copy the filesystem witness dag into `scratch` with its hardcoded `/tmp` target paths
-/// rewritten under `scratch`, returning the rewritten entry to pass as `--entry`. The witnesses
-/// do REAL filesystem I/O; the shared `/tmp/gunbc_fs_write_witness.txt` path made parallel libtest
-/// threads — and concurrent CI jobs on a shared runner — race on the same live file (one test's
-/// mutation corrupts another's read-back). Per-invocation unique paths remove that race; `scratch`
-/// is itself unique (`fixture_store_dir`: pid + nanos), so cross-process runs never collide.
 fn unique_fs_witness_entry(ws: &Path, scratch: &Path) -> PathBuf {
     let src = fs::read_to_string(ws.join("dsl/test/claim/filesystem_write_witness.dag"))
         .expect("read filesystem witness dag");
@@ -97,7 +86,6 @@ fn filesystem_write_witness_record_then_hermetic_replay_holds() {
     fs::create_dir_all(&store_dir).expect("fixture dir");
     let entry = unique_fs_witness_entry(&ws, &store_dir);
 
-    // Wet capture: record live Filesystem.Read/Write responses.
     let record = run_claim_batch(&[
         "--source-root",
         ws.to_str().expect("workspace"),
@@ -122,7 +110,6 @@ fn filesystem_write_witness_record_then_hermetic_replay_holds() {
         store_dir
     );
 
-    // Hermetic replay from fixture store — no live I/O.
     let hermetic = run_claim_batch(&[
         "--source-root",
         ws.to_str().expect("workspace"),
@@ -140,6 +127,75 @@ fn filesystem_write_witness_record_then_hermetic_replay_holds() {
     assert!(
         hermetic.status.success(),
         "hermetic replay must pass from recorded fixtures; stderr={}",
+        String::from_utf8_lossy(&hermetic.stderr)
+    );
+}
+
+// Regression: a large import closure that pulls BOTH the `extdeps.filesystem`
+// `service Filesystem` and the `std.resources` `resource Filesystem` used to drop
+// the service's operations at runtime (-> "unknown service operation:
+// Filesystem.Write"), because runtime service-op registration gated on a
+// name-keyed `item_registry` lookup that the same-named non-service entry won the
+// merge of. The record phase below is wet (live I/O) and exercises that
+// registration; pre-fix it fails at record time, post-fix it records then replays.
+fn closure_scale_witness_entry(ws: &Path, scratch: &Path) -> PathBuf {
+    let src =
+        fs::read_to_string(ws.join("dsl/test/claim/filesystem_write_closure_scale_witness.dag"))
+            .expect("read closure-scale witness dag");
+    let live = scratch.join("fs_closure_scale_witness.txt");
+    let rewritten = src.replace(
+        "/tmp/gunbc_fs_closure_scale_witness.txt",
+        live.to_str().expect("utf8 scratch path"),
+    );
+    let entry = scratch.join("filesystem_write_closure_scale_witness.dag");
+    fs::write(&entry, rewritten).expect("write rewritten closure-scale witness dag");
+    entry
+}
+
+#[test]
+fn filesystem_write_closure_scale_record_then_hermetic_replay_holds() {
+    let ws = workspace_root();
+    let store_dir = fixture_store_dir("fs-closure-scale-record-replay");
+    fs::create_dir_all(&store_dir).expect("fixture dir");
+    let entry = closure_scale_witness_entry(&ws, &store_dir);
+
+    let record = run_claim_batch(&[
+        "--source-root",
+        ws.to_str().expect("workspace"),
+        "--source-root",
+        ws.join("dsl").to_str().expect("dsl root"),
+        "--entry",
+        entry.to_str().expect("entry"),
+        "--function",
+        "filesystem_write_closure_scale_holds",
+        "--record",
+        "--fixture-store",
+        store_dir.to_str().expect("store path"),
+    ]);
+    assert!(
+        record.status.success(),
+        "closure-scale record capture must pass: the Filesystem service must register \
+         even when std.resources' resource Filesystem is in the same import closure; stderr={}",
+        String::from_utf8_lossy(&record.stderr)
+    );
+
+    let hermetic = run_claim_batch(&[
+        "--source-root",
+        ws.to_str().expect("workspace"),
+        "--source-root",
+        ws.join("dsl").to_str().expect("dsl root"),
+        "--entry",
+        entry.to_str().expect("entry"),
+        "--function",
+        "filesystem_write_closure_scale_holds",
+        "--hermetic",
+        "--fixture-store",
+        store_dir.to_str().expect("store path"),
+    ]);
+    let _ = fs::remove_dir_all(&store_dir);
+    assert!(
+        hermetic.status.success(),
+        "hermetic replay of the closure-scale witness must pass from recorded fixtures; stderr={}",
         String::from_utf8_lossy(&hermetic.stderr)
     );
 }
@@ -166,7 +222,6 @@ fn hermetic_fixture_staleness_fails_closed() {
     ]);
     assert!(record.status.success(), "record must capture absent-read");
 
-    // Tamper: backdate recorded_at to force freshness-window expiry on replay.
     for path in fixture_files(&store_dir) {
         let bytes = fs::read(&path).expect("read fixture");
         let mut fixture: serde_json::Value = serde_json::from_slice(&bytes).expect("parse fixture");
@@ -387,7 +442,6 @@ fn hermetic_replay_rejects_corrupted_fixture_response() {
     ]);
     assert!(record.status.success(), "record must capture write/read");
 
-    // Tamper: mutate bytes_written in a recorded Write response fixture (nested tagged JSON).
     for path in fixture_files(&store_dir) {
         let bytes = fs::read(&path).expect("read fixture");
         let mut fixture: serde_json::Value = serde_json::from_slice(&bytes).expect("parse fixture");
@@ -435,7 +489,7 @@ fn hermetic_replay_rejects_corrupted_fixture_response() {
         combined.contains("FAIL") || combined.contains("deserialization"),
         "expected witness failure on corrupted fixture, got:\n{combined}"
     );
-    let _ = target; // witness path (recorded under /tmp)
+    let _ = target;
 }
 
 #[test]
@@ -462,7 +516,6 @@ fn hermetic_replay_uses_fixture_not_live_fs_after_mutation() {
     ]);
     assert!(record.status.success(), "record must capture");
 
-    // Mutate live filesystem AFTER record — hermetic must NOT observe this.
     fs::write(&target, b"MUTATED-LIVE-FS-CONTENT").expect("mutate live file");
 
     let hermetic = run_claim_batch(&[
@@ -484,7 +537,7 @@ fn hermetic_replay_uses_fixture_not_live_fs_after_mutation() {
         "hermetic must replay recorded bytes, not live FS; stderr={}",
         String::from_utf8_lossy(&hermetic.stderr)
     );
-    let _ = payload; // original recorded payload
+    let _ = payload;
 }
 
 #[test]
@@ -520,9 +573,6 @@ fn filesystem_hermetic_without_fixture_store_fails_closed() {
     let _ = fs::remove_dir_all(&scratch);
 }
 
-// §5 discriminating pair for the filesystem_read builtin hermetic gate. The builtin must route
-// through modeled Filesystem.Read — NOT v1_rt::filesystem_read — so hermetic runs honor the
-// same record/replay / fail-closed gate as service ops.
 #[test]
 fn filesystem_read_hermetic_without_fixture_fails_closed() {
     let ws = workspace_root();
@@ -602,19 +652,6 @@ fn filesystem_read_record_then_hermetic_replay_holds() {
     );
 }
 
-// M4 hermetic-realization fold: the PUBLISHED mock corpus is the single authority the runtime
-// reads to decide hermetic realizability — the SAME model the M2 mock_totality_lens reads. This is
-// the §5 discriminating pair (a real consumer GREEN by execution PLUS a discriminating input that
-// goes RED when the runtime decision and the published model DISAGREE), proven on the REAL
-// claim_batch CLI path (a subprocess over dsl/test/claim/m4_governed_service_witness.dag), NOT an
-// in-process harness that embeds its own corpus:
-//   - GREEN: GovernedProbe.Allowed IS a published case   -> the op realizes (via its inline mock).
-//   - RED:   GovernedProbe.Forbidden is NOT published, on the SAME corpus-governed service, yet it
-//            HAS an inline mock_response -> the run fails closed (non-zero exit). The teeth:
-//            without the corpus read, Forbidden would silently return its inline mock.
-// Hermetic with NO --fixture-store, so realization falls to the inline-mock branch the gate must
-// override. The corpus rows inhabit the real std.hermetic_replay.PublishedMockCase, resolved from
-// the whole dsl/ tree (M4.1 universal governance — independent of this entry's import closure).
 #[test]
 fn m4_governed_service_published_realizes_unpublished_fails_closed() {
     let ws = workspace_root();
@@ -634,7 +671,6 @@ fn m4_governed_service_published_realizes_unpublished_fails_closed() {
         ])
     };
 
-    // GREEN by execution on the real CLI path: the published op realizes (gate passes -> inline mock).
     let green = common("witness_published_realizes");
     assert!(
         green.status.success(),
@@ -642,9 +678,6 @@ fn m4_governed_service_published_realizes_unpublished_fails_closed() {
         String::from_utf8_lossy(&green.stderr)
     );
 
-    // RED on disagreement (the teeth): the unpublished op on the SAME corpus-governed service must
-    // fail closed, EVEN THOUGH it has an inline mock_response. A vacuous runtime that returned the
-    // inline mock would diverge from the published model — this proves the model is genuinely read.
     let red = common("witness_unpublished_fails_closed");
     let combined = format!(
         "{}{}",
@@ -661,9 +694,6 @@ fn m4_governed_service_published_realizes_unpublished_fails_closed() {
     );
 }
 
-// §5 materializer witnesses for gunbc.auth.credentials.gcp_oauth_access_token(strategy):
-// GREEN runs both strategies hermetically (fixture store); RED perturbation proves dispatch
-// selects the correct leaf (swapped arms return distinguishable wrong tokens).
 #[test]
 fn gcp_oauth_access_token_materializer_holds() {
     let ws = workspace_root();
@@ -700,10 +730,6 @@ fn gcp_oauth_access_token_materializer_holds() {
     );
 }
 
-// M4.1 universal corpus governance: the witness entry imports ONLY the service module — the
-// published corpus lives in a separate file (dsl/test/fixture/m4_universal_governed_corpus.dag)
-// that is NOT in the entry import closure. The runtime must precompute keys from the whole dsl/
-// tree; without that, Forbidden would vacuously realize via its inline mock (M4.0 teeth gap).
 #[test]
 fn m4_universal_corpus_published_realizes_unpublished_fails_closed() {
     let ws = workspace_root();
@@ -831,7 +857,6 @@ fn hermetic_clock_fixture_staleness_fails_closed() {
     ]);
     assert!(record.status.success(), "record must capture Clock.Now");
 
-    // Tamper: backdate recorded_at on Clock.Now fixtures to force freshness expiry.
     for path in fixture_files(&store_dir) {
         let bytes = fs::read(&path).expect("read fixture");
         let mut fixture: serde_json::Value = serde_json::from_slice(&bytes).expect("parse fixture");

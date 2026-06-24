@@ -1,11 +1,3 @@
-// v2.compiler.self_host.closure_witness_layer_roots — self-host closure root authority (§3).
-//
-// Single re-export of gunbc.ci_layer_roots.witness_layer_roots for N_v2 closure gates
-// (compiler_closure_emit_from_ingest_test, discover_source_root_ingest overlay).
-//
-// DISSOLUTION (tracked): host ingest transport + claim_executor read this row at runtime
-// (parity with ci_floor_plan.dag).
-
 module v2.compiler.self_host.closure_witness_layer_roots
 
 import gunbc.ci_layer_roots { witness_layer_roots }

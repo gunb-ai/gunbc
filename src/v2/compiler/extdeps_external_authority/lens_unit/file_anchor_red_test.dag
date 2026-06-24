@@ -1,5 +1,3 @@
-// Scope: RED perturb — file: anchor on non-machinery module.
-
 module v2.test.extdeps_external_authority.lens_unit.file_anchor_red
 
 import v2.lens.extdeps_external_authority {

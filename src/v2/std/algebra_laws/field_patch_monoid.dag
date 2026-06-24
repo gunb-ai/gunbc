@@ -1,6 +1,3 @@
-// Scope: TestClaim corpus for FieldPatch<T> right-biased optional-value patch monoid laws.
-// Consumes: v2.std.patch v2.std.node v2.std.verification.
-
 module v2.test.algebra_laws.field_patch_monoid
 
 import v2.std.patch { FieldPatch, Override, Inherit, compose_field_patch, apply_field_patch, field_patch_monoid }
@@ -28,8 +25,6 @@ fn fp_ok(b: Bool) -> Node {
   if b { fp_pass_node() } else { fp_fail_node() }
 }
 
-
-// Helpers that route through the monoid witness surface, not the raw helpers.
 fn fp_monoid_op(left: FieldPatch<Bool>, right: FieldPatch<Bool>) -> FieldPatch<Bool> {
   let m = field_patch_monoid()
   m.semigroup.magma.op(left, right)
@@ -38,20 +33,12 @@ fn fp_monoid_identity() -> FieldPatch<Bool> {
   field_patch_monoid().identity
 }
 
-
-// ── Helper-level law witnesses (apply/compose directly) ───────────────────────
-
-// Left identity: compose(Inherit, Override{v}) applies as Override{v}.
 data witness_left_identity: Bool = apply_field_patch(base: false, patch: compose_field_patch(left: Inherit, right: Override { value: true })) == true
 
-// Right identity: compose(Override{v}, Inherit) applies as Override{v}.
 data witness_right_identity: Bool = apply_field_patch(base: false, patch: compose_field_patch(left: Override { value: true }, right: Inherit)) == true
 
-// Right-bias: compose(Override{left}, Override{right}) applies as Override{right} (later layer wins).
 data witness_right_bias: Bool = apply_field_patch(base: true, patch: compose_field_patch(left: Override { value: true }, right: Override { value: false })) == false
 
-// Associativity: apply((a∘b)∘c, base) == apply(a∘(b∘c), base).
-// a=Override{true}, b=Override{false}, c=Inherit → both sides yield false from base=true.
 fn compose_assoc_lhs() -> Bool {
   apply_field_patch(base: true, patch: compose_field_patch(left: compose_field_patch(left: Override { value: true }, right: Override { value: false }), right: Inherit))
 }
@@ -60,29 +47,17 @@ fn compose_assoc_rhs() -> Bool {
 }
 data witness_associativity: Bool = compose_assoc_lhs() == compose_assoc_rhs()
 
-// apply: Inherit defers to base.
 data witness_inherit_preserves: Bool = apply_field_patch(base: true, patch: Inherit) == true
 
-// apply: Override replaces base.
 data witness_override_replaces: Bool = apply_field_patch(base: true, patch: Override { value: false }) == false
 
-
-// ── Monoid witness consumers (via field_patch_monoid<T>().identity / .op) ─────
-
-// Witness: monoid identity element preserves base (identity == Inherit semantically).
 data witness_monoid_identity_preserves: Bool = apply_field_patch(base: true, patch: fp_monoid_identity()) == true
 
-// Witness: monoid op left identity — op(identity, Override{v}) applies as Override{v}.
 data witness_monoid_left_identity: Bool = apply_field_patch(base: false, patch: fp_monoid_op(left: fp_monoid_identity(), right: Override { value: true })) == true
 
-// Witness: monoid op right identity — op(Override{v}, identity) applies as Override{v}.
 data witness_monoid_right_identity: Bool = apply_field_patch(base: false, patch: fp_monoid_op(left: Override { value: true }, right: fp_monoid_identity())) == true
 
-// Witness: monoid op right-bias — op(Override{left}, Override{right}) applies as Override{right}.
 data witness_monoid_right_bias: Bool = apply_field_patch(base: true, patch: fp_monoid_op(left: Override { value: true }, right: Override { value: false })) == false
-
-
-// ── Claims ────────────────────────────────────────────────────────────────────
 
 data claim_left_identity: TestClaim = CompilesClaim {
   label: "field_patch/compose: Inherit is left identity",
@@ -92,7 +67,6 @@ data claim_left_identity: TestClaim = CompilesClaim {
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-
 data claim_right_identity: TestClaim = CompilesClaim {
   label: "field_patch/compose: Inherit is right identity",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
@@ -100,7 +74,6 @@ data claim_right_identity: TestClaim = CompilesClaim {
   expected_value: fp_pass_node(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
-
 
 data claim_right_bias: TestClaim = CompilesClaim {
   label: "field_patch/compose: right Override wins over left Override (later layer)",
@@ -110,7 +83,6 @@ data claim_right_bias: TestClaim = CompilesClaim {
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-
 data claim_associativity: TestClaim = CompilesClaim {
   label: "field_patch/compose: right-biased composition is associative",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
@@ -118,7 +90,6 @@ data claim_associativity: TestClaim = CompilesClaim {
   expected_value: fp_pass_node(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
-
 
 data claim_inherit_preserves: TestClaim = CompilesClaim {
   label: "field_patch/apply: Inherit preserves base field value",
@@ -128,7 +99,6 @@ data claim_inherit_preserves: TestClaim = CompilesClaim {
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-
 data claim_override_replaces: TestClaim = CompilesClaim {
   label: "field_patch/apply: Override replaces base field value",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
@@ -136,7 +106,6 @@ data claim_override_replaces: TestClaim = CompilesClaim {
   expected_value: fp_pass_node(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
-
 
 data claim_monoid_identity_preserves: TestClaim = CompilesClaim {
   label: "field_patch/monoid: identity element preserves base (Monoid witness)",
@@ -146,7 +115,6 @@ data claim_monoid_identity_preserves: TestClaim = CompilesClaim {
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-
 data claim_monoid_left_identity: TestClaim = CompilesClaim {
   label: "field_patch/monoid: op(identity, p) == p (Monoid witness left identity)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
@@ -155,7 +123,6 @@ data claim_monoid_left_identity: TestClaim = CompilesClaim {
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-
 data claim_monoid_right_identity: TestClaim = CompilesClaim {
   label: "field_patch/monoid: op(p, identity) == p (Monoid witness right identity)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
@@ -163,7 +130,6 @@ data claim_monoid_right_identity: TestClaim = CompilesClaim {
   expected_value: fp_pass_node(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
-
 
 data claim_monoid_right_bias: TestClaim = CompilesClaim {
   label: "field_patch/monoid: op(Override, Override) right-biased (later layer wins)",

@@ -1,0 +1,61 @@
+module gunbc.plans.model_realization_fork
+
+import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
+import std.markdown { MarkdownBlock, TableBlock, AlignNone }
+import gunbc.plans.md_helpers { h2, p, li, ol, cell, row }
+
+fn model_realization_fork_body() -> List<MarkdownBlock> {
+  [
+    p(text: "**Status:** audit (done) + grounding order · **DESIGN.md + carriers are authority** (this *is* the DESIGN open thread, §1/§2/§7). Linked from `ROADMAP.md §0` and [fail-closed-lockdown.md](fail-closed-lockdown.md) §3a."),
+    p(text: "**Verified against the live tree 2026-06-21** (two evidence-backed audits). Line numbers are receipts."),
+    h2(text: "0. Verdict — single seam confirmed, dissolution is two-phase"),
+    p(text: "Every primitive is **modeled** as a `.dag` coproduct and **realized** as a native host `Value`, reconciled by **per-site bridges** (~12–13 distinct ones across ~1500 lines of `v1_interpreter.rs`) — so coverage is accidental and non-compositional. **The single-root hypothesis is CONFIRMED:** the fail-open sites the lock-down found (the `==` straddle, the lossy cache digest, the under-keyed memos) all trace to this one seam. **But grounding does not dissolve it uniformly** — there are two sub-roots: the numeric tower (grounds cleanly) and the `Value::Null` overload (needs splitting, not grounding-away)."),
+    h2(text: "1. The seam"),
+    p(text: "**Native realization** — `Value` enum, 13 variants (`v1_interpreter.rs:448-483`): `Null, Bool, Int, Float, Str, List, Map, Set, Record, Variant, Closure, Fn, Unit`."),
+    p(text: "**Modeled coproducts** (each → a native variant):"),
+    TableBlock {
+      header: row(cells: [cell(text: "modeled"), cell(text: "form"), cell(text: "native"), cell(text: "bridge site"), cell(text: "coverage")]),
+      alignments: [AlignNone, AlignNone, AlignNone, AlignNone, AlignNone],
+      rows: [
+        row(cells: [cell(text: "`Nat`"), cell(text: "`Zero \\| Succ` (`nat.dag:21`)"), cell(text: "`Value::Int`"), cell(text: "pattern match `:2468`; eq guard `:1910`"), cell(text: "partial (pattern + eq only; arithmetic stays native i64)")]),
+        row(cells: [cell(text: "`Bool`"), cell(text: "`True \\| False` (`logic.dag:19`)"), cell(text: "`Value::Bool`"), cell(text: "literal `:1764`; ops via `is_truthy`"), cell(text: "accidental (no coproduct-arm bridge; safe only because no corpus matches nominal arms)")]),
+        row(cells: [cell(text: "`Int`"), cell(text: "`GroupCompletion<Nat>` (`integer.dag:41`)"), cell(text: "`Value::Int`"), cell(text: "native i64 ops"), cell(text: "total at op level, but native, not the modeled form")]),
+        row(cells: [cell(text: "`Optional`"), cell(text: "`Absent \\| Present` (`collection.dag`)"), cell(text: "`Value::Null`"), cell(text: "pattern match `:2528`"), cell(text: "partial (pattern only)")]),
+        row(cells: [cell(text: "`Witness`"), cell(text: "`Violates \\| Holds` (`witness.dag`)"), cell(text: "`Value::Null`"), cell(text: "pattern match `:2507`"), cell(text: "partial (pattern only)")]),
+        row(cells: [cell(text: "`FreeMonoid`"), cell(text: "`Empty \\| Cons` (`algebra.dag:76`)"), cell(text: "`Value::List`/`Str`"), cell(text: "`free_monoid_to_vec :6225`"), cell(text: "total (one centralized flatten — the compositional exemplar)")]),
+      ],
+    },
+    h2(text: "2. Reconciliation chokepoints (fail-open / closed / reconciled)"),
+    TableBlock {
+      header: row(cells: [cell(text: "site"), cell(text: "file:line"), cell(text: "verdict")]),
+      alignments: [AlignNone, AlignNone, AlignNone],
+      rows: [
+        row(cells: [cell(text: "`Value::eq` catch-all"), cell(text: "`:689`"), cell(text: "**FAIL-OPEN** (`_ => false` on straddle) — but left infallible by design (single `CanonKey` authority)")]),
+        row(cells: [cell(text: "`eval_binop` Eq/Ne guard"), cell(text: "`:1910-1922`"), cell(text: "**FAIL-CLOSED** (raises `CrossRepresentationEquality` on numeric straddle) — landed")]),
+        row(cells: [cell(text: "`pattern_matches`"), cell(text: "`:2276-2563`"), cell(text: "RECONCILED (explicit per-variant arms)")]),
+        row(cells: [cell(text: "`value_hash` / `CanonKey::new`"), cell(text: "`:344` / `:309`"), cell(text: "RECONCILED / FAIL-CLOSED (reflexivity check rejects non-reflexive)")]),
+        row(cells: [cell(text: "`parse_table_memo` / `pure_call_memo` / `resolved_graph_cache`"), cell(text: "(see lock-down §3)"), cell(text: "reconciled-with-caveat → the under-keyed / lossy cache holes are this seam at the cache layer")]),
+      ],
+    },
+    p(text: "`FreeMonoid` is the proof that compositional reconciliation is *possible* (one flatten, all ops). Every other primitive is per-site."),
+    h2(text: "3. Grounding order (does it dissolve the guards?)"),
+    ol(items: [
+      li(text: "**Numeric tower — GROUNDED (#5428, 2026-06-21).** Nat construction-side grounded: `Zero → Value::Int(0)`, `Succ\{prev:Int(k)\} → Value::Int(k+1)` — native form == modeled form. `cross_representation_numeric_straddle` is dead-in-corpus for numerics; `eval_binop`'s `CrossRepresentationEquality` guard is **kept as fail-closed backstop** (not removed — guard removal is bundled with the `Value::Null` split in §3.2, fenced out of this window). The discriminating witness `cross_representation_equality_test` confirms: former fork cases now reconcile to `Bool(true)`; genuine diffs (`1==2`, `Succ\{Zero\}==Zero → Int(1)==Int(0)`) stay `false`. **Done.**"),
+      li(text: "**`Value::Null` overload — the deeper root; NO, needs SPLITTING not grounding-away.** `Value::Null` means *None* / *Absent* (Optional) / *miss* (map lookup) / *Violates* (Witness) **all at once**. So a blanket equality guard is wrong — `present == None → false` is *legitimate* at ~131 sites. The fix is semantic: **split the sentinel** — `raw_map_lookup` returns `Optional<V>` directly (not `Null` + later bridge), Witness miss returns `Violates`, etc. — so each meaning has its own carrier. This is HIGH effort / HIGH impact and is the real depth of the root."),
+      li(text: "**`FreeMonoid`** — mostly reconciled already; just ensure every op honours both forms."),
+      li(text: "**`Bool`** — currently safe (no nominal-arm match in the corpus); if one lands, apply the numeric pattern (~5 lines). Low priority."),
+    ]),
+    p(text: "**Net:** grounding the numeric tower kills the *visible* straddle guards; splitting `Value::Null` is what actually closes the fail-open *class*. Until #2 lands, the cache/eq guards are per-site patches, not a dissolved root."),
+    h2(text: "4. Relationship to the lock-down"),
+    p(text: "This is the root the lock-down lane (`fail-closed-lockdown.md` §3a) was hunting. The §4 lock-down fixes (content-key caches, purity oracles, realizer-key lens) are *per-site patches* that stay necessary until this seam is grounded; grounding (esp. #2) makes whole classes of them dead code. Sequence the lock-down fixes to ship now (stop the bleeding), and the grounding (numeric tower → Null split) to dissolve the root behind them."),
+  ]
+}
+
+data model_realization_fork_plan: Plan = Plan {
+  slug: "model-realization-fork",
+  title: "Plan — model↔realization fork (the root of the fail-open problem)",
+  body: model_realization_fork_body(),
+  dissolution: HasTrigger {
+    text: "Delete this doc when the numeric tower is grounded (`Int`/`Nat` native = modeled, guard is dead code) **and** `Value::Null` is split into its grounded carriers (Optional/Witness/miss each own their realization). At that point the per-site bridges are gone and the seam no longer exists."
+  }
+}

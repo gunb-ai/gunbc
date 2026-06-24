@@ -1,22 +1,9 @@
-// std/resources.dag -- Resource declarations for the gunbc DSL.
-//
-// Resources are acquirable capabilities with lifecycle management.
-// The compiler inserts acquire/release nodes, threads resource edges,
-// checks conflicts (keyed by path), and derives test obligations.
-//
-// Resource handles are opaque (non-forgeable) -- only the compiler's
-// acquire nodes can mint them. User code cannot construct handles.
-//
-// See dsl-design.md 4.3 and 7 for the full resource model.
-
 module std.resources
 
 import std.filesystem { FileClassification }
 import std.types { Timestamp, FilePath, TextFilePath }
+import std.measure { ByteSize }
 
-// Opaque proof of resource acquisition. Only the compiler's acquire
-// nodes can mint these -- user code cannot construct handles directly.
-// The `cap` field is a per-process secret that prevents forgery.
 type ResourceHandle {
   type: String
   resource_id: String
@@ -24,42 +11,22 @@ type ResourceHandle {
   cap: Secret
 }
 
-// --- Filesystem -------------------------------------------------------
-
 resource Filesystem {
   kind: Capability
   mode: ReadWrite
   acquire {}
   release {}
 
-  // Classify a filesystem entry. Cheap operation: stats the path,
-  // reads file header bytes + consults @file_types extension mapping.
-  // Returns FileClassification with entry kind (regular file, directory,
-  // symlink, missing, other) so the caller can handle all entry types.
-  //
-  // This is the bridge between unclassified path sources (e.g.,
-  // git.Core.LsFiles) and encoding-specific read operations.
   capability probe {
     input { path: FilePath }
     output { classification: FileClassification }
   }
 
-  // Read text content. Requires TextFilePath -- the compiler rejects
-  // unclassified FilePath here. This is the key type-safety boundary:
-  //   [FilePath] !<= [TextFilePath]  ->  compile error
-  //   [TextFilePath] <= [TextFilePath]  ->  ok
-  //
-  // Guarantees: output content is valid String (Sigma*). If the file
-  // were binary, the probe step would have classified it as
-  // BinaryFilePath and this capability would never be called.
   capability read {
     input { path: TextFilePath }
     output { content: String }
   }
 
-  // Read raw bytes. Accepts any FilePath -- no encoding requirement.
-  // Returns Bytes ({0..255}*), not String (Sigma*).
-  // Use when content encoding doesn't matter or is handled downstream.
   capability read_bytes {
     input { path: FilePath }
     output { content: Bytes }
@@ -71,16 +38,12 @@ resource Filesystem {
   }
 }
 
-// --- Network ----------------------------------------------------------
-
 resource Network {
   kind: Capability
   mode: Read
   acquire {}
   release {}
 }
-
-// --- Clock ------------------------------------------------------------
 
 resource Clock {
   kind: Observation
@@ -92,20 +55,27 @@ resource Clock {
     input {}
     output { timestamp: Timestamp }
   }
-  // Clock.now() is deterministic in tests (seeded from run_id).
-  // In production it reads the system clock -- a hermetic, read-only
-  // side effect. It is NOT @pure (pure nodes have no effects at all).
-}
 
-// --- AuthContext -------------------------------------------------------
+}
 
 resource AuthContext {
   kind: Capability
   mode: Read
   expires: true
   acquire {
-    // Acquisition is itself a func (see gunbc.auth.patterns::credential_chain).
-    // The compiler wires credential_chain output to this resource.
+
   }
   release {}
+}
+
+resource Entropy {
+  kind: Observation
+  mode: Read
+  acquire {}
+  release {}
+
+  capability read_bytes {
+    input { count: ByteSize }
+    output { octets: List<UInt8> }
+  }
 }

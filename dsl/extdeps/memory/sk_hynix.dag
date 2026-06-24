@@ -1,32 +1,20 @@
-// extdeps/memory/sk_hynix.dag — SK Hynix DDR4 module catalog (vendor data authority).
-//
-// SK Hynix's published DDR4 modules, as extdeps.memory DramModuleCatalogRow values.
-// Vendor hardware is an external dependency: it lives in extdeps/, importing the
-// catalog SHAPE from extdeps/memory. extdeps/memory owns only the shape + the manufacturer
-// taxonomy; it does not enumerate any one vendor's parts. Which specific modules a
-// given host is populated with is an operator deployment fact (ctrl), not a fact
-// about SK Hynix.
-//
-// Operator DIMMs: HMA82GR7AFR4N-VK 16GB PC4-21300 @ 2666 MT/s.
-
 module extdeps.memory.sk_hynix
 
 import std.measure { ByteSize, byte_size, bit_width }
 import extdeps.memory.types { DramModuleCatalogRow, dram_generation_ddr4 }
 import extdeps.vendor.sk_hynix { sk_hynix }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
 
-// 16 GiB per stick (1×16GB, 2Gx72). The "PC4-21300" / "PC4-2666V" JEDEC class is
-// data_rate_mts (2666) × 8 bytes rounded to the label — derivable, so not stored.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "en.wikipedia.org/wiki/DDR4_SDRAM"
+  }
+}
+
 data stick_capacity_bytes: ByteSize = byte_size(17179869184)
 
-// HMA82GR7AFR4N-VK, decoded position-by-position from the SK Hynix DDR4 module part
-// number — so each axis is a grounded fact, not a marketplace listing label:
-//   [H] SK Hynix · [R] 288-pin Registered DIMM (RDIMM) · [7] x72 data width (ECC) ·
-//   [4] x4 device organization · [-VK] DDR4-2666 19-19-19 (PC4-21300).
-// The two prior rows ("...server_catalog" / "...ecc_reg_single_rank_catalog") were ONE
-// JEDEC part under two marketplace listings — collapsed to this single grounded row.
-// Anchor: SK Hynix DDR4 module decoder DDR4MODULE_20170623.fm (MODULE TYPE / DATA
-//   WIDTH / ORGANIZATION / SPEED fields); rank per datasheet Rev.1.7 ordering table.
 data hma82gr7afr4n_vk_catalog: DramModuleCatalogRow = DramModuleCatalogRow {
   part_number: "HMA82GR7AFR4N-VK",
   manufacturer: sk_hynix,
@@ -36,10 +24,6 @@ data hma82gr7afr4n_vk_catalog: DramModuleCatalogRow = DramModuleCatalogRow {
   ecc: true,
   buffering: Registered,
   chip_width: bit_width(4),
-  // rank is NOT a part-number field — derived from the SK Hynix datasheet ordering
-  // table (16GB x4 = 1R) and CONFIRMED on live hardware 2026-06-17:
-  //   sudo dmidecode --type 17 | grep -E 'Part Number:|Rank:'   → every DIMM Rank: 1
-  // on both srv1 (altrad8ud-1l2t-1) and srv2 (alstrad8d-1l2t-2), 8 sticks each.
-  // (Do NOT infer rank from the "...R4..." digit — that is device width x4, not rank=4.)
+
   rank_count: 1,
 }

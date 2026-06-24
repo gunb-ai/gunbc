@@ -1,5 +1,3 @@
-// Status: compile-only ratchet for application.dag consumer edge.
-
 module v2.test.lens_application.application_subterm_at_empty_path
 
 import v2.lens.application { subterm_at }

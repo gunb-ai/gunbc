@@ -1,8 +1,3 @@
-// extdeps/container/oci/media_types.dag — OCI Image/Media type constants.
-//
-// Spec: https://github.com/opencontainers/image-spec/blob/main/media-types.md
-// Version: image-spec v1.1.0 (schemaVersion 2)
-
 module extdeps.container.oci.media_types
 
 import extdeps.container.oci.types {
@@ -12,6 +7,16 @@ import extdeps.container.oci.types {
   OciImageLayerV1TarGzip,
   OciImageIndexV1,
   OciDescriptorV1,
+}
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/opencontainers/image-spec/blob/main/media-types.md"
+  }
 }
 
 data oci_image_schema_version: Int = 2

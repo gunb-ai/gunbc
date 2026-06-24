@@ -1,5 +1,3 @@
-// Scope: Option B behavior receipts — algebra_ref_is_grounded guard in canonical_grounding_from_inferred_facts.
-
 module v2.test.manual.infer_algebra_ref_grounding_anchor
 
 import v2.compiler.infer {
@@ -39,8 +37,6 @@ fn anchor_computation_node() -> Node {
 }
 }
 
-// Unit receipts: algebra_ref_is_grounded returns false for bare Atom, true for Conj,
-// and false for ComputationNode (computation nodes are never valid algebra types).
 data algebra_ref_bare_atom_is_ungrounded: Bool = !algebra_ref_is_grounded(algebra: anchor_atom_node(s: ^anchor_algebra_ungrounded_sym))
 
 data algebra_ref_conj_is_grounded: Bool = algebra_ref_is_grounded(algebra: anchor_conj_node())
@@ -71,5 +67,4 @@ fn anchor_inferred_facts_bare_atom_algebra() -> InferredFacts {
   }
 }
 
-// Behavior receipt: canonical_grounding_from_inferred_facts rejects when algebra is a bare Atom.
 data anchor_canonical_grounding_rejects_bare_atom: Outcome<CanonicalGrounding> = canonical_grounding_from_inferred_facts(node: anchor_atom_node(s: ^anchor_resolved_type_sym), facts: anchor_inferred_facts_bare_atom_algebra())

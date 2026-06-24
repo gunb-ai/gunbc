@@ -1,11 +1,4 @@
-// src/v2/extdeps/formatters/lean4_format.dag
-// Scope: Lean 4 formatter configuration model — option space grounded in Lean 4 formatter/Lake option surfaces.
-// Status: T-4.16 scaffold — full documented Lean formatter-facing option surface.
-// Anchor: https://github.com/leanprover/lean4/blob/master/src/Lean/Data/Format.lean
-//         https://github.com/leanprover/lean4/blob/master/src/Lean/Data/Options.lean
-
 module v2.extdeps.formatters.lean4_format
-
 
 import v2.std.diagnostic {
   Locus,
@@ -23,8 +16,6 @@ import v2.std.nat { Nat, Succ, Zero }
 import v2.std.node { Symbol }
 import v2.std.patch { ConfigPatchRecord, config_patch_layer }
 
-
-// Lean.DataValue.ofNat / LeanOptionValue.ofNat carry upstream Nat, not Int.
 type Lean4NameValue
 type Lean4SyntaxValue
 type Lean4NatValue = Nat
@@ -32,11 +23,9 @@ fn lean4_format_authoritative_locus() -> Locus {
   port_locus(port: ^lean4_format_authoritative_locus_port)
 }
 
-
 fn lean4_nat_succ(n: Nat) -> Nat {
   Succ { prev: n }
 }
-
 
 fn lean4_nat_add_ten(n: Nat) -> Nat {
   lean4_nat_succ(
@@ -60,15 +49,10 @@ fn lean4_nat_add_ten(n: Nat) -> Nat {
   )
 }
 
-
 fn lean4_nat_max_materializable() -> Int {
   4096
 }
 
-
-// Catalog default width (120): 12× add_ten on Zero — explicit composition, not Int-recursive peano (T-22).
-// 🟡 gated — feature:lean4-nat-catalog-encoding — bind T-4.16 / T-22 follow-on — dissolve-on-arrival:
-// log-depth or Int-literal Nat substrate for formatter catalog; forbidden: unary Int→Nat recursion in data defaults.
 fn lean4_nat_catalog_format_width() -> Nat {
   lean4_nat_add_ten(
     n: lean4_nat_add_ten(
@@ -93,16 +77,10 @@ fn lean4_nat_catalog_format_width() -> Nat {
   )
 }
 
-
 fn lean4_nat_catalog_format_indent() -> Nat {
   lean4_nat_succ(n: lean4_nat_succ(n: Zero))
 }
 
-
-// Caller must ensure 0 <= value <= lean4_nat_max_materializable(); use make_lean4_nat_value.
-// 🟡 gated — feature:lean4-nat-peano-materialize — bind T-4.16 / T-22 follow-on — dissolve-on-arrival:
-// replace unary Int→Nat Succ recursion with log-depth or literal Nat substrate; forbidden:
-// runtime materialization that builds value-deep Succ chains (catalog 2/120 use explicit encoders).
 fn lean4_nat_peano_from_non_negative_int(value: Int) -> Nat {
   if value == 0 {
     Zero
@@ -110,7 +88,6 @@ fn lean4_nat_peano_from_non_negative_int(value: Int) -> Nat {
     Succ { prev: lean4_nat_peano_from_non_negative_int(value: value - 1) }
   }
 }
-
 
 fn lean4_nat_materialize_non_negative_int(value: Int, at: Locus) -> Outcome<Nat> {
   if value < 0 {
@@ -140,7 +117,6 @@ fn lean4_nat_materialize_non_negative_int(value: Int, at: Locus) -> Outcome<Nat>
     }
   }
 }
-
 
 fn make_lean4_nat_value(value: Int, at: Locus) -> Outcome<Lean4NatValue> {
   if value < 0 {
@@ -172,14 +148,10 @@ fn make_lean4_nat_value(value: Int, at: Locus) -> Outcome<Lean4NatValue> {
   }
 }
 
-
 fn lean4_nat_authoritative_literal(value: Int) -> Outcome<Lean4NatValue> {
   make_lean4_nat_value(value: value, at: lean4_format_authoritative_locus())
 }
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
-// 🟡 gated — feature: lean4-option-closed-set — bind T-4.16 follow-on — dissolve-on-arrival: Lean4OptionValue and Lean4OptionAssignment dissolve when lake_lean_options is replaced by typed fields; the six arms faithfully mirror Lean.DataValue (ofString/ofBool/ofName/ofNat/ofInt/ofSyntax); forbidden: adding arms not present in upstream Lean.DataValue.
 type Lean4OptionValue
   = Lean4StringOption { value: String }
   | Lean4BoolOption { value: Bool }
@@ -188,22 +160,18 @@ type Lean4OptionValue
   | Lean4IntOption { value: Int }
   | Lean4SyntaxOption { value: Lean4SyntaxValue }
 
-
 type Lean4OptionAssignment {
   name: String
   value: Lean4OptionValue
 }
 
-
-// 🟡 gated — feature: lean4-option-closed-set — bind T-4.16 follow-on — dissolve-on-arrival: replace lake_lean_options open list with typed fields once Lean4 documents a fixed set of formatter-relevant set_option keys; forbidden: parallel closed-list approximations outside this substrate.
 type Lean4FormatConfig {
   format_width: Outcome<Lean4NatValue>
   format_indent: Outcome<Lean4NatValue>
   format_unicode: Bool
   pp_oneline: Bool
-  lake_lean_options: List<Lean4OptionAssignment> // 🟡 gated: lean4-option-closed-set
+  lake_lean_options: List<Lean4OptionAssignment>
 }
-
 
 data lean4_format_defaults: Lean4FormatConfig = Lean4FormatConfig {
   format_width: lean4_nat_authoritative_literal(value: 120),
@@ -213,9 +181,7 @@ data lean4_format_defaults: Lean4FormatConfig = Lean4FormatConfig {
   lake_lean_options: [],
 }
 
-
 type Lean4FormatConfigPatch = ConfigPatchRecord<Lean4FormatConfig>
-
 
 fn lean4_format_layer(base: Lean4FormatConfig, patch: Lean4FormatConfigPatch) -> Lean4FormatConfig {
   config_patch_layer(base: base, patch: patch)

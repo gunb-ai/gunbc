@@ -1,27 +1,3 @@
-// src/v2/std/cross_tree/import_model.dag
-//
-// Cross-tree import model: SourceRootRef, SourceRootSet, CrossTreeImport, ImportClosure,
-// TreeFundamentalityOrder, CrossTreeAdmissionVerdict — layer-admission rules derived from
-// LayerPrefix ordinals + TreeFundamentalityOrder (fail-closed, no ledger).
-//
-// GENERIC: all admission directions are explicit data — NOT hard-wired to dsl→v2.
-// The open operator question (DESIGN.md §3 open thread):
-//   - Is dsl→v2.std.* admissible? Supply order: MoreFundamental or CoFundamental for (DslTree, V2Tree).
-//   - Is v2→dsl (ci_floor_plan→gunbc.ci_spec) admissible? Supply order: MoreFundamental for (V2Tree, DslTree).
-//   - Are they peers converging to one shared std? Supply CoFundamental.
-// FundamentalityUnknown is the fail-closed default: any undecided direction is denied.
-//
-// SCAFFOLD — feature:route-c-cross-tree-import-model
-// bind node://adhoc-10a4dbed-059
-// dissolve-on (String): bold-bee 3a.2 QualifiedName landing — replace from_module/to_module String
-//   with QualifiedName; delete this scaffold note.
-// dissolve-on (§3 SourceRootRef tension): Phase B/C/D cross-tree import wiring.
-//   SourceRootRef is the intended single authority for source-tree identity. ci_layer_roots.dag
-//   re-states the same set as String paths because dsl/ cannot yet import from v2.std (the
-//   circular dependency: fixing the fork requires the very mechanism this PR models). Once
-//   cross-tree resolution lands, ci_layer_roots.dag should import SourceRootRef and list its
-//   variants; witness_layer_roots becomes a derivation from SourceRootRef, not a second ledger.
-
 module v2.std.cross_tree.import_model
 
 import v2.std.algebra { FreeMonoid, contains, fold_list }
@@ -29,23 +5,12 @@ import v2.std.layer { LayerPrefix, layer_prefix_ordinal }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 
-
-// ── Source-root vocabulary ────────────────────────────────────────────────────
-
-// SourceRootRef — closed coproduct over the live source trees.
-// Single authority: gunbc.ci_layer_roots.witness_layer_roots = ["src/v2", "dsl"] (§3).
 type SourceRootRef
-  = V2Tree    // src/v2/ source root
-  | DslTree   // dsl/ source root
+  = V2Tree
+  | DslTree
 
-// SourceRootSet — ordered list of source trees in a compilation closure.
 type SourceRootSet = FreeMonoid<SourceRootRef>
 
-
-// ── Import edge ──────────────────────────────────────────────────────────────
-
-// CrossTreeImport — one import edge that crosses source-root boundaries.
-// from_module/to_module: String interim (§3 no-fork — coordinate QualifiedName with bold-bee 3a.2).
 type CrossTreeImport {
   from_tree: SourceRootRef
   from_layer: LayerPrefix
@@ -55,25 +20,14 @@ type CrossTreeImport {
   to_module: String
 }
 
-// ImportClosure — monoid of cross-tree import edges reachable from an entry module.
 type ImportClosure = FreeMonoid<CrossTreeImport>
 
-
-// ── Admission vocabulary ─────────────────────────────────────────────────────
-
-// TreeFundamentalityOrder — relative fundamentality of the to-tree vs the from-tree.
-// This is the open operator question; no default is assumed here (fail-closed = Unknown).
-//   MoreFundamental     — to_tree is strictly more fundamental; admits import if layer-direction holds
-//   LessFundamental     — to_tree is less fundamental; inverts the layer arrow → deny
-//   CoFundamental       — same-level peer trees (e.g., two std-layers converging); admit when layer-direction holds
-//   FundamentalityUnknown — undecided; fail-closed: deny until the operator assigns an order
 type TreeFundamentalityOrder
   = MoreFundamental
   | LessFundamental
   | CoFundamental
   | FundamentalityUnknown
 
-// CrossTreeDenialReason — exhaustive closed coproduct of denial causes (§3 fail-closed).
 type CrossTreeDenialReason
   = CrossTreeFromTreeNotInRootSet
   | CrossTreeToTreeNotInRootSet
@@ -81,13 +35,9 @@ type CrossTreeDenialReason
   | CrossTreeToTreeLessFundamental
   | CrossTreeLayerDirectionViolated
 
-// CrossTreeAdmissionVerdict — fail-closed result; CrossTreeDenied is the default for unknowns.
 type CrossTreeAdmissionVerdict
   = CrossTreeAdmitted
   | CrossTreeDenied { reason: CrossTreeDenialReason }
-
-
-// ── Derived admission functions ───────────────────────────────────────────────
 
 fn source_root_ref_eq(a: SourceRootRef, b: SourceRootRef) -> Bool {
   match a {
@@ -100,14 +50,10 @@ fn source_root_set_contains(roots: SourceRootSet, r: SourceRootRef) -> Bool {
   contains(xs: roots, item: r, eq: source_root_ref_eq)
 }
 
-// cross_tree_layer_direction_holds — imports point toward std, applied cross-tree.
-// Deny if to_layer ordinal > from_layer ordinal (would invert the layer arrow).
 fn cross_tree_layer_direction_holds(edge: CrossTreeImport) -> Bool {
   layer_prefix_ordinal(l: edge.to_layer) <= layer_prefix_ordinal(l: edge.from_layer)
 }
 
-// cross_tree_directional_admit — inner check shared by MoreFundamental and CoFundamental:
-// the import is admitted only when the layer-direction constraint holds.
 fn cross_tree_directional_admit(edge: CrossTreeImport) -> CrossTreeAdmissionVerdict {
   if cross_tree_layer_direction_holds(edge: edge) {
     CrossTreeAdmitted
@@ -116,16 +62,6 @@ fn cross_tree_directional_admit(edge: CrossTreeImport) -> CrossTreeAdmissionVerd
   }
 }
 
-// cross_tree_import_admitted — derived admission rule; no ledger (§3 fail-closed).
-//
-// Admit iff all three conditions hold:
-//   1. Both from_tree and to_tree are present in the SourceRootSet.
-//   2. The TreeFundamentalityOrder is MoreFundamental or CoFundamental.
-//   3. The layer-direction constraint holds: to_layer_ordinal <= from_layer_ordinal.
-//
-// CoFundamental + condition 3 surfaces the open question: peer-tree std imports
-// (dsl.std → v2.std, both ordinal 0) are admitted when layer-direction also holds.
-// Whether (DslTree, V2Tree) is CoFundamental is the operator's decision outside this fn.
 fn cross_tree_import_admitted(
   edge: CrossTreeImport,
   roots: SourceRootSet,
@@ -149,8 +85,6 @@ fn cross_tree_import_admitted(
   }
 }
 
-// cross_tree_import_closure_admitted — all edges in the closure must be admitted.
-// Short-circuits on the first denied edge (fail-closed, §5).
 fn cross_tree_import_closure_admitted(
   closure: ImportClosure,
   roots: SourceRootSet,

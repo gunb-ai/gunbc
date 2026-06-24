@@ -1,0 +1,143 @@
+module gunbc.fleet_intent
+
+import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2, operator_host_srv3 }
+import extdeps.storage.western_digital { wd_black_sn850x_2tb_catalog }
+import extdeps.storage.samsung { samsung_970_evo_plus_2tb_catalog }
+import extdeps.cpu.ampere { altra_max_m12830_catalog }
+import extdeps.cpu.types { CpuFacts, CpuDeploymentFacts }
+import extdeps.boards.asrock_rack { asrock_altrad8ud_1l2t_catalog }
+import std.baseboard { ServerBaseboard }
+import std.bmc { BmcEndpoint, Redfish }
+import std.credentials { CredentialFlow, Stored }
+import std.measure { gibibyte, gibibyte_to_byte_size, hertz }
+import std.os.types { OperatingSystemSurface, Linux, Posix, PosixProcess }
+import std.types { List }
+import product.compute_fabric {
+  ComputeOffer,
+  ComputeSupplyFacts,
+  ComputeHost,
+  ExecutionSurface,
+  MemoryDevice,
+  CpuProcessor,
+  AvailabilityWindow,
+  CostModel,
+  ProviderCostModel,
+  OwnedMarginalZero,
+  PerJobFilesystem,
+  Dram,
+  StorageDevice,
+  nvme_storage_device,
+  Persistent,
+}
+
+data fleet_intent_cpu: CpuFacts = CpuFacts {
+  catalog: altra_max_m12830_catalog,
+  deployment: CpuDeploymentFacts { sustained_per_thread_hz: hertz(3000000000) },
+}
+
+data fleet_intent_os_surface: OperatingSystemSurface = OperatingSystemSurface {
+  kernel: Linux,
+  distro_or_product: none,
+  version: none,
+  filesystem_semantics: Posix,
+  process_semantics: PosixProcess,
+}
+
+data srv1_baseboard: ServerBaseboard = ServerBaseboard {
+  catalog: asrock_altrad8ud_1l2t_catalog,
+  bmc: BmcEndpoint { host: "192.168.1.183", protocol: Redfish },
+}
+data srv2_baseboard: ServerBaseboard = ServerBaseboard {
+  catalog: asrock_altrad8ud_1l2t_catalog,
+  bmc: BmcEndpoint { host: "192.168.1.184", protocol: Redfish },
+}
+data srv3_baseboard: ServerBaseboard = ServerBaseboard {
+  catalog: asrock_altrad8ud_1l2t_catalog,
+  bmc: BmcEndpoint { host: "192.168.1.192", protocol: Redfish },
+}
+
+data srv1_bmc_credential: CredentialFlow = Stored { secret_name: "bmc-srv1-admin" }
+data srv2_bmc_credential: CredentialFlow = Stored { secret_name: "bmc-srv2-admin" }
+data srv3_bmc_credential: CredentialFlow = Stored { secret_name: "bmc-srv3-admin" }
+
+data srv1_nvme0: StorageDevice = nvme_storage_device(
+  catalog: wd_black_sn850x_2tb_catalog,
+  persistence: Persistent,
+)
+data srv2_nvme0: StorageDevice = nvme_storage_device(
+  catalog: wd_black_sn850x_2tb_catalog,
+  persistence: Persistent,
+)
+data srv3_nvme0: StorageDevice = nvme_storage_device(
+  catalog: samsung_970_evo_plus_2tb_catalog,
+  persistence: Persistent,
+)
+
+data srv1_host: ComputeHost = ComputeHost {
+  identity: operator_host_srv1,
+  baseboard: Present { value: srv1_baseboard },
+  processors: [CpuProcessor { cpu: fleet_intent_cpu }],
+  memory: [MemoryDevice { capacity: gibibyte_to_byte_size(g: gibibyte(128)), memory_kind: Dram, bandwidth: none }],
+  storage: [srv1_nvme0],
+  network_interfaces: [],
+}
+data srv2_host: ComputeHost = ComputeHost {
+  identity: operator_host_srv2,
+  baseboard: Present { value: srv2_baseboard },
+  processors: [CpuProcessor { cpu: fleet_intent_cpu }],
+  memory: [MemoryDevice { capacity: gibibyte_to_byte_size(g: gibibyte(128)), memory_kind: Dram, bandwidth: none }],
+  storage: [srv2_nvme0],
+  network_interfaces: [],
+}
+data srv3_host: ComputeHost = ComputeHost {
+  identity: operator_host_srv3,
+  baseboard: Present { value: srv3_baseboard },
+  processors: [CpuProcessor { cpu: fleet_intent_cpu }],
+  memory: [MemoryDevice { capacity: gibibyte_to_byte_size(g: gibibyte(128)), memory_kind: Dram, bandwidth: none }],
+  storage: [srv3_nvme0],
+  network_interfaces: [],
+}
+
+data fleet_intent_known_hosts: List<ComputeHost> = [srv1_host, srv2_host, srv3_host]
+
+fn fleet_intent_execution_surface() -> ExecutionSurface {
+  ExecutionSurface {
+    os: fleet_intent_os_surface,
+    isolation: PerJobFilesystem,
+    container_runtime: none,
+    toolchains: [],
+    mounted_storage: [],
+    network: [],
+  }
+}
+
+fn operator_owned_cost() -> CostModel {
+  CostModel { cost_class: OwnedMarginalZero, rates: ProviderCostModel { placeholder: true } }
+}
+
+data srv1_offer: ComputeOffer = ComputeOffer {
+  provider: "gunbc-operator-srv1",
+  supply: ComputeSupplyFacts {
+    physical: srv1_host,
+    execution: fleet_intent_execution_surface(),
+    cost: Present { value: operator_owned_cost() },
+    observed_performance: [],
+  },
+  available_window: AvailabilityWindow { open: "always-open", close: none },
+  cost_quote: none,
+  constraints: [],
+}
+data srv2_offer: ComputeOffer = ComputeOffer {
+  provider: "gunbc-operator-srv2",
+  supply: ComputeSupplyFacts {
+    physical: srv2_host,
+    execution: fleet_intent_execution_surface(),
+    cost: Present { value: operator_owned_cost() },
+    observed_performance: [],
+  },
+  available_window: AvailabilityWindow { open: "always-open", close: none },
+  cost_quote: none,
+  constraints: [],
+}
+
+data fleet_intent_offers: List<ComputeOffer> = [srv1_offer, srv2_offer]

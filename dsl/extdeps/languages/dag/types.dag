@@ -1,18 +1,17 @@
-// extdeps/languages/dag/types.dag -- Dag target coercion data.
-//
-// The Dag target is used for debug output and pretty-printing.
-// TypeCheckpoints here ensure the emitter's fail-closed path stays
-// intact: literal_suffix returns Some("") for Dag rather than None,
-// so a missing checkpoint on a real target still emits an error.
-//
-// SCHEMA: Type definitions live in std/coercion.dag (shared authority).
-
 module extdeps.languages.dag.types
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
 
 import std.coercion { TypeCheckpoint }
 
-// Dag type checkpoints: identity mapping (dag_name == target_type).
-// literal_suffix is none for all entries — Dag doesn't add suffixes.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/gunb-ai/gunbc/tree/main/dsl/extdeps/languages/dag"
+  }
+}
+
 data dag_type_checkpoints: List<TypeCheckpoint> = [
   { dag_name: "Int",    target_type: "Int",    default_expr: "0",    is_copy: none, literal_suffix: none },
   { dag_name: "Float",  target_type: "Float",  default_expr: "0.0",  is_copy: none, literal_suffix: none },

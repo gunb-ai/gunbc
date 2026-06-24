@@ -1,24 +1,18 @@
-// extdeps/transports/file.dag -- Filesystem transport definition
-//
-// Spec: POSIX.1-2017 File I/O
-//       https://pubs.opengroup.org/onlinepubs/9699919799/functions/read.html
-//       https://pubs.opengroup.org/onlinepubs/9699919799/functions/write.html
-//
-// Configuration schema for service operations bound to filesystem access.
-// A service operation with `transport file { ... }` executes via
-// filesystem read/write at the configured path.
-
 module extdeps.transports.file
 
 import std.fidelity { TransportFidelity }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
 
-// Fidelity row for the filesystem realization (§3: cited specifics live with
-// the realization, not in std). A local read/write (POSIX.1-2017 read/write,
-// no network) is sub-second and hermetic — a local-path boundary is
-// deterministic and replayable without a remote dependency.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "pubs.opengroup.org/onlinepubs/9699919799/functions/read.html"
+  }
+}
+
 data file_transport_fidelity: TransportFidelity = TransportFidelity { depth: S, hermetic: true }
 
-// Configuration type for file transport bindings.
 type FileTransportConfig {
-  base_path: String             // POSIX pathname prefix for operation paths
+  base_path: String
 }

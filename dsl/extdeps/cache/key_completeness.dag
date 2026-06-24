@@ -1,22 +1,7 @@
-// extdeps/cache/key_completeness.dag — cited-key citation-completeness lens (§5/§6).
-//
-// CONSTRUCTION-NOT-VALIDATION (the PR #5423 → #5425 shift): for OUR caches the key-input
-// set is DERIVED from the model (CatalogKeyInputs.ContentAddressed has no inputs field —
-// content_addressed_inputs computes it), so a content-addressed cache cannot under-key by
-// construction; there is nothing here to validate. This lens therefore exists ONLY for the
-// genuinely-unstructurable residue: EXTERNAL vendor caches whose key the vendor computes
-// (NativeInternal), where inputs_considered is a CITED observation of a system we do not
-// control. Validating a CITATION's internal consistency is the legitimate lens use (§6):
-// if we cite that the vendor invalidates on toolchain change (ToolchainChange ∈
-// invalidation_triggers) we must also cite a toolchain axis among its keyed inputs, else
-// our citation is self-contradictory — we'd be claiming a toolchain-sensitive key that
-// omits the toolchain (the §5 stale-pass shape, in the citation rather than our realizer).
-//
-// HandAuthored keys are exempt (invalidation is the author bumping the string, not an input
-// set); ContentAddressed keys are exempt (derived — see above). So this lens fires on
-// NativeInternal rows only. It is a pure reader over the live extdeps.cache.cache catalog.
-
 module extdeps.cache.key_completeness
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
 
 import extdeps.cache.types {
   CatalogKeyDerivationFacts,
@@ -38,10 +23,13 @@ import std.lens_verdict {
 import std.types { Bool }
 import std.list { List }
 
-// The citation-completeness invariant. Fires on NativeInternal (cited vendor) rows only:
-// a cited key that the vendor invalidates on toolchain change MUST cite a toolchain axis
-// (RustcInvocation/ToolchainSpec) among its inputs. ContentAddressed is derived (exempt),
-// HandAuthored is authored (exempt) — neither has an authorable inputs list to mis-cite.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/gunb-ai/gunbc/tree/main/dsl/extdeps/cache"
+  }
+}
+
 fn cache_key_derivation_complete(facts: CatalogKeyDerivationFacts) -> Bool {
   match facts.key_inputs {
     ContentAddressed => true
@@ -55,8 +43,6 @@ fn cache_key_derivation_complete(facts: CatalogKeyDerivationFacts) -> Bool {
   }
 }
 
-// Verdict projection (std.lens_verdict): rich diagnostic on violation. `module_name`
-// is the locus supplied by the caller (the cache row's home).
 fn cache_key_completeness_verdict(facts: CatalogKeyDerivationFacts, module_name: String) -> LensVerdict {
   if cache_key_derivation_complete(facts: facts) {
     Holds
@@ -70,8 +56,6 @@ fn cache_key_completeness_verdict(facts: CatalogKeyDerivationFacts, module_name:
   }
 }
 
-// Roster fold — the live gate. Every catalog row must satisfy citation-completeness
-// (vacuously true for our derived/authored rows; the real check is on cited vendor rows).
 fn cache_catalog_key_completeness_holds(catalog: List<CacheInterfaceCatalogFacts>) -> Bool {
   all(catalog, row => cache_key_derivation_complete(facts: row.key_derivation))
 }

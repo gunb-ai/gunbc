@@ -1,8 +1,3 @@
-// v2/test/claim/diagnostic_sequence_outcome_witness.dag
-//
-// Discriminating witnesses for sequence_outcome / append_outcome_value (DESIGN §5).
-// Proves the DRY delegation path: empty list, ShortCircuit absorb, successful collect.
-
 module v2.test.claim.diagnostic_sequence_outcome_witness
 
 import v2.std.diagnostic {
@@ -59,7 +54,6 @@ fn witness_sequence_outcome_collects_values() -> Bool {
   }
 }
 
-// Discriminating: ShortCircuit absorbs at first Rejected (does not append later Accepted).
 fn witness_sequence_outcome_short_circuits_on_reject() -> Bool {
   match sequence_outcome(
     xs: [
@@ -85,7 +79,6 @@ fn witness_sequence_outcome_accumulate_collects_both_values() -> Bool {
   }
 }
 
-// Discriminating: Accumulate merges both rejection diagnostics (tail non-empty).
 fn witness_sequence_outcome_accumulate_merges_two_rejections() -> Bool {
   match sequence_outcome(
     xs: [outcome_rejected(d: diagnostic_a()), outcome_rejected(d: diagnostic_b())],
@@ -96,7 +89,6 @@ fn witness_sequence_outcome_accumulate_merges_two_rejections() -> Bool {
   }
 }
 
-// Discriminating RED-on-wrong-policy: ShortCircuit keeps only the first rejection.
 fn witness_sequence_outcome_short_circuit_does_not_merge_second_reject() -> Bool {
   match sequence_outcome(
     xs: [outcome_rejected(d: diagnostic_a()), outcome_rejected(d: diagnostic_b())],

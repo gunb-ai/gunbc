@@ -1,6 +1,3 @@
-// extdeps/os/os.dag — OS catalog dispatch hub (per-distro modules under extdeps/os/*).
-// Product → cited catalog row → std.os projection (P2: dispatch lives in extdeps/, not std/).
-
 module extdeps.os.os
 
 import extdeps.os.macos { macos_distribution_catalog_row }
@@ -21,6 +18,15 @@ import std.os.types {
   UbuntuOs,
   Windows1124H2Build26100,
   WindowsOs,
+}
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "en.wikipedia.org/wiki/Operating_system"
+  }
 }
 
 fn cited_operating_system_surface(product: OperatingSystemProduct) -> OperatingSystemSurface {

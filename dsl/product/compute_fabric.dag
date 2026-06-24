@@ -1,16 +1,3 @@
-// product/compute_fabric.dag — Elastic compute fabric (Worksheet A / exploration §4.0f cases 1–8).
-//
-// LAYER: product, not std. This is a DOMAIN MODEL (a compute supply/demand/placement
-// market), not a standard-library primitive. It imports std/ only and is consumed by
-// applications/tests; the operator's CONCRETE fleet instances live further out still
-// (ctrl plans.fabric.operator_fleet), and vendor catalogs in extdeps.{cpu,cloud}.
-//
-// Authority: this module (.dag self-authoritative; worksheet refs retired).
-// Composition: cache via ExecutionReceipt.output only — MUST NOT import cache_interface.
-//
-// Ingress types (UpsertInputRef, ChangeSet, ArtifactRef) are v2.workflow.ci / v2.std.change
-// authority — forward-stubbed as Node until harness wires cross-module checks (P-CF-INGRESS).
-
 module product.compute_fabric
 
 import std.nat { Nat }
@@ -32,7 +19,6 @@ import std.float { Float }
 import std.measure {
   Measure,
   Time,
-  DataRate,
   Currency,
   Micro,
   One,
@@ -48,9 +34,9 @@ import std.measure {
   measure_scale_fraction_ceil,
   hertz,
   watt,
+  Bandwidth,
 }
 import std.currency { CurrencyCode }
-// Nanosecond timing CHOICE from its single authority (std.verification), not std.measure.
 import std.verification { NanosecondDuration, nanosecond_duration, nanosecond_duration_count }
 import std.realization_schedule { CostAccount }
 import std.realization_measurement { cost_account_measured_from_time }
@@ -72,6 +58,8 @@ import extdeps.cpu.types {
   CpuSocket,
   SocketPackage,
 }
+import extdeps.storage.types { NvmeDeviceCatalogRow }
+import extdeps.ctrl.jobserver { CtrlJobserverConfig }
 import extdeps.toolchain.types {
   Architecture,
   Aarch64,
@@ -84,12 +72,9 @@ import product.placement_supply { HostIdentity, PlacementSupplyRow }
 import std.baseboard { ServerBaseboard }
 import std.realization_width { bounded_host_spawn_width, memory_aware_spawn_width, int_min }
 
-// 🟡 forward — v2.std.witness / v2.std.diagnostic at harness (P-CF-WITNESS).
-// Kept intentionally distinct from the kernel `Witness<T>` container.
 type ComputeWitness<C> = Node
 type Outcome<T> = Node
 
-// 🟡 forward — v2 ingress / artifact carriers (P-CF-INGRESS).
 type UpsertInputRef = Node
 type ChangeSet = Node
 type ArtifactRef<T> = Node
@@ -106,17 +91,13 @@ type Idempotency = Node
 type IdentityElement = Node
 type InstructionSet = Node
 
-// --- §1.7 supporting enums + measure carriers --------------------------------
-
 type NetworkLocality =
     Loopback
   | Lan
   | Internet
   | WslNat
   | WslBridged
-  // Container bridge CIDR (e.g. docker0 172.17.0.0/16, secondary stack 172.18.0.0/16).
   | DockerBridge
-  // Operator tailnet overlay (e.g. Tailscale MagicDNS / 100.x addresses).
   | TailscaleOverlay
 type NetworkAddressability = Unicast | Multicast | Broadcast
 type NetworkEgressClass =
@@ -132,20 +113,10 @@ type LatencyClass = UltraLow | Low | Medium | High
 type GpuRuntime = Cuda | Rocm | Metal | OpenCl
 type ContainerRuntime = Docker | Podman | Gvisor | Ubicloud | GcloudRun
 type CostClass = OwnedMarginalZero | PerSecondBilled | Metered | DeveloperAttention
-// Lens: tiered-access cost — owned marginal vs metered vs attention-priced axes.
 type OomSignalClass = KillProcess | Throttle | ReportOnly
 
-type Bandwidth = Measure<DataRate, One, Nat>
 type Duration = Measure<Time, One, Nat>
 
-// Micro-denominated money (storage scale = `Micro`, 10^-6 major units).
-// Product-layer scale denomination — std.measure keeps abstract `MoneyAmount<S>` only.
-// Demanded by Hetzner cost quotes whose source data is `*_eur_micros` (e.g. 50500
-// micro-EUR/hour); micros are finer than the EUR minor unit (cent), so a minor-unit
-// `<One>` carrier could not hold them losslessly.
-// dissolution-trigger: collapse with std.measure.MoneyAmountMicro once v2 parametric-
-// in-field-position eval lands — both aliases dissolve to `MoneyAmount<Micro>` (see
-// std/measure.dag header on the dual-alias pair).
 type MoneyMicros = MoneyAmount<Micro>
 
 fn money_micros(count: Nat) -> MoneyMicros {
@@ -153,9 +124,6 @@ fn money_micros(count: Nat) -> MoneyMicros {
 }
 
 fn money_micros_count(m: MoneyMicros) -> Nat {
-  // Cross-module Measure alias (MoneyAmount<Micro>): `.count` only peels where
-  // Measure is local, so route through the generic std.measure.measure_count
-  // accessor (same pattern as bandwidth_count in hardware_selection).
   measure_count(m: m)
 }
 
@@ -166,9 +134,6 @@ type ComputeArtifactLocality
   | PerRunnerColocation
   | PerHostColocation
   | CrossHostFetch
-// Lens: memory-hierarchy distance — register/process → runner → host → remote fetch.
-
-// --- §1.4 supply records -----------------------------------------------------
 
 type StorageMount {
   mount_path: NonEmptyStr
@@ -176,15 +141,8 @@ type StorageMount {
   lifecycle: PersistenceKind
 }
 
-// CpuFacts authority: extdeps.cpu (identity + deployment); catalog invariants
-// project via cpu_facts_* helpers — not duplicated fields here.
-
 type MemoryFacts { capacity: ByteSize, memory_kind: MemoryKind }
 
-// NVIDIA sm_XX / AMD gfx-style capability axes decoded structurally: vendor plus
-// major/minor magnitudes, not a marketplace label string. `vendor` is the single
-// Vendor<Hardware> authority (extdeps/vendor/) — GPU-maker validity is enforced
-// fail-closed at the label projection below, not by a forked GPU-only vendor enum.
 type GpuComputeCapability {
   vendor: Vendor<Hardware>
   major: Int
@@ -197,14 +155,6 @@ type GpuCapabilityLabelOutcome
   = GpuCapabilityLabelOk { label: String }
   | GpuCapabilityLabelRejected { reason: UnsubstantiatedGpuCapabilityLabel }
 
-// Fail-closed capability label projection: only NVIDIA sm_X_Y and AMD gfxXY are
-// substantiated wire conventions. Dispatch is by vendor IDENTITY (the cited entity),
-// not an enum match — any vendor that is neither nvidia nor amd (a non-GPU maker, or
-// a GPU maker with no published sm/gfx scheme) refuses rather than fabricate a label.
-// The fail-closed `else` reports whichever vendor it was, so no per-vendor arm is
-// hand-listed (DESIGN §5; the realization selector lives here, peripheral, not in the
-// Vendor interface — §3). The vendor-specific sm/gfx scheme itself is a candidate to
-// migrate to a per-vendor cited GPU-ISA fact in extdeps/vendor/ (follow-up).
 fn gpu_compute_capability_sm_label(cap: GpuComputeCapability) -> GpuCapabilityLabelOutcome {
   if cap.vendor == nvidia {
     GpuCapabilityLabelOk {
@@ -231,7 +181,6 @@ type GpuFacts {
   supported_runtimes: List<GpuRuntime>
 }
 
-// vendor grounds onto the single Vendor<Hardware> authority (was a stringly NonEmptyStr).
 type AcceleratorFacts { vendor: Vendor<Hardware>, model: NonEmptyStr }
 
 type MemoryDevice {
@@ -243,9 +192,23 @@ type MemoryDevice {
 type StorageDevice {
   capacity: ByteSize
   medium: StorageMedium
+  catalog: NvmeDeviceCatalogRow?
+  serial: NonEmptyStr?
   read_bandwidth: Bandwidth?
   write_bandwidth: Bandwidth?
   persistence: PersistenceKind
+}
+
+fn nvme_storage_device(catalog: NvmeDeviceCatalogRow, persistence: PersistenceKind) -> StorageDevice {
+  StorageDevice {
+    capacity: catalog.capacity_bytes,
+    medium: Nvme,
+    catalog: Present { value: catalog },
+    serial: none,
+    read_bandwidth: Present { value: catalog.sequential_read },
+    write_bandwidth: Present { value: catalog.sequential_write },
+    persistence: persistence,
+  }
 }
 
 type NetworkInterface {
@@ -271,10 +234,6 @@ type ProcessorKind
 
 type ComputeHost {
   identity: HostIdentity
-  // The physical board this host is built on, with its live BMC endpoint. Optional:
-  // `none` = baseboard not modeled for this host (a single, clear meaning — not a
-  // conflation). When present, it couples the host to the BMC out-of-band lifecycle
-  // (board → firmware → factory login), the entry point of provisioning.
   baseboard: ServerBaseboard?
   processors: List<ProcessorKind>
   memory: List<MemoryDevice>
@@ -282,7 +241,6 @@ type ComputeHost {
   network_interfaces: List<NetworkInterface>
 }
 
-// 🟡 P-CF-COST-MODEL — dissolve when per-provider `data` rows land (Worksheet A §1.4 / §7).
 type ProcessorCostModel { placeholder: Bool }
 type ProviderCostModel { placeholder: Bool }
 
@@ -299,29 +257,14 @@ type ComputeSupplyFacts {
 }
 
 type ProviderConstraint
-  = HostJobserverFifo { fifo_path: NonEmptyStr, token_cap: Int }
+  = HostJobserverFifo { fifo_path: NonEmptyStr, config_ref: CtrlJobserverConfig }
   | SharedHomeRoot { path: NonEmptyStr }
   | MaxConcurrentRunners { cap: Int }
   | OomBehavior { signal: OomSignalClass }
 
 type AvailabilityWindow { open: LogicalTime, close: LogicalTime? }
-// Lens: RAII borrow window — open acquires scope; close is optional early release.
-// Cost quote: a fixed-point money price tagged with its ISO 4217 currency.
-// The `expected_units: Float` / `currency: NonEmptyStr` stopgap (Float carrying
-// raw int micros; loose string code) is DISSOLVED here onto the money carrier
-// landed in this module (`MoneyMicros`) / `std.currency`:
-//   - `unit_price: MoneyMicros` — `Measure<Currency, Micro>`, the exact micro
-//     denomination Hetzner quotes in (`*_eur_micros`). Money is fixed-point,
-//     never `Float` (floating point for money is a representation defect).
-//   - `currency: CurrencyCode` — ISO 4217 closed-domain identity, not a free
-//     `NonEmptyStr`.
 type CostEstimate { model: CostModel, unit_price: MoneyMicros, currency: CurrencyCode }
 
-// Per-second billed cloud quote — the product-side $/billing axis consumer for a
-// vendor hourly rate carried as `MoneyMicros` (Measure<Currency, Micro>). The vendor
-// catalog (extdeps.cloud.hetzner) owns the cited micro-EUR rows; this function is
-// vendor-agnostic — it projects any hourly `MoneyMicros` + ISO currency into the
-// `CostEstimate` shape the placement/isolation lattice reads via `ComputeOffer.cost_quote`.
 fn per_second_billed_cost_quote(unit_price: MoneyMicros, currency: CurrencyCode) -> CostEstimate {
   CostEstimate {
     model: CostModel {
@@ -355,19 +298,11 @@ fn machine_view(host: ComputeHost, surface: ExecutionSurface) -> MachineView {
 }
 
 fn machine_view_label(host: ComputeHost, surface: ExecutionSurface) -> NonEmptyStr {
-  // Label from execution surface when grounded; else host identity (Worksheet A §1.4).
   match surface.os.distro_or_product {
     Present { value: distro } => distro
     Absent => host.identity
   }
 }
-
-// --- §1.4b placement projection (derived — NOT a parallel authority) ----------
-//
-// PlacementSupplyRow authority: product.placement_supply. ram_bytes_total is a
-// value-typed ByteSize projection — Measure carriers now have inhabitants via
-// std.measure, so this consumer is migrated in step with the census (the
-// prior P-CF-BYTESIZE bare-Int stopgap here is dissolved).
 
 fn placement_supply_row(identity: HostIdentity, cpu: CpuFacts, ram_bytes_total: ByteSize) -> PlacementSupplyRow {
   PlacementSupplyRow {
@@ -508,8 +443,6 @@ fn work_demand_shard_count(demand: WorkDemand) -> Int {
   }
 }
 
-// --- §1.2 demand -------------------------------------------------------------
-
 type ResourceEnvelope {
   cpu: CpuRequirement?
   gpu: GpuRequirement?
@@ -557,29 +490,10 @@ type WorkDemand {
   effects: List<EffectBoundary>
 }
 
-// --- §1.2b per-run demand envelope (DERIVED, fail-closed) ────────────────────
-// The DEMAND a parallel run imposes, expressed as a ResourceEnvelope — the SAME §1.2 carrier
-// placement already consumes (no parallel mint, §3). A run of `width` shards, each peaking at the
-// MEASURED per-shard RSS, demands `width` threads and a concurrent memory peak of width × peak.
-// This is the bounded, predictable per-run memory model cross-run bin-packing rides on
-// (compute-envelope-model.md §3): one authority for "how much this run needs", DERIVED from the
-// live budget + the measured peak, never a hand-set guess. Placement is operator/infra-owned and
-// out of scope here; this slice produces the demand MODEL it will consume, proven by execution.
-
-// Projected concurrent peak of `width` shards each peaking at `per_shard_peak`: width × peak.
-// Lifted via the DEMAND op (measure_scale_fraction_ceil, num=width den=1) — exact at den=1, and the
-// fail-closed CEIL direction (§5 round-toward-pessimism): a run's projected memory must NEVER be
-// under-estimated, or placement over-packs the host ⇒ OOM. Stays in the ByteSize domain — the
-// dimension never detaches (no unwrap→multiply→rewrap round-trip; the §3 ① wall the lifted measure
-// algebra dissolves). Reuses the #5478 ceil op, no forked magnitude math.
 fn projected_concurrent_peak(width: HardwareThreadCount, per_shard_peak: ByteSize) -> ByteSize {
   measure_scale_fraction_ceil(m: per_shard_peak, num: hardware_thread_count_value(width), den: 1)
 }
 
-// Build the per-run demand ResourceEnvelope from a DERIVED width + the measured per-shard peak.
-// cpu.min_threads = the run's width; memory.min_bytes = the projected concurrent peak. gpu/storage/
-// network are absent — a CI-floor discovery run is a CPU+memory shape only. Reuses ResourceEnvelope
-// (the §1.2 demand carrier), so the existing satisfies()/placement machinery consumes it unchanged.
 fn parallel_run_demand_envelope(width: HardwareThreadCount, per_shard_peak: ByteSize) -> ResourceEnvelope {
   ResourceEnvelope {
     cpu: Present { value: CpuRequirement { min_threads: width, architecture: none } },
@@ -594,12 +508,6 @@ fn parallel_run_demand_envelope(width: HardwareThreadCount, per_shard_peak: Byte
   }
 }
 
-// THE per-run demand model: live host memory budget + the measured per-shard peak in, a bounded
-// demand envelope out. Width is DERIVED (std.realization_width.memory_aware_spawn_width — the
-// cores ∧ memory fold), so the envelope's memory demand is ⌊0.8·budget⌋-bounded BY CONSTRUCTION:
-// width × per_shard_peak ≤ 0.8·budget < budget, the floor that never OOMs (DESIGN §5). A 0-byte
-// budget (host could not read one) falls back to the conservative committed width — fail-closed
-// narrow, never a fabricated wide demand.
 fn parallel_run_demand_envelope_from_budget(
   shard_count: Int,
   hardware_threads: HardwareThreadCount,
@@ -619,7 +527,6 @@ fn parallel_run_demand_envelope_from_budget(
   )
 }
 
-// Projected memory demand of an envelope (Absent → a zero-byte demand, the degenerate no-memory case).
 fn demand_envelope_memory(envelope: ResourceEnvelope) -> ByteSize {
   match envelope.memory {
     Absent => byte_size(0)
@@ -627,7 +534,6 @@ fn demand_envelope_memory(envelope: ResourceEnvelope) -> ByteSize {
   }
 }
 
-// Thread (width) demand of an envelope (Absent → 0). Lets a witness assert the derived width dropped.
 fn demand_envelope_thread_count(envelope: ResourceEnvelope) -> Nat {
   match envelope.cpu {
     Absent => 0
@@ -635,15 +541,9 @@ fn demand_envelope_thread_count(envelope: ResourceEnvelope) -> Nat {
   }
 }
 
-// THE shared fit predicate: does this run's projected memory demand fit under a budget? Reuses the
-// single fit authority (memory_bytes_honor_demand — budget is supply, the envelope is demand), so the
-// GREEN path (derived width) and the RED control (memory-blind width) run through the SAME comparison
-// — the control has real teeth only because it is not a re-implemented inequality (DESIGN §5).
 fn demand_envelope_fits_budget(envelope: ResourceEnvelope, budget: ByteSize) -> Bool {
   memory_bytes_honor_demand(supply: budget, demand: demand_envelope_memory(envelope: envelope))
 }
-
-// --- §1.3 parallelism + budget -----------------------------------------------
 
 type ParallelismShape
   = SingleWorkItem
@@ -670,8 +570,6 @@ type ExecutionBudget {
 }
 
 type WatchdogLimit { max_wall: Duration }
-
-// --- §1.5 eligibility --------------------------------------------------------
 
 type DemandDimension
   = DemandCpu
@@ -709,12 +607,7 @@ type ComputeLease {
   allocation: AllocationReceipt
   eligibility: ComputeWitness<ComputeLeaseEligibility>
 }
-// Lens: RAII borrow — offer + demand paired for lease lifetime; allocation receipt is acquire proof.
 
-// 🟢 P-CF-WITNESS dissolved: satisfies returns ComputeLeaseEligibility directly (ComputeWitness<C>
-// stays a forward Node for v2.std.witness). Isolation is an ordered lattice (chain below),
-// honored iff ordinal(supply) >= ordinal(demand) — rationale in PR #4805 / commit message.
-//   SharedHostHome < PerJobFilesystem < ContainerHermetic < Vm
 fn isolation_boundary_ordinal(boundary: IsolationBoundary) -> Int {
   match boundary {
     SharedHostHome   => 0
@@ -733,15 +626,10 @@ fn isolation_boundary_label(boundary: IsolationBoundary) -> NonEmptyStr {
   }
 }
 
-// supply isolation honors a demand iff it is at least as strong on the chain.
 fn isolation_satisfies(supply: IsolationBoundary, demand: IsolationBoundary) -> Bool {
   isolation_boundary_ordinal(boundary: supply) >= isolation_boundary_ordinal(boundary: demand)
 }
 
-// Gates isolation + thread-count/memory feasibility (measurement-free — no Pareto pick).
-// Fail-closed: weaker isolation, insufficient threads/RAM, or missing CPU facts → Rejected;
-// witness enumerates only dimensions actually proven.
-// Lens: host selection over the offer free-list — first-fit allocator semantics (cf. placement_supply).
 fn satisfies(offer: ComputeOffer, demand: WorkDemand) -> ComputeLeaseEligibility {
   if !isolation_satisfies(supply: offer.supply.execution.isolation, demand: demand.isolation.boundary) {
     Rejected {
@@ -800,8 +688,6 @@ fn satisfies(offer: ComputeOffer, demand: WorkDemand) -> ComputeLeaseEligibility
   }
 }
 
-// --- §1.1 executable unit + ingress --------------------------------------------
-
 type WorkUnitId = NonEmptyStr where brand("WorkUnitId")
 
 type WorkUnit<T> {
@@ -812,8 +698,6 @@ type WorkUnit<T> {
   requirements: WorkDemand
 }
 
-// --- §1.6 execution receipts -------------------------------------------------
-
 type MeasurementConfidence
   = SingleSample
   | Range { low: Float, high: Float }
@@ -822,12 +706,6 @@ type MeasurementConfidence
 type PerformanceReceipt {
   provider: ProviderIdentity
   work_shape: WorkUnitId
-  // NANOSECOND scale CHOICE (relocated here per DESIGN §3): the realization /
-  // measurement framework (std.realization_measurement / std.realization_schedule) is
-  // scale-AGNOSTIC; this consumer — the host wall-clock observation boundary — OWNS the
-  // decision to denominate measured cost in nanoseconds, because that is the resolution
-  // the host clock observes elapsed wall time at. The framework rolls up whatever scale
-  // arrives; nanosecond is named here, once, where it is measured.
   wall_duration: NanosecondDuration
   cpu_seconds: Float?
   sample_count: Int
@@ -846,19 +724,12 @@ fn performance_receipts_total_time(receipts: List<PerformanceReceipt>) -> Nanose
   )
 }
 
-// Pure roll-up lens (std.realization_measurement): PerformanceReceipt observations
-// → CostAccount.time with Measured basis. Handler emits receipts; this folds them.
-// The scale-agnostic roll-up is instantiated at `CostAccount<Nano>` HERE (this consumer's
-// owned ns choice), inferred from the NanosecondDuration wall_duration.
 fn cost_account_from_performance_receipts(receipts: List<PerformanceReceipt>) -> CostAccount<Nano> {
   cost_account_measured_from_time(time: performance_receipts_total_time(receipts: receipts))
 }
 
-// Host-side v1 interpreter provider row for SingleSample witness measurements.
 data host_v1_interpreter_provider: ProviderIdentity = "host:v1-interpreter"
 
-// SCAFFOLD — dissolve-on: detected-host execution surface (extdeps/os host probe stamps
-// measurement_context from runtime; delete this hardcoded Linux/Posix constant).
 data host_v1_interpreter_execution_surface: ExecutionSurface = ExecutionSurface {
   os: OperatingSystemSurface {
     kernel: Linux,
@@ -903,12 +774,6 @@ type AmortizationScope
 type CostReceipt {
   provider: ProviderIdentity
   cost_class: CostClass
-  // Money is fixed-point: the observed-bill amount is `MoneyMicros`, not
-  // `Float` (same money-as-Float defect dissolved on `CostEstimate.unit_price`).
-  // The type is corrected here regardless of inhabitation — fixing a
-  // known-wrong field type is type-correctness, not abstraction ahead of
-  // demand. `CostReceipt` stays uninhabited (no fabricated `data` rows until a
-  // real observed-bill consumer lands).
   amount: MoneyMicros?
   pricing_source: PricingSource
   amortization_scope: AmortizationScope?
@@ -923,15 +788,6 @@ type ExecutionReceipt<T> {
   started_at: LogicalTime
   finished_at: LogicalTime
 }
-
-// --- §7 isolation-lattice witnesses (concept-only example fixtures) ----------
-//
-// The cross-provider isolation proofs below run on GENERIC example offers, not on
-// any real machine. The operator's actual fleet (srv1/srv2) and the Hetzner CAX41
-// offer are *instances* that ground this concept; they live in the operator
-// deployment repo (ctrl), which imports this module plus the extdeps vendor
-// models. std/ owns the shape and the proof that the lattice behaves — it does
-// not own the computers.
 
 data example_host_identity: HostIdentity = "example-host"
 data example_shared_host_provider: ProviderIdentity = "example-shared-host"
@@ -978,7 +834,6 @@ data example_owned_cost: CostModel = CostModel {
   rates: ProviderCostModel { placeholder: true },
 }
 
-// A generic SharedHostHome offer — exercises the lattice, names no real machine.
 data example_shared_host_offer: ComputeOffer = ComputeOffer {
   provider: example_shared_host_provider,
   supply: ComputeSupplyFacts {
@@ -992,7 +847,6 @@ data example_shared_host_offer: ComputeOffer = ComputeOffer {
   constraints: [],
 }
 
-// A generic Vm offer — the stronger isolation boundary.
 data example_vm_offer: ComputeOffer = ComputeOffer {
   provider: example_vm_provider,
   supply: ComputeSupplyFacts {
@@ -1006,7 +860,6 @@ data example_vm_offer: ComputeOffer = ComputeOffer {
   constraints: [],
 }
 
-// Generic Vm demand used by the cross-provider witnesses below.
 data vm_isolation_work_demand: WorkDemand = WorkDemand {
   resources: ResourceEnvelope {
     cpu: none,
@@ -1023,22 +876,18 @@ data vm_isolation_work_demand: WorkDemand = WorkDemand {
   effects: [],
 }
 
-// Case 7 — #1 rule: an untrusted Vm-requiring job is NOT honored by SharedHostHome supply.
 fn witness_shared_host_home_rejects_vm() -> Bool {
   isolation_satisfies(supply: SharedHostHome, demand: Vm) == false
 }
 
-// Case 8 — a SharedHostHome-tolerant (trusted in-fleet) job IS honored by SharedHostHome supply.
 fn witness_shared_host_home_admits_shared_host_home() -> Bool {
   isolation_satisfies(supply: SharedHostHome, demand: SharedHostHome)
 }
 
-// Monotonicity: stronger supply honors a weaker demand (Vm admits SharedHostHome), never reverse.
 fn witness_vm_admits_shared_host_home() -> Bool {
   isolation_satisfies(supply: Vm, demand: SharedHostHome)
 }
 
-// Cross-provider, full-offer: a SharedHostHome offer rejects a Vm demand.
 fn witness_shared_host_offer_rejects_vm_demand() -> Bool {
   match satisfies(offer: example_shared_host_offer, demand: vm_isolation_work_demand) {
     Rejected { reason: _ } => true
@@ -1046,15 +895,12 @@ fn witness_shared_host_offer_rejects_vm_demand() -> Bool {
   }
 }
 
-// Cross-provider, full-offer: a Vm offer admits a Vm demand.
 fn witness_vm_offer_admits_vm_demand() -> Bool {
   match satisfies(offer: example_vm_offer, demand: vm_isolation_work_demand) {
     Eligible { witness: _ } => true
     Rejected { reason: _ } => false
   }
 }
-
-// --- §7b resource-feasibility witnesses (thread-count + memory; measurement-free) ---
 
 data example_resource_cpu_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
   model_number: "GENERIC-ARM-64C",
@@ -1178,12 +1024,6 @@ fn witness_resource_offer_admits_feasible_demand() -> Bool {
   }
 }
 
-// ── §1-C per-run demand-envelope witnesses (derived width, fail-closed) ───────
-// A ~62.5 GiB host budget, 7 floor shards, 128 fleet threads — the floor's real shape; the per-shard
-// peak is the planted DISCRIMINATING input (a high-demand shard must SHRINK the derived width).
-
-// Non-binding: at the measured ~2.1 GB peak the budget admits ≫7, so width = shard_count and the
-// envelope (7 × 2.1 GB ≈ 14.7 GB) fits comfortably. The everyday floor case.
 fn witness_run_demand_envelope_fits_budget() -> Bool {
   let envelope = parallel_run_demand_envelope_from_budget(
     shard_count: 7,
@@ -1196,9 +1036,6 @@ fn witness_run_demand_envelope_fits_budget() -> Bool {
     && demand_envelope_fits_budget(envelope: envelope, budget: byte_size(67108864000))
 }
 
-// DISCRIMINATING: plant a high per-shard demand (~20 GB). 0.8 × 62.5 GiB ≈ 50 GB ÷ 20 GB = 2, so the
-// derived width DROPS 7 → 2 and the envelope (2 × 20 GB = 40 GB) still fits. Proves the memory term
-// backs the run off BEFORE the OOM — the floor under-subscribes rather than over-packs.
 fn witness_high_demand_shrinks_envelope_and_fits() -> Bool {
   let envelope = parallel_run_demand_envelope_from_budget(
     shard_count: 7,
@@ -1211,10 +1048,6 @@ fn witness_high_demand_shrinks_envelope_and_fits() -> Bool {
     && demand_envelope_fits_budget(envelope: envelope, budget: byte_size(67108864000))
 }
 
-// RED control through the SAME predicate: a memory-BLIND width = min(shard_count, cores) (no budget
-// term — what a fail-open derive would pick) at the same ~20 GB peak demands 7 × 20 GB = 140 GB and
-// does NOT fit the 62.5 GiB budget. The witness passes by asserting the blind envelope FAILS the
-// shared fit check — proving the memory derive is load-bearing: drop it and the run over-commits.
 fn witness_fail_open_memory_blind_demand_exceeds_budget() -> Bool {
   let blind_width = bounded_host_spawn_width(
     shard_count: 7,
@@ -1227,8 +1060,6 @@ fn witness_fail_open_memory_blind_demand_exceeds_budget() -> Bool {
   demand_envelope_fits_budget(envelope: blind_envelope, budget: byte_size(67108864000)) == false
 }
 
-// Fail-closed: a 0-byte budget (host could not read a live cap) yields the conservative committed
-// width, never an unbounded demand. RED if the from-budget derive ignored the unreadable sentinel.
 fn witness_unreadable_budget_uses_conservative_demand() -> Bool {
   let envelope = parallel_run_demand_envelope_from_budget(
     shard_count: 7,
@@ -1240,17 +1071,12 @@ fn witness_unreadable_budget_uses_conservative_demand() -> Bool {
   demand_envelope_thread_count(envelope: envelope) == 4
 }
 
-// Content-addressed digest over work identity + demand (action/inputs/output spec
-// join when ArtifactRef/WorkAction inhabit — P-CF-INGRESS). Returns a 16-hex hash,
-// never the hand-authored work.id brand (§0 one-key-for-3-dimensions).
 data execution_receipt_digest_schema: NonEmptyStr = "execution-receipt-canonical-v1"
 
 fn isolation_boundary_digest(boundary: IsolationBoundary) -> ContentHash {
   content_hash_atom(value: isolation_boundary_label(boundary: boundary))
 }
 
-// File-scoped arch label for digest only — lift to extdeps/cpu/types.cpu_architecture_label
-// if a second consumer appears (§3 single authority).
 fn cpu_architecture_digest(arch: Architecture) -> ContentHash {
   match arch {
     X86_64 => content_hash_atom(value: "arch:X86_64")
@@ -1305,11 +1131,6 @@ fn resource_envelope_digest(envelope: ResourceEnvelope) -> ContentHash {
   )
 }
 
-// 🟡 STAGED — P-CF-INGRESS: WorkGraph / Partitioner / WorkAction / Reducer are Node
-// forward-stubs today; graph/partitioner/map/reduce/laws payloads are NOT yet folded.
-// dissolve-on: Node content-hash inhabitants land (P-CF-INGRESS) — replace
-// parallelism-payload-pending:* tags with real payload digests; until then two demands
-// differing only in graph/partitioner/map/reduce collide (explicit debt, not silent _).
 fn parallelism_shape_digest(shape: ParallelismShape) -> ContentHash {
   match shape {
     SingleWorkItem => content_hash_atom(value: "parallelism:SingleWorkItem")

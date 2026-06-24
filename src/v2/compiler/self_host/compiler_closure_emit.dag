@@ -1,10 +1,3 @@
-// src/v2/compiler/self_host/compiler_closure_emit.dag
-// Scope: Keystone wrapper — parse-scoped ingest → assemble → infer →
-//   acyclic receipt (dependency_lens + affected_set_closure) → emit_for_target(WholeProgram).
-// Status: INGEST is the sole emit-scope authority (host --entry); post-infer closure is verification only.
-// Anchor: sibling to candidate_generation.dag; does NOT modify load-bearing self_host.dag.
-// Host: discover_source_root_ingest --entry src/v2/compiler/00_compile.dag scopes ingest.
-
 module v2.compiler.self_host.compiler_closure_emit
 
 import v2.compiler.infer { infer }
@@ -40,7 +33,6 @@ import v2.std.program_segment {
   program_segment_whole_program
 }
 
-
 type CompilerClosureEmitReceipt {
   closure_size: Int
   layer_count: Int
@@ -48,11 +40,9 @@ type CompilerClosureEmitReceipt {
   source: Medium<String>
 }
 
-
 fn compiler_import_closure_reading(root: Node) -> List<DependencyView> {
   dependency_lens(root: root)
 }
-
 
 fn compiler_import_closure(root: Node) -> AffectedSetClosureAcc {
   affected_set_closure(
@@ -61,21 +51,17 @@ fn compiler_import_closure(root: Node) -> AffectedSetClosureAcc {
   )
 }
 
-
 fn compiler_closure_layer_count(root: Node) -> Int {
   length(xs: topological_layers(graph_node: root))
 }
-
 
 fn compiler_closure_ready_count(root: Node) -> Int {
   length(xs: ready_set(graph_node: root))
 }
 
-
 fn compiler_closure_frontier_count(closure: AffectedSetClosureAcc) -> Int {
   length(xs: closure.frontier)
 }
-
 
 fn compiler_closure_frontier_subset_of_ready(root: Node, closure: AffectedSetClosureAcc) -> Bool {
   let ready = ready_set(graph_node: root)
@@ -84,15 +70,12 @@ fn compiler_closure_frontier_subset_of_ready(root: Node, closure: AffectedSetClo
   })
 }
 
-
-// Acyclic receipt — verification only; ingest scoping is the emit-scope authority.
 fn compiler_import_closure_is_acyclic(root: Node, closure: AffectedSetClosureAcc) -> Bool {
   (compiler_closure_layer_count(root: root) > 0)
     && (compiler_closure_frontier_count(closure: closure) > 0)
     && (compiler_closure_frontier_count(closure: closure) <= compiler_closure_ready_count(root: root))
     && compiler_closure_frontier_subset_of_ready(root: root, closure: closure)
 }
-
 
 fn compiler_closure_cyclic_diagnostic(root: Node) -> Diagnostic {
   Diagnostic {
@@ -102,9 +85,6 @@ fn compiler_closure_cyclic_diagnostic(root: Node) -> Diagnostic {
   }
 }
 
-
-// PRIMARY ENTRY — scoped SourceRootIngest (host-filtered parse-level import closure) → emit Rust.
-// When ingest IS the closure, WholeProgram is correct (program ≡ closure).
 fn emit_compiler_import_closure_from_ingest(
   ingest: SourceRootIngest,
   admission: Admission,

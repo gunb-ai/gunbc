@@ -1,57 +1,77 @@
-// Scope: the coarse "Rust stage0 monolith" CI dependency — the entire Rust seed
-//   (every `*.rs` and Cargo/toolchain manifest) treated as ONE dependency with three
-//   gate-dependents (fmt, clippy, test). A diff touching the monolith fires all three; a non-Rust
-//   diff fires none.
-//
-// This is the dsl-tree home of the selector (was src/v2/workflow/rust_stage0_gates.dag).
-// It lives here because its consumer — `tools.rust_gates_ci`, run by `gunbc` — needs the
-// shell-transport host effects (git/cargo) that ONLY exist in the dsl tree. src/v2 is the
-// pure compiler corpus (no host effects), so the gate cannot live there. String is atomic
-// here, so suffix matching uses the native `ends_with` primitive (no char-fold).
-//
-// SCAFFOLD — dissolution trigger: delete when the Rust seed reaches zero. The proper model
-// is per-file Rust dependence (which .rs affects which gate), DELIBERATELY skipped: the Rust
-// bootstrap is the seed that shrinks toward zero (DESIGN §7), so fine-graining a dependency
-// graph over code that is being deleted is redundant work (§2). One blob, three dependents is
-// the correct because-it-is-temporary call.
-
 module tools.rust_stage0_gates
 
 import std.list { List }
 
-// The path-tail markers that identify a Rust-monolith path, matched as suffixes (not exact
-// equality) so nested ones — e.g. `src/v1/stage0/Cargo.toml`, `crate/.cargo/config.toml` —
-// are caught too.
-//
-// COMPLETENESS CLAIM (this is the guarantee): every change that can alter a Rust gate's
-// verdict carries one of these tails.
-//   - `.rs`               — all Rust source, including `build.rs`.
-//   - Cargo.toml/.lock    — deps + the resolved graph (clippy/fmt see new code).
-//   - rust-toolchain.toml — the toolchain clippy/fmt run under.
-//   - clippy.toml / rustfmt.toml / .cargo/config.toml — change what clippy / fmt / build
-//     *do*, so they must re-run the gates even with no `.rs` in the diff.
-// FAIL-CLOSED BIAS (§5): under-firing ships broken Rust silently; over-firing only costs CI
-// time. So when unsure whether a tail belongs here, include it. `rustfmt.toml` is listed
-// defensively (no such file today) because fmt is one of our gates and a future one must fire.
 fn rust_monolith_suffixes() -> List<String> {
   [".rs", "Cargo.toml", "Cargo.lock", "rust-toolchain.toml",
    "clippy.toml", "rustfmt.toml", ".cargo/config.toml"]
 }
 
-// A changed repo path belongs to the Rust monolith iff it carries any monolith suffix.
-// Native `ends_with` (a true suffix, not a substring) is the discriminating matcher.
 fn path_is_rust_monolith(path: String) -> Bool {
   fold(rust_monolith_suffixes(), false, fn(acc, suffix) { acc || ends_with(s: path, suffix: suffix) })
 }
 
-// Any path in the change-set belongs to the monolith.
 fn any_rust_monolith(paths: List<String>) -> Bool {
   fold(paths, false, fn(acc, p) { acc || path_is_rust_monolith(path: p) })
 }
 
-// THE DECISION. Run the Rust gates iff a path in the diff touches the monolith. FAIL-CLOSED:
-// if git could not determine the diff (`git_success == false`), run the gates — never skip
-// on an undeterminable change-set (§5: under-firing ships broken Rust silently).
+data consumed_input_closure_concept_note: String = "ConsumedInputClosure = a unit's declared consumed-.dag inputs (what .dag a unit reads -> what must re-run on change). This is AFFECTED-SET SELECTION, the same underlying concept as (1) v2 affected_set/source_authority (src/v2/lens/affected_set, v2.std.artifact.NodeArtifactProvenance) and (2) the .dag-floor witness selection, at a third layer (rust tests run by the v1 binary). It is NOT NodeArtifactProvenance: that PRODUCES-artifact over v2 Nodes, this CONSUMES-input over opaque unit identities -- different direction, different domain, no coincidence to dedupe (DESIGN 2/3), so FIRST authority for the dsl-layer instance, not a parallel mint. Homed in dsl because the consumer should_run_gates runs in the v1/dsl tree, which cannot import v2 (imports point toward std; v2->dsl legal, dsl->v2 forbidden); dsl is the one layer all three consumers reach. unit is opaque -- a rust test is ONE kind of unit, named general so the .dag-floor selection can converge onto this carrier later without a rename."
+
+data consumed_input_closure_convergence_candidate: String = "CONVERGENCE CANDIDATE (accounted, not unified now) with v2 affected_set/source_authority AND the .dag-floor selection -- same concept at different layers. DISSOLUTION TRIGGER: one consumed-input/selection authority at a layer all three consumers reach (the deep (B) work -- relocate provenance/affected_set down, or a shared lower-layer authority)."
+
+data consumed_input_closure_slice1_status: String = "SLICE-1 NON-SOUND WIRING-ONLY: consumed_dag_paths is HAND-LISTED. Proves the fire/skip plumbing, NOT the coverage WALL (drift-proof completeness, closure superset of actual-reads). A .dag read added later is NOT captured here -> declaration drift silently re-opens the .dag->rust fail-open for the missing path. DISSOLUTION TRIGGER (soundness): structural closure derivation through the opaque host-read seam (filesystem_read/ws.join) -- the shared blocker. Only coproduct_reflection_conformance_test populated for slice 1."
+
+type ConsumedInputClosure {
+  unit: String
+  consumed_dag_paths: List<String>
+}
+
+data coproduct_reflection_conformance_consumed_closure: ConsumedInputClosure = ConsumedInputClosure {
+  unit: "coproduct_reflection_conformance_test",
+  consumed_dag_paths: [
+    "src/v2/compiler/manual/coproduct_reflection_conformance_test.dag",
+    "src/v2/std/algebra.dag",
+    "src/v2/std/collection.dag",
+    "src/v2/std/diagnostic.dag",
+    "src/v2/std/logic.dag",
+    "src/v2/std/node.dag",
+    "src/v2/std/node_query.dag",
+    "src/v2/std/witness.dag"
+  ]
+}
+
+data declared_consumed_input_closures: List<ConsumedInputClosure> = [
+  coproduct_reflection_conformance_consumed_closure
+]
+
+fn closure_contains_path(closure: ConsumedInputClosure, path: String) -> Bool {
+  fold(closure.consumed_dag_paths, false, fn(acc, p) { acc || (p == path) })
+}
+
+fn closure_hit_by_any(closure: ConsumedInputClosure, paths: List<String>) -> Bool {
+  fold(paths, false, fn(acc, p) { acc || closure_contains_path(closure: closure, path: p) })
+}
+
+fn any_declared_closure_hit(paths: List<String>) -> Bool {
+  fold(declared_consumed_input_closures, false, fn(acc, c) { acc || closure_hit_by_any(closure: c, paths: paths) })
+}
+
+data unit_must_run_failclosed_note: String = "Fail-closed per-unit selection: a unit with NO declared closure must run (absent declaration = run, never skip), keeping the coverage direction sound while declarations are added incrementally. A declared unit runs iff a changed path is in its closure. The fold seeds true (the fail-closed default); the matching declared entry, if any, overrides it with the affected-by-diff verdict."
+
+data unit_must_run_staged_note: String = "STAGED primitive (DESIGN 6 scaffold-with-dissolution-trigger): unit_must_run is the fail-closed PER-UNIT selector but is NOT YET consumed by the live gate -- should_run_gates fires coarsely via any_declared_closure_hit (all-or-nothing: any declared closure hit runs the whole rust suite). It is exercised only by its discriminating witnesses today (proving the fail-closed (iii) direction by execution). DISSOLUTION / CONSUMER TRIGGER: the per-unit rust-test selection slice (the affordability direction) that replaces all-or-nothing should_run_gates with per-test selection -- at which point unit_must_run becomes the live selector and this staged note dissolves. Until then it is an intentionally-staged primitive, not an inert abstraction."
+
+fn unit_must_run(unit: String, paths: List<String>) -> Bool {
+  fold(declared_consumed_input_closures, true, fn(acc, c) {
+    if c.unit == unit { closure_hit_by_any(closure: c, paths: paths) } else { acc }
+  })
+}
+
+data should_run_gates_coverage_note: String = "Coverage fire (Edge-(b)): the rust gate ALSO runs when a changed .dag is in the union of declared consumed-input closures -- purely additive to the existing .rs/Cargo fire, so the change only ever ADDS fires, never newly skips (fail-closed for coverage)."
+
 fn should_run_gates(paths: List<String>, git_success: Bool) -> Bool {
-  if git_success { any_rust_monolith(paths: paths) } else { true }
+  if git_success {
+    any_rust_monolith(paths: paths) || any_declared_closure_hit(paths: paths)
+  } else {
+    true
+  }
 }

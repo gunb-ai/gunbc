@@ -1,5 +1,3 @@
-// Scope: demand-driven eval_loop_node — loop body child is not folded; step_loop runs on spine only.
-
 module v2.test.manual.loop_demand_driven_eval
 
 import v2.compiler.eval {
@@ -128,7 +126,7 @@ fn loop_eval_allocate_literal(node: Node, _env: EvaluationEnvironment) -> Outcom
   if node == loop_eval_lit_one() {
     outcome_accepted(value: loop_eval_one_value())
   } else if node == loop_eval_measure() {
-    // loop_bound_edge measure is structural for well_formed; demand-driven eval never reads it.
+
     outcome_accepted(value: loop_eval_one_value())
   } else if node == loop_eval_divergent() {
     outcome_rejected(d: loop_eval_diagnostic(n: node))
@@ -327,7 +325,6 @@ fn loop_eval_run_passes(run: Outcome<TestClaimRun<Node, RuntimeValue>>) -> Bool 
   }
 }
 
-// Demand-driven: divergent loop body is never interpreted; step_loop_continue still runs on spine.
 fn loop_eval_divergent_body_step_loop_holds() -> Bool {
   loop_eval_run_passes(
     run: loop_eval_run(

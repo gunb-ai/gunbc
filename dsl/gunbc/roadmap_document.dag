@@ -1,59 +1,34 @@
-// gunbc/roadmap_document.dag — the WHOLE-document roadmap authority + projection (slice-2 step-3).
-//
-// SCAFFOLD (DESIGN §7 / plan §6 step 2-3): widens the per-section projection (`roadmap_emit`) to the
-// whole ROADMAP — `project_roadmap_to_markdown(authority) -> MarkdownDocument`, the markdown analogue of
-// ci.yml's `project_workflow_to_yaml(ci_workflow)`. The authored `data` authority is the inversion: the
-// `.dag` is the single source, ROADMAP.md is its emitted projection (the structure gate, step-3b, then
-// byte-compares them — the `ci_yaml_gate` shape).
-// dissolution-trigger: authored-now is the INTERMEDIATE (mirrors ci.yml's authored `data ci_workflow`);
-//   the TERMINAL is bridging the structure from `ctrl.process_algebra.ProcessGraph` once v2 self-host
-//   gives in-substrate graph traversal (it is STAGED today, no traversal fns), at which point the
-//   authored `data roadmap_authority` dissolves into a walk over the work graph.
-//
-// O3 DFS (why RoadmapSection is MINTED, not derived from top-level nodes): a ROADMAP `##` section is a
-// SEPARATE presentation axis, not a single work-node + flat subtree — it carries authored intro prose,
-// a plan-doc pointer, and MULTIPLE sub-grouped checkbox lists (`**Audits (done):**`,
-// `**In-scope this window:**`). Its WORK content is the existing `RoadmapNode`/`RoadmapEdge` graph; the
-// section adds the editorial grouping a work-node does not carry. So RoadmapSection earns its keep as
-// the grouping axis — net concepts grow by ONE genuinely-distinct concept, not a re-invention (§2).
-
 module gunbc.roadmap_document
 
 import std.markdown { MarkdownDocument, MarkdownBlock }
 import gunbc.roadmap_model { RoadmapNode, RoadmapEdge, SectionElement }
 import gunbc.roadmap_emit { project_roadmap_section }
 
-// One ROADMAP section: an editorial title (the `##` heading) over an ORDERED element sequence
-// (`SectionElement` = authored intro prose | a labelled checkbox sub-group). This subsumes the
-// slice-2 single-list section (`nodes`+`edges`) — that flat list is now one `Group` element with an
-// empty label, no fork (§3) — and carries the real ROADMAP's frame faithfully: intro prose + the
-// `◆ Milestones` spine fenced as `Prose`, the `**…:**` sub-groups as `Group`s, all in document order.
 type RoadmapSection {
   title: String
   elements: List<SectionElement>
 }
 
-// The whole ROADMAP as authority. `preamble` is the document-level authored frame above the first
-// section (the title/intro blocks) — so RoadmapDocument earns its keep over a bare `List<RoadmapSection>`
-// (§2: a 1-field wrapper would not). DISTINCT from `std.markdown.MarkdownDocument`: this is the
-// AUTHORITY (work structure), that is the MEDIUM (rendered blocks) — authority vs medium stays split (§3).
 type RoadmapDocument {
   preamble: List<MarkdownBlock>
+  lead_lanes: List<RoadmapSection>
   sections: List<RoadmapSection>
 }
 
-// The medium blocks for one section: delegate to the per-section projection (step-2), take its blocks.
 fn section_blocks(s: RoadmapSection, merged: List<Int>) -> List<MarkdownBlock> {
   project_roadmap_section(title: s.title, elements: s.elements, merged: merged).blocks
 }
 
-// THE whole-document projection (the ci.yml `project_workflow_to_yaml` analogue, markdown medium):
-// preamble blocks, then each section's blocks in order. A pure fold over the authored authority — the
-// checkbox boxes are rendered from each line's binding against `merged` (derived for a DerivableLine,
-// authored for an AuthoredLine), exactly as the per-section projection does.
+fn lead_lane_blocks(s: RoadmapSection, merged: List<Int>) -> List<MarkdownBlock> {
+  project_roadmap_section(title: concat("✦ ", s.title), elements: s.elements, merged: merged).blocks
+}
+
 fn project_roadmap_to_markdown(doc: RoadmapDocument, merged: List<Int>) -> MarkdownDocument {
+  let after_lanes = fold(doc.lead_lanes, init: doc.preamble, f: fn(acc, s) {
+    concat(acc, lead_lane_blocks(s: s, merged: merged))
+  })
   MarkdownDocument {
-    blocks: fold(doc.sections, init: doc.preamble, f: fn(acc, s) {
+    blocks: fold(doc.sections, init: after_lanes, f: fn(acc, s) {
       concat(acc, section_blocks(s: s, merged: merged))
     })
   }

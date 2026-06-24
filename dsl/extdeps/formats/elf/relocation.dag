@@ -1,9 +1,3 @@
-// extdeps/formats/elf/relocation.dag — ELF relocation carriers (Slice 1: type only).
-//
-// Anchor: https://refspecs.linuxfoundation.org/elf/gabi4+/ch4.reloc.html
-//
-// Relocation decode lands in a follow-on slice; R_X86_64_* constants are cited facts.
-
 module extdeps.formats.elf.relocation
 
 import extdeps.external_authority { ExternalAuthority }
@@ -16,9 +10,6 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-// x86-64 relocation types cited from gABI / x86-64 psABI (subset).
-// 🟡 dissolve-on: Relocation decode deferred to Slice 2 (shift/mask primitives for sym+type split
-//    from Elf64Rela.info; do NOT add elf64_rela_to_relocation here until that lands).
 data r_x86_64_none: Int = 0
 data r_x86_64_64: Int = 1
 data r_x86_64_pc32: Int = 2
@@ -31,4 +22,3 @@ type Elf64Rela {
   info: Int
   addend: Int
 }
-

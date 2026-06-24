@@ -1,10 +1,13 @@
-// extdeps/boot/framebuffer.dag — VGA text-mode hardware facts for Slice-0.5 emit.
-//
-// Anchor: IBM PC VGA text mode buffer at 0xB8000 (hardware fact).
-// FramebufferSurface / FramebufferWrite types deferred to Slice-1 boot QA
-// (consumer lands with QEMU stage witnesses; see boot-sketches 3ed85a12fb).
-
 module extdeps.boot.framebuffer
 
-// Slice-0.5 default VGA text mode base (IBM PC hardware fact).
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "wiki.osdev.org/VGA_Hardware"
+  }
+}
+
 data vga_text_mode_base: Int = 753664

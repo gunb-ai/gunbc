@@ -1,5 +1,3 @@
-// Access checks -- pure type checks for index and slice operations.
-
 module v1.compiler.infer_access
 
 import std.types { SourceSpan, is_ordered_element_collection }
@@ -18,10 +16,6 @@ import v1.compiler.infer_types {
   node_is_element_collection, for_each_element_type_node
 }
 
-// =========================================================================
-// Types
-// =========================================================================
-
 type AccessCheckResultNode {
   inferred: InferredNode?
   diagnostics: List<ErrorNode>
@@ -31,10 +25,6 @@ type KeyedCollectionParts {
   key_type: Node
   value_type: Node
 }
-
-// =========================================================================
-// Functions
-// =========================================================================
 
 fn access_error(message: String, span: SourceSpan, module_name: String) -> ErrorNode {
   make_error_node(diagnostic: InternalError { message: message, span: span }, module_name: module_name)

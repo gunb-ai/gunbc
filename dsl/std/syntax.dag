@@ -1,29 +1,9 @@
-// std/syntax.dag -- Language syntax specification types.
-//
-// Single authority for binary operations, literal values, and syntax
-// specification types. The compiler (v2/00_core.dag) imports from here.
-//
-// Consumers:
-//   v2/00_core.dag                      -- compiler IR
-//   v2/languages.dag                    -- LanguageSpec shim
-//   extdeps/languages/dag/syntax.dag    -- .dag language spec
-//   (future) extdeps/languages/*/syntax.dag -- other frontends
-
 module std.syntax
-
-// -- Binary operators -------------------------------------------------
-// The set of binary operations. Compact naming — these are universal.
-// Ref: ring theory (Add/Sub/Mul/Div/Mod), total order (Eq/Ne/Lt/Gt/Le/Ge),
-// boolean algebra (And/Or), language syntax (NullCoalesce).
 
 type BinOp
   = Add | Sub | Mul | Div | Mod
   | Eq | Ne | Lt | Gt | Le | Ge
   | And | Or | NullCoalesce
-
-// -- Literal values ---------------------------------------------------
-// All value forms that can appear as literals in source.
-// Keyword literals (true/false/null) are a subset used by SyntaxSpec.
 
 type LiteralValue
   = LitStr { value: String }
@@ -31,11 +11,8 @@ type LiteralValue
   | LitFloat { value: String }
   | LitBool { value: Bool }
   | LitNull
-  // Opaque symbol literal from `^IDENT` (spelling only; not a var-ref).
-  | LitSymbol { value: String }
 
-// -- Item body kinds --------------------------------------------------
-// How the body of a declaration is structured.
+  | LitSymbol { value: String }
 
 type BodyKind
   = ExprBody
@@ -46,22 +23,13 @@ type BodyKind
   | ServiceBody
   | ResourceBody
 
-// -- Item kind --------------------------------------------------------
-// Discriminator for item forms — identifies which semantic role
-// an item serves. Used to derive emission keywords from SyntaxSpec.
-
 type ItemFormKind
   = FuncForm
   | StructForm
   | EnumForm
   | TypeAliasForm
   | ModuleForm
-  | OtherForm        // trait, impl, const, static, service, resource, etc.
-
-// -- Item form --------------------------------------------------------
-// Describes one kind of declaration (fn, type, service, etc.)
-// as data. The parser reads this to decide what structural
-// components to expect after the keyword.
+  | OtherForm
 
 type ItemForm {
   kind: ItemFormKind
@@ -74,23 +42,9 @@ type ItemForm {
   body_kind: BodyKind
 }
 
-// -- Algebra field kind -----------------------------------------------
-// Which algebra field an operator dispatches through on the operand type.
-// Variants correspond to algebraic field names used by downstream
-// consumers. AlgQuotient/AlgRemainder are a legacy-only compatibility bridge for
-// historical core + types Div/Mod dispatch; they are not v3
-// algebra authority because v3 OrderedRing no longer declares quotient or
-// remainder fields in std/algebra.dag. Dissolution trigger: delete these two
-// variants and rows when the v2 Div/Mod algebra-field dispatch is retired or
-// split behind a v2-local syntax authority.
-
 type AlgebraFieldKind
   = AlgAdd | AlgMul | AlgReciprocal | AlgQuotient | AlgRemainder | AlgCompare | AlgMeet | AlgJoin
 
-// Single authority for kind → field name mapping. Both the compiler's
-// child lookup (04_types.dag) and serialization (compile.dag) derive
-// from this table. Adding a variant to AlgebraFieldKind requires adding
-// an entry here — no other file needs updating.
 type AlgebraFieldEntry {
   kind: AlgebraFieldKind
   field_name: String
@@ -107,19 +61,13 @@ data algebra_field_entries: List<AlgebraFieldEntry> = [
   { kind: AlgJoin, field_name: "join" }
 ]
 
-// -- Operator specification -------------------------------------------
-// One entry in the precedence table.
-
 type OperatorSpec {
   symbol: String
   left_bp: Int
   right_bp: Int
   binop: BinOp?
-  algebra_field: AlgebraFieldKind?  // when present, matches only this algebra field on the operand type
+  algebra_field: AlgebraFieldKind?
 }
-
-// -- Full syntax specification ----------------------------------------
-// Everything a parser needs to recognize a language's surface syntax.
 
 type SyntaxSpec {
   item_forms: List<ItemForm>

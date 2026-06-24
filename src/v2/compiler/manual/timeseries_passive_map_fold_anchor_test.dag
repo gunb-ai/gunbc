@@ -1,6 +1,3 @@
-// Scope: S1 compile + behavior anchor — TimeSeriesSignal + R/L/C map/fold step operators.
-// Status: compile-only IN-B anchor; validates std.timeseries_signal step operators wire through v2.
-
 module v2.test.manual.timeseries_passive_map_fold_anchor
 
 import v2.std.algebra { Cons, Empty }
@@ -108,8 +105,6 @@ test fn timeseries_anchor_resistor_map_holds() -> Bool {
   voltage_count(mapped.difference.microvolts) == 2000
 }
 
-// GATE1 signed-magnitude execution (zesty class-4): negative Current through resistor
-// map must yield negative Voltage count on v2 — value asserted, not just type-resolve.
 test fn timeseries_signed_magnitude_resistor_map_holds() -> Bool {
   let mapped = resistor_map_voltage(
     element: ResistorMap {
@@ -121,9 +116,6 @@ test fn timeseries_signed_magnitude_resistor_map_holds() -> Bool {
   voltage_count(mapped.difference.microvolts) == -3000
 }
 
-// GATE1 signed-magnitude Form-B fold (zesty class-4): positive initial charge +
-// negative current through capacitor_fold_step (signed int_mul + int_add crossing zero,
-// then int_div v=Q/C). Broken Nat-as-signed would yield wrong charge/voltage counts.
 data timeseries_signed_cap_initial_positive: CapacitorState = CapacitorState {
   voltage: StepPotentialDifference { microvolts: voltage(500) }
   charge_microcoulombs: charge_micro(1000)

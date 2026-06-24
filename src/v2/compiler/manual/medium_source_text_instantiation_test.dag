@@ -1,9 +1,3 @@
-// Wave 3b-D foothold: first Medium<String> source-text carrier in src/v2 compiler spine.
-// Proves the Source/TargetSource/DagSource String nickname fork collapsed to Medium<String>.
-//
-// GREEN: lossless_source + DagSourceReadWitness + emit/compile TranslateResult all
-//        carry Medium<String> with Lossless fidelity — discriminating match on both fields.
-
 module v2.test.manual.medium_source_text_instantiation
 
 import extdeps.communication.medium { DecodeFidelity, Lossless, Lossy, Medium }

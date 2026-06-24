@@ -1,5 +1,3 @@
-// Scope: live corpus — migrated transports pass; carve-out go/ts pass via wrapper.
-
 module v2.test.host_language_transport_script.corpus.migrated_transports_clean
 
 import v2.lens.host_language_transport_script {

@@ -1,26 +1,9 @@
-// gunbc/tools/bmc_first_contact.dag — runnable: prove out-of-band contact with a BMC.
-//
-// Read-only "first contact": reach the BMC at $BMC_HOST and authenticate with the
-// OpenBMC factory login (the cited single authority, extdeps/bmc/openbmc.dag), then read
-// the Redfish system resource (power state, manufacturer). Safe — no state is changed.
-//
-// Run it (set BMC_HOST to your board's management IP / hostname):
-//   BMC_HOST=10.0.0.10 gunbc run --source-root dsl \
-//     --entry dsl/gunbc/tools/bmc_first_contact.dag --function bmc_first_contact
-//
-// Add --dry-run to exercise the modeled mock instead of touching real hardware.
-//
-// This deliberately uses the FACTORY default login (root / 0penBmc). If the board's BMC
-// password has already been rotated, this read will fail auth — which is itself the
-// signal that rotation has happened (the rotation phase will source the live secret from
-// the credential store instead).
-
 module gunbc.tools.bmc_first_contact
 
 import extdeps.shell
 import extdeps.bmc.http
 import extdeps.bmc.openbmc { openbmc_factory_login }
-import std.types { NonEmptyStr, String }
+import std.types { NonEmptyStr, String, Secret }
 import std.resources { Network }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 
@@ -31,10 +14,8 @@ func bmc_first_contact() -> ProcessExit
   resp = redfish.Http.GetSystem(
     bmc_host: host.value as NonEmptyStr,
     username: openbmc_factory_login.username,
-    password: openbmc_factory_login.published_password
+    password: openbmc_factory_login.published_password as Secret
   )
-  // exit 0 ⟺ the BMC was reachable AND the factory login authenticated. On failure the
-  // captured body (if any) rides the reason for debugging. The system JSON (PowerState,
-  // Manufacturer, …) is curl's stdout, captured into resp.body.
+
   return if resp.success { ExitSuccess } else { exit_failure(reason: resp.body) }
 }

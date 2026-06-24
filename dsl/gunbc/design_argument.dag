@@ -1,23 +1,3 @@
-// gunbc/design_argument.dag — DESIGN.md's own argument, as data (the §7 recursion).
-//
-// The axiom+syllogism lens's first target is DESIGN.md itself (DESIGN open thread #1):
-// the document checking that its own serial structure is a real consequence-chain back
-// to the axioms, not a circle. This module is the INSTANCE — the A1-A3 axioms and the
-// §1 consequence rows — kept OUT of std/ (it is a fact about gunbc's own DESIGN, not a
-// universal framework, exactly as doc_reachability homes the doc-graph instance outside
-// std/). The framework it runs over is std/syllogism.dag (§3 single authority).
-//
-// SCOPE: §1 only — the smallest NON-VACUOUS argument (A1-A3 + their immediate
-// consequences), per the "DESIGN as the FIRST target" reading. §2-§7 rows (and the
-// independent-peer sections, which root into their OWN licensing axiom) land on top
-// incrementally once this slice is green.
-//
-// These rows are the "map" step of §2's decompress -> map -> reduce: DESIGN's prose
-// already NAMES each edge ("From A1 and A2 —", "From A2 and A3 —", "A1-A2 turned on
-// grounding itself"), so the model transcribes the stated premises, it does not invent
-// them. A1-A3 are NonLogicalAxiom (domain postulates of the gunbc theory; the §1 prose
-// "assumed, not derived").
-
 module gunbc.design_argument
 
 import std.syllogism {
@@ -25,8 +5,6 @@ import std.syllogism {
   Proposition, Argument
 }
 
-// DESIGN §1 — "The objective (the axioms)". Three NON-LOGICAL axioms: assumed,
-// not derived; domain postulates about goals / time / agreement, not tautologies.
 data design_axioms: List<Axiom> = [
   Axiom {
     id: "A1",
@@ -45,21 +23,20 @@ data design_axioms: List<Axiom> = [
   }
 ]
 
-// DESIGN §1's three stated consequences — each names the premises the prose cites.
 data design_section_1_propositions: List<Proposition> = [
-  // "From A1 and A2 — the solution is minimal, safe, efficient."
+
   Proposition {
     id: "s1.minimal-safe-efficient",
     statement: "the solution is minimal, safe, efficient: a solution is good insofar as it spends less of the only thing valued, time (cost, safety, complexity)",
     premises: ["A1", "A2"]
   },
-  // "From A2 and A3 — grounding is intersubjective."
+
   Proposition {
     id: "s1.grounding-intersubjective",
     statement: "grounding is intersubjective: because time is the only assumed-shared value, a fact is grounded only by pointing at a shared, time-stable framework",
     premises: ["A2", "A3"]
   },
-  // "At the limit — reduce intersubjectivity to physics." — "A1-A2 turned on grounding itself".
+
   Proposition {
     id: "s1.reduce-to-physics",
     statement: "at the limit, reduce intersubjectivity to physics: the efficient, time-bound description of interactions that satisfies a goal — A1-A2 turned on grounding itself",
@@ -67,8 +44,53 @@ data design_section_1_propositions: List<Proposition> = [
   }
 ]
 
-// The DESIGN §1 argument: the non-logical axioms and the consequences they entail.
 data design_section_1_argument: Argument = Argument {
   axioms: design_axioms,
   propositions: design_section_1_propositions
+}
+
+data design_section_2_to_7_propositions: List<Proposition> = [
+
+  Proposition {
+    id: "s2.minimize-redundancy",
+    statement: "minimize redundancy is the master move for cost and complexity: redundant work loses on all three of §1's quantities at once, so a perfectly DRY process is by meaning the minimal/efficient one",
+    premises: ["s1.minimal-safe-efficient"]
+  },
+
+  Proposition {
+    id: "s3.single-authority",
+    statement: "single authority keeps §2 from being undone: minimization holds only if each fact lives in exactly one place; the recurring violation is nicknaming (a second name for one concept)",
+    premises: ["s2.minimize-redundancy"]
+  },
+
+  Proposition {
+    id: "s4.closed-grounded-substrate",
+    statement: "the closed, grounded substrate makes §2–§3 decidable: you can unify and decompose mechanically only in a closed, grounded system, and grounding is intersubjective",
+    premises: ["s2.minimize-redundancy", "s3.single-authority", "s1.grounding-intersubjective"]
+  },
+
+  Proposition {
+    id: "s5.fail-closed",
+    statement: "fail-closed is §1's safety axis: minimizing cost and complexity is worthless if a wrong thing passes silently; stronger than catching a wrong state is making it unwritable (correctness by construction, not validation)",
+    premises: ["s1.minimal-safe-efficient"]
+  },
+
+  Proposition {
+    id: "s6.how-to-work",
+    statement: "how to work given §1–§5: model by DFS-ing the concept DAG, prioritize holistically and denominate the benefit as displaced cost, and enforce by construction-first then lenses for the unstructurable residue",
+    premises: ["s2.minimize-redundancy", "s3.single-authority", "s4.closed-grounded-substrate", "s5.fail-closed"]
+  },
+
+  Proposition {
+    id: "s7.self-hosting",
+    statement: "self-hosting applies the principles to the compiler itself: it is an ordinary substrate fact written in itself, and because a wall is a row over a medium-agnostic substrate, language design opens up (compiler-fork × language → row + medium)",
+    premises: ["s4.closed-grounded-substrate", "s6.how-to-work", "s1.reduce-to-physics"]
+  }
+]
+
+data design_propositions: List<Proposition> = concat(design_section_1_propositions, design_section_2_to_7_propositions)
+
+data design_argument: Argument = Argument {
+  axioms: design_axioms,
+  propositions: design_propositions
 }

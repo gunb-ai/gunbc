@@ -1,42 +1,12 @@
-// std/fidelity.dag -- Transport fidelity: agnostic cost/hermetic shape for external calls.
-//
-// Layers on fermi.dag. Defines transport classification as abstract
-// vocabulary (like lint.dag defines lint concepts without being tool-specific).
-//
-// §3 SEAM: this file holds the agnostic *shape* only. The per-realization
-// rows (what ShellLocal vs RestNetwork actually cost / whether they are
-// hermetic) and the dispatch that selects them live in
-// extdeps/transports/fidelity.dag — naming a realization is itself
-// realization, so a std `match` over TransportClass variants would invert the
-// import arrow (std <- extdeps). Same split as std/os.dag + extdeps/os/os.dag:
-// std projects (fold over already-derived fidelities, no `match` on
-// realization names); extdeps dispatches (catalog row per realization).
-//
-// Used by:
-//   - Test generation (derive tier/hermetic from graph structure)
-//   - CI gating (skip expensive tests locally)
-//   - Cost estimation (timeout budgets per transport class)
-//
-// No repo-specific policy here -- that lives in config/test_policy.dag.
-
 module std.fidelity
 
 import std.types { FermiDepth }
 import std.fermi { fermi_max_of }
 
-// Transport classification (mirrors ServiceTransportClass in compiler).
-// A closed enum naming the transport realizations. std holds the *names*
-// (a dispatch-free closed set, like OperatingSystemProduct in std.os.types)
-// but never matches over them — that match is the dispatch and lives in
-// extdeps/transports/fidelity.dag.
 type TransportClass = LocalDirect | ShellLocal | FileBoundary | RestNetwork | InterfaceStub | Unknown
 
-// Test classification
 type TestClass = Unit | Hermetic | Integration
 
-// Agnostic per-transport derived fidelity: the cost magnitude and hermeticity
-// of *one* transport, independent of which concrete realization produced them.
-// extdeps/transports rows project into this shape; this file folds over it.
 type DerivedClassification {
   test_class: TestClass
   depth: FermiDepth
@@ -48,11 +18,6 @@ type TransportFidelity {
   hermetic: Bool
 }
 
-// --- Transitive derivation (the core composition) -------------------
-
-// Given the derived fidelity of every transport reached transitively, compose
-// properties. This is the "big-O" rule: max transport dominates. Dispatch-free
-// — it never names a realization, so it stays central (§3 projection-only fold).
 fn classify_fidelities(fidelities: List<TransportFidelity>) -> DerivedClassification {
   let depths = map(fidelities, f => f.depth)
   let max_depth = fermi_max_of(depths: depths)

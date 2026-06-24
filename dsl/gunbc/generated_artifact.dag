@@ -1,0 +1,85 @@
+
+module gunbc.generated_artifact
+
+import gunbc.ci_yaml_emit { expected_ci_yml }
+import gunbc.ci_yaml_validate { ci_yml_parses }
+import gunbc.gitignore_emit { expected_gitignore, path_is_ignored }
+import gunbc.roadmap_authority { expected_roadmap_md }
+import gunbc.design_document { expected_design_md }
+import gunbc.runner_deploy_emit { expected_runner_deploy_manifest }
+import gunbc.os_install { HostAutoinstall, fleet_autoinstall_specs }
+import gunbc.os_install_emit { autoinstall_user_data }
+import gunbc.plan { Plan, expected_plan_md, plan_path }
+import gunbc.plan_registry { all_plans }
+
+type GeneratedArtifact
+  = CiYamlArtifact
+  | GitignoreArtifact
+  | RoadmapArtifact
+  | DesignArtifact
+  | RunnerDeployArtifact
+  | AutoinstallUserDataArtifact { spec: HostAutoinstall }
+  | PlanArtifact { plan: Plan }
+
+data generated_artifact_registry: List<GeneratedArtifact> = concat(
+  concat(
+    [CiYamlArtifact, GitignoreArtifact, RoadmapArtifact, DesignArtifact, RunnerDeployArtifact],
+    map(fleet_autoinstall_specs, s => AutoinstallUserDataArtifact { spec: s })
+  ),
+  map(all_plans, pl => PlanArtifact { plan: pl })
+)
+
+fn artifact_path(a: GeneratedArtifact) -> String {
+  match a {
+    CiYamlArtifact => ".github/workflows/ci.yml"
+    GitignoreArtifact => ".gitignore"
+    RoadmapArtifact => "ROADMAP.md"
+    DesignArtifact => "DESIGN.md"
+    RunnerDeployArtifact => ".github/fleet-runner-deploy.manifest"
+    AutoinstallUserDataArtifact { spec } => concat(concat("provisioning/", spec.host), "/user-data")
+    PlanArtifact { plan } => plan_path(p: plan)
+  }
+}
+
+fn artifact_generate(a: GeneratedArtifact) -> String {
+  match a {
+    CiYamlArtifact => expected_ci_yml()
+    GitignoreArtifact => expected_gitignore()
+    RoadmapArtifact => expected_roadmap_md()
+    DesignArtifact => expected_design_md()
+    RunnerDeployArtifact => expected_runner_deploy_manifest()
+    AutoinstallUserDataArtifact { spec } => autoinstall_user_data(payload: spec.payload)
+    PlanArtifact { plan } => expected_plan_md(p: plan)
+  }
+}
+
+fn artifact_extra_valid(a: GeneratedArtifact) -> Bool {
+  match a {
+    CiYamlArtifact => ci_yml_parses(path: artifact_path(a: a))
+    _ => true
+  }
+}
+
+fn artifact_is_committed(a: GeneratedArtifact) -> Bool {
+  !path_is_ignored(path: artifact_path(a: a))
+}
+
+fn committed_generated_artifacts() -> List<GeneratedArtifact> {
+  filter(generated_artifact_registry, a => artifact_is_committed(a: a))
+}
+
+fn artifact_eq(a: GeneratedArtifact, b: GeneratedArtifact) -> Bool {
+  match a {
+    CiYamlArtifact => match b { CiYamlArtifact => true  _ => false }
+    GitignoreArtifact => match b { GitignoreArtifact => true  _ => false }
+    RoadmapArtifact => match b { RoadmapArtifact => true  _ => false }
+    DesignArtifact => match b { DesignArtifact => true  _ => false }
+    RunnerDeployArtifact => match b { RunnerDeployArtifact => true  _ => false }
+    AutoinstallUserDataArtifact { spec } => match b { AutoinstallUserDataArtifact { spec: spec2 } => spec.host == spec2.host  _ => false }
+    PlanArtifact { plan } => match b { PlanArtifact { plan: plan2 } => plan.slug == plan2.slug  _ => false }
+  }
+}
+
+fn registry_contains(a: GeneratedArtifact) -> Bool {
+  any(generated_artifact_registry, x => artifact_eq(a: x, b: a))
+}

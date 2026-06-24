@@ -1,4 +1,3 @@
-
 module v2.test.language_model.rust
 import v2.std.language_model { LanguageModel }
 
@@ -38,7 +37,7 @@ import v2.std.rust_leaf_model_claim {
   RustcAcceptsExpectation,
   RustcRejectsExpectation
 }
-// R3-external falsification: type_form vs value_form mismatch (planning §7).
+
 type RustLeafModelClaim = LeafModelClaim<Outcome<LanguageModel>, RustClaimSubject, RustClaimExpectation>
 
 fn rust_leaf_rustc_invocation() -> TargetInvocation {
@@ -87,7 +86,6 @@ data claim_rust_leaf_r1_i32_type: RustLeafModelClaim = LeafModelClaim {
   }
 }
 
-// R2a — derived inhabitance; Subject pins rust_integer_algebra_inhabitance(rust_facts_i32).
 data claim_rust_leaf_r2a_i32_algebra_operations: RustLeafModelClaim = LeafModelClaim {
   model: rust_language_model_wave1(),
   fact_id: rust_leaf_model_fact_id_node_algebra_inhabitance_rust_facts_i32(),
@@ -99,7 +97,6 @@ data claim_rust_leaf_r2a_i32_algebra_operations: RustLeafModelClaim = LeafModelC
   }
 }
 
-// R2b sub-claim 1/4 — checked_arithmetic_debug_default (live; PanicOnOverflow per rust.dag:530).
 data claim_rust_leaf_r2b_debug_default_overflow: RustLeafModelClaim = LeafModelClaim {
   model: rust_language_model_wave1(),
   fact_id: rust_leaf_model_fact_id_node_algebra_inhabitance_rust_facts_i32(),
@@ -123,7 +120,6 @@ data claim_rust_leaf_r2b_debug_default_overflow: RustLeafModelClaim = LeafModelC
   }
 }
 
-// R2b sub-claim 2/4 — checked_arithmetic_release_default (live; TwoComplementWrap per rust.dag:531).
 data claim_rust_leaf_r2b_release_default_overflow: RustLeafModelClaim = LeafModelClaim {
   model: rust_language_model_wave1(),
   fact_id: rust_leaf_model_fact_id_node_algebra_inhabitance_rust_facts_i32(),
@@ -147,7 +143,6 @@ data claim_rust_leaf_r2b_release_default_overflow: RustLeafModelClaim = LeafMode
   }
 }
 
-// R2b sub-claim 3/4 — checked_arithmetic_overflow_checks_enabled (not_checked stub; action duplicates debug-default).
 data claim_rust_leaf_r2b_overflow_checks_enabled_overflow: RustLeafModelClaim = LeafModelClaim {
   model: rust_language_model_wave1(),
   fact_id: rust_leaf_model_fact_id_node_algebra_inhabitance_rust_facts_i32(),
@@ -171,7 +166,6 @@ data claim_rust_leaf_r2b_overflow_checks_enabled_overflow: RustLeafModelClaim = 
   }
 }
 
-// R2b sub-claim 4/4 — checked_arithmetic_overflow_checks_disabled (not_checked stub; action duplicates release-default).
 data claim_rust_leaf_r2b_overflow_checks_disabled_overflow: RustLeafModelClaim = LeafModelClaim {
   model: rust_language_model_wave1(),
   fact_id: rust_leaf_model_fact_id_node_algebra_inhabitance_rust_facts_i32(),

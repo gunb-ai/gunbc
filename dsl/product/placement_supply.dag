@@ -1,16 +1,3 @@
-// product/placement_supply.dag — placement projection carrier for compute fabric.
-//
-// First-fit placement consumers (ctrl plans.capacity, shadow reconciler)
-// project physical compute supply into PlacementSupplyRow. Cordoning is
-// absence: only schedulable hosts appear in the supply list — no stored
-// healthy: Bool flag.
-//
-// Authority for ComputeHost remains product.compute_fabric; CpuFacts / the CPU
-// concept is extdeps.cpu (vendor catalogs in extdeps.cpu); DIMM taxonomy extdeps.memory
-// (SK Hynix catalog extdeps.memory.sk_hynix). Concrete operator DIMM populations are
-// the operator's deployment (ctrl), not gunbc std. Thin projection
-// surface importable without pulling the full fabric graph.
-
 module product.placement_supply
 
 import std.measure {
@@ -33,15 +20,7 @@ type PlacementSupplyRow {
   ram_bytes: ByteSize
 }
 
-// Aggregate clock capacity = thread count x per-thread rate. The product is a
-// Frequency at unit scale, so it projects back onto `Hertz` via `hertz()` rather
-// than leaking a flat `Int` at the product boundary (the dimension stays attached;
-// GATE-0 value-Measure boundary projection, mirroring `money_micros()` in
-// product.compute_fabric). Both factors are `Nat` counts, so the product inhabits
-// the `Nat` carrier of `Hertz` without a signed/fractional generalization.
 fn cpu_capacity_hz_row(row: PlacementSupplyRow) -> Hertz {
-  // Let-bind thread_count and clock_count separately: v2 parser rejects the
-  // nested projection call in a single expression (GATE-0 workaround).
   let thread_count = hardware_thread_count_value(row.hardware_threads)
   let clock_count = hertz_count(row.clock_hz)
   hertz(thread_count * clock_count)

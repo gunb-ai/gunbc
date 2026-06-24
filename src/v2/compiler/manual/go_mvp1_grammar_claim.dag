@@ -1,6 +1,3 @@
-// Owns: claim_go_mvp1_grammar_validates, claim_go_mvp1_grammar_parses_mvp_tokens.
-// Consumes: v2.compiler.parse, v2.extdeps.languages.go, v2.std.*.
-
 module v2.test.manual.go_mvp1_grammar_claim
 
 import v2.compiler.parse {

@@ -1,9 +1,3 @@
-//! ctrl#1476 B1 — List=FreeMonoid Option-B chokepoint + detection test.
-//!
-//! List-consuming interpreter sites must route incoming values through
-//! `expect_list` or `free_monoid_to_vec`. Direct `Value::List` matches on
-//! operands are bypasses that break FreeMonoid<Cons/Empty> alias transparency.
-
 use std::rc::Rc;
 
 use v1_compiler::v1_compiler_compile::{compile_to_resolved, ResolvedPipelineResult};
@@ -26,8 +20,6 @@ fn assert_resolved_no_hard_errors(result: &ResolvedPipelineResult) {
     );
 }
 
-/// Supplementary source-pattern ratchet (known bypass snapshots). Semantic coverage is in the
-/// runtime tests below; this catches reintroduction of specific pre-B1 `Value::List` operand arms.
 #[test]
 fn list_operations_do_not_match_value_list_on_incoming_operands() {
     let source = include_str!("../../stage0/src/v1_interpreter.rs");
@@ -77,10 +69,6 @@ fn three_len() -> Int {
 
 #[test]
 fn freemonoid_cons_chain_length_routes_through_chokepoint() {
-    // Declare the FreeMonoid Empty/Cons coproduct inline: the v2 test harness only
-    // indexes src/v1 + dsl, so v2.std.algebra is unreachable here. The interpreter's
-    // `free_monoid_to_vec` chokepoint matches the variant *names* "Empty"/"Cons", so an
-    // inline declaration exercises the identical FreeMonoid<->List bridge (ctrl#1476 B1).
     let src = r#"module test.fm_cons_len
 type IntList = Empty | Cons { head: Int, tail: IntList }
 fn cons_three() -> IntList {
@@ -104,9 +92,6 @@ fn cons_len() -> Int {
     }
 }
 
-/// A String IS a FreeMonoid<Char>, but `.contains` on a String means *substring*
-/// containment — the chokepoint must check the Str representation before the list path,
-/// or a multi-char query is wrongly evaluated as char-list membership (returns false).
 #[test]
 fn string_contains_multichar_substring_not_char_membership() {
     let src = r#"module test.str_contains
@@ -125,7 +110,6 @@ fn lacks_substring() -> Bool {
         .as_ref()
         .expect("graph after successful resolve");
 
-    // Discriminating: char-list membership would make a multi-char substring false.
     match v1_interpreter::run(graph, resolved.source_indices.clone(), "has_substring") {
         Ok(Value::Bool(true)) => {}
         other => panic!("expected Bool(true) from \"abcd\".contains(\"bc\"), got {other:?}"),
@@ -136,18 +120,8 @@ fn lacks_substring() -> Bool {
     }
 }
 
-/// `.contains` membership over a FreeMonoid Cons/Empty chain must route through the
-/// chokepoint (free_monoid_to_vec), not the native-`Value::List` arm. A regression that
-/// matched the receiver as a bare `Value::List` would fail `expect_list` on the Cons-chain
-/// alias and error "contains not supported"; this pins element membership instead.
-///
-/// Distinct from `string_contains_multichar_substring_not_char_membership` (Str-substring
-/// path) and `freemonoid_cons_chain_length_routes_through_chokepoint` (length, not membership):
-/// it is the contains × FreeMonoid intersection that lens analysis (coverage.dag) relies on.
 #[test]
 fn contains_membership_over_freemonoid_cons_chain_routes_through_chokepoint() {
-    // Inline Empty/Cons coproduct: the chokepoint matches the variant *names*, so this
-    // exercises the identical FreeMonoid<->List bridge as v2.std.algebra (ctrl#1476 B1).
     let src = r#"module test.fm_cons_contains
 type IntList = Empty | Cons { head: Int, tail: IntList }
 fn cons_three() -> IntList {
@@ -168,7 +142,6 @@ fn member_absent() -> Bool {
         .as_ref()
         .expect("graph after successful resolve");
 
-    // Discriminating: a bare-`Value::List` regression errors on the Cons-chain alias.
     match v1_interpreter::run(graph, resolved.source_indices.clone(), "member_present") {
         Ok(Value::Bool(true)) => {}
         other => panic!("expected Bool(true) from Cons chain .contains(2), got {other:?}"),
@@ -179,7 +152,6 @@ fn member_absent() -> Bool {
     }
 }
 
-/// BinOp::Add list concat must match .append: Str operand stays one element.
 #[test]
 fn list_add_str_operand_stays_single_element() {
     let src = r#"module test.add_str
@@ -202,7 +174,6 @@ fn two_elements() -> Int {
     }
 }
 
-/// List append must not explode a Str argument into char elements via the chokepoint.
 #[test]
 fn list_append_str_arg_stays_single_element() {
     let src = r#"module test.append_str
@@ -225,7 +196,6 @@ fn two_elements() -> Int {
     }
 }
 
-/// flat_map flattening applies to Cons/List chains only; a returned Str is one element.
 #[test]
 fn flat_map_str_result_not_char_exploded() {
     let src = r#"module test.flat_map_str

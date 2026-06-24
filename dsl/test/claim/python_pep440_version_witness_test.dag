@@ -1,12 +1,3 @@
-// By-execution witnesses for extdeps.languages.python.version (PEP 440).
-// Discriminating: each witness goes RED if label rendering reverts to opaque String
-// concatenation or drops epoch/pre/post/dev/local segments.
-//
-// Run via:
-//   gunbc run --source-root dsl \
-//     --entry dsl/test/claim/python_pep440_version_witness_test.dag \
-//     --function python_pep440_version_witnesses --claim-run
-
 module test.claim.python_pep440_version_witness
 
 import extdeps.version.pep440 {

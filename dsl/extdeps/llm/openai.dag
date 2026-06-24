@@ -1,36 +1,16 @@
-// extdeps/llm/openai.dag — OpenAI Chat Completions / Responses protocol (types + wire contracts).
-//
-// REST transport binding: `openai_rest.dag` (`module extdeps.llm.openai_rest`).
-// Cross-provider facts: `llm.dag` (`module extdeps.llm.llm`).
-// Error envelope: `openai_errors.dag`.
-//
 module extdeps.llm.openai
 
-import extdeps.llm.llm { llm_snake_wire_contract }
-import std.serialization { CoproductWireContract, VariantEncoding }
 import std.types { NonEmptyStr }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.coverage { CoverageClosureEntry, CoverageClosureFact }
 
-// Wire contract: OpenAI API returns enum values as snake_case strings.
-// Single authority: `extdeps.llm.llm` (`llm_snake_wire_contract`); module-local
-// `wire_contract` is the per-module binding name the emitter resolves (`05_emit_rust.dag`).
-data wire_contract: VariantEncoding = llm_snake_wire_contract
-
-data openai_chat_message_wire_contract: CoproductWireContract = {
-  coproduct: "OpenAiChatMessage",
-  encoding: InternallyTaggedObject { tag_field: "role", naming: StripPrefixAndSnakeCase { prefix: "OpenAiChatMessage" } }
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "platform.openai.com/docs/api-reference/chat/create"
+  }
 }
-
-data openai_chat_message_part_wire_contract: CoproductWireContract = {
-  coproduct: "OpenAiChatMessagePart",
-  encoding: InternallyTaggedObject { tag_field: "type", naming: StripPrefixSuffixAndSnakeCase { prefix: "OpenAiChatMessage", suffix: "Part" } }
-}
-
-data openai_chat_message_content_wire_contract: CoproductWireContract = {
-  coproduct: "OpenAiChatMessageContent",
-  encoding: UntaggedVariant
-}
-
-// -- Models --------------------------------------------------------
 
 type OpenAiModel
   = Gpt4o
@@ -56,14 +36,10 @@ data models: List<OpenAiModelSpec> = [
   { model: O4Mini, model_id: "o4-mini", context_window: 200000, max_output_tokens: 100000 }
 ]
 
-// -- Response format -----------------------------------------------
-
 type ResponseFormat
   = TextFormat
   | JsonObjectFormat
   | JsonSchemaFormat { schema: Json }
-
-// -- Tool choice ---------------------------------------------------
 
 type ToolChoice
   = ToolChoiceAuto
@@ -71,19 +47,13 @@ type ToolChoice
   | ToolChoiceRequired
   | ToolChoiceNamed { name: String }
 
-// -- Finish reasons ------------------------------------------------
-
 type OpenAiFinishReason = Stop | Length | ToolCalls | ContentFilter
-
-// -- Function calling ----------------------------------------------
 
 type FunctionCall {
   name: String
   arguments: String
 }
 
-// OpenAI tool call: wire shape requires {"type": "function", ...}.
-// Extensible registry: closed known row + Other escape (fail-open ingress).
 type OpenAiToolCallType
   = OpenAiToolCallFunction
   | OpenAiToolCallTypeOther { raw: NonEmptyStr }
@@ -108,26 +78,8 @@ type ToolCall {
   function: FunctionCall
 }
 
-// Roles on Chat Completions `messages[]`: system / developer / user /
-// assistant / tool / function per OpenAI Chat Completions
-// (https://platform.openai.com/docs/api-reference/chat/create).
-// 🟢 TERMINAL provider-domain coproduct for modeled Chat Completions message
-// roles. The value is projected from `OpenAiChatMessage` variant identity, not
-// caller-authored as a free payload field.
-//
-// Request wire for this row (`messages[].role` as
-// system/developer/user/assistant/tool/function) is ratcheted by pipeline tests
-// in historical pipeline integration tests:
-// `openai_chat_message_role_wire_matches_llm_snake_contract` (emitted serde attrs)
-// and `openai_chat_message_row_json_matches_chat_completions_wire_tags` (golden JSON).
 type OpenAiChatMessageRole = System | Developer | User | Assistant | Tool | Function
 
-// 🟡 SCAFFOLD provider-domain coproduct for request `messages[].content`.
-// Chat Completions accepts either a scalar text string or typed content parts.
-// Wire uses untagged string-or-array alternatives via
-// `openai_chat_message_content_wire_contract`; `OpenAiChatMessagePart` carries
-// the tagged part rows. Trigger: split this content carrier by message role if
-// OpenAI role-specific content-part legality is modeled structurally.
 type OpenAiChatMessageContent
   = OpenAiChatMessageText { text: String }
   | OpenAiChatMessageParts { parts: List<OpenAiChatMessagePart> }
@@ -137,21 +89,10 @@ type OpenAiChatMessageImageUrl {
   detail: String?
 }
 
-// 🟡 SCAFFOLD provider-domain coproduct for Chat Completions request content
-// parts. Text and image_url close the original multimodal-content gap; audio,
-// refusal, and file-like additive parts remain gap-carried by
-// `structural_coverage_gap_openai_chat_message_additive_content_parts`.
 type OpenAiChatMessagePart
   = OpenAiChatMessageTextPart { text: String }
   | OpenAiChatMessageImageUrlPart { image_url: OpenAiChatMessageImageUrl }
 
-// Chat Completions API message row. Variant identity determines the wire `role`
-// discriminator; role is deliberately not a payload field, so illegal rows like
-// a tool payload with `role: User` are not structurally representable.
-// 🟡 SCAFFOLD provider-domain coproduct for the current Chat Completions request
-// message surface. Trigger: update this carrier when OpenAI request messages
-// add new role variants or when assistant/tool custom-call payloads are lifted
-// out of the residual rows below.
 type OpenAiChatMessage
   = OpenAiChatMessageSystem { content: OpenAiChatMessageContent }
   | OpenAiChatMessageDeveloper { content: OpenAiChatMessageContent }
@@ -160,9 +101,6 @@ type OpenAiChatMessage
   | OpenAiChatMessageTool { content: OpenAiChatMessageContent, tool_call_id: String }
   | OpenAiChatMessageFunction { content: String, name: String }
 
-// Narrow 200-OK wire slice for Chat Completions (`response { 200 => … }` + serde).
-// Tool calls / multimodal message bodies remain outside this carrier (same narrow
-// slice as the historical `from` JSON-pointer paths).
 type OpenAiChatCompletion200TopLogprob {
   token: String
   bytes: List<Int>?
@@ -188,9 +126,6 @@ type OpenAiChatCompletion200UrlCitation {
   url: String
 }
 
-// 🟢 TERMINAL response annotation coproduct for Chat Completions. The current
-// provider wire exposes `type = "url_citation"` with required citation
-// coordinates under `url_citation`.
 type OpenAiChatCompletion200Annotation
   = UrlCitation { url_citation: OpenAiChatCompletion200UrlCitation }
 
@@ -228,12 +163,6 @@ type OpenAiChatCompletion200Usage {
   prompt_tokens_details: OpenAiChatCompletion200PromptTokenDetails?
 }
 
-// Chat completion **object** envelope per OpenAI Chat Completions reference
-// (https://platform.openai.com/docs/api-reference/chat/object): `id`, `object`,
-// `created`, `model`, `choices`, `usage`. `OpenAiChatCompletion200Message` is
-// still a narrow text/refusal slice of each `choices[].message`; richer
-// tool-call, multimodal, and audio surfaces remain covered by downstream
-// typed-carrier closure rows.
 type OpenAiChatCompletion200Body {
   id: String
   object: String
@@ -245,20 +174,42 @@ type OpenAiChatCompletion200Body {
   system_fingerprint: String?
 }
 
-// Residuals outside `OpenAiChatCompletion200Body` / nested narrow slices. The
-// remaining entries are variant-shaped provider surfaces: tool/function calls,
-// audio, and multimodal content need coproduct modeling rather than optional
-// coordinates on the current text-message carrier.
-data structural_coverage_gap_openai_chat_completion_200_residual: List<String> = [
-  "closure:openai_chat_completion_200_residual|OpenAiChatCompletion200Message|variant_pending:tool_calls|variant_pending:function_call|variant_pending:audio|variant_pending:non_string_content|variant_pending:refusal_without_content|trigger:model response content/tool/audio coproduct surface"
+data structural_coverage_gap_openai_chat_completion_200_residual: List<CoverageClosureEntry> = [
+  {
+    facts: [
+      Subject { path: "OpenAiChatCompletion200Message" },
+      VariantPending { variant: "tool_calls" },
+      VariantPending { variant: "function_call" },
+      VariantPending { variant: "audio" },
+      VariantPending { variant: "non_string_content" },
+      VariantPending { variant: "refusal_without_content" }
+    ],
+    trigger: "model response content/tool/audio coproduct surface"
+  }
 ]
 
-data structural_coverage_gap_openai_chat_message_additive_content_parts: List<String> = [
-  "closure:openai_chat_message_additive_content_parts|OpenAiChatMessagePart|missing:audio_input_part|missing:refusal_part|missing:file_or_custom_parts|trigger:OpenAI Chat Completions request content-part spec extension",
-  "closure:openai_chat_message_additive_tool_calls|ToolCall|missing:custom_tool_call|trigger:OpenAI Chat Completions custom tool-call payload carrier"
+data structural_coverage_gap_openai_chat_message_additive_content_parts: List<CoverageClosureEntry> = [
+  {
+    facts: [
+      Subject { path: "OpenAiChatMessagePart" },
+      Missing { item: "audio_input_part" },
+      Missing { item: "refusal_part" },
+      Missing { item: "file_or_custom_parts" }
+    ],
+    trigger: "OpenAI Chat Completions request content-part spec extension"
+  }
 ]
 
-// Narrow 200-OK wire slice for OpenAI Responses (`response { 200 => … }`).
+data structural_coverage_gap_openai_chat_message_additive_tool_calls: List<CoverageClosureEntry> = [
+  {
+    facts: [
+      Subject { path: "ToolCall" },
+      Missing { item: "custom_tool_call" }
+    ],
+    trigger: "OpenAI Chat Completions custom tool-call payload carrier"
+  }
+]
+
 type OpenAiResponsesOutputContentType
   = OpenAiResponsesOutputText
   | OpenAiResponsesOutputContentTypeOther { raw: NonEmptyStr }
@@ -295,25 +246,93 @@ fn openai_responses_output_item_type_label(kind: OpenAiResponsesOutputItemType) 
   }
 }
 
-// The operation's current projections read text-output and usage token counts,
-// so this carrier models the stable message/output_text path plus token-detail
-// usage rows. Refusal content, tool, reasoning-detail, error, and multimodal
-// output item variants remain outside this proof-of-shape slice. `text` is
-// required here so the typed 200 body cannot inhabit this projection path
-// without the string field the operation declares.
+type OpenAiResponsesStatus
+  = OpenAiResponsesStatusCompleted
+  | OpenAiResponsesStatusFailed
+  | OpenAiResponsesStatusInProgress
+  | OpenAiResponsesStatusIncomplete
+  | OpenAiResponsesStatusCancelled
+  | OpenAiResponsesStatusQueued
+  | OpenAiResponsesStatusOther { raw: NonEmptyStr }
+
+data openai_responses_status_completed_wire: String = "completed"
+data openai_responses_status_failed_wire: String = "failed"
+data openai_responses_status_in_progress_wire: String = "in_progress"
+data openai_responses_status_incomplete_wire: String = "incomplete"
+data openai_responses_status_cancelled_wire: String = "cancelled"
+data openai_responses_status_queued_wire: String = "queued"
+
+fn parse_openai_responses_status(raw: String) -> OpenAiResponsesStatus {
+  if raw == openai_responses_status_completed_wire { OpenAiResponsesStatusCompleted }
+  else if raw == openai_responses_status_failed_wire { OpenAiResponsesStatusFailed }
+  else if raw == openai_responses_status_in_progress_wire { OpenAiResponsesStatusInProgress }
+  else if raw == openai_responses_status_incomplete_wire { OpenAiResponsesStatusIncomplete }
+  else if raw == openai_responses_status_cancelled_wire { OpenAiResponsesStatusCancelled }
+  else if raw == openai_responses_status_queued_wire { OpenAiResponsesStatusQueued }
+  else { OpenAiResponsesStatusOther { raw: raw } }
+}
+
+fn openai_responses_status_label(kind: OpenAiResponsesStatus) -> String {
+  match kind {
+    OpenAiResponsesStatusCompleted => openai_responses_status_completed_wire
+    OpenAiResponsesStatusFailed => openai_responses_status_failed_wire
+    OpenAiResponsesStatusInProgress => openai_responses_status_in_progress_wire
+    OpenAiResponsesStatusIncomplete => openai_responses_status_incomplete_wire
+    OpenAiResponsesStatusCancelled => openai_responses_status_cancelled_wire
+    OpenAiResponsesStatusQueued => openai_responses_status_queued_wire
+    OpenAiResponsesStatusOther { raw: r } => r
+  }
+}
+
+type OpenAiResponsesOutputItemStatus
+  = OpenAiResponsesOutputItemInProgress
+  | OpenAiResponsesOutputItemCompleted
+  | OpenAiResponsesOutputItemIncomplete
+  | OpenAiResponsesOutputItemStatusOther { raw: NonEmptyStr }
+
+fn parse_openai_responses_output_item_status(raw: String) -> OpenAiResponsesOutputItemStatus {
+  if raw == openai_responses_status_in_progress_wire { OpenAiResponsesOutputItemInProgress }
+  else if raw == openai_responses_status_completed_wire { OpenAiResponsesOutputItemCompleted }
+  else if raw == openai_responses_status_incomplete_wire { OpenAiResponsesOutputItemIncomplete }
+  else { OpenAiResponsesOutputItemStatusOther { raw: raw } }
+}
+
+fn openai_responses_output_item_status_label(kind: OpenAiResponsesOutputItemStatus) -> String {
+  match kind {
+    OpenAiResponsesOutputItemInProgress => openai_responses_status_in_progress_wire
+    OpenAiResponsesOutputItemCompleted => openai_responses_status_completed_wire
+    OpenAiResponsesOutputItemIncomplete => openai_responses_status_incomplete_wire
+    OpenAiResponsesOutputItemStatusOther { raw: r } => r
+  }
+}
+
 type OpenAiResponses200OutputContent {
   type: OpenAiResponsesOutputContentType
   text: String
   annotations: List<OpenAiResponses200Annotation>?
 }
 
-data structural_coverage_gap_openai_responses_200_residual: List<String> = [
-  "closure:openai_responses_200_residual|OpenAiResponses200OutputContent|json_pending:logprobs|variant_pending:refusal|trigger:Responses output content coproduct surface",
-  "closure:openai_responses_200_residual|OpenAiResponses200OutputItem|variant_pending:tool_calls|variant_pending:reasoning|variant_pending:error|variant_pending:multimodal_output|trigger:Responses output item coproduct surface"
+data structural_coverage_gap_openai_responses_200_residual: List<CoverageClosureEntry> = [
+  {
+    facts: [
+      Subject { path: "OpenAiResponses200OutputContent" },
+      JsonPending { field: "logprobs" },
+      VariantPending { variant: "refusal" }
+    ],
+    trigger: "Responses output content coproduct surface"
+  },
+  {
+    facts: [
+      Subject { path: "OpenAiResponses200OutputItem" },
+      VariantPending { variant: "tool_calls" },
+      VariantPending { variant: "reasoning" },
+      VariantPending { variant: "error" },
+      VariantPending { variant: "multimodal_output" }
+    ],
+    trigger: "Responses output item coproduct surface"
+  }
 ]
 
-// 🟢 TERMINAL response annotation coproduct for the direct-coordinate
-// Responses `output_text.annotations[]` wire tags modeled in this narrow slice.
 type OpenAiResponses200Annotation
   = FileCitation { file_id: String, filename: String, index: Int }
   | UrlCitation { start_index: Int, end_index: Int, title: String, url: String }
@@ -323,7 +342,7 @@ type OpenAiResponses200Annotation
 type OpenAiResponses200OutputItem {
   id: String?
   type: OpenAiResponsesOutputItemType
-  status: String?
+  status: OpenAiResponsesOutputItemStatus?
   role: String?
   content: List<OpenAiResponses200OutputContent>
 }
@@ -348,42 +367,9 @@ type OpenAiResponses200Body {
   id: String
   object: String
   created_at: Int?
-  status: String?
+  status: OpenAiResponsesStatus?
   model: String
   output: List<OpenAiResponses200OutputItem>
   usage: OpenAiResponses200Usage
   service_tier: String?
 }
-
-// -- Tests ----------------------------------------------------------
-// Commented out until the v2 parser supports `fixture` and `test` items.
-// See ROADMAP.md backlog. Move to openai_test.dag when fixture lands.
-//
-// fixture llm_cloud_env {
-//     mock cloud_env.config -> { provider: "gcp", runtime: "local-dev", audience: "local-dev", project_or_account: "mock-secrets" }
-//     mock cloud_env.request_url -> "https://example.com/oidc"
-//     mock cloud_env.credential -> { token: "<MOCK_API_KEY>", source_type: "static", scheme: "bearer" }
-// }
-//
-// test openai_chat_completion : llm_cloud_env {
-//     input chat_completion/prepare.provider -> "openai"
-//     input chat_completion/prepare.model -> "gpt-4o"
-//     input chat_completion/prepare.messages -> [{ role: "user", content: "Hello" }]
-//     mock chat_completion/execute.response -> rest_response(200, {
-//         choices: [{ message: { content: "Hello!" }, finish_reason: "stop" }],
-//         model: "gpt-4o", usage: { prompt_tokens: 10, completion_tokens: 20 }
-//     })
-//     expect result.content is String
-// }
-//
-// test anthropic_chat_completion : llm_cloud_env {
-//     input chat_completion/prepare.provider -> "anthropic"
-//     input chat_completion/prepare.model -> "claude-sonnet-4-20250514"
-//     input chat_completion/prepare.messages -> [{ role: "user", content: "Hello" }]
-//     mock chat_completion/execute.response -> rest_response(200, {
-//         content: [{ type: "text", text: "Hello! I'm Claude." }],
-//         model: "claude-sonnet-4-20250514", stop_reason: "end_turn",
-//         usage: { input_tokens: 10, output_tokens: 15 }
-//     })
-//     expect result.content is String
-// }

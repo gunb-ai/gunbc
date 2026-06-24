@@ -1,5 +1,3 @@
-// Status: compile-only IN-B anchor; no sixth Behavior.
-
 module v2.test.manual.verilog_concurrency_anchor
 
 import v2.extdeps.languages.verilog {

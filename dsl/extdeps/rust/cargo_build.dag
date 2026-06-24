@@ -1,31 +1,34 @@
-// extdeps/rust/cargo_build.dag -- the `cargo` command service (shell transport).
-//
-// Split out of `extdeps.cargo` (the pure Cargo model) so the model can be
-// imported by compiler modules / the bootstrap seed without pulling a
-// shell-transport service into the compiled set. Consumers that actually run
-// cargo (e.g. tools/build.dag) import this module.
-//
-// §3 shape/transport/policy: argv is a faithful list-of-strings; policy flags are
-// caller-supplied `List<String>` parameters (workflow), not hardcoded literals.
-
 module extdeps.cargo_build
 
-// Default input values for the cargo ops below. Build references `env` in its input
-// block (not yet wired into shell argv). Clippy and Test are invoked from rust_gates_ci
-// and must not carry a Map input — RecordedFixture cannot serialize Map (fail-closed §5).
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "doc.rust-lang.org/cargo/commands/cargo-build.html"
+  }
+}
+
 data cargo_compile_env: Map<String, String> = empty_map()
 
-// -- Service: shell transport wiring -----------------------------
+fn cargo_build_jobs_flag(count: Int) -> List<String> {
+  ["--jobs", "{count}"]
+}
+
+fn cargo_nextest_build_jobs_flag(count: Int) -> List<String> {
+  ["--build-jobs", "{count}"]
+}
 
 service cargo.Build {
   operation Build {
-    input { extra_args: List<String> = [], env: Map<String, String> = cargo_compile_env }
+    input { extra_args: List<String> = [], env: Map<String, String> = cargo_compile_env, build_jobs_args: List<String> = [] }
     output {
       success: Bool from "exit_success"
       stdout: String from "stdout"
       stderr: String from "stderr"
     }
-    transport shell { argv: ["cargo", "build", extra_args] }
+    transport shell { argv: ["cargo", "build", build_jobs_args, extra_args] }
     exit {
       0 => Unit
       101 => String "Compilation failed"
@@ -39,15 +42,26 @@ service cargo.Build {
       stdout: String from "stdout"
       stderr: String from "stderr"
     }
-    // No `--features` here: the `text_lookup_work_counter` feature is a property of the
-    // `v1-compiler` dependency, declared in v1-compiler-tests/Cargo.toml and applied via
-    // cargo workspace feature-unification. Passing it on the command line at
-    // `-p v1-compiler-tests` scope errors ("package does not contain this feature"), so the
-    // gate carries only `extra_args` policy flags (same shape as Build).
+
     transport shell { argv: ["cargo", "test", extra_args] }
     exit {
       0 => Unit
       101 => String "Tests failed"
+    }
+  }
+
+  operation Nextest {
+    input { extra_args: List<String> = [], build_jobs_args: List<String> = [] }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["cargo", "nextest", "run", build_jobs_args, extra_args] }
+    exit {
+      0 => Unit
+      100 => String "Tests failed"
+      nonzero => String "Nextest run error"
     }
   }
 
@@ -104,7 +118,7 @@ service cargo.Build {
       stdout: String from "stdout"
       stderr: String from "stderr"
     }
-    // Note: args are appended to the command by the transport layer.
+
     transport shell { argv: ["cargo", "run", "-p", package, "--bin", bin, args] }
     exit {
       0 => Unit

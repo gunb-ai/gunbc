@@ -1,10 +1,4 @@
-// Scope: discriminating claim-run witness for L1.13.c table_decision_tree
-// Status: executes table_decision_tree_fact_for_fn; pos expects Unrealized
-// verdict, neg arm discriminates stored verdict identity (mutation-proven
-// red-under-mutation).
-
 module v2.test.lens_table_decision_tree.sg_claims
-
 
 import std.lens_verdict {
   Holds,
@@ -21,10 +15,8 @@ import v2.std.node { Node, Symbol }
 import v2.std.verification { BoolWitness, BoolWitnessClaim, UnifiedTestClaim }
 import v2.test.lens_common.infer_fixture { claim_atom_node }
 
-
 data tdt_witness_fn_node: Node = claim_atom_node(s: ^tdt_witness_fn_node_symbol)
 data tdt_witness_module: String = "v2.lens.table_decision_tree"
-
 
 fn tdt_verdict_is_unrealized(verdict: LensVerdict) -> Bool {
   match verdict {
@@ -33,18 +25,15 @@ fn tdt_verdict_is_unrealized(verdict: LensVerdict) -> Bool {
   }
 }
 
-
 fn witness_tdt_unrealized_green_on_fact() -> Bool {
   tdt_verdict_is_unrealized(
     verdict: table_decision_tree_fact_for_fn(fn_node: tdt_witness_fn_node).verdict
   )
 }
 
-
 fn tdt_sample_holds() -> LensVerdict {
   Holds
 }
-
 
 fn witness_tdt_unrealized_red_on_holds() -> Bool {
   match tdt_sample_holds() {
@@ -52,7 +41,6 @@ fn witness_tdt_unrealized_red_on_holds() -> Bool {
     _ => true
   }
 }
-
 
 fn witness_tdt_locus_green_on_fact() -> Bool {
   match table_decision_tree_fact_for_fn(fn_node: tdt_witness_fn_node).verdict {
@@ -62,7 +50,6 @@ fn witness_tdt_locus_green_on_fact() -> Bool {
     _ => false
   }
 }
-
 
 fn witness_tdt_locus_red_on_perturbed_module() -> Bool {
   let perturbed = Unrealized {
@@ -78,7 +65,6 @@ fn witness_tdt_locus_red_on_perturbed_module() -> Bool {
     _ => false
   }
 }
-
 
 test fn lens_table_decision_tree_unrealized_scaffold_holds() -> Bool {
   witness_tdt_unrealized_green_on_fact()

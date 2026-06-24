@@ -1,0 +1,131 @@
+module test.claim.ci_compile_jobs_witness
+
+import std.types { Int, Bool, String, List }
+import std.measure { hardware_thread_count, ByteSize, byte_size }
+import gunbc.ci_compile_measurement { CompileJobMeasurement, CompileJobMeasured }
+import gunbc.ci_compile_jobs {
+  DerivedCompileJobs, CompileJobs, CompileJobsRefuse,
+  ci_compile_jobs, ci_compile_jobs_for, compile_jobs_count_or_serial
+}
+import extdeps.cargo_build { cargo_nextest_build_jobs_flag, cargo_build_jobs_flag }
+import tools.rust_gates_ci { rust_gate_build_jobs_args }
+
+fn join_space(xs: List<String>) -> String {
+  fold(xs, init: "", f: (acc, p) => if acc == "" { p } else { concat(concat(acc, " "), p) })
+}
+
+fn jobs_count_or(d: DerivedCompileJobs, default: Int) -> Int {
+  match d {
+    CompileJobs { count: c } => c
+    CompileJobsRefuse { reason: _ } => default
+  }
+}
+
+fn jobs_is_refuse(d: DerivedCompileJobs) -> Bool {
+  match d {
+    CompileJobsRefuse { reason: _ } => true
+    CompileJobs { count: _ } => false
+  }
+}
+
+fn sample_measured() -> CompileJobMeasurement {
+  measured_with_pids(p: 4096)
+}
+
+fn measured_with_pids(p: Int) -> CompileJobMeasurement {
+  CompileJobMeasured { per_rustc_peak: hypothetical_peak(), procs_per_job: 3, pids_budget: p }
+}
+
+fn hypothetical_peak() -> ByteSize {
+  byte_size(2100028416)
+}
+
+fn witness_committed_unmeasured_refuses() -> Bool {
+  jobs_is_refuse(ci_compile_jobs(memory_budget: byte_size(137438953472), force_serial: false))
+}
+
+fn witness_pids_budget_binds_the_count() -> Bool {
+  jobs_count_or(
+    ci_compile_jobs_for(
+      measurement: measured_with_pids(p: 24),
+      hardware_threads: hardware_thread_count(128),
+      memory_budget: byte_size(137438953472),
+      force_serial: false
+    ),
+    0
+  ) == 8
+}
+
+fn witness_memory_budget_binds_the_count() -> Bool {
+  jobs_count_or(
+    ci_compile_jobs_for(
+      measurement: sample_measured(),
+      hardware_threads: hardware_thread_count(128),
+      memory_budget: byte_size(6442450944),
+      force_serial: false
+    ),
+    0
+  ) == 2
+}
+
+fn witness_force_serial_overrides_unmeasured() -> Bool {
+  jobs_count_or(ci_compile_jobs(memory_budget: byte_size(137438953472), force_serial: true), 0) == 1
+}
+
+fn witness_force_serial_beats_wide_budget() -> Bool {
+  jobs_count_or(
+    ci_compile_jobs_for(
+      measurement: sample_measured(),
+      hardware_threads: hardware_thread_count(128),
+      memory_budget: byte_size(1099511627776),
+      force_serial: true
+    ),
+    0
+  ) == 1
+}
+
+fn witness_unreadable_budget_falls_back_serial() -> Bool {
+  jobs_count_or(
+    ci_compile_jobs_for(
+      measurement: sample_measured(),
+      hardware_threads: hardware_thread_count(128),
+      memory_budget: byte_size(0),
+      force_serial: false
+    ),
+    0
+  ) == 1
+}
+
+fn witness_nextest_flag_spelling() -> Bool {
+  join_space(xs: cargo_nextest_build_jobs_flag(count: 8)) == "--build-jobs 8"
+}
+
+fn witness_build_flag_spelling() -> Bool {
+  join_space(xs: cargo_build_jobs_flag(count: 8)) == "--jobs 8"
+}
+
+fn witness_count_or_serial_passes_measured_count() -> Bool {
+  compile_jobs_count_or_serial(jobs: CompileJobs { count: 8 }) == 8
+}
+
+fn witness_count_or_serial_refuse_falls_to_serial() -> Bool {
+  compile_jobs_count_or_serial(jobs: CompileJobsRefuse { reason: "unmeasured" }) == 1
+}
+
+fn witness_live_rust_gate_is_failclosed_serial() -> Bool {
+  join_space(xs: rust_gate_build_jobs_args()) == "--build-jobs 1"
+}
+
+test fn ci_compile_jobs_witnesses() -> Bool {
+  witness_committed_unmeasured_refuses()
+    && witness_pids_budget_binds_the_count()
+    && witness_memory_budget_binds_the_count()
+    && witness_force_serial_overrides_unmeasured()
+    && witness_force_serial_beats_wide_budget()
+    && witness_unreadable_budget_falls_back_serial()
+    && witness_nextest_flag_spelling()
+    && witness_build_flag_spelling()
+    && witness_count_or_serial_passes_measured_count()
+    && witness_count_or_serial_refuse_falls_to_serial()
+    && witness_live_rust_gate_is_failclosed_serial()
+}

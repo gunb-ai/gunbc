@@ -1,69 +1,17 @@
-// extdeps/cron/schedule_model.dag — POSIX crontab schedule protocol (carriers + wire render).
-//
-// Fidelity — extdeps invariant (cite source + declare version; DESIGN.md §3):
-//   Spec: https://pubs.opengroup.org/onlinepubs/9699919799/utilities/crontab.html
-//   Version: POSIX.1-2017 (IEEE Std 1003.1-2017; Open Group Issue 7, 2018 edition online snapshot)
-//
-// Sections referenced:
-//   — XCU `crontab` utility: user crontab file layout; five time-and-date fields (minute, hour,
-//     day-of-month, month, day-of-week) followed by command; POSIX.1-2017 documents `*`, lists,
-//     and ranges for those fields.
-//
-// Step / slash syntax (`*/n`, `start/step`) is not POSIX-defined for user crontabs; it is a
-// widely deployed implementation extension (historically associated with Vixie cron). The
-// `Step` carrier and `render_cron_field` slash rendering model that wire shape — cite deployment
-// docs for consumers that require strict POSIX-only schedules.
-//
-// Split from `cron/cron.dag` so v3 bootstrap loads schedule carriers without parsing `service` blocks
-// (`cron.Tab` shell transport remains in `cron/cron.dag`).
-//
-// Consumers:
-//   dsl/extdeps/github/actions.dag — `WorkflowTrigger::Schedule`
-//   dsl/gunbc/tools/review*.dag — `CronSchedule` data + `render_cron_schedule`
-
 module extdeps.cron.schedule_model
 
 import std.integer { NonNegativeInt, PositiveInt }
 import std.list { List }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
 
-// Coproduct dissolution: `CronField`.
-//
-// Classification ledger (N≥2 variants — checkpoint names 🟢 / 🟡 / 🔴):
-//
-// **🟢 GREEN (terminal at shape partition)** — `CronField` is the carrier for schedule-field
-// *token-shape* alternatives at the external grammar boundary (wildcard vs exact vs list vs range
-// vs step/slash). Ledger — four dissolution patterns were considered:
-//   1. Fact placement: every variant is consumed by the same wire renderer (`render_cron_field`);
-//      splitting would scatter portable vs extension token shapes across consumers without
-//      removing the alternative structure users author in crontab entries.
-//   2. Variant-is-data: shapes are not label-only — `Wildcard` vs `Listed` vs `Step` carry
-//      incompatible payloads matching distinct crontab token shapes, not a closed enum label.
-//   3. Algebraic form: fields are syntax carriers for the external crontab schedule language,
-//      not eliminators into a single `std/` algebra operator family.
-//   4. Dimensional: only `Ranged` / `Step` are naturally two-coordinate; `Wildcard`, `Exact`,
-//      and `Listed` do not share one coordinate space, so a single dimensional record would
-//      mis-model the field grammar.
-//
-// **🟡 YELLOW (scaffold — bounded refinements deferred)** — payloads still admit **ill-formed**
-// crontab facts this module does not rule out at the type layer (boundary discipline, DESIGN.md §3 / extdeps fidelity gap):
-//   - `Listed` may be an **empty** list (no corresponding empty-list field token in portable grammar).
-//   - `Ranged` may have **start > end** (inverted range — not a valid portable range token).
-//   - `Exact`, list elements, range endpoints, and step coordinates may sit **outside each field's
-//     domain** (minute/hour/DOM/month/DOW bounds); carriers use `NonNegativeInt` / unrestricted lists
-//     only, so out-of-range integers serialize without failing closed here.
-//
-// **Dissolution trigger:** introduce per-field refined carriers (or one validated `CronField`
-// view + total `well_formed_cron_field` / parse validators) that reject the three bullets above at
-// construction or wire ingress — or prove those invariants at every authoring site before schedules
-// reach Actions/workflow carriers.
-//
-// **🔴 RED (dissolvable-now)** — none for this checkpoint: the missing work above is refinement /
-// validation discipline (YELLOW), not an immediate cheaper coproduct split inside this file.
-//
-// Authority: POSIX.1-2017 XCU `crontab` for wildcard/list/range token shapes; `Step` slash forms
-// track common implementation extensions (not POSIX normative text).
-//
-// CronSchedule / CronEntry: records over `CronField` + command metadata — not N≥2 coproducts.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "pubs.opengroup.org/onlinepubs/9699919799/utilities/crontab.html"
+  }
+}
+
 type CronField
   = Wildcard
   | Exact { value: NonNegativeInt }

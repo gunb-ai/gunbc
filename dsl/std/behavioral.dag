@@ -1,23 +1,13 @@
-// std/behavioral.dag -- Behavioral vocabulary for external-system modeling.
-//
-// Canonical operation behavior schema ported from the-gunbai Understanding
-// model and used by Lane 4 extdeps + interface contracts.
-
 module std.behavioral
 
-// How an operation affects the world.
 type SideEffects = ReadOnly | WritesState | WritesExternal
 
-// Whether repeated invocations with equal inputs converge to one outcome.
 type Determinism = Deterministic | NonDeterministic | EventuallyConsistent
 
-// Severity used by modeled edge cases.
 type Severity = Low | Medium | High | Critical
 
-// Confidence assigned to a behavior declaration.
 type Confidence = Documented | HighConfidence | MediumConfidence | LowConfidence | Assumed
 
-// Coarse-grained prerequisite kind.
 type PrerequisiteKind = Capability | Credential | Infrastructure | Policy | Tooling | Runtime | Other
 
 type FailureMode {
@@ -39,7 +29,6 @@ type Prerequisite {
   kind: PrerequisiteKind
 }
 
-// Shared contract types used by all interface definitions.
 type CapabilityBehaviorContract {
   capability: String
   behavior: OperationBehavior
@@ -50,7 +39,6 @@ type CapabilityFailureContract {
   failures: List<FailureMode>
 }
 
-// Canonical behavior payload attached to operations and capabilities.
 type OperationBehavior {
   side_effects: SideEffects
   determinism: Determinism

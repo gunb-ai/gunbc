@@ -1,5 +1,3 @@
-// Status: PASS (IN-B) receipt; no pre-D2-reversal rework attempted.
-
 module v2.test.manual.llvm_ir_b2_omni_in_b_probe
 
 import v2.extdeps.languages.llvm_ir {
@@ -36,7 +34,6 @@ fn llvm_probe_atom(s: Symbol) -> Node {
  occurrence_id: SyntheticOccurrence
 }
 }
-
 
 data llvm_probe_type: LlvmType = IntegerType { bits: NonZeroNat { prev: Zero } }
 
@@ -93,7 +90,6 @@ data llvm_probe_function_body: FunctionBody = Defined {
   rest: [llvm_probe_left_block, llvm_probe_right_block, llvm_probe_merge_block]
 }
 
-
 fn llvm_probe_receipt_holds() -> Bool {
   block_well_formed(b: llvm_probe_entry_block)
   && block_well_formed(b: llvm_probe_left_block)
@@ -104,7 +100,6 @@ fn llvm_probe_receipt_holds() -> Bool {
   && block_successors(t: llvm_probe_right_block.terminator) == [^llvm_probe_merge_symbol]
   && llvm_probe_merge_block.phis == [llvm_probe_phi]
 }
-
 
 fn llvm_probe_pass_node() -> Node {
   Node {
@@ -119,7 +114,6 @@ fn llvm_probe_pass_node() -> Node {
 }
 }
 
-
 fn llvm_probe_receipt_node() -> Node {
   if llvm_probe_receipt_holds() {
     llvm_probe_pass_node()
@@ -127,7 +121,6 @@ fn llvm_probe_receipt_node() -> Node {
     llvm_probe_atom(s: ^llvm_probe_fail_symbol)
   }
 }
-
 
 data llvm_probe_expected_node: Node = llvm_probe_pass_node()
 

@@ -1,8 +1,3 @@
-// Status: discovered fail-closed family eval for the unused-parameters lens (DESIGN.md §6 inert-lens
-// hygiene: every lens is a discovered fail-closed witness or deleted). Conjoins the lens's three
-// structural witnesses — the BindsTo USE classification, the non-USE edge partition, and the
-// declaration roll-up — each of which goes RED when the lens misclassifies. Any false => RED.
-
 module v2.test.workflow.lens_unused_parameters_family_eval
 
 import v2.std.logic { Bool }

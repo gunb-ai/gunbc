@@ -1,21 +1,16 @@
-// extdeps/cloud/core.dag -- "What is a cloud provider?"
-//
-// Universal concepts shared across GCP, AWS, and Azure.
-// Types only -- concrete values live in provider-specific core.dag files.
-//
-// Consumers:
-//   extdeps/cloud/gcp/core.dag   -- GCP-specific identity, endpoints
-//   extdeps/cloud/aws/core.dag   -- AWS-specific ARNs, SigV4
-//   extdeps/cloud/azure/core.dag -- Azure-specific tenants, subscriptions
-
 module extdeps.cloud.cloud
 
 import std.types { AuthScheme }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
 
-// Coproduct dissolution classification (DESIGN.md §2 decompress->map->reduce):
-// 🟡 partial enumeration — kills the anemic String leaf for cited in-repo SigV4 signers.
-// AWS publishes more regions/services than modeled here; extend variants when a cited row
-// needs one outside this set (dissolution-trigger: grow on first cited out-of-set need).
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.aws.amazon.com/general/latest/gr/"
+  }
+}
+
 type AwsRegion
   = UsEast1
   | UsEast2
@@ -26,8 +21,6 @@ type AwsRegion
   | ApSoutheast1
   | ApNortheast1
 
-// 🟡 partial enumeration — kills the anemic String leaf for cited in-repo SigV4 signers.
-// dissolution-trigger: extend variants when a cited row needs a service outside this set.
 type AwsService
   = S3
   | Iam
@@ -68,15 +61,11 @@ fn aws_service_wire_label(service: AwsService) -> String {
   }
 }
 
-// -- Service endpoints ---------------------------------------------
-
 type ServiceEndpoint {
   base_url: String
   version: String
   regional: Bool
 }
-
-// -- Rate limiting -------------------------------------------------
 
 type RateLimitPolicy {
   requests_per_minute: Int
@@ -84,17 +73,10 @@ type RateLimitPolicy {
   scope: String
 }
 
-// -- Cloud auth (Layer 2) ------------------------------------------
-// Composes protocol-level AuthScheme from std/ with provider-specific
-// schemes. Provider services project the subset they actually use.
-// AWS: SigV4. GCP: OidcToken. Azure: Bearer (already in std/).
-
 type CloudAuthScheme
   = Protocol { scheme: AuthScheme }
   | SigV4 { region: AwsRegion, service: AwsService }
   | OidcToken { audience: String }
-
-// -- Credentials ---------------------------------------------------
 
 type CloudCredential {
   scheme: CloudAuthScheme
@@ -102,22 +84,16 @@ type CloudCredential {
   expires_seconds: Int?
 }
 
-// -- Idempotency ---------------------------------------------------
-
 type IdempotencyToken {
   header: String
   format: String
 }
-
-// -- Quotas --------------------------------------------------------
 
 type CloudQuota {
   resource: String
   limit: Int
   scope: String
 }
-
-// -- Regions -------------------------------------------------------
 
 type CloudRegion {
   provider: String

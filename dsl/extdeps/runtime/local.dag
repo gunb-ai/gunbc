@@ -1,8 +1,16 @@
-// extdeps/runtime/local.dag -- local developer runtime facts.
-
 module extdeps.runtime.local
 
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
 import std.types { NonEmptyStr }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/gunb-ai/gunbc/tree/main/dsl/extdeps/runtime"
+  }
+}
 
 type LocalDevRuntime {
   adc_env_var: NonEmptyStr

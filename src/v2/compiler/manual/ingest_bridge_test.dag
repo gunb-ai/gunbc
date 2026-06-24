@@ -1,8 +1,3 @@
-//   Hermetic + sub-second: a 1-token local grammar against a custom 1-row source model that reuses
-//   dag's declared inhabitants + selection policy (so coerce grounds the add keystone) but supplies
-//   its own frontier-matching translation row. The real multi-token frontier-selection proof is the
-//   python->ts matrix flip in the cross-language consumer claim (~627s, by execution).
-
 module v2.test.manual.ingest_bridge
 
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
@@ -66,7 +61,6 @@ import v2.std.verification {
   manual_claim_anchor
 }
 
-
 fn ingest_fixture_token() -> Token {
   Token {
     class: ^ingest_fixture_tok,
@@ -77,8 +71,6 @@ fn ingest_fixture_token() -> Token {
   }
 }
 
-// Local single-terminal grammar. Its production `emitted` is irrelevant to forward selection (the
-// stamp is not trusted) — it is the parse FRONTIER that selects the row.
 fn ingest_fixture_root() -> GrammarRoot {
   GrammarRoot {
     start: ^ingest_fixture_start,
@@ -94,7 +86,6 @@ fn ingest_fixture_root() -> GrammarRoot {
   }
 }
 
-// Parse one `ingest_fixture_tok` token through the local grammar, returning the parse tree.
 fn ingest_parse() -> Outcome<Node> {
   let at = port_locus(port: ^parse_stage_locus_port)
   match grammar_validate_for_parse(root: ingest_fixture_root(), at: at) {
@@ -111,13 +102,6 @@ fn ingest_parse() -> Outcome<Node> {
       }
   }
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// A custom 1-row source model: dag's declared inhabitants + selection policy (so coerce grounds the
-// add keystone exactly as the dag round-trip does) wrapped around a translation row whose
-// production token-spine is `spine_class` and whose emitted is `emitted`. Forward selection matches
-// the parse frontier against that spine.
-// ─────────────────────────────────────────────────────────────────────────────
 
 fn ingest_fixture_row_node(emitted: Node, spine_class: Symbol) -> Node {
   Node {
@@ -161,7 +145,6 @@ fn ingest_fixture_model_from_bundle(bundle: Node) -> TargetModel {
   }
 }
 
-// Single-row model: one row (spine `spine_class` -> `emitted`).
 fn ingest_fixture_model(emitted: Node, spine_class: Symbol) -> TargetModel {
   let rules = Node {
     kind: TypeNode { connective: Conj },
@@ -173,7 +156,6 @@ fn ingest_fixture_model(emitted: Node, spine_class: Symbol) -> TargetModel {
   ingest_fixture_model_from_bundle(bundle: ingest_fixture_bundle_with_rules(rules: rules))
 }
 
-// Two-row model whose rows share the SAME token-spine — a non-forward-deterministic grammar (G.2).
 fn ingest_fixture_model_ambiguous(emitted: Node, spine_class: Symbol) -> TargetModel {
   let rules = Node {
     kind: TypeNode { connective: Conj },
@@ -186,8 +168,6 @@ fn ingest_fixture_model_ambiguous(emitted: Node, spine_class: Symbol) -> TargetM
   ingest_fixture_model_from_bundle(bundle: ingest_fixture_bundle_with_rules(rules: rules))
 }
 
-// (1) Forward selection recovers the emit-side core node: the parse frontier [ingest_fixture_tok]
-//     selects the row whose spine is [ingest_fixture_tok], returning that row's emitted.
 fn ingest_recovers_emitted_holds() -> Bool {
   match ingest_parse() {
     Accepted { value: tree, diagnostics: _ } =>
@@ -203,7 +183,6 @@ fn ingest_recovers_emitted_holds() -> Bool {
   }
 }
 
-// (2) End-to-end: parsed token -> bridge (forward-select -> infer -> coerce) -> canonical add IR.
 fn ingest_bridge_to_canonical_holds() -> Bool {
   match ingest_parse() {
     Accepted { value: tree, diagnostics: _ } =>
@@ -219,9 +198,6 @@ fn ingest_bridge_to_canonical_holds() -> Bool {
   }
 }
 
-// (3) Discrimination (perturbed selection): the same parse frontier [ingest_fixture_tok] against a
-//     model whose only row has spine [ingest_fixture_other_tok] matches NOTHING -> fail closed. The
-//     recovery in (1) is driven by the frontier, not a constant.
 fn ingest_fails_closed_off_frontier_holds() -> Bool {
   match ingest_parse() {
     Accepted { value: tree, diagnostics: _ } =>
@@ -236,7 +212,6 @@ fn ingest_fails_closed_off_frontier_holds() -> Bool {
   }
 }
 
-// (4) Forward-determinism (G.2): a frontier matching >1 row is non-deterministic -> fail closed.
 fn ingest_fails_closed_ambiguous_holds() -> Bool {
   match ingest_parse() {
     Accepted { value: tree, diagnostics: _ } =>
@@ -251,8 +226,6 @@ fn ingest_fails_closed_ambiguous_holds() -> Bool {
   }
 }
 
-// (5) Fail-closed: a bare node that is not a stamped production tree projects an empty frontier,
-//     which matches no row -> Rejected.
 fn ingest_unstamped_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -271,12 +244,6 @@ fn ingest_fails_closed_on_unstamped_holds() -> Bool {
   }
 }
 
-// (6) Cross-language compile (optional matrix convenience): the parsed source carried through the
-//     bridge to canonical IR, then EMITTED into a target model. Source = custom 1-row model; target
-//     = dag — so the recovered add core node serializes to dag surface. This asserts the full
-//     parse -> bridge -> infer -> emit composition runs and yields target source (exact surface
-//     fidelity is proven by RTADD / mvp1_dag_add_translate; here the composition's liveness is the
-//     claim). The off-row/ambiguous discriminations above already pin selection correctness.
 fn ingest_cross_language_compile_holds() -> Bool {
   match ingest_parse() {
     Accepted { value: tree, diagnostics: _ } =>
@@ -301,10 +268,6 @@ test fn ingest_bridge_realized() -> Bool {
     && ingest_fails_closed_on_unstamped_holds()
     && ingest_cross_language_compile_holds()
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Claim markers.
-// ─────────────────────────────────────────────────────────────────────────────
 
 fn ingest_bridge_realized_input(ok: Bool) -> Symbol {
   if ok { ^ingest_bridge_realized } else { ^ingest_bridge_not_realized }

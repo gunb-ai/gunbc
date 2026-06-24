@@ -1,0 +1,68 @@
+module v2.test.intent_linearity.lens_unit.discriminators
+
+import v2.lens.intent_linearity { chain_is_redundant, forest_is_redundant, chain_residual, level_is_linear, body_is_linear }
+import v2.std.node {
+  Node, Edge, EdgeLabel, Positional,
+  NodeKind, TypeNode, Connective, Atom, Conj,
+  Symbol, node_synthetic
+}
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+
+fn atom(id: Symbol) -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: id } }, children: [])
+}
+fn conj2(a: Node, b: Node) -> Node {
+  node_synthetic(kind: TypeNode { connective: Conj }, children: [
+    Edge { label: Positional, target: a }, Edge { label: Positional, target: b } ])
+}
+
+data red_chain: List<Node> = [
+  conj2(a: atom(id: ^run), b: atom(id: ^gate_rust)),
+  conj2(a: atom(id: ^run), b: atom(id: ^gate_emit)),
+  conj2(a: atom(id: ^run), b: atom(id: ^gate_layer))
+]
+
+data linear_chain_a: List<Node> = [
+  conj2(a: atom(id: ^is_if),     b: atom(id: ^s0)),
+  conj2(a: atom(id: ^is_assign), b: conj2(a: atom(id: ^skip), b: atom(id: ^s1))),
+  conj2(a: atom(id: ^is_loop),   b: conj2(a: atom(id: ^skip), b: atom(id: ^s2)))
+]
+data linear_chain_b: List<Node> = [
+  conj2(a: atom(id: ^emit),  b: atom(id: ^t0)),
+  conj2(a: atom(id: ^parse), b: conj2(a: atom(id: ^wrap), b: atom(id: ^t1))),
+  conj2(a: atom(id: ^check), b: conj2(a: atom(id: ^wrap), b: atom(id: ^t2)))
+]
+
+test fn unroll_detected_by_registry() -> Bool {
+  chain_is_redundant(steps: red_chain)
+}
+test fn residual_is_n_minus_one() -> Bool {
+  chain_residual(steps: red_chain) == 2
+}
+test fn minimal_chain_has_zero_residual() -> Bool {
+  chain_residual(steps: linear_chain_a) == 0
+}
+
+data nonlinear_body: List<List<Node>> = [ red_chain, red_chain ]
+test fn body_with_unroll_is_not_linear() -> Bool {
+  !body_is_linear(levels: nonlinear_body)
+}
+data linear_body: List<List<Node>> = [ linear_chain_a, linear_chain_b ]
+test fn all_minimal_body_is_linear() -> Bool {
+  body_is_linear(levels: linear_body)
+}
+test fn single_minimal_level_is_linear() -> Bool {
+  level_is_linear(level: linear_chain_b)
+}
+
+data dup_type_pair: List<Node> = [
+  conj2(a: atom(id: ^x86), b: atom(id: ^arm)),
+  conj2(a: atom(id: ^x86), b: atom(id: ^arm))
+]
+test fn dup_type_decls_redundant_through_registry() -> Bool {
+  forest_is_redundant(decls: dup_type_pair)
+}
+test fn dup_type_pair_not_flagged_by_term_binder() -> Bool {
+  !chain_is_redundant(steps: dup_type_pair)
+}

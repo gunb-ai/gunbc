@@ -1,5 +1,3 @@
-// Scope: discriminating lens-unit witnesses for transport-position structural guard.
-
 module v2.test.host_language_transport_script.lens_unit.transport_script_position
 
 import v2.lens.host_language_transport_script {
@@ -22,28 +20,24 @@ data fn_clean: String = "run_clean_tree_compile"
 data fn_go: String = "run_go_mvp2_smoke"
 data fn_bad: String = "run_bad_literal_smoke"
 
-// GREEN: computed application (serialize_bash class).
 data fact_computed: TransportScriptPositionFact = TransportScriptPositionFact {
   path: path_dsl,
   function: fn_clean,
   shape: ComputedApplication
 }
 
-// RED: bare string literal in script position.
 data fact_bare_literal: TransportScriptPositionFact = TransportScriptPositionFact {
   path: path_emit,
   function: fn_bad,
   shape: BareStringLiteral
 }
 
-// RED: let-bound literal blob passed to script position.
 data fact_let_bound: TransportScriptPositionFact = TransportScriptPositionFact {
   path: path_emit,
   function: fn_go,
   shape: LetBoundStringLiteral
 }
 
-// RED: string interpolation of literals only.
 data fact_interp_literals: TransportScriptPositionFact = TransportScriptPositionFact {
   path: path_emit,
   function: fn_bad,

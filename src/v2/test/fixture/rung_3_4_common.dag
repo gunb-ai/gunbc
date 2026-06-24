@@ -1,5 +1,3 @@
-// Scope: shared rung 3–4 TestClaim subject + emit-host target wiring (joint spec §4.2 / §5).
-
 module v2.test.rung_3_4_common
 
 import v2.compiler.emit_host {

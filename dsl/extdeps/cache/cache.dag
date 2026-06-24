@@ -1,7 +1,7 @@
-// extdeps/cache/cache.dag — Cache catalog dispatch hub (per-vendor modules under extdeps/cache/*).
-// Product → cited catalog row + transport projection (§3: dispatch lives in extdeps/, not std/).
-
 module extdeps.cache.cache
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
 
 import extdeps.cache.buildbuddy { buildbuddy_cas_facts, buildbuddy_cas_id }
 import extdeps.cache.cargo { cargo_target_dir_facts, cargo_target_dir_id }
@@ -38,6 +38,13 @@ import std.cache_interface {
 import std.types { ContentHash }
 import std.list { List }
 
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/gunb-ai/gunbc/tree/main/dsl/extdeps/cache"
+  }
+}
+
 fn cited_cache_interface_facts(product: CacheInterfaceProduct) -> CacheInterfaceCatalogFacts {
   match product {
     GhaActionsCache => gha_actions_cache_facts
@@ -50,7 +57,6 @@ fn cited_cache_interface_facts(product: CacheInterfaceProduct) -> CacheInterface
   }
 }
 
-// Planner-facing projection: flatten catalog io/placement into std CacheInterfaceFacts.
 fn cache_interface_facts_from_catalog(row: CacheInterfaceCatalogFacts) -> CacheInterfaceFacts {
   CacheInterfaceFacts {
     identity: row.identity
@@ -62,10 +68,7 @@ fn cache_interface_facts_from_catalog(row: CacheInterfaceCatalogFacts) -> CacheI
       CargoFingerprintEncoding => CasContentEncoding
     }
     vendor_transport_encoding_collapsed: catalog_transport_encoding_collapsed_in_std_projection(encoding: row.transport_encoding)
-    // inputs_considered() resolves the single authority: DERIVED for content-addressed
-    // rows, CITED for external ones (catalog_inputs_considered). The agnostic projection
-    // keeps only the derived "vendor axes omitted" flag — it carries no authorable inputs
-    // list of its own (the §3 fork that PR #5423 false-greened cannot reappear here).
+
     key_derivation: {
       vendor_only_key_inputs_omitted: catalog_has_vendor_only_key_inputs(inputs: catalog_inputs_considered(kd: row.key_derivation))
       overwritable: row.key_derivation.overwritable
@@ -149,8 +152,6 @@ data sccache_local_projected: CacheInterfaceFacts = cache_interface_facts_from_c
 data parse_table_memo_projected: CacheInterfaceFacts = cache_interface_facts_from_catalog(parse_table_memo)
 data cargo_target_dir_projected: CacheInterfaceFacts = cache_interface_facts_from_catalog(cargo_target_dir)
 
-// Default probe order: in-process memo → runner target dir → host sccache/resolved-graph
-// → toolchain store → remote CAS (BuildBuddy) → GHA actions cache.
 data cache_layer_default_order: List<CacheInterfaceId> = [
   parse_table_memo_id,
   cargo_target_dir_id,

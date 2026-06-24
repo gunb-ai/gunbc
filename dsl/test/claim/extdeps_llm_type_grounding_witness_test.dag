@@ -1,10 +1,3 @@
-// By-execution witnesses for extdeps llm type/media_type anemia groundings (slice B).
-// Discriminating: each witness goes RED if a field reverts to bare String.
-//
-// Run via:
-//   gunbc run --source-root dsl --entry dsl/test/claim/extdeps_llm_type_grounding_witness_test.dag \
-//     --function extdeps_llm_type_grounding_witnesses --claim-run
-
 module test.claim.extdeps_llm_type_grounding_witness
 
 import extdeps.llm.openai {
@@ -18,12 +11,21 @@ import extdeps.llm.openai {
   OpenAiResponsesOutputItemTypeOther,
   OpenAiResponses200OutputContent,
   OpenAiResponses200OutputItem,
+  OpenAiResponsesStatusCompleted,
+  OpenAiResponsesStatusIncomplete,
+  OpenAiResponsesStatusOther,
+  OpenAiResponsesOutputItemInProgress,
+  OpenAiResponsesOutputItemStatusOther,
   parse_openai_tool_call_type,
   openai_tool_call_type_label,
   parse_openai_responses_output_content_type,
   openai_responses_output_content_type_label,
   parse_openai_responses_output_item_type,
   openai_responses_output_item_type_label,
+  parse_openai_responses_status,
+  openai_responses_status_label,
+  parse_openai_responses_output_item_status,
+  openai_responses_output_item_status_label,
 }
 import extdeps.llm.openai_errors {
   OpenAiErrorDetails,
@@ -128,6 +130,39 @@ fn w_openai_responses_output_item_type_other() -> Bool {
   }
 }
 
+fn w_openai_responses_status_known_and_other() -> Bool {
+  let label_ok = openai_responses_status_label(OpenAiResponsesStatusCompleted) == "completed"
+  let known_routes_to_known = match parse_openai_responses_status("incomplete") {
+    OpenAiResponsesStatusIncomplete => true
+    OpenAiResponsesStatusOther { raw: _ } => false
+    _ => false
+  }
+  let unknown_routes_to_other = match parse_openai_responses_status("future_status") {
+    OpenAiResponsesStatusOther { raw: r } => r == "future_status"
+    _ => false
+  }
+  label_ok && known_routes_to_known && unknown_routes_to_other
+}
+
+fn w_openai_responses_output_item_status_known_and_other() -> Bool {
+  let row = OpenAiResponses200OutputItem {
+    id: Present { value: "msg_1" },
+    type: OpenAiResponsesOutputMessage,
+    status: Present { value: OpenAiResponsesOutputItemInProgress },
+    role: none,
+    content: [],
+  }
+  let row_ok = match row.status {
+    Present { value: s } => openai_responses_output_item_status_label(s) == "in_progress"
+    Absent => false
+  }
+  let unknown_routes_to_other = match parse_openai_responses_output_item_status("future_item_status") {
+    OpenAiResponsesOutputItemStatusOther { raw: r } => r == "future_item_status"
+    _ => false
+  }
+  row_ok && unknown_routes_to_other
+}
+
 fn w_openai_error_type_known_and_other() -> Bool {
   let known = OpenAiErrorDetails {
     message: "bad",
@@ -226,6 +261,8 @@ test fn extdeps_llm_type_grounding_witnesses() -> Bool {
     && w_openai_responses_output_content_type_other()
     && w_openai_responses_output_item_type()
     && w_openai_responses_output_item_type_other()
+    && w_openai_responses_status_known_and_other()
+    && w_openai_responses_output_item_status_known_and_other()
     && w_openai_error_type_known_and_other()
     && w_anthropic_image_media_type()
     && w_anthropic_image_media_type_other()

@@ -1,0 +1,52 @@
+module gunbc.plans.p1_where_clause_lowering
+
+import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
+import std.markdown { MarkdownBlock }
+import gunbc.plans.md_helpers { h2, p, li, ul, todo, tasks }
+
+fn p1_where_clause_lowering_body() -> List<MarkdownBlock> {
+  [
+    p(text: "**Status:** scoping (P1 from docs/plans/cardinality-refinement.md). **DESIGN.md + carriers are authority** (§6). Verified against the live tree 2026-06-22; line numbers are receipts, re-check before acting."),
+    h2(text: "0. Thesis — P1 is LOWERING, not parsing"),
+    p(text: "The surprise on investigation: the `where` *parse* already exists, the v2 grammar is *data-driven*, and the refinement substrate is *built*. The only missing link is **lowering the parsed `where` predicate into a `Validation` + a refined-construction obligation** — today it is parsed and then *dropped*. So P1 is small and mostly wiring, not a parser build."),
+    h2(text: "1. What is already built"),
+    ul(items: [
+      li(text: "**The v1 seed parser already parses `where`.** `try_where_clause` (`src/v1/02_parse.dag:1339`): on the `where` keyword it runs `parse_predicates` and wraps the base type-expr in a **refined Node** (`type_annotation: predicate_node`, predicates as a `Conj`). It is reached for aliases (`parse_type_body_after_eq:1323` via `finish_type_expr_from_name`, and `:1331` via `parse_type_expr`) **and** type bodies. So `type X = Y where P` parses today."),
+      li(text: "**v2's grammar is data-driven (rows).** `dag_grammar_production(name, expression, emitted)` rows in `src/v2/extdeps/languages/dag.dag` (e.g. `type_alias_rhs` at `:2931` → `^dag_surface_type_alias_rhs`), and lexing is `LexRule`/`ModeledLexRules` data (`01_tokenize.dag:27-37`). A construct is a production row + a surface-node symbol + a normalize lowering for that symbol — N+M, not parser code."),
+      li(text: "**The desugar target is built.** `v2.std.refinement` (`Validation`/`Refined`/`refine`, fail-closed) — MVP-1 already grounds a fixed-width Byte by *calling* `refine` directly; P1 makes the `where` surface lower to exactly that call."),
+      li(text: "**The closed cardinality vocabulary** (P3): `Length<N>`, `NonEmpty`, `Bounded<Lo,Hi>` — the tags the `where` admits."),
+    ]),
+    h2(text: "2. The gap, decomposed"),
+    tasks(items: [
+      todo(text: "**P1a — lower the parsed predicate (THE core).** The `where` predicate is captured at parse (v1: the `type_annotation: predicate_node` on the refined Node; v2: under the production's emitted surface node) but **dropped before enforcement**. Wire normalize — the `^dag_surface_type_alias_rhs` hook (`03_normalize.dag:90`) and the type-body path — to map the predicate → the matching cardinality `Validation` and mark the type **Refined**, so its construction must route through `refine` (the obligation P2 enforces). *Verify-item:* confirm exactly where the predicate is dropped today (normalize vs resolve) so the lowering re-captures it without disturbing `where` on type bodies."),
+      todo(text: "**P1b — v2 grammar/lex rows for `where`** *(if absent)*. Add the `where` `LexRule` and extend `dag_grammar_type_alias_rhs_expr()` (+ the type-body production) with an optional `where`-tail that emits the predicate into the surface node. Pure data (rows in `dag.dag` + `ModeledLexRules`). *Verify-item:* check whether `dag_grammar_type_alias_rhs_expr()` already accepts a `where`-tail (the v1 path does; the v2 row may not yet)."),
+      todo(text: "**P1c — the cardinality-tag surface + mapping.** Make `where` admit a **closed cardinality tag** (`where Length<8>`, `where NonEmpty`), not an arbitrary predicate expression. Two wins: it keeps the decidable fragment by construction (§4), and the lowering is a *finite map* tag→`Validation` rather than predicate-expression interpretation. `parse_predicates` already parses a predicate form; P1c is interpreting/restricting it to the closed tags at lowering."),
+      todo(text: "**P1d — seed vs v2 (the dual-parser reality).** The tree is parsed by the v1 seed today, so P1a's lowering must land on the **v1 path** (the `type_annotation` predicate) to take effect now, and on the **v2 rows** for the self-hosting target. v1 already parses `where` (it just drops it), so the v1 side is a lowering change, not a parser change."),
+    ]),
+    h2(text: "3. Where it plugs into the pipeline"),
+    p(text: "`tokenize` (`where` token: v1 has `tok_is_keyword \"where\"`; v2 wants a `LexRule`) → `parse` (v1 `try_where_clause` exists; v2 production row, optional `where`-tail) → **`normalize`** (the `dag_surface_type_alias_rhs` hook: lower predicate → `Validation`, mark `Refined` — the core change) → `infer` (enforce construction routes through `refine` — that is P2; P1 emits the obligation) → `emit` (refinement erases; compile-time)."),
+    h2(text: "4. The decidability gate (carried from the cardinality plan)"),
+    p(text: "`where` admits only the **closed cardinality tags**, never an arbitrary `parse_predicates` expression, so static enforcement stays in the decidable (linear-arithmetic-over-counts) fragment — the §4 bounded-execution discipline. The failure mode is letting a general predicate through to static checking; gate the tag→`Validation` map to the closed set."),
+    h2(text: "5. MVP / phasing"),
+    ul(items: [
+      li(text: "**MVP — `type Byte = … where Length<8>` end-to-end.** v2 grammar row accepts the `where Length<8>` tail (P1b); normalize lowers it to the `Length<8>` `Validation` + a refined-construction obligation (P1a/P1c); witness: authoring the surface `where Length<8>` and then constructing a 7-element value is a typed `Rejected`. This is MVP-1 (which today calls `refine` by hand) reached **through surface syntax** — the proof that `where` *is* sugar for the `refine` call."),
+      li(text: "**Then:** `NonEmpty`/`Bounded` tags; **record-field `where`** (`\{ bits: List<Bit> where Length<8> \}`), which is the form `bit.dag`'s `Byte` actually wants."),
+    ]),
+    h2(text: "6. Risks / hard parts"),
+    ul(items: [
+      li(text: "**Dual parser** — the lowering must take effect on the v1-seed path (active today) *and* the v2 rows (self-host target); sequence the v2-rows half with the de-fork/self-host lane."),
+      li(text: "**Parsed-but-dropped** — the v1 `where` already parses and is discarded; re-capturing it must not change the meaning of existing `where`-on-type-body uses (find out if those are enforced or also dropped before touching the shared path)."),
+      li(text: "**`parse_predicates` generality** — gate it to the cardinality tags (§4), or general predicates leak into static checking and break decidability."),
+      li(text: "**Load-bearing** — normalize + the seed parser are pipeline-critical; this lane belongs behind the §0 lock-down, not inside a stability window."),
+    ]),
+  ]
+}
+
+data p1_where_clause_lowering_plan: Plan = Plan {
+  slug: "p1-where-clause-lowering",
+  title: "Plan — P1: `where`-clause surface (lowering the parsed predicate to a refinement)",
+  body: p1_where_clause_lowering_body(),
+  dissolution: HasTrigger {
+    text: "Delete this doc when `type X = … where Length<8>` (and a record field `… where Length<8>`) lowers to an enforced refinement and a violating construction is a typed `Rejected` green-by-execution — at which point MVP-1's hand-written `refine` call becomes the *desugaring* of the surface `where`, and `bit.dag`'s \"type-alias where is skipped\" comment dissolves."
+  }
+}
