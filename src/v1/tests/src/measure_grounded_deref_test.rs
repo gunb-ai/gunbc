@@ -15,6 +15,7 @@
 //! only thing that differs is whether Nat is grounded:
 //!   - HostNative (seed `--emit-fresh`): Nat grounds to i64 -> access must NOT deref.
 //!   - FaithfulFreeMonoid: Nat is the genuine boxed recursive coproduct -> access STILL derefs.
+//!
 //! The pipeline picks HostNative iff a source path contains "src/v1" (the seed marker), so the
 //! two helpers below differ only in the fixture path — that is the load-bearing control proving
 //! the no-deref rule is grounded(host)-KEYED, not a blanket removal.

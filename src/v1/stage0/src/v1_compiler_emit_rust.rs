@@ -12074,10 +12074,9 @@ pub fn field_access_field_is_boxed(
                     scope.type_env.clone().source_indices.clone(),
                     field_ty.clone(),
                 );
-                let grounds_to_host_scalar = rust_seed_host_numeric_alias(
-                    field_ty_name,
-                    emit_info.corpus_repr.clone(),
-                ) != None;
+                let grounds_to_host_scalar =
+                    rust_seed_host_numeric_alias(field_ty_name, emit_info.corpus_repr.clone())
+                        != None;
                 if grounds_to_host_scalar {
                     false
                 } else {
