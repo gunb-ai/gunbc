@@ -37,74 +37,51 @@ service browser.Context {
   }
 }
 
-service browser.Page {
+type LoadState
+  = NetworkIdle
+  | Load
+  | DomContentLoaded
 
-  operation Goto {
-
-    input { url: String, wait_until: String = "domcontentloaded" }
-    output { final_url: String from "stdout" }
-    transport shell { argv: ["playwright-runner", "goto", "{url}", "--wait-until", "{wait_until}"] }
+fn load_state_wire(s: LoadState) -> String {
+  match s {
+    NetworkIdle => "networkidle"
+    Load => "load"
+    DomContentLoaded => "domcontentloaded"
   }
+}
 
-  operation CurrentUrl {
+type BrowserPageOp
+  = Goto { url: String, wait_until: LoadState = DomContentLoaded }
+  | CurrentUrl
+  | Title
+  | WaitForSelector { selector: String, timeout_ms: Int = 30000 }
+  | QueryAll { selector: String }
+  | Click { selector: String }
+  | Fill { selector: String, text: String }
+  | Evaluate { expression: String }
+  | UploadFile { selector: String, path: String }
+  | Screenshot { path: String }
+  | Wait { ms: Int }
+  | GetByRoleWaitFor { role: String, name: String, timeout_ms: Int = 30000 }
+  | WaitForLoadState { state: LoadState = NetworkIdle, timeout_ms: Int = 30000 }
+  | LocatorCountWithText { selector: String, has_text: String }
 
-    input {}
-    output { url: String from "stdout" }
-    transport shell { argv: ["playwright-runner", "url"] }
-  }
-
-  operation Title {
-    input {}
-    output { title: String from "stdout" }
-    transport shell { argv: ["playwright-runner", "title"] }
-  }
-
-  operation WaitForSelector {
-    input { selector: String, timeout_ms: Int = 30000 }
-    output { found: String from "stdout" }
-    transport shell { argv: ["playwright-runner", "wait-for", "{selector}", "--timeout", "{timeout_ms}"] }
-  }
-
-  operation QueryAll {
-    input { selector: String }
-    output { count: String from "stdout" }
-    transport shell { argv: ["playwright-runner", "query-all", "{selector}"] }
-  }
-
-  operation Click {
-    input { selector: String }
-    output {}
-    transport shell { argv: ["playwright-runner", "click", "{selector}"] }
-  }
-
-  operation Fill {
-    input { selector: String, text: String }
-    output {}
-    transport shell { argv: ["playwright-runner", "fill", "{selector}", "{text}"] }
-  }
-
-  operation Evaluate {
-    input { expression: String }
-    output { result: String from "stdout" }
-    transport shell { argv: ["playwright-runner", "evaluate", "{expression}"] }
-  }
-
-  operation UploadFile {
-    input { selector: String, path: FilePath }
-    output {}
-    transport shell { argv: ["playwright-runner", "upload", "{selector}", "{path}"] }
-  }
-
-  operation Screenshot {
-    input { path: FilePath }
-    output {}
-    transport shell { argv: ["playwright-runner", "screenshot", "{path}"] }
-  }
-
-  operation Wait {
-    input { ms: Int }
-    output {}
-    transport shell { argv: ["playwright-runner", "wait", "{ms}"] }
+fn op_page_argv(op: BrowserPageOp) -> List<String> {
+  match op {
+    Goto { url: u, wait_until: w } => ["playwright-runner", "goto", u, "--wait-until", load_state_wire(s: w)]
+    CurrentUrl => ["playwright-runner", "url"]
+    Title => ["playwright-runner", "title"]
+    WaitForSelector { selector: s, timeout_ms: t } => ["playwright-runner", "wait-for", s, "--timeout", to_string(t)]
+    QueryAll { selector: s } => ["playwright-runner", "query-all", s]
+    Click { selector: s } => ["playwright-runner", "click", s]
+    Fill { selector: s, text: x } => ["playwright-runner", "fill", s, x]
+    Evaluate { expression: e } => ["playwright-runner", "evaluate", e]
+    UploadFile { selector: s, path: p } => ["playwright-runner", "upload", s, p]
+    Screenshot { path: p } => ["playwright-runner", "screenshot", p]
+    Wait { ms: m } => ["playwright-runner", "wait", to_string(m)]
+    GetByRoleWaitFor { role: r, name: n, timeout_ms: t } => ["playwright-runner", "wait-for-role", r, "--name", n, "--timeout", to_string(t)]
+    WaitForLoadState { state: st, timeout_ms: t } => ["playwright-runner", "wait-load-state", load_state_wire(s: st), "--timeout", to_string(t)]
+    LocatorCountWithText { selector: s, has_text: h } => ["playwright-runner", "locator-count", s, "--has-text", h]
   }
 }
 

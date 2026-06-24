@@ -1,0 +1,25 @@
+module test.claim.browser_page_op_defusion
+
+import std.logic { Bool }
+import extdeps.browser {
+  BrowserPageOp,
+  Goto, Fill, Click, WaitForSelector, UploadFile, Wait,
+  GetByRoleWaitFor, WaitForLoadState, LocatorCountWithText,
+  NetworkIdle, DomContentLoaded,
+  op_page_argv,
+}
+
+test fn op_page_argv_reconstructs_cli_handler() -> Bool {
+  op_page_argv(op: Fill { selector: "#username", text: "root" }) == ["playwright-runner", "fill", "#username", "root"]
+    && op_page_argv(op: Click { selector: "button[type=\"submit\"]" }) == ["playwright-runner", "click", "button[type=\"submit\"]"]
+    && op_page_argv(op: Goto { url: "https://192.168.1.192/#/login", wait_until: NetworkIdle }) == ["playwright-runner", "goto", "https://192.168.1.192/#/login", "--wait-until", "networkidle"]
+    && op_page_argv(op: WaitForSelector { selector: "#virtual_media_device", timeout_ms: 30000 }) == ["playwright-runner", "wait-for", "#virtual_media_device", "--timeout", "30000"]
+    && op_page_argv(op: UploadFile { selector: "#virtual_media_device", path: "/tmp/ubuntu.iso" }) == ["playwright-runner", "upload", "#virtual_media_device", "/tmp/ubuntu.iso"]
+}
+
+test fn op_page_argv_covers_new_ops() -> Bool {
+  op_page_argv(op: GetByRoleWaitFor { role: "heading", name: "Load image from web browser", timeout_ms: 30000 }) == ["playwright-runner", "wait-for-role", "heading", "--name", "Load image from web browser", "--timeout", "30000"]
+    && op_page_argv(op: WaitForLoadState { state: NetworkIdle, timeout_ms: 30000 }) == ["playwright-runner", "wait-load-state", "networkidle", "--timeout", "30000"]
+    && op_page_argv(op: LocatorCountWithText { selector: "button.btn-primary", has_text: "Stop" }) == ["playwright-runner", "locator-count", "button.btn-primary", "--has-text", "Stop"]
+    && op_page_argv(op: Wait { ms: 800 }) == ["playwright-runner", "wait", "800"]
+}
