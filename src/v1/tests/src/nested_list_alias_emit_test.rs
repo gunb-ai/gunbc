@@ -48,26 +48,35 @@ fn alias_line(emitted: &str, name: &str) -> String {
 fn nested_list_alias_keeps_inner_type_arg() {
     let emitted = emit_host();
     let grid = alias_line(&emitted, "Grid");
-    // The inner container must carry its element type: `Vec<Vec<Item>>`, never a bare `Vec<Vec>`.
+    // The inner `List` container must be fully expanded with its element type (`Item`). The bug
+    // left a bare, argless `List` (e.g. `Rc<Vec<Rc<List>>>`) → `E0107: missing generics`. After
+    // the fix every container renders as `Vec<..>`, so no bare `List` token survives and the
+    // inner element `Item` reaches the leaf. (Shared types are `Rc`-wrapped, so match on tokens
+    // rather than an exact string.)
     assert!(
-        grid.contains("Vec<Vec<Item>>"),
-        "nested-container alias must keep the inner type arg, got:\n{grid}"
+        !grid.contains("List"),
+        "alias RHS left a bare argless `List` (E0107) — inner type arg dropped, got:\n{grid}"
     );
     assert!(
-        !grid.contains("Vec<Vec>") && !grid.contains("Vec<Vec,") && !grid.contains("Vec<Vec ")
-            && !grid.contains("Vec<Vec;"),
-        "alias RHS dropped the inner `Vec` type arg (E0107), got:\n{grid}"
+        grid.contains("Item"),
+        "nested-container alias must carry the inner element type `Item`, got:\n{grid}"
+    );
+    // Two nested `Vec<` confirm both container levels expanded structurally.
+    assert!(
+        grid.matches("Vec<").count() >= 2,
+        "both container levels must expand to `Vec<..>`, got:\n{grid}"
     );
 }
 
 #[test]
 fn single_level_container_alias_unchanged_control() {
-    // Control: a non-nested container alias already worked and must stay `Vec<Item>` — the fix
-    // peels only when the arg's resolved type is itself a container, so leaves this untouched.
+    // Control: a non-nested container alias already worked — the fix peels only when the arg's
+    // resolved type is ITSELF a container, so a single-level `List<Item>` is left untouched
+    // (still one `Vec<` level wrapping `Item`, no bare `List`).
     let emitted = emit_host();
     let row = alias_line(&emitted, "Row");
     assert!(
-        row.contains("Vec<Item>"),
-        "single-level container alias must stay `Vec<Item>`, got:\n{row}"
+        !row.contains("List") && row.contains("Item") && row.matches("Vec<").count() == 1,
+        "single-level container alias must stay one `Vec<..Item..>` level, got:\n{row}"
     );
 }
