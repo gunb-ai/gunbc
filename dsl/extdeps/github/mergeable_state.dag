@@ -1,8 +1,8 @@
 module extdeps.github.mergeable_state
 
-import std.serialization { CoproductWireContract, StringVariant, ScreamingSnakeCase }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import extdeps.github.mergeable_state_contracts { mergeable_state_wire_contract }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -15,11 +15,6 @@ type MergeableState
   = Mergeable
   | Conflicting
   | Unknown
-
-data mergeable_state_wire_contract: CoproductWireContract = {
-  coproduct: "MergeableState",
-  encoding: StringVariant { naming: ScreamingSnakeCase }
-}
 
 data structural_coverage_gap_mergeable_codec_hand_rolled: List<String> = [
   "parse_mergeable_state and mergeable_state_wire_label hand-roll the ScreamingSnakeCase mapping",
