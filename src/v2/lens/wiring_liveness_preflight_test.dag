@@ -1,0 +1,119 @@
+module v2.test.lens_wiring_liveness.wiring_liveness_preflight_test
+
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.node { Atom, Node, Symbol, SyntheticOccurrence, TypeNode }
+import v2.std.dependency { Contains, DependencyView }
+import v2.lens.affected_set {
+  ChangedSubgraphFrontier,
+  DependencyDependent,
+  FailClosed,
+  FrontierDependency,
+  ReExecFrontier,
+  ReasonSymbol,
+  empty_frontier
+}
+import v2.lens.wiring_liveness_preflight {
+  FrontierWiringObligation,
+  preflight_reexec_frontier
+}
+
+// --- synthetic about-to-run slice -------------------------------------------
+// Three nodes wired out -> mid -> in, plus a dangling node reachable from nothing.
+
+fn wlp_atom(identity: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: identity } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn wlp_out() -> Node { wlp_atom(identity: ^wlp_output) }
+fn wlp_mid() -> Node { wlp_atom(identity: ^wlp_mid) }
+fn wlp_in() -> Node { wlp_atom(identity: ^wlp_input) }
+fn wlp_dangling() -> Node { wlp_atom(identity: ^wlp_dangling_input) }
+
+fn wlp_edge(source: Node, dependent: Node) -> FrontierDependency {
+  FrontierDependency {
+    dependency: DependencyView {
+      source: source,
+      dependent: dependent,
+      kind: Contains,
+      usage_site: dependent
+    },
+    target: DependencyDependent
+  }
+}
+
+// The realized wiring of the about-to-run slice: out -> mid -> in.
+fn wlp_slice() -> List<FrontierDependency> {
+  [
+    wlp_edge(source: wlp_out(), dependent: wlp_mid()),
+    wlp_edge(source: wlp_mid(), dependent: wlp_in())
+  ]
+}
+
+fn wlp_live_obligation() -> FrontierWiringObligation {
+  FrontierWiringObligation { output: wlp_out(), declared_input: wlp_in() }
+}
+
+fn wlp_dead_obligation() -> FrontierWiringObligation {
+  FrontierWiringObligation { output: wlp_out(), declared_input: wlp_dangling() }
+}
+
+fn wlp_is_failclosed(frontier: ReExecFrontier) -> Bool {
+  match frontier {
+    FailClosed { reason: _ } => true
+    ChangedSubgraphFrontier { boundary_exclusions: _, decisions: _ } => false
+  }
+}
+
+// --- discriminating witnesses (DESIGN §5: green-by-execution + red-on-perturb) ---
+
+// A fully-wired slice runs: the declared input reaches the output it feeds, so the
+// preflight returns the frontier unchanged (NOT FailClosed). RED if the preflight
+// over-rejects a live wire.
+test fn preflight_wired_slice_runs() -> Bool {
+  let result = preflight_reexec_frontier(
+    frontier: empty_frontier(),
+    dependencies: wlp_slice(),
+    obligations: [wlp_live_obligation()]
+  )
+  return wlp_is_failclosed(frontier: result) == false
+}
+
+// A dead wire in the about-to-run slice FailCloses BEFORE execution: the declared
+// input (dangling) reaches no output over the slice's realized wiring. RED if the
+// preflight fails to detect the dead wire (the auth-class bug it exists to catch).
+test fn preflight_dead_wire_failcloses() -> Bool {
+  let result = preflight_reexec_frontier(
+    frontier: empty_frontier(),
+    dependencies: wlp_slice(),
+    obligations: [wlp_dead_obligation()]
+  )
+  return wlp_is_failclosed(frontier: result)
+}
+
+// A mixed slice (one live, one dead obligation) still FailCloses on the dead one --
+// the preflight does not let a live wire mask a dead sibling.
+test fn preflight_mixed_slice_failcloses_on_dead() -> Bool {
+  let result = preflight_reexec_frontier(
+    frontier: empty_frontier(),
+    dependencies: wlp_slice(),
+    obligations: [wlp_live_obligation(), wlp_dead_obligation()]
+  )
+  return wlp_is_failclosed(frontier: result)
+}
+
+// An already-FailClosed frontier passes through unchanged -- the preflight never
+// masks a prior failure with a (would-be) wired verdict.
+test fn preflight_preserves_prior_failclosed() -> Bool {
+  let prior = FailClosed { reason: ReasonSymbol { reason: ^wlp_prior_failure } }
+  let result = preflight_reexec_frontier(
+    frontier: prior,
+    dependencies: wlp_slice(),
+    obligations: [wlp_live_obligation()]
+  )
+  return wlp_is_failclosed(frontier: result)
+}
