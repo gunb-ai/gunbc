@@ -1,8 +1,25 @@
 module v2.test.lens_disposition_redundancy.disposition_redundancy_test
 
 import v2.lens.disposition_redundancy { disposition_redundancy_violation_count }
-import std.disposition { Disposition, Scaffold, DeclLocator, NamedField, SingleAuthority }
-import extdeps.llm.anthropic { structural_coverage_gap_anthropic_tool_result_nested_block_wire_payloads }
+import std.disposition { Disposition, Scaffold, Terminal, DeclLocator, NamedField, WholeDeclaration, SingleAuthority }
+import extdeps.llm.anthropic {
+  structural_coverage_gap_anthropic_tool_result_nested_block_wire_payloads
+}
+import std.bytes { bytes_seam_host_realization_marker }
+import std.encoding { utf8_decode_bytes_host_realization_marker, base64_group_fill_carrier_debt_marker }
+import gunbc.ci_floor_measurement {
+  gunbc_ci_floor_measured_peak_disposition,
+  gunbc_ci_host_fixed_overhead_disposition,
+  gunbc_ci_concurrent_runs_conservative_high_disposition
+}
+import tools.rust_stage0_gates {
+  consumed_input_closure_concept_note,
+  consumed_input_closure_convergence_candidate,
+  consumed_input_closure_slice1_status,
+  unit_must_run_failclosed_note,
+  unit_must_run_staged_note,
+  should_run_gates_coverage_note
+}
 import v2.std.collection { List }
 import v2.std.algebra { length }
 import v2.std.logic { Bool }
@@ -63,5 +80,102 @@ test fn redundancy_region1_fires_when_a_real_mark_successor_present() -> Bool {
   disposition_redundancy_violation_count(
     dispositions: structural_coverage_gap_anthropic_tool_result_nested_block_wire_payloads,
     present: redundancy_region1_real_successor_present
+  ) == 1
+}
+
+data redundancy_region_bytes_marks: List<Disposition> = [
+  bytes_seam_host_realization_marker,
+  utf8_decode_bytes_host_realization_marker,
+  base64_group_fill_carrier_debt_marker
+]
+
+data redundancy_region_bytes_synthetic_present: List<DeclLocator> = [
+  DeclLocator {
+    module_path: "std.bytes",
+    decl_name: "builtin_function_registry",
+    field: WholeDeclaration
+  }
+]
+
+test fn redundancy_region_bytes_marks_nonempty() -> Bool {
+  length(xs: redundancy_region_bytes_marks) > 0
+}
+
+test fn redundancy_region_bytes_green_against_nonmatching() -> Bool {
+  disposition_redundancy_violation_count(
+    dispositions: redundancy_region_bytes_marks,
+    present: redundancy_present_with_successor
+  ) == 0
+}
+
+test fn redundancy_region_bytes_fires_on_builtin_registry_present() -> Bool {
+  disposition_redundancy_violation_count(
+    dispositions: redundancy_region_bytes_marks,
+    present: redundancy_region_bytes_synthetic_present
+  ) == 2
+}
+
+data redundancy_region_budget_marks: List<Disposition> = [
+  gunbc_ci_floor_measured_peak_disposition,
+  gunbc_ci_host_fixed_overhead_disposition,
+  gunbc_ci_concurrent_runs_conservative_high_disposition
+]
+
+data redundancy_region_budget_job_peaks_locator: DeclLocator = DeclLocator {
+  module_path: "gunbc.ci_floor_measurement",
+  decl_name: "gunbc_ci_job_peaks",
+  field: WholeDeclaration
+}
+
+test fn redundancy_region_budget_marks_nonempty() -> Bool {
+  length(xs: redundancy_region_budget_marks) > 0
+}
+
+test fn redundancy_region_budget_green_against_nonmatching() -> Bool {
+  disposition_redundancy_violation_count(
+    dispositions: redundancy_region_budget_marks,
+    present: redundancy_present_with_successor
+  ) == 0
+}
+
+test fn redundancy_region_budget_fires_on_job_peaks_present() -> Bool {
+  disposition_redundancy_violation_count(
+    dispositions: redundancy_region_budget_marks,
+    present: [redundancy_region_budget_job_peaks_locator]
+  ) == 1
+}
+
+data redundancy_region_rust_gates_marks: List<Disposition> = [
+  consumed_input_closure_concept_note,
+  consumed_input_closure_convergence_candidate,
+  consumed_input_closure_slice1_status,
+  unit_must_run_failclosed_note,
+  unit_must_run_staged_note,
+  should_run_gates_coverage_note
+]
+
+data redundancy_region_rust_gates_synthetic_present: List<DeclLocator> = [
+  DeclLocator {
+    module_path: "std.consumed_input",
+    decl_name: "ConsumedInputClosure",
+    field: WholeDeclaration
+  }
+]
+
+test fn redundancy_region_rust_gates_marks_nonempty() -> Bool {
+  length(xs: redundancy_region_rust_gates_marks) > 0
+}
+
+test fn redundancy_region_rust_gates_green_against_nonmatching() -> Bool {
+  disposition_redundancy_violation_count(
+    dispositions: redundancy_region_rust_gates_marks,
+    present: redundancy_present_with_successor
+  ) == 0
+}
+
+test fn redundancy_region_rust_gates_fires_on_convergence_target_present() -> Bool {
+  disposition_redundancy_violation_count(
+    dispositions: redundancy_region_rust_gates_marks,
+    present: redundancy_region_rust_gates_synthetic_present
   ) == 1
 }
