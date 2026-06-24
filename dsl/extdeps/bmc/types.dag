@@ -122,10 +122,6 @@ type RedfishPrivilege =
   | PrivilegeConfigureComponents
   | PrivilegeConfigureSelf
 
-type RedfishVirtualMediaSupport =
-    VirtualMediaSupported
-  | VirtualMediaUnsupported
-
 fn redfish_boot_target_wire(t: RedfishBootSourceOverrideTarget) -> NonEmptyStr {
   match t {
     BootTargetNone => "None"

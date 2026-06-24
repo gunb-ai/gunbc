@@ -1,0 +1,63 @@
+module test.claim.bmc_capability_solve_witness
+
+import std.logic { Bool }
+import std.bmc { OpenBmc }
+import extdeps.bmc.capability {
+  BmcFirmwareCapabilityRow,
+  BmcFirmwareVersion,
+  CapabilityVirtualMedia,
+  CapabilityFirmwareUpdate,
+  CapabilityBiosAttributeConfig,
+  CapabilityBootSourceOverride,
+  firmware_exposes,
+  catalog_has_firmware_with,
+  openbmc_2_07_00_capabilities,
+  bmc_firmware_capability_catalog,
+}
+import gunbc.os_install_mechanism {
+  VirtualMediaInstall,
+  PxeHttpInstall,
+  FirmwareUpdateThenVirtualMedia,
+  solve_install_mechanism,
+  srv3_install_mechanism,
+}
+
+test fn srv3_firmware_capabilities_are_grounded() -> Bool {
+  firmware_exposes(row: openbmc_2_07_00_capabilities, cap: CapabilityBootSourceOverride)
+    && firmware_exposes(row: openbmc_2_07_00_capabilities, cap: CapabilityFirmwareUpdate)
+    && (firmware_exposes(row: openbmc_2_07_00_capabilities, cap: CapabilityVirtualMedia) == false)
+    && (firmware_exposes(row: openbmc_2_07_00_capabilities, cap: CapabilityBiosAttributeConfig) == false)
+}
+
+test fn catalog_has_no_vm_capable_firmware_today() -> Bool {
+  catalog_has_firmware_with(catalog: bmc_firmware_capability_catalog, family: OpenBmc, cap: CapabilityVirtualMedia) == false
+}
+
+test fn srv3_today_solves_to_pxe() -> Bool {
+  match srv3_install_mechanism {
+    PxeHttpInstall => true
+    VirtualMediaInstall => false
+    FirmwareUpdateThenVirtualMedia => false
+  }
+}
+
+test fn vm_capable_firmware_flips_srv3_to_firmware_update_path() -> Bool {
+  match solve_install_mechanism(row: openbmc_2_07_00_capabilities, virtual_media_capable_firmware_available: true) {
+    FirmwareUpdateThenVirtualMedia => true
+    VirtualMediaInstall => false
+    PxeHttpInstall => false
+  }
+}
+
+test fn node_with_virtual_media_solves_direct() -> Bool {
+  let vm_row = BmcFirmwareCapabilityRow {
+    firmware: BmcFirmwareVersion { family: OpenBmc, version: "9.99-synthetic-vm" },
+    provenance: "synthetic discriminating fixture: a firmware that DOES expose VirtualMedia",
+    capabilities: [CapabilityVirtualMedia, CapabilityFirmwareUpdate, CapabilityBootSourceOverride],
+  }
+  match solve_install_mechanism(row: vm_row, virtual_media_capable_firmware_available: false) {
+    VirtualMediaInstall => true
+    PxeHttpInstall => false
+    FirmwareUpdateThenVirtualMedia => false
+  }
+}

@@ -1,0 +1,67 @@
+module extdeps.bmc.capability
+
+import std.types { NonEmptyStr, List, Bool }
+import std.bmc { BmcFirmwareFamily, OpenBmc }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "www.dmtf.org/standards/redfish",
+  }
+}
+
+data bmc_capability_doc: String = "A BMC's manageability capabilities are NOT a fixed property of the board -- they are EXPOSED by a specific firmware version. In DMTF Redfish a capability is the PRESENCE of its resource/action on the service (VirtualMedia = the VirtualMedia collection exists; BIOS attribute config = Bios/Settings + a non-empty Attributes registry; firmware update = an enabled UpdateService). So capability is derived from (family, version), and the OS-install MECHANISM is a SOLVE over the capabilities the node's ACTUAL firmware exposes -- not a hardcoded script. Each capability row is GROUNDED by observation (live Redfish probe or cited release notes), never assumed. This dissolves the prior bare board-level VirtualMedia flag (a §3 fork: VirtualMedia was modeled as a property of the board when it is a property of the firmware version) into membership in this capability set."
+
+type BmcCapability =
+    CapabilityPowerControl
+  | CapabilityBootSourceOverride
+  | CapabilityAccountManagement
+  | CapabilityFirmwareUpdate
+  | CapabilityVirtualMedia
+  | CapabilityBiosAttributeConfig
+
+fn bmc_capability_eq(a: BmcCapability, b: BmcCapability) -> Bool {
+  match a {
+    CapabilityPowerControl => match b { CapabilityPowerControl => true  _ => false }
+    CapabilityBootSourceOverride => match b { CapabilityBootSourceOverride => true  _ => false }
+    CapabilityAccountManagement => match b { CapabilityAccountManagement => true  _ => false }
+    CapabilityFirmwareUpdate => match b { CapabilityFirmwareUpdate => true  _ => false }
+    CapabilityVirtualMedia => match b { CapabilityVirtualMedia => true  _ => false }
+    CapabilityBiosAttributeConfig => match b { CapabilityBiosAttributeConfig => true  _ => false }
+  }
+}
+
+type BmcFirmwareVersion {
+  family: BmcFirmwareFamily
+  version: NonEmptyStr
+}
+
+type BmcFirmwareCapabilityRow {
+  firmware: BmcFirmwareVersion
+  provenance: NonEmptyStr
+  capabilities: List<BmcCapability>
+}
+
+data openbmc_2_07_00_capabilities: BmcFirmwareCapabilityRow = BmcFirmwareCapabilityRow {
+  firmware: BmcFirmwareVersion { family: OpenBmc, version: "2.07.00" },
+  provenance: "live Redfish probe of ASRockRack ALTRAD8UD-1L2T BMC 192.168.1.192 on 2026-06-24: ComputerSystem.Reset + BootSourceOverride(None/Pxe/Hdd/Cd/Diags/BiosSetup) + AccountService present; UpdateService ServiceEnabled with HttpPushUri + MultipartHttpPushUri; Bios Attributes count 0 and Bios/Settings 404 (no BIOS attribute config); Managers/bmc/VirtualMedia and Systems/system/VirtualMedia both 404 (no VirtualMedia)",
+  capabilities: [CapabilityPowerControl, CapabilityBootSourceOverride, CapabilityAccountManagement, CapabilityFirmwareUpdate],
+}
+
+data bmc_firmware_capability_catalog: List<BmcFirmwareCapabilityRow> = [openbmc_2_07_00_capabilities]
+
+fn firmware_exposes(row: BmcFirmwareCapabilityRow, cap: BmcCapability) -> Bool {
+  fold(row.capabilities, init: false, f: (acc, c) => acc || bmc_capability_eq(a: c, b: cap))
+}
+
+fn bmc_firmware_family_eq(a: BmcFirmwareFamily, b: BmcFirmwareFamily) -> Bool {
+  match a {
+    OpenBmc => match b { OpenBmc => true }
+  }
+}
+
+fn catalog_has_firmware_with(catalog: List<BmcFirmwareCapabilityRow>, family: BmcFirmwareFamily, cap: BmcCapability) -> Bool {
+  fold(catalog, init: false, f: (acc, row) => acc || (bmc_firmware_family_eq(a: row.firmware.family, b: family) && firmware_exposes(row: row, cap: cap)))
+}
