@@ -82,20 +82,6 @@ fn emit_directive_bash_emit(d: EmitDirective) -> Outcome<Medium<String>> {
   )
 }
 
-fn emit_directive_rust_error_actual() -> String {
-  match emit_directive_rust_emit(d: emit_directive_rust_error_example) {
-    Accepted { value: source, diagnostics: _ } => source.carried
-    Rejected { diagnostics: _ } => "REJECTED"
-  }
-}
-
-fn emit_directive_rust_error_reason() -> Symbol {
-  match emit_directive_rust_emit(d: emit_directive_rust_error_example) {
-    Accepted { value: _, diagnostics: _ } => ^accepted_no_reason
-    Rejected { diagnostics: r } => r.head.reason
-  }
-}
-
 test fn emit_directive_rust_error_emits_eprintln_holds() -> Bool {
   match emit_directive_rust_emit(d: emit_directive_rust_error_example) {
     Accepted { value: source, diagnostics: dg } =>

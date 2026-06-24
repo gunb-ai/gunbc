@@ -27,6 +27,7 @@ import v2.std.grammar {
   grammar_empty_sync_tokens,
   grammar_production_to_node,
   grammar_relation_tokens_node,
+  grammar_formal_terminal_bound,
   derive_grammar_relation_row_node,
   formal_production_for_lhs_exact
 }
@@ -1625,29 +1626,70 @@ fn rust_conj_emitted_from_tokens(tokens: List<ConcreteSyntaxToken>) -> Node {
   }
 }
 
-fn rust_grammar_sequence_from_tokens(tokens: List<ConcreteSyntaxToken>) -> GrammarExpr {
-  match fold_list(
+fn rust_formal_symbol_from_token(token: ConcreteSyntaxToken) -> FormalGrammarSymbol {
+  match token {
+    FixedToken { token_class: c } => grammar_formal_terminal(identity: c)
+    BoundToken { token_class: c, binding: b } =>
+      grammar_formal_terminal_bound(identity: c, binding: b)
+  }
+}
+
+fn rust_formal_rhs_from_tokens_with_bindings(tokens: List<ConcreteSyntaxToken>) -> List<FormalGrammarSymbol> {
+  fold_list(
     xs: tokens,
-    empty: RustGramBuild1StateInit,
-    cons: fn(state, token) {
-      match state {
-        RustGramBuild1StateInit =>
-          RustGramBuild1StateReady {
-            expr: rust_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
-          }
-        RustGramBuild1StateReady { expr: acc } =>
-          RustGramBuild1StateReady {
-            expr: Sequence {
-              left: acc,
-              right: rust_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
-            }
-          }
-      }
+    empty: Empty,
+    cons: fn(acc, token) {
+      list_snoc_item(xs: acc, item: rust_formal_symbol_from_token(token: token))
     }
-  ) {
-    RustGramBuild1StateInit =>
-      rust_grammar_terminal(token_class: ^rust_token_macro_eprintln_open)
-    RustGramBuild1StateReady { expr: result } => result
+  )
+}
+
+fn rust_formal_production_from_tokens(lhs: Symbol, tokens: List<ConcreteSyntaxToken>) -> FormalProduction {
+  grammar_formal_production(lhs: lhs, rhs: rust_formal_rhs_from_tokens_with_bindings(tokens: tokens))
+}
+
+fn rust_lhs_exact_relation_row_witness(
+  lhs: Symbol,
+  tokens: List<ConcreteSyntaxToken>,
+  emitted: Node
+) -> Witness<Node> {
+  let production = rust_formal_production_from_tokens(lhs: lhs, tokens: tokens)
+  let productions = [production]
+  match formal_production_for_lhs_exact(productions: productions, lhs: lhs, child: emitted) {
+    Holds { value: selected } =>
+      derive_grammar_relation_row_node(
+        production: selected,
+        productions: productions,
+        emitted: emitted
+      )
+    Violates { diagnostic: d } => Violates { diagnostic: d }
+  }
+}
+
+fn rust_empty_translation_rules_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn rust_relation_translation_rules_node(
+  rule_name: Symbol,
+  lhs: Symbol,
+  tokens: List<ConcreteSyntaxToken>,
+  emitted: Node
+) -> Node {
+  match rust_lhs_exact_relation_row_witness(lhs: lhs, tokens: tokens, emitted: emitted) {
+    Holds { value: row } =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          rust_named_edge(name: rule_name, target: row)
+        ],
+        occurrence_id: SyntheticOccurrence
+      }
+    Violates { diagnostic: _ } => rust_empty_translation_rules_node()
   }
 }
 
@@ -1736,33 +1778,13 @@ fn rust_emit_directive_lex() -> LexRules {
   }
 }
 
-fn rust_emit_directive_grammar_production() -> GrammarProduction {
-  GrammarProduction {
-    name: ^rust_production_emit_directive_eprintln,
-    expression: rust_grammar_sequence_from_tokens(tokens: rust_emit_directive_concrete_tokens()),
-    emitted: rust_grammar_atom(id: ^rust_surface_emit_directive_eprintln)
-  }
-}
-
-fn rust_emit_directive_grammar_relation_row() -> RustGrammarRelationRow {
-  RustGrammarRelationRow {
-    production: rust_emit_directive_grammar_production(),
-    emitted: rust_emit_directive_emitted_call,
-    tokens: rust_emit_directive_concrete_tokens()
-  }
-}
-
 fn rust_emit_directive_translation_rules_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      rust_named_edge(
-        name: ^rust_relation_rule_emit_directive_eprintln,
-        target: rust_grammar_relation_row_node(row: rust_emit_directive_grammar_relation_row())
-      )
-    ],
-    occurrence_id: SyntheticOccurrence
-  }
+  rust_relation_translation_rules_node(
+    rule_name: ^rust_relation_rule_emit_directive_eprintln,
+    lhs: ^rust_production_emit_directive_eprintln,
+    tokens: rust_emit_directive_concrete_tokens(),
+    emitted: rust_emit_directive_emitted_call
+  )
 }
 
 fn rust_emit_directive_serialize_source_node() -> Node {
