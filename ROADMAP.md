@@ -110,8 +110,8 @@ A flaky or green-but-broken floor means no gate protects anything — so CI is u
 **Host-operation band — off-fabric, unmodeled, unenforced (G1–G3, NOW):**
 
 - [ ] **G1 placement** — which host a job lands on is GitHub-native, demand-blind, first-idle → heavy runs co-reside, other host idles (the underutilization root) [plan](docs/plans/compute-envelope-model.md)
-- [ ] **G2 runner deployment + cross-host placement** *(dispatched proud-tern-439: model + drift-gate; live-fleet apply fenced for operator)* — runners/host + registration are hand-run shell, **no repo artifact**; derive from `fleet_intent`+envelope, generate + drift-gate (the `ci.yml` pattern, for the host)
-- [ ] **G3 cgroup caps** — `TasksMax`/`MemoryMax` host-set by hand, only *read* live; derive + reconcile-gate so a hand-edit reds
+- [ ] **G2 runner deployment + cross-host placement** *(dispatched proud-tern-439: model + drift-gate)* — derive runners/host + registration from `fleet_intent`+envelope; **host-apply RESOLVED (operator-set, CI-humming plan authority): the gunbc-EMITTED converge shell** (`.github/fleet-converge.sh` = a §2 host-effect handler inhabiting the §6 carrier *by emission* — the emitted shell IS the executing consumer, escaping the §5 spec-without-execution trap; ctrl thin-runs it + parses a fail-closed receipt; §7 seed-shrink). In progress: emit (wise-eagle-664) + thin consume/run (fierce-carp)
+- [ ] **G3 cgroup caps** — `TasksMax`/`MemoryMax` host-set by hand, only *read* live; derive + reconcile via the **emitted converge shell + fail-closed receipt** (same carrier-inhabitation-by-emission as G2) so a hand-edit reds
 - [ ] **CI on compute fabric** — derive every host knob from one measured `ResourceEnvelope`; ends the crash-or-idle swing [plan](docs/plans/compute-envelope-model.md)
 
 **Adjacent gaps (smaller, outside the host band):**

@@ -13,7 +13,7 @@ import std.realization_reconcile {
   Reconciliation,
   Converged,
   NotConverged,
-  reconcile,
+  reconcile_grounded,
 }
 import gunbc.ci_floor_measurement {
   OomdEnforcementEvidence,
@@ -230,13 +230,13 @@ fn ground_oomd_from_read(read: OomdEffectiveRead, req: OomdGroundingThresholds) 
 fn reconcile_oomd(read: ShowEffectiveRead<OomdEffectiveRead>, req: OomdGroundingThresholds) -> Reconciliation<OomdApplyEffect, OomdEnforcementEvidence> {
   match read {
     ReadAbsent { reason: why } =>
-      reconcile(
+      reconcile_grounded(
         apply_effect: gunbc_oomd_apply_effect,
         show_read: read,
         grounding: DoesNotGround { reason: why }
       )
     ReadObserved { value: observed } =>
-      reconcile(
+      reconcile_grounded(
         apply_effect: gunbc_oomd_apply_effect,
         show_read: read,
         grounding: ground_oomd_from_read(read: observed, req: req)
