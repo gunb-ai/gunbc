@@ -1168,11 +1168,15 @@ fn emit_coproduct_wire_contract_target_validation(contract_item: Node, local_cop
 }
 
 fn emit_coproduct_wire_contract_validations(module_items: List<Node>, imports: List<Node>, local_coproduct_names: List<String>, source_indices: Map<String, NewlineIndex>) -> String {
-  module_items
-    |> filter(item => is_coproduct_wire_contract_row(item: item, module_items: module_items, imports: imports, source_indices: source_indices))
-    |> map(item => emit_coproduct_wire_contract_target_validation(contract_item: item, local_coproduct_names: local_coproduct_names, source_indices: source_indices))
-    |> filter(text => text != "")
-    |> join(separator: "\n")
+  if local_coproduct_names |> count == 0 {
+    ""
+  } else {
+    module_items
+      |> filter(item => is_coproduct_wire_contract_row(item: item, module_items: module_items, imports: imports, source_indices: source_indices))
+      |> map(item => emit_coproduct_wire_contract_target_validation(contract_item: item, local_coproduct_names: local_coproduct_names, source_indices: source_indices))
+      |> filter(text => text != "")
+      |> join(separator: "\n")
+  }
 }
 
 fn resolve_local_coproduct_wire_policy(coproduct_name: String, all_unit_variants: Bool, module_items: List<Node>, imports: List<Node>, source_indices: Map<String, NewlineIndex>) -> RustEnumWireSerde? {
@@ -1651,20 +1655,20 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
     |> filter(item => is_type_def_item(item: item) && is_coproduct_type(n: item))
     |> map(item => authored_name(env: scope.type_env, node: item))
   let module_import_items = module_imports(n: m)
-  let coproduct_wire_contract_validations = emit_coproduct_wire_contract_validations(module_items: typed_module.items, imports: module_import_items, local_coproduct_names: local_coproduct_names, source_indices: scope.type_env.source_indices)
+  let this_module_name = authored_name(env: scope.type_env, node: m)
+  let wire_context_items = concat(typed_module.items, contracts_items_for_module(module_name: this_module_name, typed_modules: typed_modules, source_indices: scope.type_env.source_indices, module_index: module_index))
+  let wire_context_imports = concat(module_import_items, contracts_imports_for_module(module_name: this_module_name, typed_modules: typed_modules, source_indices: scope.type_env.source_indices, module_index: module_index))
+  let coproduct_wire_contract_validations = emit_coproduct_wire_contract_validations(module_items: wire_context_items, imports: wire_context_imports, local_coproduct_names: local_coproduct_names, source_indices: scope.type_env.source_indices)
   let coproduct_wire_contract_validation_section = if coproduct_wire_contract_validations == "" { "" } else { concat(coproduct_wire_contract_validations, "\n\n") }
   let local_uses_str = if local_enum_uses |> count == 0 { "" }
     else { concat("\n", local_enum_uses |> join(separator: "\n")) }
-  let wire_contract_item = typed_module.items
+  let wire_contract_item = wire_context_items
     |> filter(i =>
-      item_binding_is_named(env: scope.type_env, node: i, name: "wire_contract")
-      && match map_get(scope.item_registry, "wire_contract") {
-        Present { value: info } => info.kind == DataItem
-        Absent => false
-      })
+      is_data_def_item(item: i)
+      && authored_name_at(source_indices: scope.type_env.source_indices, node: i) == "wire_contract")
     |> first
   let items_str = typed_module.items
-    |> map(item => emit_typed_item(item: item, module_name: authored_name(env: scope.type_env, node: m), registry: registry, scope: scope, shared_types: shared_types, emit_info: emit_info, wire_contract_item: wire_contract_item, data_items: scoped_data_items, module_items: typed_module.items, imports: module_import_items, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index))
+    |> map(item => emit_typed_item(item: item, module_name: authored_name(env: scope.type_env, node: m), registry: registry, scope: scope, shared_types: shared_types, emit_info: emit_info, wire_contract_item: wire_contract_item, data_items: scoped_data_items, module_items: wire_context_items, imports: wire_context_imports, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index))
     |> join(separator: "\n\n")
   let phantom_zst_markers = emit_module_phantom_zst_markers(items: typed_module.items, env: scope.type_env)
   let phantom_section = if phantom_zst_markers == "" { "" } else { concat("\n\n", phantom_zst_markers) }
@@ -1743,6 +1747,20 @@ fn build_module_index(modules: List<TypedModule>) -> ModuleIndex {
 
 fn typed_module_by_name(module_name: String, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> TypedModule? {
   map_get(module_index.by_name, module_name)
+}
+
+fn contracts_items_for_module(module_name: String, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> List<Node> {
+  match typed_module_by_name(module_name: concat(module_name, "_contracts"), typed_modules: typed_modules, source_indices: source_indices, module_index: module_index) {
+    Present { value: tm } => tm.items
+    Absent => []
+  }
+}
+
+fn contracts_imports_for_module(module_name: String, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> List<Node> {
+  match typed_module_by_name(module_name: concat(module_name, "_contracts"), typed_modules: typed_modules, source_indices: source_indices, module_index: module_index) {
+    Present { value: tm } => module_imports(n: tm.module)
+    Absent => []
+  }
 }
 
 fn module_name_from_filename(mod_filename: String, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> String? {
