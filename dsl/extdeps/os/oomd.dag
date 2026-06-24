@@ -1,6 +1,7 @@
 module extdeps.os.oomd
 
-import std.types { NonEmptyStr, String, FilePath, Seconds, Int, Bool }
+import std.types { NonEmptyStr, String, FilePath, Int, Bool }
+import std.measure { Second, second }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -27,13 +28,13 @@ type ManagedOomAction
 type OomdGlobalConfig {
   swap_used_limit: Percent
   default_memory_pressure_limit: Percent
-  default_memory_pressure_duration: Seconds
+  default_memory_pressure_duration: Second
 }
 
 data oomd_default_global_config: OomdGlobalConfig = OomdGlobalConfig {
   swap_used_limit: 90,
   default_memory_pressure_limit: 60,
-  default_memory_pressure_duration: 30,
+  default_memory_pressure_duration: second(30),
 }
 
 type UnitManagedOomPolicy {
