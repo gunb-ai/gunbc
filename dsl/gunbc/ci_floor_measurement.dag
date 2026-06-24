@@ -96,7 +96,14 @@ data gunbc_ci_session_reservation_mode: SessionReservationMode = Regime2Aggregat
   aggregate_reservation: SessionAggregateMeasured { bytes: byte_size(21474836480) },
 }
 
-data gunbc_ci_regime2_aggregate_dissolution_marker: String = "dissolve-on stage:per-type-baseline-build-pool -- Regime2AggregateOomd.aggregate_reservation is the COARSE single-aggregate stand-in. It DISSOLVES into the grounded decomposition host = overhead + Sigma(container-type baselines: GhaRunnerContainer idle ~0.2-0.3GiB + AgentSessionContainer idle ~0.35-0.5GiB, each a measured ResourceEnvelope) + ONE capped shared_build_pool + headroom. The shared build pool is NOT new infra: it is the EXISTING host-wide ctrl-jobserver (scheduling arm) + ctrl-sccache (caching arm) = the two arms of std.realization RealizedStep already unifying GHA-CI builds and session ctrl-builds; its authority is the ctrl-jobserver instance config (build_pool_budget = TOKENS x MIB_PER_JOB, gunbc owns the SHAPE, ctrl owns the values, cited in extdeps per shapes-vs-instances). Coarse-form scaffold per DESIGN sec 6: honest forward-composing, NOT parallel-representation debt; the single aggregate is exactly Sigma(baselines)+build_pool collapsed."
+data gunbc_ci_regime2_aggregate_dissolution_marker: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "extdeps.ctrl.jobserver",
+    decl_name: "jobserver_build_pool_bytes",
+    field: WholeDeclaration
+  }
+}
 
 
 

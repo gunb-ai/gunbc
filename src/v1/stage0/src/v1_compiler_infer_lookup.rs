@@ -17,9 +17,10 @@ pub use crate::v1_compiler_infer_service::check_service_method_call_node;
 pub use crate::v1_compiler_infer_service::{OpEntry, ServiceMethodResult};
 pub use crate::v1_compiler_infer_sigs::{ResolvedFuncEnv, ResolvedFuncSig};
 pub use crate::v1_compiler_infer_types::{
-    child_type_node, emit_map_has, enrich_kernel_type, make_container_type,
-    method_receiver_element_node, node_is_keyed_collection, node_is_set_collection,
-    nominal_type_ref, normalize_access_type_node,
+    child_type_node, emit_map_has, enrich_kernel_type, is_declared_container_alias_spelling,
+    make_container_type, method_receiver_element_node, node_is_keyed_collection,
+    node_is_set_collection, nominal_type_ref, normalize_access_type_node,
+    reground_alias_carrier_identity,
 };
 use crate::v1_rt;
 use crate::v1_rt::Witness;
@@ -199,6 +200,28 @@ pub fn lookup_coproduct_common_field_node(
 
 pub fn resolve_scrutinee_type_node(env: Rc<TypeEnv>, n: Rc<Node>) -> Rc<Node> {
     resolve_scrutinee_type_node_seen(env, n, v1_rt::rc_empty_map::<String, bool>())
+}
+
+pub fn resolve_method_receiver_type(receiver_type: Rc<Node>, env: Rc<TypeEnv>) -> Rc<Node> {
+    let raw_name = authored_name_at(env.source_indices.clone(), receiver_type.clone());
+    if ((receiver_type.connective.clone() == Connective::Conj)
+        || is_declared_container_alias_spelling(raw_name.clone()))
+    {
+        receiver_type.clone()
+    } else {
+        let resolved = reground_alias_carrier_identity(
+            resolve_scrutinee_type_node(env.clone(), receiver_type.clone()),
+            env.source_indices.clone(),
+        );
+        let resolved_name = authored_name_at(env.source_indices.clone(), resolved.clone());
+        if ((resolved_name.clone().as_str() != raw_name.clone().as_str())
+            && is_declared_container_alias_spelling(resolved_name.clone()))
+        {
+            resolved
+        } else {
+            receiver_type.clone()
+        }
+    }
 }
 
 pub fn resolve_scrutinee_type_node_seen(
