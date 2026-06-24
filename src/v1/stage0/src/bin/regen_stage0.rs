@@ -997,6 +997,11 @@ fn patch_cargo_toml_for_generated_crate(dir: &Path) -> Result<(), String> {
     for (crate_name, dep_line) in [
         ("ureq", "ureq = { version = \"2\", features = [\"json\"] }"),
         ("im-rc", "im-rc = \"15.1\""),
+        ("unicode-ident", "unicode-ident = \"1\""),
+        (
+            "unicode-properties",
+            "unicode-properties = { version = \"0.1\", features = [\"emoji\"] }",
+        ),
     ] {
         if !contents.contains(crate_name) {
             contents = contents.replace(

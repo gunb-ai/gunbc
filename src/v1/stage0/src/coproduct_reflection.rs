@@ -4,7 +4,8 @@ use std::rc::Rc;
 use crate::v1_compiler_infer_items::ItemKind;
 use crate::v1_interpreter::{InterpContext, InterpError, InterpResult, Value};
 use crate::v1_std_core::{
-    authored_name_at, field_node_type_expr, inferred_to_node, Connective, Node,
+    authored_name_at, expr_var_name_at, field_node_type_expr, inferred_to_node, param_node_name_at,
+    Connective, ExprData, NewlineIndex, Node, VarBindingKind,
 };
 
 pub(crate) const NULLARY_PAYLOAD_TYPE_NAME: &str = "coproduct_nullary_payload";
@@ -485,6 +486,193 @@ pub fn eval_concept_decl_facts_live(
                     (ctx.sym("qualified_name"), Value::Str(qualified_name)),
                     (ctx.sym("name"), Value::Str(name.clone())),
                     (ctx.sym("node"), node),
+                ])),
+            });
+        }
+    }
+    Ok(crate::v1_interpreter::list_value(rows))
+}
+
+fn edge_positional(ctx: &InterpContext, target: Value) -> Value {
+    Value::Record {
+        type_name: ctx.sym("Edge"),
+        fields: Rc::new(HashMap::from([
+            (
+                ctx.sym("label"),
+                Value::Variant {
+                    type_name: ctx.sym("EdgeLabel"),
+                    variant_name: ctx.sym("Positional"),
+                    fields: Rc::new(HashMap::new()),
+                },
+            ),
+            (ctx.sym("target"), target),
+        ])),
+    }
+}
+
+fn atom_identity_node(ctx: &InterpContext, identity: &str) -> Value {
+    node_record(
+        ctx,
+        node_kind_type_node(ctx, atom_connective_variant(ctx, identity)),
+        vec![],
+    )
+}
+
+fn node_authored_name(node: &Rc<Node>, si: &Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
+    if !node.name.is_empty() {
+        node.name.clone()
+    } else {
+        expr_var_name_at(node.clone(), si.clone())
+    }
+}
+
+// Does this node REFERENCE a declared parameter `name`? Two body forms reference a value
+// parameter: an `ExprVar` value read (`x`) -- resolved to a `LocalValueBinding`, so a
+// `FunctionValueBinding` global or `VariantValueBinding` constructor sharing the name is
+// excluded; and an `ExprCall` whose callee IS the parameter (a fn-valued param applied:
+// `predicate(x)`) -- the callee is the call node's own name, not a child, so it is invisible
+// to a children-only walk. Both are genuine uses of a value parameter.
+fn node_references_param(node: &Rc<Node>, name: &str, param_names: &[String]) -> bool {
+    if name.is_empty() || !param_names.iter().any(|p| p.as_str() == name) {
+        return false;
+    }
+    match node.expr_data.as_ref() {
+        ExprData::ExprVar {
+            binding_kind: Some(bk),
+        } => {
+            matches!(bk.as_ref(), VarBindingKind::LocalValueBinding)
+        }
+        ExprData::ExprCall { .. } => true,
+        _ => false,
+    }
+}
+
+// Project a fn body's internal expression tree onto a substrate Node skeleton: each node
+// becomes a neutral `Conj` container whose positional children are the marshaled
+// sub-expressions, and a node that references a declared parameter additionally carries an
+// identity-bearing `Atom` leaf -- byte-identical to the declared-input atom
+// `eval_fn_arrow_decl_facts_live` emits, so `v2.lens.wiring_liveness` matches it under Node
+// equality. Identity lives ONLY on genuine parameter-reference sites, so a declared
+// parameter is structurally reachable from the body output iff it is genuinely used.
+// (Residue: a `let`/lambda local, or a global fn called as `name(..)`, that shadows a
+// parameter name; see the lens construction_justification.)
+fn marshal_fn_body_skeleton(
+    ctx: &InterpContext,
+    node: &Rc<Node>,
+    param_names: &[String],
+    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Value {
+    let name = node_authored_name(node, si);
+    let mut edges: Vec<Value> = Vec::with_capacity(node.children.len() + 1);
+    if node_references_param(node, &name, param_names) {
+        edges.push(edge_positional(ctx, atom_identity_node(ctx, &name)));
+    }
+    for child in node.children.iter() {
+        edges.push(edge_positional(
+            ctx,
+            marshal_fn_body_skeleton(ctx, child, param_names, si),
+        ));
+    }
+    if let Some(inner) = node.body.as_ref() {
+        edges.push(edge_positional(
+            ctx,
+            marshal_fn_body_skeleton(ctx, inner, param_names, si),
+        ));
+    }
+    node_record(
+        ctx,
+        node_kind_type_node(ctx, nullary_connective_variant(ctx, "Conj")),
+        edges,
+    )
+}
+
+// A generic type parameter (`<T>`) and a value parameter (`(xs: List<T>)`) both land in the
+// runtime item's `params` (parser: `all_params = concat(type_params, value_params)`). They
+// are NOT value inputs and never appear as body value-expressions, so they must be excluded
+// from the wiring check. A type parameter is built as `make_param_node(name,
+// leaf_type_node(name), ..)` -- its sole type-expr child is a leaf named after the parameter
+// itself (`T : T`) -- whereas a value parameter's type-expr names a different type
+// (`xs : List`). So: a parameter is a type parameter iff its first child's authored name
+// equals its own.
+fn param_is_type_param(p: &Rc<Node>, si: &Rc<HashMap<String, Rc<NewlineIndex>>>) -> bool {
+    let pname = authored_name_at(si.clone(), p.clone());
+    if pname.is_empty() {
+        return false;
+    }
+    match p.children.first() {
+        Some(child0) => authored_name_at(si.clone(), child0.clone()) == pname,
+        None => false,
+    }
+}
+
+fn fn_arrow_param_record(ctx: &InterpContext, param_name: &str) -> Value {
+    Value::Record {
+        type_name: ctx.sym("FnArrowParam"),
+        fields: Rc::new(HashMap::from([
+            (ctx.sym("name"), Value::Str(param_name.to_string())),
+            (ctx.sym("node"), atom_identity_node(ctx, param_name)),
+        ])),
+    }
+}
+
+// Corpus-wide fn/arrow reflection: the gunbc#5364 widen trigger named in
+// `v2.lens.wiring_liveness`'s construction_justification. Sibling of
+// `eval_concept_decl_facts_live` (which filters to `ItemKind::TypeItem`); this yields
+// one `FnArrowDecl` per declared function across every loaded module -- the body
+// projected to a reachability skeleton (`output`) plus its declared parameter atoms
+// (`params`) -- so the wiring lens folds over REAL fn params corpus-wide, not synthetic
+// arrows. Host SOURCE half; dissolves with `concept_decl_facts_live` on the same #5364
+// corpus-as-node accessor.
+pub fn eval_fn_arrow_decl_facts_live(
+    ctx: &InterpContext,
+    _args: &[(Option<String>, Value)],
+) -> InterpResult<Value> {
+    let si = ctx.source_indices();
+    let mut rows: Vec<Value> = Vec::new();
+    for module in ctx.modules.iter() {
+        for item in module.items.iter() {
+            let name = authored_name_at(si.clone(), item.clone());
+            if name.is_empty() {
+                continue;
+            }
+            let info = module
+                .item_registry
+                .get(&name)
+                .or_else(|| module.item_registry.get(&item.name));
+            let Some(info) = info else { continue };
+            if info.kind != ItemKind::FnItem && info.kind != ItemKind::FuncItem {
+                continue;
+            }
+            let Some(body) = item.body.as_ref() else {
+                continue;
+            };
+            let mut param_names: Vec<String> = Vec::new();
+            for p in item.params.iter() {
+                if param_is_type_param(p, &si) {
+                    continue;
+                }
+                let pn = param_node_name_at(p.clone(), si.clone());
+                // A `_`-prefixed name is the established declared-inert convention (e.g.
+                // node.dag `step: fn(acc, _edge, sub)`): the author has declared the input
+                // genuinely irrelevant, so it is not a dead wire (plan section 4). Skip it.
+                if pn.is_empty() || pn.starts_with('_') || param_names.iter().any(|q| q == &pn) {
+                    continue;
+                }
+                param_names.push(pn);
+            }
+            let output = marshal_fn_body_skeleton(ctx, body, &param_names, &si);
+            let params: Vec<Value> = param_names
+                .iter()
+                .map(|pn| fn_arrow_param_record(ctx, pn))
+                .collect();
+            let qualified_name = logical_qualified_name(&info.module_name, &name);
+            rows.push(Value::Record {
+                type_name: ctx.sym("FnArrowDecl"),
+                fields: Rc::new(HashMap::from([
+                    (ctx.sym("qualified_name"), Value::Str(qualified_name)),
+                    (ctx.sym("name"), Value::Str(name.clone())),
+                    (ctx.sym("output"), output),
+                    (ctx.sym("params"), crate::v1_interpreter::list_value(params)),
                 ])),
             });
         }
