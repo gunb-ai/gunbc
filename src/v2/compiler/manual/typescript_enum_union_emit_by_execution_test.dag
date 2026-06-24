@@ -66,26 +66,36 @@ fn ts_enum_union_swapped_variants_emitted() -> Node {
   )
 }
 
-test fn ts_enum_union_emit_by_execution_exact_holds() -> Bool {
+fn ts_enum_union_canonical_text() -> String {
   ts_enum_union_serialized_text(emitted: ts_sg2_sum_xy_emitted())
-    == ts_enum_union_canonical_source_text
+}
+
+fn ts_enum_union_projected_text() -> String {
+  ts_enum_union_serialized_text(emitted: ts_enum_union_projected_emitted())
+}
+
+fn ts_enum_union_swapped_text() -> String {
+  ts_enum_union_serialized_text(emitted: ts_enum_union_swapped_variants_emitted())
+}
+
+fn ts_enum_union_record_text() -> String {
+  ts_enum_union_serialized_text(emitted: ts_sg2_conj_xy_emitted())
+}
+
+test fn ts_enum_union_emit_by_execution_exact_holds() -> Bool {
+  ts_enum_union_canonical_text() == ts_enum_union_canonical_source_text
 }
 
 test fn ts_enum_union_projected_pipeline_emit_holds() -> Bool {
-  ts_enum_union_serialized_text(emitted: ts_enum_union_projected_emitted())
-    == ts_enum_union_canonical_source_text
+  ts_enum_union_projected_text() == ts_enum_union_canonical_source_text
 }
 
 test fn ts_enum_union_swapped_variants_discriminates_holds() -> Bool {
-  (ts_enum_union_serialized_text(emitted: ts_sg2_sum_xy_emitted())
-    == ts_enum_union_canonical_source_text)
-    && (ts_enum_union_serialized_text(emitted: ts_enum_union_swapped_variants_emitted())
-      != ts_enum_union_canonical_source_text)
-    && (ts_enum_union_serialized_text(emitted: ts_enum_union_swapped_variants_emitted())
-      != ts_enum_union_emit_rejected_text)
+  (ts_enum_union_canonical_text() == ts_enum_union_canonical_source_text)
+    && (ts_enum_union_swapped_text() != ts_enum_union_canonical_source_text)
+    && (ts_enum_union_swapped_text() != ts_enum_union_emit_rejected_text)
 }
 
 test fn ts_enum_union_construct_distinct_from_record_holds() -> Bool {
-  ts_enum_union_serialized_text(emitted: ts_sg2_conj_xy_emitted())
-    != ts_enum_union_canonical_source_text
+  ts_enum_union_record_text() != ts_enum_union_canonical_source_text
 }
