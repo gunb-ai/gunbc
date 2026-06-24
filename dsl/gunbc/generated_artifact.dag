@@ -20,6 +20,7 @@ type GeneratedArtifact
   | RoadmapArtifact
   | DesignArtifact
   | RunnerDeployArtifact
+  | FleetConvergeArtifact
   | AutoinstallUserDataArtifact { spec: HostAutoinstall }
   | ProxyDhcpDnsmasqArtifact { spec: InstallServerSpec }
   | PlanArtifact { plan: Plan }
@@ -27,7 +28,7 @@ type GeneratedArtifact
 data generated_artifact_registry: List<GeneratedArtifact> = concat(
   concat(
     concat(
-      [CiYamlArtifact, GitignoreArtifact, RoadmapArtifact, DesignArtifact, RunnerDeployArtifact],
+      [CiYamlArtifact, GitignoreArtifact, RoadmapArtifact, DesignArtifact, RunnerDeployArtifact, FleetConvergeArtifact],
       map(fleet_autoinstall_specs, s => AutoinstallUserDataArtifact { spec: s })
     ),
     map(fleet_install_server_specs, s => ProxyDhcpDnsmasqArtifact { spec: s })
@@ -42,6 +43,7 @@ fn artifact_path(a: GeneratedArtifact) -> String {
     RoadmapArtifact => "ROADMAP.md"
     DesignArtifact => "DESIGN.md"
     RunnerDeployArtifact => ".github/fleet-runner-deploy.manifest"
+    FleetConvergeArtifact => ".github/fleet-converge.sh"
     AutoinstallUserDataArtifact { spec } => concat(concat("provisioning/", spec.host), "/user-data")
     ProxyDhcpDnsmasqArtifact { spec } => concat(concat("provisioning/", spec.host), "/dnsmasq.conf")
     PlanArtifact { plan } => plan_path(p: plan)
@@ -55,6 +57,7 @@ fn artifact_generate(a: GeneratedArtifact) -> String {
     RoadmapArtifact => expected_roadmap_md()
     DesignArtifact => expected_design_md()
     RunnerDeployArtifact => expected_runner_deploy_manifest()
+    FleetConvergeArtifact => expected_fleet_converge_sh()
     AutoinstallUserDataArtifact { spec } => autoinstall_user_data(payload: spec.payload)
     ProxyDhcpDnsmasqArtifact { spec } => install_server_dnsmasq_conf(spec: spec)
     PlanArtifact { plan } => expected_plan_md(p: plan)
@@ -83,6 +86,7 @@ fn artifact_eq(a: GeneratedArtifact, b: GeneratedArtifact) -> Bool {
     RoadmapArtifact => match b { RoadmapArtifact => true  _ => false }
     DesignArtifact => match b { DesignArtifact => true  _ => false }
     RunnerDeployArtifact => match b { RunnerDeployArtifact => true  _ => false }
+    FleetConvergeArtifact => match b { FleetConvergeArtifact => true  _ => false }
     AutoinstallUserDataArtifact { spec } => match b { AutoinstallUserDataArtifact { spec: spec2 } => spec.host == spec2.host  _ => false }
     ProxyDhcpDnsmasqArtifact { spec } => match b { ProxyDhcpDnsmasqArtifact { spec: spec2 } => spec.host == spec2.host  _ => false }
     PlanArtifact { plan } => match b { PlanArtifact { plan: plan2 } => plan.slug == plan2.slug  _ => false }
