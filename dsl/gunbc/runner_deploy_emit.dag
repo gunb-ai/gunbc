@@ -69,11 +69,8 @@ fn runner_plan_doc() -> Doc {
 
 fn session_host_text(h: SessionHostReservation) -> String {
   concat(
-    concat(
-      concat(concat("host=", h.identity), concat(" sessions=", to_string(h.session_count))),
-      concat(" per_session_cap_bytes=", to_string(byte_size_count(b: h.per_session_reservation)))
-    ),
-    concat(" cpu_weight=", to_string(workload_class_cpu_weight(wc: h.workload_class)))
+    concat(concat("host=", h.identity), concat(" sessions=", to_string(h.session_count))),
+    concat(" per_session_cap_bytes=", to_string(byte_size_count(b: h.per_session_reservation)))
   )
 }
 
