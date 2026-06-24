@@ -5824,7 +5824,10 @@ fn emit_typed_method_call(method_call_node: Node, receiver: Node, method: String
     }
     AlgebraMethodSemantics { method_def: method_def, fold_accumulator_type: fold_accumulator_type, size_effect: _, cost_shape: _, algebra_template: _ } => {
 
-      let method_name = authored_name_at(source_indices: scope.type_env.source_indices, node: method_def)
+      let method_name_raw = authored_name_at(source_indices: scope.type_env.source_indices, node: method_def)
+      let method_name = if method_name_raw == "length" {
+        if is_string_typed_expr(e: receiver, source_indices: scope.type_env.source_indices) { "string_length" } else { "count" }
+      } else { method_name_raw }
       if method_name == "fold" {
         emit_rust_fold_method_call(method_call_node: method_call_node, fold_accumulator_type: fold_accumulator_type, result_type: result_type, receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
       } else if method_name == "sort_by" {

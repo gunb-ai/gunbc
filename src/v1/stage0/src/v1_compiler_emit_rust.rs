@@ -15977,10 +15977,22 @@ pub fn emit_typed_method_call(
                 fold_accumulator_type,
                 ..
             } => {
-                let method_name = authored_name_at(
+                let method_name_raw = authored_name_at(
                     scope.type_env.clone().source_indices.clone(),
                     method_def.clone(),
                 );
+                let method_name = if (method_name_raw.clone() == "length".to_string()) {
+                    if is_string_typed_expr(
+                        receiver.clone(),
+                        scope.type_env.clone().source_indices.clone(),
+                    ) {
+                        "string_length".to_string()
+                    } else {
+                        "count".to_string()
+                    }
+                } else {
+                    method_name_raw.clone()
+                };
                 if (method_name.clone() == "fold".to_string()) {
                     emit_rust_fold_method_call(
                         method_call_node,
