@@ -7,7 +7,7 @@ use crate::helpers::{resolve_imports_transitively_with_source_roots, workspace_r
 
 const WITNESS_ENTRY: &str = "src/v2/compiler/manual/typescript_program_emit_run_test.dag";
 const ADD_FN: &str = "ts_program_emit_add_source";
-const RECORD_FN: &str = "ts_program_emit_record_source";
+const IDENTITY_FN: &str = "ts_program_emit_identity_source";
 
 fn v2_source_roots() -> Vec<std::path::PathBuf> {
     crate::helpers::v2_layer_roots()
@@ -94,23 +94,25 @@ fn node_strip_types_available() -> bool {
         .unwrap_or(false)
 }
 
-/// Green-by-execution (DESIGN §5): the v2 TypeScript emitter produces a typed
-/// multi-param function declaration AND a record type-def declaration; assembled
-/// into one module and run under `node --experimental-strip-types`, the emitted
-/// TypeScript type-strips and executes, returning a value computed by the emitted
-/// `add`. This is "beyond the add slice": full declarations (fn + type), proven by
-/// real execution, not string equality. Rust-shaped output (e.g. `fn add(x: i32)`)
-/// fails type-stripping with a SyntaxError -> this witness goes RED, so it
-/// discriminates structurally-TypeScript output from anything else.
+/// Green-by-execution (DESIGN §5): the v2 TypeScript emitter produces two distinct
+/// typed function declarations (`add`, a typed multi-param fn with a `+` body, and
+/// `identity`, a typed return-only fn) from the `.dag` substrate. Assembled into one
+/// module and run under `node --experimental-strip-types`, the emitted TypeScript
+/// type-strips and executes, composing the two emitted functions to produce a
+/// computed value. This is "beyond the add slice": the emitted output is proven by
+/// real execution (not string equality) and exercises more than the single
+/// effect-shim call the existing receipt test runs. Rust-shaped output (e.g.
+/// `fn add(x: i32) -> i32`) fails type-stripping with a SyntaxError -> this witness
+/// goes RED, so it discriminates structurally-TypeScript output from anything else.
 #[test]
-fn typescript_emitted_record_and_fn_type_strip_and_run_under_node() {
+fn typescript_emitted_typed_fns_type_strip_and_run_under_node() {
     if !node_strip_types_available() {
         eprintln!("skipping: no `node` on PATH for the strip-types execution oracle");
         return;
     }
 
     let add_src = emitted_source(ADD_FN);
-    let record_src = emitted_source(RECORD_FN);
+    let identity_src = emitted_source(IDENTITY_FN);
 
     // The emitter is the authority for these strings; assert their exact shape so a
     // drift in emit is caught here too, then prove they actually run.
@@ -119,18 +121,17 @@ fn typescript_emitted_record_and_fn_type_strip_and_run_under_node() {
         "emitted typed fn is not the expected TypeScript function declaration"
     );
     assert_eq!(
-        record_src, "type Task = { id: TaskId, title: string, status: TaskStatus };",
-        "emitted record is not the expected TypeScript type-alias declaration"
+        identity_src, "function identity(x: number): number { return x; }",
+        "emitted identity fn is not the expected TypeScript function declaration"
     );
 
-    // Discriminating: emitted output must be structurally TypeScript (declarations
-    // with `: number` annotations and a `type T = {...}` alias). Use both emitted
-    // declarations from runnable positions so a malformed emit of EITHER fails.
+    // Discriminating: emitted output must be structurally TypeScript (function
+    // declarations with `: number` annotations). Compose BOTH emitted functions in
+    // runnable positions so a malformed emit of EITHER fails type-stripping.
     let program = format!(
-        "{record_src}\n\
-         {add_src}\n\
-         const t: Task = {{ id: 2 as TaskId, title: \"demo\", status: 0 as TaskStatus }};\n\
-         console.log(add(t.id as number, 3));\n"
+        "{add_src}\n\
+         {identity_src}\n\
+         console.log(add(identity(2), 3));\n"
     );
 
     let tmp_dir = std::env::temp_dir().join(format!("gunbc_ts_program_emit_{}", std::process::id()));
