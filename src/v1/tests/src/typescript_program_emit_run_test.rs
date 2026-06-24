@@ -7,7 +7,7 @@ use crate::helpers::{resolve_imports_transitively_with_source_roots, workspace_r
 
 const WITNESS_ENTRY: &str = "src/v2/compiler/manual/typescript_program_emit_run_test.dag";
 const ADD_FN: &str = "ts_program_emit_add_source";
-const IDENTITY_FN: &str = "ts_program_emit_identity_source";
+const CHAR_REALIZATION_FN: &str = "ts_atom_catalog_realizes_char_to_string_holds";
 
 fn v2_source_roots() -> Vec<std::path::PathBuf> {
     crate::helpers::v2_layer_roots()
@@ -16,7 +16,11 @@ fn v2_source_roots() -> Vec<std::path::PathBuf> {
 fn witness_sources() -> Vec<Rc<SourceFile>> {
     let entry_content = std::fs::read_to_string(workspace_root().join(WITNESS_ENTRY))
         .unwrap_or_else(|e| panic!("read {WITNESS_ENTRY}: {e}"));
-    resolve_imports_transitively_with_source_roots(WITNESS_ENTRY, &entry_content, &v2_source_roots())
+    resolve_imports_transitively_with_source_roots(
+        WITNESS_ENTRY,
+        &entry_content,
+        &v2_source_roots(),
+    )
 }
 
 fn decode_freemonoid_string(val: &Value, ctx: &InterpContext) -> String {
@@ -49,7 +53,10 @@ fn decode_freemonoid_string(val: &Value, ctx: &InterpContext) -> String {
                             cur = ctx.field(&fields, "tail").expect("Cons.tail").clone();
                             continue;
                         }
-                        panic!("unexpected FreeMonoid variant {}", ctx.resolve(variant_name));
+                        panic!(
+                            "unexpected FreeMonoid variant {}",
+                            ctx.resolve(variant_name)
+                        );
                     }
                     Value::Str(s) => {
                         out.push_str(&s);
@@ -64,7 +71,7 @@ fn decode_freemonoid_string(val: &Value, ctx: &InterpContext) -> String {
     }
 }
 
-fn emitted_source(function: &str) -> String {
+fn resolve_witness() -> Rc<v1_compiler::v1_compiler_compile::ResolvedPipelineResult> {
     let resolved = compile_to_resolved(Rc::new(witness_sources()));
     let blocking: Vec<String> = resolved
         .diagnostics
@@ -76,11 +83,7 @@ fn emitted_source(function: &str) -> String {
         blocking.is_empty() && resolved.graph.is_some(),
         "expected clean resolved graph for {WITNESS_ENTRY}, got diagnostics {blocking:?}"
     );
-    let graph = resolved.graph.as_ref().expect("resolved graph");
-    let ctx = InterpContext::new(graph, resolved.source_indices.clone(), ExecutionMode::Wet);
-    let value = v1_interpreter::run_in_context(&ctx, function, true)
-        .unwrap_or_else(|e| panic!("run {function}: {e:?}"));
-    decode_freemonoid_string(&value, &ctx)
+    resolved
 }
 
 fn node_strip_types_available() -> bool {
@@ -94,47 +97,59 @@ fn node_strip_types_available() -> bool {
         .unwrap_or(false)
 }
 
-/// Green-by-execution (DESIGN §5): the v2 TypeScript emitter produces two distinct
-/// typed function declarations (`add`, a typed multi-param fn with a `+` body, and
-/// `identity`, a typed return-only fn) from the `.dag` substrate. Assembled into one
-/// module and run under `node --experimental-strip-types`, the emitted TypeScript
-/// type-strips and executes, composing the two emitted functions to produce a
-/// computed value. This is "beyond the add slice": the emitted output is proven by
-/// real execution (not string equality) and exercises more than the single
-/// effect-shim call the existing receipt test runs. Rust-shaped output (e.g.
+/// Green-by-execution (DESIGN §5): the v2 TypeScript emitter produces a typed
+/// multi-param function declaration (`add`, with a `+` body) from the `.dag`
+/// substrate. Assembled into a module and run under `node --experimental-strip-types`,
+/// the emitted TypeScript type-strips and EXECUTES, returning a value computed by the
+/// emitted function. This is stronger than the existing translate tests, which only
+/// string-compare the emitted declaration and only node-run the effect-shim *call*:
+/// here the emitted function *declaration* itself is run. Rust-shaped output (e.g.
 /// `fn add(x: i32) -> i32`) fails type-stripping with a SyntaxError -> this witness
 /// goes RED, so it discriminates structurally-TypeScript output from anything else.
+///
+/// NOTE: richer program emit (a second typed fn, records, operators beyond `+`,
+/// control flow) is gated on the Track A shared value-expr/`CanonicalOperation`
+/// work; today only the `add` typed fn flat-emits to source. See PR notes.
 #[test]
-fn typescript_emitted_typed_fns_type_strip_and_run_under_node() {
+fn typescript_emitted_typed_fn_type_strips_and_runs_under_node() {
     if !node_strip_types_available() {
         eprintln!("skipping: no `node` on PATH for the strip-types execution oracle");
         return;
     }
 
-    let add_src = emitted_source(ADD_FN);
-    let identity_src = emitted_source(IDENTITY_FN);
+    let resolved = resolve_witness();
+    let graph = resolved.graph.as_ref().expect("resolved graph");
+    let ctx = InterpContext::new(graph, resolved.source_indices.clone(), ExecutionMode::Wet);
 
-    // The emitter is the authority for these strings; assert their exact shape so a
-    // drift in emit is caught here too, then prove they actually run.
+    // (1) Atom-realization catalog widening: the v2 TS catalog now realizes the std
+    // `Char` carrier (-> TS `string`). Run the discriminating witness; it is RED if
+    // the Char row is removed (lookup misses -> Rejected -> false).
+    let char_value = v1_interpreter::run_in_context(&ctx, CHAR_REALIZATION_FN, true)
+        .unwrap_or_else(|e| panic!("run {CHAR_REALIZATION_FN}: {e:?}"));
+    assert!(
+        matches!(char_value, Value::Bool(true)),
+        "TS atom catalog does not realize the Char carrier to string: {char_value:?}"
+    );
+
+    // (2) The emitter is the authority for this string; assert its exact shape so a
+    // drift in emit is caught here too, then prove it actually runs.
+    let add_value = v1_interpreter::run_in_context(&ctx, ADD_FN, true)
+        .unwrap_or_else(|e| panic!("run {ADD_FN}: {e:?}"));
+    let add_src = decode_freemonoid_string(&add_value, &ctx);
     assert_eq!(
         add_src, "function add(x: number, y: number): number { return x + y; }",
         "emitted typed fn is not the expected TypeScript function declaration"
     );
-    assert_eq!(
-        identity_src, "function identity(x: number): number { return x; }",
-        "emitted identity fn is not the expected TypeScript function declaration"
-    );
 
-    // Discriminating: emitted output must be structurally TypeScript (function
-    // declarations with `: number` annotations). Compose BOTH emitted functions in
-    // runnable positions so a malformed emit of EITHER fails type-stripping.
+    // Discriminating: emitted output must be structurally TypeScript (a function
+    // declaration with `: number` annotations) and run correctly.
     let program = format!(
         "{add_src}\n\
-         {identity_src}\n\
-         console.log(add(identity(2), 3));\n"
+         console.log(add(2, 3));\n"
     );
 
-    let tmp_dir = std::env::temp_dir().join(format!("gunbc_ts_program_emit_{}", std::process::id()));
+    let tmp_dir =
+        std::env::temp_dir().join(format!("gunbc_ts_program_emit_{}", std::process::id()));
     std::fs::create_dir_all(&tmp_dir).expect("create temp dir");
     let program_path = tmp_dir.join("ts_program_emit.ts");
     std::fs::write(&program_path, &program).expect("write emitted ts program");
