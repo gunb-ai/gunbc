@@ -2,7 +2,6 @@ module v2.lens.module_graph
 
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.disposition { SingleAuthority }
-import v2.lens.resolved_imports { ImportResolutionFact, import_resolution_facts_live }
 import v2.std.algebra { FreeMonoid, fold_list, length, contains, list_snoc_item }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
@@ -11,6 +10,24 @@ import v2.std.text { String }
 type ModuleDeclarationFact {
   module: String
   path: String
+}
+
+type ImportResolutionFact {
+  path: String
+  import_module: String
+  target_declared: Bool
+}
+
+fn import_resolution_facts_live(
+  pool_roots: List<String>,
+  importer_roots: List<String>,
+  exclude_substrings: List<String>
+) -> List<ImportResolutionFact> {
+  import_resolution_facts(
+    pool_roots: pool_roots,
+    importer_roots: importer_roots,
+    exclude_substrings: exclude_substrings
+  )
 }
 
 fn module_declaration_facts_live(pool_roots: List<String>) -> List<ModuleDeclarationFact> {
