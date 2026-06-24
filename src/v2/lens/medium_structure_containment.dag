@@ -45,7 +45,7 @@ data medium_syntax_markers: List<MediumMarkers> = [
 
   MediumMarkers { medium: "CiYamlStructure", markers: [] },
 
-  MediumMarkers { medium: "ShellInRun", markers: [] }
+  MediumMarkers { medium: "ShellInRun", markers: ["#!/", ">/dev/null"] }
 ]
 
 data emitted_medium_emit_fns: List<String> = [
@@ -61,7 +61,9 @@ data emitted_medium_emit_fns: List<String> = [
   "scheduler_invoke",
   "git_fetch_script",
   "ci_release_build_script",
-  "witness_layer_source_flags"
+  "witness_layer_source_flags",
+  "fleet_converge_sh_for",
+  "expected_fleet_converge_sh"
 ]
 
 data emitted_medium_string_ops: List<String> = [
@@ -121,7 +123,14 @@ data medium_structure_exception_roster: List<String> = [
   "dsl/test/claim/ci_yaml_serializer_witness_test.dag",
   "dsl/test/claim/ci_runner_seam_witness_test.dag",
   "dsl/test/claim/yaml_quoting_witness_test.dag",
-  "src/v2/test/claim/ci_spec_witness_test.dag"
+  "src/v2/test/claim/ci_spec_witness_test.dag",
+
+  "dsl/gunbc/fleet_converge_emit.dag",
+  "dsl/gunbc/ci_spec.dag",
+  "dsl/tools/emit_host_transport.dag",
+  "dsl/gunbc/assimilate/bmc_token_federation.dag",
+  "dsl/gunbc/tools/review.dag",
+  "dsl/test/claim/fleet_converge_emit_test.dag"
 ]
 
 fn char_eq(a: Char, b: Char) -> Bool {
