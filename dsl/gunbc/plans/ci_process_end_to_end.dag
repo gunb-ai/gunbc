@@ -136,6 +136,7 @@ fn ci_process_end_to_end_body() -> List<MarkdownBlock> {
       li(text: "**G1 — emit a cross-host `matrix` from the fleet model** (shard across srv1+srv2). The placement predicate's real consumer. **The one step needing a decision** — build CI placement now vs fence the dead predicate."),
       li(text: "**G5 — edge-(b) rust affected-set.** → [ci-selection-vs-scheduling.md](ci-selection-vs-scheduling.md)"),
       li(text: "**G4 — collapse the `workflow_dispatch` dup** (key model + stop redundant dispatch). → [ci-merge-freshness.md](ci-merge-freshness.md)"),
+      li(text: "**Reclassify contention OOMs before green-on-main can gate** — a cross-run clustering consumer that promotes a clustered `exit-137` back to `Infra` (two OOM-kill handlers as one fact + a clustering discriminator, fail-closed). Prerequisite (a) of the merge-freshness LIVE flip; model-only design today. → [ci-oom-reclassification.md](ci-oom-reclassification.md)"),
     ]),
     p(text: "Steps 1–2 use idle capacity and cut time with no new scheduler. Step 3 removes the contention; the matrix shards the rest. The 50 min is a *symptom of placement*."),
     hr(),
