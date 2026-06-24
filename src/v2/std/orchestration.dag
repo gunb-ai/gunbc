@@ -2,8 +2,8 @@ module v2.std.orchestration
 
 import v2.std.text { String }
 import v2.std.integer { Int }
-import v2.std.algebra { FreeMonoid }
-import v2.std.collection { Optional }
+import v2.std.algebra { FreeMonoid, Cons, Empty }
+import v2.std.collection { Optional, Present, Absent }
 import v2.std.cardinality { DescentEvidence }
 import v2.std.diagnostic { EmitDirective }
 import v2.std.node { Symbol }
@@ -88,5 +88,47 @@ fn classifier_pattern(classifier: FailureClassifier) -> String {
     Not { inner: _ } => ""
     And { lhs: _, rhs: _ } => ""
     Or { lhs: _, rhs: _ } => ""
+  }
+}
+
+fn pipeline_first_step(p: Pipeline) -> Optional<Step> {
+  match p.steps {
+    Cons { head: h, tail: _ } => Present { value: h }
+    Empty => Absent
+  }
+}
+
+fn step_run_command_spelling(step: Step) -> String {
+  match step {
+    Do { run: r } => run_command_spelling(r)
+    If { cond: _, then_: _, else_: _ } => ""
+    For { binder: _, over: _, body: _ } => ""
+    While { cond: _, body: _, bound: _ } => ""
+    Retry { attempts: _, body: _, classify: _, on_exhausted: _ } => ""
+  }
+}
+
+fn retry_eagain_command(step: Step) -> String {
+  match step {
+    Retry { attempts: _, body: b, classify: _, on_exhausted: _ } =>
+      match pipeline_first_step(p: b) {
+        Present { value: s } => step_run_command_spelling(step: s)
+        Absent => ""
+      }
+    Do { run: _ } => ""
+    If { cond: _, then_: _, else_: _ } => ""
+    For { binder: _, over: _, body: _ } => ""
+    While { cond: _, body: _, bound: _ } => ""
+  }
+}
+
+fn retry_eagain_pattern(step: Step) -> String {
+  match step {
+    Retry { attempts: _, body: _, classify: c, on_exhausted: _ } =>
+      classifier_pattern(classifier: c)
+    Do { run: _ } => ""
+    If { cond: _, then_: _, else_: _ } => ""
+    For { binder: _, over: _, body: _ } => ""
+    While { cond: _, body: _, bound: _ } => ""
   }
 }

@@ -1,0 +1,143 @@
+module v2.test.manual.retry_eagain_bash
+
+import v2.compiler.emit { emit }
+import v2.compiler.infer { InferredFacts, InferredTree }
+import extdeps.communication.medium { Medium }
+import v2.extdeps.languages.bash {
+  retry_eagain_bash_emitted_command,
+  retry_eagain_bash_target_model,
+  retry_eagain_bash_no_exit_wrong_emitted_command,
+  retry_eagain_bash_no_exit_wrong_target_model
+}
+import v2.std.orchestration {
+  Step,
+  Do,
+  Retry,
+  Run,
+  Pipeline,
+  OpaqueArgv,
+  EnvSet,
+  EnvUnset,
+  StdoutAndStderr,
+  TeeTo,
+  LogMatches,
+  GrepAlternation,
+  FailureClassifier,
+  FailFast
+}
+import v2.std.collection { Map, Present, Absent }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  EmitDirective,
+  ExternalContractUnknown,
+  None,
+  Outcome,
+  Rejected,
+  SeverityWarning,
+  Unavailable,
+  node_locus
+}
+import v2.std.node { Node }
+import v2.std.witness { Violates, Witness }
+import gunbc.ci_spec { ci_cargo_eagain_retry_core }
+import gunbc.ci_failure_class { infra_retry_grep_alternation }
+
+fn retry_eagain_facts_lookup(key: Node) -> Witness<InferredFacts> {
+  Violates {
+    diagnostic: Diagnostic {
+      reason: ^retry_eagain_bash_facts_unexpected_consultation,
+      at: node_locus(node: key),
+      correction: Unavailable { reason: ExternalContractUnknown }
+    }
+  }
+}
+
+data retry_eagain_example_command: String = "cargo build -p v1-compiler --release --bins"
+
+fn retry_eagain_example_run() -> Run {
+  Run {
+    command: OpaqueArgv { spelling: retry_eagain_example_command },
+    env: [],
+    redirect: Present { value: StdoutAndStderr },
+    capture: Present { value: TeeTo { log: "BUILD_LOG" } }
+  }
+}
+
+fn retry_eagain_exhausted_run() -> Run {
+  Run {
+    command: OpaqueArgv { spelling: "exit 1" },
+    env: [],
+    redirect: Absent,
+    capture: Absent
+  }
+}
+
+fn retry_eagain_classifier() -> FailureClassifier {
+  FailureClassifier {
+    infra: LogMatches {
+      source: "BUILD_LOG",
+      pattern: GrepAlternation { pattern: infra_retry_grep_alternation() }
+    },
+    escalations: [
+      EnvSet { name: "CARGO_BUILD_JOBS", value: "1" },
+      EnvUnset { name: "RUSTC_WRAPPER" }
+    ],
+    on_infra_warning: EmitDirective {
+      severity: SeverityWarning,
+      message: "cargo/sccache EAGAIN under fleet pressure; cold retry CARGO_BUILD_JOBS=1 (keep sccache)"
+    }
+  }
+}
+
+fn retry_eagain_intent() -> Step {
+  Retry {
+    attempts: 3,
+    body: Pipeline {
+      steps: [Do { run: retry_eagain_example_run() }],
+      on_failure: FailFast
+    },
+    classify: retry_eagain_classifier(),
+    on_exhausted: Pipeline {
+      steps: [Do { run: retry_eagain_exhausted_run() }],
+      on_failure: FailFast
+    }
+  }
+}
+
+fn retry_eagain_bash_emit() -> Outcome<Medium<String>> {
+  emit(
+    tree: InferredTree {
+      root: retry_eagain_bash_emitted_command,
+      facts: Map { lookup: retry_eagain_facts_lookup }
+    },
+    target: retry_eagain_bash_target_model(intent: retry_eagain_intent())
+  )
+}
+
+fn retry_eagain_bash_emit_no_exit_wrong() -> Outcome<Medium<String>> {
+  emit(
+    tree: InferredTree {
+      root: retry_eagain_bash_no_exit_wrong_emitted_command,
+      facts: Map { lookup: retry_eagain_facts_lookup }
+    },
+    target: retry_eagain_bash_no_exit_wrong_target_model(intent: retry_eagain_intent())
+  )
+}
+
+test fn retry_eagain_bash_byte_identical_to_hand_authored_holds() -> Bool {
+  match retry_eagain_bash_emit() {
+    Accepted { value: source, diagnostics: dg } =>
+      (source.carried == ci_cargo_eagain_retry_core(command: retry_eagain_example_command))
+        && (dg == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn retry_eagain_bash_no_exit_wrong_breaks_byte_equality_holds() -> Bool {
+  match retry_eagain_bash_emit_no_exit_wrong() {
+    Accepted { value: w, diagnostics: _ } =>
+      w.carried != ci_cargo_eagain_retry_core(command: retry_eagain_example_command)
+    Rejected { diagnostics: _ } => false
+  }
+}

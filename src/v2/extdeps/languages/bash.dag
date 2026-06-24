@@ -31,6 +31,7 @@ import v2.std.compilers.target_model {
 }
 import v2.std.collection { List, Map, empty_map, map_insert }
 import v2.std.diagnostic { EmitDirective }
+import v2.std.orchestration { Step, retry_eagain_command, retry_eagain_pattern }
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
 import v2.std.node {
   Atom,
@@ -1385,5 +1386,185 @@ fn emit_directive_bash_to_stdout_wrong_target_model(d: EmitDirective) -> TargetM
     source_text: emit_directive_bash_to_stdout_wrong_source_text(d: d),
     lex: emit_directive_bash_to_stdout_wrong_lex(),
     binding_spellings: emit_directive_bash_message_spellings(d: d)
+  )
+}
+
+fn retry_eagain_seg1() -> String {
+  "BUILD_LOG=$(mktemp)\nif ! ("
+}
+
+fn retry_eagain_seg2() -> String {
+  ") 2>&1 | tee \"$BUILD_LOG\"; then\n  if grep -qiE '"
+}
+
+fn retry_eagain_seg3() -> String {
+  "' \"$BUILD_LOG\"; then\n    echo \"::warning::cargo/sccache EAGAIN under fleet pressure; cold retry CARGO_BUILD_JOBS=1 (keep sccache)\"\n    RETRY_LOG=$(mktemp)\n    if ! ( CARGO_BUILD_JOBS=1 "
+}
+
+fn retry_eagain_seg4() -> String {
+  " ) 2>&1 | tee \"$RETRY_LOG\"; then\n      if grep -qiE '"
+}
+
+fn retry_eagain_seg5() -> String {
+  "' \"$RETRY_LOG\"; then\n        echo \"::warning::cargo/sccache still failing; retry without RUSTC_WRAPPER\"\n        env -u RUSTC_WRAPPER CARGO_BUILD_JOBS=1 "
+}
+
+fn retry_eagain_seg6() -> String {
+  " || exit 1\n      else\n        exit 1\n      fi\n    fi\n    rm -f \"$RETRY_LOG\"\n  else\n    exit 1\n  fi\nfi\nrm -f \"$BUILD_LOG\"\n"
+}
+
+fn retry_eagain_seg6_no_exit_wrong() -> String {
+  "\n      else\n        exit 1\n      fi\n    fi\n    rm -f \"$RETRY_LOG\"\n  else\n    exit 1\n  fi\nfi\nrm -f \"$BUILD_LOG\"\n"
+}
+
+fn retry_eagain_bash_concrete_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: ^bash_token_retry_seg1 },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^retry_command },
+    FixedToken { token_class: ^bash_token_retry_seg2 },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^retry_pattern },
+    FixedToken { token_class: ^bash_token_retry_seg3 },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^retry_command },
+    FixedToken { token_class: ^bash_token_retry_seg4 },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^retry_pattern },
+    FixedToken { token_class: ^bash_token_retry_seg5 },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^retry_command },
+    FixedToken { token_class: ^bash_token_retry_seg6 }
+  ]
+}
+
+data retry_eagain_bash_emitted_command: Node = bash_conj_emitted_from_tokens(
+  tokens: retry_eagain_bash_concrete_tokens()
+)
+
+fn retry_eagain_bash_source_text(command: String, pattern: String) -> String {
+  concat(retry_eagain_seg1(),
+  concat(command,
+  concat(retry_eagain_seg2(),
+  concat(pattern,
+  concat(retry_eagain_seg3(),
+  concat(command,
+  concat(retry_eagain_seg4(),
+  concat(pattern,
+  concat(retry_eagain_seg5(),
+  concat(command,
+         retry_eagain_seg6()))))))))))
+}
+
+fn retry_eagain_bash_lex() -> LexRules {
+  phrase_to_lex_rules(p: phrase([
+    span(text: retry_eagain_seg1(), class: ^bash_token_retry_seg1),
+    span(text: retry_eagain_seg2(), class: ^bash_token_retry_seg2),
+    span(text: retry_eagain_seg3(), class: ^bash_token_retry_seg3),
+    span(text: retry_eagain_seg4(), class: ^bash_token_retry_seg4),
+    span(text: retry_eagain_seg5(), class: ^bash_token_retry_seg5),
+    span(text: retry_eagain_seg6(), class: ^bash_token_retry_seg6)
+  ]))
+}
+
+fn retry_eagain_bash_translation_rules_node() -> Node {
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_retry_eagain,
+    lhs: ^bash_production_retry_eagain,
+    tokens: retry_eagain_bash_concrete_tokens(),
+    emitted: retry_eagain_bash_emitted_command
+  )
+}
+
+fn retry_eagain_bash_binding_spellings(command: String, pattern: String) -> Map<Symbol, String> {
+  map_insert(
+    map_insert(empty_map(), ^retry_command, command),
+    ^retry_pattern,
+    pattern
+  )
+}
+
+fn retry_eagain_bash_target_model(intent: Step) -> TargetModel {
+  bash_make_bound_tokens_target_model(
+    rules: retry_eagain_bash_translation_rules_node(),
+    source_literal: ^bash_retry_eagain_source_literal,
+    production_name: ^bash_production_retry_eagain,
+    tokens: retry_eagain_bash_concrete_tokens(),
+    source_text: retry_eagain_bash_source_text(
+      command: retry_eagain_command(step: intent),
+      pattern: retry_eagain_pattern(step: intent)
+    ),
+    lex: retry_eagain_bash_lex(),
+    binding_spellings: retry_eagain_bash_binding_spellings(
+      command: retry_eagain_command(step: intent),
+      pattern: retry_eagain_pattern(step: intent)
+    )
+  )
+}
+
+fn retry_eagain_bash_no_exit_wrong_concrete_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: ^bash_token_retry_seg1 },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^retry_command },
+    FixedToken { token_class: ^bash_token_retry_seg2 },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^retry_pattern },
+    FixedToken { token_class: ^bash_token_retry_seg3 },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^retry_command },
+    FixedToken { token_class: ^bash_token_retry_seg4 },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^retry_pattern },
+    FixedToken { token_class: ^bash_token_retry_seg5 },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^retry_command },
+    FixedToken { token_class: ^bash_token_retry_seg6_no_exit_wrong }
+  ]
+}
+
+data retry_eagain_bash_no_exit_wrong_emitted_command: Node = bash_conj_emitted_from_tokens(
+  tokens: retry_eagain_bash_no_exit_wrong_concrete_tokens()
+)
+
+fn retry_eagain_bash_no_exit_wrong_source_text(command: String, pattern: String) -> String {
+  concat(retry_eagain_seg1(),
+  concat(command,
+  concat(retry_eagain_seg2(),
+  concat(pattern,
+  concat(retry_eagain_seg3(),
+  concat(command,
+  concat(retry_eagain_seg4(),
+  concat(pattern,
+  concat(retry_eagain_seg5(),
+  concat(command,
+         retry_eagain_seg6_no_exit_wrong()))))))))))
+}
+
+fn retry_eagain_bash_no_exit_wrong_lex() -> LexRules {
+  phrase_to_lex_rules(p: phrase([
+    span(text: retry_eagain_seg1(), class: ^bash_token_retry_seg1),
+    span(text: retry_eagain_seg2(), class: ^bash_token_retry_seg2),
+    span(text: retry_eagain_seg3(), class: ^bash_token_retry_seg3),
+    span(text: retry_eagain_seg4(), class: ^bash_token_retry_seg4),
+    span(text: retry_eagain_seg5(), class: ^bash_token_retry_seg5),
+    span(text: retry_eagain_seg6_no_exit_wrong(), class: ^bash_token_retry_seg6_no_exit_wrong)
+  ]))
+}
+
+fn retry_eagain_bash_no_exit_wrong_translation_rules_node() -> Node {
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_retry_eagain_no_exit_wrong,
+    lhs: ^bash_production_retry_eagain_no_exit_wrong,
+    tokens: retry_eagain_bash_no_exit_wrong_concrete_tokens(),
+    emitted: retry_eagain_bash_no_exit_wrong_emitted_command
+  )
+}
+
+fn retry_eagain_bash_no_exit_wrong_target_model(intent: Step) -> TargetModel {
+  bash_make_bound_tokens_target_model(
+    rules: retry_eagain_bash_no_exit_wrong_translation_rules_node(),
+    source_literal: ^bash_retry_eagain_no_exit_wrong_source_literal,
+    production_name: ^bash_production_retry_eagain_no_exit_wrong,
+    tokens: retry_eagain_bash_no_exit_wrong_concrete_tokens(),
+    source_text: retry_eagain_bash_no_exit_wrong_source_text(
+      command: retry_eagain_command(step: intent),
+      pattern: retry_eagain_pattern(step: intent)
+    ),
+    lex: retry_eagain_bash_no_exit_wrong_lex(),
+    binding_spellings: retry_eagain_bash_binding_spellings(
+      command: retry_eagain_command(step: intent),
+      pattern: retry_eagain_pattern(step: intent)
+    )
   )
 }
