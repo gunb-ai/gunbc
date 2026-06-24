@@ -78,13 +78,14 @@ fn alias_ctor_resolves_to_canonical_struct_with_phantom_and_rc() {
     );
 }
 
-// Direct-struct discriminating control (mandatory, per bright-stag's §3 over-peel oracle):
-// the resolver reuses `resolved_type_name`, whose ELSE branch (inferred absent) peels to the
-// FIRST CHILD = the first FIELD name, not the struct name. A NON-alias direct struct must
-// therefore name the STRUCT (`Direct`), never its first field (`count`). It does so because the
-// `!tn_is_known_struct` guard short-circuits before `resolved_type_name` is ever invoked on a
-// known struct — so this control is exactly what catches a regression that dropped that guard
-// and let the over-peel reach a direct-struct construction.
+// Direct-struct discriminating control (mandatory, per bright-stag's §3 over-peel oracle).
+// The alias resolver runs only behind the `!tn_is_known_struct` guard: it reuses
+// `peel_alias_once_for_field_access` (resolve the alias use-site to its Conj struct) then
+// `find_unique_struct_name_by_fields` to recover the canonical NAME from the struct's field
+// set. A NON-alias direct struct is a KNOWN struct (`tn_is_known_struct`), so it must short-
+// circuit BEFORE that resolution and name the STRUCT (`Direct`) directly — never get re-derived
+// to some other nominal. This control is exactly what catches a regression that dropped the
+// guard and let a direct-struct construction fall into the alias resolution path.
 const DIRECT_FIXTURE: &str = concat!(
     "module directctor.fixture\n",
     "import std.nat { Nat }\n\n",
@@ -94,19 +95,23 @@ const DIRECT_FIXTURE: &str = concat!(
 
 #[test]
 fn direct_struct_ctor_names_struct_not_first_field() {
-    let emitted = compile_dag_named("src/v1/direct_ctor_fixture.dag", DIRECT_FIXTURE, RenderTarget::Rust)
-        .files
-        .iter()
-        .map(|f| f.content.clone())
-        .collect::<Vec<_>>()
-        .join("\n");
+    let emitted = compile_dag_named(
+        "src/v1/direct_ctor_fixture.dag",
+        DIRECT_FIXTURE,
+        RenderTarget::Rust,
+    )
+    .files
+    .iter()
+    .map(|f| f.content.clone())
+    .collect::<Vec<_>>()
+    .join("\n");
     let body = fn_body(&emitted, "mkd");
     assert!(
         body.contains("Direct {"),
         "a direct (non-alias) struct ctor must name the STRUCT `Direct`, got:\n{body}"
     );
-    // Over-peel guard: the first FIELD name must never become the struct-literal head — that is
-    // exactly the `resolved_type_name` else-branch (first-child = field) failure mode.
+    // Over-peel guard: the first FIELD name must never become the struct-literal head — the
+    // failure mode if a direct struct were routed through the alias name-recovery path.
     assert!(
         !body.contains("count {"),
         "a direct struct ctor must not over-peel to the first field name as the literal head, got:\n{body}"

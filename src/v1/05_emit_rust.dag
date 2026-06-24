@@ -6392,10 +6392,10 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
       let ctor_name = if tn_is_known_struct { tn }
         else {
           let resolved_struct = peel_alias_once_for_field_access(n: resolved_type, env: scope.type_env, module_name: scope.module_name)
-          if resolved_struct.connective == Conj {
+          if (resolved_struct.connective == Conj) {
             let resolved_field_names = resolved_struct.children |> map(c => authored_name_at(source_indices: si, node: c))
             match find_unique_struct_name_by_fields(field_names: resolved_field_names, type_summaries: emit_info.type_summaries) {
-              Present { value: canonical } => if canonical != tn { canonical } else { tn }
+              Present { value: canonical } => if (canonical != tn) { canonical } else { tn }
               Absent => tn
             }
           } else { tn }
