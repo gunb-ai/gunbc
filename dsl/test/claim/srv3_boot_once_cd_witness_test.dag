@@ -17,13 +17,13 @@ import gunbc.srv3_boot_once_cd {
 }
 
 test fn boot_cd_once_body_wires_correctly() -> Bool {
-  boot_override_body(target: "Cd", enabled: "Once")
-    == "{\"Boot\": {\"BootSourceOverrideTarget\": \"Cd\", \"BootSourceOverrideEnabled\": \"Once\"}}"
+  let body = boot_override_body(target: "Cd", enabled: "Once")
+  body == "{\"Boot\": {\"BootSourceOverrideTarget\": \"Cd\", \"BootSourceOverrideEnabled\": \"Once\"}}"
 }
 
 test fn force_restart_body_wires_correctly() -> Bool {
-  reset_body(reset_type: "ForceRestart")
-    == "{\"ResetType\": \"ForceRestart\"}"
+  let body = reset_body(reset_type: "ForceRestart")
+  body == "{\"ResetType\": \"ForceRestart\"}"
 }
 
 test fn cd_once_and_restart_redfish_wire_labels_are_grounded() -> Bool {

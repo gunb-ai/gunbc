@@ -62,7 +62,7 @@ test fn vm_capable_firmware_row_flips_to_update_path() -> Bool {
       CapabilityVirtualMedia,
     ],
   }
-  let extended_catalog: List<BmcFirmwareCapabilityRow> = [openbmc_2_07_00_capabilities, vm_capable_row]
+  let extended_catalog = [openbmc_2_07_00_capabilities, vm_capable_row]
   match solve_install_mechanism(current: openbmc_2_07_00_capabilities, catalog: extended_catalog) {
     FirmwareUpdateThenVirtualMedia => true
     VirtualMediaInstall => false
