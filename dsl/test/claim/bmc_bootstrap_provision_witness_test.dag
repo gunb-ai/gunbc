@@ -1,0 +1,62 @@
+module test.claim.bmc_bootstrap_provision_witness
+
+import std.logic { Bool }
+import std.types { String }
+import extdeps.cloud.gcp.iam {
+  GcpBinding,
+  role_secretmanager_secret_accessor,
+  role_secretmanager_secret_version_adder
+}
+import gunbc.assimilate.bmc_token_federation {
+  bmc_assimilator_sa_member,
+  bmc_role_allowed
+}
+import extdeps.cloud.gcp.gcp { GcpService, gcp_service_api_id }
+import gunbc.assimilate.bmc_bootstrap_provision {
+  bmc_secret_iam_bindings,
+  bmc_required_gcp_apis,
+  bmc_assimilate_service_deps
+}
+
+fn api_required(name: String) -> Bool {
+  fold(bmc_required_gcp_apis, init: false, f: (acc, a) => acc || a == name)
+}
+
+fn binding_targets_only_assimilator(b: GcpBinding) -> Bool {
+  b.members.length() == 1
+    && fold(b.members, init: true, f: (acc, m) => acc && m == bmc_assimilator_sa_member())
+    && bmc_role_allowed(role: b.role)
+}
+
+test fn bootstrap_bindings_least_privilege() -> Bool {
+  let bs = bmc_secret_iam_bindings()
+  bs.length() == 2
+    && fold(bs, init: true, f: (acc, b) => acc && binding_targets_only_assimilator(b: b))
+    && fold(bs, init: false, f: (acc, b) => acc || b.role == role_secretmanager_secret_accessor)
+    && fold(bs, init: false, f: (acc, b) => acc || b.role == role_secretmanager_secret_version_adder)
+}
+
+test fn bootstrap_bindings_exclude_broad_roles() -> Bool {
+  let bs = bmc_secret_iam_bindings()
+  fold(bs, init: true, f: (acc, b) => acc
+    && b.role != "roles/owner"
+    && b.role != "roles/editor"
+    && b.role != "roles/secretmanager.admin")
+}
+
+test fn bootstrap_enables_only_required_apis() -> Bool {
+  bmc_required_gcp_apis.length() == 5
+    && api_required(name: "iam.googleapis.com")
+    && api_required(name: "iamcredentials.googleapis.com")
+    && api_required(name: "sts.googleapis.com")
+    && api_required(name: "secretmanager.googleapis.com")
+    && api_required(name: "serviceusage.googleapis.com")
+    && !api_required(name: "compute.googleapis.com")
+}
+
+test fn bootstrap_apis_derive_from_service_deps() -> Bool {
+  bmc_assimilate_service_deps.length() == 5
+    && fold(bmc_assimilate_service_deps, init: true, f: (acc, s) => acc && api_required(name: gcp_service_api_id(service: s)))
+    && gcp_service_api_id(service: GcpSecretManager) == "secretmanager.googleapis.com"
+    && gcp_service_api_id(service: GcpServiceUsage) == "serviceusage.googleapis.com"
+}
