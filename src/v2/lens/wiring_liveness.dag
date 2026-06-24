@@ -2,6 +2,7 @@ module v2.lens.wiring_liveness
 
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.disposition { RealizationDispatch }
+import std.perturbation { BackwardDiffInDiffOut, perturbation_consistent, perturbation_is_violation }
 import v2.std.algebra { contains, length, list_append, list_snoc_item }
 import v2.std.collection { List }
 import v2.std.dependency { DependencyView, dependency_lens, ready_set }
@@ -73,10 +74,13 @@ fn wiring_reaches(dependence: List<DependencyView>, from: Node, to: Node) -> Boo
 }
 
 fn wiring_relation_is_wired(relation: WiringRelation) -> Bool {
-  wiring_reaches(
-    dependence: relation.dependence,
-    from: relation.output,
-    to: relation.declared_input
+  perturbation_consistent(
+    reading: BackwardDiffInDiffOut,
+    output_responded: wiring_reaches(
+      dependence: relation.dependence,
+      from: relation.output,
+      to: relation.declared_input
+    )
   )
 }
 
@@ -108,16 +112,23 @@ fn wiring_param_reaches_output(reachable: List<Node>, declared_input: Node) -> B
   wiring_reach_contains(reached: reachable, n: declared_input)
 }
 
+fn wiring_param_is_dead_wire(reachable: List<Node>, declared_input: Node) -> Bool {
+  perturbation_is_violation(
+    reading: BackwardDiffInDiffOut,
+    output_responded: wiring_param_reaches_output(reachable: reachable, declared_input: declared_input)
+  )
+}
+
 fn wiring_fn_dead_wires(decl: FnArrowDecl) -> List<WiringDeadWire> {
   let reachable = wiring_output_reachable_nodes(output: decl.output)
   fold(decl.params, init: [], f: fn(acc, p) {
-    if wiring_param_reaches_output(reachable: reachable, declared_input: p.node) {
-      acc
-    } else {
+    if wiring_param_is_dead_wire(reachable: reachable, declared_input: p.node) {
       list_snoc_item(
         xs: acc,
         item: WiringDeadWire { fn_qualified_name: decl.qualified_name, param: p.name }
       )
+    } else {
+      acc
     }
   })
 }
