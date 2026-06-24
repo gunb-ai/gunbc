@@ -24,6 +24,7 @@ Proper allocation (slice cap + per-slot caps ≤ physical − overhead, **verifi
 - **T3 — budget manifest** (`.github/fleet-runner-deploy.manifest`: per-host count + per-slot cap + tokens): smart-pike #5674 landed; emits typed `UNSOUND` until the caps are sound (correct fail-closed).
 - **T4 — per-job peak / build-pool sizing 24 → 8GiB**: cap `rustc`/slot via jobserver tokens; confirm `mem_reserve`. Same problem as T0 from the sizing angle. **manager-owned.**
 - **T5 — ctrl apply**: consume the manifest → enable N slots + per-slot caps + tokens on srv1/srv2, verified-effective. Was blocked on #1753; operator now authorizes execute-ASAP. **The live host apply is surfaced to the operator before it executes.**
+- **T6 — cpu.weight priority axis**: runner slice = `BatchLatencyTolerant` (weight 100, cgroup v2 default); sessions slice = `InteractiveLatencySensitive` (weight 1000, 10x). cgroup v2 cpu.weight is work-conserving: raising sessions above runners costs zero CI throughput when sessions are idle; under contention interactive sessions preempt batch builds. Fixes dashboard slowness on srv2 under CI load. (merry-stag-459, `WorkloadClass` modeled + emitted on manifest.)
 
 ## 2. Wall-clock (faster runs)
 

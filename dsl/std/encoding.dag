@@ -4,7 +4,8 @@ import std.algebra { BoundedLattice }
 import std.types { Bytes }
 import std.integer { UInt8 }
 import std.bytes { pure_dag_seam_unreachable }
-import std.disposition { Disposition, Scaffold, Terminal, DeclLocator, WholeDeclaration, SingleAuthority }
+import std.disposition { Disposition, Scaffold, Terminal, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 type Encoding
   = ASCII
@@ -307,7 +308,7 @@ fn base64_decode(s: String, variant: Base64Variant) -> List<UInt8>? {
 
 data utf8_decode_bytes_host_realization_marker: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: DeclLocator {
+  bind: DeclarationRef {
     module_path: "std.bytes",
     decl_name: "builtin_function_registry",
     field: WholeDeclaration
