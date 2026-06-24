@@ -101,21 +101,29 @@ genuinely *new* vocabulary is small.**
 
 | proposed name | DFS verdict | grounds into (existing carrier) |
 | --- | --- | --- |
-| **`Run`** | a command **effect** + its exit + its argv | `std.effects.EffectShape` (read/upsert/…) + `std.process.ProcessExit` + a `CommandRef` (argv = the §3 *transport* modeling of a CLI, e.g. `git diff` argv models git). Env-prefix / redirect / pipe are **Run modifiers**, not new statements. |
+| **`Run`** | a command **effect** + its exit + its argv | `std.effects.EffectShape` (read/upsert/…) + `std.process.ProcessExit` + an **abstract** `CommandRef`. The *concrete* CLI argv (git/cargo/systemctl — the §3 *transport* modeling of a CLI) lives in `extdeps` and is **injected** at the use-site, **never imported upward** by `std`. Env-prefix / redirect / pipe are **Run modifiers**, not new statements. |
 | **`Check`** | assert a predicate; on failure emit a diagnostic + non-zero exit | **`std.witness.Witness` (`Holds \| Violates`) + gap-A `EmitDirective`/`Diagnostic` on the `Violates` arm + `ProcessExit`.** *Check is not new — it is `Witness` lifted to orchestration, reusing gap A's diagnostic realization.* The `grep -qiE … "$LOG"` is a `Check` over a `LogMatches` predicate. |
 | **control flow** (`If`/`For`/`While`/`Retry`) | selection + iteration | the substrate's **own** `Behavior` coproduct — `src/v2/std/node.dag:26` is `… \| Branch \| Loop`. `If` = `Branch`; `For`/`While`/`Retry` = `Loop` with a **`DescentEvidence`** bound (`std.graph` / `std.computation` — `Strict \| NonIncreasing \| DescentUnknown`). Control flow is **not invented** — it is the substrate execution model (§4: "recursion is sugar over `Loop`; cyclic relations via acyclic encodings") *made addressable as data* so `emit` can render it. |
-| **`Pipeline`** | an ordered sequence of steps + a failure-propagation policy | `FreeMonoid<Step>` (ordered composition, `std.algebra`) + an `Outcome`-style failure policy (`fail-fast` ≈ `set -e`/`&&` vs `continue`). Not a bare `List` — the *policy* is the orchestration fact. |
+| **`Pipeline`** | `FreeMonoid<Step>` **+ a whole-sequence scoping policy** | `steps: FreeMonoid<Step>` is the **lawful sequence** (associative, `empty` = identity — so Pipeline composition stays a monoid, §2 clean); `on_failure` is a **separate** script-scoped field (`fail-fast` ≈ `set -e`/`&&` vs `continue`) that does **not** contaminate the step algebra. Not a bare `List`, and not a flat record that fuses sequence + policy — the policy *scopes* the monoid, it is not an element of it. |
 | **`Step`** | the recursive node | a coproduct whose arms are `Run \| Check \| If \| For \| While \| Retry \| Seq(Pipeline) \| …`. This **is** new — it is the union that makes the others composable. |
 
-**So the net-new concepts are `Step` (the recursive union) and `Pipeline` (sequence + failure
-policy). Everything else is a binding onto an existing authority.** That is the §2 test passing: net
-concepts do not grow by re-invention.
+**So the net-new concepts are `Step` (the recursive union) and `Pipeline` (a `FreeMonoid<Step>` under
+a scoping policy). Everything else is a binding onto an existing authority.** That is the §2 test
+passing: net concepts do not grow by re-invention.
 
-**⚠ FLAG 2a — is `Pipeline` distinct from `Seq`?** I model `Pipeline = Seq + failure-policy`. One
-could instead fold the policy into each `Step` and make `Pipeline` a pure `FreeMonoid<Step>`. I lean
-to a thin `Pipeline { steps, on_failure }` record because the failure policy is a *whole-sequence*
-fact (`set -e` is script-scoped), but flag it for sign — it is the one place the vocabulary could be
-one concept smaller or one larger.
+> **Layer-DAG invariant (§3 — provably preserved):** `std/orchestration` defines only the **abstract**
+> shapes — `CommandRef`, the `Predicate`/`FailureClassifier` *shape* — grounding into `std.effects` /
+> `std.process` / `std.witness` / the substrate `Behavior`. The **concrete** classifiers and commands
+> (`gunbc.ci_failure_class`'s `InfraSignature`/`infra_retry_grep_alternation`, an `extdeps` CLI argv)
+> are **injected as data/type-parameters at the downstream use-site** — `std/orchestration` imports
+> **no** `gunbc`/`extdeps` module. The layer arrow `std ← extdeps ← compiler ← workflow` is therefore
+> never inverted (this resolves §9-Q3).
+
+**⚠ FLAG 2a — RESOLVED (parent review): `Pipeline = FreeMonoid<Step> + scoping policy`,** phrased as
+above — `steps` is the lawful monoid (associative, empty = identity), `on_failure` is a separate
+whole-sequence scoping field, **not** fused into the algebra. A flat record that mixed them would
+contaminate §2's clean composition law; keeping the policy as a scoping wrapper around the monoid is
+the form to sign.
 
 **⚠ FLAG 2b — `Check` predicate algebra vs `Run` exit-status.** A `Check` and "a `Run` whose
 non-zero exit is fatal" overlap. I keep them distinct because a `Check` carries a **`Diagnostic`**
@@ -146,7 +154,7 @@ type Predicate                              # grounds Check + If conditions; a c
   | Or          { lhs: Predicate, rhs: Predicate }
 
 type Run {                                  # one command effect + its modifiers
-  command: CommandRef                       #   argv; §3-transport modeling of a CLI (opaque-fenced ok)
+  command: CommandRef                       #   ABSTRACT in std; concrete argv INJECTED from extdeps (opaque-fenced ok)
   env:     List<EnvBinding>                 #   CARGO_BUILD_JOBS=1   (EnvSet | EnvUnset)
   redirect: RedirectSpec?                   #   2>&1 | >/dev/null 2>&1   (closed enum, NOT a string)
   capture:  CaptureSpec?                    #   `| tee <file>` / `$(...)` command-substitution
@@ -161,8 +169,8 @@ type Step
   | Retry   { attempts: Int, body: Pipeline,                         # bounded -> terminating
               classify: FailureClassifier, on_exhausted: Pipeline }
 
-type Pipeline { steps: List<Step>, on_failure: FailurePolicy }      # FailFast | Continue
-type FailurePolicy = FailFast | Continue
+type Pipeline { steps: FreeMonoid<Step>, on_failure: FailurePolicy }  # steps = lawful monoid; policy SCOPES it
+type FailurePolicy = FailFast | Continue                             #   (separate field, not an element)
 ```
 
 Notes that matter for sign:
@@ -174,9 +182,11 @@ Notes that matter for sign:
   bottom. This is a *strictly stronger* guarantee than the hand-rolled bash, which has no
   machine-checkable bound at all.
 - **`Retry.attempts: Int` is the bound** — `Retry` is the common bounded-loop case made first-class
-  (consumer (1)'s whole shape). `classify: FailureClassifier` grounds directly into the **already
-  existing** `gunbc.ci_failure_class` (`InfraSignature` / `infra_retry_grep_alternation` /
-  `classify_failure_reason`). No new classifier concept.
+  (consumer (1)'s whole shape). `classify: FailureClassifier` is an **abstract shape** (or type
+  parameter) declared in `std/orchestration`; consumer (1) **injects** the concrete classifier from
+  the **already existing** `gunbc.ci_failure_class` (`InfraSignature` / `infra_retry_grep_alternation`
+  / `classify_failure_reason`) **at the gunbc use-site**. No new classifier concept, and **no upward
+  `std → gunbc` import** — the layer arrow is preserved (see the §2 layer-DAG invariant box).
 - **`If.else_: Pipeline?`** — optional else. Crucially, *adding else does not add a `Step` arm*; it is
   a field. At the **emit** layer (§4) `else` present vs absent selects a **different grammar
   production**, not a different intent node and **never** a `program.dag` change.
@@ -270,13 +280,17 @@ While  -> while <cond>; do <body> done          (bound is checked at MODEL time,
 Retry  -> emitted as a bounded unrolling OR a `for _ in $(seq 1 N)` loop with a classify+break body
 ```
 
-**⚠ FLAG 4b — `Retry` lowering is the least-settled emit.** Two options: (i) **unroll** to the
-nested-`if` cascade consumer (1) hand-writes today (faithful to the current output, attempts is a
-small literal), or (ii) emit a real `for i in $(seq 1 N); do … classify … break/continue; done`
-loop. (i) round-trips trivially and reproduces today's bytes; (ii) is smaller shell but needs loop+
-break productions. I lean **(i) for the first cut** (it makes the retry PR a *byte-preserving*
-re-expression — the strongest possible correctness proof, see §7) and (ii) as a follow-on. Sign
-needs to pick.
+**⚠ FLAG 4b — RESOLVED (parent review): `Retry` lowers by UNROLL, for a *faithfulness* reason
+stronger than byte-preservation.** Consumer (1)'s retry is a **heterogeneous escalation cascade** —
+attempt 1 = `<command>`; attempt 2 = `+ CARGO_BUILD_JOBS=1`; attempt 3 = `+ env -u RUSTC_WRAPPER` —
+**not** homogeneous N-iteration. A `for i in $(seq 1 N); do <uniform body> done` loop **literally
+cannot express per-attempt escalating env** without indexing an escalation list, so **unroll is the
+*faithful* model, not merely the convenient one**: the `attempts` are distinct typed steps, and the
+unrolled emit is their honest shape (it also reproduces today's bytes — the §7 byte-equality proof
+rides on top, but the modeling reason stands on its own). The `for…seq` uniform-loop option (ii) is
+relevant **only** for a future consumer with a *truly uniform* N-retry; it is a follow-on production,
+not a choice for this lowering. (`Retry`'s `body` carrying a per-attempt escalation list is the
+modeling that makes this precise — see §9-Q2.)
 
 ### 4.3 Why this never touches `program.dag` (the central constraint, discharged)
 
@@ -475,17 +489,27 @@ of one authored value and makes "no runner env var accessed" a **model walk**, n
 
 ## 9. Open questions (sign-blocking vs follow-on)
 
-**Sign-blocking (need a decision before build):**
+**Sign-blocking — all four RESOLVED in parent review (neat-fox-547), recorded here for the operator sign:**
 
-1. **⚠ 2a** — `Pipeline = Seq + failure-policy` (a record) vs `Pipeline = FreeMonoid<Step>` with
-   policy on each `Step`. (I lean record.)
-2. **⚠ 4b** — `Retry` lowering: unroll (byte-preserving, my lean) vs `for … seq … break` loop.
-3. **⚠ 3a** — home: `std/orchestration.dag` (my lean, grounds into substrate `Behavior`) vs a
-   downstream domain module.
-4. **⚠ 2b / 9-Check-vs-Run** — the `Check`/`Run`-with-fatal-exit boundary. Where exactly does a
-   `grep` stop being a `Run` and become a `Check`? Proposal: a bare command is a `Run`; a command
-   *used as a condition* (inside `If.cond`/`While.cond`/`classify`) is wrapped as `ExitZero{run}` or
-   `LogMatches`. Confirm this is the rule.
+1. **Q1 (⚠ 2a) — RESOLVED: `Pipeline = FreeMonoid<Step> + a scoping policy`.** `steps` stays the
+   lawful monoid (associative, empty = identity); `on_failure` is a separate whole-sequence scoping
+   field that does not contaminate the algebra. *Not* a flat record fusing the two. (§2 table + FLAG 2a.)
+2. **Q2 (⚠ 4b) — RESOLVED: `Retry` lowers by UNROLL.** Rationale is *faithfulness*, not just
+   byte-preservation: the retry is a **heterogeneous escalation cascade** (per-attempt escalating
+   env), which a uniform `for…seq` loop cannot express. The seq-loop is a follow-on production for a
+   future *uniform* N-retry only. (FLAG 4b.)
+3. **Q3 (⚠ 3a) — RESOLVED with the layer fix: home is `std/orchestration.dag` for the abstract
+   control-flow core, AND it imports no `gunbc`/`extdeps`.** The abstract `FailureClassifier` /
+   `CommandRef` / `Predicate` *shapes* live in `std` (grounding into `std.effects`/`std.process`/
+   `std.witness`/substrate `Behavior`); the concrete `gunbc.ci_failure_class` classifier and the
+   `extdeps` CLI argv are **injected as data/type-parameters at the downstream use-site**. The layer
+   arrow `std ← extdeps ← compiler ← workflow` is provably preserved — **no upward import**. (See the
+   §2 layer-DAG invariant box; this was the one real soundness fix.)
+4. **Q4 (⚠ 2b) — RESOLVED: the `Check`/`Run` boundary is decidable by POSITION (a wall, not a vibe).**
+   A bare command is a `Run`; a command in **condition-position** (`If.cond` / `While.cond` /
+   `Retry.classify`) is wrapped as `ExitZero{run}` or `LogMatches`. **Confirmed-distinct: `Assert` vs
+   `If.cond`** — `Assert` = *must-hold-or-abort* (fail-closed, carries the gap-A `Diagnostic` + exit);
+   `If.cond` = *branch-on* (no abort). Keep both; the distinction is intended.
 
 **Follow-on (does not block tier-1 build):**
 
@@ -502,8 +526,9 @@ of one authored value and makes "no runner env var accessed" a **model walk**, n
 ## 10. Proposed sequencing (build order, once signed — NOT this task)
 
 1. **Tier-1 vocab** in `std/orchestration.dag` (`Predicate`/`Run`/`Step`/`Pipeline`), grounding
-   `Check`→`Witness`+gap-A, control flow→`Behavior`+`DescentEvidence`, `Retry.classify`→
-   `gunbc.ci_failure_class`. No emit yet.
+   `Check`→`Witness`+gap-A, control flow→`Behavior`+`DescentEvidence`, and the **abstract**
+   `FailureClassifier`/`CommandRef` shapes (concrete `gunbc.ci_failure_class` / `extdeps` argv injected
+   at the use-site — **no upward import**). No emit yet.
 2. **Parameterized bash control-flow productions** in `v2.extdeps.languages.bash` (`If`/`For`/`While`/
    `Retry` + the env/redirect/capture modifier rows), each with a `*_wrong_*` RED twin.
 3. **Migrate consumer (1)** `ci_cargo_eagain_retry_core` → a `Retry` value, with the **byte-equality
