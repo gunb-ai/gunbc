@@ -5605,7 +5605,24 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
     Absent => "compile_error!(\"missing fold function argument\")"
   }
   let sharing = language_spec(target: Rust).sharing
-  concat(apply_type_template1(template: sharing.iter_owned, arg0: recv_str), ".fold(", init_str, ", ", fold_fn, ")")
+  let elem_unused = match args |> skip(1) |> first {
+    Present { value: a } => fold_lambda_element_unused(lambda_expr: arg_value(n: a), source_indices: scope.type_env.source_indices)
+    Absent => false
+  }
+  let iter_template = if elem_unused { replace(sharing.iter_owned, ".cloned()", "") } else { sharing.iter_owned }
+  concat(apply_type_template1(template: iter_template, arg0: recv_str), ".fold(", init_str, ", ", fold_fn, ")")
+}
+
+fn fold_lambda_element_unused(lambda_expr: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  match lambda_expr.expr_data {
+    ExprLambda =>
+      let ps = lambda_param_names_at(texpr: lambda_expr, source_indices: source_indices)
+      match ps |> skip(1) |> first {
+        Present { value: elem_name } => elem_name == "_"
+        Absent => false
+      }
+    _ => false
+  }
 }
 
 fn emit_rust_sort_by_method_call(receiver: Node, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
