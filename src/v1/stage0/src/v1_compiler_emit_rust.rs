@@ -3623,21 +3623,12 @@ pub fn emit_module_full(
         });
         let module_import_items = module_imports(m.clone());
         let this_module_name = authored_name(scope.type_env.clone(), m.clone());
-        let sidecar_items = contracts_items_for_module(
-            this_module_name.clone(),
-            typed_modules.clone(),
-            scope.type_env.clone().source_indices.clone(),
-            module_index.clone(),
-        );
+        let sidecar_items =
+            contracts_items_for_module(this_module_name.clone(), module_index.clone());
         let wire_context_items = v1_rt::concat(typed_module.items.clone(), sidecar_items.clone());
         let wire_context_imports = v1_rt::concat(
             module_import_items.clone(),
-            contracts_imports_for_module(
-                this_module_name.clone(),
-                typed_modules.clone(),
-                scope.type_env.clone().source_indices.clone(),
-                module_index.clone(),
-            ),
+            contracts_imports_for_module(this_module_name.clone(), module_index.clone()),
         );
         let coproduct_wire_contract_validations = emit_coproduct_wire_contract_validations(
             wire_context_items.clone(),
@@ -3900,8 +3891,6 @@ pub fn typed_module_by_name(
 
 pub fn contracts_items_for_module(
     module_name: String,
-    typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_index: Rc<ModuleIndex>,
 ) -> Rc<Vec<Rc<Node>>> {
     match v1_rt::map_get(
@@ -3915,8 +3904,6 @@ pub fn contracts_items_for_module(
 
 pub fn contracts_imports_for_module(
     module_name: String,
-    typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_index: Rc<ModuleIndex>,
 ) -> Rc<Vec<Rc<Node>>> {
     match v1_rt::map_get(
