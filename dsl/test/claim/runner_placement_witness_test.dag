@@ -76,8 +76,6 @@ import gunbc.ci_floor_measurement {
   Regime1WorstCase,
   Regime2AggregateOomd,
   SessionReservationModeUnset,
-  gunbc_ci_footprint_granularity_note,
-  gunbc_ci_footprint_bridge_followup,
   gunbc_ci_regime2_aggregate_dissolution_marker,
   gunbc_ci_run_count_divisor,
   gunbc_ci_runner_unit_cap_safety_margin_num,
