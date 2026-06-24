@@ -50,7 +50,15 @@ data openbmc_2_07_00_capabilities: BmcFirmwareCapabilityRow = BmcFirmwareCapabil
   capabilities: [CapabilityPowerControl, CapabilityBootSourceOverride, CapabilityAccountManagement, CapabilityFirmwareUpdate],
 }
 
-data bmc_firmware_capability_catalog: List<BmcFirmwareCapabilityRow> = [openbmc_2_07_00_capabilities]
+data openbmc_redfish_vs_webui_virtual_media_doc: String = "IMPORTANT distinction (§5 grounded, not assumed): CapabilityVirtualMedia models REDFISH exposure of virtual media -- the automatable API surface -- NOT whether the feature exists at all. On ASRockRack Ampere Altra boards the legacy WebUI KVM (HTML5) DOES offer virtual-media attach, but ASRockRack has not plumbed the OpenBMC backend (nbd-proxy / jsnbd) into the Redfish schema (/redfish/v1/Managers/bmc/VirtualMedia 404), so it is not API-reachable. Likewise BIOS attribute config over Redfish (/Bios/Settings) requires MCTP/PLDM host<->BMC integration ASRockRack has not enabled for this board (Attributes count 0); BIOS settings are reachable only via the host UEFI menu or ASRockRack MgmtTool IPMI-OEM commands (an IPMI realization, NOT Redfish). So a node having virtual media in its WebUI does NOT make CapabilityVirtualMedia true -- the capability is the modeled, automatable Redfish surface."
+
+data openbmc_03_22_00_capabilities: BmcFirmwareCapabilityRow = BmcFirmwareCapabilityRow {
+  firmware: BmcFirmwareVersion { family: OpenBmc, version: "03.22.00" },
+  provenance: "CITED (not live-probed; srv3 runs 2.07.00): ASRockRack ALTRAD8UD-1L2T latest BMC firmware 03.22.00 (released 2026-04-14). Per ASRockRack release notes + OpenBMC OEM-plumbing analysis, 03.22.00 adds first-login password enforcement, sensor/web improvements, and security patches (CVE-2024-54085) but NOT Redfish feature parity -- VirtualMedia and BIOS attribute config remain unwired in the Redfish schema for this board. Records that NO ASRockRack firmware in this line flips the VirtualMedia capability over Redfish",
+  capabilities: [CapabilityPowerControl, CapabilityBootSourceOverride, CapabilityAccountManagement, CapabilityFirmwareUpdate],
+}
+
+data bmc_firmware_capability_catalog: List<BmcFirmwareCapabilityRow> = [openbmc_2_07_00_capabilities, openbmc_03_22_00_capabilities]
 
 fn firmware_exposes(row: BmcFirmwareCapabilityRow, cap: BmcCapability) -> Bool {
   fold(row.capabilities, init: false, f: (acc, c) => acc || bmc_capability_eq(a: c, b: cap))
