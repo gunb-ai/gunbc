@@ -3375,6 +3375,60 @@ pub fn build_module_export_sets(
     )
 }
 
+pub fn extend_scoped_data_items_with_sidecar(
+    base: Rc<HashMap<String, Rc<Vec<Rc<Node>>>>>,
+    module_name: String,
+    module_index: &Rc<ModuleIndex>,
+    data_items: Rc<HashMap<String, Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<HashMap<String, Rc<Vec<Rc<Node>>>>> {
+    match v1_rt::map_get(
+        &module_index.by_name.clone(),
+        v1_rt::concat(module_name, "_contracts".to_string()),
+    ) {
+        None => base,
+        Some(sidecar_tm) => module_imports(sidecar_tm.module.clone())
+            .iter()
+            .cloned()
+            .fold(
+                base,
+                |acc: Rc<HashMap<String, Rc<Vec<Rc<Node>>>>>, imp: Rc<Node>| {
+                    if import_is_all(imp.clone()) {
+                        acc.clone()
+                    } else {
+                        let import_path = authored_name_at(source_indices.clone(), imp.clone());
+                        import_specific_names_at(imp.clone(), source_indices.clone())
+                            .iter()
+                            .cloned()
+                            .fold(
+                                acc.clone(),
+                                |inner: Rc<HashMap<String, Rc<Vec<Rc<Node>>>>>,
+                                 imported_name: String| {
+                                    match v1_rt::map_get(&inner, imported_name.clone()) {
+                                        Some(_) => inner.clone(),
+                                        None => {
+                                            let qualified = v1_rt::concat(
+                                                v1_rt::concat(import_path.clone(), ".".to_string()),
+                                                imported_name.clone(),
+                                            );
+                                            match v1_rt::map_get(&data_items, qualified.clone()) {
+                                                Some(item) => insert_scoped_data_item(
+                                                    inner.clone(),
+                                                    imported_name.clone(),
+                                                    item.clone(),
+                                                ),
+                                                None => inner.clone(),
+                                            }
+                                        }
+                                    }
+                                },
+                            )
+                    }
+                },
+            ),
+    }
+}
+
 pub fn emit_module_full(
     typed_module: Rc<TypedModule>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
@@ -3389,7 +3443,16 @@ pub fn emit_module_full(
     {
         let m = typed_module.module.clone();
         let scope = module_emit_scope(typed_module.clone());
-        let scoped_data_items = build_scoped_data_item_index(typed_module.clone(), data_items);
+        let scoped_data_items = extend_scoped_data_items_with_sidecar(
+            build_scoped_data_item_index(typed_module.clone(), data_items.clone()),
+            authored_name_at(
+                typed_module.type_env.clone().source_indices.clone(),
+                typed_module.module.clone(),
+            ),
+            &module_index,
+            data_items,
+            typed_module.type_env.clone().source_indices.clone(),
+        );
         let prelude_imported_names = Rc::new({
             let mut __result = Vec::new();
             for imp in module_imports(m.clone()).iter().cloned() {
@@ -3559,9 +3622,17 @@ pub fn emit_module_full(
             __result
         });
         let module_import_items = module_imports(m.clone());
-        let coproduct_wire_contract_validations = emit_coproduct_wire_contract_validations(
-            typed_module.items.clone(),
+        let this_module_name = authored_name(scope.type_env.clone(), m.clone());
+        let sidecar_items =
+            contracts_items_for_module(this_module_name.clone(), module_index.clone());
+        let wire_context_items = v1_rt::concat(typed_module.items.clone(), sidecar_items.clone());
+        let wire_context_imports = v1_rt::concat(
             module_import_items.clone(),
+            contracts_imports_for_module(this_module_name.clone(), module_index.clone()),
+        );
+        let coproduct_wire_contract_validations = emit_coproduct_wire_contract_validations(
+            wire_context_items.clone(),
+            wire_context_imports.clone(),
             local_coproduct_names,
             scope.type_env.clone().source_indices.clone(),
         );
@@ -3582,27 +3653,38 @@ pub fn emit_module_full(
                 local_enum_uses.clone().join(&"\n".to_string()),
             )
         };
-        let wire_contract_item = Rc::new({
-            let mut __result = Vec::new();
-            for i in typed_module.items.clone().iter().cloned() {
-                if (item_binding_is_named(
-                    scope.type_env.clone(),
-                    i.clone(),
-                    "wire_contract".to_string(),
-                ) && match v1_rt::map_get(
-                    &scope.item_registry.clone(),
-                    "wire_contract".to_string(),
-                ) {
-                    Some(info) => (info.kind.clone() == ItemKind::DataItem),
-                    None => false,
-                }) {
-                    __result.push(i);
+        let wire_contract_item = {
+            let from_primary = Rc::new({
+                let mut __result = Vec::new();
+                for i in typed_module.items.clone().iter().cloned() {
+                    if (item_binding_is_named(
+                        scope.type_env.clone(),
+                        i.clone(),
+                        "wire_contract".to_string(),
+                    ) && match v1_rt::map_get(
+                        &scope.item_registry.clone(),
+                        "wire_contract".to_string(),
+                    ) {
+                        Some(info) => (info.kind.clone() == ItemKind::DataItem),
+                        None => false,
+                    }) {
+                        __result.push(i);
+                    }
                 }
-            }
-            __result
-        })
-        .first()
-        .cloned();
+                __result
+            })
+            .first()
+            .cloned();
+            from_primary.or_else(|| {
+                sidecar_items.clone().iter().cloned().find(|i| {
+                    item_binding_is_named(
+                        scope.type_env.clone(),
+                        i.clone(),
+                        "wire_contract".to_string(),
+                    )
+                })
+            })
+        };
         let items_str = Rc::new({
             let mut __result = Vec::new();
             for item in typed_module.items.clone().iter().cloned() {
@@ -3615,8 +3697,8 @@ pub fn emit_module_full(
                     emit_info.clone(),
                     wire_contract_item.clone(),
                     scoped_data_items.clone(),
-                    typed_module.items.clone(),
-                    module_import_items.clone(),
+                    wire_context_items.clone(),
+                    wire_context_imports.clone(),
                     export_sets.clone(),
                     typed_modules.clone(),
                     module_index.clone(),
@@ -3805,6 +3887,32 @@ pub fn typed_module_by_name(
     module_index: Rc<ModuleIndex>,
 ) -> Option<Rc<TypedModule>> {
     v1_rt::map_get(&module_index.by_name.clone(), module_name)
+}
+
+pub fn contracts_items_for_module(
+    module_name: String,
+    module_index: Rc<ModuleIndex>,
+) -> Rc<Vec<Rc<Node>>> {
+    match v1_rt::map_get(
+        &module_index.by_name.clone(),
+        v1_rt::concat(module_name, "_contracts".to_string()),
+    ) {
+        Some(tm) => tm.items.clone(),
+        None => Rc::new(vec![]),
+    }
+}
+
+pub fn contracts_imports_for_module(
+    module_name: String,
+    module_index: Rc<ModuleIndex>,
+) -> Rc<Vec<Rc<Node>>> {
+    match v1_rt::map_get(
+        &module_index.by_name.clone(),
+        v1_rt::concat(module_name, "_contracts".to_string()),
+    ) {
+        Some(tm) => module_imports(tm.module.clone()),
+        None => Rc::new(vec![]),
+    }
 }
 
 pub fn module_name_from_filename(
@@ -11668,6 +11776,17 @@ pub fn effective_variant_parent(
     }
 }
 
+pub fn variant_ref_self_wraps(
+    name: String,
+    enum_name: String,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
+    corpus_repr: RustCorpusRepr,
+) -> bool {
+    (((name.clone() == "Empty".to_string()) && (enum_name.clone() == "FreeMonoid".to_string()))
+        && corpus_repr_is_host(corpus_repr.clone()))
+        || v1_rt::set_contains(&shared_types, enum_name.clone())
+}
+
 pub fn emit_var_ref(
     name: String,
     binding_kind: Option<Rc<VarBindingKind>>,
@@ -11695,35 +11814,37 @@ pub fn emit_var_ref(
                 );
                 let ref_str = match variant_parent {
                     Some(enum_name) => {
-                        if ((name.clone() == "Empty".to_string())
+                        let body = if ((name.clone() == "Empty".to_string())
                             && (enum_name.clone() == "FreeMonoid".to_string())
                             && corpus_repr_is_host(emit_info.corpus_repr.clone()))
                         {
-                            // FreeMonoid grounding: Empty -> native empty Rc<Vec> (already Rc-wrapped)
-                            "Rc::new(vec![])".to_string()
-                        } else {
-                            let qualified = if (is_optional_variant_name(name.clone())
-                                && (enum_name.clone() == "Optional".to_string()))
-                            {
-                                if (name.clone() == "Present".to_string()) {
-                                    "Some".to_string()
-                                } else {
-                                    "None".to_string()
-                                }
+                            "vec![]".to_string()
+                        } else if (is_optional_variant_name(name.clone())
+                            && (enum_name.clone() == "Optional".to_string()))
+                        {
+                            if (name.clone() == "Present".to_string()) {
+                                "Some".to_string()
                             } else {
-                                v1_rt::concat(
-                                    v1_rt::concat(enum_name.clone(), "::".to_string()),
-                                    name.clone(),
-                                )
-                            };
-                            if v1_rt::set_contains(&shared_types, enum_name.clone()) {
-                                v1_rt::concat(
-                                    v1_rt::concat("Rc::new(".to_string(), qualified),
-                                    ")".to_string(),
-                                )
-                            } else {
-                                qualified
+                                "None".to_string()
                             }
+                        } else {
+                            v1_rt::concat(
+                                v1_rt::concat(enum_name.clone(), "::".to_string()),
+                                name.clone(),
+                            )
+                        };
+                        if variant_ref_self_wraps(
+                            name.clone(),
+                            enum_name.clone(),
+                            shared_types.clone(),
+                            emit_info.corpus_repr.clone(),
+                        ) {
+                            v1_rt::concat(
+                                v1_rt::concat("Rc::new(".to_string(), body),
+                                ")".to_string(),
+                            )
+                        } else {
+                            body
                         }
                     }
                     None => match v1_rt::map_get(&registry, name.clone()) {
@@ -22207,6 +22328,29 @@ pub fn emit_data_def_body(
                             let is_already_wrapped = match (*value.expr_data.clone()).clone() {
                                 ExprData::ExprRecordLit { parent_enum: _, .. } => true,
                                 ExprData::ExprListLit => true,
+                                ExprData::ExprVar {
+                                    binding_kind: bk, ..
+                                } => {
+                                    let vname = expr_var_name_at(
+                                        value.clone(),
+                                        scope.type_env.source_indices.clone(),
+                                    );
+                                    match effective_variant_parent(
+                                        vname.clone(),
+                                        bk.clone(),
+                                        value.inferred.clone(),
+                                        emit_info.clone(),
+                                        scope.type_env.source_indices.clone(),
+                                    ) {
+                                        Some(enum_name) => variant_ref_self_wraps(
+                                            vname.clone(),
+                                            enum_name.clone(),
+                                            shared_types.clone(),
+                                            emit_info.corpus_repr.clone(),
+                                        ),
+                                        None => false,
+                                    }
+                                }
                                 _ => false,
                             };
                             let wrap_start = if (needs_rc.clone() && !is_already_wrapped.clone()) {
