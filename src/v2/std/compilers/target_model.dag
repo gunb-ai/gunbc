@@ -3,7 +3,11 @@ module v2.std.compilers.target_model
 import v2.std.algebra {
   Cons,
   Empty,
+  Equal,
   FreeMonoid,
+  Greater,
+  Less,
+  Ordering,
   fold_list,
   fold_list_node,
   is_empty,
@@ -546,11 +550,98 @@ type TargetValueTemplate {
   node: Node
 }
 
+type OrderingPredicate
+  = IsLess
+  | IsLessOrEqual
+  | IsGreater
+  | IsGreaterOrEqual
+
+type EqualityPredicate
+  = IsEqual
+  | IsNotEqual
+
 type CanonicalOperation
-  = OpAdd { algebra_field: Symbol }
+  = AlgebraPrimitive { algebra_field: Symbol }
+  | AlgebraInverseCompose { binary_field: Symbol, inverse_field: Symbol }
+  | OrderingComparison { compare_field: Symbol, predicate: OrderingPredicate }
+  | EqualityComparison { eq_field: Symbol, predicate: EqualityPredicate }
+
+fn ordering_predicate_accepts(predicate: OrderingPredicate) -> List<Ordering> {
+  match predicate {
+    IsLess => [Less]
+    IsLessOrEqual => [Less, Equal]
+    IsGreater => [Greater]
+    IsGreaterOrEqual => [Equal, Greater]
+  }
+}
+
+fn equality_predicate_accepts(predicate: EqualityPredicate) -> Bool {
+  match predicate {
+    IsEqual => true
+    IsNotEqual => false
+  }
+}
 
 fn canonical_operation_op_add() -> CanonicalOperation {
-  OpAdd { algebra_field: ^ring_field_add }
+  AlgebraPrimitive { algebra_field: ^ring_field_add }
+}
+
+fn canonical_operation_op_mul() -> CanonicalOperation {
+  AlgebraPrimitive { algebra_field: ^ring_field_mul }
+}
+
+fn canonical_operation_op_negate() -> CanonicalOperation {
+  AlgebraPrimitive { algebra_field: ^group_field_inverse }
+}
+
+fn canonical_operation_op_and() -> CanonicalOperation {
+  AlgebraPrimitive { algebra_field: ^lattice_field_meet }
+}
+
+fn canonical_operation_op_or() -> CanonicalOperation {
+  AlgebraPrimitive { algebra_field: ^lattice_field_join }
+}
+
+fn canonical_operation_op_not() -> CanonicalOperation {
+  AlgebraPrimitive { algebra_field: ^boolean_algebra_field_complement }
+}
+
+fn canonical_operation_op_sub() -> CanonicalOperation {
+  AlgebraInverseCompose {
+    binary_field: ^ring_field_add,
+    inverse_field: ^group_field_inverse
+  }
+}
+
+fn canonical_operation_op_div() -> CanonicalOperation {
+  AlgebraInverseCompose {
+    binary_field: ^ring_field_mul,
+    inverse_field: ^field_field_reciprocal
+  }
+}
+
+fn canonical_operation_op_lt() -> CanonicalOperation {
+  OrderingComparison { compare_field: ^ordered_ring_field_compare, predicate: IsLess }
+}
+
+fn canonical_operation_op_le() -> CanonicalOperation {
+  OrderingComparison { compare_field: ^ordered_ring_field_compare, predicate: IsLessOrEqual }
+}
+
+fn canonical_operation_op_gt() -> CanonicalOperation {
+  OrderingComparison { compare_field: ^ordered_ring_field_compare, predicate: IsGreater }
+}
+
+fn canonical_operation_op_ge() -> CanonicalOperation {
+  OrderingComparison { compare_field: ^ordered_ring_field_compare, predicate: IsGreaterOrEqual }
+}
+
+fn canonical_operation_op_eq() -> CanonicalOperation {
+  EqualityComparison { eq_field: ^equivalence_field_eq, predicate: IsEqual }
+}
+
+fn canonical_operation_op_ne() -> CanonicalOperation {
+  EqualityComparison { eq_field: ^equivalence_field_eq, predicate: IsNotEqual }
 }
 
 type TargetOperatorShape
