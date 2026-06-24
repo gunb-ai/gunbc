@@ -122,7 +122,7 @@ pub fn value_to_wire_json(val: &Value, ctx: &InterpContext) -> WireResult<serde_
 fn serialize_variant_to_wire_json(
     type_name: &str,
     variant_name: &str,
-    fields: &HashMap<crate::v1_interpreter::Symbol, Value>,
+    fields: &[(crate::v1_interpreter::Symbol, Value)],
     ctx: &InterpContext,
 ) -> WireResult<serde_json::Value> {
     let policy = resolve_coproduct_wire_policy(
@@ -184,11 +184,12 @@ fn serialize_variant_to_wire_json(
 }
 
 fn serialize_untagged_variant(
-    fields: &HashMap<crate::v1_interpreter::Symbol, Value>,
+    fields: &[(crate::v1_interpreter::Symbol, Value)],
     ctx: &InterpContext,
 ) -> WireResult<serde_json::Value> {
     let mut values: Vec<serde_json::Value> = fields
-        .values()
+        .iter()
+        .map(|(_, v)| v)
         .filter(|v| !matches!(v, Value::Null))
         .map(|v| value_to_wire_json(v, ctx))
         .collect::<Result<Vec<_>, _>>()?;
