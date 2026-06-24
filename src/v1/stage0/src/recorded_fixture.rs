@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -490,10 +489,11 @@ pub fn value_from_fixture_json(
         "Record" => {
             let type_name = ctx.sym(&require_str(obj, "__type")?);
             let fields_obj = require_fields_obj(obj)?;
-            let mut fields = HashMap::new();
+            let mut fields = Vec::with_capacity(fields_obj.len());
             for (k, v) in fields_obj {
-                fields.insert(ctx.sym(k), value_from_fixture_json(v, ctx)?);
+                fields.push((ctx.sym(k), value_from_fixture_json(v, ctx)?));
             }
+            fields.sort_unstable_by_key(|(k, _)| k.0);
             Ok(Value::Record {
                 type_name,
                 fields: Rc::new(fields),
@@ -503,10 +503,11 @@ pub fn value_from_fixture_json(
             let type_name = ctx.sym(&require_str(obj, "__type")?);
             let variant_name = ctx.sym(&require_str(obj, "__variant")?);
             let fields_obj = require_fields_obj(obj)?;
-            let mut fields = HashMap::new();
+            let mut fields = Vec::with_capacity(fields_obj.len());
             for (k, v) in fields_obj {
-                fields.insert(ctx.sym(k), value_from_fixture_json(v, ctx)?);
+                fields.push((ctx.sym(k), value_from_fixture_json(v, ctx)?));
             }
+            fields.sort_unstable_by_key(|(k, _)| k.0);
             Ok(Value::Variant {
                 type_name,
                 variant_name,

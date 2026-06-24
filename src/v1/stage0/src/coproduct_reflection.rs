@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use crate::v1_compiler_infer_items::ItemKind;
-use crate::v1_interpreter::{InterpContext, InterpError, InterpResult, Value};
+use crate::v1_interpreter::{fields_get, sorted_fields, InterpContext, InterpError, InterpResult, Value};
 use crate::v1_std_core::{
     authored_name_at, expr_var_name_at, field_node_type_expr, inferred_to_node, param_node_name_at,
     Connective, ExprData, NewlineIndex, Node, VarBindingKind,
@@ -94,7 +94,7 @@ fn nullary_connective_variant(ctx: &InterpContext, name: &str) -> Value {
     Value::Variant {
         type_name: ctx.sym("Connective"),
         variant_name: ctx.sym(name),
-        fields: Rc::new(HashMap::new()),
+        fields: Rc::new(vec![]),
     }
 }
 
@@ -102,10 +102,10 @@ fn atom_connective_variant(ctx: &InterpContext, identity: &str) -> Value {
     Value::Variant {
         type_name: ctx.sym("Connective"),
         variant_name: ctx.sym("Atom"),
-        fields: Rc::new(HashMap::from([(
+        fields: Rc::new(vec![(
             ctx.sym("identity"),
             Value::Str(identity.to_string()),
-        )])),
+        )]),
     }
 }
 
@@ -113,7 +113,7 @@ fn node_kind_type_node(ctx: &InterpContext, connective: Value) -> Value {
     Value::Variant {
         type_name: ctx.sym("NodeKind"),
         variant_name: ctx.sym("TypeNode"),
-        fields: Rc::new(HashMap::from([(ctx.sym("connective"), connective)])),
+        fields: Rc::new(vec![(ctx.sym("connective"), connective)]),
     }
 }
 
@@ -121,14 +121,14 @@ fn synthetic_occurrence(ctx: &InterpContext) -> Value {
     Value::Variant {
         type_name: ctx.sym("NodeOccurrenceId"),
         variant_name: ctx.sym("SyntheticOccurrence"),
-        fields: Rc::new(HashMap::new()),
+        fields: Rc::new(vec![]),
     }
 }
 
 fn node_record(ctx: &InterpContext, kind: Value, children: Vec<Value>) -> Value {
     Value::Record {
         type_name: ctx.sym("Node"),
-        fields: Rc::new(HashMap::from([
+        fields: Rc::new(sorted_fields(vec![
             (ctx.sym("kind"), kind),
             (
                 ctx.sym("children"),
@@ -142,16 +142,16 @@ fn node_record(ctx: &InterpContext, kind: Value, children: Vec<Value>) -> Value 
 fn edge_named(ctx: &InterpContext, name: &str, target: Value) -> Value {
     Value::Record {
         type_name: ctx.sym("Edge"),
-        fields: Rc::new(HashMap::from([
+        fields: Rc::new(sorted_fields(vec![
             (
                 ctx.sym("label"),
                 Value::Variant {
                     type_name: ctx.sym("EdgeLabel"),
                     variant_name: ctx.sym("Named"),
-                    fields: Rc::new(HashMap::from([(
+                    fields: Rc::new(vec![(
                         ctx.sym("name"),
                         Value::Str(name.to_string()),
-                    )])),
+                    )]),
                 },
             ),
             (ctx.sym("target"), target),
@@ -482,7 +482,7 @@ pub fn eval_concept_decl_facts_live(
             let node = concept_decl_node(ctx, item)?;
             rows.push(Value::Record {
                 type_name: ctx.sym("ConceptDecl"),
-                fields: Rc::new(HashMap::from([
+                fields: Rc::new(sorted_fields(vec![
                     (ctx.sym("qualified_name"), Value::Str(qualified_name)),
                     (ctx.sym("name"), Value::Str(name.clone())),
                     (ctx.sym("node"), node),
@@ -496,13 +496,13 @@ pub fn eval_concept_decl_facts_live(
 fn edge_positional(ctx: &InterpContext, target: Value) -> Value {
     Value::Record {
         type_name: ctx.sym("Edge"),
-        fields: Rc::new(HashMap::from([
+        fields: Rc::new(sorted_fields(vec![
             (
                 ctx.sym("label"),
                 Value::Variant {
                     type_name: ctx.sym("EdgeLabel"),
                     variant_name: ctx.sym("Positional"),
-                    fields: Rc::new(HashMap::new()),
+                    fields: Rc::new(vec![]),
                 },
             ),
             (ctx.sym("target"), target),
@@ -744,7 +744,7 @@ fn param_is_type_param(p: &Rc<Node>, si: &Rc<HashMap<String, Rc<NewlineIndex>>>)
 fn fn_arrow_param_record(ctx: &InterpContext, param_name: &str) -> Value {
     Value::Record {
         type_name: ctx.sym("FnArrowParam"),
-        fields: Rc::new(HashMap::from([
+        fields: Rc::new(sorted_fields(vec![
             (ctx.sym("name"), Value::Str(param_name.to_string())),
             (ctx.sym("node"), atom_identity_node(ctx, param_name)),
         ])),
@@ -804,7 +804,7 @@ pub fn eval_fn_arrow_decl_facts_live(
             let qualified_name = logical_qualified_name(&info.module_name, &name);
             rows.push(Value::Record {
                 type_name: ctx.sym("FnArrowDecl"),
-                fields: Rc::new(HashMap::from([
+                fields: Rc::new(sorted_fields(vec![
                     (ctx.sym("qualified_name"), Value::Str(qualified_name)),
                     (ctx.sym("name"), Value::Str(name.clone())),
                     (ctx.sym("output"), output),
@@ -844,7 +844,7 @@ pub fn eval_syntactic_coproduct_arm_pairs(
         .iter()
         .map(|pair| Value::Record {
             type_name: ctx.sym("CoproductArmPayloadPair"),
-            fields: Rc::new(HashMap::from([
+            fields: Rc::new(sorted_fields(vec![
                 (ctx.sym("label"), Value::Str(pair.label.clone())),
                 (
                     ctx.sym("payload_type_name"),
@@ -865,8 +865,7 @@ pub fn arm_payload_pairs_from_marshaled_node(
             msg: "expected Node record".to_string(),
         });
     };
-    let children = fields
-        .get(&ctx.sym("children"))
+    let children = fields_get(fields, ctx.sym("children"))
         .ok_or_else(|| InterpError::TypeError {
             msg: "Node missing children".to_string(),
         })?;
@@ -882,13 +881,11 @@ pub fn arm_payload_pairs_from_marshaled_node(
                 msg: "expected Edge record".to_string(),
             });
         };
-        let label_v = ef
-            .get(&ctx.sym("label"))
+        let label_v = fields_get(ef, ctx.sym("label"))
             .ok_or_else(|| InterpError::TypeError {
                 msg: "Edge missing label".to_string(),
             })?;
-        let target = ef
-            .get(&ctx.sym("target"))
+        let target = fields_get(ef, ctx.sym("target"))
             .ok_or_else(|| InterpError::TypeError {
                 msg: "Edge missing target".to_string(),
             })?;
@@ -903,7 +900,7 @@ pub fn arm_payload_pairs_from_marshaled_node(
         if ctx.resolve(*variant_name) != "Named" {
             continue;
         }
-        let Some(Value::Str(label)) = lf.get(&ctx.sym("name")) else {
+        let Some(Value::Str(label)) = fields_get(lf, ctx.sym("name")) else {
             continue;
         };
         let payload_type_name = payload_type_name_from_target_node(ctx, target)?;
@@ -921,13 +918,11 @@ fn payload_type_name_from_target_node(ctx: &InterpContext, target: &Value) -> In
             msg: "expected Node target record".to_string(),
         });
     };
-    let kind = fields
-        .get(&ctx.sym("kind"))
+    let kind = fields_get(fields, ctx.sym("kind"))
         .ok_or_else(|| InterpError::TypeError {
             msg: "target missing kind".to_string(),
         })?;
-    let children = fields
-        .get(&ctx.sym("children"))
+    let children = fields_get(fields, ctx.sym("children"))
         .ok_or_else(|| InterpError::TypeError {
             msg: "target missing children".to_string(),
         })?;
@@ -946,8 +941,7 @@ fn payload_type_name_from_target_node(ctx: &InterpContext, target: &Value) -> In
             msg: "expected TypeNode".to_string(),
         });
     }
-    let connective = kf
-        .get(&ctx.sym("connective"))
+    let connective = fields_get(kf, ctx.sym("connective"))
         .ok_or_else(|| InterpError::TypeError {
             msg: "TypeNode missing connective".to_string(),
         })?;
@@ -969,13 +963,12 @@ fn payload_type_name_from_target_node(ctx: &InterpContext, target: &Value) -> In
                 let Value::Record { fields: ef, .. } = edge else {
                     continue;
                 };
-                let field_name = ef
-                    .get(&ctx.sym("label"))
+                let field_name = fields_get(ef, ctx.sym("label"))
                     .and_then(|label| {
                         let Value::Variant { fields: lf, .. } = label else {
                             return None;
                         };
-                        lf.get(&ctx.sym("name")).and_then(|v| match v {
+                        fields_get(lf, ctx.sym("name")).and_then(|v| match v {
                             Value::Str(s) => Some(s.clone()),
                             _ => None,
                         })
@@ -984,7 +977,7 @@ fn payload_type_name_from_target_node(ctx: &InterpContext, target: &Value) -> In
                         msg: "named edge missing label".to_string(),
                     })?;
                 let field_target =
-                    ef.get(&ctx.sym("target"))
+                    fields_get(ef, ctx.sym("target"))
                         .ok_or_else(|| InterpError::TypeError {
                             msg: "edge missing target".to_string(),
                         })?;
@@ -998,7 +991,7 @@ fn payload_type_name_from_target_node(ctx: &InterpContext, target: &Value) -> In
             fields: cf,
             ..
         } if ctx.resolve(*conn) == "Atom" => {
-            let Some(Value::Str(name)) = cf.get(&ctx.sym("identity")) else {
+            let Some(Value::Str(name)) = fields_get(cf, ctx.sym("identity")) else {
                 return Err(InterpError::TypeError {
                     msg: "Atom missing identity".to_string(),
                 });
@@ -1020,8 +1013,7 @@ pub fn arm_labels_from_marshaled_node(
             msg: "expected Node record".to_string(),
         });
     };
-    let children = fields
-        .get(&ctx.sym("children"))
+    let children = fields_get(fields, ctx.sym("children"))
         .ok_or_else(|| InterpError::TypeError {
             msg: "Node missing children".to_string(),
         })?;
@@ -1037,8 +1029,7 @@ pub fn arm_labels_from_marshaled_node(
                 msg: "expected Edge record".to_string(),
             });
         };
-        let label = ef
-            .get(&ctx.sym("label"))
+        let label = fields_get(ef, ctx.sym("label"))
             .ok_or_else(|| InterpError::TypeError {
                 msg: "Edge missing label".to_string(),
             })?;
@@ -1053,7 +1044,7 @@ pub fn arm_labels_from_marshaled_node(
         if ctx.resolve(*variant_name) != "Named" {
             continue;
         }
-        let Some(Value::Str(name)) = lf.get(&ctx.sym("name")) else {
+        let Some(Value::Str(name)) = fields_get(lf, ctx.sym("name")) else {
             continue;
         };
         labels.push(name.clone());
@@ -1072,8 +1063,7 @@ pub fn eval_resolve_type_node_with_dropped_last_arm(
             msg: "resolve_type_node: expected Node record".to_string(),
         });
     };
-    let children = fields
-        .get(&ctx.sym("children"))
+    let children = fields_get(fields, ctx.sym("children"))
         .ok_or_else(|| InterpError::TypeError {
             msg: "resolve_type_node: Node missing children".to_string(),
         })?;
@@ -1093,11 +1083,10 @@ pub fn eval_resolve_type_node_with_dropped_last_arm(
     }
     Ok(Value::Record {
         type_name: ctx.sym("Node"),
-        fields: Rc::new(HashMap::from([
+        fields: Rc::new(sorted_fields(vec![
             (
                 ctx.sym("kind"),
-                fields
-                    .get(&ctx.sym("kind"))
+                fields_get(fields, ctx.sym("kind"))
                     .cloned()
                     .ok_or_else(|| InterpError::TypeError {
                         msg: "resolve_type_node: Node missing kind".to_string(),
@@ -1109,8 +1098,7 @@ pub fn eval_resolve_type_node_with_dropped_last_arm(
             ),
             (
                 ctx.sym("occurrence_id"),
-                fields
-                    .get(&ctx.sym("occurrence_id"))
+                fields_get(fields, ctx.sym("occurrence_id"))
                     .cloned()
                     .ok_or_else(|| InterpError::TypeError {
                         msg: "resolve_type_node: Node missing occurrence_id".to_string(),
@@ -1132,7 +1120,7 @@ fn nullary_coproduct_variant_value(
     Value::Variant {
         type_name: ctx.sym(type_name),
         variant_name: ctx.sym(variant_label),
-        fields: Rc::new(HashMap::new()),
+        fields: Rc::new(vec![]),
     }
 }
 
@@ -1186,7 +1174,7 @@ fn outcome_accepted_list(ctx: &InterpContext, values: Vec<Value>) -> Value {
     Value::Variant {
         type_name: ctx.sym("Outcome"),
         variant_name: ctx.sym("Accepted"),
-        fields: Rc::new(HashMap::from([
+        fields: Rc::new(sorted_fields(vec![
             (ctx.sym("value"), crate::v1_interpreter::list_value(values)),
             (
                 ctx.sym("diagnostics"),
@@ -1200,16 +1188,16 @@ fn outcome_rejected_value(ctx: &InterpContext, reason: &str) -> Value {
     Value::Variant {
         type_name: ctx.sym("Outcome"),
         variant_name: ctx.sym("Rejected"),
-        fields: Rc::new(HashMap::from([(
+        fields: Rc::new(vec![(
             ctx.sym("diagnostics"),
             crate::v1_interpreter::list_value(vec![Value::Record {
                 type_name: ctx.sym("Diagnostic"),
-                fields: Rc::new(HashMap::from([(
+                fields: Rc::new(vec![(
                     ctx.sym("reason"),
                     Value::Str(reason.to_string()),
-                )])),
+                )]),
             }]),
-        )])),
+        )]),
     }
 }
 
