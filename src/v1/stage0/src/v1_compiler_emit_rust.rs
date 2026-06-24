@@ -341,6 +341,35 @@ pub fn emit_rust_host_to_dag_string_via_seam(
     }
 }
 
+pub fn emit_rust_map_literal_key(
+    field_name: String,
+    key_is_string: bool,
+    corpus_repr: RustCorpusRepr,
+) -> String {
+    {
+        let key_literal = v1_rt::concat(
+            v1_rt::concat("\"".to_string(), field_name),
+            "\"".to_string(),
+        );
+        let host_expr = if key_is_string {
+            v1_rt::concat(key_literal, ".to_string()".to_string())
+        } else {
+            key_literal
+        };
+        emit_rust_host_to_dag_string_via_seam(host_expr, corpus_repr)
+    }
+}
+
+pub fn map_literal_key_is_string(
+    map_type_node: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    match map_type_node.children.clone().first().cloned() {
+        Some(key_child) => is_rust_string_like(child_type_node(key_child.clone()), source_indices),
+        None => false,
+    }
+}
+
 pub fn emit_rust_dag_string_to_host_via_seam(
     dag_expr: String,
     corpus_repr: RustCorpusRepr,
@@ -22229,6 +22258,10 @@ pub fn emit_data_def_body(
                     if is_map {
                         match (*value.expr_data.clone()).clone() {
                             ExprData::ExprRecordLit { parent_enum: _, .. } => {
+                                let key_is_string = map_literal_key_is_string(
+                                    type_node.clone(),
+                                    scope.type_env.clone().source_indices.clone(),
+                                );
                                 let inserts = Rc::new({
                                     let mut __result = Vec::new();
                                     for f in value.children.clone().iter().cloned() {
@@ -22247,21 +22280,16 @@ pub fn emit_data_def_body(
                                                     v1_rt::concat(
                                                         v1_rt::concat(
                                                             "            __m.insert(".to_string(),
-                                                            emit_rust_host_to_dag_string_via_seam(
-                                                                v1_rt::concat(
-                                                                    v1_rt::concat(
-                                                                        "\"".to_string(),
-                                                                        field_init_node_name_at(
-                                                                            f.clone(),
-                                                                            scope
-                                                                                .type_env
-                                                                                .clone()
-                                                                                .source_indices
-                                                                                .clone(),
-                                                                        ),
-                                                                    ),
-                                                                    "\"".to_string(),
+                                                            emit_rust_map_literal_key(
+                                                                field_init_node_name_at(
+                                                                    f.clone(),
+                                                                    scope
+                                                                        .type_env
+                                                                        .clone()
+                                                                        .source_indices
+                                                                        .clone(),
                                                                 ),
+                                                                key_is_string.clone(),
                                                                 emit_info.corpus_repr.clone(),
                                                             ),
                                                         ),

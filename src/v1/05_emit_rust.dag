@@ -231,8 +231,16 @@ fn emit_rust_map_literal_key(field_name: String, key_is_string: Bool, corpus_rep
 
 fn map_literal_key_is_string(map_type_node: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   match map_type_node.children |> first {
-    Present { value: key_child } => is_rust_string_like(n: child_type_node(ch: key_child), source_indices: source_indices)
-    Absent => false
+    Present { value: key_child } => is_rust_string_like(n: key_child, source_indices: source_indices)
+    Absent =>
+      match find_property(props: map_type_node.properties, prop_name: "__applied_type_args", source_indices: source_indices) {
+        Present { value: applied } =>
+          match applied.children |> first {
+            Present { value: akey } => is_rust_string_like(n: akey, source_indices: source_indices)
+            Absent => false
+          }
+        Absent => false
+      }
   }
 }
 
