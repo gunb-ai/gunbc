@@ -25,12 +25,16 @@ const FIXTURE: &str = concat!(
 );
 
 fn emit_host() -> String {
-    compile_dag_named("src/v1/nested_list_alias_fixture.dag", FIXTURE, RenderTarget::Rust)
-        .files
-        .iter()
-        .map(|f| f.content.clone())
-        .collect::<Vec<_>>()
-        .join("\n")
+    compile_dag_named(
+        "src/v1/nested_list_alias_fixture.dag",
+        FIXTURE,
+        RenderTarget::Rust,
+    )
+    .files
+    .iter()
+    .map(|f| f.content.clone())
+    .collect::<Vec<_>>()
+    .join("\n")
 }
 
 /// The single emitted line `pub type NAME = ...;`.
