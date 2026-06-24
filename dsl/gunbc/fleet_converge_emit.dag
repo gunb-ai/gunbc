@@ -29,7 +29,6 @@ import gunbc.host_converge {
 
 data fleet_converge_protocol: LayoutProtocol = LayoutProtocol { indent_unit: "" }
 
-data gunbc_fleet_converge_emit_doc: String = "Regime-2 (pure-projection, emit-only, NEVER parsed back) Doc-IR projection of the gunbc.host_converge policy to .github/fleet-converge.sh, rendered through the SAME std.layout Doc/render path as the runner-deploy manifest (NOT a bash-AST sidecar -- the script is a projected apply-script with no round-trip law, so regime 2 is correct, DESIGN section 4/5 honesty boundary). The emitted .sh applies each ConvergeKnob to its host via the grounded systemd mechanisms (gunbc_host_converge_grounded_mechanism_marker), reads the live effective value back, and prints converge-receipt lines in the frozen grammar (gunbc_host_converge_receipt_grammar_marker) for fierce-carp-462's ctrl reconciler to parse. The per-knob verdict bash realizes converge_verdict (the single authority; empty read => absent = the ReadAbsent gate, mismatch => drifted, match => converged). Fail-closed: an unsound policy projects a non-zero-exit script (no fabricated converge). SAFETY: per_session_max_bytes is read-back ONLY (the converge never set-property's it nor caps existing scopes -- the spawn path owns the write)."
 
 fn sh_arg(s: String) -> String {
   concat(concat("\"", s), "\"")

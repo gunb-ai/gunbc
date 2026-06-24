@@ -30,7 +30,6 @@ data agent_session_container: FleetContainerType = AgentSessionContainer {
   baseline: ContainerBaselineMeasured { idle: idle_memory_envelope(min_bytes: byte_size(471859200)) }
 }
 
-data fleet_container_baseline_provenance: String = "measured live idle cgroup memory.current, parent read 2026-06-23: GhaRunner ~0.2-0.3GiB (committed 300 MiB = 314572800 B), AgentSession ~0.35-0.5GiB (committed 450 MiB = 471859200 B; observed bold-otter 360 / calm-otter 421 / jolly-ant 437 / crisp-carp 488 MiB). These are IDLE baselines separated from build-burst (a session mid-build draws the shared build pool, not its own baseline). vs the 31.27GiB docker --memory cap (33578549248 B) = ~70x over-reservation per container. Committed as ContainerBaselineMeasured (parent-supplied live reads), NOT a fail-closed Unmeasured."
 
 type BaselineResolution
   = BaselineResolved { bytes: ByteSize }
