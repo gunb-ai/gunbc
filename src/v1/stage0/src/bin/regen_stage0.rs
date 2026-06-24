@@ -984,19 +984,25 @@ fn patch_cargo_toml_for_generated_crate(dir: &Path) -> Result<(), String> {
     if !cargo_toml.exists() {
         return Ok(());
     }
-    let contents = fs::read_to_string(&cargo_toml)
+    let mut contents = fs::read_to_string(&cargo_toml)
         .map_err(|e| format!("read {}: {e}", cargo_toml.display()))?;
-    if contents.contains("ureq") {
-        return Ok(());
+    // Each dep is added independently and idempotently (presence-gated per dep) so a
+    // future emitted Cargo.toml that already carries one but not the other still gets
+    // the missing one. `ureq` and `im-rc` (the latter backs the hand-maintained
+    // periphery -- v1_interpreter persistent value carriers) are both omitted by the
+    // emitter; this mirrors the committed stage0 Cargo.toml deps.
+    for (crate_name, dep_line) in [
+        ("ureq", "ureq = { version = \"2\", features = [\"json\"] }"),
+        ("im-rc", "im-rc = \"15.1\""),
+    ] {
+        if !contents.contains(crate_name) {
+            contents = contents.replace(
+                "\n[dependencies]\n",
+                &format!("\n[dependencies]\n{dep_line}\n"),
+            );
+        }
     }
-    // `im-rc` backs the hand-maintained periphery (v1_interpreter persistent value
-    // carriers); the emitted Cargo.toml omits it, so the assembled crate would not
-    // resolve `im_rc::*` without this. Mirrors the committed stage0 Cargo.toml dep.
-    let patched = contents.replace(
-        "\n[dependencies]\n",
-        "\n[dependencies]\nureq = { version = \"2\", features = [\"json\"] }\nim-rc = \"15.1\"\n",
-    );
-    fs::write(&cargo_toml, patched).map_err(|e| format!("write {}: {e}", cargo_toml.display()))
+    fs::write(&cargo_toml, contents).map_err(|e| format!("write {}: {e}", cargo_toml.display()))
 }
 
 fn rustfmt_generated_crate(dir: &Path) -> Result<(), String> {
