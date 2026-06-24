@@ -226,8 +226,7 @@ fn kernel_main(p: SessionProgram) -> List<String> {
       "  await browser.close();",
       "}",
       "process.exit(exitCode);",
-    ], []))))))))
-  )
+    ], [])))))))
 }
 
 fn serialize_session_program(p: SessionProgram) -> String {

@@ -9,6 +9,7 @@ import extdeps.browser {
   OpArg, LitArg, RuntimeArg, JoinArg, op_arg_cli,
   op_page_argv,
 }
+import extdeps.browser.session_program { op_page_js }
 
 test fn op_page_argv_reconstructs_cli_handler() -> Bool {
   op_page_argv(op: Fill { selector: "#username", text: LitArg { v: "root" } }) == ["playwright-runner", "fill", "#username", "root"]
@@ -21,6 +22,14 @@ test fn op_page_argv_reconstructs_cli_handler() -> Bool {
 test fn op_arg_renders_runtime_as_cli_placeholder() -> Bool {
   op_arg_cli(a: RuntimeArg { name: "bmcUser" }) == concat("{", concat("bmcUser", "}"))
     && op_arg_cli(a: JoinArg { left: RuntimeArg { name: "bmcHost" }, right: LitArg { v: "/#/login" } }) == concat(concat("{", concat("bmcHost", "}")), "/#/login")
+}
+
+test fn both_handlers_realize_one_vocab() -> Bool {
+  op_page_js(op: Fill { selector: "#username", text: RuntimeArg { name: "a.bmcUser" } }, page: "page") == "await page.fill('#username', a.bmcUser)"
+    && op_page_js(op: Click { selector: "button[type=\"submit\"]" }, page: "page") == "await page.click('button[type=\"submit\"]')"
+    && op_page_js(op: Goto { url: JoinArg { left: RuntimeArg { name: "a.bmcHost" }, right: LitArg { v: "/#/login" } }, wait_until: NetworkIdle }, page: "page") == "await page.goto(a.bmcHost + '/#/login', { waitUntil: 'networkidle', timeout: 30000 })"
+    && op_page_js(op: UploadFile { selector: "#virtual_media_device", path: RuntimeArg { name: "isoPath" } }, page: "page") == "await page.setInputFiles('#virtual_media_device', isoPath)"
+    && op_page_js(op: WaitForLocatorText { selector: "button.btn-primary", has_text: "Stop", state: Visible, timeout_ms: 30000 }, page: "page") == "await page.locator('button.btn-primary', { hasText: 'Stop' }).first().waitFor({ state: 'visible', timeout: 30000 })"
 }
 
 test fn op_page_argv_covers_new_ops() -> Bool {
