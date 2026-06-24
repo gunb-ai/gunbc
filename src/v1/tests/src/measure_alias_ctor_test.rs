@@ -47,9 +47,21 @@ fn fn_body(emitted: &str, name: &str) -> String {
     rest[..end].to_string()
 }
 
+// The fn body with its signature line dropped. The signature `fn mk(...) -> Giga {` itself
+// contains `Giga {`, which would false-match a struct-literal substring search; the
+// alias-vs-canonical distinction lives strictly in the body.
+fn fn_body_no_sig(emitted: &str, name: &str) -> String {
+    let body = fn_body(emitted, name);
+    match body.find('\n') {
+        Some(i) => body[i + 1..].to_string(),
+        None => String::new(),
+    }
+}
+
 #[test]
 fn alias_ctor_resolves_to_canonical_struct_with_phantom_and_rc() {
-    let body = fn_body(&emit_host(), "mk");
+    let emitted = emit_host();
+    let body = fn_body(&emitted, "mk");
     assert!(
         body.contains("Meas {")
             && body.contains("_phantom: std::marker::PhantomData")
@@ -57,10 +69,12 @@ fn alias_ctor_resolves_to_canonical_struct_with_phantom_and_rc() {
         "an alias-to-Rc<struct> ctor must emit `Rc::new(Meas {{ count: c, _phantom: PhantomData }})`, got:\n{body}"
     );
     // Negative: the alias name must NOT be used as the struct-literal head (it resolves to
-    // `Rc<Meas<...>>`, which has no fields).
+    // `Rc<Meas<...>>`, which has no fields). Check the signature-stripped body so `-> Giga {`
+    // in the fn signature does not false-match.
+    let body_no_sig = fn_body_no_sig(&emitted, "mk");
     assert!(
-        !body.contains("Giga {"),
-        "the alias name must not be used as a struct-literal head, got:\n{body}"
+        !body_no_sig.contains("Giga {"),
+        "the alias name must not be used as a struct-literal head, got:\n{body_no_sig}"
     );
 }
 

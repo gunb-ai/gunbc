@@ -17735,48 +17735,45 @@ pub fn emit_typed_record_lit(
                 let si = scope.type_env.clone().source_indices.clone();
                 let tn_is_known_struct =
                     v1_rt::map_contains_key(&emit_info.type_summaries.clone(), tn.clone());
-                if std::env::var("DBG_E0560").is_ok() {
-                    eprintln!(
-                        "DBG_E0560 ENTER tn={} tn_is_known_struct={} lookup_some={}",
-                        tn,
-                        tn_is_known_struct,
-                        lookup_type_by_name(scope.type_env.clone(), tn.clone()).is_some(),
-                    );
-                }
                 let ctor_name = if tn_is_known_struct {
                     tn.clone()
                 } else {
-                    match lookup_type_by_name(scope.type_env.clone(), tn.clone()) {
-                        Some(decl) => {
-                            let resolved_struct =
-                                crate::v1_compiler_infer::peel_alias_once_for_field_access(
-                                    decl.clone(),
-                                    scope.type_env.clone(),
-                                    scope.module_name.clone(),
-                                );
-                            let canonical = authored_name_at(si.clone(), resolved_struct.clone());
-                            if std::env::var("DBG_E0560").is_ok() {
-                                eprintln!(
-                                    "DBG_E0560 tn={} resolved.connective={:?} canonical={:?} canonical_in_summaries={}",
-                                    tn,
-                                    resolved_struct.connective,
-                                    canonical,
-                                    v1_rt::map_contains_key(&emit_info.type_summaries.clone(), canonical.clone()),
-                                );
+                    // Resolve the alias use-site to its canonical struct via the existing inner
+                    // peel (peel_alias_once_for_field_access reuses resolve_node; it returns the
+                    // Conj struct before expand_alias_chain's field-access fail-closed). The
+                    // resolved node wears the alias's identity ("Giga"), so recover the canonical
+                    // struct NAME by its field set via the existing find_unique_struct_name_by_fields
+                    // (fail-closed to `tn` on ambiguity -> loud E0560, never a silent wrong struct).
+                    let resolved_struct =
+                        crate::v1_compiler_infer::peel_alias_once_for_field_access(
+                            resolved_type.clone(),
+                            scope.type_env.clone(),
+                            scope.module_name.clone(),
+                        );
+                    if (resolved_struct.connective.clone() == Connective::Conj) {
+                        let resolved_field_names = Rc::new({
+                            let mut __r = Vec::new();
+                            for c in resolved_struct.children.clone().iter().cloned() {
+                                __r.push(authored_name_at(si.clone(), c.clone()));
                             }
-                            if ((resolved_struct.connective.clone() == Connective::Conj)
-                                && (canonical.clone() != tn.clone())
-                                && v1_rt::map_contains_key(
-                                    &emit_info.type_summaries.clone(),
-                                    canonical.clone(),
-                                ))
-                            {
-                                canonical.clone()
-                            } else {
-                                tn.clone()
+                            __r
+                        });
+                        let recovered = find_unique_struct_name_by_fields(
+                            resolved_field_names.clone(),
+                            emit_info.type_summaries.clone(),
+                        );
+                        match recovered {
+                            Some(canonical) => {
+                                if (canonical.clone() != tn.clone()) {
+                                    canonical.clone()
+                                } else {
+                                    tn.clone()
+                                }
                             }
+                            None => tn.clone(),
                         }
-                        None => tn.clone(),
+                    } else {
+                        tn.clone()
                     }
                 };
                 let ctor_alias_resolved = (ctor_name.clone() != tn.clone());
