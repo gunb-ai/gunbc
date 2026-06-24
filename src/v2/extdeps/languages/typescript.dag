@@ -549,6 +549,24 @@ fn ts_value_expression_projection() -> TargetValueExpressionProjection {
   )
 }
 
+fn ts_module_projection() -> TargetModuleProjection {
+  TargetModuleProjection {
+    import_form: EsModuleImport {
+      import_token: ^ts_token_kw_import,
+      names_open: ^ts_token_import_lbrace,
+      names_separator: ^ts_token_comma,
+      names_close: ^ts_token_import_rbrace,
+      from_token: ^ts_token_kw_from,
+      path_open: ^ts_token_module_quote,
+      path_segment_separator: ^ts_token_module_path_sep,
+      path_close: ^ts_token_module_quote,
+      terminator: ^ts_token_semicolon,
+      name_ident_token: ^ts_token_ident,
+      path_segment_token: ^ts_token_module_path_segment
+    }
+  }
+}
+
 fn ts_value_expression_projection_with_record_literal_naming(
   record_literal_names_type: RecordLiteralTypeNaming
 ) -> TargetValueExpressionProjection {

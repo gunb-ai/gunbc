@@ -3,14 +3,11 @@ module v2.test.manual.typescript_import_emit_by_execution
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome, outcome_accepted }
 import v2.std.collection {
-  Absent,
   Map,
-  Present,
   empty_map,
-  map_get,
   map_insert
 }
-import v2.std.algebra { Cons, Empty, fold_list, fold_list_node, list_append }
+import v2.std.algebra { Cons, Empty, fold_list_node, list_append }
 import v2.std.node {
   Atom,
   Conj,
@@ -29,22 +26,20 @@ import v2.std.qualified_name {
   QualifiedName,
   qualified_name_from_node
 }
-import v2.std.compilers.lexing {
-  LexRuleSet,
-  LiteralPattern,
-  ModeledLexRules,
-  TokenRule
-}
 import v2.std.compilers.target_model {
-  BoundToken,
-  ConcreteSyntaxToken,
-  FixedToken,
+  TargetImport,
   TargetModel,
+  target_import_to_concrete_tokens,
   target_model_emit_transforms_empty,
   target_node_atom_identity
 }
 import extdeps.communication.medium { Medium }
 import v2.compiler.translate { serialize_concrete_syntax_tokens_to_source }
+import v2.extdeps.languages.typescript {
+  ts_module_projection,
+  ts_mvp1_target_model_node,
+  ts_wave2a_lex
+}
 import v2.std.logic { Bool }
 import v2.std.text { String }
 
@@ -53,14 +48,6 @@ data ts_import_canonical_source_text: String = "import { Cons, Empty } from \"v2
 fn ts_import_symbol_atom(sym: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: sym } },
-    children: [],
-    occurrence_id: SyntheticOccurrence
-  }
-}
-
-fn ts_import_empty_conj() -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
@@ -125,7 +112,7 @@ fn ts_import_missing_qn_carrier_node(names: List<Symbol>) -> Node {
   }
 }
 
-fn ts_import_spellings() -> Map<Symbol, String> {
+fn ts_import_binding_spellings() -> Map<Symbol, String> {
   map_insert(
     map_insert(
       map_insert(
@@ -144,82 +131,39 @@ fn ts_import_spellings() -> Map<Symbol, String> {
   )
 }
 
-fn ts_import_spell_sym(spellings: Map<Symbol, String>, sym: Symbol) -> String {
-  match map_get(spellings, sym) {
-    Accepted { value: Present { value: s }, diagnostics: _ } => s
-    Accepted { value: Absent, diagnostics: _ } => "?MISSING_SPELLING?"
-    Rejected { diagnostics: _ } => "?SPELLING_ERROR?"
-  }
-}
-
-fn ts_import_qn_path(qn: QualifiedName, spellings: Map<Symbol, String>) -> String {
-  match qn {
-    QnEmpty => ""
-    QnCons { head: h, tail: t } =>
-      match t {
-        QnEmpty => ts_import_spell_sym(spellings: spellings, sym: h)
-        QnCons { head: _, tail: _ } =>
-          concat(
-            ts_import_spell_sym(spellings: spellings, sym: h),
-            concat("/", ts_import_qn_path(qn: t, spellings: spellings))
-          )
-      }
-  }
-}
-
-fn ts_import_quoted_path(qn: QualifiedName, spellings: Map<Symbol, String>) -> String {
-  concat("\"", concat(ts_import_qn_path(qn: qn, spellings: spellings), "\""))
-}
-
-fn ts_import_lex_rules() -> LexRuleSet {
-  LexRuleSet {
-    rules: [
-      TokenRule { token_class: ^ts_import_kw, pattern: LiteralPattern { text: "import " } },
-      TokenRule { token_class: ^ts_import_lbrace, pattern: LiteralPattern { text: "{ " } },
-      TokenRule { token_class: ^ts_import_rbrace, pattern: LiteralPattern { text: " } " } },
-      TokenRule { token_class: ^ts_import_kw_from, pattern: LiteralPattern { text: "from " } },
-      TokenRule { token_class: ^ts_import_comma, pattern: LiteralPattern { text: ", " } },
-      TokenRule { token_class: ^ts_import_semicolon, pattern: LiteralPattern { text: ";" } }
-    ]
-  }
-}
-
-fn ts_import_target_model(spellings: Map<Symbol, String>) -> TargetModel {
+fn ts_import_witness_target_model() -> TargetModel {
   TargetModel {
-    bundle: ts_import_empty_conj(),
-    lex: ModeledLexRules { root: ts_import_lex_rules() },
-    binding_spellings: spellings,
+    bundle: ts_mvp1_target_model_node(),
+    lex: ts_wave2a_lex(),
+    binding_spellings: ts_import_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
     authority_source_text: "",
     runtime_row: target_emit_host_runtime_row_unconfigured
   }
 }
 
-fn ts_import_names_tokens(name_nodes: List<Node>) -> Outcome<List<ConcreteSyntaxToken>> {
-  fold_list(
-    xs: name_nodes,
-    empty: outcome_accepted(value: Empty),
-    cons: fn(acc, nd) {
+fn ts_import_qualified_name_symbols(qn: QualifiedName) -> List<Symbol> {
+  match qn {
+    QnEmpty => Empty
+    QnCons { head: h, tail: t } =>
+      Cons { head: h, tail: ts_import_qualified_name_symbols(qn: t) }
+  }
+}
+
+fn ts_import_name_symbols_from_block(block: Node) -> Outcome<List<Symbol>> {
+  fold(
+    node_positional_child_targets(node: block),
+    init: outcome_accepted(value: Empty),
+    f: fn(acc, nd) {
       bind_outcome(
         o: acc,
-        f: fn(toks) {
+        f: fn(syms) {
           bind_outcome(
             o: target_node_atom_identity(node: nd),
             f: fn(sym) {
-              match toks {
-                Empty =>
-                  outcome_accepted(value: [BoundToken { token_class: ^ts_token_ident, binding: sym }])
-                Cons { head: _, tail: _ } =>
-                  outcome_accepted(
-                    value: list_append(
-                      left: toks,
-                      right: [
-                        FixedToken { token_class: ^ts_import_comma },
-                        BoundToken { token_class: ^ts_token_ident, binding: sym }
-                      ]
-                    )
-                  )
-              }
+              outcome_accepted(
+                value: list_append(left: syms, right: Cons { head: sym, tail: Empty })
+              )
             }
           )
         }
@@ -228,10 +172,7 @@ fn ts_import_names_tokens(name_nodes: List<Node>) -> Outcome<List<ConcreteSyntax
   )
 }
 
-fn ts_emit_import_from_carrier(
-  carrier: Node,
-  spellings: Map<Symbol, String>
-) -> Outcome<Medium<String>> {
+fn ts_import_value_from_carrier(carrier: Node) -> Outcome<TargetImport> {
   bind_outcome(
     o: find_named_child(root: carrier, name: ^dag_surface_import_decl_qualified_name),
     f: fn(qn_node) {
@@ -242,31 +183,13 @@ fn ts_emit_import_from_carrier(
             o: find_named_child(root: carrier, name: ^dag_surface_import_decl_block),
             f: fn(block) {
               bind_outcome(
-                o: ts_import_names_tokens(name_nodes: node_positional_child_targets(node: block)),
-                f: fn(name_toks) {
-                  serialize_concrete_syntax_tokens_to_source(
-                    target: ts_import_target_model(
-                      spellings: map_insert(
-                        spellings,
-                        ^ts_import_path_binding,
-                        ts_import_quoted_path(qn: qn, spellings: spellings)
-                      )
-                    ),
-                    tokens: list_append(
-                      left: [
-                        FixedToken { token_class: ^ts_import_kw },
-                        FixedToken { token_class: ^ts_import_lbrace }
-                      ],
-                      right: list_append(
-                        left: name_toks,
-                        right: [
-                          FixedToken { token_class: ^ts_import_rbrace },
-                          FixedToken { token_class: ^ts_import_kw_from },
-                          BoundToken { token_class: ^ts_import_path, binding: ^ts_import_path_binding },
-                          FixedToken { token_class: ^ts_import_semicolon }
-                        ]
-                      )
-                    )
+                o: ts_import_name_symbols_from_block(block: block),
+                f: fn(names) {
+                  outcome_accepted(
+                    value: TargetImport {
+                      path_segments: ts_import_qualified_name_symbols(qn: qn),
+                      names: names
+                    }
                   )
                 }
               )
@@ -278,8 +201,28 @@ fn ts_emit_import_from_carrier(
   )
 }
 
+fn ts_emit_import_from_carrier(carrier: Node) -> Outcome<Medium<String>> {
+  bind_outcome(
+    o: ts_import_value_from_carrier(carrier: carrier),
+    f: fn(import_value) {
+      bind_outcome(
+        o: target_import_to_concrete_tokens(
+          import_value: import_value,
+          projection: ts_module_projection()
+        ),
+        f: fn(tokens) {
+          serialize_concrete_syntax_tokens_to_source(
+            target: ts_import_witness_target_model(),
+            tokens: tokens
+          )
+        }
+      )
+    }
+  )
+}
+
 fn ts_import_emit_text(carrier: Node) -> String {
-  match ts_emit_import_from_carrier(carrier: carrier, spellings: ts_import_spellings()) {
+  match ts_emit_import_from_carrier(carrier: carrier) {
     Accepted { value: source, diagnostics: _ } => source.carried
     Rejected { diagnostics: _ } => "TS_IMPORT_EMIT_REJECTED"
   }
@@ -310,6 +253,10 @@ fn ts_import_missing_qn_carrier() -> Node {
   ts_import_missing_qn_carrier_node(names: [^name_cons, ^name_empty])
 }
 
+fn ts_import_empty_names_carrier() -> Node {
+  ts_import_carrier_node(segments: [^seg_v2, ^seg_std, ^seg_algebra], names: Empty)
+}
+
 test fn ts_import_emit_by_execution_exact_holds() -> Bool {
   ts_import_emit_text(carrier: ts_import_canonical_carrier()) == ts_import_canonical_source_text
 }
@@ -327,10 +274,14 @@ test fn ts_import_emit_other_path_discriminates_holds() -> Bool {
 }
 
 test fn ts_import_emit_missing_qn_fails_closed_holds() -> Bool {
-  match ts_emit_import_from_carrier(
-    carrier: ts_import_missing_qn_carrier(),
-    spellings: ts_import_spellings()
-  ) {
+  match ts_emit_import_from_carrier(carrier: ts_import_missing_qn_carrier()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+test fn ts_import_emit_empty_names_fails_closed_holds() -> Bool {
+  match ts_emit_import_from_carrier(carrier: ts_import_empty_names_carrier()) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: _ } => true
   }
