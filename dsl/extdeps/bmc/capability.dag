@@ -1,0 +1,85 @@
+module extdeps.bmc.capability
+
+import std.types { NonEmptyStr, List, Bool }
+import std.bmc { BmcFirmwareFamily, OpenBmc }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "www.dmtf.org/standards/redfish",
+  }
+}
+
+type BmcCapability =
+    CapabilityPowerControl
+  | CapabilityBootSourceOverride
+  | CapabilityAccountManagement
+  | CapabilityFirmwareUpdate
+  | CapabilityVirtualMedia
+  | CapabilityBiosAttributeConfig
+
+fn bmc_capability_eq(a: BmcCapability, b: BmcCapability) -> Bool {
+  match a {
+    CapabilityPowerControl => match b { CapabilityPowerControl => true  _ => false }
+    CapabilityBootSourceOverride => match b { CapabilityBootSourceOverride => true  _ => false }
+    CapabilityAccountManagement => match b { CapabilityAccountManagement => true  _ => false }
+    CapabilityFirmwareUpdate => match b { CapabilityFirmwareUpdate => true  _ => false }
+    CapabilityVirtualMedia => match b { CapabilityVirtualMedia => true  _ => false }
+    CapabilityBiosAttributeConfig => match b { CapabilityBiosAttributeConfig => true  _ => false }
+  }
+}
+
+type BmcFirmwareVersion {
+  family: BmcFirmwareFamily
+  version: NonEmptyStr
+}
+
+type BmcFirmwareCapabilityRow {
+  firmware: BmcFirmwareVersion
+  release_date: NonEmptyStr
+  release_summary: NonEmptyStr
+  provenance: NonEmptyStr
+  capabilities: List<BmcCapability>
+}
+
+data openbmc_01_13_00_capabilities: BmcFirmwareCapabilityRow = BmcFirmwareCapabilityRow {
+  firmware: BmcFirmwareVersion { family: OpenBmc, version: "01.13.00" },
+  release_date: "2024-01-15",
+  release_summary: "First released",
+  provenance: "CITED ASRockRack ALTRAD8UD-1L2T download catalog (first BMC release). No VirtualMedia/BIOS-attribute Redfish support introduced",
+  capabilities: [CapabilityPowerControl, CapabilityBootSourceOverride, CapabilityAccountManagement, CapabilityFirmwareUpdate],
+}
+
+data openbmc_2_07_00_capabilities: BmcFirmwareCapabilityRow = BmcFirmwareCapabilityRow {
+  firmware: BmcFirmwareVersion { family: OpenBmc, version: "02.07.00" },
+  release_date: "2024-05-15",
+  release_summary: "Fixed date-time setting error; updated sensor readings; added BMC watchdog; added SSID and DVID",
+  provenance: "LIVE Redfish probe of ASRockRack ALTRAD8UD-1L2T BMC 192.168.1.192 on 2026-06-24 (installed build; Redfish reports it as 2.07.00): ComputerSystem.Reset + BootSourceOverride(None/Pxe/Hdd/Cd/Diags/BiosSetup) + AccountService present; UpdateService ServiceEnabled with HttpPushUri + MultipartHttpPushUri; Bios Attributes count 0 and Bios/Settings 404 (no BIOS attribute config); Managers/bmc/VirtualMedia and Systems/system/VirtualMedia both 404 (no VirtualMedia)",
+  capabilities: [CapabilityPowerControl, CapabilityBootSourceOverride, CapabilityAccountManagement, CapabilityFirmwareUpdate],
+}
+
+data openbmc_03_22_00_capabilities: BmcFirmwareCapabilityRow = BmcFirmwareCapabilityRow {
+  firmware: BmcFirmwareVersion { family: OpenBmc, version: "03.22.00" },
+  release_date: "2026-04-14",
+  release_summary: "Enforces a password change upon first WebUI login; improved BMC web information; enhanced BMC system compatibility",
+  provenance: "CITED ASRockRack ALTRAD8UD-1L2T download catalog (latest BMC build, not live-probed; srv3 runs 02.07.00). Release notes add no Redfish feature parity -- VirtualMedia and BIOS attribute config remain unwired in the Redfish schema. Records that NO ASRockRack firmware in this line (01.13.00 -> 02.07.00 -> 03.22.00) flips the VirtualMedia capability over Redfish",
+  capabilities: [CapabilityPowerControl, CapabilityBootSourceOverride, CapabilityAccountManagement, CapabilityFirmwareUpdate],
+}
+
+data bmc_firmware_capability_catalog: List<BmcFirmwareCapabilityRow> = [openbmc_01_13_00_capabilities, openbmc_2_07_00_capabilities, openbmc_03_22_00_capabilities]
+
+fn firmware_exposes(row: BmcFirmwareCapabilityRow, cap: BmcCapability) -> Bool {
+  fold(row.capabilities, init: false, f: (acc, c) => acc || bmc_capability_eq(a: c, b: cap))
+}
+
+fn bmc_firmware_family_eq(a: BmcFirmwareFamily, b: BmcFirmwareFamily) -> Bool {
+  match a {
+    OpenBmc => match b { OpenBmc => true }
+  }
+}
+
+fn catalog_has_firmware_with(catalog: List<BmcFirmwareCapabilityRow>, family: BmcFirmwareFamily, cap: BmcCapability) -> Bool {
+  fold(catalog, init: false, f: (acc, row) => acc || (bmc_firmware_family_eq(a: row.firmware.family, b: family) && firmware_exposes(row: row, cap: cap)))
+}

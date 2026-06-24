@@ -1,0 +1,39 @@
+module gunbc.os_install_mechanism
+
+import std.types { Bool }
+import std.bmc { OpenBmc }
+import extdeps.bmc.capability {
+  BmcFirmwareCapabilityRow,
+  CapabilityVirtualMedia,
+  CapabilityFirmwareUpdate,
+  firmware_exposes,
+  catalog_has_firmware_with,
+  openbmc_2_07_00_capabilities,
+  bmc_firmware_capability_catalog,
+}
+
+type OsInstallMechanism =
+    VirtualMediaInstall
+  | PxeHttpInstall
+  | FirmwareUpdateThenVirtualMedia
+
+fn solve_install_mechanism(row: BmcFirmwareCapabilityRow, virtual_media_capable_firmware_available: Bool) -> OsInstallMechanism {
+  if firmware_exposes(row: row, cap: CapabilityVirtualMedia) {
+    VirtualMediaInstall
+  } else {
+    if firmware_exposes(row: row, cap: CapabilityFirmwareUpdate) && virtual_media_capable_firmware_available {
+      FirmwareUpdateThenVirtualMedia
+    } else {
+      PxeHttpInstall
+    }
+  }
+}
+
+data srv3_install_mechanism: OsInstallMechanism = solve_install_mechanism(
+  row: openbmc_2_07_00_capabilities,
+  virtual_media_capable_firmware_available: catalog_has_firmware_with(
+    catalog: bmc_firmware_capability_catalog,
+    family: OpenBmc,
+    cap: CapabilityVirtualMedia,
+  ),
+)
