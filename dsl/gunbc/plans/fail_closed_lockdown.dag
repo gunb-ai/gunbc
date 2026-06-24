@@ -1,22 +1,8 @@
 module gunbc.plans.fail_closed_lockdown
 
 import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
-import std.markdown {
-  MarkdownBlock, MarkdownListItem, MarkdownTaskItem, CheckboxState, Checked, Unchecked,
-  MarkdownTableCell, MarkdownTableRow, MarkdownAlignment,
-  HeadingBlock, ParagraphBlock, UnorderedListBlock, OrderedListBlock, TaskListBlock, TableBlock,
-  TextInline, H2, AlignNone,
-}
-
-fn h2(text: String) -> MarkdownBlock { HeadingBlock { level: H2, inlines: [TextInline { text: text }] } }
-fn p(text: String) -> MarkdownBlock { ParagraphBlock { inlines: [TextInline { text: text }] } }
-fn li(text: String) -> MarkdownListItem { MarkdownListItem { blocks: [p(text: text)] } }
-fn ul(items: List<MarkdownListItem>) -> MarkdownBlock { UnorderedListBlock { items: items } }
-fn ol(items: List<MarkdownListItem>) -> MarkdownBlock { OrderedListBlock { items: items } }
-fn task(state: CheckboxState, text: String) -> MarkdownTaskItem { MarkdownTaskItem { state: state, blocks: [p(text: text)] } }
-fn tasks(items: List<MarkdownTaskItem>) -> MarkdownBlock { TaskListBlock { items: items } }
-fn cell(text: String) -> MarkdownTableCell { MarkdownTableCell { inlines: [TextInline { text: text }] } }
-fn row(cells: List<MarkdownTableCell>) -> MarkdownTableRow { MarkdownTableRow { cells: cells } }
+import std.markdown { MarkdownBlock, TableBlock, AlignNone, Unchecked }
+import gunbc.plans.md_helpers { h2, p, li, ul, ol, task, tasks, cell, row }
 
 fn fail_closed_lockdown_body() -> List<MarkdownBlock> {
   [
