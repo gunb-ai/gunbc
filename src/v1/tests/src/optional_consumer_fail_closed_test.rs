@@ -70,19 +70,35 @@ fn empty_optional_unwrap_panics_not_fabricates() {
 // (param required AND arg resolved-type optional), not blanket.
 const CONSUME_AND_MAYBE: &str = "module failclosed.fixture\n\nfn maybe(flag: Bool) -> Int? {\n  if flag { Present { value: 1 } } else { none }\n}\n\nfn consume(x: Int) -> Int {\n  x\n}\n";
 
+// The emitted `drive` fn body (from `fn drive` to the next top-level `pub fn`), so the
+// assertions see only the call site under test, not unrelated runtime modules (which
+// legitimately use `unwrap_or_default` for their own reasons).
+fn drive_fn(emitted: &str) -> String {
+    let start = emitted
+        .find("fn drive")
+        .unwrap_or_else(|| panic!("`drive` was not emitted:\n{emitted}"));
+    let rest = &emitted[start..];
+    let end = rest[8..]
+        .find("\npub fn ")
+        .map(|i| i + 8)
+        .unwrap_or(rest.len());
+    rest[..end].to_string()
+}
+
 #[test]
 fn required_param_optional_arg_emits_located_fail_closed_unwrap() {
     let source = format!(
         "{CONSUME_AND_MAYBE}\nfn drive(flag: Bool) -> Int {{\n  consume(x: maybe(flag: flag))\n}}\n"
     );
     let emitted = emit(&source);
+    let drive = drive_fn(&emitted);
     assert!(
-        emitted.contains(".expect(\"fail-closed:"),
-        "an optional arg (`maybe(..) -> Int?`) into a required param (`consume(x: Int)`) must emit a located fail-closed `.expect`, got:\n{emitted}"
+        drive.contains(".expect(\"fail-closed:"),
+        "an optional arg (`maybe(..) -> Int?`) into a required param (`consume(x: Int)`) must emit a located fail-closed `.expect`, got:\n{drive}"
     );
     assert!(
-        !emitted.contains("unwrap_or_default"),
-        "the fail-closed unwrap must NOT be unwrap_or_default (that fabricates):\n{emitted}"
+        !drive.contains("unwrap_or_default") && !drive.contains("unwrap_or_else"),
+        "the fail-closed unwrap must NOT fabricate (no unwrap_or_default/unwrap_or_else):\n{drive}"
     );
 }
 
@@ -90,16 +106,11 @@ fn required_param_optional_arg_emits_located_fail_closed_unwrap() {
 fn required_param_nonoptional_arg_stays_bare() {
     // Discriminating control: a non-optional arg into the same required param must NOT
     // get the unwrap — the construction is type-derived, not blanket.
-    let source = format!(
-        "{CONSUME_AND_MAYBE}\nfn drive(y: Int) -> Int {{\n  consume(x: y)\n}}\n"
-    );
+    let source = format!("{CONSUME_AND_MAYBE}\nfn drive(y: Int) -> Int {{\n  consume(x: y)\n}}\n");
     let emitted = emit(&source);
-    let drive_body = emitted
-        .split_once("fn drive")
-        .map(|(_, r)| r.to_string())
-        .unwrap_or_default();
+    let drive = drive_fn(&emitted);
     assert!(
-        !drive_body.contains(".expect(\"fail-closed:"),
-        "a non-optional arg must NOT receive a fail-closed unwrap, got:\n{drive_body}"
+        !drive.contains(".expect(\"fail-closed:"),
+        "a non-optional arg must NOT receive a fail-closed unwrap, got:\n{drive}"
     );
 }
