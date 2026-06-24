@@ -57,7 +57,7 @@ Three-state picture in these terms:
 Extending emission=ingestion⁻¹ past syntax to the intent layer:
 
 - **(A) diagnostic-realization rows** — `Diagnostic{Severity}` (`src/v2/std/diagnostic.dag`) → `{Bash: echo>&2, GitHubActions: ::error::, Rust: eprintln}` as **rows**, dissolving the hand-rolled `render_log_annotation` forward emitter. Filesystem predicates de-fuse the same way (`std/filesystem` → `{Bash: test/find, Rust: fs::metadata}`).
-- **(B) orchestration-as-intent** — a `Pipeline`/`Step`/`Run`/`Check` vocabulary so transports author *intent* and `emit(intent, Bash)` renders shell. Today shell is **both** the surface *and* the only target for orchestration — this is the deeper gap and the reason the anemia is bash-only. → **design proposal (sign-ready):** [orchestration-as-intent-design.md](orchestration-as-intent-design.md) — grounds the vocab into existing carriers (`Check`=`Witness`+gap-A, control flow=substrate `Behavior`+`DescentEvidence`, `Run`=`EffectShape`+`ProcessExit`), shows `emit(intent, Bash)` over **grammar rows** (never extending the deletable `program.dag`), and works the two hardest consumers (`ci_cargo_eagain_retry_core`, `fleet_converge_emit`).
+- **(B) orchestration-as-intent** — a `Pipeline`/`Step`/`Run`/`Check` vocabulary so transports author *intent* and `emit(intent, Bash)` renders shell. Today shell is **both** the surface *and* the only target for orchestration — this is the deeper gap and the reason the anemia is bash-only.
 
 **Cross-arc edges (first-class, not prose):**
 
