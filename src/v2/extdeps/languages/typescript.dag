@@ -143,7 +143,9 @@ import v2.std.compilers.target_model {
   target_operator_realization_node,
   target_operator_realizations_catalog_node,
   value_expr_projection_bundle_node,
-  Omit
+  RecordLiteralTypeNaming,
+  Omit,
+  Prepend
 }
 import v2.std.node {
   Arrow,
@@ -534,6 +536,14 @@ fn ts_mvp1_emitted_add_fn_with_body_node() -> Node {
 }
 
 fn ts_value_expression_projection() -> TargetValueExpressionProjection {
+  ts_value_expression_projection_with_record_literal_naming(
+    record_literal_names_type: Omit
+  )
+}
+
+fn ts_value_expression_projection_with_record_literal_naming(
+  record_literal_names_type: RecordLiteralTypeNaming
+) -> TargetValueExpressionProjection {
   TargetValueExpressionProjection {
     binding_ref_form: TargetBindingRefShape { ident_token: ^ts_token_ident },
     primitive_apply_form: TargetPrimitiveApplyShape {
@@ -594,7 +604,7 @@ fn ts_value_expression_projection() -> TargetValueExpressionProjection {
       close: ^ts_token_rbrace,
       separator: ^ts_token_comma,
       assign: ^ts_token_colon,
-      record_literal_names_type: Omit
+      record_literal_names_type: record_literal_names_type
     },
     field_access_form: TargetFieldAccessShape {
       dot: ^ts_token_dot

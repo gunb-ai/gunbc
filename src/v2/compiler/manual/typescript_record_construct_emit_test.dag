@@ -6,6 +6,9 @@ import v2.std.collection { Map, empty_map, map_insert }
 import v2.std.node { Symbol }
 import v2.std.compilers.target_model {
   ConcreteSyntaxToken,
+  RecordLiteralTypeNaming,
+  Omit,
+  Prepend,
   TargetModel,
   TargetValueExpression,
   TargetValueExprFieldInitSlot,
@@ -19,7 +22,7 @@ import v2.compiler.translate { serialize_concrete_syntax_tokens_to_source }
 import v2.extdeps.languages.typescript {
   ts_mvp1_target_model_node,
   ts_operator_realizations_catalog_node,
-  ts_value_expression_projection,
+  ts_value_expression_projection_with_record_literal_naming,
   ts_wave1_lex
 }
 
@@ -70,11 +73,15 @@ fn ts_record_construct_expr() -> TargetValueExpression {
   )
 }
 
-fn ts_record_construct_emit_accepts() -> Outcome<Medium<String>> {
+fn ts_record_construct_emit_accepts(
+  record_literal_names_type: RecordLiteralTypeNaming
+) -> Outcome<Medium<String>> {
   bind_outcome(
     o: target_value_expression_to_concrete_tokens(
       expr: ts_record_construct_expr(),
-      projection: ts_value_expression_projection(),
+      projection: ts_value_expression_projection_with_record_literal_naming(
+        record_literal_names_type: record_literal_names_type
+      ),
       catalog: ts_operator_realizations_catalog_node()
     ),
     f: fn(tokens) {
@@ -86,13 +93,29 @@ fn ts_record_construct_emit_accepts() -> Outcome<Medium<String>> {
   )
 }
 
-fn ts_record_construct_emit_source() -> String {
-  match ts_record_construct_emit_accepts() {
+fn ts_record_construct_emit_with_naming(
+  record_literal_names_type: RecordLiteralTypeNaming
+) -> String {
+  match ts_record_construct_emit_accepts(record_literal_names_type: record_literal_names_type) {
     Accepted { value: source, diagnostics: _ } => source.carried
     Rejected { diagnostics: _ } => "RECORD_CONSTRUCT_EMIT_REJECTED"
   }
 }
 
+fn ts_record_construct_emit_source() -> String {
+  ts_record_construct_emit_with_naming(record_literal_names_type: Omit)
+}
+
+fn ts_record_construct_emit_source_prepend() -> String {
+  ts_record_construct_emit_with_naming(record_literal_names_type: Prepend)
+}
+
 test fn ts_record_construct_emit_source_holds() -> Bool {
   ts_record_construct_emit_source() == " { x: a, y: b }"
+}
+
+test fn ts_record_construct_row_perturbation_flips_type_name_holds() -> Bool {
+  (ts_record_construct_emit_source() == " { x: a, y: b }")
+    && (ts_record_construct_emit_source_prepend() == "Point { x: a, y: b }")
+    && (ts_record_construct_emit_source() != ts_record_construct_emit_source_prepend())
 }

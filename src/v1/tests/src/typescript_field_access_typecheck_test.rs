@@ -37,6 +37,7 @@ const FIELD_ACCESS_FN: &str = "ts_field_access_emit_source";
 const RECORD_WITNESS_ENTRY: &str =
     "src/v2/compiler/manual/typescript_record_construct_emit_test.dag";
 const RECORD_CONSTRUCT_FN: &str = "ts_record_construct_emit_source";
+const RECORD_CONSTRUCT_PREPEND_FN: &str = "ts_record_construct_emit_source_prepend";
 
 fn v2_source_roots() -> Vec<std::path::PathBuf> {
     crate::helpers::v2_layer_roots()
@@ -237,17 +238,31 @@ fn emitted_typescript_record_construct_typechecks_under_tsc_noemit() {
         );
         return;
     }
-    eprintln!("[tsc-oracle] running emitted_typescript_record_construct_typechecks_under_tsc_noemit");
+    eprintln!(
+        "[tsc-oracle] running emitted_typescript_record_construct_typechecks_under_tsc_noemit"
+    );
 
-    // The TS target's `record_literal_names_type: Omit` row makes RecordConstruct
-    // emit an ANONYMOUS object literal (no nominal type name prepended), which is
-    // valid TypeScript. (DAG's row is `Prepend`; the shared fold branches on the
-    // field VALUE, not the target.)
+    // AXIS 1 row-value perturbation, derived from the SAME fold: the TS target's
+    // `record_literal_names_type: Omit` row makes RecordConstruct emit an ANONYMOUS
+    // object literal (valid TS); swapping ONLY the row value to `Prepend` (correct
+    // for Rust/DAG) prepends the nominal type name. The emitted text must FLIP — if
+    // it did not, the parameterization would be cosmetic.
     let record = emit_one(RECORD_WITNESS_ENTRY, RECORD_CONSTRUCT_FN);
+    let record_prepend = emit_one(RECORD_WITNESS_ENTRY, RECORD_CONSTRUCT_PREPEND_FN);
     assert_eq!(
         record.trim(),
         "{ x: a, y: b }",
-        "emitted record construct changed"
+        "emitted Omit record changed"
+    );
+    assert_eq!(
+        record_prepend.trim(),
+        "Point { x: a, y: b }",
+        "emitted Prepend record changed"
+    );
+    assert_ne!(
+        record.trim(),
+        record_prepend.trim(),
+        "Omit/Prepend row perturbation did not change the emitted text — parameterization is cosmetic"
     );
 
     let module = format!(
@@ -263,7 +278,7 @@ fn emitted_typescript_record_construct_typechecks_under_tsc_noemit() {
 }
 
 #[test]
-fn tsc_noemit_rejects_nominal_prefixed_object_literal() {
+fn tsc_noemit_rejects_fold_emitted_prepend_record() {
     if !npx_available() {
         eprintln!(
             "[tsc-oracle] SKIP: npx not on PATH. DISSOLVE this skip when the runner provisions npx \
@@ -271,19 +286,22 @@ fn tsc_noemit_rejects_nominal_prefixed_object_literal() {
         );
         return;
     }
-    eprintln!("[tsc-oracle] running tsc_noemit_rejects_nominal_prefixed_object_literal");
+    eprintln!("[tsc-oracle] running tsc_noemit_rejects_fold_emitted_prepend_record");
 
-    // Discriminating control for AXIS 1: the `Prepend` policy (correct for Rust/DAG)
-    // would emit the nominal type name before the brace. In TypeScript that is NOT
-    // a valid object literal. If tsc accepted it, the `Omit` policy would be
-    // unnecessary and the oracle above would be rubber-stamping.
-    let bad_module = "const a: number = 1;\n\
+    // Discriminating control for AXIS 1, FOLD-DERIVED (not hand-typed): feed the
+    // SAME fold's `Prepend`-row output (`Point { x: a, y: b }`) through tsc. It is
+    // NOT a valid TS object literal and MUST be rejected — proving the `Omit` row is
+    // load-bearing and the accept above is genuine type-checking, not rubber-stamping.
+    let record_prepend = emit_one(RECORD_WITNESS_ENTRY, RECORD_CONSTRUCT_PREPEND_FN);
+    let bad_module = format!(
+        "const a: number = 1;\n\
          const b: number = 2;\n\
-         const o = Point { x: a, y: b };\n\
-         export { o };\n";
+         const o ={record_prepend};\n\
+         export {{ o }};\n"
+    );
     assert!(
-        tsc_noemit("record_perturb", bad_module).is_err(),
-        "tsc --noEmit accepted a nominal-prefixed object literal (Point {{ ... }}); \
+        tsc_noemit("record_perturb", &bad_module).is_err(),
+        "tsc --noEmit accepted the fold-emitted Prepend record ({record_prepend}); \
          the Omit policy / oracle is not discriminating"
     );
 }
