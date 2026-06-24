@@ -8,26 +8,6 @@ import v2.std.dependency { DependencyView }
 import v2.std.logic { Bool }
 import v2.std.node { Node }
 
-// The wiring-liveness lens, wave 1 — the DEPENDENCE CARRIER + reachability primitive
-// (docs/plans/wiring-liveness-preflight.md §2/§3a-lens, DESIGN §5/§6).
-//
-// PRINCIPLE (the plan §1): a declared input is *wired* iff it INFLUENCES the observable output it
-// is declared to feed. The decidable, construction-side form (§2 wall) is static dataflow
-// reachability over the Node DAG: a declared input with no structural path to any output it feeds
-// is *unwired*, caught without running anything. This is the cache-purity oracle read backwards —
-// purity = "same input ⇒ same output"; liveness = "different input ⇒ different output" — two
-// readings of the one dependence relation already carried by v2.std.dependency (DependencyView), so
-// this lens re-uses that authority rather than re-coining a dependence concept (§2-horizontal, §3).
-//
-// WAVE 1 SCOPE: the dependence carrier (WiringLivenessFact) + the transitive-reachability decision
-// over a DependencyView edge set, with a discriminating floor witness (wiring_liveness_test.dag).
-// It does NOT yet sweep the live corpus: the motivating fork (the `auth_input` REST realization) is
-// a Rust seed OPAQUE to .dag reflection today (plan §4 honest boundary), so the static-reach wall
-// cannot see into it until that realization self-hosts. As realizations migrate to .dag (§5/§7), the
-// real input→output relations feed this same carrier; this wave lands the decidable kernel.
-
-// The dependence carrier: a declared input's wiring verdict over a dependence graph. `wired` is the
-// decided fact — the input transitively reaches the output it is declared to feed.
 type WiringLivenessFact {
   input: Node
   output: Node
@@ -38,8 +18,6 @@ fn node_in_list(xs: List<Node>, n: Node) -> Bool {
   any(xs: xs, predicate: fn(x) { x == n })
 }
 
-// One expansion pass over the dependence edges: any edge whose source is already in the reached set
-// contributes its dependent. Monotone (it only grows the set), so iterating it reaches a fixpoint.
 fn reach_step(deps: List<DependencyView>, reached: List<Node>) -> List<Node> {
   fold(deps, init: reached, f: fn(acc, dep) {
     if node_in_list(xs: acc, n: dep.source) {
@@ -54,9 +32,6 @@ fn reach_step(deps: List<DependencyView>, reached: List<Node>) -> List<Node> {
   })
 }
 
-// The transitive reachable set from `from` over the dependence edges. Folding reach_step over `deps`
-// applies it length(deps) times — a fixpoint, because the longest simple path in a DAG is bounded by
-// its edge count, so length(deps) passes saturate the reachable set (bounded, forward — DESIGN §4).
 fn reachable_from(deps: List<DependencyView>, from: Node) -> List<Node> {
   fold(deps, init: [from], f: fn(acc, _dep) { reach_step(deps: deps, reached: acc) })
 }
@@ -65,7 +40,6 @@ fn reaches(deps: List<DependencyView>, from: Node, to: Node) -> Bool {
   node_in_list(xs: reachable_from(deps: deps, from: from), n: to)
 }
 
-// A declared input is WIRED iff it transitively reaches the output it is declared to feed.
 fn input_is_wired(deps: List<DependencyView>, input: Node, output: Node) -> Bool {
   reaches(deps: deps, from: input, to: output)
 }
@@ -78,13 +52,11 @@ fn wiring_liveness_fact(deps: List<DependencyView>, input: Node, output: Node) -
   }
 }
 
-// The VIOLATION reading: a dead wire is a declared input that reaches nothing it feeds. This is the
-// diagnostic the compile-time lens fails on (plan §3b) — once the live relations are modeled in .dag.
 fn wiring_liveness_dead_wire(fact: WiringLivenessFact) -> Bool {
   !fact.wired
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: RealizationDispatch },
-  rationale: "Static dataflow reachability decides 'declared input reaches its output' (a declared input with no structural path to an output is unwired) -- decidable over the Node DAG, no execution. But the bad state is legitimately writable in transit: the motivating input->output relations live in Rust-seed realizations (resolve_auth's svc_auth_input) that .dag reflection cannot see into yet, and modeling an input ahead of its handler is the project's model-first discipline. So this is the unstructurable residue a lens is for, until grounded. Grounding authority: the realization loop self-hosting each input->output relation into .dag (RealizationDispatch), at which point this carrier's reachability decision runs over the live corpus and 'a declared input wired into nothing' becomes a compile diagnostic that fails the floor (plan item 2). Dissolves on: the static-reach wall covers every .dag-modeled input->output relation -- the wiring-liveness lens then walls any dead wire by construction"
+  rationale: "Wiring-liveness lens wave 1 (docs/plans/wiring-liveness-preflight.md S2/S3a-lens, DESIGN S5/S6). A declared input is WIRED iff it influences the observable output it is declared to feed; the decidable construction-side form is static dataflow reachability over the Node DAG: a declared input with no structural path to an output it feeds is unwired, caught without running anything. This is the cache-purity oracle read backwards (purity = same input -> same output; liveness = different input -> different output), two readings of the one dependence relation already carried by v2.std.dependency (DependencyView) -- this lens reuses that authority rather than re-coining a dependence concept (S2-horizontal, S3). Wave 1 lands the dependence carrier (WiringLivenessFact) + the transitive-reachability decision over a DependencyView edge set, with a discriminating floor witness; it does not yet sweep the live corpus because the motivating fork (the auth_input REST realization) is a Rust seed opaque to .dag reflection today (plan S4 honest boundary), so the static-reach wall cannot see into it until that realization self-hosts. Grounding authority: the realization loop self-hosting each input->output relation into .dag (RealizationDispatch), at which point this carrier's reachability decision runs over the live corpus and a declared input wired into nothing becomes a compile diagnostic that fails the floor (plan item 2). Dissolves on: the static-reach lens covers every .dag-modeled input->output relation -- the wiring-liveness lens then walls any dead wire by construction"
 }

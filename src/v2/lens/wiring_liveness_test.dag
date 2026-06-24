@@ -11,10 +11,6 @@ import v2.lens.wiring_liveness {
 }
 import v2.test.lens_common.infer_fixture { claim_atom_node }
 
-// Synthetic input / output / intermediate / orphan nodes — distinct atoms, so node equality
-// discriminates them. The DEPENDENCE edges below are DependencyViews (the v2.std.dependency
-// authority), the same carrier the corpus dependency_lens produces — the lens reads the live edge
-// set there once realizations self-host (plan §4).
 fn wl_input() -> Node { claim_atom_node(s: ^wiring_liveness_input) }
 fn wl_mid() -> Node { claim_atom_node(s: ^wiring_liveness_mid) }
 fn wl_output() -> Node { claim_atom_node(s: ^wiring_liveness_output) }
@@ -29,8 +25,6 @@ fn dep(source: Node, dependent: Node) -> DependencyView {
   }
 }
 
-// A WIRED graph: input -> mid -> output. The input reaches the output across TWO hops, so a
-// correct transitive reachability must follow the chain (a single-hop check would miss it).
 fn wired_graph() -> List<DependencyView> {
   [
     dep(source: wl_input(), dependent: wl_mid()),
@@ -38,9 +32,6 @@ fn wired_graph() -> List<DependencyView> {
   ]
 }
 
-// A DEAD-WIRE graph: input -> orphan, and (separately) mid -> output. The output is reachable in the
-// graph, but NOT from the input — the input feeds nothing it is declared to feed. The ONLY structural
-// difference from wired_graph is that the input's edge lands on an orphan instead of the chain.
 fn dead_graph() -> List<DependencyView> {
   [
     dep(source: wl_input(), dependent: wl_orphan()),
@@ -48,21 +39,16 @@ fn dead_graph() -> List<DependencyView> {
   ]
 }
 
-// GREEN control: a transitively-reachable input is wired. RED if reachability were always-false or
-// non-transitive (input -> mid -> output is two hops).
 test fn wiring_liveness_live_wire_is_wired() -> Bool {
   return input_is_wired(deps: wired_graph(), input: wl_input(), output: wl_output())
 }
 
-// RED control: an input with no path to the output it feeds is a DEAD WIRE. RED if reachability were
-// always-true (it would wrongly call the dead wire wired, and dead_wire would be false).
 test fn wiring_liveness_dead_wire_is_flagged() -> Bool {
   return wiring_liveness_dead_wire(
     fact: wiring_liveness_fact(deps: dead_graph(), input: wl_input(), output: wl_output())
   )
 }
 
-// The carrier records the decided verdict — the dead-wire graph yields wired = false.
 test fn wiring_liveness_fact_carries_dead_verdict() -> Bool {
   let fact = wiring_liveness_fact(deps: dead_graph(), input: wl_input(), output: wl_output())
   return !fact.wired
