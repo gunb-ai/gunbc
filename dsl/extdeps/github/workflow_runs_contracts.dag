@@ -1,0 +1,22 @@
+module extdeps.github.workflow_runs_contracts
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import std.serialization { CoproductWireContract, StringVariant, SnakeCase }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/rest/actions/workflow-runs"
+  }
+}
+
+data workflow_run_status_wire_contract: CoproductWireContract = {
+  coproduct: "WorkflowRunStatus"
+  encoding: StringVariant { naming: SnakeCase }
+}
+
+data workflow_run_conclusion_wire_contract: CoproductWireContract = {
+  coproduct: "WorkflowRunConclusion"
+  encoding: StringVariant { naming: SnakeCase }
+}
