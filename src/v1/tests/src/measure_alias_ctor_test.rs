@@ -117,3 +117,43 @@ fn direct_struct_ctor_names_struct_not_first_field() {
         "a direct struct ctor must not over-peel to the first field name as the literal head, got:\n{body}"
     );
 }
+
+// Ambiguous-field-set fail-closed witness (the §5 safety crux at the E0560 site). The name
+// recovery is `find_unique_struct_name_by_fields`, which returns None when ≥2 structs share the
+// resolved field set. When that happens the resolver must fall closed to the alias name `tn`
+// (a loud E0560 at the consumer) — it must NEVER guess one of the candidate structs (a silent
+// wrong nominal). `AStruct` and `BStruct` share the exact field set `{count}`, so an alias to
+// either is unrecoverable; constructing through it must emit neither candidate as the head.
+// This mirrors the fn-item crux `ambiguous_single_field_name_fails_closed` (count == 2 -> None,
+// the same helper) at the alias-ctor site.
+const AMBIG_FIXTURE: &str = concat!(
+    "module ambigctor.fixture\n",
+    "import std.nat { Nat }\n\n",
+    "type AStruct<Q, M> {\n  count: M\n}\n\n",
+    "type BStruct<Q, M> {\n  count: M\n}\n\n",
+    "type AmbigAlias = AStruct<Nat, Nat>\n\n",
+    "fn mka(c: Nat) -> AmbigAlias {\n  AmbigAlias { count: c }\n}\n"
+);
+
+#[test]
+fn ambiguous_field_set_alias_ctor_fails_closed_to_alias_not_a_guessed_struct() {
+    let emitted = compile_dag_named("src/v1/ambig_ctor_fixture.dag", AMBIG_FIXTURE, RenderTarget::Rust)
+        .files
+        .iter()
+        .map(|f| f.content.clone())
+        .collect::<Vec<_>>()
+        .join("\n");
+    let body = fn_body_no_sig(&emitted, "mka");
+    // The two structs share the field set {count}, so find_unique returns None -> the resolver
+    // must NOT pick either candidate struct as the literal head.
+    assert!(
+        !body.contains("AStruct {") && !body.contains("BStruct {"),
+        "an ambiguous resolved field set must fail closed, never guess a candidate struct, got:\n{body}"
+    );
+    // Fail-closed means it falls back to the alias name `tn` (a loud E0560 at the consumer),
+    // not a fabricated nominal — the discriminating opposite of "pick the first to compile".
+    assert!(
+        body.contains("AmbigAlias {"),
+        "fail-closed must emit the alias name (loud E0560), got:\n{body}"
+    );
+}
