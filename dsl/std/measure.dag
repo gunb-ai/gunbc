@@ -28,6 +28,8 @@ type Quantity =
   | ElectricCharge
   | MagneticFlux
 
+  | Dimensionless
+
 type Scale =
     Atto
   | Femto
@@ -266,4 +268,24 @@ fn microsecond(count: Nat) -> Microsecond {
 
 fn microsecond_count(m: Microsecond) -> Nat {
   measure_count(m)
+}
+
+type Second = Measure<Time, One, Nat>
+
+fn second(count: Nat) -> Second {
+  Second { count: count }
+}
+
+fn second_count(s: Second) -> Nat {
+  measure_count(s)
+}
+
+type Percent = Measure<Dimensionless, One, Nat>
+
+fn percent(count: Nat) -> Percent {
+  Percent { count: count }
+}
+
+fn percent_count(p: Percent) -> Nat {
+  measure_count(p)
 }

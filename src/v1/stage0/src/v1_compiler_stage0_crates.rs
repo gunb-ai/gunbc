@@ -328,6 +328,20 @@ pub fn stage0_crate_plan() -> Rc<Stage0CratePlan> {
                             features: Rc::new(vec![]),
                         }),
                     }),
+                    Rc::new(CargoDependency {
+                        name: "unicode-ident".to_string(),
+                        source: Rc::new(CargoDepSource::RegistryDep {
+                            version: "1".to_string(),
+                            features: Rc::new(vec![]),
+                        }),
+                    }),
+                    Rc::new(CargoDependency {
+                        name: "unicode-properties".to_string(),
+                        source: Rc::new(CargoDepSource::RegistryDep {
+                            version: "0.1".to_string(),
+                            features: Rc::new(vec!["emoji".to_string()]),
+                        }),
+                    }),
                 ]),
                 features: Rc::new(vec![Rc::new(CargoFeature {
                     name: "text_lookup_work_counter".to_string(),

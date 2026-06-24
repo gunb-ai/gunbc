@@ -1,0 +1,106 @@
+module gunbc.assimilate.bmc_bootstrap_provision
+
+import std.resources { Network }
+import std.types { NonEmptyStr, Secret, String, List, Map, Bool }
+import extdeps.cloud.gcp.gcp { GcpProjectId, ServiceAccountEmail, GcpService, gcp_service_api_id }
+import extdeps.cloud.gcp.serviceusage
+import extdeps.cloud.gcp.iam_admin
+import extdeps.cloud.gcp.secret_manager
+import extdeps.cloud.gcp.iam {
+  GcpBinding,
+  role_secretmanager_secret_accessor,
+  role_secretmanager_secret_version_adder
+}
+import gunbc.assimilate.bmc_token_federation {
+  bmc_secrets_project_id,
+  bmc_srv3_secret_name,
+  bmc_assimilator_sa_member,
+  bmc_assimilator_account_id,
+  bmc_assimilator_display_name,
+  bmc_wif_pool_id,
+  bmc_wif_pool_display_name,
+  bmc_wif_provider_id,
+  bmc_wif_issuer_uri,
+  bmc_wif_attribute_mapping,
+  bmc_wif_attribute_condition
+}
+
+data bmc_bootstrap_provision_doc: String = "One-token bootstrap of the entire keyless BMC assimilator identity on GCP, PROVEN LIVE 2026-06-24 against project gunbai-secrets (all 5 ops dispatched via the v1 REST executor; SA minted, least-priv bound, WIF provider ACTIVE). The ONLY manual input is the initial admin access token, acquired in the orchestration via the operator's existing gcloud login (shell.GCloud.AuthPrintAccessToken = the single 'one button'). The pattern then drives, over the REST executor (Bearer from auth_input), every step the WIF runbook (docs/runbooks/bmc-assimilator-wif-setup.md) used to run as manual gcloud blocks: (1) ServiceUsage.BatchEnableServices enables the required APIs; (2) IamAdmin.CreateServiceAccount mints bmc-assimilator; (3) SecretManager.SetSecretIamPolicy binds the two least-privilege roles resource-level on bmc-srv3-admin only; (4) IamAdmin.CreateWorkloadIdentityPool + (5) CreateWorkloadIdentityPoolProvider stand up the keyless GitHub-OIDC federation. Order matters: enable -> SA -> bind -> pool -> provider. API ENABLEMENT IS A DEPENDENCY OF USAGE, not a hand-typed list: bmc_required_gcp_apis is DERIVED from bmc_assimilate_service_deps (the GcpService set the assimilate path uses) via gcp_service_api_id, whose single authority is the GcpService enum + wire label in extdeps.cloud.gcp.gcp. KNOWN first-run race (observed live): a freshly-created SA takes a few seconds to propagate before IAM setIamPolicy can reference it, so a cold run can 400 at step (3) with 'service account does not exist'; re-running once the SA has propagated converges (the SA already exists). A 409-tolerant converge pass is the follow-up that makes the single entry fully re-runnable; today the cold path is the documented happy path and the runbook notes the re-run. All identity facts are the single authority in gunbc.assimilate.bmc_token_federation; this module only sequences the effects."
+
+data bmc_assimilate_service_deps: List<GcpService> = [
+  GcpServiceUsage,
+  GcpIam,
+  GcpIamCredentials,
+  GcpSts,
+  GcpSecretManager
+]
+
+data bmc_required_gcp_apis: List<String> = map(bmc_assimilate_service_deps, s => gcp_service_api_id(service: s))
+
+fn bmc_secret_iam_bindings() -> List<GcpBinding> {
+  [
+    GcpBinding {
+      role: role_secretmanager_secret_accessor,
+      members: [bmc_assimilator_sa_member()]
+    },
+    GcpBinding {
+      role: role_secretmanager_secret_version_adder,
+      members: [bmc_assimilator_sa_member()]
+    }
+  ]
+}
+
+pattern bmc_bootstrap_provision_srv3() -> {
+  sa_email: ServiceAccountEmail,
+  secret_binding_etag: String,
+  pool_op: String,
+  provider_op: String
+}
+  uses net: Network
+{
+  node auth: shell.GCloud.AuthPrintAccessToken()
+
+  node enabled: gcp.ServiceUsage.BatchEnableServices(
+    access_token: auth.access_token,
+    project_id: bmc_secrets_project_id,
+    service_ids: bmc_required_gcp_apis
+  )
+
+  node sa: gcp.IamAdmin.CreateServiceAccount(
+    access_token: auth.access_token,
+    project_id: bmc_secrets_project_id,
+    account_id: bmc_assimilator_account_id,
+    display_name: bmc_assimilator_display_name
+  )
+
+  node bind: gcp.SecretManager.SetSecretIamPolicy(
+    access_token: auth.access_token,
+    project_id: bmc_secrets_project_id,
+    secret: bmc_srv3_secret_name,
+    bindings: bmc_secret_iam_bindings()
+  )
+
+  node pool: gcp.IamAdmin.CreateWorkloadIdentityPool(
+    access_token: auth.access_token,
+    project_id: bmc_secrets_project_id,
+    pool_id: bmc_wif_pool_id,
+    display_name: bmc_wif_pool_display_name
+  )
+
+  node provider: gcp.IamAdmin.CreateWorkloadIdentityPoolProvider(
+    access_token: auth.access_token,
+    project_id: bmc_secrets_project_id,
+    pool_id: bmc_wif_pool_id,
+    provider_id: bmc_wif_provider_id,
+    issuer_uri: bmc_wif_issuer_uri,
+    attribute_mapping: bmc_wif_attribute_mapping,
+    attribute_condition: bmc_wif_attribute_condition()
+  )
+
+  return {
+    sa_email: sa.email,
+    secret_binding_etag: bind.ok_etag,
+    pool_op: pool.operation_name,
+    provider_op: provider.operation_name
+  }
+}
