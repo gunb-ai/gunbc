@@ -146,11 +146,7 @@ fn section_1() -> RoadmapSection {
         ],
         edges: [],
       ),
-      section_group(
-        label: "Host-operation band — off-fabric, unmodeled, unenforced (G1–G3, NOW)",
-        nodes: [],
-        edges: [],
-      ),
+      section_prose(content: "**Host-operation band — off-fabric, unmodeled, unenforced (G1–G3, NOW):**"),
       section_prose(content: "→ [host-effect orchestration plan](docs/plans/host-effect-orchestration.md) — the unifying design: one `apply(target, effect, policy) → Receipt` interface (install · manage · decom on the same fleet authority), the shell→`.dag` migration phasing, and the ctrl-exodus / host-self-converge end-state. G1–G3 below are its consumers."),
       section_group(
         label: "",
