@@ -45,12 +45,26 @@ import gunbc.ci_floor_measurement {
 }
 import gunbc.fleet_intent { fleet_intent_offers }
 
+type WorkloadClass
+  = BatchLatencyTolerant
+  | InteractiveLatencySensitive
+
+data gunbc_ci_cpu_weight_workload_class_marker: String = "WorkloadClass grounds the cgroup v2 cpu.weight kernel axis (range 1-10000, kernel default 100). BatchLatencyTolerant=100 (runner slice: CI builds are batch work, latency-tolerant); InteractiveLatencySensitive=1000 (sessions slice: dashboard/agent sessions are interactive, latency-sensitive, 10x weight). cgroup v2 cpu.weight is WORK-CONSERVING: raising sessions above runners costs zero CI throughput when sessions are idle; under contention the scheduler gives interactive sessions 10x the time slices of runner builds. This is the grounded fix for dashboard slowness under CI load on srv2. dissolve-on: replace the coarse 10x ratio with a weight derived from a measured CPU-PSI/contention curve once contention data is collected."
+
+fn workload_class_cpu_weight(wc: WorkloadClass) -> Int {
+  match wc {
+    BatchLatencyTolerant => 100
+    InteractiveLatencySensitive => 1000
+  }
+}
+
 type RunnerHostDeployment {
   identity: HostIdentity
   runner_count: Int
   per_runner_memory_cap: ByteSize
   build_tokens: HardwareThreadCount
   runner: RunnerSpec
+  workload_class: WorkloadClass
 }
 
 type RunnerDeploymentPlan
@@ -203,6 +217,7 @@ fn host_deployment_from_plan(offer: ComputeOffer, cap: ByteSize, tokens: Hardwar
     per_runner_memory_cap: measure_scale_fraction_floor(m: cap, num: 1, den: safe_den),
     build_tokens: tokens,
     runner: runner_spec_from_offer(offer: offer),
+    workload_class: BatchLatencyTolerant,
   }
 }
 
@@ -326,6 +341,7 @@ type SessionHostReservation {
   identity: HostIdentity
   session_count: Int
   per_session_reservation: ByteSize
+  workload_class: WorkloadClass
 }
 
 type SessionReservationPlan
@@ -351,6 +367,7 @@ fn session_reservation_plan() -> SessionReservationPlan {
           identity: o.supply.physical.identity,
           session_count: n,
           per_session_reservation: c,
+          workload_class: InteractiveLatencySensitive,
         }),
         fleet_concurrent_sessions: n * fleet_intent_offers.length(),
         per_session_reservation: c,

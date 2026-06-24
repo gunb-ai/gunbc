@@ -24,6 +24,7 @@ import gunbc.ci_runner_placement {
   SessionReservationDerived,
   SessionReservationUnsound,
   session_reservation_plan,
+  SessionHostReservation,
   RunnersPerHostResolution,
   RunnersPerHostDerived,
   RunnersPerHostUnsound,
@@ -33,8 +34,13 @@ import gunbc.ci_runner_placement {
   operating_curve,
   samples_covered,
   gunbc_ci_count_field_measure_followup,
+  WorkloadClass,
+  BatchLatencyTolerant,
+  InteractiveLatencySensitive,
+  workload_class_cpu_weight,
+  gunbc_ci_cpu_weight_workload_class_marker,
 }
-import gunbc.runner_deploy_emit { expected_runner_deploy_manifest, runner_deploy_drifted, manifest_host_text }
+import gunbc.runner_deploy_emit { expected_runner_deploy_manifest, runner_deploy_drifted, manifest_host_text, session_host_text }
 import gunbc.fleet_host_budget {
   FleetHostPlan,
   FleetHostPlanDerived,
@@ -468,6 +474,38 @@ fn witness_followup_markers_documented() -> Bool {
     && gunbc_ci_session_regime_model != ""
     && gunbc_ci_session_regime2_followup != ""
     && gunbc_ci_regime2_aggregate_dissolution_marker != ""
+    && gunbc_ci_cpu_weight_workload_class_marker != ""
+}
+
+fn witness_session_cpu_weight_exceeds_runner_cpu_weight() -> Bool {
+  workload_class_cpu_weight(wc: InteractiveLatencySensitive) > workload_class_cpu_weight(wc: BatchLatencyTolerant)
+}
+
+fn fixture_session_host_reservation() -> SessionHostReservation {
+  SessionHostReservation {
+    identity: "fixture-host",
+    session_count: 6,
+    per_session_reservation: byte_size(4294967296),
+    workload_class: InteractiveLatencySensitive,
+  }
+}
+
+fn witness_runner_manifest_line_contains_cpu_weight() -> Bool {
+  match fully_sound_plan() {
+    PlanDerived { hosts: hosts, fleet_concurrent_runs: _ } =>
+      hosts.length() > 0
+        && all(hosts, h => string_contains(s: manifest_host_text(h: h), pattern: " cpu_weight=100"))
+    PlanUnsound { reason: _ } => false
+  }
+}
+
+fn witness_session_manifest_line_contains_cpu_weight() -> Bool {
+  let h = fixture_session_host_reservation()
+  string_contains(s: session_host_text(h: h), pattern: " cpu_weight=1000")
+}
+
+fn witness_runner_and_session_cpu_weights_are_distinct() -> Bool {
+  workload_class_cpu_weight(wc: BatchLatencyTolerant) != workload_class_cpu_weight(wc: InteractiveLatencySensitive)
 }
 
 test fn runner_placement_holds() -> Bool {
@@ -501,4 +539,8 @@ test fn runner_placement_holds() -> Bool {
     && witness_curve_has_full_coverage_option()
     && witness_manifest_drift_red_receipt()
     && witness_followup_markers_documented()
+    && witness_session_cpu_weight_exceeds_runner_cpu_weight()
+    && witness_runner_manifest_line_contains_cpu_weight()
+    && witness_session_manifest_line_contains_cpu_weight()
+    && witness_runner_and_session_cpu_weights_are_distinct()
 }
