@@ -25,6 +25,12 @@ data systemd_parse_label_derivation_debt: List<NonEmptyStr> = [
   "dissolve-on: when contract-driven derivation is available (§3 single authority), derive parse/label from wire contract instead of hand-rolling",
 ]
 
+data systemd_resource_control_property_doc: String = "systemd.resource-control(5) cgroup-v2 unit property NAMES (the real upstream vocabulary; the oomd-specific ManagedOOM* names live beside these in extdeps.os.oomd). These are the {property} a systemctl set-property / show --property reads & writes (extdeps.os.systemctl owns the operation shape). WHICH unit and WHICH value is gunbc policy (DESIGN section 3 fact c), not a fact about systemd; only the spelling lives here. Source: man7.org/linux/man-pages/man5/systemd.resource-control.5.html."
+
+data systemd_memory_max_property: NonEmptyStr = "MemoryMax"
+
+data systemd_cpu_weight_property: NonEmptyStr = "CPUWeight"
+
 fn parse_systemd_unit_active_state(raw: String) -> SystemdUnitActiveState? {
   if raw == "active" { Present { value: Active } }
   else { if raw == "inactive" { Present { value: Inactive } }
