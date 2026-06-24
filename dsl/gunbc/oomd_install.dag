@@ -235,3 +235,9 @@ fn gunbc_oomd_install_evidence() -> OomdEnforcementEvidence {
     ReadObserved { value: _ } => OomdUnverified
   }
 }
+
+data gunbc_oomd_fleet_evidence_seam_doc: String = "The single public binding seam for the fleet capacity gate (fleet_host_budget.gunbc_fleet_oomd_evidence, consumed by ci_runner_placement REGIME-2). A caller that holds the REGIME-2 thresholds (oomd_eviction_ceiling C, aggregate_reservation, intended PSI percent) assembles OomdGroundingThresholds and binds gunbc_fleet_oomd_evidence to this fn — NOT to a literal OomdEnforced. It grounds OomdEnforced over the committed gunbc_oomd_show_effective_read, so it stays OomdUnverified (fail-closed) until a real live ReadObserved on the managed sessions slice grounds the full conjunction (§5: verify the realization, not the declaration). It returns OomdEnforcementEvidence directly — the std.realization_reconcile.Reconciliation never leaks to the consumer, avoiding the flat-namespace collision with product.budget_tree.Reconciliation that co-loading would trigger. The read shape is internal, so this seam is stable across future grounding-conjunct additions."
+
+fn gunbc_oomd_fleet_evidence(req: OomdGroundingThresholds) -> OomdEnforcementEvidence {
+  oomd_evidence_from_reconciliation(r: reconcile_oomd(read: gunbc_oomd_show_effective_read, req: req))
+}

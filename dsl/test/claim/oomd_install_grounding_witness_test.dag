@@ -17,6 +17,7 @@ import gunbc.oomd_install {
   reconcile_oomd,
   oomd_evidence_from_reconciliation,
   gunbc_oomd_install_evidence,
+  gunbc_oomd_fleet_evidence,
 }
 import gunbc.ci_floor_measurement {
   OomdEnforcementEvidence,
@@ -233,6 +234,10 @@ fn witness_absent_read_is_fail_closed() -> Bool {
   !is_enforced(e: gunbc_oomd_install_evidence())
 }
 
+fn witness_fleet_evidence_seam_fail_closed() -> Bool {
+  !is_enforced(e: gunbc_oomd_fleet_evidence(req: test_thresholds()))
+}
+
 test fn oomd_install_grounding_holds() -> Bool {
   witness_full_conjunction_grounds_enforced()
     && witness_slice_absent_fails_closed()
@@ -248,4 +253,5 @@ test fn oomd_install_grounding_holds() -> Bool {
     && witness_reconcile_good_read_enforces()
     && witness_reconcile_good_read_converges()
     && witness_absent_read_is_fail_closed()
+    && witness_fleet_evidence_seam_fail_closed()
 }
