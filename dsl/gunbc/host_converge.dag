@@ -36,9 +36,12 @@ import extdeps.os.oomd {
   managed_oom_action_value,
 }
 
-data gunbc_host_converge_doc: String = "The host-converge POLICY: the desired live state of the two CI cgroup slices on each fleet host, folded into uniform ConvergeKnob ROWS that gunbc.fleet_converge_emit projects to the regime-2 fleet-converge.sh apply-script. This closes gap B of the CI e2e charter (the fabric OPERATION -- placement caps + runner width -- was off-fabric hand-run shell with NO repo artifact). It is the EMIT side of the std.realization_reconcile loop: the emitted .sh applies each knob, reads the live effective value back, and emits a converge-receipt that fierce-carp-462's ctrl reconciler PARSES (no ctrl-side re-read -- EMIT is the single authority). Every desired VALUE is pulled from the single authorities (no new literals): caps from the runner_deployment_plan / Regime2 session fields, cpu_weight via workload_class_cpu_weight, the PSI percent via gunbc_oomd_sessions_policy, the slice unit names via gunbc_runner_slot_unit_placeholder / gunbc_oomd_sessions_slice, and the systemd property spellings via extdeps.os.{systemd,oomd}. DESIGN refs: section 2 (one ConvergeKnob concept, every knob a row -- cpu_weight and build_tokens fold in beside the memory caps, no bespoke inline field per knob), section 3 (the apply/read TRANSPORT is a per-knob realization handler -- ConvergeTarget -- dispatched in the emit, not baked into the policy), section 5 (fail-closed: an unsound plan projects a non-zero-exit script, never a fabricated converge; the absent verdict is the ReadAbsent read-presence gate)."
+data gunbc_host_converge_doc: String = "The host-converge POLICY: the desired live state of the two CI cgroup slices on each fleet host, folded into uniform ConvergeKnob ROWS that gunbc.fleet_converge_emit projects to the regime-2 fleet-converge.sh apply-script. This closes gap B of the CI e2e charter (the fabric OPERATION -- placement caps + runner width -- was off-fabric hand-run shell with NO repo artifact). It is the EMIT side of the std.realization_reconcile loop: the emitted .sh applies each knob, reads the live effective value back, and emits a converge-receipt that fierce-carp-462's ctrl reconciler PARSES (no ctrl-side re-read -- EMIT is the single authority). Every desired VALUE is pulled from the single authorities (no new literals): caps from the runner_deployment_plan / Regime2 session fields, cpu_weight via workload_class_cpu_weight, the PSI percent via gunbc_oomd_sessions_policy, the slice unit names via gunbc_runner_slot_unit_placeholder / gunbc_oomd_sessions_slice, and the systemd property spellings via extdeps.os.systemd / extdeps.os.oomd. DESIGN refs: section 2 (one ConvergeKnob concept, every knob a row -- cpu_weight and build_tokens fold in beside the memory caps, no bespoke inline field per knob), section 3 (the apply/read TRANSPORT is a per-knob realization handler -- ConvergeTarget -- dispatched in the emit, not baked into the policy), section 5 (fail-closed: an unsound plan projects a non-zero-exit script, never a fabricated converge; the absent verdict is the ReadAbsent read-presence gate)."
 
-data gunbc_host_converge_receipt_grammar_marker: String = "BYTE-EXACT converge-receipt wire contract (FROZEN v1 with fierce-carp-462, 2026-06-24; EMIT is the single authority, the ctrl reconciler aligns to THIS with no fallback, mirroring gunbc_runner_deploy_manifest_contract_marker). Two line-kinds, KV-by-name, order-independent, unknown-KV ignored forward-compatibly: (1) PER-KNOB -- converge-receipt host=<id> slice=<runner|sessions> knob=<name> desired=<val> effective=<val> verdict=<converged|drifted|absent> -- emitted after the .sh applies+reads-back ONE knob. (2) SUMMARY -- converge-receipt host=<id> applied=<int> drifted=<int> verdict=<converged|drifted|absent> -- one per host after its knobs. Line-kind discriminator: knob= present => per-knob; applied= present => summary. SEMANTICS mapped to std.realization_reconcile.Reconciliation (see converge_verdict): verdict=converged => Converged{evidence}; verdict=drifted AND verdict=absent BOTH => NotConverged{reason} (absent = the ReadAbsent read-presence gate, expected early e.g. sessions.slice before it is populated). ctrl HOLDs a host unless its summary verdict=converged AND every per-knob line for that host is verdict=converged (defense-in-depth: a converged summary with any drifted/absent knob still HOLDs). The knob set is the FOLD of cpu_weight + build_tokens + the memory caps + runner width: slice=runner {runner_slice_cap_bytes, per_slot_memory_max_bytes, cpu_weight, build_tokens, runner_count}; slice=sessions {slice_max_bytes, per_session_max_bytes, oom_pressure_kill, oom_pressure_limit_pct, cpu_weight}."
+data gunbc_host_converge_receipt_grammar_marker: String = "BYTE-EXACT converge-receipt wire contract (FROZEN v1 with fierce-carp-462, 2026-06-24; EMIT is the single authority, the ctrl reconciler aligns to THIS with no fallback, mirroring gunbc_runner_deploy_manifest_contract_marker). Three line-kinds, KV-by-name, order-independent, unknown-KV ignored forward-compatibly: (1) PER-KNOB -- converge-receipt host=<id> slice=<runner|sessions> knob=<name> desired=<val> effective=<val> verdict=<converged|drifted|absent> -- emitted after the .sh applies+reads-back ONE knob. (2) SUMMARY -- converge-receipt host=<id> applied=<int> drifted=<int> verdict=<converged|drifted|absent> -- one per host after its knobs. (3) SESSIONS-MEMBERSHIP -- converge-receipt host=<id> slice=sessions sessions_in_slice=<int> sessions_legacy_flat=<int> verdict=<converged|absent> -- one per managed-sessions host; the COUNTS feed stern-dove-499's OomdEnforced membership conjunct (gunbc PR #5726): sessions_in_slice = docker-*.scope parented under sessions.slice (the guard keys on > 0; an EMPTY slice has no cgroup dir, which emits sessions_in_slice=0 NOT absent/error), sessions_legacy_flat = docker-*.scope still under system.slice (diagnostic-only, distinguishes all-legacy from empty-host). verdict=absent before ctrl #1804 populates the slice is EXPECTED and HOLDs. Line-kind discriminator: knob= present => per-knob; applied= present => summary; sessions_in_slice= present => sessions-membership. SEMANTICS mapped to std.realization_reconcile.Reconciliation (see converge_verdict): verdict=converged => Converged(evidence); verdict=drifted AND verdict=absent BOTH => NotConverged(reason) (absent = the ReadAbsent read-presence gate, expected early e.g. sessions.slice before it is populated). ctrl HOLDs a host unless its summary verdict=converged AND every per-knob line for that host is verdict=converged (defense-in-depth: a converged summary with any drifted/absent knob still HOLDs). The knob set is the FOLD of cpu_weight + build_tokens + the memory caps + runner width: slice=runner -- runner_slice_cap_bytes, per_slot_memory_max_bytes, cpu_weight, build_tokens, runner_count; slice=sessions -- slice_max_bytes, per_session_max_bytes, oom_pressure_kill, oom_pressure_limit_pct, cpu_weight."
+
+data gunbc_cgroup_v2_root: String = "/sys/fs/cgroup"
+data gunbc_sessions_legacy_parent_slice: String = "system.slice"
 
 data gunbc_runner_unit_template: String = "actions-runner@.service"
 data gunbc_runner_per_slot_dropin_path: String = "/etc/systemd/system/actions-runner@.service.d/20-fleet-width.conf"
@@ -93,9 +96,14 @@ type ConvergeKnob {
   target: ConvergeTarget
 }
 
+type SessionsMembershipProbe
+  = MembershipProbe { slice_cgroup: String, legacy_cgroup: String }
+  | NoMembershipProbe
+
 type HostConverge {
   identity: HostIdentity
   knobs: List<ConvergeKnob>
+  membership: SessionsMembershipProbe
 }
 
 type ConvergePolicy
@@ -231,10 +239,22 @@ fn session_knobs_by_host(mode: SessionReservationMode) -> List<ConvergeKnob>? {
   }
 }
 
+fn sessions_membership_probe(session_knobs: List<ConvergeKnob>) -> SessionsMembershipProbe {
+  if session_knobs.length() > 0 {
+    MembershipProbe {
+      slice_cgroup: concat(concat(gunbc_cgroup_v2_root, "/"), gunbc_oomd_sessions_slice),
+      legacy_cgroup: concat(concat(gunbc_cgroup_v2_root, "/"), gunbc_sessions_legacy_parent_slice),
+    }
+  } else {
+    NoMembershipProbe
+  }
+}
+
 fn host_converge_of(h: RunnerHostDeployment, session_knobs: List<ConvergeKnob>) -> HostConverge {
   HostConverge {
     identity: h.identity,
     knobs: concat(runner_host_knobs(h: h), session_knobs),
+    membership: sessions_membership_probe(session_knobs: session_knobs),
   }
 }
 

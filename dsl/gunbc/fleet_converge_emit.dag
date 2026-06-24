@@ -2,7 +2,7 @@ module gunbc.fleet_converge_emit
 
 import std.types { String, List, Int, Bool }
 import std.layout {
-  Doc, DocConcat,
+  Doc, DocConcat, DocEmpty,
   LayoutProtocol,
   doc_concat, doc_line_of,
   render
@@ -19,6 +19,9 @@ import gunbc.host_converge {
   RunnerWidth,
   JobserverTokens,
   VerifyOnlyCap,
+  SessionsMembershipProbe,
+  MembershipProbe,
+  NoMembershipProbe,
   ConvergeSlice,
   converge_slice_label,
   fleet_converge_policy,
@@ -32,8 +35,8 @@ fn sh_arg(s: String) -> String {
   concat(concat("\"", s), "\"")
 }
 
-fn sh_call(parts: List<String>) -> String {
-  fold(parts, init: "", f: (acc, p) => if acc == "" { sh_arg(s: p) } else { concat(concat(acc, " "), sh_arg(s: p)) })
+fn sh_cmd(cmd: String, args: List<String>) -> String {
+  fold(args, init: cmd, f: (acc, p) => concat(concat(acc, " "), sh_arg(s: p)))
 }
 
 fn converge_script_header() -> Doc {
@@ -94,7 +97,7 @@ fn converge_script_header() -> Doc {
     "  printf '[Service]\\n%s=%s\\n' \"$6\" \"$7\" > \"$4\"",
     "  systemctl daemon-reload >/dev/null 2>&1 || true",
     "  n=0; all_ok=1; effective=ABSENT",
-    "  for unit in $(systemctl list-units --type=service --state=active --no-legend \"$5\" 2>/dev/null | awk '{print $1}'); do",
+    "  for unit in $(systemctl list-units --type=service --state=active --no-legend \"$5\" 2>/dev/null | awk '\{print $1\}'); do",
     "    n=$((n + 1))",
     "    systemctl set-property \"$unit\" \"$6=$7\" >/dev/null 2>&1 || true",
     "    eff=\"$(systemctl show \"$unit\" --property=\"$6\" --value 2>/dev/null || true)\"",
@@ -110,19 +113,19 @@ fn converge_script_header() -> Doc {
     "",
     "converge_runner_width() {",
     "  # host slice knob instance_glob desired_count",
-    "  current=$(systemctl list-units --type=service --state=active --no-legend \"$4\" 2>/dev/null | awk 'END{print NR}')",
-    "  current=${current:-0}",
+    "  current=$(systemctl list-units --type=service --state=active --no-legend \"$4\" 2>/dev/null | awk 'END\{print NR\}')",
+    "  current=$\{current:-0\}",
     "  if [ \"$current\" -gt \"$5\" ]; then",
     "    # DECREASE: drain-before-stop the surplus, highest-NN first (stop=SIGTERM to Runner.Listener, never SIGKILL), then disable",
-    "    systemctl list-units --type=service --state=active --no-legend \"$4\" 2>/dev/null | awk '{print $1}' | sort -r | head -n \"$((current - $5))\" | while IFS= read -r unit; do",
+    "    systemctl list-units --type=service --state=active --no-legend \"$4\" 2>/dev/null | awk '\{print $1\}' | sort -r | head -n \"$((current - $5))\" | while IFS= read -r unit; do",
     "      systemctl stop \"$unit\" || true",
     "      systemctl disable \"$unit\" >/dev/null 2>&1 || true",
     "    done",
     "  elif [ \"$current\" -lt \"$5\" ]; then",
     "    echo \"width INCREASE $current->$5 needs slot provisioning (rsync from -01); run the install path -- converge only drains for DECREASE\" >&2",
     "  fi",
-    "  effective=$(systemctl list-units --type=service --state=active --no-legend \"$4\" 2>/dev/null | awk 'END{print NR}')",
-    "  effective=${effective:-0}",
+    "  effective=$(systemctl list-units --type=service --state=active --no-legend \"$4\" 2>/dev/null | awk 'END\{print NR\}')",
+    "  effective=$\{effective:-0\}",
     "  decide_verdict \"$effective\" \"$5\"",
     "  emit_receipt \"$1\" \"$2\" \"$3\" \"$5\" \"$effective\" \"$verdict\"",
     "  record \"$verdict\"",
@@ -150,33 +153,52 @@ fn converge_script_header() -> Doc {
     "  emit_receipt \"$1\" \"$2\" \"$3\" \"$6\" \"$effective\" \"$verdict\"",
     "  record \"$verdict\"",
     "}",
+    "",
+    "emit_sessions_membership() {",
+    "  # host slice_cgroup legacy_cgroup  (membership signal for the OomdEnforced guard; EMPTY slice => 0, not error)",
+    "  in_slice=$(ls -d \"$2\"/docker-*.scope 2>/dev/null | wc -l | tr -d ' ')",
+    "  in_slice=$\{in_slice:-0\}",
+    "  legacy=$(ls -d \"$3\"/docker-*.scope 2>/dev/null | wc -l | tr -d ' ')",
+    "  legacy=$\{legacy:-0\}",
+    "  if [ \"$in_slice\" -gt 0 ]; then verdict=converged; else verdict=absent; fi",
+    "  printf 'converge-receipt host=%s slice=sessions sessions_in_slice=%s sessions_legacy_flat=%s verdict=%s\\n' \"$1\" \"$in_slice\" \"$legacy\" \"$verdict\"",
+    "  record \"$verdict\"",
+    "}",
     ""
   ], line => doc_line_of(text: line)))
+}
+
+fn membership_doc(h: HostConverge) -> Doc {
+  match h.membership {
+    NoMembershipProbe => DocEmpty
+    MembershipProbe { slice_cgroup: sc, legacy_cgroup: lc } =>
+      doc_line_of(text: sh_cmd(cmd: "emit_sessions_membership", args: [h.identity, sc, lc]))
+  }
 }
 
 fn knob_call_line(host: String, k: ConvergeKnob) -> Doc {
   let slice = converge_slice_label(s: k.slice)
   match k.target {
     SliceProperty { unit: u, property: p, apply_value: av, expected_effective: ee } =>
-      doc_line_of(text: sh_call(parts: ["converge_slice_property", host, slice, k.name, u, p, av, ee, k.desired]))
+      doc_line_of(text: sh_cmd(cmd: "converge_slice_property", args: [host, slice, k.name, u, p, av, ee, k.desired]))
     PerSlotMemoryCap { dropin_path: d, instance_glob: g, property: p, bytes_value: b } =>
-      doc_line_of(text: sh_call(parts: ["converge_per_slot_cap", host, slice, k.name, d, g, p, b]))
+      doc_line_of(text: sh_cmd(cmd: "converge_per_slot_cap", args: [host, slice, k.name, d, g, p, b]))
     RunnerWidth { instance_glob: g } =>
-      doc_line_of(text: sh_call(parts: ["converge_runner_width", host, slice, k.name, g, k.desired]))
+      doc_line_of(text: sh_cmd(cmd: "converge_runner_width", args: [host, slice, k.name, g, k.desired]))
     JobserverTokens { env_file: f, env_key: ek, service_unit: su } =>
-      doc_line_of(text: sh_call(parts: ["converge_jobserver_tokens", host, slice, k.name, f, ek, su, k.desired]))
+      doc_line_of(text: sh_cmd(cmd: "converge_jobserver_tokens", args: [host, slice, k.name, f, ek, su, k.desired]))
     VerifyOnlyCap { slice_unit: u, property: p } =>
-      doc_line_of(text: sh_call(parts: ["converge_verify_only_cap", host, slice, k.name, u, p, k.desired]))
+      doc_line_of(text: sh_cmd(cmd: "converge_verify_only_cap", args: [host, slice, k.name, u, p, k.desired]))
   }
 }
 
 fn host_converge_doc(h: HostConverge) -> Doc {
   doc_concat(parts: append(
     concat(
-      [doc_line_of(text: sh_call(parts: ["host_begin", h.identity]))],
+      [doc_line_of(text: sh_cmd(cmd: "host_begin", args: [h.identity]))],
       map(h.knobs, k => knob_call_line(host: h.identity, k: k))
     ),
-    items: [doc_line_of(text: sh_call(parts: ["host_summary", h.identity]))]
+    items: [membership_doc(h: h), doc_line_of(text: sh_cmd(cmd: "host_summary", args: [h.identity]))]
   ))
 }
 

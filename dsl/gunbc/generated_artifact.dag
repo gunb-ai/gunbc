@@ -7,6 +7,7 @@ import gunbc.gitignore_emit { expected_gitignore, path_is_ignored }
 import gunbc.roadmap_authority { expected_roadmap_md }
 import gunbc.design_document { expected_design_md }
 import gunbc.runner_deploy_emit { expected_runner_deploy_manifest }
+import gunbc.fleet_converge_emit { expected_fleet_converge_sh }
 import gunbc.os_install { HostAutoinstall, fleet_autoinstall_specs, InstallServerSpec, fleet_install_server_specs }
 import gunbc.os_install_emit { autoinstall_user_data }
 import gunbc.install_server_emit { install_server_dnsmasq_conf }
