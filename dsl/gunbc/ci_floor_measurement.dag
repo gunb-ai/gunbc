@@ -84,7 +84,6 @@ type OomdEnforcementEvidence
   = OomdEnforced
   | OomdUnverified
 
-data gunbc_ci_effective_memory_max_home_note: String = "RunnerSliceCapEffectiveness is the result of a live systemd MemoryMax effective read: CapEffective\{bytes\} (a finite cgroup cap) or CapUnbounded (MemoryMax=infinity, the inert-cap OOM-reboot vector). It is homed here (a budget_tree-free measurement module), not in fleet_host_budget, so BOTH the slice-level drift detector (fleet_host_budget.runner_slice_cap_drifted) AND the per-slot enforcement carrier (gunbc.runner_slot_enforcement, which also imports std.realization_reconcile) can share the ONE authority without the flat-namespace Reconciliation collision that co-loading fleet_host_budget (-> product.budget_tree.Reconciliation) and std.realization_reconcile.Reconciliation would otherwise trigger. Single effective-MemoryMax-read concept, one home; the name keeps Slice for git-history continuity, it reads any systemd MemoryMax (slice or slot)."
 
 type RunnerSliceCapEffectiveness
   = CapEffective { bytes: ByteSize }
