@@ -50,23 +50,7 @@ pub fn rt_scanner_ops() -> String {
 }
 
 pub fn rt_unicode_ops() -> String {
-    v1_rt::concat(
-        v1_rt::concat(
-            v1_rt::concat(
-                v1_rt::concat(
-                    v1_rt::concat(
-                        "pub fn code_point(c: String) -> i64 {\n".to_string(),
-                        "    c.chars().next().map(|ch| ch as i64).unwrap_or(0)\n".to_string(),
-                    ),
-                    "}\n\n".to_string(),
-                ),
-                "pub fn from_code_point(cp: i64) -> String {\n".to_string(),
-            ),
-            "    char::from_u32(cp as u32).map(|c| c.to_string()).unwrap_or_default()\n"
-                .to_string(),
-        ),
-        "}\n\n".to_string(),
-    )
+    v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("pub fn code_point(c: String) -> i64 {\n".to_string(), "    c.chars().next().map(|ch| ch as i64).unwrap_or(0)\n".to_string()), "}\n\n".to_string()), "pub fn from_code_point(cp: i64) -> String {\n".to_string()), "    char::from_u32(cp as u32).map(|c| c.to_string()).unwrap_or_default()\n".to_string()), "}\n\n".to_string()), "pub fn is_xid_start(cp: i64) -> bool {\n".to_string()), "    char::from_u32(cp as u32).map(unicode_ident::is_xid_start).unwrap_or(false)\n".to_string()), "}\n\n".to_string()), "pub fn is_xid_continue(cp: i64) -> bool {\n".to_string()), "    char::from_u32(cp as u32).map(unicode_ident::is_xid_continue).unwrap_or(false)\n".to_string()), "}\n\n".to_string()), "pub fn is_emoji_ident(cp: i64) -> bool {\n".to_string()), "    use unicode_properties::emoji::UnicodeEmoji;\n".to_string()), "    use unicode_properties::emoji::EmojiStatus;\n".to_string()), "    char::from_u32(cp as u32).map(|c| matches!(c.emoji_status(), EmojiStatus::EmojiPresentation | EmojiStatus::EmojiPresentationAndModifierBase | EmojiStatus::EmojiPresentationAndEmojiComponent | EmojiStatus::EmojiPresentationAndModifierAndEmojiComponent) && !unicode_ident::is_xid_continue(c)).unwrap_or(false)\n".to_string()), "}\n\n".to_string())
 }
 
 pub fn rt_rc_container_ops() -> String {

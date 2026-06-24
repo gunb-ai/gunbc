@@ -16,6 +16,8 @@ text_lookup_work_counter = []
 # concatenation). rpds was the considered alternative; rejected because its
 # Vector has no concatenation, so it cannot realize the declared list carrier.
 im-rc = "15.1"
+unicode-ident = "1"
+unicode-properties = { version = "0.1", features = ["emoji"] }
 stacker = "0.1"
 clap = { version = "4", features = ["derive"] }
 lazy_static = "1"

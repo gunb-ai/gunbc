@@ -1,0 +1,139 @@
+module test.claim.github_checks_witness
+
+import extdeps.github.checks {
+  CheckStatus,
+  CheckConclusion,
+  CheckOutput,
+  CheckRun,
+  CheckRunList,
+  InProgress,
+  Completed,
+  Success,
+  Failure,
+  TimedOut,
+  parse_check_status,
+  parse_check_conclusion,
+  check_status_wire_label,
+  check_conclusion_wire_label,
+}
+data sample_check_output: CheckOutput = CheckOutput {
+  title: "CI passed",
+  summary: "All checks green",
+  annotations_count: 0,
+}
+
+data sample_check_run_success: CheckRun = CheckRun {
+  id: 42,
+  name: "gunbc-ci",
+  head_sha: "abc123def456",
+  status: Completed,
+  conclusion: Success,
+  started_at: null,
+  completed_at: null,
+  output: sample_check_output,
+  html_url: "https://github.com/gunb-ai/gunbc/actions/runs/42",
+}
+
+data sample_check_run_pending: CheckRun = CheckRun {
+  id: 43,
+  name: "gunbc-ci",
+  head_sha: "abc123def456",
+  status: InProgress,
+  conclusion: null,
+  started_at: null,
+  completed_at: null,
+  output: CheckOutput {
+    title: null,
+    summary: null,
+    annotations_count: 0,
+  },
+  html_url: "https://github.com/gunb-ai/gunbc/actions/runs/43",
+}
+
+data sample_check_list_one: CheckRunList = CheckRunList {
+  total_count: 1,
+  check_runs: [sample_check_run_success],
+}
+
+test fn witness_completed_run_is_complete() -> Bool {
+  match sample_check_run_success.status {
+    Completed => true
+    _ => false
+  }
+}
+
+test fn witness_in_progress_run_is_not_complete() -> Bool {
+  match sample_check_run_pending.status {
+    Completed => false
+    _ => true
+  }
+}
+
+test fn witness_success_conclusion_recognized() -> Bool {
+  match sample_check_run_success.conclusion {
+    Success => true
+    _ => false
+  }
+}
+
+test fn witness_pending_has_no_conclusion() -> Bool {
+  match sample_check_run_pending.conclusion {
+    null => true
+    _ => false
+  }
+}
+
+test fn witness_check_list_has_one_run() -> Bool {
+  count(sample_check_list_one.check_runs) == 1
+}
+
+test fn witness_in_progress_wire_decodes_to_in_progress() -> Bool {
+  match parse_check_status(raw: "in_progress") {
+    Present { value: InProgress } => true
+    _ => false
+  }
+}
+
+test fn witness_completed_wire_decodes_to_completed() -> Bool {
+  match parse_check_status(raw: "completed") {
+    Present { value: Completed } => true
+    _ => false
+  }
+}
+
+test fn witness_wrong_case_status_does_not_decode() -> Bool {
+  match parse_check_status(raw: "IN_PROGRESS") {
+    none => true
+    _ => false
+  }
+}
+
+test fn witness_check_status_roundtrip_in_progress() -> Bool {
+  check_status_wire_label(s: InProgress) == "in_progress"
+}
+
+test fn witness_timed_out_wire_decodes_to_timed_out() -> Bool {
+  match parse_check_conclusion(raw: "timed_out") {
+    Present { value: TimedOut } => true
+    _ => false
+  }
+}
+
+test fn witness_success_wire_decodes_to_success() -> Bool {
+  match parse_check_conclusion(raw: "success") {
+    Present { value: Success } => true
+    _ => false
+  }
+}
+
+test fn witness_wrong_case_conclusion_does_not_decode() -> Bool {
+  match parse_check_conclusion(raw: "TIMED_OUT") {
+    none => true
+    _ => false
+  }
+}
+
+test fn witness_check_conclusion_roundtrip_timed_out() -> Bool {
+  check_conclusion_wire_label(c: TimedOut) == "timed_out"
+}
+

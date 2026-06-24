@@ -29,6 +29,41 @@ apply guidance derived from it. Verified by execution in
 
 Blast radius is **one secret, two roles**. Nothing project-wide, no admin.
 
+## One-command bootstrap (.dag-automated — preferred)
+
+The entire bootstrap below (enable APIs → create SA → resource-level IAM binding →
+create WIF pool → create WIF provider) is modeled as a single `.dag` orchestration over the
+proven v1 REST executor — the same path Secret Manager runs on. The **only** manual input is
+one initial **admin** access token; the orchestration acquires it via the operator's existing
+`gcloud` login (`shell.GCloud.AuthPrintAccessToken()` — the "one button"), so with an admin
+`gcloud` session active there is **nothing to paste**:
+
+```bash
+# one admin gcloud login (interactive, once) — the single human step
+gcloud auth login          # as a project owner/admin of gunbai-secrets
+
+# then the whole bootstrap, .dag-driven (idempotent; safe to re-run):
+gunbc run --source-root dsl \
+  --entry dsl/gunbc/assimilate/bmc_bootstrap_provision.dag \
+  --function bmc_bootstrap_provision_srv3
+```
+
+The API set is **not** hand-typed: `bmc_required_gcp_apis` is *derived* from the
+`GcpService` dependencies the assimilate path declares (`bmc_assimilate_service_deps`) via
+`gcp_service_api_id` — enablement is a dependency of usage. Known first-run race: a freshly
+created service account takes a few seconds to propagate before the IAM binding can reference
+it, so a cold run can fail at the binding step with *"service account does not exist"* — just
+**re-run** the command once and it converges (the SA already exists). Proven live against
+`gunbai-secrets` on 2026-06-24 (all five ops dispatched; SA minted, least-priv bound, WIF
+provider `ACTIVE`).
+
+Authority: `dsl/gunbc/assimilate/bmc_bootstrap_provision.dag` (sequencing) +
+`dsl/gunbc/assimilate/bmc_token_federation.dag` (identity facts). Least-privilege and the
+closed API set are verified by execution in
+`dsl/test/claim/bmc_bootstrap_provision_witness_test.dag`. The manual `gcloud` blocks in
+§0–§3 below are the **documented equivalent / fallback** — run them only if you prefer to
+apply by hand or are debugging a step.
+
 ## 0. Prerequisites (operator)
 
 ```bash

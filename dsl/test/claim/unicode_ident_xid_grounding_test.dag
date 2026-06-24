@@ -1,0 +1,14 @@
+module test.claim.unicode_ident_xid_grounding
+
+import std.logic { Bool }
+
+test fn unicode_ident_xid_grounding_holds() -> Bool {
+  let e_acute_start = is_xid_start(ch: 233)
+  let alpha_start = is_xid_start(ch: 945)
+  let digit_not_start = is_xid_start(ch: 48) == false
+  let digit_is_continue = is_xid_continue(ch: 48)
+  let emoji_start = is_emoji_ident(ch: 128512)
+  let nbsp_not_xid = is_xid_start(ch: 160) == false
+  e_acute_start && alpha_start && digit_not_start && digit_is_continue
+    && emoji_start && nbsp_not_xid
+}

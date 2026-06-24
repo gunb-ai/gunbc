@@ -1,0 +1,249 @@
+module gunbc.oomd_install
+
+import std.types { NonEmptyStr, String, Bool }
+import std.measure { ByteSize, byte_size_count, second, Percent, percent, percent_count }
+import std.realization_reconcile {
+  ShowEffectiveRead,
+  ReadObserved,
+  ReadAbsent,
+  Grounding,
+  Grounds,
+  DoesNotGround,
+  Reconciliation,
+  Converged,
+  NotConverged,
+  reconcile,
+}
+import gunbc.ci_floor_measurement {
+  OomdEnforcementEvidence,
+  OomdEnforced,
+  OomdUnverified,
+  RunnerSliceCapEffectiveness,
+  CapEffective,
+  CapUnbounded,
+  SessionAggregateReservation,
+  SessionAggregateMeasured,
+  SessionAggregateUnmeasured,
+}
+import extdeps.apt { package_systemd_oomd_defaults }
+import extdeps.os.oomd {
+  OomdGlobalConfig,
+  oomd_default_global_config,
+  UnitManagedOomPolicy,
+  ManagedOomAction,
+  ManagedOomKill,
+  ManagedOomAuto,
+  OomdDropIn,
+  systemd_oomd_unit,
+  oomd_managed_oom_memory_pressure_property,
+}
+import extdeps.os.systemd {
+  SystemdUnitActiveState,
+  Active,
+  Inactive,
+  Activating,
+  Deactivating,
+  Reloading,
+  Failed,
+}
+import extdeps.os.systemctl {
+  UnitFileState,
+  UnitEnabled,
+  UnitEnabledRuntime,
+  UnitLinked,
+  UnitMasked,
+  UnitStatic,
+  UnitDisabled,
+  UnitIndirect,
+  UnitGenerated,
+  UnitTransient,
+  UnitBad,
+}
+
+data gunbc_oomd_install_doc: String = "Instance 1 of std.realization_reconcile, sibling to gunbc.os_install. Composes the systemd-oomd dependency lifecycle: apt-install systemd-oomd-defaults, write the SESSIONS-slice ManagedOOM drop-in (ManagedOOMMemoryPressure=kill), enable+start the unit, then VERIFY via a systemctl show-effective + oomctl read that GROUNDS OomdEnforced. Per the brief this is PURE .dag with NO live host execution: the committed read is ReadAbsent, so the carrier derives OomdUnverified (fail-closed). OomdEnforced is NOT satisfiable by oomd-active alone — that is a fail-open: an active systemd-oomd with no managed session cgroup has nothing to evict-within under aggregate pressure (zero actual protection). So ground_oomd_from_read requires the FULL conjunction: managed sessions slice exists, unit active AND enabled, effective ManagedOOMMemoryPressure=kill on the slice, the per-session memory.max byte ceiling == C, the parent sessions.slice MemoryMax == the measured aggregate reservation, the ManagedOOMMemoryPressureLimit PSI percent == the intended threshold, and oomctl confirms the slice is in oomd's managed set. The byte ceilings reuse the §3 single authority RunnerSliceCapEffectiveness; the PSI percent is a SEPARATE Percent fact (never conflated with the byte caps — ManagedOOMMemoryPressureLimit takes a PSI percentage, not bytes). WHICH slice and WHICH thresholds are gunbc policy and live here, not in extdeps."
+
+data gunbc_oomd_sessions_slice: NonEmptyStr = "sessions.slice"
+
+data gunbc_oomd_sessions_slice_provenance: String = "HELD / NOT-FINAL: the oomd-managed SESSIONS slice — the cgroup parent under which agent sessions run and within which systemd-oomd evicts the heaviest session under aggregate memory pressure. This is the OomdEnforced SUBJECT. Sessions run today as FLAT docker-*.scope under system.slice, so this managed slice does NOT exist yet; 'sessions.slice' is the INTENDED literal, pinned only when the docker cgroup-parent change is operator-blessed (coordinated with fierce-carp-462's reconciler, which applies the slice). The runner slice (live name system-actions-runner.slice) is HARD-CAPPED and NOT oomd-managed (runners are never evicted), so it is deliberately absent from this model — it is not the OomdEnforced subject."
+
+data gunbc_oomd_sessions_policy: UnitManagedOomPolicy = UnitManagedOomPolicy {
+  scope_unit: gunbc_oomd_sessions_slice,
+  managed_oom_swap: ManagedOomKill,
+  managed_oom_memory_pressure: ManagedOomKill,
+  managed_oom_memory_pressure_limit: percent(60),
+  managed_oom_memory_pressure_duration: second(20),
+}
+
+type OomdApplyEffect {
+  install_package: NonEmptyStr
+  configured_policy: UnitManagedOomPolicy
+}
+
+data gunbc_oomd_apply_effect: OomdApplyEffect = OomdApplyEffect {
+  install_package: package_systemd_oomd_defaults,
+  configured_policy: gunbc_oomd_sessions_policy,
+}
+
+type OomdInstallPlan {
+  install_package: NonEmptyStr
+  global_config: OomdGlobalConfig
+  dropin: OomdDropIn
+  service_unit: NonEmptyStr
+  verify_property: NonEmptyStr
+}
+
+data gunbc_oomd_install_plan: OomdInstallPlan = OomdInstallPlan {
+  install_package: package_systemd_oomd_defaults,
+  global_config: oomd_default_global_config,
+  dropin: OomdDropIn {
+    target_unit: gunbc_oomd_sessions_slice,
+    policy: gunbc_oomd_sessions_policy,
+  },
+  service_unit: systemd_oomd_unit,
+  verify_property: oomd_managed_oom_memory_pressure_property,
+}
+
+type OomdEffectiveRead {
+  slice_present: Bool
+  unit_active: SystemdUnitActiveState
+  unit_file_state: UnitFileState
+  effective_managed_oom_memory_pressure: ManagedOomAction
+  effective_per_session_memory_max: RunnerSliceCapEffectiveness
+  effective_parent_slice_memory_max: RunnerSliceCapEffectiveness
+  effective_managed_oom_memory_pressure_limit: Percent
+  oomctl_manages_slice: Bool
+}
+
+type OomdGroundingThresholds {
+  per_session_cap: ByteSize
+  parent_slice_cap: SessionAggregateReservation
+  pressure_limit: Percent
+}
+
+type OomdGroundingCheck
+  = GroundingPass
+  | GroundingFail { reason: String }
+
+fn grounding_check(ok: Bool, reason: String) -> OomdGroundingCheck {
+  if ok { GroundingPass } else { GroundingFail { reason: reason } }
+}
+
+fn unit_is_active(s: SystemdUnitActiveState) -> Bool {
+  match s {
+    Active => true
+    Inactive => false
+    Activating => false
+    Deactivating => false
+    Reloading => false
+    Failed => false
+  }
+}
+
+fn unit_is_enabled(s: UnitFileState) -> Bool {
+  match s {
+    UnitEnabled => true
+    UnitEnabledRuntime => false
+    UnitLinked => false
+    UnitMasked => false
+    UnitStatic => false
+    UnitDisabled => false
+    UnitIndirect => false
+    UnitGenerated => false
+    UnitTransient => false
+    UnitBad => false
+  }
+}
+
+fn pressure_is_kill(a: ManagedOomAction) -> Bool {
+  match a {
+    ManagedOomKill => true
+    ManagedOomAuto => false
+  }
+}
+
+fn cap_equals(eff: RunnerSliceCapEffectiveness, target: ByteSize) -> Bool {
+  match eff {
+    CapUnbounded => false
+    CapEffective { bytes } => byte_size_count(b: bytes) == byte_size_count(b: target)
+  }
+}
+
+fn parent_slice_cap_ok(eff: RunnerSliceCapEffectiveness, agg: SessionAggregateReservation) -> Bool {
+  match agg {
+    SessionAggregateUnmeasured => false
+    SessionAggregateMeasured { bytes } => cap_equals(eff: eff, target: bytes)
+  }
+}
+
+fn grounding_checks(read: OomdEffectiveRead, req: OomdGroundingThresholds) -> List<OomdGroundingCheck> {
+  [
+    grounding_check(ok: read.slice_present, reason: "managed sessions slice does not exist: systemd-oomd has no managed cgroup to evict within under aggregate pressure (active oomd with no managed slice = zero protection)"),
+    grounding_check(ok: unit_is_active(s: read.unit_active), reason: "systemd-oomd.service is not active"),
+    grounding_check(ok: unit_is_enabled(s: read.unit_file_state), reason: "systemd-oomd.service is not enabled: the eviction backstop will not survive a reboot"),
+    grounding_check(ok: pressure_is_kill(a: read.effective_managed_oom_memory_pressure), reason: "effective ManagedOOMMemoryPressure is auto, not kill: eviction is not guaranteed on the sessions slice"),
+    grounding_check(ok: cap_equals(eff: read.effective_per_session_memory_max, target: req.per_session_cap), reason: "per-session memory.max does not equal the C eviction ceiling (or MemoryMax is infinity — an inert cap)"),
+    grounding_check(ok: parent_slice_cap_ok(eff: read.effective_parent_slice_memory_max, agg: req.parent_slice_cap), reason: "parent sessions.slice MemoryMax does not equal the measured aggregate reservation (or the aggregate is unmeasured / MemoryMax is infinity)"),
+    grounding_check(ok: percent_count(p: read.effective_managed_oom_memory_pressure_limit) == percent_count(p: req.pressure_limit), reason: "ManagedOOMMemoryPressureLimit (PSI percent) does not equal the intended threshold"),
+    grounding_check(ok: read.oomctl_manages_slice, reason: "oomctl does not list the sessions slice in the systemd-oomd managed set"),
+  ]
+}
+
+fn first_grounding_failure(checks: List<OomdGroundingCheck>) -> String? {
+  fold(checks, init: none, f: fn(acc, c) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => match c {
+        GroundingPass => none
+        GroundingFail { reason: r } => Present { value: r }
+      }
+    }
+  })
+}
+
+fn ground_oomd_from_read(read: OomdEffectiveRead, req: OomdGroundingThresholds) -> Grounding<OomdEnforcementEvidence> {
+  match first_grounding_failure(checks: grounding_checks(read: read, req: req)) {
+    Absent => Grounds { evidence: OomdEnforced }
+    Present { value: reason } => DoesNotGround { reason: reason }
+  }
+}
+
+fn reconcile_oomd(read: ShowEffectiveRead<OomdEffectiveRead>, req: OomdGroundingThresholds) -> Reconciliation<OomdApplyEffect, OomdEnforcementEvidence> {
+  match read {
+    ReadAbsent { reason: why } =>
+      reconcile(
+        apply_effect: gunbc_oomd_apply_effect,
+        show_read: read,
+        grounding: DoesNotGround { reason: why }
+      )
+    ReadObserved { value: observed } =>
+      reconcile(
+        apply_effect: gunbc_oomd_apply_effect,
+        show_read: read,
+        grounding: ground_oomd_from_read(read: observed, req: req)
+      )
+  }
+}
+
+fn oomd_evidence_from_reconciliation(r: Reconciliation<OomdApplyEffect, OomdEnforcementEvidence>) -> OomdEnforcementEvidence {
+  match r {
+    Converged { evidence: e, applied: _ } => e
+    NotConverged { reason: _, applied: _ } => OomdUnverified
+  }
+}
+
+data gunbc_oomd_show_effective_read: ShowEffectiveRead<OomdEffectiveRead> = ReadAbsent {
+  reason: "no live systemctl show-effective / oomctl read has run on the fleet hosts yet; pure .dag model, the live verify is the later increment"
+}
+
+fn gunbc_oomd_install_evidence() -> OomdEnforcementEvidence {
+  match gunbc_oomd_show_effective_read {
+    ReadAbsent { reason: _ } => OomdUnverified
+    ReadObserved { value: _ } => OomdUnverified
+  }
+}
+
+data gunbc_oomd_fleet_evidence_seam_doc: String = "The single public binding seam for the fleet capacity gate (fleet_host_budget.gunbc_fleet_oomd_evidence, consumed by ci_runner_placement REGIME-2). A caller that holds the REGIME-2 thresholds (oomd_eviction_ceiling C, aggregate_reservation, intended PSI percent) assembles OomdGroundingThresholds and binds gunbc_fleet_oomd_evidence to this fn — NOT to a literal OomdEnforced. It grounds OomdEnforced over the committed gunbc_oomd_show_effective_read, so it stays OomdUnverified (fail-closed) until a real live ReadObserved on the managed sessions slice grounds the full conjunction (§5: verify the realization, not the declaration). It returns OomdEnforcementEvidence directly — the std.realization_reconcile.Reconciliation never leaks to the consumer, avoiding the flat-namespace collision with product.budget_tree.Reconciliation that co-loading would trigger. The read shape is internal, so this seam is stable across future grounding-conjunct additions."
+
+fn gunbc_oomd_fleet_evidence(req: OomdGroundingThresholds) -> OomdEnforcementEvidence {
+  oomd_evidence_from_reconciliation(r: reconcile_oomd(read: gunbc_oomd_show_effective_read, req: req))
+}

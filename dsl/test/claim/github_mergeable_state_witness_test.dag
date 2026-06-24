@@ -1,0 +1,34 @@
+module test.claim.github_mergeable_state_witness
+
+import extdeps.github.mergeable_state {
+  MergeableState,
+  Mergeable,
+  Conflicting,
+  parse_mergeable_state,
+  mergeable_state_wire_label,
+}
+
+test fn witness_mergeable_wire_decodes_to_mergeable() -> Bool {
+  match parse_mergeable_state(raw: "MERGEABLE") {
+    Present { value: Mergeable } => true
+    _ => false
+  }
+}
+
+test fn witness_conflicting_wire_decodes_to_conflicting() -> Bool {
+  match parse_mergeable_state(raw: "CONFLICTING") {
+    Present { value: Conflicting } => true
+    _ => false
+  }
+}
+
+test fn witness_lowercase_mergeable_does_not_decode() -> Bool {
+  match parse_mergeable_state(raw: "mergeable") {
+    none => true
+    _ => false
+  }
+}
+
+test fn witness_mergeable_state_roundtrip_conflicting() -> Bool {
+  mergeable_state_wire_label(s: Conflicting) == "CONFLICTING"
+}
