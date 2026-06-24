@@ -1,0 +1,50 @@
+module gunbc.webui_kvm_runner_emit
+
+import extdeps.bmc.webui_kvm { openbmc_webui_local_file_virtual_media }
+import extdeps.browser {
+  BrowserPageOp,
+  Goto, Fill, Click, WaitForSelector, UploadFile, Wait,
+  GetByRoleWaitFor, WaitForLoadState, WaitForLocatorText,
+  NetworkIdle, Attached, Visible,
+  LitArg, RuntimeArg, JoinArg,
+}
+import extdeps.browser.session_program {
+  SessionProgram, serialize_session_program,
+}
+
+data srv3_default_bmc_host: String = "https://192.168.1.192"
+data srv3_default_iso_url: String = "http://192.168.1.188/ubuntu-24.04/ubuntu.iso"
+data srv3_default_boot_hook_command: String = "gunbc run --source-root dsl --entry dsl/gunbc/srv3_boot_once_cd.dag --function srv3_boot_once_cd"
+
+fn webui_kvm_runner_program() -> SessionProgram {
+  let s = openbmc_webui_local_file_virtual_media
+  let file_input = concat("#", s.dom.attach_file_input_id)
+  SessionProgram {
+    default_bmc_host: srv3_default_bmc_host,
+    default_iso_url: srv3_default_iso_url,
+    default_boot_hook_command: srv3_default_boot_hook_command,
+    login_ops: [
+      Goto { url: JoinArg { left: RuntimeArg { name: "a.bmcHost" }, right: LitArg { v: "/#/login" } }, wait_until: NetworkIdle },
+      Fill { selector: concat("#", s.dom.login_username_input_id), text: RuntimeArg { name: "a.bmcUser" } },
+      Fill { selector: concat("#", s.dom.login_password_input_id), text: RuntimeArg { name: "a.bmcPass" } },
+      Click { selector: s.dom.login_submit_selector },
+      WaitForLoadState { state: NetworkIdle, timeout_ms: 30000 },
+    ],
+    navigate_ops: [
+      Goto { url: JoinArg { left: RuntimeArg { name: "a.bmcHost" }, right: LitArg { v: s.spa_route } }, wait_until: NetworkIdle },
+      GetByRoleWaitFor { role: "heading", name: s.dom.attach_section_heading, timeout_ms: 30000 },
+      WaitForSelector { selector: file_input, state: Attached, timeout_ms: 30000 },
+    ],
+    attach_ops: [
+      UploadFile { selector: file_input, path: RuntimeArg { name: "isoPath" } },
+      Wait { ms: 800 },
+      Click { selector: concat("button.btn-primary:has-text(\"", concat(s.dom.attach_start_button_label, "\")")) },
+      WaitForLocatorText { selector: "button.btn-primary", has_text: "Stop", state: Visible, timeout_ms: 30000 },
+    ],
+    teardown_stop_op: Click { selector: "button.btn-primary:has-text(\"Stop\")" },
+  }
+}
+
+fn webui_kvm_runner_mjs() -> String {
+  serialize_session_program(p: webui_kvm_runner_program())
+}

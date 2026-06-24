@@ -50,38 +50,68 @@ fn load_state_wire(s: LoadState) -> String {
   }
 }
 
+type ElementState
+  = Attached
+  | Visible
+  | Hidden
+  | Detached
+
+fn element_state_wire(s: ElementState) -> String {
+  match s {
+    Attached => "attached"
+    Visible => "visible"
+    Hidden => "hidden"
+    Detached => "detached"
+  }
+}
+
+type OpArg
+  = LitArg { v: String }
+  | RuntimeArg { name: String }
+  | JoinArg { left: OpArg, right: OpArg }
+
+fn op_arg_cli(a: OpArg) -> String {
+  match a {
+    LitArg { v: s } => s
+    RuntimeArg { name: n } => concat("{", concat(n, "}"))
+    JoinArg { left: l, right: r } => concat(op_arg_cli(a: l), op_arg_cli(a: r))
+  }
+}
+
 type BrowserPageOp
-  = Goto { url: String, wait_until: LoadState = DomContentLoaded }
+  = Goto { url: OpArg, wait_until: LoadState = DomContentLoaded }
   | CurrentUrl
   | Title
-  | WaitForSelector { selector: String, timeout_ms: Int = 30000 }
+  | WaitForSelector { selector: String, state: ElementState = Visible, timeout_ms: Int = 30000 }
   | QueryAll { selector: String }
   | Click { selector: String }
-  | Fill { selector: String, text: String }
+  | Fill { selector: String, text: OpArg }
   | Evaluate { expression: String }
-  | UploadFile { selector: String, path: String }
-  | Screenshot { path: String }
+  | UploadFile { selector: String, path: OpArg }
+  | Screenshot { path: OpArg }
   | Wait { ms: Int }
   | GetByRoleWaitFor { role: String, name: String, timeout_ms: Int = 30000 }
   | WaitForLoadState { state: LoadState = NetworkIdle, timeout_ms: Int = 30000 }
   | LocatorCountWithText { selector: String, has_text: String }
+  | WaitForLocatorText { selector: String, has_text: String, state: ElementState = Visible, timeout_ms: Int = 30000 }
 
 fn op_page_argv(op: BrowserPageOp) -> List<String> {
   match op {
-    Goto { url: u, wait_until: w } => ["playwright-runner", "goto", u, "--wait-until", load_state_wire(s: w)]
+    Goto { url: u, wait_until: w } => ["playwright-runner", "goto", op_arg_cli(a: u), "--wait-until", load_state_wire(s: w)]
     CurrentUrl => ["playwright-runner", "url"]
     Title => ["playwright-runner", "title"]
-    WaitForSelector { selector: s, timeout_ms: t } => ["playwright-runner", "wait-for", s, "--timeout", to_string(t)]
+    WaitForSelector { selector: s, state: st, timeout_ms: t } => ["playwright-runner", "wait-for", s, "--state", element_state_wire(s: st), "--timeout", to_string(t)]
     QueryAll { selector: s } => ["playwright-runner", "query-all", s]
     Click { selector: s } => ["playwright-runner", "click", s]
-    Fill { selector: s, text: x } => ["playwright-runner", "fill", s, x]
+    Fill { selector: s, text: x } => ["playwright-runner", "fill", s, op_arg_cli(a: x)]
     Evaluate { expression: e } => ["playwright-runner", "evaluate", e]
-    UploadFile { selector: s, path: p } => ["playwright-runner", "upload", s, p]
-    Screenshot { path: p } => ["playwright-runner", "screenshot", p]
+    UploadFile { selector: s, path: p } => ["playwright-runner", "upload", s, op_arg_cli(a: p)]
+    Screenshot { path: p } => ["playwright-runner", "screenshot", op_arg_cli(a: p)]
     Wait { ms: m } => ["playwright-runner", "wait", to_string(m)]
     GetByRoleWaitFor { role: r, name: n, timeout_ms: t } => ["playwright-runner", "wait-for-role", r, "--name", n, "--timeout", to_string(t)]
     WaitForLoadState { state: st, timeout_ms: t } => ["playwright-runner", "wait-load-state", load_state_wire(s: st), "--timeout", to_string(t)]
     LocatorCountWithText { selector: s, has_text: h } => ["playwright-runner", "locator-count", s, "--has-text", h]
+    WaitForLocatorText { selector: s, has_text: h, state: st, timeout_ms: t } => ["playwright-runner", "wait-for-locator", s, "--has-text", h, "--state", element_state_wire(s: st), "--timeout", to_string(t)]
   }
 }
 
