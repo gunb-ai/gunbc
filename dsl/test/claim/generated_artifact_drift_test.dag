@@ -2,7 +2,7 @@
 module test.claim.generated_artifact_drift
 
 import gunbc.generated_artifact {
-  GeneratedArtifact, CiYamlArtifact, GitignoreArtifact, RoadmapArtifact, DesignArtifact, RunnerDeployArtifact, AutoinstallUserDataArtifact, ProxyDhcpDnsmasqArtifact, PlanArtifact,
+  GeneratedArtifact, CiYamlArtifact, GitignoreArtifact, RoadmapArtifact, DesignArtifact, RunnerDeployArtifact, FleetConvergeArtifact, AutoinstallUserDataArtifact, ProxyDhcpDnsmasqArtifact, PlanArtifact,
   generated_artifact_registry,
   committed_generated_artifacts, artifact_path, artifact_generate, artifact_extra_valid,
   artifact_is_committed, registry_contains
@@ -44,12 +44,13 @@ fn witness_ignored_paths_excluded() -> Bool {
 }
 
 fn witness_registry_complete() -> Bool {
-  count(generated_artifact_registry) == (5 + count(fleet_autoinstall_specs) + count(fleet_install_server_specs) + count(all_plans))
+  count(generated_artifact_registry) == (6 + count(fleet_autoinstall_specs) + count(fleet_install_server_specs) + count(all_plans))
     && registry_contains(a: CiYamlArtifact)
     && registry_contains(a: GitignoreArtifact)
     && registry_contains(a: RoadmapArtifact)
     && registry_contains(a: DesignArtifact)
     && registry_contains(a: RunnerDeployArtifact)
+    && registry_contains(a: FleetConvergeArtifact)
     && registry_contains(a: AutoinstallUserDataArtifact { spec: srv3_autoinstall_spec })
     && registry_contains(a: ProxyDhcpDnsmasqArtifact { spec: srv3_install_server_spec })
     && registry_contains(a: PlanArtifact { plan: idea_machine_plan })
@@ -58,6 +59,7 @@ fn witness_registry_complete() -> Bool {
     && artifact_is_committed(a: RoadmapArtifact)
     && artifact_is_committed(a: DesignArtifact)
     && artifact_is_committed(a: RunnerDeployArtifact)
+    && artifact_is_committed(a: FleetConvergeArtifact)
     && artifact_is_committed(a: AutoinstallUserDataArtifact { spec: srv3_autoinstall_spec })
     && artifact_is_committed(a: ProxyDhcpDnsmasqArtifact { spec: srv3_install_server_spec })
     && artifact_is_committed(a: PlanArtifact { plan: idea_machine_plan })
