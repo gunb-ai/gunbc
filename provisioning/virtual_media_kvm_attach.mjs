@@ -111,10 +111,10 @@ try {
     log('DRY-RUN complete -- no ISO downloaded, no BMC write performed.');
   } else {
     const isoPath = await resolveIso(a);
-  await page.setInputFiles('#virtual_media_device', isoPath);
-  await page.waitForTimeout(800);
-  await page.click('button.btn-primary:has-text("Start")');
-  await page.locator('button.btn-primary', { hasText: 'Stop' }).first().waitFor({ state: 'visible', timeout: 30000 });
+    await page.setInputFiles('#virtual_media_device', isoPath);
+    await page.waitForTimeout(800);
+    await page.click('button.btn-primary:has-text("Start")');
+    await page.locator('button.btn-primary', { hasText: 'Stop' }).first().waitFor({ state: 'visible', timeout: 30000 });
     log('virtual media MOUNTED (NBD session live; browser must stay alive while mounted)');
     if (a.bootHookCommand) {
       const ok = fireBootHook(a.bootHookCommand);

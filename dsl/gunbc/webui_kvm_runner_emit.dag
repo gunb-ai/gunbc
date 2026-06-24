@@ -201,7 +201,6 @@ fn runner_main(r: WebuiKvmRunner) -> List<String> {
       "}",
       "process.exit(exitCode);",
     ], [])))))))
-  )
 }
 
 fn webui_kvm_runner_mjs() -> String {
