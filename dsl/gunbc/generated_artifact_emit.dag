@@ -1,0 +1,40 @@
+
+module gunbc.generated_artifact_emit
+
+import gunbc.generated_artifact {
+  GeneratedArtifact,
+  CiYamlArtifact, GitignoreArtifact, RoadmapArtifact, DesignArtifact,
+  RunnerDeployArtifact, FleetConvergeArtifact, AutoinstallUserDataArtifact, ProxyDhcpDnsmasqArtifact, PlanArtifact,
+  artifact_path
+}
+import gunbc.ci_yaml_emit { expected_ci_yml }
+import gunbc.ci_yaml_validate { ci_yml_parses }
+import gunbc.gitignore_emit { expected_gitignore }
+import gunbc.roadmap_authority { expected_roadmap_md }
+import gunbc.design_document { expected_design_md }
+import gunbc.runner_deploy_emit { expected_runner_deploy_manifest }
+import gunbc.fleet_converge_emit { expected_fleet_converge_sh }
+import gunbc.os_install_emit { autoinstall_user_data }
+import gunbc.install_server_emit { install_server_dnsmasq_conf }
+import gunbc.plan { expected_plan_md }
+
+fn artifact_generate(a: GeneratedArtifact) -> String {
+  match a {
+    CiYamlArtifact => expected_ci_yml()
+    GitignoreArtifact => expected_gitignore()
+    RoadmapArtifact => expected_roadmap_md()
+    DesignArtifact => expected_design_md()
+    RunnerDeployArtifact => expected_runner_deploy_manifest()
+    FleetConvergeArtifact => expected_fleet_converge_sh()
+    AutoinstallUserDataArtifact { spec } => autoinstall_user_data(payload: spec.payload)
+    ProxyDhcpDnsmasqArtifact { spec } => install_server_dnsmasq_conf(spec: spec)
+    PlanArtifact { plan } => expected_plan_md(p: plan)
+  }
+}
+
+fn artifact_extra_valid(a: GeneratedArtifact) -> Bool {
+  match a {
+    CiYamlArtifact => ci_yml_parses(path: artifact_path(a: a))
+    _ => true
+  }
+}
