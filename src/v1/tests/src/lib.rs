@@ -9,6 +9,8 @@ pub mod helpers;
 #[cfg(test)]
 mod a4_opacity;
 #[cfg(test)]
+mod auth_declared_but_unwired_witness_test;
+#[cfg(test)]
 mod b1_hash_primitive_test;
 #[cfg(test)]
 mod body_producer_infer_perf_witness_test;
@@ -56,6 +58,8 @@ mod fn_as_value_test;
 mod fold_list_generic_instantiation_test;
 #[cfg(test)]
 mod generator_match_arm_test;
+#[cfg(test)]
+mod gunbhub_serve_program_test;
 #[cfg(test)]
 mod html_markup_smoke_test;
 #[cfg(test)]
@@ -122,6 +126,8 @@ mod sub_value_lattice_factor_test;
 mod target_model_runtime_import_repro;
 #[cfg(test)]
 mod typescript_effect_io_receipt_test;
+#[cfg(test)]
+mod typescript_program_emit_run_test;
 #[cfg(test)]
 mod v1_compiler_lib_test;
 #[cfg(test)]
