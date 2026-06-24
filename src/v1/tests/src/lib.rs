@@ -132,4 +132,3 @@ mod wet_hermetic_equivalence_test;
 mod width_nat_type_arg_test;
 #[cfg(test)]
 mod witness_option_bridge_test;
-mod zz_op_grounding_validation_throwaway_test;
