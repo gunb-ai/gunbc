@@ -772,8 +772,11 @@ fn target_canonical_operation_wire_malformed_diagnostic(wire: Node) -> Diagnosti
   }
 }
 
-fn target_model_canonical_operation_algebra_field_from_wire(wire: Node) -> Optional<Symbol> {
-  match fold(
+fn target_model_canonical_operation_atom_field_from_wire(
+  wire: Node,
+  field_name: Symbol
+) -> Optional<Symbol> {
+  fold(
     wire.children,
     init: optional_absent(),
     f: fn(acc, edge) {
@@ -782,7 +785,7 @@ fn target_model_canonical_operation_algebra_field_from_wire(wire: Node) -> Optio
         Absent =>
           match edge.label {
             Named { name: n } =>
-              if n == ^target_canonical_operation_field_algebra_field {
+              if n == field_name {
                 match edge.target.kind {
                   TypeNode { connective: Atom { identity: id } } =>
                     optional_present(value: id)
@@ -795,21 +798,87 @@ fn target_model_canonical_operation_algebra_field_from_wire(wire: Node) -> Optio
           }
       }
     }
-  ) {
-    Present { value: field } => optional_present(value: field)
-    Absent => optional_absent()
+  )
+}
+
+fn ordering_predicate_from_discriminant(id: Symbol) -> Optional<OrderingPredicate> {
+  if id == discriminant(v: IsLess {}) {
+    optional_present(value: IsLess {})
+  } else if id == discriminant(v: IsLessOrEqual {}) {
+    optional_present(value: IsLessOrEqual {})
+  } else if id == discriminant(v: IsGreater {}) {
+    optional_present(value: IsGreater {})
+  } else if id == discriminant(v: IsGreaterOrEqual {}) {
+    optional_present(value: IsGreaterOrEqual {})
+  } else {
+    optional_absent()
+  }
+}
+
+fn equality_predicate_from_discriminant(id: Symbol) -> Optional<EqualityPredicate> {
+  if id == discriminant(v: IsEqual {}) {
+    optional_present(value: IsEqual {})
+  } else if id == discriminant(v: IsNotEqual {}) {
+    optional_present(value: IsNotEqual {})
+  } else {
+    optional_absent()
   }
 }
 
 fn target_model_canonical_operation_wire_node(operation: CanonicalOperation) -> Node {
   match operation {
-    OpAdd { algebra_field: f } =>
+    AlgebraPrimitive { algebra_field: f } =>
       Node {
-        kind: TypeNode { connective: Atom { identity: discriminant(v: OpAdd {}) } },
+        kind: TypeNode { connective: Atom { identity: discriminant(v: AlgebraPrimitive {}) } },
         children: [
           target_model_named_edge(
             name: ^target_canonical_operation_field_algebra_field,
             target: target_model_type_atom_node(identity: f)
+          )
+        ],
+        occurrence_id: SyntheticOccurrence
+      }
+    AlgebraInverseCompose { binary_field: b, inverse_field: i } =>
+      Node {
+        kind: TypeNode { connective: Atom { identity: discriminant(v: AlgebraInverseCompose {}) } },
+        children: [
+          target_model_named_edge(
+            name: ^target_canonical_operation_field_binary_field,
+            target: target_model_type_atom_node(identity: b)
+          ),
+          target_model_named_edge(
+            name: ^target_canonical_operation_field_inverse_field,
+            target: target_model_type_atom_node(identity: i)
+          )
+        ],
+        occurrence_id: SyntheticOccurrence
+      }
+    OrderingComparison { compare_field: c, predicate: p } =>
+      Node {
+        kind: TypeNode { connective: Atom { identity: discriminant(v: OrderingComparison {}) } },
+        children: [
+          target_model_named_edge(
+            name: ^target_canonical_operation_field_compare_field,
+            target: target_model_type_atom_node(identity: c)
+          ),
+          target_model_named_edge(
+            name: ^target_canonical_operation_field_predicate,
+            target: target_model_type_atom_node(identity: discriminant(v: p))
+          )
+        ],
+        occurrence_id: SyntheticOccurrence
+      }
+    EqualityComparison { eq_field: e, predicate: p } =>
+      Node {
+        kind: TypeNode { connective: Atom { identity: discriminant(v: EqualityComparison {}) } },
+        children: [
+          target_model_named_edge(
+            name: ^target_canonical_operation_field_eq_field,
+            target: target_model_type_atom_node(identity: e)
+          ),
+          target_model_named_edge(
+            name: ^target_canonical_operation_field_predicate,
+            target: target_model_type_atom_node(identity: discriminant(v: p))
           )
         ],
         occurrence_id: SyntheticOccurrence
@@ -822,9 +891,28 @@ fn canonical_operation_equal(
   right: CanonicalOperation
 ) -> Bool {
   match left {
-    OpAdd { algebra_field: lf } =>
+    AlgebraPrimitive { algebra_field: lf } =>
       match right {
-        OpAdd { algebra_field: rf } => lf == rf
+        AlgebraPrimitive { algebra_field: rf } => lf == rf
+        _ => false
+      }
+    AlgebraInverseCompose { binary_field: lb, inverse_field: li } =>
+      match right {
+        AlgebraInverseCompose { binary_field: rb, inverse_field: ri } =>
+          lb == rb && li == ri
+        _ => false
+      }
+    OrderingComparison { compare_field: lc, predicate: lp } =>
+      match right {
+        OrderingComparison { compare_field: rc, predicate: rp } =>
+          lc == rc && discriminant(v: lp) == discriminant(v: rp)
+        _ => false
+      }
+    EqualityComparison { eq_field: le, predicate: lp } =>
+      match right {
+        EqualityComparison { eq_field: re, predicate: rp } =>
+          le == re && discriminant(v: lp) == discriminant(v: rp)
+        _ => false
       }
   }
 }
@@ -832,10 +920,108 @@ fn canonical_operation_equal(
 fn canonical_operation_from_wire_node(wire: Node) -> Outcome<CanonicalOperation> {
   match wire.kind {
     TypeNode { connective: Atom { identity: id } } =>
-      if id == discriminant(v: OpAdd {}) {
-        match target_model_canonical_operation_algebra_field_from_wire(wire: wire) {
+      if id == discriminant(v: AlgebraPrimitive {}) {
+        match target_model_canonical_operation_atom_field_from_wire(
+          wire: wire,
+          field_name: ^target_canonical_operation_field_algebra_field
+        ) {
           Present { value: algebra_field } =>
-            outcome_accepted(OpAdd { algebra_field: algebra_field })
+            outcome_accepted(AlgebraPrimitive { algebra_field: algebra_field })
+          Absent =>
+            outcome_rejected(
+              target_canonical_operation_wire_malformed_diagnostic(wire: wire)
+            )
+        }
+      } else if id == discriminant(v: AlgebraInverseCompose {}) {
+        match target_model_canonical_operation_atom_field_from_wire(
+          wire: wire,
+          field_name: ^target_canonical_operation_field_binary_field
+        ) {
+          Present { value: binary_field } =>
+            match target_model_canonical_operation_atom_field_from_wire(
+              wire: wire,
+              field_name: ^target_canonical_operation_field_inverse_field
+            ) {
+              Present { value: inverse_field } =>
+                outcome_accepted(
+                  AlgebraInverseCompose {
+                    binary_field: binary_field,
+                    inverse_field: inverse_field
+                  }
+                )
+              Absent =>
+                outcome_rejected(
+                  target_canonical_operation_wire_malformed_diagnostic(wire: wire)
+                )
+            }
+          Absent =>
+            outcome_rejected(
+              target_canonical_operation_wire_malformed_diagnostic(wire: wire)
+            )
+        }
+      } else if id == discriminant(v: OrderingComparison {}) {
+        match target_model_canonical_operation_atom_field_from_wire(
+          wire: wire,
+          field_name: ^target_canonical_operation_field_compare_field
+        ) {
+          Present { value: compare_field } =>
+            match target_model_canonical_operation_atom_field_from_wire(
+              wire: wire,
+              field_name: ^target_canonical_operation_field_predicate
+            ) {
+              Present { value: predicate_id } =>
+                match ordering_predicate_from_discriminant(id: predicate_id) {
+                  Present { value: predicate } =>
+                    outcome_accepted(
+                      OrderingComparison {
+                        compare_field: compare_field,
+                        predicate: predicate
+                      }
+                    )
+                  Absent =>
+                    outcome_rejected(
+                      target_canonical_operation_wire_malformed_diagnostic(wire: wire)
+                    )
+                }
+              Absent =>
+                outcome_rejected(
+                  target_canonical_operation_wire_malformed_diagnostic(wire: wire)
+                )
+            }
+          Absent =>
+            outcome_rejected(
+              target_canonical_operation_wire_malformed_diagnostic(wire: wire)
+            )
+        }
+      } else if id == discriminant(v: EqualityComparison {}) {
+        match target_model_canonical_operation_atom_field_from_wire(
+          wire: wire,
+          field_name: ^target_canonical_operation_field_eq_field
+        ) {
+          Present { value: eq_field } =>
+            match target_model_canonical_operation_atom_field_from_wire(
+              wire: wire,
+              field_name: ^target_canonical_operation_field_predicate
+            ) {
+              Present { value: predicate_id } =>
+                match equality_predicate_from_discriminant(id: predicate_id) {
+                  Present { value: predicate } =>
+                    outcome_accepted(
+                      EqualityComparison {
+                        eq_field: eq_field,
+                        predicate: predicate
+                      }
+                    )
+                  Absent =>
+                    outcome_rejected(
+                      target_canonical_operation_wire_malformed_diagnostic(wire: wire)
+                    )
+                }
+              Absent =>
+                outcome_rejected(
+                  target_canonical_operation_wire_malformed_diagnostic(wire: wire)
+                )
+            }
           Absent =>
             outcome_rejected(
               target_canonical_operation_wire_malformed_diagnostic(wire: wire)
