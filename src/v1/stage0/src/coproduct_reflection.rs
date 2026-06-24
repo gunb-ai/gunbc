@@ -518,37 +518,53 @@ fn atom_identity_node(ctx: &InterpContext, identity: &str) -> Value {
     )
 }
 
-// Project a fn body's internal expression tree onto a substrate Node skeleton.
-// A reference to a declared parameter (an `ExprVar` resolved to a `LocalValueBinding`
-// whose name matches a declared param) becomes an identity-bearing `Atom` leaf --
-// byte-identical to the declared-input atom `eval_fn_arrow_decl_facts_live` emits, so
-// `v2.lens.wiring_liveness` matches it under Node equality. Every other node becomes a
-// neutral `Conj` container whose positional children are the marshaled sub-expressions.
-// Identity lives ONLY on genuine parameter-use leaves, so a declared parameter is
-// structurally reachable from the body output iff it is genuinely referenced -- callees
-// (`FunctionValueBinding`), constructors (`VariantValueBinding`) and field names cannot
-// collide with a dead parameter atom. (Residue: a `let`/lambda local that shadows a
-// parameter name is `LocalValueBinding`; see the lens construction_justification.)
+fn node_authored_name(node: &Rc<Node>, si: &Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
+    if !node.name.is_empty() {
+        node.name.clone()
+    } else {
+        expr_var_name_at(node.clone(), si.clone())
+    }
+}
+
+// Does this node REFERENCE a declared parameter `name`? Two body forms reference a value
+// parameter: an `ExprVar` value read (`x`) -- resolved to a `LocalValueBinding`, so a
+// `FunctionValueBinding` global or `VariantValueBinding` constructor sharing the name is
+// excluded; and an `ExprCall` whose callee IS the parameter (a fn-valued param applied:
+// `predicate(x)`) -- the callee is the call node's own name, not a child, so it is invisible
+// to a children-only walk. Both are genuine uses of a value parameter.
+fn node_references_param(node: &Rc<Node>, name: &str, param_names: &[String]) -> bool {
+    if name.is_empty() || !param_names.iter().any(|p| p.as_str() == name) {
+        return false;
+    }
+    match node.expr_data.as_ref() {
+        ExprData::ExprVar { binding_kind: Some(bk) } => {
+            matches!(bk.as_ref(), VarBindingKind::LocalValueBinding)
+        }
+        ExprData::ExprCall { .. } => true,
+        _ => false,
+    }
+}
+
+// Project a fn body's internal expression tree onto a substrate Node skeleton: each node
+// becomes a neutral `Conj` container whose positional children are the marshaled
+// sub-expressions, and a node that references a declared parameter additionally carries an
+// identity-bearing `Atom` leaf -- byte-identical to the declared-input atom
+// `eval_fn_arrow_decl_facts_live` emits, so `v2.lens.wiring_liveness` matches it under Node
+// equality. Identity lives ONLY on genuine parameter-reference sites, so a declared
+// parameter is structurally reachable from the body output iff it is genuinely used.
+// (Residue: a `let`/lambda local, or a global fn called as `name(..)`, that shadows a
+// parameter name; see the lens construction_justification.)
 fn marshal_fn_body_skeleton(
     ctx: &InterpContext,
     node: &Rc<Node>,
     param_names: &[String],
     si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Value {
-    let var_name = if !node.name.is_empty() {
-        node.name.clone()
-    } else {
-        expr_var_name_at(node.clone(), si.clone())
-    };
-    let is_param_use = matches!(
-        node.expr_data.as_ref(),
-        ExprData::ExprVar { binding_kind: Some(bk), .. }
-            if matches!(bk.as_ref(), VarBindingKind::LocalValueBinding)
-    ) && param_names.iter().any(|p| p.as_str() == var_name.as_str());
-    if is_param_use {
-        return atom_identity_node(ctx, &var_name);
+    let name = node_authored_name(node, si);
+    let mut edges: Vec<Value> = Vec::with_capacity(node.children.len() + 1);
+    if node_references_param(node, &name, param_names) {
+        edges.push(edge_positional(ctx, atom_identity_node(ctx, &name)));
     }
-    let mut edges: Vec<Value> = Vec::with_capacity(node.children.len());
     for child in node.children.iter() {
         edges.push(edge_positional(
             ctx,
@@ -566,6 +582,25 @@ fn marshal_fn_body_skeleton(
         node_kind_type_node(ctx, nullary_connective_variant(ctx, "Conj")),
         edges,
     )
+}
+
+// A generic type parameter (`<T>`) and a value parameter (`(xs: List<T>)`) both land in the
+// runtime item's `params` (parser: `all_params = concat(type_params, value_params)`). They
+// are NOT value inputs and never appear as body value-expressions, so they must be excluded
+// from the wiring check. A type parameter is built as `make_param_node(name,
+// leaf_type_node(name), ..)` -- its sole type-expr child is a leaf named after the parameter
+// itself (`T : T`) -- whereas a value parameter's type-expr names a different type
+// (`xs : List`). So: a parameter is a type parameter iff its first child's authored name
+// equals its own.
+fn param_is_type_param(p: &Rc<Node>, si: &Rc<HashMap<String, Rc<NewlineIndex>>>) -> bool {
+    let pname = authored_name_at(si.clone(), p.clone());
+    if pname.is_empty() {
+        return false;
+    }
+    match p.children.first() {
+        Some(child0) => authored_name_at(si.clone(), child0.clone()) == pname,
+        None => false,
+    }
 }
 
 fn fn_arrow_param_record(ctx: &InterpContext, param_name: &str) -> Value {
@@ -611,8 +646,14 @@ pub fn eval_fn_arrow_decl_facts_live(
             };
             let mut param_names: Vec<String> = Vec::new();
             for p in item.params.iter() {
+                if param_is_type_param(p, &si) {
+                    continue;
+                }
                 let pn = param_node_name_at(p.clone(), si.clone());
-                if pn.is_empty() || param_names.iter().any(|q| q == &pn) {
+                // A `_`-prefixed name is the established declared-inert convention (e.g.
+                // node.dag `step: fn(acc, _edge, sub)`): the author has declared the input
+                // genuinely irrelevant, so it is not a dead wire (plan section 4). Skip it.
+                if pn.is_empty() || pn.starts_with('_') || param_names.iter().any(|q| q == &pn) {
                     continue;
                 }
                 param_names.push(pn);
