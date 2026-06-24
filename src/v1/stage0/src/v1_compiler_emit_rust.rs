@@ -206,7 +206,7 @@ pub fn render_rust_type_without_applied_binding(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     if is_host_text_carrier_type(n.clone(), source_indices.clone(), corpus_repr) {
-        return "String".to_string();
+        return rust_carrier_optional_wrap(n.clone(), "String".to_string());
     }
     if (((n.connective.clone() == Connective::NoConnective)
         && ((n.children.clone().len() as i64) > 0))
@@ -271,7 +271,7 @@ pub fn render_rust_type_without_applied_binding(
                 if (((tn == "String".to_string()) && ((n.children.clone().len() as i64) == 0))
                     && corpus_repr_is_faithful(corpus_repr))
                 {
-                    render_rust_text_carrier(shared_types)
+                    rust_carrier_optional_wrap(n.clone(), render_rust_text_carrier(shared_types))
                 } else {
                     render_node_type(
                         n.clone(),
@@ -820,7 +820,7 @@ pub fn render_rust_decl_type(
     env: Rc<TypeEnv>,
 ) -> String {
     if is_host_text_carrier_type(n.clone(), source_indices.clone(), corpus_repr) {
-        return "String".to_string();
+        return rust_carrier_optional_wrap(n.clone(), "String".to_string());
     }
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let applied_prop = find_property(
@@ -871,7 +871,7 @@ pub fn render_rust_decl_type(
                         && (name.clone() == "String".to_string()))
                         && corpus_repr_is_faithful(corpus_repr.clone()))
                     {
-                        render_rust_text_carrier(shared_types.clone())
+                        rust_carrier_optional_wrap(n.clone(), render_rust_text_carrier(shared_types.clone()))
                     } else {
                         if ((((n.connective.clone() == Connective::NoConnective)
                             && ((n.children.clone().len() as i64) == 0))
@@ -990,6 +990,14 @@ pub fn rust_fn_sig_peel_closed_alias(env: Rc<TypeEnv>, n: Rc<Node>) -> bool {
     }
 }
 
+pub fn rust_carrier_optional_wrap(n: Rc<Node>, rendered: String) -> String {
+    if (n.return_cardinality.clone() == Cardinality::CardOptional) {
+        v1_rt::concat(v1_rt::concat("Option<".to_string(), rendered), ">".to_string())
+    } else {
+        rendered
+    }
+}
+
 pub fn render_rust_fn_sig_type(
     n: Rc<Node>,
     generic_param_names: Rc<Vec<String>>,
@@ -1000,7 +1008,7 @@ pub fn render_rust_fn_sig_type(
     env: Rc<TypeEnv>,
 ) -> String {
     if is_host_text_carrier_type(n.clone(), source_indices.clone(), corpus_repr) {
-        return "String".to_string();
+        return rust_carrier_optional_wrap(n.clone(), "String".to_string());
     }
     {
         let name = authored_name_at(source_indices.clone(), n.clone());
@@ -1009,7 +1017,7 @@ pub fn render_rust_fn_sig_type(
             && (name.clone() == "String".to_string()))
             && corpus_repr_is_faithful(corpus_repr.clone()))
         {
-            render_rust_text_carrier(shared_types)
+            rust_carrier_optional_wrap(n.clone(), render_rust_text_carrier(shared_types))
         } else {
             if ((((n.connective.clone() == Connective::NoConnective)
                 && ((n.children.clone().len() as i64) > 0))
@@ -7838,7 +7846,7 @@ pub fn render_rust_type_with_applied_binding(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     if is_host_text_carrier_type(n.clone(), source_indices.clone(), corpus_repr) {
-        return "String".to_string();
+        return rust_carrier_optional_wrap(n.clone(), "String".to_string());
     }
     match find_property(
         n.properties.clone(),
