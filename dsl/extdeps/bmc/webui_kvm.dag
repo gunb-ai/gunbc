@@ -1,0 +1,49 @@
+module extdeps.bmc.webui_kvm
+
+import std.logic { Bool }
+import std.types { NonEmptyStr }
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.bmc.types { RedfishVirtualMediaSupport, VirtualMediaUnsupported }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/openbmc/webui-vue/blob/master/src/views/Operations/VirtualMedia/VirtualMedia.vue"
+  }
+}
+
+type WebuiKvmMediaTransport =
+    NbdWebsocketLocalFile
+  | RedfishConfiguredRemoteUri
+
+fn webui_kvm_media_transport_wire(t: WebuiKvmMediaTransport) -> NonEmptyStr {
+  match t {
+    NbdWebsocketLocalFile => "nbd-websocket-local-file"
+    RedfishConfiguredRemoteUri => "redfish-configured-remote-uri"
+  }
+}
+
+type WebuiVirtualMediaSurface {
+  spa_route: NonEmptyStr
+  nbd_websocket_path: NonEmptyStr
+  transport: WebuiKvmMediaTransport
+  requires_local_file: Bool
+  session_must_persist_during_mount: Bool
+}
+
+data openbmc_webui_local_file_virtual_media: WebuiVirtualMediaSurface = WebuiVirtualMediaSurface {
+  spa_route: "/#/operations/virtual-media",
+  nbd_websocket_path: "/vm/0/0",
+  transport: NbdWebsocketLocalFile,
+  requires_local_file: true,
+  session_must_persist_during_mount: true,
+}
+
+fn webui_kvm_realizes_virtual_media_for(support: RedfishVirtualMediaSupport) -> Bool {
+  match support {
+    VirtualMediaUnsupported => true
+    _ => false
+  }
+}
