@@ -52,6 +52,8 @@ test fn vm_capable_firmware_flips_srv3_to_firmware_update_path() -> Bool {
 test fn node_with_virtual_media_solves_direct() -> Bool {
   let vm_row = BmcFirmwareCapabilityRow {
     firmware: BmcFirmwareVersion { family: OpenBmc, version: "9.99-synthetic-vm" },
+    release_date: "9999-12-31",
+    release_summary: "synthetic discriminating fixture",
     provenance: "synthetic discriminating fixture: a firmware that DOES expose VirtualMedia",
     capabilities: [CapabilityVirtualMedia, CapabilityFirmwareUpdate, CapabilityBootSourceOverride],
   }

@@ -14,6 +14,10 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 data bmc_capability_doc: String = "A BMC's manageability capabilities are NOT a fixed property of the board -- they are EXPOSED by a specific firmware version. In DMTF Redfish a capability is the PRESENCE of its resource/action on the service (VirtualMedia = the VirtualMedia collection exists; BIOS attribute config = Bios/Settings + a non-empty Attributes registry; firmware update = an enabled UpdateService). So capability is derived from (family, version), and the OS-install MECHANISM is a SOLVE over the capabilities the node's ACTUAL firmware exposes -- not a hardcoded script. Each capability row is GROUNDED by observation (live Redfish probe or cited release notes), never assumed. This dissolves the prior bare board-level VirtualMedia flag (a §3 fork: VirtualMedia was modeled as a property of the board when it is a property of the firmware version) into membership in this capability set."
 
+data bmc_manual_is_generic_ceiling_doc: String = "§5 spec-vs-shipped: the ASRockRack OpenBMC manual (download.asrock.com/Manual/BMC/ALTRAD8UD-1L2T.pdf) is the GENERIC OpenBMC manual -- it documents VirtualMedia attach over BOTH WebUI and the Redfish API, IPMI, KVM, and Redfish/IPMI/WebUI firmware update, i.e. what OpenBMC CAN do. It is a capability CEILING, NOT a per-firmware fact. The LIVE PROBE is ground truth: this board's shipped firmware 404s /redfish/v1/Managers/bmc/VirtualMedia and exposes 0 BIOS Attributes, because ASRockRack has not wired the backend (nbd-proxy/jsnbd for VirtualMedia; MCTP/PLDM for BIOS attrs) into its Redfish image. So capability rows trust the probe/release-notes, never the generic manual."
+
+data bmc_version_string_doc: String = "Version-string note: ASRockRack's official download catalog labels BMC builds with a leading zero (02.07.00, 03.22.00, 01.13.00); the installed BMC's own Redfish FirmwareInventory reports the same build leading-zero-stripped (2.07.00). The catalog string is used here as the canonical version identity (the download page is the authority for version identity + release notes + dates). Authority: www.asrockrack.com/general/productdetail.asp?Model=ALTRAD8UD-1L2T (Download tab)."
+
 type BmcCapability =
     CapabilityPowerControl
   | CapabilityBootSourceOverride
@@ -40,25 +44,37 @@ type BmcFirmwareVersion {
 
 type BmcFirmwareCapabilityRow {
   firmware: BmcFirmwareVersion
+  release_date: NonEmptyStr
+  release_summary: NonEmptyStr
   provenance: NonEmptyStr
   capabilities: List<BmcCapability>
 }
 
-data openbmc_2_07_00_capabilities: BmcFirmwareCapabilityRow = BmcFirmwareCapabilityRow {
-  firmware: BmcFirmwareVersion { family: OpenBmc, version: "2.07.00" },
-  provenance: "live Redfish probe of ASRockRack ALTRAD8UD-1L2T BMC 192.168.1.192 on 2026-06-24: ComputerSystem.Reset + BootSourceOverride(None/Pxe/Hdd/Cd/Diags/BiosSetup) + AccountService present; UpdateService ServiceEnabled with HttpPushUri + MultipartHttpPushUri; Bios Attributes count 0 and Bios/Settings 404 (no BIOS attribute config); Managers/bmc/VirtualMedia and Systems/system/VirtualMedia both 404 (no VirtualMedia)",
+data openbmc_01_13_00_capabilities: BmcFirmwareCapabilityRow = BmcFirmwareCapabilityRow {
+  firmware: BmcFirmwareVersion { family: OpenBmc, version: "01.13.00" },
+  release_date: "2024-01-15",
+  release_summary: "First released",
+  provenance: "CITED ASRockRack ALTRAD8UD-1L2T download catalog (first BMC release). No VirtualMedia/BIOS-attribute Redfish support introduced",
   capabilities: [CapabilityPowerControl, CapabilityBootSourceOverride, CapabilityAccountManagement, CapabilityFirmwareUpdate],
 }
 
-data openbmc_redfish_vs_webui_virtual_media_doc: String = "IMPORTANT distinction (§5 grounded, not assumed): CapabilityVirtualMedia models REDFISH exposure of virtual media -- the automatable API surface -- NOT whether the feature exists at all. On ASRockRack Ampere Altra boards the legacy WebUI KVM (HTML5) DOES offer virtual-media attach, but ASRockRack has not plumbed the OpenBMC backend (nbd-proxy / jsnbd) into the Redfish schema (/redfish/v1/Managers/bmc/VirtualMedia 404), so it is not API-reachable. Likewise BIOS attribute config over Redfish (/Bios/Settings) requires MCTP/PLDM host<->BMC integration ASRockRack has not enabled for this board (Attributes count 0); BIOS settings are reachable only via the host UEFI menu or ASRockRack MgmtTool IPMI-OEM commands (an IPMI realization, NOT Redfish). So a node having virtual media in its WebUI does NOT make CapabilityVirtualMedia true -- the capability is the modeled, automatable Redfish surface."
+data openbmc_2_07_00_capabilities: BmcFirmwareCapabilityRow = BmcFirmwareCapabilityRow {
+  firmware: BmcFirmwareVersion { family: OpenBmc, version: "02.07.00" },
+  release_date: "2024-05-15",
+  release_summary: "Fixed date-time setting error; updated sensor readings; added BMC watchdog; added SSID and DVID",
+  provenance: "LIVE Redfish probe of ASRockRack ALTRAD8UD-1L2T BMC 192.168.1.192 on 2026-06-24 (installed build; Redfish reports it as 2.07.00): ComputerSystem.Reset + BootSourceOverride(None/Pxe/Hdd/Cd/Diags/BiosSetup) + AccountService present; UpdateService ServiceEnabled with HttpPushUri + MultipartHttpPushUri; Bios Attributes count 0 and Bios/Settings 404 (no BIOS attribute config); Managers/bmc/VirtualMedia and Systems/system/VirtualMedia both 404 (no VirtualMedia)",
+  capabilities: [CapabilityPowerControl, CapabilityBootSourceOverride, CapabilityAccountManagement, CapabilityFirmwareUpdate],
+}
 
 data openbmc_03_22_00_capabilities: BmcFirmwareCapabilityRow = BmcFirmwareCapabilityRow {
   firmware: BmcFirmwareVersion { family: OpenBmc, version: "03.22.00" },
-  provenance: "CITED (not live-probed; srv3 runs 2.07.00): ASRockRack ALTRAD8UD-1L2T latest BMC firmware 03.22.00 (released 2026-04-14). Per ASRockRack release notes + OpenBMC OEM-plumbing analysis, 03.22.00 adds first-login password enforcement, sensor/web improvements, and security patches (CVE-2024-54085) but NOT Redfish feature parity -- VirtualMedia and BIOS attribute config remain unwired in the Redfish schema for this board. Records that NO ASRockRack firmware in this line flips the VirtualMedia capability over Redfish",
+  release_date: "2026-04-14",
+  release_summary: "Enforces a password change upon first WebUI login; improved BMC web information; enhanced BMC system compatibility",
+  provenance: "CITED ASRockRack ALTRAD8UD-1L2T download catalog (latest BMC build, not live-probed; srv3 runs 02.07.00). Release notes add no Redfish feature parity -- VirtualMedia and BIOS attribute config remain unwired in the Redfish schema. Records that NO ASRockRack firmware in this line (01.13.00 -> 02.07.00 -> 03.22.00) flips the VirtualMedia capability over Redfish",
   capabilities: [CapabilityPowerControl, CapabilityBootSourceOverride, CapabilityAccountManagement, CapabilityFirmwareUpdate],
 }
 
-data bmc_firmware_capability_catalog: List<BmcFirmwareCapabilityRow> = [openbmc_2_07_00_capabilities, openbmc_03_22_00_capabilities]
+data bmc_firmware_capability_catalog: List<BmcFirmwareCapabilityRow> = [openbmc_01_13_00_capabilities, openbmc_2_07_00_capabilities, openbmc_03_22_00_capabilities]
 
 fn firmware_exposes(row: BmcFirmwareCapabilityRow, cap: BmcCapability) -> Bool {
   fold(row.capabilities, init: false, f: (acc, c) => acc || bmc_capability_eq(a: c, b: cap))
