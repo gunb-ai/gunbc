@@ -1618,24 +1618,24 @@ fn apply_char_sanitization(name: String, rule: CharSanitization) -> String {
 
 fn emit_ident(name: String, target: RenderTarget) -> String {
   let spec = language_spec(target: target)
-  let sanitized = apply_char_sanitization(name: name, rule: spec.char_sanitization)
   let converted = match spec.naming_case {
-    SnakeCase => to_snake(name: sanitized)
-    CamelCase => to_camel(name: sanitized)
-    PascalCase => capitalize_first(s: to_camel(name: sanitized))
-    AsAuthored => sanitized
+    SnakeCase => to_snake(name: name)
+    CamelCase => to_camel(name: name)
+    PascalCase => capitalize_first(s: to_camel(name: name))
+    AsAuthored => name
   }
-  let is_reserved = spec.reserved_words.keywords |> any(r => r == converted)
+  let sanitized = apply_char_sanitization(name: converted, rule: spec.char_sanitization)
+  let is_reserved = spec.reserved_words.keywords |> any(r => r == sanitized)
   if is_reserved {
     match spec.reserved_words.strategy {
-      PrefixEscape { prefix: p } => concat(p, converted)
-      SuffixEscape { suffix: s } => emit_suffix_escape_ident(converted: converted, suffix: s, keywords: spec.reserved_words.keywords)
-      NoEscape => converted
+      PrefixEscape { prefix: p } => concat(p, sanitized)
+      SuffixEscape { suffix: s } => emit_suffix_escape_ident(converted: sanitized, suffix: s, keywords: spec.reserved_words.keywords)
+      NoEscape => sanitized
     }
   } else {
     match spec.reserved_words.strategy {
-      SuffixEscape { suffix: s } => emit_suffix_escape_ident(converted: converted, suffix: s, keywords: spec.reserved_words.keywords)
-      _ => converted
+      SuffixEscape { suffix: s } => emit_suffix_escape_ident(converted: sanitized, suffix: s, keywords: spec.reserved_words.keywords)
+      _ => sanitized
     }
   }
 }

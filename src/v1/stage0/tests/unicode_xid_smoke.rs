@@ -121,6 +121,36 @@ fn target_glyphs_are_emoji_idents() {
 }
 
 #[test]
+fn emit_ident_sentinel_survives_case_conversion() {
+    // Validates the ordering invariant in emit_ident: case conversion (to_snake / to_camel)
+    // must run BEFORE apply_char_sanitization.
+    //
+    // to_snake only converts chars in the ASCII-uppercase range 65-90 — emoji codepoints
+    // (e.g. 0x1F600 = 128512) are far above that range and pass through unchanged.
+    // Therefore: to_snake("foo😀") = "foo😀", then escape → "foo_Eu1F600_".
+    //
+    // If the order were reversed (buggy): escape("foo😀") = "foo_Eu1F600_", then
+    // to_snake mangles the sentinel — 'E' (65) → "_e", 'U' (85) → "_u", 'F' (70) → "_f" —
+    // producing "foo__eu1_f600_" where the sentinel is unrecognisable.
+    //
+    // These two assertions discriminate correct ordering from the bug:
+    assert!(
+        is_reserved_emit_sentinel("_Eu1F600_".to_string()),
+        "_Eu1F600_ is the canonical 😀 sentinel (correct emit_ident output)"
+    );
+    assert!(
+        !is_reserved_emit_sentinel("__eu1_f600_".to_string()),
+        "__eu1_f600_ is what to_snake produces from _Eu1F600_ (buggy ordering) — must NOT match sentinel"
+    );
+    // Same invariant for a camelCase target: to_camel("foo😀") = "foo😀" → "foo_Eu1F600_"
+    // 'F' in "foo" stays lowercase (already lowercase); emoji codepoint >> 90 is untouched.
+    assert!(
+        is_reserved_emit_sentinel("_Eu1F7E2_".to_string()),
+        "_Eu1F7E2_ (🟢 sentinel) survives case-conversion pipeline"
+    );
+}
+
+#[test]
 fn star_and_hash_are_not_ident_chars() {
     // Extended_Pictographic excludes keycap bases # (U+0023) and * (U+002A)
     assert!(
