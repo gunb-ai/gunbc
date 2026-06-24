@@ -311,14 +311,14 @@ fn hash_fields_commutative(fields: &[(Symbol, Value)]) -> u64 {
     acc
 }
 
-pub(crate) fn fields_get(fields: &[(Symbol, Value)], sym: Symbol) -> Option<&Value> {
+pub fn fields_get(fields: &[(Symbol, Value)], sym: Symbol) -> Option<&Value> {
     fields
         .binary_search_by_key(&sym.0, |(s, _)| s.0)
         .ok()
         .map(|i| &fields[i].1)
 }
 
-pub(crate) fn sorted_fields(mut v: Vec<(Symbol, Value)>) -> Vec<(Symbol, Value)> {
+pub fn sorted_fields(mut v: Vec<(Symbol, Value)>) -> Vec<(Symbol, Value)> {
     v.sort_unstable_by_key(|(sym, _)| sym.0);
     v
 }
