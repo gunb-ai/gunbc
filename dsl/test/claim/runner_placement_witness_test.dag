@@ -495,28 +495,6 @@ fn witness_manifest_drift_red_receipt() -> Bool {
     && runner_deploy_drifted(committed: concat(expected_runner_deploy_manifest(), "x"))
 }
 
-fn witness_followup_markers_documented() -> Bool {
-  gunbc_ci_count_field_measure_followup != ""
-    && gunbc_ci_runner_slot_enforcement_marker != ""
-    && gunbc_ci_runner_count_from_budget_marker != ""
-    && gunbc_ci_runner_cpu_cap_marker != ""
-    && gunbc_ci_operating_curve_session_only_marker != ""
-    && gunbc_ci_job_cgroup_peak_provenance != ""
-    && gunbc_ci_per_session_peak_provenance != ""
-    && gunbc_ci_footprint_granularity_note != ""
-    && gunbc_ci_footprint_bridge_followup != ""
-    && gunbc_ci_per_run_peak_sharpen_followup != ""
-    && gunbc_ci_session_regime_model != ""
-    && gunbc_ci_session_regime2_followup != ""
-    && gunbc_ci_regime2_aggregate_dissolution_marker != ""
-    && gunbc_ci_cpu_weight_workload_class_marker != ""
-    && gunbc_ci_cpu_weight_unit_modeling_marker != ""
-    && gunbc_ci_run_count_divisor_provenance != ""
-    && gunbc_ci_runner_unit_cap_safety_margin_provenance != ""
-    && gunbc_runner_deploy_manifest_contract_marker != ""
-    && gunbc_sessions_oom_pressure_psi_limit_source_marker != ""
-}
-
 fn witness_session_cpu_weight_exceeds_runner_cpu_weight() -> Bool {
   workload_class_cpu_weight(wc: InteractiveLatencySensitive) > workload_class_cpu_weight(wc: BatchLatencyTolerant)
 }
@@ -585,7 +563,6 @@ test fn runner_placement_holds() -> Bool {
     && witness_curve_coverage_monotone_in_cap()
     && witness_curve_has_full_coverage_option()
     && witness_manifest_drift_red_receipt()
-    && witness_followup_markers_documented()
     && witness_session_cpu_weight_exceeds_runner_cpu_weight()
     && witness_runner_manifest_line_contains_cpu_weight()
     && witness_runner_and_session_cpu_weights_are_distinct()

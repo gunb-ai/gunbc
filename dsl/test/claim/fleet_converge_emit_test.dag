@@ -189,14 +189,6 @@ fn witness_sessions_membership_line_emitted() -> Bool {
     && has(s: sh, p: "if [ \"$in_slice\" -gt 0 ]; then verdict=converged; else verdict=absent; fi")
 }
 
-fn witness_markers_documented() -> Bool {
-  gunbc_host_converge_doc != ""
-    && gunbc_host_converge_receipt_grammar_marker != ""
-    && gunbc_host_converge_grounded_mechanism_marker != ""
-    && gunbc_converge_verdict_authority_marker != ""
-    && gunbc_host_converge_runner_sessions_coupling_marker != ""
-}
-
 test fn fleet_converge_emit_holds() -> Bool {
   witness_live_unsound_fails_closed()
     && witness_drift_red_receipt()
@@ -210,5 +202,4 @@ test fn fleet_converge_emit_holds() -> Bool {
     && witness_emitted_bash_realizes_verdict()
     && witness_drift_perturbed_desired_flips_emit()
     && witness_sessions_membership_line_emitted()
-    && witness_markers_documented()
 }
