@@ -34,7 +34,6 @@ import gunbc.host_converge {
   fleet_converge_policy,
   gunbc_host_converge_receipt_grammar_marker,
   gunbc_host_converge_grounded_mechanism_marker,
-  gunbc_host_converge_runner_sessions_coupling_marker,
 }
 import gunbc.fleet_converge_emit {
   expected_fleet_converge_sh,

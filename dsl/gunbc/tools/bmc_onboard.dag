@@ -12,20 +12,43 @@ import std.types { NonEmptyStr, Secret, String }
 import std.logic { Bool }
 import std.resources { Network }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.disposition { Disposition, Scaffold, SingleAuthority, RealizationDispatch }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data bmc_onboard_netrc_path: String = "/tmp/bmc_onboard_netrc"
 data bmc_onboard_pwbody_path: String = "/tmp/bmc_onboard_pwbody.json"
 
-data bmc_onboard_secret_on_disk_debt: String = "🟡 SCAFFOLD — the two /tmp paths above (netrc + password body) transiently hold the BMC credential on disk under the default umask: Filesystem.Write cannot set mode 0600 today and there is no post-run unlink. Operator-fenced (live writes gated), not a silent leak. Dissolve-on: feature:mode-aware-file-write — a mode-0600 file-write effect + an unlink leg bound the secret-on-disk window."
+data bmc_onboard_secret_on_disk_debt: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "extdeps.filesystem.filesystem_io",
+    decl_name: "Filesystem",
+    field: WholeDeclaration
+  }
+}
 
 
 data srv3_gcp_project: GcpProjectId = "gunbai-secrets"
 
 data bmc_credential_bytes: Int = 20
 
-data bmc_credential_bytes_unit_debt: String = "🟡 SCAFFOLD — bmc_credential_bytes: Int is a flat-scalar bytes unit; the grounded carrier is ByteSize (std.measure). It stays Int because it feeds Urandom.ReadBytes(count: Int) whose shell-argv transport needs a plain integer — the same constraint tracked by extdeps.entropy's entropy_count_bytes_unit_debt. Dissolve-on: feature:bytesize-argv-interpolation — when ByteSize extraction is wired at argv interpolation, this and the entropy count migrate to ByteSize together."
+data bmc_credential_bytes_unit_debt: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "std.measure",
+    decl_name: "ByteSize",
+    field: WholeDeclaration
+  }
+}
 
-data bmc_redfish_json_concat_debt: String = "🟡 SCAFFOLD — account_password_body/boot_override_body/reset_body hand-build JSON via concat, a §3 nickname for JSON encoding with no escaping. Safe for the CURRENT call sites ONLY: the credential is base64 (no quote or backslash) and the boot/reset values are closed-enum wires, so an escape bug is unreachable and the body-shape witnesses pin the exact strings. boot_override_body/reset_body are FORWARD-STAGED: their consumer is the os-install leg (bmc_os_install), deferred to the PXE/install-infra lane — they stay because they model the Redfish boot/reset wire shapes and are pinned by by-execution witnesses (the proven shapes the future leg will emit). Dissolve-on: feature:redfish-json-body-model — route through a structured JSON-object encoder authority (std to_json over a typed Redfish body record) so escaping is by-construction."
+data bmc_redfish_json_concat_debt: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "std.primitives",
+    decl_name: "to_json_contract",
+    field: WholeDeclaration
+  }
+}
 
 fn netrc_content(host: String, account: String, password: String) -> String {
   concat("machine ", concat(host, concat(" login ", concat(account, concat(" password ", concat(password, "\n"))))))
