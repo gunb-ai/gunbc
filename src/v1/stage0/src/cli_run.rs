@@ -771,24 +771,53 @@ pub fn precompute_whole_tree_published_mock_keys(
 /// goes from per-entry resolve-closure to whole-tree-in-one-pass. The marshaling
 /// runs in THIS context's interner, so reflected `Node` values are self-consistent
 /// (no cross-context Symbol mismatch).
+/// `exclude_substrings` drop modules whose source path contains any listed
+/// substring BEFORE the resolve. This is required, not optional: the corpus
+/// contains intentionally-malformed scanner fixture inputs (e.g.
+/// `src/v2/test/fixture/layering_scan/**/plant.dag` declaring imports of modules
+/// that do not exist) which are test DATA referenced by string path, not live
+/// code — a Strict whole-tree resolve over them fails on the deliberate
+/// `unresolved import`. Excluding them is a coverage decision, so the count of
+/// dropped modules is returned for the caller to log (DESIGN §6 — no silent cap).
+pub struct WholeTreeCtx {
+    pub ctx: v1_interpreter::InterpContext,
+    pub modules_resolved: usize,
+    pub modules_excluded: usize,
+}
+
 pub fn whole_tree_resolved_ctx(
     source_roots: &[String],
+    exclude_substrings: &[String],
     execution_mode: v1_interpreter::ExecutionMode,
-) -> Result<v1_interpreter::InterpContext, String> {
+) -> Result<WholeTreeCtx, String> {
     let index = build_module_index(source_roots);
-    let all_sources: Vec<Rc<v1_compiler_compile::SourceFile>> = index.values().cloned().collect();
+    let total = index.len();
+    let all_sources: Vec<Rc<v1_compiler_compile::SourceFile>> = index
+        .values()
+        .filter(|sf| {
+            !exclude_substrings
+                .iter()
+                .any(|sub| sf.path.replace('\\', "/").contains(sub.as_str()))
+        })
+        .cloned()
+        .collect();
     if all_sources.is_empty() {
         return Err("whole-tree corpus is empty (no .dag modules under source roots)".to_string());
     }
+    let modules_excluded = total - all_sources.len();
     let (graph, source_indices) =
         resolved_graph_from_sources(all_sources, ResolveTypecheckGate::Strict)?;
-    Ok(v1_interpreter::InterpContext::with_runtime_options(
-        graph.as_ref(),
-        source_indices,
-        execution_mode,
-        None,
-        None,
-    ))
+    Ok(WholeTreeCtx {
+        ctx: v1_interpreter::InterpContext::with_runtime_options(
+            graph.as_ref(),
+            source_indices,
+            execution_mode,
+            None,
+            None,
+        ),
+        modules_resolved: total - modules_excluded,
+        modules_excluded,
+    })
 }
 
 pub fn closure_subject_for_entry(index: &MultiEntryIndex, entry: &str) -> Result<String, String> {
