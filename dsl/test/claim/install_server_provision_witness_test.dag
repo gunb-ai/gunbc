@@ -1,0 +1,26 @@
+module test.claim.install_server_provision_witness
+
+import std.logic { Bool }
+import std.types { String }
+import gunbc.install_server_provision {
+  provision_prep_fetch_script,
+  ubuntu_iso_series,
+  ubuntu_iso_flavor,
+  ubuntu_iso_arch
+}
+
+test fn iso_url_is_discovered_not_pinned() -> Bool {
+  let s = provision_prep_fetch_script()
+  string_contains(s: s, pattern: "sort -V | tail -1")
+    && string_contains(s: s, pattern: "NO_MATCHING_ISO_FAIL_CLOSED")
+    && string_contains(s: s, pattern: "exit 2")
+    && (string_contains(s: s, pattern: "24.04.4") == false)
+    && (string_contains(s: s, pattern: "24.04.2") == false)
+}
+
+test fn iso_url_carries_modeled_parts() -> Bool {
+  let s = provision_prep_fetch_script()
+  string_contains(s: s, pattern: ubuntu_iso_series)
+    && string_contains(s: s, pattern: ubuntu_iso_flavor)
+    && string_contains(s: s, pattern: ubuntu_iso_arch)
+}

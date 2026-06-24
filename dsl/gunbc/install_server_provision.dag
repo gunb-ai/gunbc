@@ -1,0 +1,45 @@
+module gunbc.install_server_provision
+
+import std.types { String, NonEmptyStr, Bool }
+import std.resources { Network }
+import extdeps.shell
+
+data install_server_provision_doc: String = "Live .dag-driven stand-up of the srv3 PXE/UEFI-HTTP install server on the LAN host srv2-lan (192.168.1.188, an aarch64 Altra). Dogfoods the substrate: every step is a shell.Exec.Run effect dispatched by `gunbc run` (sh -c 'ssh srv2-lan <step>'), so the .dag model is the authority for WHAT runs and gunbc is the executor — no hand-typed provisioning. Sequence: prep (apt dnsmasq + grub-efi-arm64-signed + rsync, webroot, fetch Ubuntu 24.04 arm64 live-server ISO) -> stage webroot (mount ISO, rsync tree, place grubnetaa64.efi, write grub.cfg + autoinstall seed) -> start services (dnsmasq proxyDHCP port=0, python3 HTTP :80) -> drive srv3 BMC (boot-override Pxe once + Reset). HTTP+IP boot URL (http://192.168.1.188/ubuntu-24.04/), no DNS/TLS, per the firmware-trust pragmatics. proxyDHCP hands out no leases (coexists with the router DHCP)."
+
+data install_server_host: NonEmptyStr = "srv2-lan"
+
+data install_server_webroot: NonEmptyStr = "/srv/install"
+
+data iso_url_determination_doc: String = "The ISO URL is NOT a pinned literal (a pinned point-release silently 404s when Ubuntu ships the next one). It is DECOMPOSED into the real decisions -- mirror, series (the LTS we target), channel, flavor, arch -- and the volatile point-release is DISCOVERED at fetch time: list the release directory, regex the matching ubuntu-<series>.<N>-<flavor>-<arch>.iso entries, pick the highest (sort -V | tail -1). FAIL-CLOSED if none match (loud NO_MATCHING_ISO_FAIL_CLOSED + nonzero exit, never a silent 404 into a 0-byte file). So the model carries the durable facts; the wire-current version is resolved from the upstream, not guessed."
+
+data ubuntu_iso_mirror_base: NonEmptyStr = "https://cdimage.ubuntu.com/releases"
+
+data ubuntu_iso_series: NonEmptyStr = "24.04"
+
+data ubuntu_iso_channel: NonEmptyStr = "release"
+
+data ubuntu_iso_flavor: NonEmptyStr = "live-server"
+
+data ubuntu_iso_arch: NonEmptyStr = "arm64"
+
+fn iso_discovery_env() -> String {
+  join([
+    concat("MIRROR=", ubuntu_iso_mirror_base),
+    concat("SERIES=", ubuntu_iso_series),
+    concat("CHANNEL=", ubuntu_iso_channel),
+    concat("FLAVOR=", ubuntu_iso_flavor),
+    concat("ARCH=", ubuntu_iso_arch)
+  ], "; ")
+}
+
+fn provision_prep_fetch_script() -> String {
+  let body = "BASE=$MIRROR/$SERIES/$CHANNEL; PAT=\"ubuntu-$SERIES[.0-9]*-$FLAVOR-$ARCH[.]iso\"; ISO=$(curl -sL \"$BASE/\" | grep -oE \"$PAT\" | sort -V | tail -1); if [ -z \"$ISO\" ]; then echo NO_MATCHING_ISO_FAIL_CLOSED; exit 2; fi; URL=\"$BASE/$ISO\"; echo RESOLVED_URL=$URL; sudo DEBIAN_FRONTEND=noninteractive apt-get update -y >/tmp/isrv-apt.log 2>&1; sudo DEBIAN_FRONTEND=noninteractive apt-get install -y dnsmasq grub-efi-arm64-signed rsync >>/tmp/isrv-apt.log 2>&1; sudo systemctl stop dnsmasq 2>/dev/null || true; sudo systemctl disable dnsmasq 2>/dev/null || true; sudo install -d /srv/install/autoinstall; if [ -f /srv/ubuntu.iso ]; then echo ISO_PRESENT $(du -h /srv/ubuntu.iso | cut -f1); else sudo systemd-run --unit=srv3-isodl --collect wget -q -O /srv/ubuntu.iso \"$URL\"; echo DOWNLOAD_STARTED; fi; echo PREP_DONE"
+  concat(concat("ssh ", concat(install_server_host, " '")), concat(iso_discovery_env(), concat("; ", concat(body, "'"))))
+}
+
+pattern provision_prep_and_fetch() -> { out: String, ok: Bool }
+  uses net: Network
+{
+  node r: shell.Exec.Run(script: provision_prep_fetch_script())
+  return { out: r.stdout, ok: r.success }
+}
