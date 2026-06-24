@@ -2,7 +2,10 @@ module gunbc.assimilate.bmc_bootstrap_provision
 
 import std.resources { Network }
 import std.types { NonEmptyStr, Secret, String, List, Map, Bool }
-import extdeps.cloud.gcp.gcp { GcpProjectId, ServiceAccountEmail }
+import extdeps.cloud.gcp.gcp { GcpProjectId, ServiceAccountEmail, GcpService, gcp_service_api_id }
+import extdeps.cloud.gcp.serviceusage
+import extdeps.cloud.gcp.iam_admin
+import extdeps.cloud.gcp.secret_manager
 import extdeps.cloud.gcp.iam {
   GcpBinding,
   role_secretmanager_secret_accessor,
@@ -24,13 +27,15 @@ import gunbc.assimilate.bmc_token_federation {
 
 data bmc_bootstrap_provision_doc: String = "One-token bootstrap of the entire keyless BMC assimilator identity on GCP. The ONLY manual input is the initial admin access token, acquired in the orchestration via the operator's existing gcloud login (shell.GCloud.AuthPrintAccessToken = the single 'one button'). The pattern then drives, over the proven v1 REST executor (Bearer from auth_input), every step that the WIF runbook (docs/runbooks/bmc-assimilator-wif-setup.md) used to run as manual gcloud blocks: (1) ServiceUsage.BatchEnableServices enables the 5 required APIs; (2) IamAdmin.CreateServiceAccount mints bmc-assimilator; (3) SecretManager.SetSecretIamPolicy binds the two least-privilege roles resource-level on bmc-srv3-admin only; (4) IamAdmin.CreateWorkloadIdentityPool + (5) CreateWorkloadIdentityPoolProvider stand up the keyless GitHub-OIDC federation. Order matters: enable -> SA -> bind -> pool -> provider. Idempotent by construction: re-running is safe (already-enabled APIs and already-exists SA/pool return success-or-409, both non-destructive). All identity facts are the single authority in gunbc.assimilate.bmc_token_federation; this module only sequences the effects."
 
-data bmc_required_gcp_apis: List<String> = [
-  "iam.googleapis.com",
-  "iamcredentials.googleapis.com",
-  "sts.googleapis.com",
-  "secretmanager.googleapis.com",
-  "serviceusage.googleapis.com"
+data bmc_assimilate_service_deps: List<GcpService> = [
+  GcpServiceUsage,
+  GcpIam,
+  GcpIamCredentials,
+  GcpSts,
+  GcpSecretManager
 ]
+
+data bmc_required_gcp_apis: List<String> = map(bmc_assimilate_service_deps, s => gcp_service_api_id(service: s))
 
 fn bmc_secret_iam_bindings() -> List<GcpBinding> {
   [
