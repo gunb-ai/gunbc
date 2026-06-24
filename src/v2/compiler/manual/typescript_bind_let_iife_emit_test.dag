@@ -12,6 +12,7 @@ import v2.std.compilers.target_model {
   target_value_expression_binding_ref,
   target_value_expression_bind_let,
   target_value_expression_loop,
+  target_value_expression_closure,
   target_value_expression_to_concrete_tokens,
   target_model_emit_transforms_empty
 }
@@ -129,6 +130,35 @@ test fn ts_loop_statement_sequenced_fails_closed_holds() -> Bool {
 test fn dag_loop_value_producing_emits_holds() -> Bool {
   match target_value_expression_to_concrete_tokens(
     expr: block_construct_loop_expr(),
+    projection: dag_value_expression_projection(),
+    catalog: dag_operator_realizations_catalog_node()
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn block_construct_closure_expr() -> TargetValueExpression {
+  target_value_expression_closure(
+    params: [^bind_let_binding_k],
+    body: target_value_expression_binding_ref(binding: ^bind_let_binding_b)
+  )
+}
+
+test fn ts_closure_statement_sequenced_fails_closed_holds() -> Bool {
+  match target_value_expression_to_concrete_tokens(
+    expr: block_construct_closure_expr(),
+    projection: ts_value_expression_projection(),
+    catalog: ts_operator_realizations_catalog_node()
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+test fn dag_closure_value_producing_emits_holds() -> Bool {
+  match target_value_expression_to_concrete_tokens(
+    expr: block_construct_closure_expr(),
     projection: dag_value_expression_projection(),
     catalog: dag_operator_realizations_catalog_node()
   ) {
