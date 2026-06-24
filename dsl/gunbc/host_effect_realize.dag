@@ -16,8 +16,6 @@ import extdeps.bmc.types { RedfishSystemAction }
 import product.compute_fabric { ComputeHost }
 import std.types { String }
 
-data host_effect_realize_doc: String = "Realization + dispatch for gunbc.host_effect.apply (peripheral to the interface, DESIGN section 3). resolve_host_effect_cell is the SINGLE dispatch authority: a total fold over (control-plane x effect-kind) that binds the transport-carrying compatible cell or refuses an incompatible cell -- NO _ fail-open arm, so an unhandled combination is unwritable, not silently wrong (DESIGN section 5). Phase A realizes exactly the ShellCommand-at-HostOs cell over a LocalShell transport (extdeps.shell.shell.Exec.Run, a OneShotIdempotent cell): green BY EXECUTION -- a real sh exec, grounded INLINE from the observed exit (the realization_reconcile caller-obligation: a nonzero exit grounds DoesNotGround so a failing read can never fabricate Converged). The RedfishAction-at-BmcController cell is a fail-closed Unimplemented stub (typed NotConverged, never a fake success on a power/boot action -- the exact DESIGN section 5 trap); neat-boar-71 realizes it over RedfishRest in Phase C. host_effect_policy_directive bakes the policy contract: a Converged is Settled; an incompatible refusal is terminal regardless of policy (a mismatch never converges, so ConvergeToFixpoint must not re-drive it forever); a compatible NotConverged re-drives under ConvergeToFixpoint and is terminal-this-pass under OneShotIdempotent -- the seam neat-boar Phase-C poll-loop composes on."
-
 type ResolvedHostEffectCell =
     ShellOnHost { node: ComputeHost, script: String }
   | RedfishOnBmc { node: ComputeHost, action: RedfishSystemAction }
