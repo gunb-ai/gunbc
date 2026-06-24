@@ -59,7 +59,7 @@ pub use crate::v1_compiler_infer_env::{TypeBinding, TypeEnv};
 use crate::v1_compiler_infer_items::ItemKind::{DataItem, OtherItem, TypeItem};
 pub use crate::v1_compiler_infer_items::{ItemInfo, ItemKind, ResolvedGraph, TypedModule};
 pub use crate::v1_compiler_infer_resolve::{
-    is_width_nat_type_literal, lookup_unit_variant_phantom_type,
+    collect_unit_variant_phantom_matches, is_width_nat_type_literal, lookup_unit_variant_phantom_type,
 };
 pub use crate::v1_compiler_infer_service::{
     extract_typed_service_name, is_typed_service_call_receiver,
