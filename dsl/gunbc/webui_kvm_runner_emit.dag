@@ -12,15 +12,20 @@ import extdeps.browser.session_program {
   js_str, op_page_js, render_ops,
 }
 import extdeps.uri { Uri, Http, Https, uri_wire }
+import std.types { NonEmptyStr }
+
+type BootHook
+  = NoHook
+  | RunBootHook { command: NonEmptyStr }
 
 data srv3_default_bmc_host: Uri = Uri { scheme: Https, locator: "192.168.1.192" }
 data srv3_default_iso_url: Uri = Uri { scheme: Http, locator: "192.168.1.188/ubuntu-24.04/ubuntu.iso" }
-data srv3_default_boot_hook_command: String = ""
+data srv3_default_boot_hook: BootHook = NoHook
 
 type WebuiKvmRunner {
   default_bmc_host: Uri
   default_iso_url: Uri
-  default_boot_hook_command: String
+  default_boot_hook: BootHook
   login_ops: List<BrowserPageOp>
   navigate_ops: List<BrowserPageOp>
   attach_ops: List<BrowserPageOp>
@@ -33,7 +38,7 @@ fn webui_kvm_runner() -> WebuiKvmRunner {
   WebuiKvmRunner {
     default_bmc_host: srv3_default_bmc_host,
     default_iso_url: srv3_default_iso_url,
-    default_boot_hook_command: srv3_default_boot_hook_command,
+    default_boot_hook: srv3_default_boot_hook,
     login_ops: [
       Goto { url: JoinArg { left: RuntimeArg { name: "a.bmcHost" }, right: LitArg { v: "/#/login" } }, wait_until: NetworkIdle },
       Fill { selector: concat("#", s.dom.login_username_input_id), text: RuntimeArg { name: "a.bmcUser" } },
@@ -53,6 +58,13 @@ fn webui_kvm_runner() -> WebuiKvmRunner {
       WaitForLocatorText { selector: "button.btn-primary", has_text: "Stop", state: Visible, timeout_ms: 30000 },
     ],
     teardown_stop_op: Click { selector: "button.btn-primary:has-text(\"Stop\")" },
+  }
+}
+
+fn boot_hook_default_line(b: BootHook) -> String {
+  match b {
+    NoHook => "    bootHookCommand: null,"
+    RunBootHook { command: c } => concat("    bootHookCommand: ", concat(js_str(s: c), ","))
   }
 }
 
@@ -77,7 +89,7 @@ fn runner_prelude(r: WebuiKvmRunner) -> List<String> {
     "    bmcPass: process.env.BMC_PASS || '0penBmc',",
     concat("    isoUrl: ", concat(js_str(s: uri_wire(uri: r.default_iso_url)), ",")),
     "    isoFile: null,",
-    concat("    bootHookCommand: ", concat(js_str(s: r.default_boot_hook_command), ",")),
+    boot_hook_default_line(b: r.default_boot_hook),
     "    attach: false,",
     "    waitSeconds: 2400,",
     "    holdOnFailure: true,",
@@ -92,7 +104,7 @@ fn runner_prelude(r: WebuiKvmRunner) -> List<String> {
     "    else if (k === '--iso-url') { a.isoUrl = next(); }",
     "    else if (k === '--iso-file') { a.isoFile = next(); }",
     "    else if (k === '--boot-hook-command') { a.bootHookCommand = next(); }",
-    "    else if (k === '--no-boot-hook') { a.bootHookCommand = ''; }",
+    "    else if (k === '--no-boot-hook') { a.bootHookCommand = null; }",
     "    else if (k === '--attach') { a.attach = true; }",
     "    else if (k === '--wait-seconds') { a.waitSeconds = parseInt(next(), 10); }",
     "    else if (k === '--no-hold-on-failure') { a.holdOnFailure = false; }",
@@ -177,7 +189,7 @@ fn runner_main(r: WebuiKvmRunner) -> List<String> {
     concat(render_ops(ops: r.attach_ops, indent: "    "),
     concat([
       "    log('virtual media MOUNTED (NBD session live; browser must stay alive while mounted)');",
-      "    if (a.bootHookCommand) {",
+      "    if (a.bootHookCommand !== null) {",
       "      const ok = fireBootHook(a.bootHookCommand);",
       "      if (!ok) {",
       "        exitCode = 3;",

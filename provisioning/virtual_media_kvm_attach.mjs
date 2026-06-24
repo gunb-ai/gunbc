@@ -17,7 +17,7 @@ function parseArgs(argv) {
     bmcPass: process.env.BMC_PASS || '0penBmc',
     isoUrl: 'http://192.168.1.188/ubuntu-24.04/ubuntu.iso',
     isoFile: null,
-    bootHookCommand: '',
+    bootHookCommand: null,
     attach: false,
     waitSeconds: 2400,
     holdOnFailure: true,
@@ -32,7 +32,7 @@ function parseArgs(argv) {
     else if (k === '--iso-url') { a.isoUrl = next(); }
     else if (k === '--iso-file') { a.isoFile = next(); }
     else if (k === '--boot-hook-command') { a.bootHookCommand = next(); }
-    else if (k === '--no-boot-hook') { a.bootHookCommand = ''; }
+    else if (k === '--no-boot-hook') { a.bootHookCommand = null; }
     else if (k === '--attach') { a.attach = true; }
     else if (k === '--wait-seconds') { a.waitSeconds = parseInt(next(), 10); }
     else if (k === '--no-hold-on-failure') { a.holdOnFailure = false; }
@@ -116,7 +116,7 @@ try {
     await page.click('button.btn-primary:has-text("Start")');
     await page.locator('button.btn-primary', { hasText: 'Stop' }).first().waitFor({ state: 'visible', timeout: 30000 });
     log('virtual media MOUNTED (NBD session live; browser must stay alive while mounted)');
-    if (a.bootHookCommand) {
+    if (a.bootHookCommand !== null) {
       const ok = fireBootHook(a.bootHookCommand);
       if (!ok) {
         exitCode = 3;
