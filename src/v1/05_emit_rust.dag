@@ -6139,8 +6139,6 @@ fn wrap_rust_record_field_value(raw: String, scope: InferScope, emit_info: EmitG
     concat("Rc::new(", raw, ")")
   } else if rust_record_field_needs_box(scope: scope, emit_info: emit_info, shared_types: shared_types, struct_name: struct_name, field_name: field_name) {
     concat("Box::new(", raw, ")")
-  } else if is_bounded_lattice_field && (field_name == "top" || field_name == "bottom") {
-    concat("Box::new(", raw, ")")
   } else {
     raw
   }
@@ -6514,14 +6512,20 @@ fn emit_typed_bin_op(op: BinOp, algebra_field: AlgebraFieldKind?, left: Node, ri
       let l_optional = is_optional_typed_expr(e: left)
       let r_optional = is_optional_typed_expr(e: right)
       if l_optional || r_optional {
-        let l_cmp = if l_optional { concat(l_str, ".as_deref()") } else { concat("Some(", emit_rust_dag_string_to_host_via_seam(dag_expr: l_str, corpus_repr: emit_info.corpus_repr), ")") }
-        let r_cmp = if r_optional { concat(r_str, ".as_deref()") } else { concat("Some(", emit_rust_dag_string_to_host_via_seam(dag_expr: r_str, corpus_repr: emit_info.corpus_repr), ")") }
+        let l_cmp = if l_optional { concat(l_str, ".as_deref()") } else { concat("Some(", emit_rust_dag_string_to_host_via_seam(dag_expr: l_str, corpus_repr: emit_info.corpus_repr), ").as_deref()") }
+        let r_cmp = if r_optional { concat(r_str, ".as_deref()") } else { concat("Some(", emit_rust_dag_string_to_host_via_seam(dag_expr: r_str, corpus_repr: emit_info.corpus_repr), ").as_deref()") }
         concat("(", l_cmp, " ", op_str, " ", r_cmp, ")")
       } else {
         concat("(", emit_rust_dag_string_to_host_via_seam(dag_expr: l_str, corpus_repr: emit_info.corpus_repr), " ", op_str, " ", emit_rust_dag_string_to_host_via_seam(dag_expr: r_str, corpus_repr: emit_info.corpus_repr), ")")
       }
     } else {
-      concat("(", l_str, " ", op_str, " ", r_str, ")")
+      let both_string = is_string_typed_expr(e: left, source_indices: scope.type_env.source_indices) && is_string_typed_expr(e: right, source_indices: scope.type_env.source_indices)
+      let is_str_concat = op_str == "+" && both_string
+      if is_str_concat {
+        concat("(", l_str, " ", op_str, " &", r_str, ")")
+      } else {
+        concat("(", l_str, " ", op_str, " ", r_str, ")")
+      }
     }
   }
 }
