@@ -71,7 +71,6 @@ data srv3_network_boot_chain: NetworkBootChain = NetworkBootChain {
   },
 }
 
-data srv3_autoinstall_bootstrap_password_hash_provenance: String = "cited: Canonical subiquity autoinstall-reference identity example (crypted hash for the plaintext 'ubuntu'). Bootstrap-only credential; rotated immediately post-install by the BMC cred-rotate lane (gunbc.bmc_onboarding). Not a live secret."
 
 data srv3_autoinstall_bootstrap_password_hash: NonEmptyStr = "$6$exDY1mhS4KUYCE/2$zmn9ToZwTKLhCw.b4/b.ZRTIZM30JZ4QrOQ2aOXJ8yk96xpcCof0kxKwuX1kqLG/ygbJ1f8wxED22bTL4F46P0"
 

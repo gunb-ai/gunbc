@@ -2,11 +2,14 @@ module v2.lens.wiring_liveness
 
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.disposition { RealizationDispatch }
-import v2.std.algebra { contains, length, list_snoc_item }
+import std.perturbation { BackwardDiffInDiffOut, perturbation_consistent, perturbation_is_violation }
+import v2.std.algebra { contains, length, list_append, list_snoc_item }
 import v2.std.collection { List }
-import v2.std.dependency { DependencyView, dependency_lens }
+import v2.std.dependency { DependencyView, dependency_lens, ready_set }
+import v2.std.fn_index { FnArrowDecl, FnArrowParam, fn_arrow_decl_facts_live }
 import v2.std.logic { Bool }
-import v2.std.node { Node }
+import v2.std.node { Node, Symbol }
+import v2.std.text { String }
 
 type WiringRelation {
   output: Node
@@ -71,10 +74,13 @@ fn wiring_reaches(dependence: List<DependencyView>, from: Node, to: Node) -> Boo
 }
 
 fn wiring_relation_is_wired(relation: WiringRelation) -> Bool {
-  wiring_reaches(
-    dependence: relation.dependence,
-    from: relation.output,
-    to: relation.declared_input
+  perturbation_consistent(
+    reading: BackwardDiffInDiffOut,
+    output_responded: wiring_reaches(
+      dependence: relation.dependence,
+      from: relation.output,
+      to: relation.declared_input
+    )
   )
 }
 
@@ -92,7 +98,60 @@ fn wiring_input_is_wired(output: Node, declared_input: Node) -> Bool {
   )
 }
 
+
+type WiringDeadWire {
+  fn_qualified_name: String
+  param: Symbol
+}
+
+fn wiring_output_reachable_nodes(output: Node) -> List<Node> {
+  ready_set(graph_node: output)
+}
+
+fn wiring_param_reaches_output(reachable: List<Node>, declared_input: Node) -> Bool {
+  wiring_reach_contains(reached: reachable, n: declared_input)
+}
+
+fn wiring_param_is_dead_wire(reachable: List<Node>, declared_input: Node) -> Bool {
+  perturbation_is_violation(
+    reading: BackwardDiffInDiffOut,
+    output_responded: wiring_param_reaches_output(reachable: reachable, declared_input: declared_input)
+  )
+}
+
+fn wiring_fn_dead_wires(decl: FnArrowDecl) -> List<WiringDeadWire> {
+  let reachable = wiring_output_reachable_nodes(output: decl.output)
+  fold(decl.params, init: [], f: fn(acc, p) {
+    if wiring_param_is_dead_wire(reachable: reachable, declared_input: p.node) {
+      list_snoc_item(
+        xs: acc,
+        item: WiringDeadWire { fn_qualified_name: decl.qualified_name, param: p.name }
+      )
+    } else {
+      acc
+    }
+  })
+}
+
+fn wiring_dead_wires_over(decls: List<FnArrowDecl>) -> List<WiringDeadWire> {
+  fold(decls, init: [], f: fn(acc, decl) {
+    list_append(left: acc, right: wiring_fn_dead_wires(decl: decl))
+  })
+}
+
+fn wiring_liveness_corpus_dead_wires() -> List<WiringDeadWire> {
+  wiring_dead_wires_over(decls: fn_arrow_decl_facts_live())
+}
+
+fn wiring_liveness_corpus_dead_wire_count() -> Int {
+  length(xs: wiring_liveness_corpus_dead_wires())
+}
+
+fn wiring_liveness_corpus_is_clean() -> Bool {
+  wiring_liveness_corpus_dead_wire_count() == 0
+}
+
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: RealizationDispatch },
-  rationale: "Wiring-liveness is the cache-purity perturbation oracle read backwards: purity asks same-input-same-output (a declared input absent from the cache key is impure); liveness asks different-input-different-output (a declared input with no structural path to the output it feeds is a dead wire). One kernel, two readings -- this lens reuses std.dependency DependencyView/dependency_lens as the dependence carrier (no new dependence type minted) and decides reachability of a declared input from its output over that graph. It is NOT the unused_parameters reference-count: that asks referenced-at-least-once; this asks transitive-path-to-output, which goes RED when an input is referenced only inside structure that itself never reaches the output. HONEST BOUNDARY (DESIGN 5/6): this is the COMPILE-TIME wall and covers only .dag-modeled / reflectable structure (type declarations via resolve_type_node and synthetic-or-real Node trees via dependency_lens). The motivating GCP IAM auth_input bug lives in the Rust-seed resolve_auth realization, which is OPAQUE to compile-time reflection -- that is the wave-2 opaque-realization perturbation witness, not this slice. The corpus also has NO fn/arrow reflection (resolve_type_node + concept_decl_facts_live yield only ItemKind::TypeItem), so a corpus-wide scan of real fn params is also opaque today. Grounding authority: realization self-host (DESIGN 5/7) bringing resolve_auth into .dag, plus gunbc#5364 (.dag compile-graph / fn reflection) letting the wall scan real fn bodies. Dissolves on: every input->output realization being .dag-reflectable, at which point a declared input with no path to its output is unwritable by construction and this lens's residue is empty."
+  rationale: "Wiring-liveness is the cache-purity perturbation oracle read backwards: purity asks same-input-same-output (a declared input absent from the cache key is impure); liveness asks different-input-different-output (a declared input with no structural path to the output it feeds is a dead wire). One kernel, two readings -- and that kernel is now a SHARED carrier, not a second representation: the verdict POLARITY (forward-responded-is-bad / backward-silent-is-bad) lives once in std.perturbation, which both this lens (BackwardDiffInDiffOut, output_responded = wiring_reaches) and extdeps.realization.cache_purity (ForwardSameInSameOut, output_responded = warm-not-equal-cold) read; the influence oracle that feeds output_responded stays per-reading (static reachability here, warm-vs-cold digest there) because the wall and the witness are decidably-different mechanisms (DESIGN 5). This lens reuses std.dependency DependencyView/dependency_lens (and ready_set) as the dependence carrier (no new dependence type minted) and decides reachability of a declared input from its output over that graph. It is NOT the unused_parameters reference-count: that asks referenced-at-least-once; this asks transitive-path-to-output, which goes RED when an input is referenced only inside structure that itself never reaches the output. WAVE-2(b) CORPUS COVERAGE: the gunbc#5364 widen trigger named below is now consumed -- v2.std.fn_index.fn_arrow_decl_facts_live (host SOURCE, sibling of concept_decl_facts_live but ItemKind::FnItem/FuncItem) yields one FnArrowDecl per declared fn across every loaded module: the body projected to a reachability skeleton (parameter references become identity Atom leaves, all else neutral Conj containers) plus its declared parameter atoms. wiring_liveness_corpus_is_clean folds the wave-1 reachability over every REAL fn param corpus-wide (not synthetic arrows) and fails the floor on any declared input with no path to its output. HONEST BOUNDARY (DESIGN 5/6): (1) the motivating GCP IAM auth_input bug lives in the Rust-seed resolve_auth realization, OPAQUE to compile-time reflection -- the wave-2 opaque-realization perturbation witness, not this slice. (2) Over a pure expression body the containment-reachable set equals the referenced set, so for fns this wall coincides in result with unused-parameter detection while remaining the transitive-path mechanism (the shared dependence reachability, not a per-edge BindsTo count); the genuine transitive residue (a param referenced only inside a dead let RHS) needs typed data-edges directed at the return, a named follow-on. (3) Skeleton identity lives only on genuine parameter-reference sites (ExprVar LocalValueBinding reads and ExprCall param-callee applications), so type-parameters, global callees, constructors and field-names cannot mask a dead wire -- the lone fail-open is a let/lambda local, or a same-named global fn call, that shadows a parameter name. (4) A legitimately-irrelevant input (e.g. a NodeFold step's ignored edge) is DECLARED inert by the established `_`-prefix convention (node.dag `step: fn(acc, _edge, sub)`); fn_arrow_decl_facts_live skips `_`-prefixed params, so declaring-inert resolves the diagnostic without a false RED (plan section 4) while a normally-named dead param still fails the floor. Grounding authority: realization self-host (DESIGN 5/7) bringing resolve_auth into .dag; gunbc#5364 (.dag compile-graph corpus-as-node accessor) folds fn_arrow_decl_facts_live's host SOURCE half into a pure .dag walk. Dissolves on: every input->output realization being .dag-reflectable AND the dead-let typed-data-edge residue grounded, at which point a declared input with no path to its output is unwritable by construction and this lens's residue is empty."
 }
