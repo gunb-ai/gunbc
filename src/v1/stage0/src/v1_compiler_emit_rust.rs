@@ -17733,27 +17733,30 @@ pub fn emit_typed_record_lit(
             }
             Some(tn) => {
                 let si = scope.type_env.clone().source_indices.clone();
-                let alias_expanded = expand_type_for_field_access(
-                    resolved_type.clone(),
-                    scope.type_env.clone(),
-                    scope.module_name.clone(),
-                );
-                let alias_canonical = authored_name_at(si.clone(), alias_expanded.clone());
                 let tn_is_known_struct =
                     v1_rt::map_contains_key(&emit_info.type_summaries.clone(), tn.clone());
-                let ctor_alias_resolved = !tn_is_known_struct
-                    && (alias_canonical.clone() != "".to_string())
-                    && (alias_canonical.clone() != tn.clone())
-                    && (alias_expanded.connective.clone() == Connective::Conj)
-                    && v1_rt::map_contains_key(
-                        &emit_info.type_summaries.clone(),
-                        alias_canonical.clone(),
-                    );
-                let ctor_name = if ctor_alias_resolved.clone() {
-                    alias_canonical.clone()
-                } else {
+                let ctor_name = if tn_is_known_struct {
                     tn.clone()
+                } else {
+                    match lookup_type_by_name(scope.type_env.clone(), tn.clone()) {
+                        Some(decl) => {
+                            let peeled = resolved_type_name(decl.clone(), si.clone());
+                            if ((peeled.clone() != "".to_string())
+                                && (peeled.clone() != tn.clone())
+                                && v1_rt::map_contains_key(
+                                    &emit_info.type_summaries.clone(),
+                                    peeled.clone(),
+                                ))
+                            {
+                                peeled.clone()
+                            } else {
+                                tn.clone()
+                            }
+                        }
+                        None => tn.clone(),
+                    }
                 };
+                let ctor_alias_resolved = (ctor_name.clone() != tn.clone());
                 let context_lookup = contextual_variant_parent(
                     tn.clone(),
                     parent_enum.clone(),

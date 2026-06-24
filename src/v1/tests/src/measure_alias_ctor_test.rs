@@ -48,7 +48,6 @@ fn fn_body(emitted: &str, name: &str) -> String {
 }
 
 #[test]
-#[ignore = "RED until the E0560 alias-ctor fix lands — the construction-side canonical-name resolver is pending a re-sign (field-access reuse falsified by execution); un-ignore when green"]
 fn alias_ctor_resolves_to_canonical_struct_with_phantom_and_rc() {
     let body = fn_body(&emit_host(), "mk");
     assert!(
@@ -62,5 +61,40 @@ fn alias_ctor_resolves_to_canonical_struct_with_phantom_and_rc() {
     assert!(
         !body.contains("Giga {"),
         "the alias name must not be used as a struct-literal head, got:\n{body}"
+    );
+}
+
+// Direct-struct discriminating control (mandatory, per bright-stag's §3 over-peel oracle):
+// the resolver reuses `resolved_type_name`, whose ELSE branch (inferred absent) peels to the
+// FIRST CHILD = the first FIELD name, not the struct name. A NON-alias direct struct must
+// therefore name the STRUCT (`Direct`), never its first field (`count`). It does so because the
+// `!tn_is_known_struct` guard short-circuits before `resolved_type_name` is ever invoked on a
+// known struct — so this control is exactly what catches a regression that dropped that guard
+// and let the over-peel reach a direct-struct construction.
+const DIRECT_FIXTURE: &str = concat!(
+    "module directctor.fixture\n",
+    "import std.nat { Nat }\n\n",
+    "type Direct<Q, M> {\n  count: M\n}\n\n",
+    "fn mkd(c: Nat) -> Direct<Nat, Nat> {\n  Direct { count: c }\n}\n"
+);
+
+#[test]
+fn direct_struct_ctor_names_struct_not_first_field() {
+    let emitted = compile_dag_named("src/v1/direct_ctor_fixture.dag", DIRECT_FIXTURE, RenderTarget::Rust)
+        .files
+        .iter()
+        .map(|f| f.content.clone())
+        .collect::<Vec<_>>()
+        .join("\n");
+    let body = fn_body(&emitted, "mkd");
+    assert!(
+        body.contains("Direct {"),
+        "a direct (non-alias) struct ctor must name the STRUCT `Direct`, got:\n{body}"
+    );
+    // Over-peel guard: the first FIELD name must never become the struct-literal head — that is
+    // exactly the `resolved_type_name` else-branch (first-child = field) failure mode.
+    assert!(
+        !body.contains("count {"),
+        "a direct struct ctor must not over-peel to the first field name as the literal head, got:\n{body}"
     );
 }
