@@ -25,12 +25,16 @@ const FIXTURE: &str = concat!(
 );
 
 fn emit_host() -> String {
-    compile_dag_named("src/v1/data_def_brand_fixture.dag", FIXTURE, RenderTarget::Rust)
-        .files
-        .iter()
-        .map(|f| f.content.clone())
-        .collect::<Vec<_>>()
-        .join("\n")
+    compile_dag_named(
+        "src/v1/data_def_brand_fixture.dag",
+        FIXTURE,
+        RenderTarget::Rust,
+    )
+    .files
+    .iter()
+    .map(|f| f.content.clone())
+    .collect::<Vec<_>>()
+    .join("\n")
 }
 
 /// The emitted accessor signature line `pub fn min_floor() -> ...`.
