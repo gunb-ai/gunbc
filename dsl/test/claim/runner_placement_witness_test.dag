@@ -102,7 +102,7 @@ import gunbc.runner_deploy_emit {
   manifest_host_text,
   session_host_text,
   gunbc_runner_deploy_manifest_contract_marker,
-  gunbc_sessions_oom_pressure_psi_limit_pct_interim_marker,
+  gunbc_sessions_oom_pressure_psi_limit_source_marker,
 }
 import std.measure { ByteSize, byte_size, byte_size_count, HardwareThreadCount, hardware_thread_count, hardware_thread_count_value }
 import std.types { Bool, Int, List, String }
@@ -425,7 +425,7 @@ fn witness_runner_count_unfit_is_zero() -> Bool {
 }
 
 fn witness_regime1_resolves_worst_case_slice() -> Bool {
-  match resolve_session_slice(mode: Regime1WorstCase { point: SessionOperatingPointSet { per_session_cap: byte_size(10000000000), session_concurrency: 4 } }) {
+  match resolve_session_slice(mode: Regime1WorstCase { point: SessionOperatingPointSet { per_session_cap: byte_size(10000000000), session_concurrency: 4 } }, oomd: OomdEnforced) {
     SessionSliceResolved { bytes: b, per_session_cap: c, concurrency: n } =>
       byte_size_count(b: b) == 40000000000 && byte_size_count(b: c) == 10000000000 && n == 4
     SessionSliceUnresolved { reason: _ } => false
@@ -433,7 +433,7 @@ fn witness_regime1_resolves_worst_case_slice() -> Bool {
 }
 
 fn witness_mode_unset_is_unresolved() -> Bool {
-  match resolve_session_slice(mode: SessionReservationModeUnset) {
+  match resolve_session_slice(mode: SessionReservationModeUnset, oomd: OomdEnforced) {
     SessionSliceUnresolved { reason: _ } => true
     SessionSliceResolved { bytes: _, per_session_cap: _, concurrency: _ } => false
   }
@@ -444,8 +444,7 @@ fn witness_regime2_oomd_unverified_is_unresolved() -> Bool {
     oomd_eviction_ceiling: byte_size(8000000000),
     session_concurrency: 16,
     aggregate_reservation: SessionAggregateMeasured { bytes: byte_size(15000000000) },
-    oomd_enforcement: OomdUnverified,
-  }) {
+  }, oomd: OomdUnverified) {
     SessionSliceUnresolved { reason: _ } => true
     SessionSliceResolved { bytes: _, per_session_cap: _, concurrency: _ } => false
   }
@@ -456,8 +455,7 @@ fn witness_regime2_aggregate_unmeasured_is_unresolved() -> Bool {
     oomd_eviction_ceiling: byte_size(8000000000),
     session_concurrency: 16,
     aggregate_reservation: SessionAggregateUnmeasured,
-    oomd_enforcement: OomdEnforced,
-  }) {
+  }, oomd: OomdEnforced) {
     SessionSliceUnresolved { reason: _ } => true
     SessionSliceResolved { bytes: _, per_session_cap: _, concurrency: _ } => false
   }
@@ -468,8 +466,7 @@ fn witness_regime2_reserves_aggregate_not_product() -> Bool {
     oomd_eviction_ceiling: byte_size(8000000000),
     session_concurrency: 16,
     aggregate_reservation: SessionAggregateMeasured { bytes: byte_size(15000000000) },
-    oomd_enforcement: OomdEnforced,
-  }) {
+  }, oomd: OomdEnforced) {
     SessionSliceResolved { bytes: b, per_session_cap: c, concurrency: n } =>
       byte_size_count(b: b) == 15000000000 && byte_size_count(b: c) == 8000000000 && n == 16
     SessionSliceUnresolved { reason: _ } => false
@@ -517,7 +514,7 @@ fn witness_followup_markers_documented() -> Bool {
     && gunbc_ci_run_count_divisor_provenance != ""
     && gunbc_ci_runner_unit_cap_safety_margin_provenance != ""
     && gunbc_runner_deploy_manifest_contract_marker != ""
-    && gunbc_sessions_oom_pressure_psi_limit_pct_interim_marker != ""
+    && gunbc_sessions_oom_pressure_psi_limit_source_marker != ""
 }
 
 fn witness_session_cpu_weight_exceeds_runner_cpu_weight() -> Bool {
