@@ -3,8 +3,8 @@
 //! This is the node-AGNOSTIC TypeScript oracle for the value-expr-constructs
 //! carrier (roadmap 5-ts-first-class, increment 1). Unlike a `node
 //! --experimental-strip-types` run (which only strips types and needs node
-//! >= 22.6), `tsc --noEmit` actually TYPE-CHECKS the emitted source, so it is
-//! a stronger oracle and runs on the CI runner that already provisions
+//! 22.6 or newer), `tsc --noEmit` actually TYPE-CHECKS the emitted source, so
+//! it is a stronger oracle and runs on the CI runner that already provisions
 //! `npx`/`node` for the emit-host smoke gate (`dsl/tools/emit_host_gate.dag`,
 //! which runs `npx -y -p typescript@5.9.2 tsc ...` in the CI floor job).
 //!
