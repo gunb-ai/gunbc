@@ -1,6 +1,6 @@
 module extdeps.os.oomd
 
-import std.types { NonEmptyStr, String, FilePath, Int, Bool }
+import std.types { NonEmptyStr, String, FilePath, Bool, Percent }
 import std.measure { Second, second }
 
 import extdeps.external_authority { ExternalAuthority }
@@ -18,8 +18,6 @@ data oomd_surface_doc: String = "systemd-oomd is the userspace OOM manager: it w
 data systemd_oomd_unit: NonEmptyStr = "systemd-oomd.service"
 data oomd_conf_path: FilePath = "/etc/systemd/oomd.conf"
 data oomd_conf_dropin_dir: FilePath = "/etc/systemd/oomd.conf.d"
-
-type Percent = Int where range(min: 0, max: 100), brand("Percent")
 
 type ManagedOomAction
   = ManagedOomAuto

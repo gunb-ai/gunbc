@@ -1,6 +1,6 @@
 module gunbc.oomd_install
 
-import std.types { NonEmptyStr, String, Bool }
+import std.types { NonEmptyStr, String, Bool, Percent }
 import std.measure { ByteSize, byte_size_count, second }
 import std.realization_reconcile {
   ShowEffectiveRead,
@@ -36,7 +36,6 @@ import extdeps.os.oomd {
   OomdDropIn,
   systemd_oomd_unit,
   oomd_managed_oom_memory_pressure_property,
-  Percent,
 }
 import extdeps.os.systemd {
   SystemdUnitActiveState,
@@ -186,18 +185,19 @@ fn grounding_checks(read: OomdEffectiveRead, req: OomdGroundingThresholds) -> Li
   ]
 }
 
-fn first_grounding_failure(checks: List<OomdGroundingCheck>) -> String {
-  fold(checks, init: "", f: fn(acc, c) {
-    if acc == "" && !c.ok { c.failure_reason } else { acc }
+fn first_grounding_failure(checks: List<OomdGroundingCheck>) -> String? {
+  fold(checks, init: none, f: fn(acc, c) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => if !c.ok { Present { value: c.failure_reason } } else { none }
+    }
   })
 }
 
 fn ground_oomd_from_read(read: OomdEffectiveRead, req: OomdGroundingThresholds) -> Grounding<OomdEnforcementEvidence> {
-  let reason = first_grounding_failure(checks: grounding_checks(read: read, req: req))
-  if reason == "" {
-    Grounds { evidence: OomdEnforced }
-  } else {
-    DoesNotGround { reason: reason }
+  match first_grounding_failure(checks: grounding_checks(read: read, req: req)) {
+    Absent => Grounds { evidence: OomdEnforced }
+    Present { value: reason } => DoesNotGround { reason: reason }
   }
 }
 
