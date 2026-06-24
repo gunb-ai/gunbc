@@ -792,14 +792,20 @@ pub fn whole_tree_resolved_ctx(
 ) -> Result<WholeTreeCtx, String> {
     let index = build_module_index(source_roots);
     let total = index.len();
+    // Drop a module if EITHER its source path OR its declared module path contains
+    // an excluded substring. Module-path matching is required because the corpus's
+    // unresolvable test scaffolds are keyed by module NAME (`v2.test.*` importing
+    // `v2.test.rung_3_4_common` / `v2.test.fixture.*`), not by a shared file path —
+    // many live physically under `compiler/` and `extdeps/` dirs.
     let all_sources: Vec<Rc<v1_compiler_compile::SourceFile>> = index
-        .values()
-        .filter(|sf| {
+        .iter()
+        .filter(|(module_path, sf)| {
+            let p = sf.path.replace('\\', "/");
             !exclude_substrings
                 .iter()
-                .any(|sub| sf.path.replace('\\', "/").contains(sub.as_str()))
+                .any(|sub| p.contains(sub.as_str()) || module_path.contains(sub.as_str()))
         })
-        .cloned()
+        .map(|(_, sf)| sf.clone())
         .collect();
     if all_sources.is_empty() {
         return Err("whole-tree corpus is empty (no .dag modules under source roots)".to_string());
