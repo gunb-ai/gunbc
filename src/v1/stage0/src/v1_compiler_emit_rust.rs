@@ -11674,8 +11674,7 @@ pub fn variant_ref_self_wraps(
     shared_types: Rc<std::collections::BTreeSet<String>>,
     corpus_repr: RustCorpusRepr,
 ) -> bool {
-    (((name.clone() == "Empty".to_string())
-        && (enum_name.clone() == "FreeMonoid".to_string()))
+    (((name.clone() == "Empty".to_string()) && (enum_name.clone() == "FreeMonoid".to_string()))
         && corpus_repr_is_host(corpus_repr.clone()))
         || v1_rt::set_contains(&shared_types, enum_name.clone())
 }
