@@ -96,7 +96,7 @@ The §5 guard catches a module *importing* a target AST it shouldn't. But there 
 | GitHub Actions `${{ }}` expression language | **opaque `String`** (🟡 scaffold) — worst | `actions.dag` `*Expression { expression: String }`; inline `${{ runner.temp }}`/`${{ hashFiles(…) }}` in `ci_workflow.dag` |
 | CI YAML structure + shell-in-`run:` | partly modeled, values strings; **three nested unmodeled languages** (YAML + GHA-expr + shell) all grepped | `ci_yaml_serializer_witness_test.dag`, `ci_runner_seam_witness_test.dag` |
 | bash intent (`program.dag`) | sidecar AST, 11 importers | the §5 guard's existing target |
-| **markup** (react/html/markdown) | **modeled with escape semantics + MODEL-level discriminating witnesses** — the target state | `react_markup_witness_test.dag` checks the *reject behavior* (`escape_url`, std/markup SECURITY SCOPE), not a grep |
+| **markup** (react/html/markdown) | **modeled with escape semantics + MODEL-level discriminating witnesses** — the target state | `html_emit_witness_test.dag` checks the *reject behavior* (`escape_url`, std/markup SECURITY SCOPE), not a grep |
 
 Markup already does it right; the CI YAML is the same problem three layers deep, still strings.
 
