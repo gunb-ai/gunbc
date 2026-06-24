@@ -1,0 +1,176 @@
+module test.claim.github_workflow_runs_witness
+
+import extdeps.github.workflow_runs {
+  WorkflowRunStatus, WorkflowRunConclusion, WorkflowRun, WorkflowRunList,
+  Queued, InProgress, Completed, Waiting, Requested, Pending,
+  Success, Failure, Cancelled, Neutral, Skipped, TimedOut, ActionRequired, StartupFailure,
+  parse_workflow_run_status, workflow_run_status_wire_label,
+  parse_workflow_run_conclusion, workflow_run_conclusion_wire_label
+}
+
+data sample_run: WorkflowRun = WorkflowRun {
+  id: 12345678
+  name: "CI"
+  head_sha: "abc123def456abc123def456abc123def456abc123"
+  status: Completed
+  conclusion: Present { value: Success }
+  workflow_id: 987
+  run_number: 42
+  html_url: "https://github.com/owner/repo/actions/runs/12345678"
+  created_at: "2026-06-23T10:00:00Z"
+  updated_at: "2026-06-23T10:15:00Z"
+}
+
+data sample_run_list: WorkflowRunList = WorkflowRunList {
+  total_count: 1
+  workflow_runs: [sample_run]
+}
+
+test fn workflow_run_status_wire_label_queued() -> Bool {
+  workflow_run_status_wire_label(Queued) == "queued"
+}
+
+test fn workflow_run_status_wire_label_in_progress() -> Bool {
+  workflow_run_status_wire_label(InProgress) == "in_progress"
+}
+
+test fn workflow_run_status_wire_label_completed() -> Bool {
+  workflow_run_status_wire_label(Completed) == "completed"
+}
+
+test fn workflow_run_status_wire_label_waiting() -> Bool {
+  workflow_run_status_wire_label(Waiting) == "waiting"
+}
+
+test fn workflow_run_status_wire_label_requested() -> Bool {
+  workflow_run_status_wire_label(Requested) == "requested"
+}
+
+test fn workflow_run_status_wire_label_pending() -> Bool {
+  workflow_run_status_wire_label(Pending) == "pending"
+}
+
+test fn parse_workflow_run_status_queued() -> Bool {
+  match parse_workflow_run_status("queued") {
+    Present { value: Queued } => true
+    _ => false
+  }
+}
+
+test fn parse_workflow_run_status_in_progress() -> Bool {
+  match parse_workflow_run_status("in_progress") {
+    Present { value: InProgress } => true
+    _ => false
+  }
+}
+
+test fn parse_workflow_run_status_completed() -> Bool {
+  match parse_workflow_run_status("completed") {
+    Present { value: Completed } => true
+    _ => false
+  }
+}
+
+test fn parse_workflow_run_status_invalid_returns_none() -> Bool {
+  match parse_workflow_run_status("unknown_status") {
+    Absent => true
+    _ => false
+  }
+}
+
+test fn parse_workflow_run_status_case_sensitive() -> Bool {
+  match parse_workflow_run_status("Queued") {
+    Absent => true
+    _ => false
+  }
+}
+
+test fn workflow_run_conclusion_wire_label_success() -> Bool {
+  workflow_run_conclusion_wire_label(Success) == "success"
+}
+
+test fn workflow_run_conclusion_wire_label_failure() -> Bool {
+  workflow_run_conclusion_wire_label(Failure) == "failure"
+}
+
+test fn workflow_run_conclusion_wire_label_startup_failure() -> Bool {
+  workflow_run_conclusion_wire_label(StartupFailure) == "startup_failure"
+}
+
+test fn workflow_run_conclusion_wire_label_action_required() -> Bool {
+  workflow_run_conclusion_wire_label(ActionRequired) == "action_required"
+}
+
+test fn workflow_run_conclusion_wire_label_timed_out() -> Bool {
+  workflow_run_conclusion_wire_label(TimedOut) == "timed_out"
+}
+
+test fn parse_workflow_run_conclusion_success() -> Bool {
+  match parse_workflow_run_conclusion("success") {
+    Present { value: Success } => true
+    _ => false
+  }
+}
+
+test fn parse_workflow_run_conclusion_startup_failure() -> Bool {
+  match parse_workflow_run_conclusion("startup_failure") {
+    Present { value: StartupFailure } => true
+    _ => false
+  }
+}
+
+test fn parse_workflow_run_conclusion_neutral() -> Bool {
+  match parse_workflow_run_conclusion("neutral") {
+    Present { value: Neutral } => true
+    _ => false
+  }
+}
+
+test fn parse_workflow_run_conclusion_invalid_returns_none() -> Bool {
+  match parse_workflow_run_conclusion("stale") {
+    Absent => true
+    _ => false
+  }
+}
+
+test fn parse_workflow_run_conclusion_case_sensitive() -> Bool {
+  match parse_workflow_run_conclusion("Success") {
+    Absent => true
+    _ => false
+  }
+}
+
+test fn workflow_run_status_roundtrip_queued() -> Bool {
+  (parse_workflow_run_status(workflow_run_status_wire_label(Queued))) == Present { value: Queued }
+}
+
+test fn workflow_run_status_roundtrip_in_progress() -> Bool {
+  (parse_workflow_run_status(workflow_run_status_wire_label(InProgress))) == Present { value: InProgress }
+}
+
+test fn workflow_run_status_roundtrip_completed() -> Bool {
+  (parse_workflow_run_status(workflow_run_status_wire_label(Completed))) == Present { value: Completed }
+}
+
+test fn workflow_run_conclusion_roundtrip_all() -> Bool {
+  let r_success = (parse_workflow_run_conclusion(workflow_run_conclusion_wire_label(Success))) == Present { value: Success }
+  let r_failure = (parse_workflow_run_conclusion(workflow_run_conclusion_wire_label(Failure))) == Present { value: Failure }
+  let r_cancelled = (parse_workflow_run_conclusion(workflow_run_conclusion_wire_label(Cancelled))) == Present { value: Cancelled }
+  let r_neutral = (parse_workflow_run_conclusion(workflow_run_conclusion_wire_label(Neutral))) == Present { value: Neutral }
+  let r_skipped = (parse_workflow_run_conclusion(workflow_run_conclusion_wire_label(Skipped))) == Present { value: Skipped }
+  let r_timed_out = (parse_workflow_run_conclusion(workflow_run_conclusion_wire_label(TimedOut))) == Present { value: TimedOut }
+  let r_action_required = (parse_workflow_run_conclusion(workflow_run_conclusion_wire_label(ActionRequired))) == Present { value: ActionRequired }
+  let r_startup_failure = (parse_workflow_run_conclusion(workflow_run_conclusion_wire_label(StartupFailure))) == Present { value: StartupFailure }
+  r_success && r_failure && r_cancelled && r_neutral && r_skipped && r_timed_out && r_action_required && r_startup_failure
+}
+
+test fn sample_run_has_success_conclusion() -> Bool {
+  match sample_run.conclusion {
+    Present { value: Success } => true
+    _ => false
+  }
+}
+
+test fn sample_run_list_has_one_run() -> Bool {
+  sample_run_list.total_count == 1
+}
