@@ -401,7 +401,7 @@ type OperatingPointRow {
 }
 
 fn evaluate_operating_point(cap: ByteSize, n: Int) -> OperatingPointRow {
-  let slice = match resolve_session_slice(mode: Regime1WorstCase { point: SessionOperatingPointSet { per_session_cap: cap, session_concurrency: n } }) {
+  let slice = match resolve_session_slice(mode: Regime1WorstCase { point: SessionOperatingPointSet { per_session_cap: cap, session_concurrency: n } }, oomd: gunbc_fleet_oomd_evidence) {
     SessionSliceResolved { bytes: b, per_session_cap: _, concurrency: _ } => b
     SessionSliceUnresolved { reason: _ } => byte_size(0)
   }
