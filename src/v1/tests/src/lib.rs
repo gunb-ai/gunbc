@@ -21,6 +21,8 @@ mod bug_sentinel_ratchet;
 #[cfg(test)]
 mod cache_purity_oracle_test;
 #[cfg(test)]
+mod consumed_input_closure_drift_test;
+#[cfg(test)]
 mod coproduct_reflection_conformance_test;
 #[cfg(test)]
 mod coverage_completeness_lens_test;
@@ -123,6 +125,8 @@ mod resolve_expr_types_retraversal_guard_test;
 #[cfg(test)]
 mod resolve_typed_cache_equivalence_test;
 #[cfg(test)]
+mod route_a_final_six_test;
+#[cfg(test)]
 mod source_audit;
 #[cfg(test)]
 mod source_root_ingest_manifest_host_test;
@@ -132,6 +136,8 @@ mod sub_value_lattice_factor_test;
 mod target_model_runtime_import_repro;
 #[cfg(test)]
 mod typescript_effect_io_receipt_test;
+#[cfg(test)]
+mod typescript_field_access_typecheck_test;
 #[cfg(test)]
 mod typescript_program_emit_run_test;
 #[cfg(test)]

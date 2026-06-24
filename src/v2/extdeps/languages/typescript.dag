@@ -142,7 +142,10 @@ import v2.std.compilers.target_model {
   grammar_relation_row_attach_bodied_scaffold,
   target_operator_realization_node,
   target_operator_realizations_catalog_node,
-  value_expr_projection_bundle_node
+  value_expr_projection_bundle_node,
+  RecordLiteralTypeNaming,
+  Omit,
+  Prepend
 }
 import v2.std.node {
   Arrow,
@@ -533,6 +536,14 @@ fn ts_mvp1_emitted_add_fn_with_body_node() -> Node {
 }
 
 fn ts_value_expression_projection() -> TargetValueExpressionProjection {
+  ts_value_expression_projection_with_record_literal_naming(
+    record_literal_names_type: Omit
+  )
+}
+
+fn ts_value_expression_projection_with_record_literal_naming(
+  record_literal_names_type: RecordLiteralTypeNaming
+) -> TargetValueExpressionProjection {
   TargetValueExpressionProjection {
     binding_ref_form: TargetBindingRefShape { ident_token: ^ts_token_ident },
     primitive_apply_form: TargetPrimitiveApplyShape {
@@ -592,10 +603,11 @@ fn ts_value_expression_projection() -> TargetValueExpressionProjection {
       open: ^ts_token_lbrace,
       close: ^ts_token_rbrace,
       separator: ^ts_token_comma,
-      assign: ^ts_token_colon
+      assign: ^ts_token_colon,
+      record_literal_names_type: record_literal_names_type
     },
     field_access_form: TargetFieldAccessShape {
-      dot: ^ts_token_unwired_dot
+      dot: ^ts_token_dot
     },
     match_form: TargetMatchShape {
       match_token: ^ts_token_unwired_match,
@@ -2002,6 +2014,7 @@ fn ts_wave1_lex_rules() -> LexRuleSet {
       ts_lex_rule(token_class: ^ts_token_rparen, text: ")"),
       ts_lex_rule(token_class: ^ts_token_comma, text: ", "),
       ts_lex_rule(token_class: ^ts_token_colon, text: ": "),
+      ts_lex_rule(token_class: ^ts_token_dot, text: "."),
       ts_lex_rule(token_class: ^ts_token_semicolon, text: ";"),
       ts_lex_rule(token_class: ^ts_token_effect_read_callee, text: "__gunbc_effect_read"),
       ts_lex_rule(token_class: ^ts_token_effect_write_callee, text: "__gunbc_effect_write")

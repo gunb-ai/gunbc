@@ -144,6 +144,7 @@ Ordering principle: **finishes/enables that make utilization fall out of the mod
 3. **G1 — emit a cross-host `matrix` from the fleet model** (shard across srv1+srv2). The placement predicate's real consumer. **The one step needing a decision** — build CI placement now vs fence the dead predicate.
 4. **G5 — edge-(b) rust affected-set.** → [ci-selection-vs-scheduling.md](ci-selection-vs-scheduling.md)
 5. **G4 — collapse the `workflow_dispatch` dup** (key model + stop redundant dispatch). → [ci-merge-freshness.md](ci-merge-freshness.md)
+6. **Reclassify contention OOMs before green-on-main can gate** — a cross-run clustering consumer that promotes a clustered `exit-137` back to `Infra` (two OOM-kill handlers as one fact + a clustering discriminator, fail-closed). Prerequisite (a) of the merge-freshness LIVE flip; model-only design today. → [ci-oom-reclassification.md](ci-oom-reclassification.md)
 
 Steps 1–2 use idle capacity and cut time with no new scheduler. Step 3 removes the contention; the matrix shards the rest. The 50 min is a *symptom of placement*.
 

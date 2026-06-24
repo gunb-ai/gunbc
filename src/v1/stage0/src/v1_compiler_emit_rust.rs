@@ -1602,6 +1602,18 @@ pub fn naming_policy_node(
     field_value_by_name(encoding, "naming".to_string(), source_indices)
 }
 
+pub fn coproduct_decl_ref_decl_name(
+    body: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
+    match field_value_by_name(body, "coproduct".to_string(), source_indices.clone()) {
+        Some(decl_ref_node) => {
+            record_string_field(decl_ref_node, "decl_name".to_string(), source_indices)
+        }
+        None => None,
+    }
+}
+
 pub fn optional_string_record_field(
     record: Rc<Node>,
     field_name: String,
@@ -2076,12 +2088,10 @@ pub fn coproduct_wire_contract_targets(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     match contract_item.body.clone() {
-        Some(body) => {
-            match record_string_field(body.clone(), "coproduct".to_string(), source_indices) {
-                Some(target_name) => (target_name.clone() == coproduct_name),
-                None => false,
-            }
-        }
+        Some(body) => match coproduct_decl_ref_decl_name(body.clone(), source_indices) {
+            Some(target_name) => (target_name.clone() == coproduct_name),
+            None => false,
+        },
         None => false,
     }
 }
@@ -2215,33 +2225,32 @@ pub fn emit_coproduct_wire_contract_target_validation(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     match contract_item.body.clone() {
-        Some(body) => {
-            match record_string_field(body.clone(), "coproduct".to_string(), source_indices) {
-                Some(target_name) => {
-                    if {
-                        let mut __found = false;
-                        for name in local_coproduct_names.iter().cloned() {
-                            if (name.clone() == target_name.clone()) {
-                                __found = true;
-                                break;
-                            }
+        Some(body) => match coproduct_decl_ref_decl_name(body.clone(), source_indices) {
+            Some(target_name) => {
+                if {
+                    let mut __found = false;
+                    for name in local_coproduct_names.iter().cloned() {
+                        if (name.clone() == target_name.clone()) {
+                            __found = true;
+                            break;
                         }
-                        __found
-                    } {
-                        "".to_string()
-                    } else {
-                        emit_rust_compile_error_item(v1_rt::concat(
-                            "CoproductWireContract target does not name a local coproduct: "
-                                .to_string(),
-                            target_name.clone(),
-                        ))
                     }
+                    __found
+                } {
+                    "".to_string()
+                } else {
+                    emit_rust_compile_error_item(v1_rt::concat(
+                        "CoproductWireContract target does not name a local coproduct: "
+                            .to_string(),
+                        target_name.clone(),
+                    ))
                 }
-                None => emit_rust_compile_error_item(
-                    "CoproductWireContract.coproduct must be a string declaration name".to_string(),
-                ),
             }
-        }
+            None => emit_rust_compile_error_item(
+                "CoproductWireContract.coproduct must be a DeclarationRef with a string decl_name"
+                    .to_string(),
+            ),
+        },
         None => emit_rust_compile_error_item(
             "CoproductWireContract row missing initializer body".to_string(),
         ),
@@ -17080,14 +17089,7 @@ pub fn wrap_rust_record_field_value(
                 ) {
                     v1_rt::concat(v1_rt::concat("Box::new(".to_string(), raw), ")".to_string())
                 } else {
-                    if (is_bounded_lattice_field.clone()
-                        && ((field_name.clone() == "top".to_string())
-                            || (field_name.clone() == "bottom".to_string())))
-                    {
-                        v1_rt::concat(v1_rt::concat("Box::new(".to_string(), raw), ")".to_string())
-                    } else {
-                        raw
-                    }
+                    raw
                 }
             }
         }
@@ -17444,6 +17446,57 @@ pub fn find_struct_name_by_fields(
     }
 }
 
+pub fn find_unique_struct_name_by_fields(
+    field_names: Rc<Vec<String>>,
+    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+) -> Option<String> {
+    {
+        let n_fields = (field_names.clone().len() as i64);
+        if (n_fields.clone() == 0) {
+            return None;
+        }
+        let candidates = Rc::new({
+            let mut __result = Vec::new();
+            for summary in Rc::new(v1_rt::map_values(&type_summaries)).iter().cloned() {
+                if match (*summary.repr.clone()).clone() {
+                    TypeRepr::StructRepr => {
+                        let ftm_keys = Rc::new(v1_rt::map_keys(&summary.field_type_map.clone()));
+                        if ((ftm_keys.clone().len() as i64) == n_fields.clone()) {
+                            {
+                                let mut __all = true;
+                                for fn_name in field_names.clone().iter().cloned() {
+                                    if !(v1_rt::map_contains_key(
+                                        &summary.field_type_map.clone(),
+                                        fn_name.clone(),
+                                    )) {
+                                        __all = false;
+                                        break;
+                                    }
+                                }
+                                __all
+                            }
+                        } else {
+                            false
+                        }
+                    }
+                    _ => false,
+                } {
+                    __result.push(summary);
+                }
+            }
+            __result
+        });
+        if ((candidates.clone().len() as i64) == 1) {
+            match candidates.first().cloned() {
+                Some(s) => Some(s.name.clone()),
+                None => None,
+            }
+        } else {
+            None
+        }
+    }
+}
+
 pub fn emit_typed_record_lit(
     type_name: Option<String>,
     fields: Rc<Vec<Rc<Node>>>,
@@ -17484,15 +17537,88 @@ pub fn emit_typed_record_lit(
                 if (is_product && (resolved_type.ident_span.clone() == None)) {
                     if ((fields.clone().len() as i64) == 1) {
                         match fields.clone().first().cloned() {
-                            Some(f) => emit_typed_expr(
-                                field_init_node_value(f.clone()),
-                                registry.clone(),
-                                scope.clone(),
-                                depth.clone(),
-                                shared_types.clone(),
-                                emit_info.clone(),
-                                1024,
-                            ),
+                            Some(f) => {
+                                let fname0 = field_init_node_name_at(
+                                    f.clone(),
+                                    scope.type_env.clone().source_indices.clone(),
+                                );
+                                let fval0 = emit_typed_expr(
+                                    field_init_node_value(f.clone()),
+                                    registry.clone(),
+                                    scope.clone(),
+                                    depth.clone(),
+                                    shared_types.clone(),
+                                    emit_info.clone(),
+                                    1024,
+                                );
+                                let single_field_names = Rc::new({
+                                    let mut __result = Vec::new();
+                                    for ff in fields.clone().iter().cloned() {
+                                        __result.push(field_init_node_name_at(
+                                            ff.clone(),
+                                            scope.type_env.clone().source_indices.clone(),
+                                        ));
+                                    }
+                                    __result
+                                });
+                                match find_unique_struct_name_by_fields(
+                                    single_field_names,
+                                    emit_info.type_summaries.clone(),
+                                ) {
+                                    Some(r_sn) => {
+                                        if rust_record_field_needs_fn_rc(
+                                            scope.clone(),
+                                            r_sn.clone(),
+                                            fname0.clone(),
+                                        ) {
+                                            {
+                                                let wrapped_val = wrap_rust_record_field_value(
+                                                    fval0,
+                                                    scope.clone(),
+                                                    emit_info.clone(),
+                                                    shared_types.clone(),
+                                                    r_sn.clone(),
+                                                    fname0.clone(),
+                                                );
+                                                let struct_lit = v1_rt::concat(
+                                                    v1_rt::concat(
+                                                        v1_rt::concat(
+                                                            v1_rt::concat(
+                                                                v1_rt::concat(
+                                                                    r_sn.clone(),
+                                                                    " {\n    ".to_string(),
+                                                                ),
+                                                                emit_ident(
+                                                                    fname0.clone(),
+                                                                    RenderTarget::Rust,
+                                                                ),
+                                                            ),
+                                                            ": ".to_string(),
+                                                        ),
+                                                        wrapped_val,
+                                                    ),
+                                                    ",\n}".to_string(),
+                                                );
+                                                if v1_rt::set_contains(&shared_types, r_sn.clone())
+                                                {
+                                                    v1_rt::concat(
+                                                        v1_rt::concat(
+                                                            "Rc::new(".to_string(),
+                                                            struct_lit,
+                                                        ),
+                                                        ")".to_string(),
+                                                    )
+                                                } else {
+                                                    struct_lit
+                                                }
+                                            }
+                                        } else {
+                                            fval0
+                                        }
+                                    }
+                                    None => fval0,
+                                }
+                            }
                             None => {
                                 "compile_error!(\"empty anonymous record literal\")".to_string()
                             }
@@ -18102,7 +18228,7 @@ pub fn emit_typed_bin_op(
                                                 emit_info.corpus_repr.clone(),
                                             ),
                                         ),
-                                        ")".to_string(),
+                                        ").as_deref()".to_string(),
                                     )
                                 };
                                 let r_cmp = if r_optional.clone() {
@@ -18116,7 +18242,7 @@ pub fn emit_typed_bin_op(
                                                 emit_info.corpus_repr.clone(),
                                             ),
                                         ),
-                                        ")".to_string(),
+                                        ").as_deref()".to_string(),
                                     )
                                 };
                                 v1_rt::concat(
@@ -18165,22 +18291,51 @@ pub fn emit_typed_bin_op(
                         }
                     }
                 } else {
-                    v1_rt::concat(
-                        v1_rt::concat(
+                    {
+                        let both_string = (is_string_typed_expr(
+                            left.clone(),
+                            scope.type_env.clone().source_indices.clone(),
+                        ) && is_string_typed_expr(
+                            right.clone(),
+                            scope.type_env.clone().source_indices.clone(),
+                        ));
+                        let is_str_concat = ((op_str.clone() == "+".to_string()) && both_string);
+                        if is_str_concat {
                             v1_rt::concat(
                                 v1_rt::concat(
                                     v1_rt::concat(
-                                        v1_rt::concat("(".to_string(), l_str),
+                                        v1_rt::concat(
+                                            v1_rt::concat(
+                                                v1_rt::concat("(".to_string(), l_str),
+                                                " ".to_string(),
+                                            ),
+                                            op_str,
+                                        ),
+                                        " &".to_string(),
+                                    ),
+                                    r_str,
+                                ),
+                                ")".to_string(),
+                            )
+                        } else {
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        v1_rt::concat(
+                                            v1_rt::concat(
+                                                v1_rt::concat("(".to_string(), l_str),
+                                                " ".to_string(),
+                                            ),
+                                            op_str,
+                                        ),
                                         " ".to_string(),
                                     ),
-                                    op_str,
+                                    r_str,
                                 ),
-                                " ".to_string(),
-                            ),
-                            r_str,
-                        ),
-                        ")".to_string(),
-                    )
+                                ")".to_string(),
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -22299,7 +22454,7 @@ pub fn emit_data_def_body(
                             "compile_error!(\"BoundedLattice data missing bottom\")".to_string()
                         }
                     };
-                    v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("            Rc::new(BoundedLattice {\n".to_string(), "                meet: Rc::new(".to_string()), meet_str), "),\n".to_string()), "                join: Rc::new(".to_string()), join_str), "),\n".to_string()), "                top: Box::new(".to_string()), top_str), "),\n".to_string()), "                bottom: Box::new(".to_string()), bottom_str), "),\n".to_string()), "            })".to_string())
+                    v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("            Rc::new(BoundedLattice {\n".to_string(), "                meet: Rc::new(".to_string()), meet_str), "),\n".to_string()), "                join: Rc::new(".to_string()), join_str), "),\n".to_string()), "                top: ".to_string()), top_str), ",\n".to_string()), "                bottom: ".to_string()), bottom_str), ",\n".to_string()), "            })".to_string())
                 }
                 _ => "            compile_error!(\"BoundedLattice data must be a record\")"
                     .to_string(),

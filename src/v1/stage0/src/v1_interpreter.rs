@@ -4720,6 +4720,21 @@ fn eval_builtin(
             Ok(Some(Value::Str(c.to_string())))
         }
 
+        "is_xid_start" => {
+            let cp = expect_int(positional.first().copied(), "is_xid_start")?;
+            Ok(Some(Value::Bool(v1_rt::is_xid_start(cp))))
+        }
+
+        "is_xid_continue" => {
+            let cp = expect_int(positional.first().copied(), "is_xid_continue")?;
+            Ok(Some(Value::Bool(v1_rt::is_xid_continue(cp))))
+        }
+
+        "is_emoji_ident" => {
+            let cp = expect_int(positional.first().copied(), "is_emoji_ident")?;
+            Ok(Some(Value::Bool(v1_rt::is_emoji_ident(cp))))
+        }
+
         "list_push" | "append" => match positional.as_slice() {
             [list_val, item] if matches!(list_val, Value::Str(_)) => Ok(None),
             [list_val, item] => match value_to_list_carrier(list_val) {

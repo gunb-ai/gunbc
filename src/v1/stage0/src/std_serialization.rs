@@ -10,7 +10,7 @@ use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-pub type DeclarationRef = Rc<FreeMonoid<Nat>>;
+pub use crate::std_decl_ref::DeclarationRef;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]

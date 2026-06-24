@@ -1,0 +1,114 @@
+module extdeps.cloud.gcp.iam_admin
+
+import extdeps.cloud.gcp.gcp { GcpProjectId, GcpServiceAccount, GcpOperation, ServiceAccountEmail }
+import extdeps.cloud.gcp.errors { GcpErrorShape }
+import std.types { HttpMethod, AuthScheme }
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "cloud.google.com/iam/docs/reference/rest"
+  }
+}
+
+service gcp.IamAdmin {
+  config {
+    endpoint: "https://iam.googleapis.com"
+    auth: Bearer
+    auth_input: access_token
+
+    rate_limit: { requests: 60, per: minute, scope: iam_admin }
+
+    retry: { max_attempts: 3, backoff: exponential, retry_on: [429, 500, 503] }
+  }
+
+  operation CreateServiceAccount {
+    input {
+      access_token: Secret
+      project_id: GcpProjectId
+      account_id: NonEmptyStr
+      display_name: NonEmptyStr
+    }
+    output {
+      email: ServiceAccountEmail
+      sa_name: String from "name"
+    }
+
+    idempotent
+    transport rest {
+      method: POST,
+      path: "/v1/projects/\{project_id\}/serviceAccounts",
+      body: { accountId: account_id, serviceAccount: { displayName: display_name } }
+    }
+    response {
+      200 => GcpServiceAccount
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      409 => GcpErrorShape
+      429 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
+  }
+
+  operation CreateWorkloadIdentityPool {
+    input {
+      access_token: Secret
+      project_id: GcpProjectId
+      pool_id: NonEmptyStr
+      display_name: NonEmptyStr
+    }
+    output { operation_name: String from "name" }
+
+    idempotent
+    transport rest {
+      method: POST,
+      path: "/v1/projects/\{project_id\}/locations/global/workloadIdentityPools",
+      query: { workloadIdentityPoolId: pool_id },
+      body: { displayName: display_name, disabled: false }
+    }
+    response {
+      200 => GcpOperation
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      409 => GcpErrorShape
+      429 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
+  }
+
+  operation CreateWorkloadIdentityPoolProvider {
+    input {
+      access_token: Secret
+      project_id: GcpProjectId
+      pool_id: NonEmptyStr
+      provider_id: NonEmptyStr
+      issuer_uri: NonEmptyStr
+      attribute_mapping: Map<String, String>
+      attribute_condition: NonEmptyStr
+    }
+    output { operation_name: String from "name" }
+
+    idempotent
+    transport rest {
+      method: POST,
+      path: "/v1/projects/\{project_id\}/locations/global/workloadIdentityPools/\{pool_id\}/providers",
+      query: { workloadIdentityPoolProviderId: provider_id },
+      body: {
+        oidc: { issuerUri: issuer_uri },
+        attributeMapping: attribute_mapping,
+        attributeCondition: attribute_condition
+      }
+    }
+    response {
+      200 => GcpOperation
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      409 => GcpErrorShape
+      429 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
+  }
+}

@@ -836,6 +836,13 @@ fn naming_policy_node(encoding: Node, source_indices: Map<String, NewlineIndex>)
   field_value_by_name(record: encoding, field_name: "naming", source_indices: source_indices)
 }
 
+fn coproduct_decl_ref_decl_name(body: Node, source_indices: Map<String, NewlineIndex>) -> String? {
+  match field_value_by_name(record: body, field_name: "coproduct", source_indices: source_indices) {
+    Present { value: decl_ref_node } => record_string_field(record: decl_ref_node, field_name: "decl_name", source_indices: source_indices)
+    Absent => none
+  }
+}
+
 fn optional_string_record_field(record: Node, field_name: String, source_indices: Map<String, NewlineIndex>) -> String? {
   match field_value_by_name(record: record, field_name: field_name, source_indices: source_indices) {
     Present { value: n } => literal_string_value(n: n)
@@ -1115,7 +1122,7 @@ fn variant_encoding_is_string_variant(encoding: Node, source_indices: Map<String
 fn coproduct_wire_contract_targets(contract_item: Node, coproduct_name: String, source_indices: Map<String, NewlineIndex>) -> Bool {
   match contract_item.body {
     Present { value: body } =>
-      match record_string_field(record: body, field_name: "coproduct", source_indices: source_indices) {
+      match coproduct_decl_ref_decl_name(body: body, source_indices: source_indices) {
         Present { value: target_name } => target_name == coproduct_name
         Absent => false
       }
@@ -1179,7 +1186,7 @@ fn is_coproduct_wire_contract_row(item: Node, module_items: List<Node>, imports:
 fn emit_coproduct_wire_contract_target_validation(contract_item: Node, local_coproduct_names: List<String>, source_indices: Map<String, NewlineIndex>) -> String {
   match contract_item.body {
     Present { value: body } =>
-      match record_string_field(record: body, field_name: "coproduct", source_indices: source_indices) {
+      match coproduct_decl_ref_decl_name(body: body, source_indices: source_indices) {
         Present { value: target_name } =>
           if any(local_coproduct_names, predicate: name => name == target_name) {
             ""
@@ -1187,7 +1194,7 @@ fn emit_coproduct_wire_contract_target_validation(contract_item: Node, local_cop
             emit_rust_compile_error_item(message: concat("CoproductWireContract target does not name a local coproduct: ", target_name))
           }
         Absent =>
-          emit_rust_compile_error_item(message: "CoproductWireContract.coproduct must be a string declaration name")
+          emit_rust_compile_error_item(message: "CoproductWireContract.coproduct must be a DeclarationRef with a string decl_name")
       }
     Absent =>
       emit_rust_compile_error_item(message: "CoproductWireContract row missing initializer body")
@@ -6139,8 +6146,6 @@ fn wrap_rust_record_field_value(raw: String, scope: InferScope, emit_info: EmitG
     concat("Rc::new(", raw, ")")
   } else if rust_record_field_needs_box(scope: scope, emit_info: emit_info, shared_types: shared_types, struct_name: struct_name, field_name: field_name) {
     concat("Box::new(", raw, ")")
-  } else if is_bounded_lattice_field && (field_name == "top" || field_name == "bottom") {
-    concat("Box::new(", raw, ")")
   } else {
     raw
   }
@@ -6304,6 +6309,27 @@ fn find_struct_name_by_fields(field_names: List<String>, type_summaries: Map<Str
   }
 }
 
+fn find_unique_struct_name_by_fields(field_names: List<String>, type_summaries: Map<String, TypeSummary>) -> String? {
+  let n_fields = field_names |> count
+  if n_fields == 0 { return none }
+  let candidates = map_values(type_summaries) |> filter(summary =>
+    match summary.repr {
+      StructRepr =>
+        let ftm_keys = map_keys(summary.field_type_map)
+        if ftm_keys |> count == n_fields {
+          field_names |> all(fn_name => map_contains_key(summary.field_type_map, fn_name))
+        } else { false }
+      _ => false
+    }
+  )
+  if candidates |> count == 1 {
+    match candidates |> first {
+      Present { value: s } => Present { value: s.name }
+      Absent => none
+    }
+  } else { none }
+}
+
 fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: String?, resolved_type: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let struct_name = explicit_record_struct_name(type_name: type_name, inferred_node: resolved_type, shared_types: shared_types, source_indices: scope.type_env.source_indices)
   let qualified_name = match struct_name {
@@ -6321,7 +6347,20 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
         if fields |> count == 1 {
           match fields |> first {
             Present { value: f } =>
-              emit_typed_expr(texpr: field_init_node_value(n: f), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+              let fname0 = field_init_node_name_at(n: f, source_indices: scope.type_env.source_indices)
+              let fval0 = emit_typed_expr(texpr: field_init_node_value(n: f), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+              let single_field_names = fields |> map(ff => field_init_node_name_at(n: ff, source_indices: scope.type_env.source_indices))
+              match find_unique_struct_name_by_fields(field_names: single_field_names, type_summaries: emit_info.type_summaries) {
+                Present { value: r_sn } =>
+                  if rust_record_field_needs_fn_rc(scope: scope, struct_name: r_sn, field_name: fname0) {
+                    let wrapped_val = wrap_rust_record_field_value(raw: fval0, scope: scope, emit_info: emit_info, shared_types: shared_types, struct_name: r_sn, field_name: fname0)
+                    let struct_lit = concat(r_sn, " {\n    ", emit_ident(name: fname0, target: Rust), ": ", wrapped_val, ",\n}")
+                    if set_contains(shared_types, r_sn) {
+                      concat("Rc::new(", struct_lit, ")")
+                    } else { struct_lit }
+                  } else { fval0 }
+                Absent => fval0
+              }
             Absent => "compile_error!(\"empty anonymous record literal\")"
           }
         } else {
@@ -6514,14 +6553,20 @@ fn emit_typed_bin_op(op: BinOp, algebra_field: AlgebraFieldKind?, left: Node, ri
       let l_optional = is_optional_typed_expr(e: left)
       let r_optional = is_optional_typed_expr(e: right)
       if l_optional || r_optional {
-        let l_cmp = if l_optional { concat(l_str, ".as_deref()") } else { concat("Some(", emit_rust_dag_string_to_host_via_seam(dag_expr: l_str, corpus_repr: emit_info.corpus_repr), ")") }
-        let r_cmp = if r_optional { concat(r_str, ".as_deref()") } else { concat("Some(", emit_rust_dag_string_to_host_via_seam(dag_expr: r_str, corpus_repr: emit_info.corpus_repr), ")") }
+        let l_cmp = if l_optional { concat(l_str, ".as_deref()") } else { concat("Some(", emit_rust_dag_string_to_host_via_seam(dag_expr: l_str, corpus_repr: emit_info.corpus_repr), ").as_deref()") }
+        let r_cmp = if r_optional { concat(r_str, ".as_deref()") } else { concat("Some(", emit_rust_dag_string_to_host_via_seam(dag_expr: r_str, corpus_repr: emit_info.corpus_repr), ").as_deref()") }
         concat("(", l_cmp, " ", op_str, " ", r_cmp, ")")
       } else {
         concat("(", emit_rust_dag_string_to_host_via_seam(dag_expr: l_str, corpus_repr: emit_info.corpus_repr), " ", op_str, " ", emit_rust_dag_string_to_host_via_seam(dag_expr: r_str, corpus_repr: emit_info.corpus_repr), ")")
       }
     } else {
-      concat("(", l_str, " ", op_str, " ", r_str, ")")
+      let both_string = is_string_typed_expr(e: left, source_indices: scope.type_env.source_indices) && is_string_typed_expr(e: right, source_indices: scope.type_env.source_indices)
+      let is_str_concat = op_str == "+" && both_string
+      if is_str_concat {
+        concat("(", l_str, " ", op_str, " &", r_str, ")")
+      } else {
+        concat("(", l_str, " ", op_str, " ", r_str, ")")
+      }
     }
   }
 }
@@ -7890,8 +7935,8 @@ fn emit_data_def_body(type_node: Node, value: Node, registry: Map<String, ItemIn
         concat("            Rc::new(BoundedLattice {\n",
           "                meet: Rc::new(", meet_str, "),\n",
           "                join: Rc::new(", join_str, "),\n",
-          "                top: Box::new(", top_str, "),\n",
-          "                bottom: Box::new(", bottom_str, "),\n",
+          "                top: ", top_str, ",\n",
+          "                bottom: ", bottom_str, ",\n",
           "            })")
       _ => "            compile_error!(\"BoundedLattice data must be a record\")"
     }
