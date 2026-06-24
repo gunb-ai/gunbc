@@ -541,7 +541,8 @@ fn rust_fn_sig_peel_closed_alias(env: TypeEnv, n: Node) -> Bool {
 }
 
 fn rust_carrier_optional_wrap(n: Node, rendered: String) -> String {
-  if n.return_cardinality == CardOptional {
+  let is_optional = n.return_cardinality == CardOptional
+  if is_optional {
     concat("Option<", rendered, ">")
   } else {
     rendered
