@@ -662,7 +662,7 @@ pub fn render_rust_phantom_opaque_applied_type_arg(
     module_index: Rc<ModuleIndex>,
     variant_to_enum: Rc<HashMap<String, String>>,
 ) -> String {
-    if is_width_nat_type_literal(n.clone()) {
+    if rust_type_arg_renders_as_unit(n.clone(), scope.type_env.clone(), source_indices.clone()) {
         "()".to_string()
     } else {
         render_rust_alias_rhs_type(
@@ -692,7 +692,7 @@ pub fn render_rust_phantom_opaque_applied_decl_arg(
     variant_to_enum: Rc<HashMap<String, String>>,
     env: Rc<TypeEnv>,
 ) -> String {
-    if is_width_nat_type_literal(n.clone()) {
+    if rust_type_arg_renders_as_unit(n.clone(), env.clone(), source_indices.clone()) {
         "()".to_string()
     } else {
         render_rust_decl_type(
@@ -716,17 +716,21 @@ pub fn render_rust_applied_type_arg(
     variant_to_enum: Rc<HashMap<String, String>>,
     env: Rc<TypeEnv>,
 ) -> String {
-    match n.inferred.clone().as_deref().cloned() {
-        Some(InferredNode::TypeVariable { id: tv, .. }) => tv.clone(),
-        _ => render_rust_decl_type(
-            n.clone(),
-            generic_param_names,
-            shared_types,
-            corpus_repr,
-            source_indices,
-            variant_to_enum,
-            env,
-        ),
+    if rust_type_arg_renders_as_unit(n.clone(), env.clone(), source_indices.clone()) {
+        "()".to_string()
+    } else {
+        match n.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::TypeVariable { id: tv, .. }) => tv.clone(),
+            _ => render_rust_decl_type(
+                n.clone(),
+                generic_param_names,
+                shared_types,
+                corpus_repr,
+                source_indices,
+                variant_to_enum,
+                env,
+            ),
+        }
     }
 }
 
