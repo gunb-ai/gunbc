@@ -595,7 +595,7 @@ fn ts_value_expression_projection() -> TargetValueExpressionProjection {
       assign: ^ts_token_colon
     },
     field_access_form: TargetFieldAccessShape {
-      dot: ^ts_token_unwired_dot
+      dot: ^ts_token_dot
     },
     match_form: TargetMatchShape {
       match_token: ^ts_token_unwired_match,
@@ -1992,6 +1992,7 @@ fn ts_wave1_lex_rules() -> LexRuleSet {
       ts_lex_rule(token_class: ^ts_token_rparen, text: ")"),
       ts_lex_rule(token_class: ^ts_token_comma, text: ", "),
       ts_lex_rule(token_class: ^ts_token_colon, text: ": "),
+      ts_lex_rule(token_class: ^ts_token_dot, text: "."),
       ts_lex_rule(token_class: ^ts_token_semicolon, text: ";"),
       ts_lex_rule(token_class: ^ts_token_effect_read_callee, text: "__gunbc_effect_read"),
       ts_lex_rule(token_class: ^ts_token_effect_write_callee, text: "__gunbc_effect_write")
