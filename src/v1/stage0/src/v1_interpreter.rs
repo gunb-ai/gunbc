@@ -922,6 +922,12 @@ pub struct InterpContext {
     pub execution_mode: ExecutionMode,
     pub fixture_store: Option<Rc<crate::recorded_fixture::RecordedFixtureStore>>,
     data_cache: std::cell::RefCell<HashMap<usize, Value>>,
+    // Per-call parameter-name derivation is invariant per fn_node but was re-sliced from
+    // source spans on every call (authored_name_at). Memoize it per ctx, keyed by fn_node
+    // pointer identity — sound because the ctx owns fn_nodes, so pointers are stable for the
+    // cache's lifetime and the cache dies with the ctx (same discipline as data_cache above).
+    // Value = (filtered named-param list, all-param list), matching call_function's two uses.
+    param_name_cache: std::cell::RefCell<HashMap<usize, Rc<(Vec<String>, Vec<String>)>>>,
     pure_call_memo: std::cell::RefCell<PureCallMemo>,
     parse_table_memo: std::cell::RefCell<ParseTableMemo>,
     mutation_counters: std::cell::RefCell<MutationCounters>,
@@ -1062,6 +1068,7 @@ impl InterpContext {
             execution_mode,
             fixture_store,
             data_cache: std::cell::RefCell::new(HashMap::new()),
+            param_name_cache: std::cell::RefCell::new(HashMap::new()),
             pure_call_memo: std::cell::RefCell::new(PureCallMemo::default()),
             parse_table_memo: std::cell::RefCell::new(ParseTableMemo::default()),
             mutation_counters: std::cell::RefCell::new(MutationCounters::default()),
@@ -1238,18 +1245,38 @@ fn call_function(
             msg: format!("'{}' has no body", fn_node.name),
         })?;
 
-    let param_names: Vec<String> = fn_node
-        .params
-        .iter()
-        .filter(|p| {
-            let name = authored_name_at(ctx.si(), (*p).clone());
-            match p.children.first() {
-                Some(type_expr) => authored_name_at(ctx.si(), type_expr.clone()) != name,
-                None => false,
-            }
-        })
-        .map(|p| authored_name_at(ctx.si(), p.clone()))
-        .collect();
+    let cached_params = {
+        let key = Rc::as_ptr(fn_node) as usize;
+        // Bind the lookup to a local so the immutable borrow is released before the
+        // None branch takes a mutable borrow (an `if let ...borrow()` would hold it through `else`).
+        let hit = ctx.param_name_cache.borrow().get(&key).cloned();
+        if let Some(c) = hit {
+            c
+        } else {
+            let filtered: Vec<String> = fn_node
+                .params
+                .iter()
+                .filter(|p| {
+                    let name = authored_name_at(ctx.si(), (*p).clone());
+                    match p.children.first() {
+                        Some(type_expr) => authored_name_at(ctx.si(), type_expr.clone()) != name,
+                        None => false,
+                    }
+                })
+                .map(|p| authored_name_at(ctx.si(), p.clone()))
+                .collect();
+            let all: Vec<String> = fn_node
+                .params
+                .iter()
+                .map(|p| authored_name_at(ctx.si(), p.clone()))
+                .collect();
+            let c = Rc::new((filtered, all));
+            ctx.param_name_cache.borrow_mut().insert(key, c.clone());
+            c
+        }
+    };
+    let param_names: &Vec<String> = &cached_params.0;
+    let all_param_names: &Vec<String> = &cached_params.1;
 
     let mut bindings = HashMap::new();
     if !args.is_empty() {
@@ -1264,12 +1291,12 @@ fn call_function(
         }
     }
 
-    for param in fn_node.params.iter() {
-        let pname = authored_name_at(ctx.si(), param.clone());
-        if !bindings.contains_key(&ctx.sym(&pname)) {
+    for (i, param) in fn_node.params.iter().enumerate() {
+        let pname = &all_param_names[i];
+        if !bindings.contains_key(&ctx.sym(pname)) {
             if let Some(default_node) = param_node_default_value(param.clone()) {
                 let default_val = eval_expr(&default_node, env, ctx)?;
-                bindings.insert(ctx.sym(&pname), default_val);
+                bindings.insert(ctx.sym(pname), default_val);
             }
         }
     }
