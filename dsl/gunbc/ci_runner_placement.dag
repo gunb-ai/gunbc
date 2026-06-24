@@ -7,6 +7,8 @@ import std.measure { ByteSize, byte_size, byte_size_count, measure_scale_fractio
 import std.types { Int, List, String, Bool }
 import extdeps.github.actions { RunnerSpec }
 import extdeps.ctrl.jobserver { CtrlJobserverCitation, ctrl_jobserver_config }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.runner_spec_from_offer { runner_spec_from_offer }
 import gunbc.fleet_host_budget {
   FleetHostPlan,
@@ -54,7 +56,14 @@ type WorkloadClass
 
 data gunbc_ci_cpu_weight_workload_class_marker: String = "WorkloadClass grounds the cgroup v2 cpu.weight kernel axis (range 1-10000, kernel default 100). BatchLatencyTolerant=100 (runner slice: CI builds are batch work, latency-tolerant); InteractiveLatencySensitive=1000 (sessions slice: dashboard/agent sessions are interactive, latency-sensitive, 10x weight). cgroup v2 cpu.weight is WORK-CONSERVING: raising sessions above runners costs zero CI throughput when sessions are idle; under contention the scheduler gives interactive sessions 10x the time slices of runner builds. This is the grounded fix for dashboard slowness under CI load on srv2. dissolve-on: replace the coarse 10x ratio with a weight derived from a measured CPU-PSI/contention curve once contention data is collected."
 
-data gunbc_ci_cpu_weight_unit_modeling_marker: String = "dissolve-on feature:M12-cardinal-count-value-measure-sweep -- workload_class_cpu_weight returns a bare Int for the cgroup v2 cpu.weight kernel scheduler weight (dimensionless range 1-10000). Carrier: Measure<Dimensionless, One, Nat> (same pattern as HardwareThreadCount, Percent). Defer to the M12 value-Measure sweep: convert the full cpu.weight cluster atomically (workload_class_cpu_weight fn + emit down-projection) so the unit modeling stays single-authority -- do NOT peel this field alone (the forked-logic trap). The dissolve-on replaces the bare Int return with a named type (e.g. CpuSchedulerWeight) and updates the manifest emit to extract the count."
+data gunbc_ci_cpu_weight_unit_modeling_marker: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "std.measure",
+    decl_name: "Measure",
+    field: WholeDeclaration
+  }
+}
 
 fn workload_class_cpu_weight(wc: WorkloadClass) -> Int {
   match wc {
@@ -386,7 +395,14 @@ fn session_reservation_plan() -> SessionReservationPlan {
   }
 }
 
-data gunbc_ci_count_field_measure_followup: String = "dissolve-on feature:M12-cardinal-count-value-measure-sweep -- the M12 / Practice-13 value-Measure sweep for cardinal COUNT fields. The runner/session counts here (OperatingPointRow.session_concurrency, .coverage_count, .sample_count; RunnerHostDeployment.runner_count; SessionHostReservation.session_count; SessionReservationDerived.fleet_concurrent_sessions) are flat Int -- cardinals per DESIGN sec 2, identical in kind to the codebase-wide bare-Int count convention (rank_count, contact_count, processor_count, lane_count, stick_count, approval_count, ...) and to the unit_modeling lens's own cardinal exemptions (index/ordinal/position). The lens is an ADVISORY region-3 RatchetForever (not floor-enrolled, does not gate CI). Disposition for the whole cluster: convert together to a count-Measure carrier (HardwareThreadCount-style) in one M12 sweep so the unit modeling stays single-authority -- do NOT peel one field here (the forked-logic trap)."
+data gunbc_ci_count_field_measure_followup: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "std.measure",
+    decl_name: "HardwareThreadCount",
+    field: WholeDeclaration
+  }
+}
 
 
 type OperatingPointRow {

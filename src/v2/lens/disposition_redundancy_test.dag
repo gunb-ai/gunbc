@@ -9,7 +9,24 @@ import std.encoding { utf8_decode_bytes_host_realization_marker, base64_group_fi
 import gunbc.ci_floor_measurement {
   gunbc_ci_floor_measured_peak_disposition,
   gunbc_ci_host_fixed_overhead_disposition,
-  gunbc_ci_concurrent_runs_conservative_high_disposition
+  gunbc_ci_concurrent_runs_conservative_high_disposition,
+  gunbc_ci_regime2_aggregate_dissolution_marker
+}
+import extdeps.entropy {
+  entropy_count_bytes_unit_debt,
+  entropy_transport_linux_gnu_only
+}
+import gunbc.tools.bmc_onboard {
+  bmc_credential_bytes_unit_debt,
+  bmc_onboard_secret_on_disk_debt,
+  bmc_redfish_json_concat_debt
+}
+import gunbc.ci_runner_placement {
+  gunbc_ci_cpu_weight_unit_modeling_marker,
+  gunbc_ci_count_field_measure_followup
+}
+import gunbc.host_converge {
+  gunbc_host_converge_runner_sessions_coupling_marker
 }
 import tools.rust_stage0_gates {
   consumed_input_closure_concept_note,
@@ -177,4 +194,149 @@ test fn redundancy_region_rust_gates_fires_on_convergence_target_present() -> Bo
     dispositions: redundancy_region_rust_gates_marks,
     present: redundancy_region_rust_gates_synthetic_present
   ) == 1
+}
+
+data redundancy_region_entropy_marks: List<Disposition> = [
+  entropy_count_bytes_unit_debt,
+  entropy_transport_linux_gnu_only
+]
+
+data redundancy_region_entropy_bytesize_present: List<DeclarationRef> = [
+  DeclarationRef {
+    module_path: "std.measure",
+    decl_name: "ByteSize",
+    field: WholeDeclaration
+  }
+]
+
+test fn redundancy_region_entropy_marks_nonempty() -> Bool {
+  length(xs: redundancy_region_entropy_marks) > 0
+}
+
+test fn redundancy_region_entropy_green_against_nonmatching() -> Bool {
+  disposition_redundancy_violation_count(
+    dispositions: redundancy_region_entropy_marks,
+    present: redundancy_present_with_successor
+  ) == 0
+}
+
+test fn redundancy_region_entropy_fires_on_bytesize_present() -> Bool {
+  disposition_redundancy_violation_count(
+    dispositions: redundancy_region_entropy_marks,
+    present: redundancy_region_entropy_bytesize_present
+  ) == 1
+}
+
+data redundancy_region_bmc_marks: List<Disposition> = [
+  bmc_credential_bytes_unit_debt,
+  bmc_onboard_secret_on_disk_debt,
+  bmc_redfish_json_concat_debt
+]
+
+data redundancy_region_bmc_all_successors_present: List<DeclarationRef> = [
+  DeclarationRef {
+    module_path: "std.measure",
+    decl_name: "ByteSize",
+    field: WholeDeclaration
+  },
+  DeclarationRef {
+    module_path: "extdeps.filesystem.filesystem_io",
+    decl_name: "Filesystem",
+    field: WholeDeclaration
+  },
+  DeclarationRef {
+    module_path: "std.primitives",
+    decl_name: "to_json_contract",
+    field: WholeDeclaration
+  }
+]
+
+test fn redundancy_region_bmc_marks_nonempty() -> Bool {
+  length(xs: redundancy_region_bmc_marks) > 0
+}
+
+test fn redundancy_region_bmc_green_against_nonmatching() -> Bool {
+  disposition_redundancy_violation_count(
+    dispositions: redundancy_region_bmc_marks,
+    present: redundancy_present_with_successor
+  ) == 0
+}
+
+test fn redundancy_region_bmc_fires_on_all_successors_present() -> Bool {
+  disposition_redundancy_violation_count(
+    dispositions: redundancy_region_bmc_marks,
+    present: redundancy_region_bmc_all_successors_present
+  ) == 3
+}
+
+data redundancy_region_runner_placement_marks: List<Disposition> = [
+  gunbc_ci_cpu_weight_unit_modeling_marker,
+  gunbc_ci_count_field_measure_followup
+]
+
+data redundancy_region_runner_placement_measure_present: List<DeclarationRef> = [
+  DeclarationRef {
+    module_path: "std.measure",
+    decl_name: "Measure",
+    field: WholeDeclaration
+  },
+  DeclarationRef {
+    module_path: "std.measure",
+    decl_name: "HardwareThreadCount",
+    field: WholeDeclaration
+  }
+]
+
+test fn redundancy_region_runner_placement_marks_nonempty() -> Bool {
+  length(xs: redundancy_region_runner_placement_marks) > 0
+}
+
+test fn redundancy_region_runner_placement_green_against_nonmatching() -> Bool {
+  disposition_redundancy_violation_count(
+    dispositions: redundancy_region_runner_placement_marks,
+    present: redundancy_present_with_successor
+  ) == 0
+}
+
+test fn redundancy_region_runner_placement_fires_on_measure_present() -> Bool {
+  disposition_redundancy_violation_count(
+    dispositions: redundancy_region_runner_placement_marks,
+    present: redundancy_region_runner_placement_measure_present
+  ) == 2
+}
+
+data redundancy_region_fleet_converge_marks: List<Disposition> = [
+  gunbc_ci_regime2_aggregate_dissolution_marker,
+  gunbc_host_converge_runner_sessions_coupling_marker
+]
+
+data redundancy_region_fleet_converge_successors_present: List<DeclarationRef> = [
+  DeclarationRef {
+    module_path: "extdeps.ctrl.jobserver",
+    decl_name: "jobserver_build_pool_bytes",
+    field: WholeDeclaration
+  },
+  DeclarationRef {
+    module_path: "gunbc.host_converge",
+    decl_name: "HostConverge",
+    field: WholeDeclaration
+  }
+]
+
+test fn redundancy_region_fleet_converge_marks_nonempty() -> Bool {
+  length(xs: redundancy_region_fleet_converge_marks) > 0
+}
+
+test fn redundancy_region_fleet_converge_green_against_nonmatching() -> Bool {
+  disposition_redundancy_violation_count(
+    dispositions: redundancy_region_fleet_converge_marks,
+    present: redundancy_present_with_successor
+  ) == 0
+}
+
+test fn redundancy_region_fleet_converge_fires_on_successors_present() -> Bool {
+  disposition_redundancy_violation_count(
+    dispositions: redundancy_region_fleet_converge_marks,
+    present: redundancy_region_fleet_converge_successors_present
+  ) == 2
 }
