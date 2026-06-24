@@ -10,7 +10,7 @@ data install_server_host: NonEmptyStr = "srv2-lan"
 
 data install_server_webroot: NonEmptyStr = "/srv/install"
 
-data ubuntu_arm64_iso_url: NonEmptyStr = "https://cdimage.ubuntu.com/releases/24.04/release/ubuntu-24.04.2-live-server-arm64.iso"
+data ubuntu_arm64_iso_url: NonEmptyStr = "https://cdimage.ubuntu.com/releases/24.04/release/ubuntu-24.04.4-live-server-arm64.iso"
 
 pattern provision_prep_and_fetch() -> { out: String, ok: Bool }
   uses net: Network

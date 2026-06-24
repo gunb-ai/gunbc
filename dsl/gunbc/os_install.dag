@@ -4,7 +4,7 @@ import std.logic { Bool }
 import std.types { NonEmptyStr, List }
 import std.os.types { OperatingSystemProduct, UbuntuOs, NobleNumbat2404Lts }
 import extdeps.toolchain.types { Architecture, Aarch64 }
-import extdeps.uri { Uri, Https }
+import extdeps.uri { Uri, Http, Https }
 import extdeps.provisioning.network_boot {
   NetworkBootChain,
   UefiHttpBoot,
@@ -66,8 +66,8 @@ data srv3_network_boot_chain: NetworkBootChain = NetworkBootChain {
   boot_mode: UefiHttpBoot,
   dhcp_direction: survey_implied_dhcp_direction(survey: srv3_lan_install_survey),
   image_http_root: Uri {
-    scheme: Https,
-    locator: "install.srv3.lan/ubuntu-24.04/",
+    scheme: Http,
+    locator: "192.168.1.188/ubuntu-24.04/",
   },
 }
 
@@ -86,8 +86,8 @@ data srv3_ubuntu_autoinstall: UbuntuAutoinstallPayload = UbuntuAutoinstallPayloa
   autoinstall_version: 1,
   delivery: NoCloudNet {
     seed_url: Uri {
-      scheme: Https,
-      locator: "install.srv3.lan/ubuntu-24.04/autoinstall/",
+      scheme: Http,
+      locator: "192.168.1.188/ubuntu-24.04/autoinstall/",
     },
   },
   fully_automated: true,
