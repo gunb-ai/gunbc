@@ -2,6 +2,7 @@ module gunbc.ci_budget_tree
 
 import std.measure { ByteSize, byte_size, measure_scale_fraction_floor, Memory, One }
 import std.types { Int, List, String, Bool }
+import std.disposition { Disposition, Terminal }
 import std.realization_width { byte_size_saturating_sub }
 import extdeps.accounting.budget { Appropriation, LineItem }
 import product.budget_tree {
@@ -26,7 +27,7 @@ import gunbc.ci_runner_placement {
 }
 import gunbc.fleet_host_budget { gunbc_fleet_oomd_evidence }
 
-data gunbc_ci_budget_tree_deconfliction_note: String = "this conserving host BudgetNode governs INTER-run co-residence (host_ram -> overhead + sessions_slice + runner_slice; REGIME-1 conservation by construction via byte_size_saturating_sub). It is intentionally NOT the within-run spawn-width budget: within_run_spawn_budget (whole-run RSS x margin) is a separate carrier feeding memory_aware_spawn_width (#5444) for parallelism INSIDE one run, and must stay non-fail-closed so the live floor keeps running when the inter-run operating point is unset. Do not fold the two back together (see gunbc_ci_footprint_granularity_note)."
+data gunbc_ci_budget_tree_deconfliction_disposition: Disposition = Terminal { reason: "DESIGN §3 deliberate carrier split: this BudgetNode governs INTER-run co-residence (host_ram partitioned as overhead + sessions_slice + runner_slice, conserving by construction via byte_size_saturating_sub). Intentionally NOT the within-run spawn-width budget: within_run_spawn_budget feeds memory_aware_spawn_width for parallelism INSIDE one run and must stay non-fail-closed so the live floor keeps running when the inter-run operating point is unset. Do not fold the two back together - see gunbc_ci_footprint_granularity_disposition." }
 
 fn host_overhead_bytes() -> ByteSize {
   match gunbc_ci_host_fixed_overhead {
