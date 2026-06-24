@@ -1,19 +1,8 @@
 module gunbc.plans.m4_universal_hermetic_corpus
 
 import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
-import std.markdown {
-  MarkdownBlock, MarkdownListItem, MarkdownTableRow, MarkdownTableCell, MarkdownAlignment,
-  HeadingBlock, ParagraphBlock, UnorderedListBlock, OrderedListBlock, CodeBlock, TableBlock,
-  ThematicBreak, TextInline, AlignNone, H2,
-}
-
-fn h2(text: String) -> MarkdownBlock { HeadingBlock { level: H2, inlines: [TextInline { text: text }] } }
-fn p(text: String) -> MarkdownBlock { ParagraphBlock { inlines: [TextInline { text: text }] } }
-fn li(text: String) -> MarkdownListItem { MarkdownListItem { blocks: [p(text: text)] } }
-fn ul(items: List<MarkdownListItem>) -> MarkdownBlock { UnorderedListBlock { items: items } }
-fn ol(items: List<MarkdownListItem>) -> MarkdownBlock { OrderedListBlock { items: items } }
-fn cell(text: String) -> MarkdownTableCell { MarkdownTableCell { inlines: [TextInline { text: text }] } }
-fn row(cells: List<MarkdownTableCell>) -> MarkdownTableRow { MarkdownTableRow { cells: cells } }
+import std.markdown { MarkdownBlock, MarkdownListItem, TableBlock, AlignNone, ThematicBreak }
+import gunbc.plans.md_helpers { h2, p, li, ul, ol, cell, row }
 
 fn m4_universal_hermetic_corpus_body() -> List<MarkdownBlock> {
   [
