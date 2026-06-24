@@ -7453,32 +7453,6 @@ pub fn emit_type_params(
     }
 }
 
-pub fn emit_fn_type_params_with_clone(
-    params: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> String {
-    if ((params.clone().len() as i64) == 0) {
-        "".to_string()
-    } else {
-        {
-            let names = Rc::new({
-                let mut __result = Vec::new();
-                for p in params.clone().iter().cloned() {
-                    __result.push(v1_rt::concat(
-                        generic_param_name_at(p.clone(), source_indices.clone()),
-                        ": Clone".to_string(),
-                    ));
-                }
-                __result
-            });
-            v1_rt::concat(
-                v1_rt::concat("<".to_string(), names.join(&", ".to_string())),
-                ">".to_string(),
-            )
-        }
-    }
-}
-
 pub fn is_function_type_param(param: Rc<Node>) -> bool {
     {
         let type_expr = param_node_type_expr(param.clone());
@@ -9282,8 +9256,7 @@ pub fn emit_fn_def(
                 if function_type_params_have_collision(type_params.clone()) {
                     return v1_rt::concat(v1_rt::concat("compile_error!(\"type param name collides with a value param in fn '".to_string(), name.clone()), "' — a value param shares its name with a declared type param; rename the value param or dissolve via ParamKind/params-slot partition\");\n".to_string());
                 }
-                let type_params_str =
-                    emit_fn_type_params_with_clone(type_params.clone(), si.clone());
+                let type_params_str = emit_type_params(type_params.clone(), si.clone());
                 let generic_param_names = Rc::new({
                     let mut __result = Vec::new();
                     for p in type_params.clone().iter().cloned() {

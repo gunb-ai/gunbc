@@ -3,7 +3,6 @@
 //! exercises the same HostNative emit as the assembled crate.
 //!
 //! Families witnessed here:
-//! - E0599/E0277: a generic fn whose body requires `Clone` on a type param must emit the bound.
 //! - length routing: `.length()` routes BY RECEIVER through the existing method->realization
 //!   dispatch — collection receiver -> `count` (`.len() as i64`), String receiver ->
 //!   `v1_rt::string_length` — never a bare `v1_rt::length` (which does not exist).
@@ -31,26 +30,6 @@ fn fn_body(emitted: &str, name: &str) -> String {
         .map(|i| i + needle.len())
         .unwrap_or(rest.len());
     rest[..end].to_string()
-}
-
-// ---- E0599/E0277: generic fn Clone bound -----------------------------------------------------
-
-const GENERIC_CLONE_FIXTURE: &str = concat!(
-    "module genclone.fixture\n",
-    "import std.nat { Nat }\n\n",
-    "fn cardinality<T>(xs: List<T>) -> Int {\n  fold(xs, init: 0, f: (acc, _) => acc + 1)\n}\n"
-);
-
-#[test]
-fn generic_fn_emits_clone_bound() {
-    let emitted = emit_host("src/v1/generic_clone_fixture.dag", GENERIC_CLONE_FIXTURE);
-    let body = fn_body(&emitted, "cardinality");
-    // The fold lowers to `.iter().cloned()`, which requires `T: Clone`; the emitted signature
-    // must carry the bound or rustc raises E0277/E0599.
-    assert!(
-        body.contains("<T: Clone>"),
-        "a generic fn whose body clones a type param must emit the `T: Clone` bound, got:\n{body}"
-    );
 }
 
 // ---- length routing (receiver-keyed) ---------------------------------------------------------
