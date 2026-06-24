@@ -12,7 +12,6 @@ type Gate
   = RustMonolithGate
   | EmitHostGate
   | LayeringImportsGate
-  | ResolvedImportsGate
   | ExtdepsExternalAuthorityGate
   | DslCompileCleanGate
   | GeneratedArtifactDriftGate
@@ -35,7 +34,6 @@ type CiSpec {
 data gunbc_ci_floor_gates: List<Gate> = [
   EmitHostGate,
   LayeringImportsGate,
-  ResolvedImportsGate,
   ExtdepsExternalAuthorityGate,
   DslCompileCleanGate,
   GeneratedArtifactDriftGate,

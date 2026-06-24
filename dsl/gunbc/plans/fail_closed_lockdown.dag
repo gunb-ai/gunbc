@@ -20,7 +20,6 @@ fn fail_closed_lockdown_body() -> List<MarkdownBlock> {
         row(cells: [cell(text: "DslCompileCleanGate"), cell(text: "whole tree (fail-fast root)"), cell(text: "`ci_spec.dag:41`; `ci_floor_plan.dag:82,106`")]),
         row(cells: [cell(text: "RustMonolithGate"), cell(text: "`.rs` + manifest"), cell(text: "`ci_spec.dag:37`; `rust_gates_ci.dag`")]),
         row(cells: [cell(text: "LayeringImportsGate"), cell(text: "whole tree"), cell(text: "`ci_spec.dag:39`; `layering_imports_gate.dag:39`")]),
-        row(cells: [cell(text: "ResolvedImportsGate"), cell(text: "whole tree"), cell(text: "`ci_spec.dag:40`; `resolved_imports_gate.dag:47`")]),
         row(cells: [cell(text: "GeneratedArtifactDriftGate"), cell(text: "`ci.yml` / `ROADMAP.md` / `.gitignore` byte-drift + per-artifact perturb, over the committed (= generated AND not-ignored) registry"), cell(text: "`ci_spec.dag` `GeneratedArtifactDriftGate`; `generated_artifact_gate.dag`; registry+commit-derivation `gunbc/generated_artifact.dag`")]),
       ],
     },

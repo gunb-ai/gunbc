@@ -105,6 +105,9 @@ const GENERATED_STAGE0_FILES: &[&str] = &[
     "v1_rt.rs",
     "v1_std_core.rs",
     "v1_test_non_ascii_perf_fixture.rs",
+    "wt_a.rs",
+    "wt_b.rs",
+    "wt_common.rs",
 ];
 
 const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
