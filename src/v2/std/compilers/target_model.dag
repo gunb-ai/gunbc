@@ -801,28 +801,52 @@ fn target_model_canonical_operation_atom_field_from_wire(
   )
 }
 
-fn ordering_predicate_from_discriminant(id: Symbol) -> Optional<OrderingPredicate> {
-  if id == discriminant(v: IsLess {}) {
-    optional_present(value: IsLess {})
-  } else if id == discriminant(v: IsLessOrEqual {}) {
-    optional_present(value: IsLessOrEqual {})
-  } else if id == discriminant(v: IsGreater {}) {
-    optional_present(value: IsGreater {})
-  } else if id == discriminant(v: IsGreaterOrEqual {}) {
-    optional_present(value: IsGreaterOrEqual {})
+fn ordering_predicate_wire_symbol(predicate: OrderingPredicate) -> Symbol {
+  match predicate {
+    IsLess => ^ordering_predicate_is_less
+    IsLessOrEqual => ^ordering_predicate_is_less_or_equal
+    IsGreater => ^ordering_predicate_is_greater
+    IsGreaterOrEqual => ^ordering_predicate_is_greater_or_equal
+  }
+}
+
+fn ordering_predicate_from_wire_symbol(id: Symbol) -> Optional<OrderingPredicate> {
+  if id == ^ordering_predicate_is_less {
+    optional_present(value: IsLess)
+  } else if id == ^ordering_predicate_is_less_or_equal {
+    optional_present(value: IsLessOrEqual)
+  } else if id == ^ordering_predicate_is_greater {
+    optional_present(value: IsGreater)
+  } else if id == ^ordering_predicate_is_greater_or_equal {
+    optional_present(value: IsGreaterOrEqual)
   } else {
     optional_absent()
   }
 }
 
-fn equality_predicate_from_discriminant(id: Symbol) -> Optional<EqualityPredicate> {
-  if id == discriminant(v: IsEqual {}) {
-    optional_present(value: IsEqual {})
-  } else if id == discriminant(v: IsNotEqual {}) {
-    optional_present(value: IsNotEqual {})
+fn ordering_predicate_equal(left: OrderingPredicate, right: OrderingPredicate) -> Bool {
+  ordering_predicate_wire_symbol(predicate: left) == ordering_predicate_wire_symbol(predicate: right)
+}
+
+fn equality_predicate_wire_symbol(predicate: EqualityPredicate) -> Symbol {
+  match predicate {
+    IsEqual => ^equality_predicate_is_equal
+    IsNotEqual => ^equality_predicate_is_not_equal
+  }
+}
+
+fn equality_predicate_from_wire_symbol(id: Symbol) -> Optional<EqualityPredicate> {
+  if id == ^equality_predicate_is_equal {
+    optional_present(value: IsEqual)
+  } else if id == ^equality_predicate_is_not_equal {
+    optional_present(value: IsNotEqual)
   } else {
     optional_absent()
   }
+}
+
+fn equality_predicate_equal(left: EqualityPredicate, right: EqualityPredicate) -> Bool {
+  equality_predicate_wire_symbol(predicate: left) == equality_predicate_wire_symbol(predicate: right)
 }
 
 fn target_model_canonical_operation_wire_node(operation: CanonicalOperation) -> Node {
@@ -863,7 +887,7 @@ fn target_model_canonical_operation_wire_node(operation: CanonicalOperation) -> 
           ),
           target_model_named_edge(
             name: ^target_canonical_operation_field_predicate,
-            target: target_model_type_atom_node(identity: discriminant(v: p))
+            target: target_model_type_atom_node(identity: ordering_predicate_wire_symbol(predicate: p))
           )
         ],
         occurrence_id: SyntheticOccurrence
@@ -878,7 +902,7 @@ fn target_model_canonical_operation_wire_node(operation: CanonicalOperation) -> 
           ),
           target_model_named_edge(
             name: ^target_canonical_operation_field_predicate,
-            target: target_model_type_atom_node(identity: discriminant(v: p))
+            target: target_model_type_atom_node(identity: equality_predicate_wire_symbol(predicate: p))
           )
         ],
         occurrence_id: SyntheticOccurrence
@@ -905,13 +929,13 @@ fn canonical_operation_equal(
     OrderingComparison { compare_field: lc, predicate: lp } =>
       match right {
         OrderingComparison { compare_field: rc, predicate: rp } =>
-          lc == rc && discriminant(v: lp) == discriminant(v: rp)
+          lc == rc && ordering_predicate_equal(left: lp, right: rp)
         _ => false
       }
     EqualityComparison { eq_field: le, predicate: lp } =>
       match right {
         EqualityComparison { eq_field: re, predicate: rp } =>
-          le == re && discriminant(v: lp) == discriminant(v: rp)
+          le == re && equality_predicate_equal(left: lp, right: rp)
         _ => false
       }
   }
@@ -970,7 +994,7 @@ fn canonical_operation_from_wire_node(wire: Node) -> Outcome<CanonicalOperation>
               field_name: ^target_canonical_operation_field_predicate
             ) {
               Present { value: predicate_id } =>
-                match ordering_predicate_from_discriminant(id: predicate_id) {
+                match ordering_predicate_from_wire_symbol(id: predicate_id) {
                   Present { value: predicate } =>
                     outcome_accepted(
                       OrderingComparison {
@@ -1004,7 +1028,7 @@ fn canonical_operation_from_wire_node(wire: Node) -> Outcome<CanonicalOperation>
               field_name: ^target_canonical_operation_field_predicate
             ) {
               Present { value: predicate_id } =>
-                match equality_predicate_from_discriminant(id: predicate_id) {
+                match equality_predicate_from_wire_symbol(id: predicate_id) {
                   Present { value: predicate } =>
                     outcome_accepted(
                       EqualityComparison {

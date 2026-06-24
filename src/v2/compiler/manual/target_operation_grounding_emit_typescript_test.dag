@@ -223,13 +223,13 @@ fn op_grounding_ordering_list_eq(left: List<Ordering>, right: List<Ordering>) ->
 }
 
 test fn op_grounding_ordering_predicate_accepts_units() -> Bool {
-  op_grounding_ordering_list_eq(left: ordering_predicate_accepts(predicate: IsLess {}), right: [Less]) &&
-    op_grounding_ordering_list_eq(left: ordering_predicate_accepts(predicate: IsLessOrEqual {}), right: [Less, Equal]) &&
-    op_grounding_ordering_list_eq(left: ordering_predicate_accepts(predicate: IsGreater {}), right: [Greater]) &&
-    op_grounding_ordering_list_eq(left: ordering_predicate_accepts(predicate: IsGreaterOrEqual {}), right: [Equal, Greater])
+  op_grounding_ordering_list_eq(left: ordering_predicate_accepts(predicate: IsLess), right: [Less]) &&
+    op_grounding_ordering_list_eq(left: ordering_predicate_accepts(predicate: IsLessOrEqual), right: [Less, Equal]) &&
+    op_grounding_ordering_list_eq(left: ordering_predicate_accepts(predicate: IsGreater), right: [Greater]) &&
+    op_grounding_ordering_list_eq(left: ordering_predicate_accepts(predicate: IsGreaterOrEqual), right: [Equal, Greater])
 }
 
 test fn op_grounding_equality_predicate_accepts_units() -> Bool {
-  (equality_predicate_accepts(predicate: IsEqual {}) == true) &&
-    (equality_predicate_accepts(predicate: IsNotEqual {}) == false)
+  (equality_predicate_accepts(predicate: IsEqual) == true) &&
+    (equality_predicate_accepts(predicate: IsNotEqual) == false)
 }
