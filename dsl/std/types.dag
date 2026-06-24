@@ -151,8 +151,6 @@ type Duration      = Int where range(min: 0)
 type Milliseconds  = Int where range(min: 0), brand("Milliseconds")
 type Seconds       = Int where range(min: 0), brand("Seconds")
 
-type Percent       = Int where range(min: 0, max: 100), brand("Percent")
-
 type LogicalTime   = NonEmptyStr where brand("LogicalTime")
 
 type IntentId     = NonEmptyStr where brand("IntentId")
