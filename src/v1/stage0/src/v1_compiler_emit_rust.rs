@@ -626,6 +626,27 @@ pub fn is_parametric_opaque_type_base(
     }
 }
 
+// A type-ARGUMENT position that is occupied by a value (not a type) collapses to the unit type
+// `()` in the emitted Rust. Two cases of the same type/value conflation:
+//   - a Nat width LITERAL (`MachineWidth<8>`) -- the pre-existing `is_width_nat_type_literal` case;
+//   - a VALUE enum-variant used as a type arg (`Measure<Time, ...>`, `Measure<Memory, One, ...>`),
+//     where `Time`/`Memory`/`One` are unit variants of the `Quantity`/`Scale` VALUE sum-types.
+// The `.dag` authority keeps these phantom type-params (Q/S give a real type-level distinction
+// between e.g. a Time measure and a Length measure); but Rust cannot carry a VALUE in a type-arg
+// slot, so the seed projection collapses each such slot to `()` (the same lossy-but-sound move the
+// width-nat literal already takes). This is keyed on the variant being unambiguous: an enum-variant
+// name owned by exactly one coproduct (`is_phantom_unit_variant_type_arg` -> `lookup_unit_variant_
+// phantom_type` returns Some only on a single match), so an ambiguous name fails closed (renders by
+// name, the pre-existing behavior) rather than guessing.
+pub fn rust_type_arg_renders_as_unit(
+    n: Rc<Node>,
+    env: Rc<TypeEnv>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    is_width_nat_type_literal(n.clone())
+        || is_phantom_unit_variant_type_arg(env, authored_name_at(source_indices, n.clone()))
+}
+
 pub fn render_rust_phantom_opaque_applied_type_arg(
     n: Rc<Node>,
     generic_param_names: Rc<Vec<String>>,
