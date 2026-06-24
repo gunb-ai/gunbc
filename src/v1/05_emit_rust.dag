@@ -224,11 +224,15 @@ fn emit_rust_host_to_dag_string_via_seam(host_expr: String, corpus_repr: RustCor
 // emit a bare "name" &str literal, so a Map<String,V> data literal inferred
 // HashMap<&str,V> and mismatched the declared HashMap<String,V> (the Family-A
 // E0308 cluster). The coercion is DERIVED from the declared key type, not blanket:
-// a String-like key gets .to_string(); a non-String declared key emits the literal
-// unchanged (fail-closed -- the two slots now consult the same type authority).
-fn emit_rust_map_literal_key(field_name: String, key_type_node: Node, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>) -> String {
+// `key_is_string` is computed at the call site from `is_rust_string_like` over the
+// map's declared key type, so a String-like key gets `.to_string()` while a
+// non-String declared key emits the literal unchanged (fail-closed -- both slots
+// now consult the same type authority). The Bool seam keeps each branch directly
+// witnessable (a non-String record-literal key is not source-expressible, since
+// record keys are field-name identifiers).
+fn emit_rust_map_literal_key(field_name: String, key_is_string: Bool, corpus_repr: RustCorpusRepr) -> String {
   let key_literal = concat("\"", field_name, "\"")
-  let host_expr = if is_rust_string_like(n: key_type_node, source_indices: source_indices) {
+  let host_expr = if key_is_string {
     concat(key_literal, ".to_string()")
   } else {
     key_literal
