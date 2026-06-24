@@ -11844,52 +11844,56 @@ fn ownership_stage0_census() {
 #[test]
 #[ignore = "census: enumerate whole-tree advisory typecheck debt by kind/name/module"]
 fn whole_tree_advisory_typecheck_census() {
+    use std::collections::BTreeSet;
+    use v1_compiler::cli_run::{discover_floor_corpus_rows, load_sources_for_entry};
     use v1_compiler::v1_std_core::is_discovery_corpus_advisory_typecheck_diagnostic;
     let ws = workspace_root();
-    let mut sources: Vec<Rc<SourceFile>> = Vec::new();
-    collect_dag_sources(&ws, &ws.join("dsl"), &mut sources);
-    collect_dag_sources(&ws, &ws.join("src/v2"), &mut sources);
-    eprintln!("census: {} sources", sources.len());
-
-    let resolved =
-        v1_compiler::v1_compiler_compile::compile_to_resolved(Rc::new(sources));
+    std::env::set_current_dir(&ws).expect("chdir to workspace root");
+    let roots = vec![
+        ws.join("dsl").to_string_lossy().into_owned(),
+        ws.join("src/v2").to_string_lossy().into_owned(),
+    ];
+    let scan_dirs = vec![
+        "dsl/test/claim".to_string(),
+        "src/v2/compiler/manual".to_string(),
+    ];
+    let rows = discover_floor_corpus_rows(&roots, &scan_dirs).expect("discover roster");
+    let entries: BTreeSet<String> = rows.into_iter().map(|r| r.entry).collect();
+    eprintln!("census: {} discovery entries", entries.len());
 
     let mut by_kind: HashMap<&'static str, usize> = HashMap::new();
     let mut by_name: HashMap<String, usize> = HashMap::new();
     let mut by_module: HashMap<String, usize> = HashMap::new();
+    let mut by_entry: HashMap<String, usize> = HashMap::new();
+    // dedup advisory diagnostics globally by (file, byte-start, kind, name)
+    let mut seen: BTreeSet<(String, i64, &'static str, String)> = BTreeSet::new();
     let mut advisory = 0usize;
-    for d in resolved.diagnostics.iter() {
-        if !is_discovery_corpus_advisory_typecheck_diagnostic(d.diagnostic.clone()) {
-            continue;
-        }
-        advisory += 1;
-        let (kind, name) = match &*d.diagnostic {
-            CompilerDiagnostic::UnresolvedType { name, .. } => ("UnresolvedType", name.clone()),
-            CompilerDiagnostic::TypeMismatch { expected, got, .. } => {
-                ("TypeMismatch", format!("{} != {}", expected, got))
-            }
-            CompilerDiagnostic::ArityMismatch { name, .. } => ("ArityMismatch", name.clone()),
-            CompilerDiagnostic::VariantNotFound { variant, type_name, .. } => {
-                ("VariantNotFound", format!("{}::{}", type_name, variant))
-            }
-            CompilerDiagnostic::FieldNotFound { field, type_name, .. } => {
-                ("FieldNotFound", format!("{}.{}", type_name, field))
-            }
-            CompilerDiagnostic::NonExhaustiveMatch { .. } => ("NonExhaustiveMatch", String::new()),
-            CompilerDiagnostic::MissingAnnotation { fn_name, what, .. } => {
-                ("MissingAnnotation", format!("{}:{}", fn_name, what))
-            }
-            CompilerDiagnostic::VariantCollision { variant, .. } => {
-                ("VariantCollision", variant.clone())
-            }
-            _ => ("Other", String::new()),
+    for entry in &entries {
+        let sources = match load_sources_for_entry(&roots, entry) {
+            Ok(s) => s,
+            Err(_) => continue,
         };
-        *by_kind.entry(kind).or_insert(0) += 1;
-        *by_name.entry(format!("{} {}", kind, name)).or_insert(0) += 1;
-        *by_module.entry(d.module_name.clone()).or_insert(0) += 1;
+        let resolved =
+            v1_compiler::v1_compiler_compile::compile_to_resolved(Rc::new(sources));
+        for d in resolved.diagnostics.iter() {
+            if !is_discovery_corpus_advisory_typecheck_diagnostic(d.diagnostic.clone()) {
+                continue;
+            }
+            let span = d.diagnostic.span();
+            let (kind, name) = census_kind_name(&d.diagnostic);
+            let key = (span.file.clone(), span.start, kind, name.clone());
+            if !seen.insert(key) {
+                continue;
+            }
+            advisory += 1;
+            *by_kind.entry(kind).or_insert(0) += 1;
+            *by_name.entry(format!("{} {}", kind, name)).or_insert(0) += 1;
+            *by_module.entry(span.file.clone()).or_insert(0) += 1;
+            *by_entry.entry(entry.clone()).or_insert(0) += 1;
+        }
     }
 
-    eprintln!("=== ADVISORY TOTAL: {} ===", advisory);
+    eprintln!("=== ADVISORY TOTAL (distinct): {} ===", advisory);
     let mut kinds: Vec<_> = by_kind.into_iter().collect();
     kinds.sort_by(|a, b| b.1.cmp(&a.1));
     eprintln!("--- by kind ---");
@@ -11904,8 +11908,38 @@ fn whole_tree_advisory_typecheck_census() {
     }
     let mut mods: Vec<_> = by_module.into_iter().collect();
     mods.sort_by(|a, b| b.1.cmp(&a.1));
-    eprintln!("--- top 40 modules ---");
+    eprintln!("--- top 40 files ---");
     for (m, c) in mods.iter().take(40) {
         eprintln!("  {:5} {}", c, m);
+    }
+    let mut ents: Vec<_> = by_entry.into_iter().collect();
+    ents.sort_by(|a, b| b.1.cmp(&a.1));
+    eprintln!("--- top 30 entries (new-distinct introduced) ---");
+    for (e, c) in ents.iter().take(30) {
+        eprintln!("  {:5} {}", c, e);
+    }
+}
+
+fn census_kind_name(d: &Rc<CompilerDiagnostic>) -> (&'static str, String) {
+    match &**d {
+        CompilerDiagnostic::UnresolvedType { name, .. } => ("UnresolvedType", name.clone()),
+        CompilerDiagnostic::TypeMismatch { expected, got, .. } => {
+            ("TypeMismatch", format!("{} != {}", expected, got))
+        }
+        CompilerDiagnostic::ArityMismatch { name, .. } => ("ArityMismatch", name.clone()),
+        CompilerDiagnostic::VariantNotFound {
+            variant, type_name, ..
+        } => ("VariantNotFound", format!("{}::{}", type_name, variant)),
+        CompilerDiagnostic::FieldNotFound {
+            field, type_name, ..
+        } => ("FieldNotFound", format!("{}.{}", type_name, field)),
+        CompilerDiagnostic::NonExhaustiveMatch { .. } => ("NonExhaustiveMatch", String::new()),
+        CompilerDiagnostic::MissingAnnotation { fn_name, what, .. } => {
+            ("MissingAnnotation", format!("{}:{}", fn_name, what))
+        }
+        CompilerDiagnostic::VariantCollision { variant, .. } => {
+            ("VariantCollision", variant.clone())
+        }
+        _ => ("Other", String::new()),
     }
 }
