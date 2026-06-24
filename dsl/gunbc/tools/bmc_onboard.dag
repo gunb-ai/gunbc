@@ -18,7 +18,6 @@ data bmc_onboard_pwbody_path: String = "/tmp/bmc_onboard_pwbody.json"
 
 data bmc_onboard_secret_on_disk_debt: String = "🟡 SCAFFOLD — the two /tmp paths above (netrc + password body) transiently hold the BMC credential on disk under the default umask: Filesystem.Write cannot set mode 0600 today and there is no post-run unlink. Operator-fenced (live writes gated), not a silent leak. Dissolve-on: feature:mode-aware-file-write — a mode-0600 file-write effect + an unlink leg bound the secret-on-disk window."
 
-data bmc_onboard_credential_path_module_split: String = "credential assimilation (acquire→mint→store→rotate) is modeled here independent of the OS-install leg — it imports neither gunbc.os_install nor extdeps.bmc.types, which it does not use (§2: no dependency on what is not consumed). The OS-install orchestration is deferred to the PXE/install-infra lane; this module's import closure stays small enough to be live-runnable today."
 
 data srv3_gcp_project: GcpProjectId = "gunbai-secrets"
 
