@@ -18,32 +18,15 @@ import v2.std.fn_index { FnArrowDecl, FnArrowParam, fn_arrow_decl_facts_live }
 import v2.lens.wiring_liveness {
   WiringDeadWire,
   wiring_dead_wires_over,
-  wiring_fn_dead_wires,
-  wiring_liveness_corpus_dead_wire_count,
-  wiring_liveness_corpus_is_clean
+  wiring_fn_dead_wires
 }
-
-fn probe_lambda_use(flag: Bool, items: List<Bool>) -> Bool {
-  fold(items, init: true, f: fn(acc, it) { acc && flag })
-}
-
-fn dbg_probe_lambda_wired() -> Bool {
-  fold(decls_named(decls: fn_arrow_decl_facts_live(), target: "probe_lambda_use"), init: false, f: fn(acc, d) {
-    acc || (length(xs: wiring_fn_dead_wires(decl: d)) == 0)
-  })
-}
-
-fn dbg_nonempty() -> Bool { length(xs: fn_arrow_decl_facts_live()) > 0 }
-fn dbg_probe_present() -> Bool { probe_present_with_params(decls: fn_arrow_decl_facts_live()) }
-fn dbg_probe_wired() -> Bool { probe_is_wired(decls: fn_arrow_decl_facts_live()) }
-fn dbg_corpus_clean() -> Bool { wiring_liveness_corpus_is_clean() }
-fn dbg_count_le_0() -> Bool { wiring_liveness_corpus_dead_wire_count() == 0 }
-fn dbg_count_le_3() -> Bool { wiring_liveness_corpus_dead_wire_count() < 4 }
-fn dbg_count_le_12() -> Bool { wiring_liveness_corpus_dead_wire_count() < 13 }
-fn dbg_count_le_40() -> Bool { wiring_liveness_corpus_dead_wire_count() < 41 }
 
 fn wiring_corpus_probe(alpha: Bool, beta: Bool) -> Bool {
   alpha && beta
+}
+
+fn wiring_corpus_probe_lambda(flag: Bool, items: List<Bool>) -> Bool {
+  fold(items, init: true, f: fn(acc, it) { acc && flag })
 }
 
 fn decls_named(decls: List<FnArrowDecl>, target: String) -> List<FnArrowDecl> {
@@ -69,8 +52,8 @@ fn probe_present_with_params(decls: List<FnArrowDecl>) -> Bool {
   })
 }
 
-fn probe_is_wired(decls: List<FnArrowDecl>) -> Bool {
-  let matches = decls_named(decls: decls, target: "wiring_corpus_probe")
+fn probe_named_is_wired(decls: List<FnArrowDecl>, target: String) -> Bool {
+  let matches = decls_named(decls: decls, target: target)
   (length(xs: matches) > 0)
     && fold(matches, init: true, f: fn(acc, d) {
         acc && (length(xs: wiring_fn_dead_wires(decl: d)) == 0)
@@ -120,6 +103,7 @@ test fn wiring_liveness_corpus_witnesses() -> Bool {
   return witness_dead_wire_detected()
     && (length(xs: decls) > 0)
     && probe_present_with_params(decls: decls)
-    && probe_is_wired(decls: decls)
+    && probe_named_is_wired(decls: decls, target: "wiring_corpus_probe")
+    && probe_named_is_wired(decls: decls, target: "wiring_corpus_probe_lambda")
     && (length(xs: wiring_dead_wires_over(decls: decls)) == 0)
 }
