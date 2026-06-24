@@ -9,7 +9,7 @@ import std.measure {
   byte_size,
   watt,
 }
-import std.types { NonEmptyStr, Int, List }
+import std.types { NonEmptyStr, Int, List, Secret, String }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -174,3 +174,11 @@ fn redfish_privilege_wire(p: RedfishPrivilege) -> NonEmptyStr {
     PrivilegeConfigureSelf => "ConfigureSelf"
   }
 }
+
+data redfish_system_action_doc: String = "RedfishSystemAction -- the out-of-band effect-kind arm of gunbc.host_effect.HostEffect. A Redfish op is a TYPED action over a ComputerSystem/Account, never a shell string (DESIGN section 3 anemic-leaf): the verb composes the boot/reset/account enums above (each carries its own *_wire projector). Co-owned with neat-boar-71 (the RedfishAction arm + bmc realization); minted here as the TYPE only -- the realization over RedfishRest (resource/verb/body derived from extdeps/bmc/http) lands in Phase C. NO host / system_id / netrc fields on any variant: the WHERE is resolved from the apply() target BmcController(node) over fleet_intent, which keeps the action transport-agnostic (one effect shape, N transports). GetSystem is the nullary read."
+
+type RedfishSystemAction =
+    SetBootSourceOverride { target: RedfishBootSourceOverrideTarget, enabled: RedfishBootSourceOverrideEnabled }
+  | ResetSystem { reset_type: RedfishResetType }
+  | SetAccountPassword { account_id: NonEmptyStr, new_password: Secret }
+  | GetSystem
