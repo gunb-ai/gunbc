@@ -4431,6 +4431,10 @@ fn effective_variant_parent(name: String, binding_kind: VarBindingKind?, resolve
   }
 }
 
+fn variant_ref_self_wraps(name: String, enum_name: String, shared_types: Set<String>, corpus_repr: RustCorpusRepr) -> Bool {
+  (name == "Empty" && enum_name == "FreeMonoid" && corpus_repr_is_host(corpus_repr: corpus_repr)) || set_contains(shared_types, enum_name)
+}
+
 fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: InferredNode?, shared_types: Set<String>, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String {
   if name == "none" || name == "None" { emit_keyword(key: "null", target: Rust) }
   else if name == "true" || name == "false" { emit_keyword(key: name, target: Rust) }
@@ -4441,18 +4445,16 @@ fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: Infe
     let variant_parent = effective_variant_parent(name: name, binding_kind: binding_kind, resolved_type: resolved_type, emit_info: emit_info, source_indices: source_indices)
     let ref_str = match variant_parent {
       Present { value: enum_name } =>
-        if name == "Empty" && enum_name == "FreeMonoid" && corpus_repr_is_host(corpus_repr: emit_info.corpus_repr) {
-          "Rc::new(vec![])"
-        } else {
-        let qualified = if is_optional_variant_name(name: name) && enum_name == "Optional" {
+        let body = if name == "Empty" && enum_name == "FreeMonoid" && corpus_repr_is_host(corpus_repr: emit_info.corpus_repr) {
+          "vec![]"
+        } else if is_optional_variant_name(name: name) && enum_name == "Optional" {
           if name == "Present" { "Some" } else { "None" }
         } else {
           concat(enum_name, "::", name)
         }
-        if set_contains(shared_types, enum_name) {
-          concat("Rc::new(", qualified, ")")
-        } else { qualified }
-        }
+        if variant_ref_self_wraps(name: name, enum_name: enum_name, shared_types: shared_types, corpus_repr: emit_info.corpus_repr) {
+          concat("Rc::new(", body, ")")
+        } else { body }
       Absent =>
         match map_get(registry, name) {
           Present { value: info } =>
@@ -7845,7 +7847,17 @@ fn emit_data_def_body(type_node: Node, value: Node, registry: Map<String, ItemIn
       }
     } else {
       let val_str = emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
-      let is_already_wrapped = match value.expr_data { ExprRecordLit { parent_enum: _ } => true  ExprListLit => true  _ => false }
+      let is_already_wrapped = match value.expr_data {
+        ExprRecordLit { parent_enum: _ } => true
+        ExprListLit => true
+        ExprVar { binding_kind: bk } =>
+          let vname = expr_var_name_at(texpr: value, source_indices: scope.type_env.source_indices)
+          match effective_variant_parent(name: vname, binding_kind: bk, resolved_type: value.inferred, emit_info: emit_info, source_indices: scope.type_env.source_indices) {
+            Present { value: enum_name } => variant_ref_self_wraps(name: vname, enum_name: enum_name, shared_types: shared_types, corpus_repr: emit_info.corpus_repr)
+            Absent => false
+          }
+        _ => false
+      }
       let wrap_start = if needs_rc && !is_already_wrapped { "Rc::new(" } else { "" }
       let wrap_end = if needs_rc && !is_already_wrapped { ")" } else { "" }
       concat("            ", wrap_start, val_str, wrap_end)
