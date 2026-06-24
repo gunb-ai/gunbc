@@ -32,6 +32,18 @@ fn fn_body(emitted: &str, name: &str) -> String {
     rest[..end].to_string()
 }
 
+// The fn body with its first (signature) line dropped. The signature `fn t() -> Tag {`
+// itself contains `Tag {`, which would false-match a struct-literal substring search; the
+// collapse/un-collapse distinction lives strictly in the body, so we assert on the body
+// after the signature line.
+fn fn_body_no_sig(emitted: &str, name: &str) -> String {
+    let body = fn_body(emitted, name);
+    match body.find('\n') {
+        Some(i) => body[i + 1..].to_string(),
+        None => String::new(),
+    }
+}
+
 // ===================== Family &str: string-concat borrow seam =====================
 // Rust's `String + ` requires `String + &str`; the emitter must borrow the RHS of a
 // string `+`. The control proves it is gated on string-typed operands (numeric `+`
@@ -92,7 +104,12 @@ fn bounded_lattice_top_bottom_are_bare_not_boxed() {
 
 #[test]
 fn fn_field_single_record_uncollapses_with_rc_wrap() {
-    // Effectiveness: `pick` is fn-typed and `{pick}` is a UNIQUE single-field set.
+    // Effectiveness: `pick` is fn-typed and `{pick}` is a UNIQUE single-field set. The
+    // record literal carries no inline type name, so it reaches the single-field collapse
+    // branch (qualified_name == None) — exactly the path the real `data semver_scheme:
+    // VersionScheme = { compare: semver_identity_compare }` site takes. The un-collapse
+    // must restore the nominal `Scheme {` wrapper AND the fn->Rc coercion. We assert on the
+    // signature-stripped body so `Scheme {` proves the struct literal, not the return type.
     let source = concat!(
         "module schemefx.fixture\n",
         "import std.algebra { Ordering }\n\n",
@@ -100,42 +117,56 @@ fn fn_field_single_record_uncollapses_with_rc_wrap() {
         "type Scheme {\n  pick: fn(Int, Int) -> Ordering\n}\n\n",
         "data s: Scheme = {\n  pick: cmp\n}\n"
     );
-    let emitted = emit(source);
+    let body = fn_body_no_sig(&emit(source), "s");
     assert!(
-        emitted.contains("Scheme {") && emitted.contains("Rc::new(cmp)"),
-        "a single fn-field record must un-collapse to `Scheme {{ pick: Rc::new(cmp) }}`, got:\n{emitted}"
+        body.contains("Scheme {") && body.contains("Rc::new(cmp)"),
+        "a single fn-field record must un-collapse to `Scheme {{ pick: Rc::new(cmp) }}`, got:\n{body}"
     );
 }
 
 #[test]
-fn plain_single_field_newtype_stays_collapsed() {
-    // Transparency control: a plain (non-Arrow) single field must NOT un-collapse —
-    // it stays byte-identical transparent (no `Tag {` wrapper emitted for the value).
-    let source = "module plainnt.fixture\n\ntype Tag {\n  slot: Int\n}\n\ndata t: Tag = {\n  slot: 7\n}\n";
-    let emitted = emit(source);
-    let body = fn_body(&emitted, "t");
+fn nonfn_unique_single_field_stays_collapsed() {
+    // Transparency control: a UNIQUE single-field record whose field is NON-fn must stay
+    // collapsed even though it reaches the same collapse branch (the field references
+    // another data value, a cross-ref, which forces the record-literal path rather than
+    // serde). `find_unique_struct_name_by_fields([item])` recovers `Holder` unambiguously,
+    // but `rust_record_field_needs_fn_rc(Holder, item)` is false (item: Leaf, not fn), so
+    // the fix must return the bare collapsed value — no `Holder {` wrapper. This proves the
+    // un-collapse is gated on fn-ness, not merely on a unique nominal recovery.
+    let source = concat!(
+        "module transp.fixture\n\n",
+        "type Leaf {\n  v: Int\n}\n\n",
+        "type Holder {\n  item: Leaf\n}\n\n",
+        "data leafv: Leaf = {\n  v: 3\n}\n\n",
+        "data hv: Holder = {\n  item: leafv\n}\n"
+    );
+    let body = fn_body_no_sig(&emit(source), "hv");
     assert!(
-        !body.contains("Tag {"),
-        "a plain single-field newtype must stay collapsed (transparent), not wrap in `Tag {{ }}`, got:\n{body}"
+        !body.contains("Holder {"),
+        "a unique non-fn single field must stay collapsed (un-collapse gated on fn-ness), not wrap in `Holder {{ }}`, got:\n{body}"
     );
 }
 
 #[test]
 fn ambiguous_single_field_name_fails_closed_to_collapse() {
-    // Fail-closed on ambiguity: two structs share the single field name `item`, so
-    // find_unique_struct_name_by_fields([item]) is ambiguous (count != 1) -> None ->
-    // the fix must FALL BACK to bare collapse and NEVER guess a nominal R. (It must not
-    // emit `AlphaItem {` / `BetaItem {` for the wrong type.)
+    // Fail-closed on ambiguity: two fn-field structs share the single field name `pick`, so
+    // find_unique_struct_name_by_fields([pick]) is ambiguous (count == 2) -> None -> the fix
+    // must FALL BACK to bare collapse and NEVER guess a nominal R. Falling back emits the
+    // bare `Rc::new(cmp)` (a fn-item) where `AScheme` was wanted — a LOUD typed E0308 at the
+    // consumer, not a silent wrong nominal type. "Pick the first candidate to make it
+    // compile" is exactly the forbidden silent-wrong behavior. The field is fn-typed so it
+    // reaches the collapse branch (a plain field would serde out and never test recovery).
     let source = concat!(
-        "module ambig.fixture\n\n",
-        "type AlphaItem {\n  item: Int\n}\n\n",
-        "type BetaItem {\n  item: Int\n}\n\n",
-        "data a: AlphaItem = {\n  item: 1\n}\n"
+        "module ambig.fixture\n",
+        "import std.algebra { Ordering }\n\n",
+        "fn cmp(a: Int, b: Int) -> Ordering {\n  Equal\n}\n\n",
+        "type AScheme {\n  pick: fn(Int, Int) -> Ordering\n}\n\n",
+        "type BScheme {\n  pick: fn(Int, Int) -> Ordering\n}\n\n",
+        "data av: AScheme = {\n  pick: cmp\n}\n"
     );
-    let emitted = emit(source);
-    let body = fn_body(&emitted, "a");
+    let body = fn_body_no_sig(&emit(source), "av");
     assert!(
-        !body.contains("AlphaItem {") && !body.contains("BetaItem {"),
+        !body.contains("AScheme {") && !body.contains("BScheme {"),
         "an ambiguous single-field name must fail closed to bare collapse, never guess a nominal struct, got:\n{body}"
     );
 }
