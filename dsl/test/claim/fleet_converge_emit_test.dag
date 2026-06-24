@@ -36,6 +36,7 @@ import gunbc.host_converge {
   gunbc_host_converge_receipt_grammar_marker,
   gunbc_host_converge_grounded_mechanism_marker,
   gunbc_converge_verdict_authority_marker,
+  gunbc_host_converge_runner_sessions_coupling_marker,
 }
 import gunbc.fleet_converge_emit {
   expected_fleet_converge_sh,
@@ -193,6 +194,7 @@ fn witness_markers_documented() -> Bool {
     && gunbc_host_converge_receipt_grammar_marker != ""
     && gunbc_host_converge_grounded_mechanism_marker != ""
     && gunbc_converge_verdict_authority_marker != ""
+    && gunbc_host_converge_runner_sessions_coupling_marker != ""
 }
 
 test fn fleet_converge_emit_holds() -> Bool {
