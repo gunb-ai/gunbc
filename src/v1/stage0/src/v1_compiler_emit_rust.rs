@@ -13532,6 +13532,34 @@ pub fn emit_typed_call_expr(
     }
 }
 
+pub fn rust_call_arg_fail_closed_unwrap(
+    arg_str: String,
+    arg: Rc<Node>,
+    callee: Option<Rc<ItemInfo>>,
+    idx: i64,
+    func: String,
+) -> String {
+    match callee {
+        Some(info) => match info.params.clone().get(idx.clone() as usize).cloned() {
+            Some(param) => {
+                let param_required = (param_node_type_expr(param.clone())
+                    .return_cardinality
+                    .clone()
+                    != Cardinality::CardOptional);
+                let arg_optional =
+                    (resolved_type(arg).return_cardinality.clone() == Cardinality::CardOptional);
+                if (param_required && arg_optional) {
+                    v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(arg_str, ".expect(\"fail-closed: an optional value flowed into non-optional parameter ".to_string()), (idx.clone()).to_string()), " of ".to_string()), func), " (empty Optional at runtime)\")".to_string())
+                } else {
+                    arg_str
+                }
+            }
+            None => arg_str,
+        },
+        None => arg_str,
+    }
+}
+
 pub fn emit_typed_call(
     func: String,
     args: Rc<Vec<Rc<Node>>>,
@@ -13843,14 +13871,23 @@ pub fn emit_typed_call(
                                 )
                             }
                         } else {
-                            emit_cloned_arg(
-                                arg_value(a.clone()),
-                                registry.clone(),
-                                collection_scope.clone(),
-                                depth.clone(),
-                                shared_types.clone(),
-                                emit_info.clone(),
-                            )
+                            {
+                                let base = emit_cloned_arg(
+                                    arg_value(a.clone()),
+                                    registry.clone(),
+                                    collection_scope.clone(),
+                                    depth.clone(),
+                                    shared_types.clone(),
+                                    emit_info.clone(),
+                                );
+                                rust_call_arg_fail_closed_unwrap(
+                                    base.clone(),
+                                    arg_value(a.clone()),
+                                    callee.clone(),
+                                    idx.clone(),
+                                    func.clone(),
+                                )
+                            }
                         }
                     }
                 });
