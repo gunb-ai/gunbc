@@ -2,7 +2,7 @@ module v1.compiler.compile
 
 import v1.std.core {
   CompileResult, TextFile, SourceSpan, authored_name_at,
-  ErrorNode, CompilerDiagnostic, is_error_diagnostic, is_discovery_corpus_blocking_diagnostic, diagnostic_to_message, diagnostic_to_span, make_error_node, InternalError, OwnershipViolation, no_span,
+  ErrorNode, CompilerDiagnostic, is_error_diagnostic, is_interpreter_blocking_diagnostic, diagnostic_to_message, diagnostic_to_span, make_error_node, InternalError, OwnershipViolation, no_span,
   Connective, NoConnective, Arrow, Cardinality,
   resource_use_name_at, resource_use_resource,
   param_node_name_at, param_node_type_expr, param_node_default_value, param_node_span,
@@ -1067,7 +1067,24 @@ fn validate_boundaries(plan: ArtifactPlan) -> List<ErrorNode> {
   )
 }
 
-fn emit_from_artifact_plan(typed: ResolvedGraph, artifact_plan: ArtifactPlan) -> EmitResult {
+type EmittableGraph {
+  graph: ResolvedGraph
+}
+
+fn emittable_graph(resolved: ResolvedPipelineResult) -> EmittableGraph? {
+  let blocking = resolved.diagnostics |> filter(d => is_interpreter_blocking_diagnostic(d: d.diagnostic))
+  if blocking |> count > 0 {
+    none
+  } else {
+    match resolved.graph {
+      Present { value: typed } => Present { value: EmittableGraph { graph: typed } }
+      Absent => none
+    }
+  }
+}
+
+fn emit_from_artifact_plan(emittable: EmittableGraph, artifact_plan: ArtifactPlan) -> EmitResult {
+  let typed = emittable.graph
   if artifact_plan.artifacts |> count == 0 {
     return EmitResult {
       files: [],
@@ -1162,33 +1179,10 @@ fn compile_to_resolved(sources: List<SourceFile>) -> ResolvedPipelineResult {
 }
 
 fn compile_to_resolved_discovery_corpus_advisory(sources: List<SourceFile>) -> ResolvedPipelineResult {
-  compile_to_resolved_with_options_gated(
-    sources: sources,
-    options: default_compile_pipeline_options(),
-    discovery_corpus_advisory_typecheck: true
-  )
-}
-
-fn is_resolved_pipeline_typecheck_blocking(diagnostic: CompilerDiagnostic, discovery_corpus_advisory_typecheck: Bool) -> Bool {
-  if !is_error_diagnostic(d: diagnostic) {
-    return false
-  }
-  if discovery_corpus_advisory_typecheck {
-    is_discovery_corpus_blocking_diagnostic(d: diagnostic)
-  } else {
-    true
-  }
+  compile_to_resolved(sources: sources)
 }
 
 fn compile_to_resolved_with_options(sources: List<SourceFile>, options: CompilePipelineOptions) -> ResolvedPipelineResult {
-  compile_to_resolved_with_options_gated(
-    sources: sources,
-    options: options,
-    discovery_corpus_advisory_typecheck: false
-  )
-}
-
-fn compile_to_resolved_with_options_gated(sources: List<SourceFile>, options: CompilePipelineOptions, discovery_corpus_advisory_typecheck: Bool) -> ResolvedPipelineResult {
   let frontend = front_end_sources(sources: sources)
   let newline_indices = frontend.newline_indices
   match frontend.graph {
@@ -1202,34 +1196,9 @@ fn compile_to_resolved_with_options_gated(sources: List<SourceFile>, options: Co
         newline_indices: newline_indices
       }
     Present { value: graph } => {
-      let graph_diags = graph.diagnostics
-      let resolve_errors = graph_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))
-      if resolve_errors |> count > 0 {
-        return ResolvedPipelineResult {
-          graph: none,
-          diagnostics: frontend.diagnostics,
-          source_indices: empty_map(),
-          complexity: empty_complexity_report(),
-          ownership: [],
-          newline_indices: newline_indices
-        }
-      }
-
       let source_indices = fold(newline_indices, init: empty_map(), f: (acc, index) => map_insert(acc, index.file, index))
       let norm = normalize_graph(graph: graph, source_indices: source_indices)
       let norm_diags = norm.diagnostics
-      let norm_errors = norm_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))
-      if norm_errors |> count > 0 {
-        return ResolvedPipelineResult {
-          graph: none,
-          diagnostics: concat(frontend.diagnostics, norm_diags),
-          source_indices: source_indices,
-          complexity: empty_complexity_report(),
-          ownership: [],
-          newline_indices: newline_indices
-        }
-      }
-
       let typed = reconcile(graph: norm.graph, source_indices: source_indices, intern_table: frontend.intern_table)
       let typed_diags = typed.diagnostics
       let complexity = if options.analyze_complexity {
@@ -1243,33 +1212,8 @@ fn compile_to_resolved_with_options_gated(sources: List<SourceFile>, options: Co
         []
       }
       let all_diags = concat(typed_diags, complexity_diags)
-
-      let type_errors = typed_diags |> filter(d => is_resolved_pipeline_typecheck_blocking(diagnostic: d.diagnostic, discovery_corpus_advisory_typecheck: discovery_corpus_advisory_typecheck))
-      if type_errors |> count > 0 {
-        return ResolvedPipelineResult {
-          graph: none,
-          diagnostics: concat(frontend.diagnostics, norm_diags, all_diags),
-          source_indices: source_indices,
-          complexity: complexity,
-          ownership: [],
-          newline_indices: newline_indices
-        }
-      }
-
       let ownership = extract_ownership_proofs(typed: typed)
       let ownership_diags = ownership_diagnostics(proofs: ownership)
-      let ownership_errors = ownership_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))
-      if ownership_errors |> count > 0 {
-        return ResolvedPipelineResult {
-          graph: none,
-          diagnostics: concat(frontend.diagnostics, norm_diags, all_diags, ownership_diags),
-          source_indices: source_indices,
-          complexity: complexity,
-          ownership: ownership,
-          newline_indices: newline_indices
-        }
-      }
-
       ResolvedPipelineResult {
         graph: typed,
         diagnostics: concat(frontend.diagnostics, norm_diags, all_diags, ownership_diags),
@@ -1283,7 +1227,7 @@ fn compile_to_resolved_with_options_gated(sources: List<SourceFile>, options: Co
 }
 
 fn emit_resolved_for_target(resolved: ResolvedPipelineResult, target: RenderTarget) -> PipelineResult {
-  match resolved.graph {
+  match emittable_graph(resolved: resolved) {
     Absent =>
       PipelineResult {
         files: [],
@@ -1293,12 +1237,13 @@ fn emit_resolved_for_target(resolved: ResolvedPipelineResult, target: RenderTarg
         artifact_plan: empty_artifact_plan(),
         newline_indices: resolved.newline_indices
       }
-    Present { value: typed } => {
+    Present { value: emittable } => {
+      let typed = emittable.graph
       let artifact_plan = default_artifact_plan(
         root_modules: typed.modules |> map(m => authored_name_at(source_indices: resolved.source_indices, node: m.module)),
         target: target
       )
-      let emit_result = emit_from_artifact_plan(typed: typed, artifact_plan: artifact_plan)
+      let emit_result = emit_from_artifact_plan(emittable: emittable, artifact_plan: artifact_plan)
       let emit_files = emit_result.files
       let emit_diags = emit_result.diagnostics
       let emit_errors = emit_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))
