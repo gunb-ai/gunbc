@@ -5605,7 +5605,24 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
     Absent => "compile_error!(\"missing fold function argument\")"
   }
   let sharing = language_spec(target: Rust).sharing
-  concat(apply_type_template1(template: sharing.iter_owned, arg0: recv_str), ".fold(", init_str, ", ", fold_fn, ")")
+  let elem_unused = match args |> skip(1) |> first {
+    Present { value: a } => fold_lambda_element_unused(lambda_expr: arg_value(n: a), source_indices: scope.type_env.source_indices)
+    Absent => false
+  }
+  let iter_template = if elem_unused { replace(sharing.iter_owned, ".cloned()", "") } else { sharing.iter_owned }
+  concat(apply_type_template1(template: iter_template, arg0: recv_str), ".fold(", init_str, ", ", fold_fn, ")")
+}
+
+fn fold_lambda_element_unused(lambda_expr: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  match lambda_expr.expr_data {
+    ExprLambda =>
+      let ps = lambda_param_names_at(texpr: lambda_expr, source_indices: source_indices)
+      match ps |> skip(1) |> first {
+        Present { value: elem_name } => elem_name == "_"
+        Absent => false
+      }
+    _ => false
+  }
 }
 
 fn emit_rust_sort_by_method_call(receiver: Node, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
@@ -7862,6 +7879,11 @@ fn data_value_has_cross_refs(value: Node) -> Bool {
   }
 }
 
+fn data_def_annotation_is_named_refinement(annotation: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  let ann_name = authored_name_at(source_indices: source_indices, node: annotation)
+  ann_name != "" && annotation.type_annotation != none && !is_container_type(name: ann_name) && !is_host_text_carrier_type(n: annotation, source_indices: source_indices, corpus_repr: FaithfulFreeMonoid)
+}
+
 fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let annotation_type_node = type_node
   let render_type_node = if annotation_type_node.children |> count > 0 {
@@ -7872,7 +7894,11 @@ fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<Strin
       _ => annotation_type_node
     }
   }
-  let raw_ty_str = render_rust_type_with_applied_binding(n: render_type_node, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: scope.type_env.source_indices)
+  let raw_ty_str = if data_def_annotation_is_named_refinement(annotation: annotation_type_node, source_indices: scope.type_env.source_indices) {
+    coerce_primitive_type(target: Rust, dag_name: authored_name_at(source_indices: scope.type_env.source_indices, node: annotation_type_node))
+  } else {
+    render_rust_type_with_applied_binding(n: render_type_node, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: scope.type_env.source_indices)
+  }
   let ty_str = if raw_ty_str == "BoundedLattice" || raw_ty_str == "Rc<BoundedLattice>" {
     match field_value_by_name(record: value, field_name: "top", source_indices: scope.type_env.source_indices) {
       Present { value: top_value } =>

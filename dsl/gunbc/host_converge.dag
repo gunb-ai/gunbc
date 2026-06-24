@@ -2,6 +2,8 @@ module gunbc.host_converge
 
 import std.types { String, List, Int, Bool }
 import std.measure { ByteSize, byte_size_count, hardware_thread_count_value, percent_count }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import product.placement_supply { HostIdentity }
 import gunbc.ci_runner_placement {
   RunnerDeploymentPlan,
@@ -37,8 +39,6 @@ import extdeps.os.oomd {
 }
 
 
-data gunbc_host_converge_receipt_grammar_marker: String = "BYTE-EXACT converge-receipt wire contract (FROZEN v1 with fierce-carp-462, 2026-06-24; EMIT is the single authority, the ctrl reconciler aligns to THIS with no fallback, mirroring gunbc_runner_deploy_manifest_contract_marker). Three line-kinds, KV-by-name, order-independent, unknown-KV ignored forward-compatibly: (1) PER-KNOB -- converge-receipt host=<id> slice=<runner|sessions> knob=<name> desired=<val> effective=<val> verdict=<converged|drifted|absent> -- emitted after the .sh applies+reads-back ONE knob. (2) SUMMARY -- converge-receipt host=<id> applied=<int> drifted=<int> verdict=<converged|drifted|absent> -- one per host after its knobs. (3) SESSIONS-MEMBERSHIP -- converge-receipt host=<id> slice=sessions sessions_in_slice=<int> sessions_legacy_flat=<int> verdict=<converged|absent> -- one per managed-sessions host; the COUNTS feed stern-dove-499's OomdEnforced membership conjunct (gunbc PR #5726): sessions_in_slice = docker-*.scope parented under sessions.slice (the guard keys on > 0; an EMPTY slice has no cgroup dir, which emits sessions_in_slice=0 NOT absent/error), sessions_legacy_flat = docker-*.scope still under system.slice (diagnostic-only, distinguishes all-legacy from empty-host). verdict=absent before ctrl #1804 populates the slice is EXPECTED and HOLDs. Line-kind discriminator: knob= present => per-knob; applied= present => summary; sessions_in_slice= present => sessions-membership. SEMANTICS mapped to std.realization_reconcile.Reconciliation (see converge_verdict): verdict=converged => Converged(evidence); verdict=drifted AND verdict=absent BOTH => NotConverged(reason) (absent = the ReadAbsent read-presence gate, expected early e.g. sessions.slice before it is populated). ctrl HOLDs a host unless its summary verdict=converged AND every per-knob line for that host is verdict=converged (defense-in-depth: a converged summary with any drifted/absent knob still HOLDs). The knob set is the FOLD of cpu_weight + build_tokens + the memory caps + runner width: slice=runner -- runner_slice_cap_bytes, per_slot_memory_max_bytes, cpu_weight, build_tokens, runner_count; slice=sessions -- slice_max_bytes, per_session_max_bytes, oom_pressure_kill, oom_pressure_limit_pct, cpu_weight."
-
 data gunbc_cgroup_v2_root: String = "/sys/fs/cgroup"
 data gunbc_sessions_legacy_parent_slice: String = "system.slice"
 
@@ -47,8 +47,6 @@ data gunbc_runner_per_slot_dropin_path: String = "/etc/systemd/system/actions-ru
 data gunbc_runner_jobserver_env_file: String = "/etc/default/ctrl-jobserver"
 data gunbc_runner_jobserver_env_key: String = "CTRL_JOBSERVER_TOKENS"
 data gunbc_runner_jobserver_service: String = "ctrl-jobserver.service"
-
-data gunbc_host_converge_grounded_mechanism_marker: String = "The apply/read mechanisms are GROUNDED (signed by fierce-carp-462 2026-06-24, read out of the retiring deploy-runner-fleet-width.sh / deploy-session-slice.sh, NOT guessed): runner per-slot SERVICE template = actions-runner@.service, per-host instance glob = actions-runner@<host>-*.service; runner SLICE = system-actions-runner.slice (the implicit slice of the template, set-property MemoryMax/CPUWeight LIVE); per-slot cap = template drop-in 20-fleet-width.conf ([Service] MemoryMax) + daemon-reload (future instances) PLUS set-property on each active instance (effective NOW -- the drop-in-alone is the inert-cap trap this closes); WIDTH decrease = drain-before-stop (systemctl stop = SIGTERM to Runner.Listener which finishes the in-flight job; never SIGKILL) then disable, highest-NN-first; ordering invariant caps-before-widen (runner_count is the LAST runner knob); build_tokens = /etc/default/ctrl-jobserver CTRL_JOBSERVER_TOKENS=<int> + restart ctrl-jobserver.service (FIFO-safe shrink by attrition). SAFETY-CRITICAL: per_session_max_bytes is CARRY+VERIFY ONLY -- the converge NEVER set-property's it and NEVER enumerate-and-caps existing session scopes (the spawn path, ctrl #1804 docker --memory, owns the per-container write); the reconciler only SAMPLES a child .scope MemoryMax for read-back."
 
 type ConvergeVerdict
   = Converged
@@ -94,7 +92,14 @@ type ConvergeKnob {
   target: ConvergeTarget
 }
 
-data gunbc_host_converge_runner_sessions_coupling_marker: String = "DECISION (wise-eagle-664 model authority + fierce-carp-462 consumer + sharp-heron-321 plan, 2026-06-24; SHIP v1-coupled, SPLIT is the named end-state): host_converge_of folds ALL knobs + the sessions-membership probe into ONE HostConverge with ONE host_summary per host. The §4 de-conflation the end-state wants: a host has THREE INDEPENDENTLY-GROUNDED converge targets that should fingerprint-settle independently -- (T1) sessions.slice CAPS (slice_max / per_session / ManagedOOM kill+limit / cpu_weight), the UNGATED bootstrap (#5706), settleable as soon as set-property+verify-effective succeed; (T2) sessions MEMBERSHIP (sessions_in_slice>0), genuinely gated on ctrl #1804 populating the slice; (T3) runner COUNT+CAPS+width, gated on the full sound plan (RunnerSlotEnforced + OomdEnforced). Folding all three into one host_summary means the T2 membership HOLD blocks the already-settleable T1/T3 from fingerprint-settling, so ctrl re-runs the full privileged converge each pass (re-applying the runner-width 12->7) until #1804 lands. SHIP v1-coupled because: (a) it is SAFE and SAFE-BY-the-right-reason, not just expedient -- decoupling membership from the host verdict WITHOUT splitting the fingerprint would be FAIL-OPEN (the host would fingerprint converged while sessions.slice has no members for oomd to evict = zero actual protection, the §5 fail-open fierce-carp's defense-in-depth guards); (b) every apply is idempotent so the re-runs are harmless; (c) the runner-width decrease DOES apply each pass and we WANT it; (d) the bite-window (runner-plan-SOUND AND pre-#1804) does not exist yet (runner plan is RunnerSlotUnenforced today). ALTERNATIVE = the SPLIT end-state (split the host fingerprint by grounding-target T1/T2/T3 -- separate per-(host,target) HostConverge entries or per-target fingerprints -- so T1/T3 settle while only the genuinely-blocked T2/oomd part HOLDs, KEEPING the membership gate on the sessions-protection verdict so it stays fail-closed). This REQUIRES a receipt-grammar v2 (the SUMMARY line gains a grounding-target discriminator and the ctrl converged-decision keys on (host,target) not host) + re-coordination with fierce-carp's frozen v1 parser + 22 tests. dissolve-on: when the runner-sound-AND-pre-#1804 window becomes real and long enough that the redundant privileged re-runs matter (or sooner if a per-target settled receipt is wanted for observability), do the T1/T2/T3 fingerprint split + bump the receipt grammar to v2, co-designed with fierce-carp."
+data gunbc_host_converge_runner_sessions_coupling_marker: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.host_converge",
+    decl_name: "HostConverge",
+    field: WholeDeclaration
+  }
+}
 
 type SessionsMembershipProbe
   = MembershipProbe { slice_cgroup: String, legacy_cgroup: String }

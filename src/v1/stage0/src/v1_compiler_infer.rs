@@ -60,8 +60,8 @@ pub use crate::v1_compiler_infer_lookup::KnownMethodResolution;
 pub use crate::v1_compiler_infer_lookup::{
     field_summary_for_type, lookup_coproduct_common_field_node, lookup_field_type_node,
     lookup_func_sig, lookup_in_scope, map_key_type_in_env, map_value_type_in_env,
-    product_field_result_type, resolve_known_method_node, resolve_scrutinee_type_node,
-    set_element_type_in_env,
+    product_field_result_type, resolve_known_method_node, resolve_method_receiver_type,
+    resolve_scrutinee_type_node, set_element_type_in_env,
 };
 pub use crate::v1_compiler_infer_method::{
     builtin_kernel_seed_diagnostics, infer_builtin_call_type, resolve_builtin_call_type,
@@ -3673,7 +3673,10 @@ match bare_s {
                 let recv_result = infer_expr(recv, scope.clone(), None);
                 let recv_typed = recv_result.typed.clone();
                 let recv_diags = recv_result.diagnostics.clone();
-                let recv_rt = resolved_type(recv_typed.clone());
+                let recv_rt = resolve_method_receiver_type(
+                    resolved_type(recv_typed.clone()),
+                    scope.type_env.clone(),
+                );
                 let recv_elem_type = for_each_element_type_node(
                     recv_rt.clone(),
                     scope.type_env.clone().source_indices.clone(),
