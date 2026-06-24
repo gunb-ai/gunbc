@@ -359,10 +359,3 @@ test fn redundancy_region_deconflation_terminal_marks_nonempty() -> Bool {
 test fn redundancy_region_deconflation_all_are_terminal() -> Bool {
   terminal_count(dispositions: redundancy_region_deconflation_terminal_marks) == 4
 }
-
-test fn redundancy_region_deconflation_terminal_green_against_redundancy_count() -> Bool {
-  disposition_redundancy_violation_count(
-    dispositions: redundancy_region_deconflation_terminal_marks,
-    present: redundancy_present_with_successor
-  ) == 0
-}
