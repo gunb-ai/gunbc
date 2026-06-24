@@ -1,0 +1,235 @@
+module v2.test.manual.target_operation_grounding_emit_typescript
+
+import v2.std.compilers.target_model {
+  CanonicalOperation,
+  InfixToken,
+  IsLess,
+  IsLessOrEqual,
+  IsGreater,
+  IsGreaterOrEqual,
+  IsEqual,
+  IsNotEqual,
+  TargetModel,
+  TargetValueExpression,
+  canonical_operation_op_add,
+  canonical_operation_op_sub,
+  canonical_operation_op_mul,
+  canonical_operation_op_div,
+  canonical_operation_op_negate,
+  canonical_operation_op_and,
+  canonical_operation_op_or,
+  canonical_operation_op_not,
+  canonical_operation_op_lt,
+  canonical_operation_op_le,
+  canonical_operation_op_gt,
+  canonical_operation_op_ge,
+  canonical_operation_op_eq,
+  canonical_operation_op_ne,
+  canonical_operation_wire_matches_operation,
+  equality_predicate_accepts,
+  ordering_predicate_accepts,
+  target_model_canonical_operation_wire_node,
+  target_model_emit_transforms_empty,
+  target_operator_realization_node,
+  target_operator_realizations_catalog_node,
+  target_value_expression_binding_ref,
+  target_value_expression_primitive_apply,
+  target_value_expression_primitive_apply_to_concrete_tokens
+}
+import v2.compiler.translate { serialize_concrete_syntax_tokens_to_source_string }
+import v2.extdeps.languages.typescript {
+  ts_lex_rule,
+  ts_mvp1_binding_spellings,
+  ts_value_expression_projection
+}
+import v2.std.compilers.lexing { LexRuleSet, LexRules, ModeledLexRules }
+import v2.std.collection { List }
+import v2.std.algebra { Equal, Greater, Less, Ordering, zip_eq }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
+import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
+import v2.std.logic { Bool }
+import v2.std.node { Conj, Node, Symbol, SyntheticOccurrence, TypeNode }
+
+fn op_grounding_test_lex() -> LexRules {
+  ModeledLexRules {
+    root: LexRuleSet {
+      rules: [
+        ts_lex_rule(token_class: ^op_grounding_token_plus, text: " + "),
+        ts_lex_rule(token_class: ^op_grounding_token_minus, text: " - "),
+        ts_lex_rule(token_class: ^op_grounding_token_lt, text: " < "),
+        ts_lex_rule(token_class: ^op_grounding_token_eqeq, text: " == ")
+      ]
+    }
+  }
+}
+
+fn op_grounding_test_bundle() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn op_grounding_test_model() -> TargetModel {
+  TargetModel {
+    bundle: op_grounding_test_bundle(),
+    lex: op_grounding_test_lex(),
+    binding_spellings: ts_mvp1_binding_spellings(),
+    token_class_emit_transforms: target_model_emit_transforms_empty,
+    authority_source_text: "",
+    runtime_row: target_emit_host_runtime_row_unconfigured
+  }
+}
+
+fn op_grounding_realization_row(operation: CanonicalOperation, token: Symbol) -> Node {
+  target_operator_realization_node(
+    operation: operation,
+    shape: InfixToken { token: token }
+  )
+}
+
+fn op_grounding_catalog() -> Node {
+  target_operator_realizations_catalog_node(
+    rows: [
+      op_grounding_realization_row(operation: canonical_operation_op_sub(), token: ^op_grounding_token_minus),
+      op_grounding_realization_row(operation: canonical_operation_op_lt(), token: ^op_grounding_token_lt),
+      op_grounding_realization_row(operation: canonical_operation_op_eq(), token: ^op_grounding_token_eqeq)
+    ]
+  )
+}
+
+fn op_grounding_catalog_sub_mistoken() -> Node {
+  target_operator_realizations_catalog_node(
+    rows: [
+      op_grounding_realization_row(operation: canonical_operation_op_sub(), token: ^op_grounding_token_plus)
+    ]
+  )
+}
+
+fn op_grounding_catalog_sub_only() -> Node {
+  target_operator_realizations_catalog_node(
+    rows: [
+      op_grounding_realization_row(operation: canonical_operation_op_sub(), token: ^op_grounding_token_minus)
+    ]
+  )
+}
+
+fn op_grounding_binary_expr(operation: CanonicalOperation) -> TargetValueExpression {
+  target_value_expression_primitive_apply(
+    operation: operation,
+    operands: [
+      target_value_expression_binding_ref(binding: ^ts_binding_param_x),
+      target_value_expression_binding_ref(binding: ^ts_binding_param_y)
+    ]
+  )
+}
+
+fn op_grounding_emit(operation: CanonicalOperation, catalog: Node) -> Outcome<String> {
+  bind_outcome(
+    o: target_value_expression_primitive_apply_to_concrete_tokens(
+      expr: op_grounding_binary_expr(operation: operation),
+      projection: ts_value_expression_projection(),
+      catalog: catalog
+    ),
+    f: fn(tokens) {
+      serialize_concrete_syntax_tokens_to_source_string(
+        target: op_grounding_test_model(),
+        tokens: tokens
+      )
+    }
+  )
+}
+
+test fn op_grounding_emits_subtraction() -> Bool {
+  match op_grounding_emit(operation: canonical_operation_op_sub(), catalog: op_grounding_catalog()) {
+    Accepted { value: s, diagnostics: _ } => s == "x - y"
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn op_grounding_emits_less_than() -> Bool {
+  match op_grounding_emit(operation: canonical_operation_op_lt(), catalog: op_grounding_catalog()) {
+    Accepted { value: s, diagnostics: _ } => s == "x < y"
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn op_grounding_emits_equality() -> Bool {
+  match op_grounding_emit(operation: canonical_operation_op_eq(), catalog: op_grounding_catalog()) {
+    Accepted { value: s, diagnostics: _ } => s == "x == y"
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn op_grounding_wrong_token_discriminates() -> Bool {
+  match op_grounding_emit(operation: canonical_operation_op_sub(), catalog: op_grounding_catalog_sub_mistoken()) {
+    Accepted { value: s, diagnostics: _ } => (s == "x + y") && (s != "x - y")
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn op_grounding_catalog_miss_rejects() -> Bool {
+  match op_grounding_emit(operation: canonical_operation_op_lt(), catalog: op_grounding_catalog_sub_only()) {
+    Rejected { diagnostics: _ } => true
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+fn op_grounding_wire_roundtrips(operation: CanonicalOperation) -> Bool {
+  canonical_operation_wire_matches_operation(
+    wire: target_model_canonical_operation_wire_node(operation: operation),
+    operation: operation
+  )
+}
+
+test fn op_grounding_wire_roundtrips_all() -> Bool {
+  op_grounding_wire_roundtrips(operation: canonical_operation_op_add()) &&
+    op_grounding_wire_roundtrips(operation: canonical_operation_op_sub()) &&
+    op_grounding_wire_roundtrips(operation: canonical_operation_op_mul()) &&
+    op_grounding_wire_roundtrips(operation: canonical_operation_op_div()) &&
+    op_grounding_wire_roundtrips(operation: canonical_operation_op_negate()) &&
+    op_grounding_wire_roundtrips(operation: canonical_operation_op_and()) &&
+    op_grounding_wire_roundtrips(operation: canonical_operation_op_or()) &&
+    op_grounding_wire_roundtrips(operation: canonical_operation_op_not()) &&
+    op_grounding_wire_roundtrips(operation: canonical_operation_op_lt()) &&
+    op_grounding_wire_roundtrips(operation: canonical_operation_op_le()) &&
+    op_grounding_wire_roundtrips(operation: canonical_operation_op_gt()) &&
+    op_grounding_wire_roundtrips(operation: canonical_operation_op_ge()) &&
+    op_grounding_wire_roundtrips(operation: canonical_operation_op_eq()) &&
+    op_grounding_wire_roundtrips(operation: canonical_operation_op_ne())
+}
+
+fn op_grounding_wire_rejects(produced: CanonicalOperation, probed: CanonicalOperation) -> Bool {
+  canonical_operation_wire_matches_operation(
+    wire: target_model_canonical_operation_wire_node(operation: produced),
+    operation: probed
+  )
+}
+
+test fn op_grounding_wire_discriminates() -> Bool {
+  !op_grounding_wire_rejects(produced: canonical_operation_op_sub(), probed: canonical_operation_op_add()) &&
+    !op_grounding_wire_rejects(produced: canonical_operation_op_lt(), probed: canonical_operation_op_gt()) &&
+    !op_grounding_wire_rejects(produced: canonical_operation_op_le(), probed: canonical_operation_op_ge()) &&
+    !op_grounding_wire_rejects(produced: canonical_operation_op_eq(), probed: canonical_operation_op_ne())
+}
+
+fn op_grounding_ordering_eq(a: Ordering, b: Ordering) -> Bool {
+  discriminant(v: a) == discriminant(v: b)
+}
+
+fn op_grounding_ordering_list_eq(left: List<Ordering>, right: List<Ordering>) -> Bool {
+  zip_eq(a: left, b: right, eq: fn(x, y) { op_grounding_ordering_eq(a: x, b: y) })
+}
+
+test fn op_grounding_ordering_predicate_accepts_units() -> Bool {
+  op_grounding_ordering_list_eq(left: ordering_predicate_accepts(predicate: IsLess), right: [Less]) &&
+    op_grounding_ordering_list_eq(left: ordering_predicate_accepts(predicate: IsLessOrEqual), right: [Less, Equal]) &&
+    op_grounding_ordering_list_eq(left: ordering_predicate_accepts(predicate: IsGreater), right: [Greater]) &&
+    op_grounding_ordering_list_eq(left: ordering_predicate_accepts(predicate: IsGreaterOrEqual), right: [Equal, Greater])
+}
+
+test fn op_grounding_equality_predicate_accepts_units() -> Bool {
+  (equality_predicate_accepts(predicate: IsEqual) == true) &&
+    (equality_predicate_accepts(predicate: IsNotEqual) == false)
+}

@@ -66,6 +66,10 @@ type BooleanAlgebra<T> {
   complement: fn(T) -> T
 }
 
+type Equivalence<T> {
+  eq: fn(T, T) -> Bool
+}
+
 type FreeMonoid<T>
   = Empty
   | Cons { head: T, tail: FreeMonoid<T> }
@@ -575,6 +579,37 @@ type BoundedLatticeInstanceCompleteness
 fn boolean_algebra_node(inhabitant: Node) -> Node {
   algebra_inhabitance_node(
     algebra: boolean_algebra_type_node(inhabitant: inhabitant),
+    inhabitant: inhabitant
+  )
+}
+
+fn bool_type_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Disj },
+    children: [
+      Edge { label: Named { name: ^bool_variant_true }, target: algebra_empty_conj() },
+      Edge { label: Named { name: ^bool_variant_false }, target: algebra_empty_conj() },
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn equivalence_type_node(inhabitant: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Named { name: ^equivalence_field_eq },
+        target: algebra_binary_fn_node(domain: inhabitant, codomain: bool_type_node())
+      },
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn equivalence_node(inhabitant: Node) -> Node {
+  algebra_inhabitance_node(
+    algebra: equivalence_type_node(inhabitant: inhabitant),
     inhabitant: inhabitant
   )
 }
