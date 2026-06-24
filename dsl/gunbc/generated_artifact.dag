@@ -27,6 +27,15 @@ data generated_artifact_registry: List<GeneratedArtifact> = concat(
   map(all_plans, pl => PlanArtifact { plan: pl })
 )
 
+type RepoConsumer
+  = GitProtocol
+  | GithubActionsWorkflow
+  | ProjectDocumentation
+
+type CommitPolicy
+  = CommitRequired { consumer: RepoConsumer }
+  | NotCommitted
+
 fn artifact_path(a: GeneratedArtifact) -> String {
   match a {
     CiYamlArtifact => ".github/workflows/ci.yml"
@@ -41,17 +50,24 @@ fn artifact_path(a: GeneratedArtifact) -> String {
   }
 }
 
-fn artifact_is_committed(a: GeneratedArtifact) -> Bool {
+fn artifact_commit_policy(a: GeneratedArtifact) -> CommitPolicy {
   match a {
-    CiYamlArtifact => true
-    GitignoreArtifact => true
-    RoadmapArtifact => true
-    DesignArtifact => true
-    PlanArtifact { plan: _ } => true
-    RunnerDeployArtifact => false
-    FleetConvergeArtifact => false
-    AutoinstallUserDataArtifact { spec: _ } => false
-    ProxyDhcpDnsmasqArtifact { spec: _ } => false
+    GitignoreArtifact => CommitRequired { consumer: GitProtocol }
+    CiYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
+    RoadmapArtifact => CommitRequired { consumer: ProjectDocumentation }
+    DesignArtifact => CommitRequired { consumer: ProjectDocumentation }
+    PlanArtifact { plan: _ } => CommitRequired { consumer: ProjectDocumentation }
+    RunnerDeployArtifact => NotCommitted
+    FleetConvergeArtifact => NotCommitted
+    AutoinstallUserDataArtifact { spec: _ } => NotCommitted
+    ProxyDhcpDnsmasqArtifact { spec: _ } => NotCommitted
+  }
+}
+
+fn artifact_is_committed(a: GeneratedArtifact) -> Bool {
+  match artifact_commit_policy(a: a) {
+    CommitRequired { consumer: _ } => true
+    NotCommitted => false
   }
 }
 

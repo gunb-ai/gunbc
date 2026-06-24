@@ -3,8 +3,10 @@ module test.claim.generated_artifact_drift
 
 import gunbc.generated_artifact {
   GeneratedArtifact, CiYamlArtifact, GitignoreArtifact, RoadmapArtifact, DesignArtifact, RunnerDeployArtifact, FleetConvergeArtifact, AutoinstallUserDataArtifact, ProxyDhcpDnsmasqArtifact, PlanArtifact,
+  RepoConsumer, GitProtocol, GithubActionsWorkflow, ProjectDocumentation,
+  CommitPolicy, CommitRequired, NotCommitted,
   generated_artifact_registry,
-  committed_generated_artifacts, artifact_path, artifact_is_committed, registry_contains
+  committed_generated_artifacts, artifact_path, artifact_commit_policy, artifact_is_committed, registry_contains
 }
 import gunbc.generated_artifact_emit { artifact_generate, artifact_extra_valid }
 import gunbc.os_install { srv3_autoinstall_spec, fleet_autoinstall_specs, srv3_install_server_spec, fleet_install_server_specs }
@@ -75,6 +77,29 @@ fn witness_registry_complete() -> Bool {
     && !artifact_is_committed(a: ProxyDhcpDnsmasqArtifact { spec: srv3_install_server_spec })
 }
 
+fn consumer_is(a: GeneratedArtifact, expected: RepoConsumer) -> Bool {
+  match artifact_commit_policy(a: a) {
+    CommitRequired { consumer } => match consumer {
+      GitProtocol => match expected { GitProtocol => true  _ => false }
+      GithubActionsWorkflow => match expected { GithubActionsWorkflow => true  _ => false }
+      ProjectDocumentation => match expected { ProjectDocumentation => true  _ => false }
+    }
+    NotCommitted => false
+  }
+}
+
+fn witness_commit_policy_reasons() -> Bool {
+  consumer_is(a: GitignoreArtifact, expected: GitProtocol)
+    && consumer_is(a: CiYamlArtifact, expected: GithubActionsWorkflow)
+    && consumer_is(a: RoadmapArtifact, expected: ProjectDocumentation)
+    && consumer_is(a: DesignArtifact, expected: ProjectDocumentation)
+    && consumer_is(a: PlanArtifact { plan: idea_machine_plan }, expected: ProjectDocumentation)
+    && match artifact_commit_policy(a: RunnerDeployArtifact) { NotCommitted => true  _ => false }
+    && match artifact_commit_policy(a: FleetConvergeArtifact) { NotCommitted => true  _ => false }
+    && match artifact_commit_policy(a: AutoinstallUserDataArtifact { spec: srv3_autoinstall_spec }) { NotCommitted => true  _ => false }
+    && match artifact_commit_policy(a: ProxyDhcpDnsmasqArtifact { spec: srv3_install_server_spec }) { NotCommitted => true  _ => false }
+}
+
 fn witness_extra_validation_wired() -> Bool {
   artifact_extra_valid(a: GitignoreArtifact)
     && artifact_extra_valid(a: RoadmapArtifact)
@@ -87,5 +112,6 @@ test fn generated_artifact_drift_witnesses() -> Bool {
     && witness_all_known_committed()
     && witness_ignored_paths_excluded()
     && witness_registry_complete()
+    && witness_commit_policy_reasons()
     && witness_extra_validation_wired()
 }
