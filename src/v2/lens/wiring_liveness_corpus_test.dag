@@ -25,6 +25,12 @@ fn wiring_corpus_probe(alpha: Bool, beta: Bool) -> Bool {
   alpha && beta
 }
 
+fn diag_dead_wire_names() -> List<String> {
+  fold(wiring_dead_wires_over(decls: fn_arrow_decl_facts_live()), init: [], f: fn(acc, w) {
+    list_snoc_item(xs: acc, item: w.fn_qualified_name)
+  })
+}
+
 fn wiring_corpus_probe_lambda(flag: Bool, items: List<Bool>) -> Bool {
   fold(items, init: true, f: fn(acc, it) { acc && flag })
 }

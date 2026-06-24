@@ -693,7 +693,13 @@ fn marshal_stmt_sequence(
                     live_refs.extend(cont_refs);
                 }
                 let bound_is_live = !bound.is_empty() && live_refs.contains(&bound);
-                let force_live = is_terminal && cont.is_none();
+                // A `_`-prefixed binding (`let _width = width`) is the established declared-inert
+                // convention (boundary (4)) applied to a local: the author DELIBERATELY consumes
+                // and discards the RHS, so it is a sink, not an accidental dead wire. Graft it so
+                // a param flowing only into a `_`-sink stays GREEN, while a normally-named dead
+                // `let` (accidental) still drops its RHS and flags its sole-feeding param. A
+                // terminal `let` with no continuation is the result position, always grafted.
+                let force_live = (is_terminal && cont.is_none()) || bound.starts_with('_');
                 if bound_is_live || force_live {
                     if let Some(value) = stmt.children.first() {
                         let (value_skel, value_refs) =
