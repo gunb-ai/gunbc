@@ -547,43 +547,173 @@ fn node_references_param(node: &Rc<Node>, name: &str, param_names: &[String]) ->
     }
 }
 
-// Project a fn body's internal expression tree onto a substrate Node skeleton: each node
-// becomes a neutral `Conj` container whose positional children are the marshaled
-// sub-expressions, and a node that references a declared parameter additionally carries an
-// identity-bearing `Atom` leaf -- byte-identical to the declared-input atom
-// `eval_fn_arrow_decl_facts_live` emits, so `v2.lens.wiring_liveness` matches it under Node
-// equality. Identity lives ONLY on genuine parameter-reference sites, so a declared
-// parameter is structurally reachable from the body output iff it is genuinely used.
-// (Residue: a `let`/lambda local, or a global fn called as `name(..)`, that shadows a
-// parameter name; see the lens construction_justification.)
+// Does this node REFERENCE some local binding (param OR let/lambda-local), by name? This is
+// the PERMISSIVE companion of `node_references_param`: it captures every value read
+// (`ExprVar`, any binding kind) and call-callee name, used ONLY to thread the data-flow
+// reference set that decides let-liveness (below). It is deliberately over-inclusive --
+// counting a name that is actually a global as "referenced" can only keep a `let` LIVE
+// (graft its RHS), so it can never manufacture a false dead-wire RED; it merely forgoes a
+// dead-wire it cannot prove. Atom EMISSION stays on the strict `node_references_param`
+// (LocalValueBinding-only), so the reachability query itself is unchanged.
+fn node_local_reference_name(node: &Rc<Node>, name: &str) -> Option<String> {
+    if name.is_empty() {
+        return None;
+    }
+    match node.expr_data.as_ref() {
+        ExprData::ExprVar { .. } | ExprData::ExprCall { .. } => Some(name.to_string()),
+        _ => None,
+    }
+}
+
+// The lambda's own parameters (children[1..]; child 0 is the body) are bound WITHIN it, so a
+// reference to one of them is not a free reference of the enclosing scope -- subtract them
+// from a lambda subtree's reference set so a `let` named like a lambda param is not kept
+// spuriously live by the lambda's shadowing use.
+fn lambda_param_names_of(
+    node: &Rc<Node>,
+    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Vec<String> {
+    node.children
+        .iter()
+        .skip(1)
+        .map(|c| authored_name_at(si.clone(), c.clone()))
+        .filter(|s| !s.is_empty())
+        .collect()
+}
+
+// Project a fn body's internal expression tree onto a substrate Node skeleton AND return the
+// set of local names the projected skeleton actually references. Each node becomes a neutral
+// `Conj` container whose positional children are the marshaled sub-expressions, and a node
+// that references a declared parameter additionally carries an identity-bearing `Atom` leaf
+// -- byte-identical to the declared-input atom `eval_fn_arrow_decl_facts_live` emits, so
+// `v2.lens.wiring_liveness` matches it under Node equality. Identity lives ONLY on genuine
+// parameter-reference sites, so a declared parameter is structurally reachable from the body
+// output iff it is genuinely used.
+//
+// DATA-FLOW DIRECTED AT THE RETURN (closes the wiring_liveness construction_justification
+// HONEST BOUNDARY (2)): statement sequences (blocks, and the let-continuation chain) are
+// projected so a `let b = rhs` grafts `rhs`'s skeleton ONLY when `b` is referenced
+// downstream of the binding in code that itself reaches the return -- the reverse-fold over
+// statements in `marshal_stmt_sequence` carries the live reference set toward the binding.
+// A param referenced ONLY inside a DEAD let RHS (its bound name never reaches the return,
+// possibly transitively through a chain of dead lets) is therefore absent from the grafted
+// skeleton and correctly flagged as a dead wire. (Residue: a `let`/lambda local, or a global
+// fn called as `name(..)`, that shadows a parameter name; see the lens
+// construction_justification boundary (3).)
 fn marshal_fn_body_skeleton(
     ctx: &InterpContext,
     node: &Rc<Node>,
     param_names: &[String],
     si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Value {
-    let name = node_authored_name(node, si);
-    let mut edges: Vec<Value> = Vec::with_capacity(node.children.len() + 1);
-    if node_references_param(node, &name, param_names) {
-        edges.push(edge_positional(ctx, atom_identity_node(ctx, &name)));
-    }
-    for child in node.children.iter() {
-        edges.push(edge_positional(
-            ctx,
-            marshal_fn_body_skeleton(ctx, child, param_names, si),
-        ));
-    }
-    if let Some(inner) = node.body.as_ref() {
-        edges.push(edge_positional(
-            ctx,
-            marshal_fn_body_skeleton(ctx, inner, param_names, si),
-        ));
-    }
+    marshal_skeleton(ctx, node, param_names, si).0
+}
+
+fn conj_record(ctx: &InterpContext, edges: Vec<Value>) -> Value {
     node_record(
         ctx,
         node_kind_type_node(ctx, nullary_connective_variant(ctx, "Conj")),
         edges,
     )
+}
+
+fn marshal_skeleton(
+    ctx: &InterpContext,
+    node: &Rc<Node>,
+    param_names: &[String],
+    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> (Value, std::collections::BTreeSet<String>) {
+    match node.expr_data.as_ref() {
+        ExprData::ExprBlock => marshal_stmt_sequence(ctx, &node.children, param_names, si),
+        ExprData::ExprLet => {
+            marshal_stmt_sequence(ctx, std::slice::from_ref(node), param_names, si)
+        }
+        _ => marshal_generic(ctx, node, param_names, si),
+    }
+}
+
+fn marshal_generic(
+    ctx: &InterpContext,
+    node: &Rc<Node>,
+    param_names: &[String],
+    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> (Value, std::collections::BTreeSet<String>) {
+    let name = node_authored_name(node, si);
+    let mut edges: Vec<Value> = Vec::with_capacity(node.children.len() + 1);
+    let mut refs: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    if node_references_param(node, &name, param_names) {
+        edges.push(edge_positional(ctx, atom_identity_node(ctx, &name)));
+    }
+    if let Some(ref_name) = node_local_reference_name(node, &name) {
+        refs.insert(ref_name);
+    }
+    for child in node.children.iter() {
+        let (child_skel, child_refs) = marshal_skeleton(ctx, child, param_names, si);
+        edges.push(edge_positional(ctx, child_skel));
+        refs.extend(child_refs);
+    }
+    if let Some(inner) = node.body.as_ref() {
+        let (inner_skel, inner_refs) = marshal_skeleton(ctx, inner, param_names, si);
+        edges.push(edge_positional(ctx, inner_skel));
+        refs.extend(inner_refs);
+    }
+    if matches!(node.expr_data.as_ref(), ExprData::ExprLambda) {
+        for pname in lambda_param_names_of(node, si) {
+            refs.remove(&pname);
+        }
+    }
+    (conj_record(ctx, edges), refs)
+}
+
+// A statement sequence -- a block's children, or a single standalone `let` (whose optional
+// children[1] is its continuation) -- folded RIGHT-TO-LEFT so the live reference set flows
+// from the return (the last statement) back toward each binding. A `let b = rhs` grafts
+// `rhs` iff `b` is in the live set accumulated from the statements that follow it (the
+// downstream that reaches the return); a dead `let` drops its `rhs`, and because its bound
+// name's references are dropped with it, deadness propagates transitively to earlier lets
+// that fed only the dead one. A terminal `let` with no continuation is the result position,
+// so its value is always grafted (never a false RED on a degenerate body).
+fn marshal_stmt_sequence(
+    ctx: &InterpContext,
+    stmts: &[Rc<Node>],
+    param_names: &[String],
+    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> (Value, std::collections::BTreeSet<String>) {
+    let mut edges: Vec<Value> = Vec::new();
+    let mut live_refs: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    for (rev_idx, stmt) in stmts.iter().rev().enumerate() {
+        let is_terminal = rev_idx == 0;
+        match stmt.expr_data.as_ref() {
+            ExprData::ExprLet => {
+                let bound = node_authored_name(stmt, si);
+                let cont = stmt.children.get(1);
+                if let Some(c) = cont {
+                    let (cont_skel, cont_refs) = marshal_skeleton(ctx, c, param_names, si);
+                    edges.push(edge_positional(ctx, cont_skel));
+                    live_refs.extend(cont_refs);
+                }
+                let bound_is_live = !bound.is_empty() && live_refs.contains(&bound);
+                let force_live = is_terminal && cont.is_none();
+                if bound_is_live || force_live {
+                    if let Some(value) = stmt.children.first() {
+                        let (value_skel, value_refs) =
+                            marshal_skeleton(ctx, value, param_names, si);
+                        edges.push(edge_positional(ctx, value_skel));
+                        live_refs.extend(value_refs);
+                    }
+                }
+                if !bound.is_empty() {
+                    live_refs.remove(&bound);
+                }
+            }
+            _ => {
+                let (stmt_skel, stmt_refs) = marshal_skeleton(ctx, stmt, param_names, si);
+                edges.push(edge_positional(ctx, stmt_skel));
+                live_refs.extend(stmt_refs);
+            }
+        }
+    }
+    (conj_record(ctx, edges), live_refs)
 }
 
 // A generic type parameter (`<T>`) and a value parameter (`(xs: List<T>)`) both land in the
