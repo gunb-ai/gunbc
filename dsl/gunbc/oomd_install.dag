@@ -1,6 +1,6 @@
 module gunbc.oomd_install
 
-import std.types { NonEmptyStr, String, Bool }
+import std.types { NonEmptyStr, String, Bool, Int }
 import std.measure { ByteSize, byte_size_count, second, Percent, percent, percent_count }
 import std.realization_reconcile {
   ShowEffectiveRead,
