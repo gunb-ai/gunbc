@@ -2859,11 +2859,7 @@ pub fn rust_render_type_leaf_name(
     // This leaf renderer is only reached for NON-generic-param leaves (both callers in
     // `render_rust_decl_type` / its sibling short-circuit a generic param to its own name first),
     // so an empty generic-param scope is correct here.
-    if is_value_variant_type_arg(
-        Rc::new(Vec::new()),
-        variant_to_enum.clone(),
-        name.clone(),
-    ) {
+    if is_value_variant_type_arg(Rc::new(Vec::new()), variant_to_enum.clone(), name.clone()) {
         // A value enum-variant used as a type leaf -> collapse to the unit type (the type/value
         // conflation). Was `name.clone()`, which relied on a module-local ZST marker and broke
         // (E0573) wherever the marker was out of scope.
