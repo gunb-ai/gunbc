@@ -5,6 +5,8 @@ import extdeps.bmc.webui_kvm {
   NbdWebsocketLocalFile,
   RedfishConfiguredRemoteUri,
   webui_kvm_media_transport_wire,
+  transport_requires_local_file,
+  transport_session_must_persist_during_mount,
   openbmc_webui_local_file_virtual_media,
 }
 
@@ -19,8 +21,8 @@ test fn srv3_webui_kvm_transport_is_local_file_nbd() -> Bool {
 test fn srv3_webui_kvm_surface_is_grounded() -> Bool {
   openbmc_webui_local_file_virtual_media.spa_route == "/#/operations/virtual-media"
     && openbmc_webui_local_file_virtual_media.nbd_websocket_path == "/vm/0/0"
-    && openbmc_webui_local_file_virtual_media.requires_local_file
-    && openbmc_webui_local_file_virtual_media.session_must_persist_during_mount
+    && transport_requires_local_file(t: openbmc_webui_local_file_virtual_media.transport)
+    && transport_session_must_persist_during_mount(t: openbmc_webui_local_file_virtual_media.transport)
 }
 
 test fn srv3_webui_kvm_dom_is_grounded() -> Bool {

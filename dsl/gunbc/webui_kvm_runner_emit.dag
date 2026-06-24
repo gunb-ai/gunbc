@@ -15,7 +15,7 @@ import extdeps.uri { Uri, Http, Https, uri_wire }
 
 data srv3_default_bmc_host: Uri = Uri { scheme: Https, locator: "192.168.1.192" }
 data srv3_default_iso_url: Uri = Uri { scheme: Http, locator: "192.168.1.188/ubuntu-24.04/ubuntu.iso" }
-data srv3_default_boot_hook_command: String = "gunbc run --source-root dsl --entry dsl/gunbc/srv3_boot_once_cd.dag --function srv3_boot_once_cd"
+data srv3_default_boot_hook_command: String = ""
 
 type WebuiKvmRunner {
   default_bmc_host: Uri

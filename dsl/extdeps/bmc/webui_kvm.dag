@@ -24,6 +24,20 @@ fn webui_kvm_media_transport_wire(t: WebuiKvmMediaTransport) -> NonEmptyStr {
   }
 }
 
+fn transport_requires_local_file(t: WebuiKvmMediaTransport) -> Bool {
+  match t {
+    NbdWebsocketLocalFile => true
+    RedfishConfiguredRemoteUri => false
+  }
+}
+
+fn transport_session_must_persist_during_mount(t: WebuiKvmMediaTransport) -> Bool {
+  match t {
+    NbdWebsocketLocalFile => true
+    RedfishConfiguredRemoteUri => false
+  }
+}
+
 type WebuiVirtualMediaDom {
   login_username_input_id: NonEmptyStr
   login_password_input_id: NonEmptyStr
@@ -37,8 +51,6 @@ type WebuiVirtualMediaSurface {
   spa_route: NonEmptyStr
   nbd_websocket_path: NonEmptyStr
   transport: WebuiKvmMediaTransport
-  requires_local_file: Bool
-  session_must_persist_during_mount: Bool
   dom: WebuiVirtualMediaDom
 }
 
@@ -46,8 +58,6 @@ data openbmc_webui_local_file_virtual_media: WebuiVirtualMediaSurface = WebuiVir
   spa_route: "/#/operations/virtual-media",
   nbd_websocket_path: "/vm/0/0",
   transport: NbdWebsocketLocalFile,
-  requires_local_file: true,
-  session_must_persist_during_mount: true,
   dom: WebuiVirtualMediaDom {
     login_username_input_id: "username",
     login_password_input_id: "password",

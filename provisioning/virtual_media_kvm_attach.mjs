@@ -17,7 +17,7 @@ function parseArgs(argv) {
     bmcPass: process.env.BMC_PASS || '0penBmc',
     isoUrl: 'http://192.168.1.188/ubuntu-24.04/ubuntu.iso',
     isoFile: null,
-    bootHookCommand: 'gunbc run --source-root dsl --entry dsl/gunbc/srv3_boot_once_cd.dag --function srv3_boot_once_cd',
+    bootHookCommand: '',
     attach: false,
     waitSeconds: 2400,
     holdOnFailure: true,
