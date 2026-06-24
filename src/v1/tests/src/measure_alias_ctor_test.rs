@@ -48,7 +48,7 @@ fn fn_body(emitted: &str, name: &str) -> String {
 }
 
 #[test]
-#[ignore = "RED until the E0560 alias-ctor fix lands (same PR, in progress) — un-ignore when green"]
+#[ignore = "RED until the E0560 alias-ctor fix lands — the construction-side canonical-name resolver is pending a re-sign (field-access reuse falsified by execution); un-ignore when green"]
 fn alias_ctor_resolves_to_canonical_struct_with_phantom_and_rc() {
     let body = fn_body(&emit_host(), "mk");
     assert!(

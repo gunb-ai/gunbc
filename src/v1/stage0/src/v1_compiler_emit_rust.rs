@@ -18115,7 +18115,7 @@ pub fn emit_typed_record_lit(
                                     };
                                     let phantom_strs = match lookup_type_by_name(
                                         scope.type_env.clone(),
-                                        tn.clone(),
+                                        ctor_name.clone(),
                                     ) {
                                         Some(struct_decl) => {
                                             let is_struct = (struct_decl.connective.clone()
@@ -18163,7 +18163,16 @@ pub fn emit_typed_record_lit(
                                         ),
                                         "\n}".to_string(),
                                     );
-                                    raw
+                                    if (ctor_alias_resolved.clone()
+                                        && v1_rt::set_contains(&shared_types, ctor_name.clone()))
+                                    {
+                                        v1_rt::concat(
+                                            v1_rt::concat("Rc::new(".to_string(), raw),
+                                            ")".to_string(),
+                                        )
+                                    } else {
+                                        raw
+                                    }
                                 }
                             }
                         }
