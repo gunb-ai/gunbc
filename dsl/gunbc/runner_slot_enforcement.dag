@@ -12,7 +12,7 @@ import std.realization_reconcile {
   Reconciliation,
   Converged,
   NotConverged,
-  reconcile,
+  reconcile_grounded,
 }
 import gunbc.ci_floor_measurement {
   RunnerSliceCapEffectiveness,
@@ -58,13 +58,13 @@ fn reconcile_runner_slot(
 ) -> Reconciliation<RunnerSlotApplyEffect, RunnerSlotEnforcement> {
   match read {
     ReadAbsent { reason: why } =>
-      reconcile(
+      reconcile_grounded(
         apply_effect: apply,
         show_read: read,
         grounding: DoesNotGround { reason: why }
       )
     ReadObserved { value: observed } =>
-      reconcile(
+      reconcile_grounded(
         apply_effect: apply,
         show_read: read,
         grounding: ground_runner_slot_from_read(effective: observed, expected_cap: expected_cap)

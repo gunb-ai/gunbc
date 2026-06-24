@@ -40,6 +40,16 @@ import gunbc.ci_floor_measurement {
   RunnerSliceCapEffectiveness,
   CapEffective,
   CapUnbounded,
+  SessionReservationMode,
+  Regime1WorstCase,
+  Regime2AggregateOomd,
+  SessionReservationModeUnset,
+  gunbc_ci_session_reservation_mode,
+}
+import gunbc.oomd_install {
+  OomdGroundingThresholds,
+  gunbc_oomd_fleet_evidence,
+  gunbc_oomd_sessions_policy,
 }
 
 data fleet_build_realization_marker: String = "build = ONE shared host-wide RealizedStep, NOT per-type. shape = CreateEffect CreateIfAbsent keyed on the content hash (sccache content-addresses the compile -> create-if-absent on content key); materialization = Share (the CACHING arm = ctrl-sccache, host-wide across GHA-CI builds AND session ctrl-builds); placement = LocalFilesystem; cost.space = mib_per_job (the per-build memory envelope = SCHEDULING arm = ctrl-jobserver). The two arms (ctrl-jobserver scheduling + ctrl-sccache caching) already unify GHA and session builds = the two arms of std.realization RealizedStep instantiated. A typed RealizedStep value IS constructed (build_realization below), not only this marker."
@@ -92,7 +102,22 @@ fn resolve_headroom(policy: HeadroomPolicy, floor: ByteSize) -> HeadroomResoluti
 
 data gunbc_fleet_runner_slice_dropin_marker: String = "the runner-slice memory cap ALREADY EXISTS on disk as /etc/systemd/system/system-actions-runner.slice.d/10-resource-caps.conf (MemoryHigh=55307438489 ~51.5GiB = 55% of host, MemoryMax=70391285350 ~65.6GiB = 70% of host; cites the srv2 2026-05-28 reboot incident) but is INERT (effective MemoryMax=INFINITY) = disk!=live DRIFT, which the ctrl reconciler runner_host_reconcile.mjs is meant to fix. gunbc does NOT generate a new cap from scratch: it OWNS the cap VALUE = runner_slice_cap = host - overhead - session_worst_case_slice - headroom (the CONSERVING value that REFINES the 55/70% static-fraction policy; build_pool is NOT subtracted -- the GHA build lives INSIDE this slice, counted once via the per-job peak, see gunbc_fleet_build_pool_counted_once_marker), fed INTO that existing drop-in. The 55/70% fractions are the coarse stand-in this conserving value sharpens."
 
-data gunbc_fleet_oomd_evidence: OomdEnforcementEvidence = OomdUnverified
+data gunbc_fleet_oomd_evidence_seam_marker: String = "the SINGLE grounded oomd-enforcement authority for the fleet capacity model. It binds the gunbc.oomd_install seam (gunbc_oomd_fleet_evidence) over the committed show-effective read, assembling the REGIME-2 thresholds (per-session C = oomd_eviction_ceiling, parent slice = aggregate_reservation, PSI percent = the gunbc_oomd_sessions_policy single authority) from gunbc_ci_session_reservation_mode -- NO literal OomdEnforced. It stays OomdUnverified (fail-closed) until a real ReadObserved on the managed sessions.slice grounds the full conjunction (DESIGN sec 5: verify the realization, not the declaration). Threaded into BOTH oomd gates -- fleet_host_plan_for here AND ci_runner_placement.resolve_session_slice -- so one authority gates the whole derivation; when the live read grounds OomdEnforced the plan goes SOUND with no further gunbc edit. Non-REGIME-2 modes have no aggregate over-commit to protect, so they fail closed to OomdUnverified (the fleet plan needs the eviction backstop regardless)."
+
+fn gunbc_fleet_oomd_evidence_for(mode: SessionReservationMode) -> OomdEnforcementEvidence {
+  match mode {
+    Regime2AggregateOomd { oomd_eviction_ceiling: ceiling, session_concurrency: _, aggregate_reservation: agg } =>
+      gunbc_oomd_fleet_evidence(req: OomdGroundingThresholds {
+        per_session_cap: ceiling,
+        parent_slice_cap: agg,
+        pressure_limit: gunbc_oomd_sessions_policy.managed_oom_memory_pressure_limit,
+      })
+    Regime1WorstCase { point: _ } => OomdUnverified
+    SessionReservationModeUnset => OomdUnverified
+  }
+}
+
+data gunbc_fleet_oomd_evidence: OomdEnforcementEvidence = gunbc_fleet_oomd_evidence_for(mode: gunbc_ci_session_reservation_mode)
 
 data gunbc_fleet_build_pool_counted_once_marker: String = "the sccache build pool is NO LONGER a host-level sibling reservation subtracted before the runner slice (that was a DOUBLE-COUNT: a GHA-CI runner job IS a build -- its rustc lives INSIDE system-actions-runner.slice and is already charged in the per-job whole-tree peak that the runner count divides by; subtracting build_pool again starved the runner slice to ~0). Counted-once fix (bright-stag §2/§3 ruling 2026-06-23): the build memory lives INSIDE the cgroup that builds (runner slice for GHA-CI, session footprint for session ctrl-builds), so it is NOT a separate host line. The shared pool's CONCURRENCY survives as effective_build_tokens (= derive_jobserver_tokens, the jobserver authority) -- the build-bound axis of the min-over-constraints runner count, NOT a memory subtraction. runner_baseline likewise lives INSIDE the runner slice (idle is in the per-job peak), so it is an informational sub-allocation of the slice, not a host sibling. The SESSION ctrl-build burst is the session-reservation-plan's per_session_cap concern (REGIME-1 worst-case), re-attributed there, not deleted."
 
