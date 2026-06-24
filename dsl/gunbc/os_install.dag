@@ -17,8 +17,9 @@ import extdeps.os.ubuntu_autoinstall {
   AutoinstallIdentity,
   NoCloudNet,
 }
-import gunbc.fleet_intent_network { operator_host_srv3 }
+import gunbc.fleet_intent_network { operator_host_srv3, operator_lan_segment }
 import product.placement_supply { HostIdentity }
+import product.network_topology { NetworkSegment }
 import extdeps.bmc.types {
   RedfishBootSourceOverrideTarget,
   BootTargetPxe,
@@ -121,3 +122,17 @@ data srv3_autoinstall_spec: HostAutoinstall = HostAutoinstall {
 }
 
 data fleet_autoinstall_specs: List<HostAutoinstall> = [srv3_autoinstall_spec]
+
+type InstallServerSpec {
+  host: HostIdentity
+  plan: Srv3OsInstallPlan
+  serving_segment: NetworkSegment
+}
+
+data srv3_install_server_spec: InstallServerSpec = InstallServerSpec {
+  host: operator_host_srv3,
+  plan: srv3_os_install_plan,
+  serving_segment: operator_lan_segment,
+}
+
+data fleet_install_server_specs: List<InstallServerSpec> = [srv3_install_server_spec]
