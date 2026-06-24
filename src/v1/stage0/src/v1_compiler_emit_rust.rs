@@ -626,121 +626,6 @@ pub fn is_parametric_opaque_type_base(
     }
 }
 
-// A bare type leaf name is a VALUE enum-variant used in a type position (the type/value conflation)
-// iff it is a key of `variant_to_enum` -- the corpus-global "variant name -> owning coproduct" map
-// the emitter already builds (`emit_info.variant_to_enum`). This map is used rather than an env
-// lookup because the env threaded into fn-signature / struct-field rendering does NOT bind the
-// coproducts (an env-keyed check returns false there), whereas `variant_to_enum` is global. A
-// type-PARAM (`Q`/`S`/`M`) is not a variant, so it is never a key -> never collapses; the magnitude
-// type `Nat`/`Int` likewise. The `.dag` keeps these phantom slots (Q/S give a real type-level
-// distinction between e.g. a Time and a Length measure); Rust cannot carry a value in a type slot,
-// so the seed projection collapses each such slot to `()`.
-pub fn is_value_variant_type_arg(
-    generic_param_names: Rc<Vec<String>>,
-    variant_to_enum: Rc<HashMap<String, String>>,
-    name: String,
-) -> bool {
-    // A generic type-PARAM in scope shadows any value-variant of the same name. The collision is
-    // real: `S` and `M` are both `FermiDepth` variants (std/types.dag) AND the conventional
-    // measure type-param names (`Measure<Q, S, M>`), so keying on `variant_to_enum` alone would
-    // wrongly collapse a genuine type-param to `()` (turning `measure_count<Q, S, M>` into
-    // `Measure<Q, (), ()>` -- E0308). The param name wins.
-    for g in generic_param_names.iter().cloned() {
-        if (g.clone() == name.clone()) {
-            return false;
-        }
-    }
-    match v1_rt::map_get(&variant_to_enum, name) {
-        Some(_) => true,
-        None => false,
-    }
-}
-
-// A type-leaf name that survives resolution: the authored span text when present, else the node's
-// own `name` field. A RESOLVED type-arg (in a fn-signature or struct-field node) often loses its
-// `ident_span`, so `authored_name_at` returns "" while `n.name` still carries e.g. "Time".
-pub fn type_leaf_name_for_collapse(
-    n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> String {
-    let a = authored_name_at(source_indices, n.clone());
-    if (a.clone() == "".to_string()) {
-        n.name.clone()
-    } else {
-        a
-    }
-}
-
-// A type-ARGUMENT position that is occupied by a value collapses to `()` in the emitted Rust: a Nat
-// width LITERAL (`MachineWidth<8>`, the pre-existing `is_width_nat_type_literal` case) or a value
-// enum-variant (`Measure<Time, ...>`, `Measure<Memory, One, ...>`) -- the same lossy-but-sound move.
-pub fn rust_type_arg_renders_as_unit(
-    n: Rc<Node>,
-    generic_param_names: Rc<Vec<String>>,
-    variant_to_enum: Rc<HashMap<String, String>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
-    is_width_nat_type_literal(n.clone())
-        || is_value_variant_type_arg(
-            generic_param_names,
-            variant_to_enum,
-            type_leaf_name_for_collapse(n.clone(), source_indices),
-        )
-}
-
-// Does a type-expr tree contain a value enum-variant in any (possibly nested) type-arg position?
-// Used to route a fn-signature / struct-field type through the env-aware Rust renderer (which
-// collapses such slots to `()`) only when needed -- leaving every other type on its existing path.
-pub fn type_node_has_value_variant_arg(
-    n: Rc<Node>,
-    generic_param_names: Rc<Vec<String>>,
-    variant_to_enum: Rc<HashMap<String, String>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        if is_value_variant_type_arg(
-            generic_param_names.clone(),
-            variant_to_enum.clone(),
-            type_leaf_name_for_collapse(n.clone(), source_indices.clone()),
-        ) {
-            return true;
-        }
-        for c in n.children.clone().iter().cloned() {
-            if type_node_has_value_variant_arg(
-                c.clone(),
-                generic_param_names.clone(),
-                variant_to_enum.clone(),
-                source_indices.clone(),
-            ) {
-                return true;
-            }
-        }
-        // Applied-type args frequently live in the `__applied_type_args` property overlay rather
-        // than in `children` (e.g. a resolved `Measure<Time, S, Nat>` field type), so the value
-        // variant `Time` would otherwise be missed.
-        match find_property(
-            n.properties.clone(),
-            "__applied_type_args".to_string(),
-            source_indices.clone(),
-        ) {
-            Some(applied) => {
-                for c in applied.children.clone().iter().cloned() {
-                    if type_node_has_value_variant_arg(
-                        c.clone(),
-                        generic_param_names.clone(),
-                        variant_to_enum.clone(),
-                        source_indices.clone(),
-                    ) {
-                        return true;
-                    }
-                }
-                false
-            }
-            None => false,
-        }
-    })
-}
-
 pub fn render_rust_phantom_opaque_applied_type_arg(
     n: Rc<Node>,
     generic_param_names: Rc<Vec<String>>,
@@ -756,12 +641,7 @@ pub fn render_rust_phantom_opaque_applied_type_arg(
     module_index: Rc<ModuleIndex>,
     variant_to_enum: Rc<HashMap<String, String>>,
 ) -> String {
-    if rust_type_arg_renders_as_unit(
-        n.clone(),
-        generic_param_names.clone(),
-        variant_to_enum.clone(),
-        source_indices.clone(),
-    ) {
+    if is_width_nat_type_literal(n.clone()) {
         "()".to_string()
     } else {
         render_rust_alias_rhs_type(
@@ -791,12 +671,7 @@ pub fn render_rust_phantom_opaque_applied_decl_arg(
     variant_to_enum: Rc<HashMap<String, String>>,
     env: Rc<TypeEnv>,
 ) -> String {
-    if rust_type_arg_renders_as_unit(
-        n.clone(),
-        generic_param_names.clone(),
-        variant_to_enum.clone(),
-        source_indices.clone(),
-    ) {
+    if is_width_nat_type_literal(n.clone()) {
         "()".to_string()
     } else {
         render_rust_decl_type(
@@ -820,26 +695,17 @@ pub fn render_rust_applied_type_arg(
     variant_to_enum: Rc<HashMap<String, String>>,
     env: Rc<TypeEnv>,
 ) -> String {
-    if rust_type_arg_renders_as_unit(
-        n.clone(),
-        generic_param_names.clone(),
-        variant_to_enum.clone(),
-        source_indices.clone(),
-    ) {
-        "()".to_string()
-    } else {
-        match n.inferred.clone().as_deref().cloned() {
-            Some(InferredNode::TypeVariable { id: tv, .. }) => tv.clone(),
-            _ => render_rust_decl_type(
-                n.clone(),
-                generic_param_names,
-                shared_types,
-                corpus_repr,
-                source_indices,
-                variant_to_enum,
-                env,
-            ),
-        }
+    match n.inferred.clone().as_deref().cloned() {
+        Some(InferredNode::TypeVariable { id: tv, .. }) => tv.clone(),
+        _ => render_rust_decl_type(
+            n.clone(),
+            generic_param_names,
+            shared_types,
+            corpus_repr,
+            source_indices,
+            variant_to_enum,
+            env,
+        ),
     }
 }
 
@@ -1019,6 +885,7 @@ pub fn render_rust_decl_type(
                                 let rendered = rust_render_type_leaf_name(
                                     name.clone(),
                                     variant_to_enum.clone(),
+                                    env.clone(),
                                 );
                                 render_rust_shared_type_if_needed(
                                     name.clone(),
@@ -1061,18 +928,6 @@ pub fn render_rust_decl_type(
                                                         variant_to_enum.clone(),
                                                         env.clone(),
                                                     )
-                                                } else if rust_type_arg_renders_as_unit(
-                                                    arg.clone(),
-                                                    generic_param_names.clone(),
-                                                    variant_to_enum.clone(),
-                                                    source_indices.clone(),
-                                                ) {
-                                                    // A value enum-variant (`Time`) or Nat width
-                                                    // literal in a type-arg slot collapses to `()`:
-                                                    // these children ARE type-arg positions, and the
-                                                    // bare leaf renderer below would otherwise emit
-                                                    // the variant name (E0573, `expected type`).
-                                                    "()".to_string()
                                                 } else {
                                                     render_rust_decl_type(
                                                         arg.clone(),
@@ -1160,28 +1015,6 @@ pub fn render_rust_fn_sig_type(
 ) -> String {
     if is_host_text_carrier_type(n.clone(), source_indices.clone(), corpus_repr) {
         return rust_carrier_optional_wrap(n.clone(), "String".to_string());
-    }
-    // A value enum-variant in a type-arg slot (`Measure<Time, S, Nat>`) must collapse to `()`. The
-    // ordinary fn-sig paths render applied-type args env-free (render_rust_type_with_applied_binding
-    // / render_node_type), so route any value-variant-bearing signature type through the env-aware
-    // decl renderer (its `render_rust_applied_type_arg` collapses the slot). Same renderer the
-    // generic-params branch below already uses; gated on value-variant presence so every other
-    // signature type keeps its existing render path.
-    if type_node_has_value_variant_arg(
-        n.clone(),
-        generic_param_names.clone(),
-        variant_to_enum.clone(),
-        source_indices.clone(),
-    ) {
-        return render_rust_decl_type(
-            n.clone(),
-            generic_param_names.clone(),
-            shared_types.clone(),
-            corpus_repr.clone(),
-            source_indices.clone(),
-            variant_to_enum.clone(),
-            env.clone(),
-        );
     }
     {
         let name = authored_name_at(source_indices.clone(), n.clone());
@@ -1347,6 +1180,7 @@ pub fn render_rust_alias_rhs_type(
                                     let rendered = rust_render_type_leaf_name(
                                         name.clone(),
                                         variant_to_enum.clone(),
+                                        scope.type_env.clone(),
                                     );
                                     render_rust_shared_type_if_needed(
                                         name.clone(),
@@ -2874,15 +2708,10 @@ pub fn rust_qualify_type_leaf_name(
 pub fn rust_render_type_leaf_name(
     name: String,
     variant_to_enum: Rc<HashMap<String, String>>,
+    env: Rc<TypeEnv>,
 ) -> String {
-    // This leaf renderer is only reached for NON-generic-param leaves (both callers in
-    // `render_rust_decl_type` / its sibling short-circuit a generic param to its own name first),
-    // so an empty generic-param scope is correct here.
-    if is_value_variant_type_arg(Rc::new(Vec::new()), variant_to_enum.clone(), name.clone()) {
-        // A value enum-variant used as a type leaf -> collapse to the unit type (the type/value
-        // conflation). Was `name.clone()`, which relied on a module-local ZST marker and broke
-        // (E0573) wherever the marker was out of scope.
-        "()".to_string()
+    if is_phantom_unit_variant_type_arg(env, name.clone()) {
+        name.clone()
     } else {
         match rust_opaque_kernel_alias_carrier(name.clone()) {
             Some(carrier) => carrier.clone(),
@@ -8215,32 +8044,12 @@ pub fn emit_struct_field_from_child(
         let rt_child = resolved_type(child.clone());
         let authored_child_type = field_node_type_expr(child.clone());
         let ty = if ((generic_param_names.len() as i64) > 0) {
-            // A value enum-variant in a type-arg slot (`Measure<Time, S, Nat>`) must collapse to
-            // `()`; render_node_type is the generic env-free renderer and cannot detect it, so route
-            // those (and only those) fields through the env-aware Rust decl renderer.
-            if type_node_has_value_variant_arg(
+            render_node_type(
                 rt_child.clone(),
-                generic_param_names.clone(),
-                emit_info.variant_to_enum.clone(),
+                RenderTarget::Rust,
+                shared_types.clone(),
                 env.source_indices.clone(),
-            ) {
-                render_rust_decl_type(
-                    rt_child.clone(),
-                    generic_param_names.clone(),
-                    shared_types.clone(),
-                    emit_info.corpus_repr.clone(),
-                    env.source_indices.clone(),
-                    emit_info.variant_to_enum.clone(),
-                    env.clone(),
-                )
-            } else {
-                render_node_type(
-                    rt_child.clone(),
-                    RenderTarget::Rust,
-                    shared_types.clone(),
-                    env.source_indices.clone(),
-                )
-            }
+            )
         } else {
             if (find_property(
                 child.properties.clone(),
