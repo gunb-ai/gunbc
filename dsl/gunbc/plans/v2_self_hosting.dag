@@ -1,19 +1,8 @@
 module gunbc.plans.v2_self_hosting
 
 import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
-import std.markdown {
-  MarkdownBlock, MarkdownListItem,
-  HeadingBlock, ParagraphBlock, UnorderedListBlock, OrderedListBlock, BlockquoteBlock, ThematicBreak,
-  TextInline, H2, H3,
-}
-
-fn h2(text: String) -> MarkdownBlock { HeadingBlock { level: H2, inlines: [TextInline { text: text }] } }
-fn h3(text: String) -> MarkdownBlock { HeadingBlock { level: H3, inlines: [TextInline { text: text }] } }
-fn p(text: String) -> MarkdownBlock { ParagraphBlock { inlines: [TextInline { text: text }] } }
-fn li(text: String) -> MarkdownListItem { MarkdownListItem { blocks: [p(text: text)] } }
-fn ul(items: List<MarkdownListItem>) -> MarkdownBlock { UnorderedListBlock { items: items } }
-fn ol(items: List<MarkdownListItem>) -> MarkdownBlock { OrderedListBlock { items: items } }
-fn quote(blocks: List<MarkdownBlock>) -> MarkdownBlock { BlockquoteBlock { blocks: blocks } }
+import std.markdown { MarkdownBlock, ThematicBreak }
+import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, quote }
 
 fn v2_self_hosting_body() -> List<MarkdownBlock> {
   [

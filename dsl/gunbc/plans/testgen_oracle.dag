@@ -1,19 +1,8 @@
 module gunbc.plans.testgen_oracle
 
 import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
-import std.markdown {
-  MarkdownBlock, MarkdownListItem,
-  MarkdownTableRow, MarkdownTableCell, MarkdownAlignment,
-  HeadingBlock, ParagraphBlock, OrderedListBlock, TableBlock,
-  TextInline, H2, AlignNone,
-}
-
-fn h2(text: String) -> MarkdownBlock { HeadingBlock { level: H2, inlines: [TextInline { text: text }] } }
-fn p(text: String) -> MarkdownBlock { ParagraphBlock { inlines: [TextInline { text: text }] } }
-fn li(text: String) -> MarkdownListItem { MarkdownListItem { blocks: [p(text: text)] } }
-fn ol(items: List<MarkdownListItem>) -> MarkdownBlock { OrderedListBlock { items: items } }
-fn cell(text: String) -> MarkdownTableCell { MarkdownTableCell { inlines: [TextInline { text: text }] } }
-fn row(cells: List<MarkdownTableCell>) -> MarkdownTableRow { MarkdownTableRow { cells: cells } }
+import std.markdown { MarkdownBlock, TableBlock, AlignNone }
+import gunbc.plans.md_helpers { h2, p, li, ol, cell, row }
 
 fn testgen_oracle_body() -> List<MarkdownBlock> {
   [
