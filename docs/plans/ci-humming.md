@@ -62,3 +62,7 @@ The hosts co-host the agent-session fleet AND the CI runners. Full safe-by-const
 ## Critical path to capacity (do first, both hosts ASAP)
 
 T0 (un-zero the runner slice) → model derives sane N + per-slot caps → T1+T2 verified-effective apply on srv1+srv2, **with the session slice either capped (5) or oomd-backstopped** → safe by construction (Σ caps + overhead + baselines ≤ physical). T4 (peak → 8GiB) multiplies N afterward. oomd is not required on the critical path.
+
+## Dissolution trigger (DESIGN §6)
+
+Delete this doc when CI throughput, wall-clock, and reliability all fall out of the single modeled fleet budget consumed by a verified-effective apply (T0 un-zeroes the runner slice, T1/T2 caps are verified-effective on srv1+srv2, and the session slice is capped or oomd-backstopped) — so capacity is safe by construction rather than hand-managed.
