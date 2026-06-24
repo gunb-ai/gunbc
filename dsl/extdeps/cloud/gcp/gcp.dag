@@ -71,6 +71,30 @@ type WifProvider {
   attribute_mapping: Map<String, String>?
 }
 
+fn wif_pool_resource(project_number: String, pool_id: String) -> String {
+  concat(
+    concat(concat("projects/", project_number), "/locations/global/workloadIdentityPools/"),
+    pool_id
+  )
+}
+
+fn wif_provider_resource(project_number: String, provider: WifProvider) -> String {
+  concat(
+    concat(wif_pool_resource(project_number: project_number, pool_id: provider.pool), "/providers/"),
+    provider.name
+  )
+}
+
+fn wif_principal_set_for_repo(project_number: String, pool_id: String, repository: String) -> String {
+  concat(
+    concat(
+      concat("principalSet://iam.googleapis.com/", wif_pool_resource(project_number: project_number, pool_id: pool_id)),
+      "/attribute.repository/"
+    ),
+    repository
+  )
+}
+
 type GcpService
   = GcpStorage
   | GcpIam
