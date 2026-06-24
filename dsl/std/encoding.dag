@@ -4,6 +4,7 @@ import std.algebra { BoundedLattice }
 import std.types { Bytes }
 import std.integer { UInt8 }
 import std.bytes { pure_dag_seam_unreachable }
+import std.disposition { Disposition, Scaffold, Terminal, DeclLocator, WholeDeclaration, SingleAuthority }
 
 type Encoding
   = ASCII
@@ -302,4 +303,17 @@ fn base64_decode(s: String, variant: Base64Variant) -> List<UInt8>? {
         Present { value: octets } => Present { value: octets }
       }
   }
+}
+
+data utf8_decode_bytes_host_realization_marker: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclLocator {
+    module_path: "std.bytes",
+    decl_name: "builtin_function_registry",
+    field: WholeDeclaration
+  }
+}
+
+data base64_group_fill_carrier_debt_marker: Disposition = Terminal {
+  reason: "Base64EncodeBuf = EncEmpty|EncOne|EncTwo and Base64DecodeBuf = DecEmpty|DecOne|DecTwo|DecThree: the hand-rolled Int count accumulator debt is paid; closed sums are declared and all arms are covered by execution in base64_rfc4648_witness_test.dag"
 }
