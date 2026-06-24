@@ -1,0 +1,11 @@
+module test.claim.v1_dag_parse_witness
+
+import tools.v1_dag_parse_transport { run_v1_dag_parse }
+
+fn witness_v1_dag_parse_holds() -> Bool {
+  run_v1_dag_parse()
+}
+
+test fn v1_dag_parse_witnesses() -> Bool {
+  witness_v1_dag_parse_holds()
+}

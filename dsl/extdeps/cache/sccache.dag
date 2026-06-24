@@ -36,6 +36,8 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 data sccache_local_id: CacheInterfaceId = "sccache_local"
 
+data sccache_fatal_error_log_fragment: String = "sccache: encountered fatal error"
+
 data sccache_local_facts: CacheInterfaceCatalogFacts = {
   identity: sccache_local_id
   backing_surface: "sccache-local-disk"

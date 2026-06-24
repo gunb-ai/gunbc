@@ -343,10 +343,10 @@ data corpus_ci_gate_row_html_markup_xss_keystone: ClaimWitnessCorpusClaimRunRow 
   expected: ExpectPass
 }
 
-data corpus_ci_gate_row_react_markup_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
-  label: "react markup consumer + XSS reject keystone",
-  entry: "dsl/test/claim/react_markup_witness.dag",
-  function: "react_markup_keystone_holds",
+data corpus_ci_gate_row_html_emit_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "html emit consumer + XSS reject keystone",
+  entry: "dsl/test/claim/html_emit_witness_test.dag",
+  function: "html_emit_keystone_holds",
   expected: ExpectPass
 }
 
@@ -527,7 +527,7 @@ data claim_witness_corpus_shard_b_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_probe_selector_cf_import_resolves,
   corpus_ci_gate_row_markup_serializer_keystone,
   corpus_ci_gate_row_html_markup_xss_keystone,
-  corpus_ci_gate_row_react_markup_keystone,
+  corpus_ci_gate_row_html_emit_keystone,
   corpus_ci_gate_row_markdown_markup_xss_keystone,
   corpus_ci_gate_row_filesystem_write_keystone,
   corpus_ci_gate_row_gunbhub_react_browse_keystone,
