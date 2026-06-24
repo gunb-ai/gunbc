@@ -546,11 +546,115 @@ type TargetValueTemplate {
   node: Node
 }
 
+type CanonicalOrderRelation
+  = OrderLess
+  | OrderLessOrEqual
+  | OrderGreater
+  | OrderGreaterOrEqual
+  | OrderEqual
+  | OrderNotEqual
+
 type CanonicalOperation
-  = OpAdd { algebra_field: Symbol }
+  = AlgebraFieldOperation { algebra_field: Symbol }
+  | OrderRelationOperation { compare_field: Symbol, relation: CanonicalOrderRelation }
 
 fn canonical_operation_op_add() -> CanonicalOperation {
-  OpAdd { algebra_field: ^ring_field_add }
+  AlgebraFieldOperation { algebra_field: ^ring_field_add }
+}
+
+fn canonical_operation_op_sub() -> CanonicalOperation {
+  AlgebraFieldOperation { algebra_field: ^group_field_inverse }
+}
+
+fn canonical_operation_op_mul() -> CanonicalOperation {
+  AlgebraFieldOperation { algebra_field: ^ring_field_mul }
+}
+
+fn canonical_operation_op_div() -> CanonicalOperation {
+  AlgebraFieldOperation { algebra_field: ^field_field_reciprocal }
+}
+
+fn canonical_operation_op_and() -> CanonicalOperation {
+  AlgebraFieldOperation { algebra_field: ^lattice_field_meet }
+}
+
+fn canonical_operation_op_or() -> CanonicalOperation {
+  AlgebraFieldOperation { algebra_field: ^lattice_field_join }
+}
+
+fn canonical_operation_op_not() -> CanonicalOperation {
+  AlgebraFieldOperation { algebra_field: ^boolean_algebra_field_complement }
+}
+
+fn canonical_operation_op_less() -> CanonicalOperation {
+  OrderRelationOperation { compare_field: ^ordered_ring_field_compare, relation: OrderLess }
+}
+
+fn canonical_operation_op_less_or_equal() -> CanonicalOperation {
+  OrderRelationOperation { compare_field: ^ordered_ring_field_compare, relation: OrderLessOrEqual }
+}
+
+fn canonical_operation_op_greater() -> CanonicalOperation {
+  OrderRelationOperation { compare_field: ^ordered_ring_field_compare, relation: OrderGreater }
+}
+
+fn canonical_operation_op_greater_or_equal() -> CanonicalOperation {
+  OrderRelationOperation { compare_field: ^ordered_ring_field_compare, relation: OrderGreaterOrEqual }
+}
+
+fn canonical_operation_op_equal() -> CanonicalOperation {
+  OrderRelationOperation { compare_field: ^ordered_ring_field_compare, relation: OrderEqual }
+}
+
+fn canonical_operation_op_not_equal() -> CanonicalOperation {
+  OrderRelationOperation { compare_field: ^ordered_ring_field_compare, relation: OrderNotEqual }
+}
+
+fn canonical_order_relation_symbol(relation: CanonicalOrderRelation) -> Symbol {
+  match relation {
+    OrderLess => discriminant(v: OrderLess)
+    OrderLessOrEqual => discriminant(v: OrderLessOrEqual)
+    OrderGreater => discriminant(v: OrderGreater)
+    OrderGreaterOrEqual => discriminant(v: OrderGreaterOrEqual)
+    OrderEqual => discriminant(v: OrderEqual)
+    OrderNotEqual => discriminant(v: OrderNotEqual)
+  }
+}
+
+fn canonical_order_relation_from_symbol(id: Symbol) -> Optional<CanonicalOrderRelation> {
+  if id == discriminant(v: OrderLess) {
+    optional_present(value: OrderLess)
+  } else {
+    if id == discriminant(v: OrderLessOrEqual) {
+      optional_present(value: OrderLessOrEqual)
+    } else {
+      if id == discriminant(v: OrderGreater) {
+        optional_present(value: OrderGreater)
+      } else {
+        if id == discriminant(v: OrderGreaterOrEqual) {
+          optional_present(value: OrderGreaterOrEqual)
+        } else {
+          if id == discriminant(v: OrderEqual) {
+            optional_present(value: OrderEqual)
+          } else {
+            if id == discriminant(v: OrderNotEqual) {
+              optional_present(value: OrderNotEqual)
+            } else {
+              optional_absent()
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn canonical_order_relation_equal(
+  left: CanonicalOrderRelation,
+  right: CanonicalOrderRelation
+) -> Bool {
+  canonical_order_relation_symbol(relation: left)
+    == canonical_order_relation_symbol(relation: right)
 }
 
 type TargetOperatorShape
@@ -681,7 +785,10 @@ fn target_canonical_operation_wire_malformed_diagnostic(wire: Node) -> Diagnosti
   }
 }
 
-fn target_model_canonical_operation_algebra_field_from_wire(wire: Node) -> Optional<Symbol> {
+fn target_model_canonical_operation_field_symbol_from_wire(
+  wire: Node,
+  field_name: Symbol
+) -> Optional<Symbol> {
   match fold(
     wire.children,
     init: optional_absent(),
@@ -691,7 +798,7 @@ fn target_model_canonical_operation_algebra_field_from_wire(wire: Node) -> Optio
         Absent =>
           match edge.label {
             Named { name: n } =>
-              if n == ^target_canonical_operation_field_algebra_field {
+              if n == field_name {
                 match edge.target.kind {
                   TypeNode { connective: Atom { identity: id } } =>
                     optional_present(value: id)
@@ -710,15 +817,44 @@ fn target_model_canonical_operation_algebra_field_from_wire(wire: Node) -> Optio
   }
 }
 
+fn target_model_canonical_operation_relation_from_wire(
+  wire: Node
+) -> Optional<CanonicalOrderRelation> {
+  match target_model_canonical_operation_field_symbol_from_wire(
+    wire: wire,
+    field_name: ^target_canonical_operation_field_relation
+  ) {
+    Present { value: id } => canonical_order_relation_from_symbol(id: id)
+    Absent => optional_absent()
+  }
+}
+
 fn target_model_canonical_operation_wire_node(operation: CanonicalOperation) -> Node {
   match operation {
-    OpAdd { algebra_field: f } =>
+    AlgebraFieldOperation { algebra_field: f } =>
       Node {
-        kind: TypeNode { connective: Atom { identity: discriminant(v: OpAdd {}) } },
+        kind: TypeNode { connective: Atom { identity: discriminant(v: AlgebraFieldOperation {}) } },
         children: [
           target_model_named_edge(
             name: ^target_canonical_operation_field_algebra_field,
             target: target_model_type_atom_node(identity: f)
+          )
+        ],
+        occurrence_id: SyntheticOccurrence
+      }
+    OrderRelationOperation { compare_field: cf, relation: r } =>
+      Node {
+        kind: TypeNode { connective: Atom { identity: discriminant(v: OrderRelationOperation {}) } },
+        children: [
+          target_model_named_edge(
+            name: ^target_canonical_operation_field_compare_field,
+            target: target_model_type_atom_node(identity: cf)
+          ),
+          target_model_named_edge(
+            name: ^target_canonical_operation_field_relation,
+            target: target_model_type_atom_node(
+              identity: canonical_order_relation_symbol(relation: r)
+            )
           )
         ],
         occurrence_id: SyntheticOccurrence
@@ -731,9 +867,16 @@ fn canonical_operation_equal(
   right: CanonicalOperation
 ) -> Bool {
   match left {
-    OpAdd { algebra_field: lf } =>
+    AlgebraFieldOperation { algebra_field: lf } =>
       match right {
-        OpAdd { algebra_field: rf } => lf == rf
+        AlgebraFieldOperation { algebra_field: rf } => lf == rf
+        OrderRelationOperation { compare_field: _, relation: _ } => false
+      }
+    OrderRelationOperation { compare_field: lcf, relation: lr } =>
+      match right {
+        AlgebraFieldOperation { algebra_field: _ } => false
+        OrderRelationOperation { compare_field: rcf, relation: rr } =>
+          lcf == rcf && canonical_order_relation_equal(left: lr, right: rr)
       }
   }
 }
@@ -741,19 +884,48 @@ fn canonical_operation_equal(
 fn canonical_operation_from_wire_node(wire: Node) -> Outcome<CanonicalOperation> {
   match wire.kind {
     TypeNode { connective: Atom { identity: id } } =>
-      if id == discriminant(v: OpAdd {}) {
-        match target_model_canonical_operation_algebra_field_from_wire(wire: wire) {
+      if id == discriminant(v: AlgebraFieldOperation {}) {
+        match target_model_canonical_operation_field_symbol_from_wire(
+          wire: wire,
+          field_name: ^target_canonical_operation_field_algebra_field
+        ) {
           Present { value: algebra_field } =>
-            outcome_accepted(OpAdd { algebra_field: algebra_field })
+            outcome_accepted(AlgebraFieldOperation { algebra_field: algebra_field })
           Absent =>
             outcome_rejected(
               target_canonical_operation_wire_malformed_diagnostic(wire: wire)
             )
         }
       } else {
-        outcome_rejected(
-          target_canonical_operation_wire_malformed_diagnostic(wire: wire)
-        )
+        if id == discriminant(v: OrderRelationOperation {}) {
+          match target_model_canonical_operation_field_symbol_from_wire(
+            wire: wire,
+            field_name: ^target_canonical_operation_field_compare_field
+          ) {
+            Present { value: compare_field } =>
+              match target_model_canonical_operation_relation_from_wire(wire: wire) {
+                Present { value: relation } =>
+                  outcome_accepted(
+                    OrderRelationOperation {
+                      compare_field: compare_field,
+                      relation: relation
+                    }
+                  )
+                Absent =>
+                  outcome_rejected(
+                    target_canonical_operation_wire_malformed_diagnostic(wire: wire)
+                  )
+              }
+            Absent =>
+              outcome_rejected(
+                target_canonical_operation_wire_malformed_diagnostic(wire: wire)
+              )
+          }
+        } else {
+          outcome_rejected(
+            target_canonical_operation_wire_malformed_diagnostic(wire: wire)
+          )
+        }
       }
     _ =>
       outcome_rejected(
