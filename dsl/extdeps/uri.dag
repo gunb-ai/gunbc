@@ -25,3 +25,16 @@ fn uri_scheme_is_http(s: UriScheme) -> Bool {
 fn uri_is_url(uri: Uri) -> Bool {
   uri_scheme_is_http(s: uri.scheme)
 }
+
+fn uri_scheme_wire(s: UriScheme) -> NonEmptyStr {
+  match s {
+    Http => "http://"
+    Https => "https://"
+    File => "file://"
+    Ftp => "ftp://"
+  }
+}
+
+fn uri_wire(uri: Uri) -> NonEmptyStr {
+  concat(uri_scheme_wire(s: uri.scheme), uri.locator)
+}
