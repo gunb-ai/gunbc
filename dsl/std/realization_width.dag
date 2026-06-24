@@ -52,6 +52,10 @@ fn bounded_host_spawn_width(shard_count: Int, hardware_threads: HardwareThreadCo
   hardware_thread_count(count: width)
 }
 
+fn cpu_cores_available(nproc: HardwareThreadCount, margin: HardwareThreadCount) -> HardwareThreadCount {
+  hardware_thread_count_saturating_sub(a: nproc, b: margin)
+}
+
 fn budget_safety_fraction_apply(budget: ByteSize) -> ByteSize {
   measure_scale_fraction_floor(m: budget, num: 4, den: 5)
 }
