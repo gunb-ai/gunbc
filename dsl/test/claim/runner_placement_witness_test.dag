@@ -16,7 +16,6 @@ import gunbc.ci_runner_placement {
   RunnerSlotEnforced,
   RunnerSlotUnenforced,
   gunbc_ci_runner_slot_enforcement,
-  gunbc_ci_runner_count_from_budget_marker,
   SessionSliceResolution,
   SessionSliceResolved,
   SessionSliceUnresolved,

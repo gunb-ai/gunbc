@@ -5,6 +5,7 @@ import product.placement_supply { HostIdentity }
 import std.realization_width { measure_max, int_min }
 import std.measure { ByteSize, byte_size, byte_size_count, measure_scale_fraction_floor, measure_fit_count_floor, measure_le, HardwareThreadCount, hardware_thread_count, hardware_thread_count_value }
 import std.types { Int, List, String, Bool }
+import std.disposition { Disposition, Terminal }
 import extdeps.github.actions { RunnerSpec }
 import extdeps.ctrl.jobserver { CtrlJobserverCitation, ctrl_jobserver_config }
 import gunbc.runner_spec_from_offer { runner_spec_from_offer }
@@ -197,7 +198,7 @@ fn resolve_session_slice(mode: SessionReservationMode, oomd: OomdEnforcementEvid
   }
 }
 
-data gunbc_ci_runner_count_from_budget_marker: String = "the runner-slot count divides the CONSERVING fleet_host_budget.runner_slice_cap = host - overhead - session_worst_case_slice - headroom (build_pool is NOT subtracted -- the GHA build lives INSIDE the slice, counted once via the per-job peak; see gunbc_fleet_build_pool_counted_once_marker). This is the §3 single-authority fix: the runner slice had two homes (this module's old host_runner_slice and fleet_host_budget's runner_slice_cap) that decomposed host RAM differently; runner_slice_cap is now the single authority and this module is its count CONSUMER. THE SAME resolve_session_slice worst-case figure is subtracted by the runner budget AND drives the dashboard session reservation -- one figure, not a fork -- passed DOWN (here -> fleet_host_plan_for_offer as session_slice: ByteSize), never imported up (no cycle). So the runner count DOES depend on the session operating point (more session reservation -> smaller runner slice -> fewer runners): that runner-vs-session split is the real co-residence tension on 125GiB, surfaced honestly, not hidden. ci_budget_tree.runner_pool_bytes_at remains a parallel non-conserving slice (separate memory-budget-tree consumer) — its convergence is the named follow-up."
+data gunbc_ci_runner_count_from_budget_disposition: Disposition = Terminal { reason: "DESIGN §3 single-authority fix complete: runner slot count divides fleet_host_budget.runner_slice_cap (now the single authority). The old fork between this module's host_runner_slice and fleet_host_budget.runner_slice_cap is dissolved; this module is the count consumer only. ci_budget_tree.runner_pool_bytes_at remains a separate non-conserving slice - its convergence with runner_slice_cap is a named follow-up. Session slice is passed down (not imported up) to avoid a cycle: more session reservation means fewer runners, the co-residence tension surfaced honestly." }
 
 
 fn host_runner_count_from_cap(runner_slice_cap: ByteSize, run_unit_peak: ByteSize, cpu_cap: HardwareThreadCount, build_tokens: HardwareThreadCount) -> Int {
