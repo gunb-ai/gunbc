@@ -4,6 +4,17 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.communication.medium { Medium, Lossless }
 import std.render_repeat_string_bootstrap { repeat_string }
+import std.markup {
+  Fragment,
+  Element,
+  TextNode,
+  RawNode,
+  MarkupMedium,
+  TagDelimiter,
+  EscapeRaw,
+  canonical_markup_bracket,
+  serialize_fragment_with,
+}
 import std.markdown {
   MarkdownDocument,
   MarkdownBlock,
@@ -113,24 +124,45 @@ fn md_link_form(text: String, url: String, sp: MarkdownSpellings) -> String {
   )
 }
 
-fn md_inline(inline: MarkdownInline, sp: MarkdownSpellings) -> String {
-  match inline {
-    TextInline { text } => text
-    EmphasisInline { inlines } =>
-      join([sp.emphasis_delim, md_inlines(inlines: inlines, sp: sp), sp.emphasis_delim], "")
-    StrongInline { inlines } =>
-      join([sp.strong_delim, md_inlines(inlines: inlines, sp: sp), sp.strong_delim], "")
-    CodeInline { text } =>
-      join([sp.code_span_delim, text, sp.code_span_delim], "")
-    LinkInline { inlines, url } =>
-      md_link_form(text: md_inlines(inlines: inlines, sp: sp), url: url, sp: sp)
-    ImageInline { alt, url } =>
-      join([sp.image_marker, md_link_form(text: alt, url: url, sp: sp)], "")
+fn markdown_markup_medium(sp: MarkdownSpellings) -> MarkupMedium {
+  MarkupMedium {
+    tag_overrides: [
+      TagDelimiter { tag: "em", open: sp.emphasis_delim, close: sp.emphasis_delim },
+      TagDelimiter { tag: "strong", open: sp.strong_delim, close: sp.strong_delim },
+      TagDelimiter { tag: "code", open: sp.code_span_delim, close: sp.code_span_delim },
+    ],
+    bracket: canonical_markup_bracket,
+    text_escape: EscapeRaw,
   }
 }
 
-fn md_inlines(inlines: List<MarkdownInline>, sp: MarkdownSpellings) -> String {
-  fold(inlines, init: "", f: (acc, i) => concat(acc, md_inline(inline: i, sp: sp)))
+fn md_inline_to_fragment(inline: MarkdownInline, sp: MarkdownSpellings) -> Fragment {
+  match inline {
+    TextInline { text } =>
+      TextNode { content: text }
+    EmphasisInline { inlines } =>
+      Element { tag: "em", attributes: [], children: md_inlines_to_fragments(inlines: inlines, sp: sp) }
+    StrongInline { inlines } =>
+      Element { tag: "strong", attributes: [], children: md_inlines_to_fragments(inlines: inlines, sp: sp) }
+    CodeInline { text } =>
+      Element { tag: "code", attributes: [], children: [ TextNode { content: text } ] }
+    LinkInline { inlines, url } =>
+      RawNode { content: md_link_form(text: md_render_inlines(inlines: inlines, sp: sp), url: url, sp: sp) }
+    ImageInline { alt, url } =>
+      RawNode { content: join([sp.image_marker, md_link_form(text: alt, url: url, sp: sp)], "") }
+  }
+}
+
+fn md_inlines_to_fragments(inlines: List<MarkdownInline>, sp: MarkdownSpellings) -> List<Fragment> {
+  map(inlines, i => md_inline_to_fragment(inline: i, sp: sp))
+}
+
+fn md_render_inlines(inlines: List<MarkdownInline>, sp: MarkdownSpellings) -> String {
+  fold(
+    md_inlines_to_fragments(inlines: inlines, sp: sp),
+    init: "",
+    f: (acc, fr) => concat(acc, serialize_fragment_with(frag: fr, medium: markdown_markup_medium(sp: sp)))
+  )
 }
 
 fn md_item(marker: String, blocks: List<MarkdownBlock>, sp: MarkdownSpellings, depth: Int) -> String {
@@ -139,7 +171,7 @@ fn md_item(marker: String, blocks: List<MarkdownBlock>, sp: MarkdownSpellings, d
     if acc.idx == 0 {
       let lead = match b {
         ParagraphBlock { inlines } =>
-          join([pad, marker, md_inlines(inlines: inlines, sp: sp)], "")
+          join([pad, marker, md_render_inlines(inlines: inlines, sp: sp)], "")
         _ =>
           join([pad, marker, md_block(block: b, sp: sp)], "")
       }
@@ -200,7 +232,7 @@ fn md_nested(block: MarkdownBlock, sp: MarkdownSpellings, depth: Int) -> String 
 }
 
 fn md_table_cell(cell: MarkdownTableCell, sp: MarkdownSpellings) -> String {
-  md_inlines(inlines: cell.inlines, sp: sp)
+  md_render_inlines(inlines: cell.inlines, sp: sp)
 }
 
 fn md_table_row(row: MarkdownTableRow, sp: MarkdownSpellings) -> String {
@@ -272,10 +304,10 @@ fn md_block(block: MarkdownBlock, sp: MarkdownSpellings) -> String {
       join([
         repeat_string(s: sp.heading_marker, n: heading_level_to_int(level: level)),
         sp.heading_sep,
-        md_inlines(inlines: inlines, sp: sp)
+        md_render_inlines(inlines: inlines, sp: sp)
       ], "")
     ParagraphBlock { inlines } =>
-      md_inlines(inlines: inlines, sp: sp)
+      md_render_inlines(inlines: inlines, sp: sp)
     UnorderedListBlock { items } =>
       md_unordered(items: items, sp: sp, depth: 0)
     OrderedListBlock { items } =>

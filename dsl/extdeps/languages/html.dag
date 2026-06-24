@@ -5,7 +5,8 @@ import extdeps.uri { Uri, Https }
 import extdeps.communication.medium { Medium, Lossless }
 import std.markup {
   MarkupNode, MarkupAttr, ElementNode, TextNode,
-  escape_text, escape_attribute, escape_url,
+  MarkupBracket, MarkupMedium, EscapeHtml,
+  canonical_markup_bracket, serialize_markup_node_with,
   unescape_text, unescape_attribute, unescape_url,
   validate_href, SafeHref, RejectedHref,
   attr_is_url_attr,
@@ -19,23 +20,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-type HtmlSpellings {
-  tag_open: String
-  end_tag_open: String
-  tag_close: String
-  attr_sep: String
-  attr_assign: String
-  attr_quote: String
-}
-
-data canonical_html_spellings: HtmlSpellings = {
-  tag_open: "<",
-  end_tag_open: "</",
-  tag_close: ">",
-  attr_sep: " ",
-  attr_assign: "=",
-  attr_quote: "\"",
-}
+data canonical_html_spellings: MarkupBracket = canonical_markup_bracket
 
 type HtmlIngestResult
   = IngestedNode { node: MarkupNode }
@@ -91,7 +76,7 @@ fn html_strip_suffix(s: String, suffix: String) -> String {
   }
 }
 
-fn find_matching_close_with(s: String, tag: String, sp: HtmlSpellings) -> HtmlSplitResult {
+fn find_matching_close_with(s: String, tag: String, sp: MarkupBracket) -> HtmlSplitResult {
   let close_tag = join([sp.end_tag_open, tag, sp.tag_close], "")
   let open_pat = join([sp.tag_open, tag], "")
   let chunks = split(s: s, delimiter: close_tag)
@@ -134,7 +119,7 @@ fn find_matching_close_with(s: String, tag: String, sp: HtmlSpellings) -> HtmlSp
   }
 }
 
-fn parse_attrs_with(attrs_str: String, sp: HtmlSpellings) -> HtmlAttrFoldState {
+fn parse_attrs_with(attrs_str: String, sp: MarkupBracket) -> HtmlAttrFoldState {
   let pieces = split(s: attrs_str, delimiter: sp.attr_quote)
   fold(pieces, init: HtmlAttrFoldState {
     attrs: [],
@@ -198,7 +183,7 @@ fn parse_attrs_with(attrs_str: String, sp: HtmlSpellings) -> HtmlAttrFoldState {
   })
 }
 
-fn parse_one_with(s: String, sp: HtmlSpellings) -> HtmlParseOneResult {
+fn parse_one_with(s: String, sp: MarkupBracket) -> HtmlParseOneResult {
   if starts_with(s: s, prefix: sp.end_tag_open) {
     ParseOneRejected { reason: "unexpected end tag" }
   } else if starts_with(s: s, prefix: sp.tag_open) {
@@ -231,7 +216,7 @@ fn parse_one_with(s: String, sp: HtmlSpellings) -> HtmlParseOneResult {
   }
 }
 
-fn parse_children_with(s: String, sp: HtmlSpellings) -> HtmlChildrenResult {
+fn parse_children_with(s: String, sp: MarkupBracket) -> HtmlChildrenResult {
   if s == "" {
     ParsedChildren { nodes: [] }
   } else if starts_with(s: s, prefix: sp.end_tag_open) {
@@ -250,49 +235,23 @@ fn parse_children_with(s: String, sp: HtmlSpellings) -> HtmlChildrenResult {
   }
 }
 
-fn html_serialize_attr_with(a: MarkupAttr, sp: HtmlSpellings) -> String {
-  let escaped_val = if attr_is_url_attr(name: a.name) {
-    escape_url(s: a.value)
-  } else {
-    escape_attribute(s: a.value)
-  }
-  join([sp.attr_sep, a.name, sp.attr_assign, sp.attr_quote, escaped_val, sp.attr_quote], "")
-}
-
-fn html_serialize_attrs_with(attrs: List<MarkupAttr>, sp: HtmlSpellings) -> String {
-  fold(attrs, init: "", f: (acc, a) => concat(acc, html_serialize_attr_with(a: a, sp: sp)))
-}
-
-fn html_serialize_children_with(nodes: List<MarkupNode>, sp: HtmlSpellings) -> String {
-  fold(nodes, init: "", f: (acc, n) => concat(acc, html_serialize_node_with(node: n, sp: sp)))
-}
-
-fn html_serialize_node_with(node: MarkupNode, sp: HtmlSpellings) -> String {
-  match node {
-    TextNode { text } => escape_text(s: text)
-    ElementNode { tag, attrs, children } =>
-      join([
-        sp.tag_open,
-        tag,
-        html_serialize_attrs_with(attrs: attrs, sp: sp),
-        sp.tag_close,
-        html_serialize_children_with(nodes: children, sp: sp),
-        sp.end_tag_open,
-        tag,
-        sp.tag_close,
-      ], "")
+fn html_medium_with(sp: MarkupBracket) -> MarkupMedium {
+  MarkupMedium {
+    tag_overrides: [],
+    bracket: sp,
+    text_escape: EscapeHtml,
   }
 }
 
-fn serialize_html_source_with(node: MarkupNode, sp: HtmlSpellings) -> String {
-  html_serialize_node_with(node: node, sp: sp)
+fn serialize_html_source_with(node: MarkupNode, sp: MarkupBracket) -> String {
+  serialize_markup_node_with(node: node, medium: html_medium_with(sp: sp))
 }
 
 fn serialize_html_source(node: MarkupNode) -> String {
   serialize_html_source_with(node: node, sp: canonical_html_spellings)
 }
 
-fn ingest_html_source_with(src: String, sp: HtmlSpellings) -> HtmlIngestResult {
+fn ingest_html_source_with(src: String, sp: MarkupBracket) -> HtmlIngestResult {
   let s = trim(src)
   let one = parse_one_with(s: s, sp: sp)
   match one {

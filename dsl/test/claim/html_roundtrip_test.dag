@@ -2,9 +2,9 @@ module test.claim.html_roundtrip
 
 import std.markup {
   MarkupNode, MarkupAttr, ElementNode, TextNode,
+  MarkupBracket,
 }
 import extdeps.languages.html {
-  HtmlSpellings,
   HtmlIngestResult,
   IngestedNode,
   IngestRejected,
@@ -43,8 +43,8 @@ fn witness_roundtrip_core() -> Bool {
   }
 }
 
-fn perturbed_spellings() -> HtmlSpellings {
-  HtmlSpellings {
+fn perturbed_spellings() -> MarkupBracket {
+  MarkupBracket {
     tag_open: canonical_html_spellings.tag_open,
     end_tag_open: canonical_html_spellings.end_tag_open,
     tag_close: canonical_html_spellings.tag_close,

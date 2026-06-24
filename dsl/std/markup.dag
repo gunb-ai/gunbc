@@ -102,11 +102,15 @@ fn escape_text_for(mode: EscapeMode, s: String) -> String {
   }
 }
 
-fn lookup_tag_delimiter(overrides: List<TagDelimiter>, tag: String) -> TagDelimiter? {
-  fold(overrides, init: Absent, f: (acc, d) =>
+type TagLookup
+  = FoundTag { delim: TagDelimiter }
+  | NoTag
+
+fn lookup_tag_delimiter(overrides: List<TagDelimiter>, tag: String) -> TagLookup {
+  fold(overrides, init: NoTag, f: (acc, d) =>
     match acc {
-      Present { value: r } => Present { value: r }
-      Absent => if d.tag == tag { Present { value: d } } else { Absent }
+      FoundTag { delim: r } => FoundTag { delim: r }
+      NoTag => if d.tag == tag { FoundTag { delim: d } } else { NoTag }
     }
   )
 }
@@ -126,9 +130,9 @@ fn serialize_fragment_with(frag: Fragment, medium: MarkupMedium) -> String {
     Element { tag: t, attributes: attrs, children: kids } => {
       let inner = fold(kids, init: "", f: (acc, k) => concat(acc, serialize_fragment_with(frag: k, medium: medium)))
       match lookup_tag_delimiter(overrides: medium.tag_overrides, tag: t) {
-        Present { value: d } =>
+        FoundTag { delim: d } =>
           join([d.open, inner, d.close], "")
-        Absent =>
+        NoTag =>
           join([
             medium.bracket.tag_open,
             t,
