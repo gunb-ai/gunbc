@@ -710,7 +710,6 @@ type TargetLoopShape {
   loop_token: Symbol
 }
 
-<<<<<<< HEAD
 type BlockEvaluationMode
   = ValueProducing
   | StatementSequenced {
@@ -718,8 +717,6 @@ type BlockEvaluationMode
       statement_terminator: Symbol
     }
 
-=======
->>>>>>> origin/main
 type RecordLiteralTypeNaming
   = Prepend
   | Omit
@@ -1574,7 +1571,6 @@ fn record_literal_type_naming_from_symbol(symbol: Symbol) -> Outcome<RecordLiter
   }
 }
 
-<<<<<<< HEAD
 fn block_evaluation_mode_to_node(mode: BlockEvaluationMode) -> Node {
   match mode {
     ValueProducing =>
@@ -1656,8 +1652,6 @@ fn decode_block_evaluation_mode(bundle: Node) -> Outcome<BlockEvaluationMode> {
   )
 }
 
-=======
->>>>>>> origin/main
 fn decode_record_construct_shape_bundle(bundle: Node) -> Outcome<TargetRecordConstructShape> {
   bind_outcome(
     o: projection_bundle_symbol_field(bundle: bundle, field: ^target_value_expr_field_record_open),
