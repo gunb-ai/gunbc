@@ -95,9 +95,6 @@ data gunbc_oomd_install_plan: OomdInstallPlan = OomdInstallPlan {
   verify_property: oomd_managed_oom_memory_pressure_property,
 }
 
-# The set of effective LIVE reads OomdEnforced grounds on. Each field is the
-# value a systemctl show-effective / oomctl read reports for the managed
-# sessions slice; grounding is the conjunction of all of them holding.
 type OomdEffectiveRead {
   slice_present: Bool
   unit_active: SystemdUnitActiveState
@@ -109,12 +106,6 @@ type OomdEffectiveRead {
   oomctl_manages_slice: Bool
 }
 
-# The grounded thresholds the effective read must match. These are NOT minted
-# here: per_session_cap is REGIME-2's oomd_eviction_ceiling (= the
-# SessionOperatingPoint per_session_cap C), parent_slice_cap is REGIME-2's
-# aggregate_reservation, pressure_limit is the intended PSI percent. A caller
-# that holds those single authorities (the REGIME-2 resolution) constructs this
-# and calls ground_oomd_from_read; the byte caps stay in their one home.
 type OomdGroundingThresholds {
   per_session_cap: ByteSize
   parent_slice_cap: SessionAggregateReservation
@@ -221,14 +212,6 @@ data gunbc_oomd_show_effective_read: ShowEffectiveRead<OomdEffectiveRead> = Read
   reason: "no live systemctl show-effective / oomctl read has run on the fleet hosts yet; pure .dag model, the live verify is the later increment"
 }
 
-# Committed standalone evidence is fail-closed: the show-effective read is
-# ReadAbsent, so reconcile derives OomdUnverified. Standalone grounding is
-# ALSO blocked on the byte thresholds (C, the aggregate reservation) which are
-# not committed here — they are REGIME-2 single authorities, Unset/Unmeasured
-# today — so the parameterized grounding fires at the REGIME-2 call site, never
-# from a forked threshold here. Even a future committed ReadObserved on this
-# path stays Unverified until that wiring lands: fail-closed in the safe
-# direction.
 fn gunbc_oomd_install_evidence() -> OomdEnforcementEvidence {
   match gunbc_oomd_show_effective_read {
     ReadAbsent { reason: _ } => OomdUnverified
