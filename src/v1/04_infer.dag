@@ -136,7 +136,7 @@ import v1.compiler.infer_patterns {
 }
 import v1.compiler.infer_lookup {
   KnownMethodResolution,
-  resolve_known_method_node, resolve_scrutinee_type_node,
+  resolve_known_method_node, resolve_scrutinee_type_node, resolve_method_receiver_type,
   field_summary_for_type,
   lookup_field_type_node, lookup_coproduct_common_field_node, product_field_result_type,
   map_value_type_in_env, map_key_type_in_env, set_element_type_in_env,
@@ -1874,7 +1874,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       let recv_result = infer_expr(texpr: recv, scope: scope, expected: none)
       let recv_typed = recv_result.typed
       let recv_diags = recv_result.diagnostics
-      let recv_rt = resolved_type(n: recv_typed)
+      let recv_rt = resolve_method_receiver_type(receiver_type: resolved_type(n: recv_typed), env: scope.type_env)
       let recv_elem_type = for_each_element_type_node(n: recv_rt, source_indices: scope.type_env.source_indices)
       let mc_method_name = Present { value: method_name }
       let fold_info = extract_fold_init_info(method_name: mc_method_name, method_args: mc_args, min_args: 2, scope: scope, expected: expected)
