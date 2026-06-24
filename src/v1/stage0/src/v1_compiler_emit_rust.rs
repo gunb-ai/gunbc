@@ -150,7 +150,7 @@ pub fn render_rust_type(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     if is_host_text_carrier_type(n.clone(), source_indices.clone(), corpus_repr) {
-        return "String".to_string();
+        return rust_carrier_optional_wrap(n.clone(), "String".to_string());
     }
     match n.inferred.clone().as_deref().cloned() {
         Some(InferredNode::TypeVariable { id: tv, .. }) => tv.clone(),
@@ -719,7 +719,7 @@ pub fn render_rust_applied_type(
     env: Rc<TypeEnv>,
 ) -> String {
     if is_host_text_carrier_type(n.clone(), source_indices.clone(), corpus_repr) {
-        return "String".to_string();
+        return rust_carrier_optional_wrap(n.clone(), "String".to_string());
     }
     {
         let base_name = authored_name_at(source_indices.clone(), n.clone());
@@ -1119,7 +1119,7 @@ pub fn render_rust_alias_rhs_type(
     variant_to_enum: Rc<HashMap<String, String>>,
 ) -> String {
     if is_host_text_carrier_type(n.clone(), source_indices.clone(), corpus_repr) {
-        return "String".to_string();
+        return rust_carrier_optional_wrap(n.clone(), "String".to_string());
     }
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let name = authored_name_at(source_indices.clone(), n.clone());
@@ -1147,7 +1147,7 @@ pub fn render_rust_alias_rhs_type(
                         if ((name.clone() == "String".to_string())
                             && corpus_repr_is_faithful(corpus_repr.clone()))
                         {
-                            render_rust_text_carrier(shared_types.clone())
+                            rust_carrier_optional_wrap(n.clone(), render_rust_text_carrier(shared_types.clone()))
                         } else {
                             match rust_opaque_kernel_alias_carrier(name.clone()) {
                                 Some(carrier) => carrier.clone(),

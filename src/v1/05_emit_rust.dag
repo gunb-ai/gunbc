@@ -145,7 +145,7 @@ import v1.compiler.emit_core_support {
 }
 
 fn render_rust_type(n: Node, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>) -> String {
-  if is_host_text_carrier_type(n: n, source_indices: source_indices, corpus_repr: corpus_repr) { return "String" }
+  if is_host_text_carrier_type(n: n, source_indices: source_indices, corpus_repr: corpus_repr) { return rust_carrier_optional_wrap(n: n, rendered: "String") }
   match n.inferred {
     Present { value: TypeVariable { id: tv } } => tv
     _ =>
@@ -443,7 +443,7 @@ fn render_rust_applied_type_arg(n: Node, generic_param_names: List<String>, shar
 }
 
 fn render_rust_applied_type(n: Node, generic_param_names: List<String>, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
-  if is_host_text_carrier_type(n: n, source_indices: source_indices, corpus_repr: corpus_repr) { return "String" }
+  if is_host_text_carrier_type(n: n, source_indices: source_indices, corpus_repr: corpus_repr) { return rust_carrier_optional_wrap(n: n, rendered: "String") }
   let base_name = authored_name_at(source_indices: source_indices, node: n)
   if n.children |> count == 0 {
 
@@ -581,7 +581,7 @@ fn render_rust_fn_sig_type_applied_binding(n: Node, shared_types: Set<String>, c
 }
 
 fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>, scope: InferScope, imports: List<Node>, registry: Map<String, ItemInfo>, module_name: String, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, module_index: ModuleIndex, variant_to_enum: Map<String, String>) -> String {
-  if is_host_text_carrier_type(n: n, source_indices: source_indices, corpus_repr: corpus_repr) { return "String" }
+  if is_host_text_carrier_type(n: n, source_indices: source_indices, corpus_repr: corpus_repr) { return rust_carrier_optional_wrap(n: n, rendered: "String") }
   let name = authored_name_at(source_indices: source_indices, node: n)
   if n.connective == NoConnective && n.children |> count == 0 && (generic_param_names |> any(g => g == name)) {
     name
@@ -590,7 +590,7 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
       Present { value: host } => host
       Absent =>
     if name == "String" && corpus_repr_is_faithful(corpus_repr: corpus_repr) {
-      render_rust_text_carrier(shared_types: shared_types)
+      rust_carrier_optional_wrap(n: n, rendered: render_rust_text_carrier(shared_types: shared_types))
     } else {
       match rust_opaque_kernel_alias_carrier(name: name) {
         Present { value: carrier } => carrier
