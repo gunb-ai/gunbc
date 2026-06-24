@@ -92,6 +92,49 @@ fn run_perturb_optional_skew_red_receipt() -> Bool {
   result.success
 }
 
+data unresolved_import_perturb_source: String = "module test.perturb_compile_clean_unresolved_import\nimport totally.nonexistent.module { Foo }\nfn probe() -> Int { 42 }"
+
+fn compile_clean_unresolved_import_perturb_program() -> ShellProgram {
+  let root = var_ref(name: "ROOT")
+  let gunbc = var_ref(name: "GUNBC")
+  let tmp = var_ref(name: "TMP")
+  ShellProgram {
+    set_e: true,
+    statements: concat(ensure_gunbc_built(), [
+      command(words: [lit(text: "cd"), root]),
+      assign(name: "TMP", value: CmdSubst { body: command(words: [lit(text: "mktemp"), lit(text: "-d")]) }),
+      Heredoc {
+        path: Concat { parts: [tmp, lit(text: "/_perturb_compile_clean_unresolved_import.dag")] },
+        delimiter: "PERTURB_UNRESOLVED",
+        body: unresolved_import_perturb_source
+      },
+      If {
+        cond: WithRedir {
+          stmt: command(words: concat(
+            [gunbc, lit(text: "compile"), lit(text: "--source-root"), tmp],
+            concat(dcc_source_root_flags(), concat(dcc_pool_index_flags(), [
+              lit(text: "--output-dir"), Concat { parts: [tmp, lit(text: "/out")] },
+              lit(text: "--target"), lit(text: "rust")
+            ]))
+          )),
+          redir: StdoutAndStderrToNull
+        },
+        then: [
+          command(words: [lit(text: "rm"), lit(text: "-rf"), tmp]),
+          Exit { code: 1 }
+        ]
+      },
+      command(words: [lit(text: "rm"), lit(text: "-rf"), tmp]),
+      Exit { code: 0 }
+    ])
+  }
+}
+
+fn run_perturb_unresolved_import_red_receipt() -> Bool {
+  let result = shell.Exec.Run(script: serialize_bash(p: compile_clean_unresolved_import_perturb_program()))
+  result.success
+}
+
 fn compile_cross_tree_green_program() -> ShellProgram {
   let root = var_ref(name: "ROOT")
   let gunbc = var_ref(name: "GUNBC")

@@ -10,7 +10,7 @@
 
 Sweep of the corpus found `.dag` consumers that import the bash-AST sidecar `extdeps.languages.bash.program` (`ShellStmt`/`ShellWord`/`serialize_bash`) to express portable intent. **11 importers at authoring time, shrinking to 0 as the bash-sidecar arc migrates them.** The prose list below is *informational* and will rot — re-grep for the live number; it is **not** the lens's enforcement set:
 
-- `dsl/tools/`: `build_step`, `host_prelude`, `dsl_compile_clean_transport`, `emit_host_transport`, `layering_imports_transport`, `resolved_imports_transport`, `extdeps_external_authority_transport` (the last landed via #5418's external-authority arc, after #5445's roster snapshot — the introduction race, reconciled by #5453)
+- `dsl/tools/`: `build_step`, `host_prelude`, `dsl_compile_clean_transport`, `emit_host_transport`, `layering_imports_transport`, `extdeps_external_authority_transport` (the last landed via #5418's external-authority arc, after #5445's roster snapshot — the introduction race, reconciled by #5453)
 - `dsl/gunbc/`: `ci_yaml_validate`, `ci_spec` (the #5432 build-verification wiring)
 - `src/v2/workflow/`: `compiler_closure_ingest_transport`, `source_root_ingest_transport`
 
