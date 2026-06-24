@@ -71,7 +71,7 @@ fn ts_import_block_node(names: List<Symbol>) -> Node {
     kind: TypeNode { connective: Conj },
     children: fold_list(
       xs: names,
-      empty: [],
+      empty: Empty,
       cons: fn(acc, sym) {
         list_append(
           left: acc,
