@@ -493,6 +493,150 @@ pub fn eval_concept_decl_facts_live(
     Ok(crate::v1_interpreter::list_value(rows))
 }
 
+fn edge_positional(ctx: &InterpContext, target: Value) -> Value {
+    Value::Record {
+        type_name: ctx.sym("Edge"),
+        fields: Rc::new(HashMap::from([
+            (
+                ctx.sym("label"),
+                Value::Variant {
+                    type_name: ctx.sym("EdgeLabel"),
+                    variant_name: ctx.sym("Positional"),
+                    fields: Rc::new(HashMap::new()),
+                },
+            ),
+            (ctx.sym("target"), target),
+        ])),
+    }
+}
+
+fn atom_identity_node(ctx: &InterpContext, identity: &str) -> Value {
+    node_record(
+        ctx,
+        node_kind_type_node(ctx, atom_connective_variant(ctx, identity)),
+        vec![],
+    )
+}
+
+// Project a fn body's internal expression tree onto a substrate Node skeleton.
+// A reference to a declared parameter (an `ExprVar` resolved to a `LocalValueBinding`
+// whose name matches a declared param) becomes an identity-bearing `Atom` leaf --
+// byte-identical to the declared-input atom `eval_fn_arrow_decl_facts_live` emits, so
+// `v2.lens.wiring_liveness` matches it under Node equality. Every other node becomes a
+// neutral `Conj` container whose positional children are the marshaled sub-expressions.
+// Identity lives ONLY on genuine parameter-use leaves, so a declared parameter is
+// structurally reachable from the body output iff it is genuinely referenced -- callees
+// (`FunctionValueBinding`), constructors (`VariantValueBinding`) and field names cannot
+// collide with a dead parameter atom. (Residue: a `let`/lambda local that shadows a
+// parameter name is `LocalValueBinding`; see the lens construction_justification.)
+fn marshal_fn_body_skeleton(
+    ctx: &InterpContext,
+    node: &Rc<Node>,
+    param_names: &[String],
+    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Value {
+    let var_name = if !node.name.is_empty() {
+        node.name.clone()
+    } else {
+        expr_var_name_at(node.clone(), si.clone())
+    };
+    let is_param_use = matches!(
+        node.expr_data.as_ref(),
+        ExprData::ExprVar { binding_kind: Some(bk), .. }
+            if matches!(bk.as_ref(), VarBindingKind::LocalValueBinding)
+    ) && param_names.iter().any(|p| p.as_str() == var_name.as_str());
+    if is_param_use {
+        return atom_identity_node(ctx, &var_name);
+    }
+    let mut edges: Vec<Value> = Vec::with_capacity(node.children.len());
+    for child in node.children.iter() {
+        edges.push(edge_positional(
+            ctx,
+            marshal_fn_body_skeleton(ctx, child, param_names, si),
+        ));
+    }
+    if let Some(inner) = node.body.as_ref() {
+        edges.push(edge_positional(
+            ctx,
+            marshal_fn_body_skeleton(ctx, inner, param_names, si),
+        ));
+    }
+    node_record(
+        ctx,
+        node_kind_type_node(ctx, nullary_connective_variant(ctx, "Conj")),
+        edges,
+    )
+}
+
+fn fn_arrow_param_record(ctx: &InterpContext, param_name: &str) -> Value {
+    Value::Record {
+        type_name: ctx.sym("FnArrowParam"),
+        fields: Rc::new(HashMap::from([
+            (ctx.sym("name"), Value::Str(param_name.to_string())),
+            (ctx.sym("node"), atom_identity_node(ctx, param_name)),
+        ])),
+    }
+}
+
+// Corpus-wide fn/arrow reflection: the gunbc#5364 widen trigger named in
+// `v2.lens.wiring_liveness`'s construction_justification. Sibling of
+// `eval_concept_decl_facts_live` (which filters to `ItemKind::TypeItem`); this yields
+// one `FnArrowDecl` per declared function across every loaded module -- the body
+// projected to a reachability skeleton (`output`) plus its declared parameter atoms
+// (`params`) -- so the wiring lens folds over REAL fn params corpus-wide, not synthetic
+// arrows. Host SOURCE half; dissolves with `concept_decl_facts_live` on the same #5364
+// corpus-as-node accessor.
+pub fn eval_fn_arrow_decl_facts_live(
+    ctx: &InterpContext,
+    _args: &[(Option<String>, Value)],
+) -> InterpResult<Value> {
+    let si = ctx.source_indices();
+    let mut rows: Vec<Value> = Vec::new();
+    for module in ctx.modules.iter() {
+        for item in module.items.iter() {
+            let name = authored_name_at(si.clone(), item.clone());
+            if name.is_empty() {
+                continue;
+            }
+            let info = module
+                .item_registry
+                .get(&name)
+                .or_else(|| module.item_registry.get(&item.name));
+            let Some(info) = info else { continue };
+            if info.kind != ItemKind::FnItem && info.kind != ItemKind::FuncItem {
+                continue;
+            }
+            let Some(body) = item.body.as_ref() else {
+                continue;
+            };
+            let mut param_names: Vec<String> = Vec::new();
+            for p in item.params.iter() {
+                let pn = param_node_name_at(p.clone(), si.clone());
+                if pn.is_empty() || param_names.iter().any(|q| q == &pn) {
+                    continue;
+                }
+                param_names.push(pn);
+            }
+            let output = marshal_fn_body_skeleton(ctx, body, &param_names, &si);
+            let params: Vec<Value> = param_names
+                .iter()
+                .map(|pn| fn_arrow_param_record(ctx, pn))
+                .collect();
+            let qualified_name = logical_qualified_name(&info.module_name, &name);
+            rows.push(Value::Record {
+                type_name: ctx.sym("FnArrowDecl"),
+                fields: Rc::new(HashMap::from([
+                    (ctx.sym("qualified_name"), Value::Str(qualified_name)),
+                    (ctx.sym("name"), Value::Str(name.clone())),
+                    (ctx.sym("output"), output),
+                    (ctx.sym("params"), crate::v1_interpreter::list_value(params)),
+                ])),
+            });
+        }
+    }
+    Ok(crate::v1_interpreter::list_value(rows))
+}
+
 pub fn eval_syntactic_coproduct_arm_keys(
     ctx: &InterpContext,
     args: &[(Option<String>, Value)],

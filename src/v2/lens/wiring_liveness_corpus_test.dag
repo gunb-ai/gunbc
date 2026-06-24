@@ -1,0 +1,118 @@
+module v2.test.lens_wiring_liveness.wiring_liveness_corpus_test
+
+import v2.std.algebra { length, list_snoc_item }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.node {
+  Atom,
+  Conj,
+  Edge,
+  Node,
+  Positional,
+  SyntheticOccurrence,
+  Symbol,
+  TypeNode
+}
+import v2.std.text { String }
+import v2.std.fn_index { FnArrowDecl, FnArrowParam, fn_arrow_decl_facts_live }
+import v2.lens.wiring_liveness {
+  WiringDeadWire,
+  wiring_dead_wires_over,
+  wiring_fn_dead_wires
+}
+
+// A local probe fn. Its presence in `fn_arrow_decl_facts_live()` -- a fn authored in
+// THIS file -- proves the reflection reads the real loaded corpus (no-host-enumeration
+// control per the reflection-evidence failure mode): a hardcoded host list could not
+// contain it. Both params are referenced, so it is a known-good (wired) anchor.
+fn wiring_corpus_probe(alpha: Bool, beta: Bool) -> Bool {
+  alpha && beta
+}
+
+fn decls_named(decls: List<FnArrowDecl>, target: String) -> List<FnArrowDecl> {
+  fold(decls, init: [], f: fn(acc, d) {
+    if d.name == target {
+      list_snoc_item(xs: acc, item: d)
+    } else {
+      acc
+    }
+  })
+}
+
+fn params_has_name(params: List<FnArrowParam>, name: Symbol) -> Bool {
+  fold(params, init: false, f: fn(acc, p) { acc || (p.name == name) })
+}
+
+// CONTROL 1 -- the probe fn is really enumerated, with exactly its two declared params.
+fn probe_present_with_params(decls: List<FnArrowDecl>) -> Bool {
+  fold(decls_named(decls: decls, target: "wiring_corpus_probe"), init: false, f: fn(acc, d) {
+    acc
+      || ((length(xs: d.params) == 2)
+          && params_has_name(params: d.params, name: ^alpha)
+          && params_has_name(params: d.params, name: ^beta))
+  })
+}
+
+// CONTROL 2 -- the known-good probe runs GREEN through the real wiring check (both
+// params reach the output): the corpus path is not failing on well-wired fns.
+fn probe_is_wired(decls: List<FnArrowDecl>) -> Bool {
+  let matches = decls_named(decls: decls, target: "wiring_corpus_probe")
+  (length(xs: matches) > 0)
+    && fold(matches, init: true, f: fn(acc, d) {
+        acc && (length(xs: wiring_fn_dead_wires(decl: d)) == 0)
+      })
+}
+
+// CONTROL 3 (discrimination / RED-capable) -- a synthetic FnArrowDecl whose output
+// references only `present_input`; `dead_input` has no path to the output. The real
+// `wiring_fn_dead_wires` must report exactly `dead_input`, proving the corpus gate is
+// not vacuously green.
+fn probe_atom(s: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: s } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn dead_wire_decl() -> FnArrowDecl {
+  FnArrowDecl {
+    qualified_name: "synthetic.wiring_corpus.dead_wire",
+    name: "wiring_corpus_synthetic_dead_wire",
+    output: Node {
+      kind: TypeNode { connective: Conj },
+      children: [
+        Edge { label: Positional, target: probe_atom(s: ^wiring_corpus_present_input) }
+      ],
+      occurrence_id: SyntheticOccurrence
+    },
+    params: [
+      FnArrowParam {
+        name: ^wiring_corpus_present_input,
+        node: probe_atom(s: ^wiring_corpus_present_input)
+      },
+      FnArrowParam {
+        name: ^wiring_corpus_dead_input,
+        node: probe_atom(s: ^wiring_corpus_dead_input)
+      }
+    ]
+  }
+}
+
+fn witness_dead_wire_detected() -> Bool {
+  let dead = wiring_fn_dead_wires(decl: dead_wire_decl())
+  (length(xs: dead) == 1)
+    && fold(dead, init: false, f: fn(acc, w) { acc || (w.param == ^wiring_corpus_dead_input) })
+}
+
+// FLOOR GATE -- every declared input of every real fn in the corpus reaches its output,
+// computed over a SINGLE enumeration. Goes RED if any real .dag fn declares a parameter
+// with no path to its output.
+test fn wiring_liveness_corpus_witnesses() -> Bool {
+  let decls = fn_arrow_decl_facts_live()
+  return witness_dead_wire_detected()
+    && (length(xs: decls) > 0)
+    && probe_present_with_params(decls: decls)
+    && probe_is_wired(decls: decls)
+    && (length(xs: wiring_dead_wires_over(decls: decls)) == 0)
+}
