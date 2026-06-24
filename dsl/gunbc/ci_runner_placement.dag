@@ -54,6 +54,8 @@ type WorkloadClass
 
 data gunbc_ci_cpu_weight_workload_class_marker: String = "WorkloadClass grounds the cgroup v2 cpu.weight kernel axis (range 1-10000, kernel default 100). BatchLatencyTolerant=100 (runner slice: CI builds are batch work, latency-tolerant); InteractiveLatencySensitive=1000 (sessions slice: dashboard/agent sessions are interactive, latency-sensitive, 10x weight). cgroup v2 cpu.weight is WORK-CONSERVING: raising sessions above runners costs zero CI throughput when sessions are idle; under contention the scheduler gives interactive sessions 10x the time slices of runner builds. This is the grounded fix for dashboard slowness under CI load on srv2. dissolve-on: replace the coarse 10x ratio with a weight derived from a measured CPU-PSI/contention curve once contention data is collected."
 
+data gunbc_ci_cpu_weight_unit_modeling_marker: String = "dissolve-on feature:M12-cardinal-count-value-measure-sweep -- workload_class_cpu_weight returns a bare Int for the cgroup v2 cpu.weight kernel scheduler weight (dimensionless range 1-10000). Carrier: Measure<Dimensionless, One, Nat> (same pattern as HardwareThreadCount, Percent). Defer to the M12 value-Measure sweep: convert the full cpu.weight cluster atomically (workload_class_cpu_weight fn + emit down-projection) so the unit modeling stays single-authority -- do NOT peel this field alone (the forked-logic trap). The dissolve-on replaces the bare Int return with a named type (e.g. CpuSchedulerWeight) and updates the manifest emit to extract the count."
+
 fn workload_class_cpu_weight(wc: WorkloadClass) -> Int {
   match wc {
     BatchLatencyTolerant => 100
