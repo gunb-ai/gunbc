@@ -1,0 +1,17 @@
+{
+  "name": "gunbc-provisioning-virtual-media-kvm",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Headless Playwright driver for OpenBMC WebUI-KVM virtual-media attach (boards lacking Redfish VirtualMedia).",
+  "bin": {
+    "virtual-media-kvm-attach": "./virtual_media_kvm_attach.mjs"
+  },
+  "scripts": {
+    "dry-run": "node virtual_media_kvm_attach.mjs",
+    "postinstall": "playwright install chromium"
+  },
+  "dependencies": {
+    "playwright": "1.61.1"
+  }
+}
