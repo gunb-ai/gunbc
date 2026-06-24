@@ -25,7 +25,6 @@ data package_systemd_oomd_defaults: NonEmptyStr = "systemd-oomd-defaults"
 
 data apt_man_url: NonEmptyStr = "https://manpages.debian.org/testing/apt/apt.8.en.html"
 
-data apt_install_effect_doc: String = "Install as an effect (non-readonly operation). The package is a PARAMETER reusing the existing package-name concept (package_* data below); apt owns the install interface shape, WHICH package is workflow policy supplied by the caller, so the argv carries no business literal (DESIGN section 3). Exit codes from apt-get(8): 100 covers a held dpkg/apt lock, fetch error, or unmet dependency."
 
 service apt.PackageManager {
   operation Install {

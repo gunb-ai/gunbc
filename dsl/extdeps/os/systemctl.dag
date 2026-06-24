@@ -12,7 +12,6 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data systemctl_interface_doc: String = "systemd's service-manager control surface (systemctl). The active-state enum authority lives in extdeps.os.systemd (SystemdUnitActiveState); this module adds the operation shapes and the enablement-state enum, reusing that single authority rather than re-minting it. The operation shapes (inputs -> outputs, exit/error semantics) are what extdeps owns; the unit a caller acts on is always a parameter, never a literal baked into argv (a baked unit name would be business policy leaking down from the workflow layer, DESIGN section 3 fact c). The show-effective read (ShowProperty) reads back the LIVE resolved value, the only sound basis for grounding an enforcement predicate (DESIGN section 5: verify the realization, not the declaration). Names and exit semantics from systemctl(1)."
 
 type UnitFileState
   = UnitEnabled

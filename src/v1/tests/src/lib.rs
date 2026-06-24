@@ -103,6 +103,8 @@ mod module_authority_resolution_test;
 #[cfg(test)]
 mod money_carrier_cost_witness_test;
 #[cfg(test)]
+mod nested_list_alias_emit_test;
+#[cfg(test)]
 mod nodefold_generic_instantiation_test;
 #[cfg(test)]
 mod optional_carrier_signature_test;
