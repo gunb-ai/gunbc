@@ -1,0 +1,125 @@
+module test.claim.ci_oom_reclassify_witness
+
+import std.process { ProcessExit, ExitFailure }
+import gunbc.ci_failure_class {
+  FloorOutcome, NoFailure, FloorFailed,
+  FloorFailureClass, Infra, Structural,
+  ClusteredOutOfMemoryKill,
+  classify_floor_exit, floor_outcome_blocks_merge
+}
+import gunbc.ci_oom_reclassify {
+  OomKillSource, CgroupMemoryEvents, SystemdOomdJournal,
+  OomKillObservation, OomKillConfirmed, NoOomKillObserved,
+  ClusteringSignal, SimultaneousMultiJobDeath, HostBootIdReset,
+  ClusteringEvidence, Clustered, NotClustered,
+  oom_kill_from_cgroup_counter, oom_kill_from_oomd_journal,
+  observe_oom_kill, oom_is_confirmed,
+  host_boot_id_reset, clustering_signal_from_boot_id, clustering_is_present,
+  reclassify_floor_failure, reclassify_floor_outcome
+}
+
+fn bare_137_outcome() -> FloorOutcome {
+  classify_floor_exit(e: ExitFailure { code: 137, reason: "Process completed with exit code 137." })
+}
+
+fn outcome_is_infra(o: FloorOutcome) -> Bool {
+  match o {
+    NoFailure => false
+    FloorFailed { class: c } => match c {
+      Infra { signature: _ } => true
+      Structural { reason: _ } => false
+    }
+  }
+}
+
+fn outcome_is_structural(o: FloorOutcome) -> Bool {
+  match o {
+    NoFailure => false
+    FloorFailed { class: c } => match c {
+      Infra { signature: _ } => false
+      Structural { reason: _ } => true
+    }
+  }
+}
+
+fn confirmed_cgroup_oom() -> OomKillObservation {
+  observe_oom_kill(cgroup: oom_kill_from_cgroup_counter(oom_kill_count: 1), oomd: oom_kill_from_oomd_journal(oomd_kill_record_count: 0))
+}
+
+fn confirmed_oomd_oom() -> OomKillObservation {
+  observe_oom_kill(cgroup: oom_kill_from_cgroup_counter(oom_kill_count: 0), oomd: oom_kill_from_oomd_journal(oomd_kill_record_count: 1))
+}
+
+fn no_oom() -> OomKillObservation {
+  observe_oom_kill(cgroup: oom_kill_from_cgroup_counter(oom_kill_count: 0), oomd: oom_kill_from_oomd_journal(oomd_kill_record_count: 0))
+}
+
+fn clustered_simultaneous() -> ClusteringEvidence {
+  Clustered { signal: SimultaneousMultiJobDeath { job_count: 3 } }
+}
+
+fn witness_clustered_oom_promotes_137_to_infra_nonblocking() -> Bool {
+  let before = bare_137_outcome()
+  let after = reclassify_floor_outcome(o: before, oom: confirmed_cgroup_oom(), clustering: clustered_simultaneous())
+  outcome_is_structural(o: before)
+    && floor_outcome_blocks_merge(o: before)
+    && outcome_is_infra(o: after)
+    && (floor_outcome_blocks_merge(o: after) == false)
+}
+
+fn witness_boot_id_reset_clustering_also_promotes() -> Bool {
+  let before = bare_137_outcome()
+  let clu = clustering_signal_from_boot_id(boot_id_before: "boot-uuid-A", boot_id_after: "boot-uuid-B")
+  let after = reclassify_floor_outcome(o: before, oom: confirmed_oomd_oom(), clustering: clu)
+  clustering_is_present(c: clu)
+    && outcome_is_infra(o: after)
+    && (floor_outcome_blocks_merge(o: after) == false)
+}
+
+fn witness_lone_137_no_clustering_stays_structural_blocks() -> Bool {
+  let before = bare_137_outcome()
+  let after = reclassify_floor_outcome(o: before, oom: confirmed_cgroup_oom(), clustering: NotClustered)
+  outcome_is_structural(o: after)
+    && floor_outcome_blocks_merge(o: after)
+}
+
+fn witness_no_confirmed_oom_stays_structural_blocks() -> Bool {
+  let before = bare_137_outcome()
+  let after = reclassify_floor_outcome(o: before, oom: no_oom(), clustering: clustered_simultaneous())
+  (oom_is_confirmed(o: no_oom()) == false)
+    && outcome_is_structural(o: after)
+    && floor_outcome_blocks_merge(o: after)
+}
+
+fn witness_dispatch_two_handlers_one_fact() -> Bool {
+  oom_is_confirmed(o: confirmed_cgroup_oom())
+    && oom_is_confirmed(o: confirmed_oomd_oom())
+    && (oom_is_confirmed(o: no_oom()) == false)
+}
+
+fn witness_boot_id_oracle_discriminates() -> Bool {
+  host_boot_id_reset(boot_id_before: "boot-uuid-A", boot_id_after: "boot-uuid-B")
+    && (host_boot_id_reset(boot_id_before: "boot-uuid-A", boot_id_after: "boot-uuid-A") == false)
+}
+
+fn witness_reclassify_never_demotes_or_touches_non_137() -> Bool {
+  let no_failure = reclassify_floor_outcome(o: NoFailure, oom: confirmed_cgroup_oom(), clustering: clustered_simultaneous())
+  let already_infra = FloorFailed { class: Infra { signature: ClusteredOutOfMemoryKill } }
+  let still_infra = reclassify_floor_outcome(o: already_infra, oom: no_oom(), clustering: NotClustered)
+  let real_compile_error = FloorFailed { class: Structural { reason: "error[E0599]: no method named frobnicate" } }
+  let unchanged = reclassify_floor_outcome(o: real_compile_error, oom: no_oom(), clustering: clustered_simultaneous())
+  (match no_failure { NoFailure => true  FloorFailed { class: _ } => false })
+    && outcome_is_infra(o: still_infra)
+    && outcome_is_structural(o: unchanged)
+    && floor_outcome_blocks_merge(o: unchanged)
+}
+
+test fn ci_oom_reclassify_witnesses() -> Bool {
+  witness_clustered_oom_promotes_137_to_infra_nonblocking()
+    && witness_boot_id_reset_clustering_also_promotes()
+    && witness_lone_137_no_clustering_stays_structural_blocks()
+    && witness_no_confirmed_oom_stays_structural_blocks()
+    && witness_dispatch_two_handlers_one_fact()
+    && witness_boot_id_oracle_discriminates()
+    && witness_reclassify_never_demotes_or_touches_non_137()
+}

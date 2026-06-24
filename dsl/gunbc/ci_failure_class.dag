@@ -11,6 +11,7 @@ type InfraSignature
   | ProcessSpawnFailure
   | SccacheFatalError
   | RunnerLost
+  | ClusteredOutOfMemoryKill
 
 type SignatureSite
   = BuildLog
@@ -33,6 +34,7 @@ fn infra_signature_match_substring(sig: InfraSignature) -> String {
     ProcessSpawnFailure => spawn_outcome_log_fragment(outcome: SpawnFailed)
     SccacheFatalError => sccache_fatal_error_log_fragment
     RunnerLost => runner_lifecycle_log_fragment(signal: ShutdownReceived)
+    ClusteredOutOfMemoryKill => "Out of memory: Killed process"
   }
 }
 
@@ -42,6 +44,7 @@ fn infra_signature_origin(sig: InfraSignature) -> String {
     ProcessSpawnFailure => "extdeps.rust.std_process (Command::spawn failure)"
     SccacheFatalError => "extdeps.cache.sccache (server fatal error)"
     RunnerLost => "extdeps.github.ci_runner (runner shutdown signal)"
+    ClusteredOutOfMemoryKill => "kernel cgroup memory.events oom_kill / systemd-oomd (cross-run clustered OOM, evidence-derived; not a log-grep roster signature)"
   }
 }
 
@@ -51,6 +54,7 @@ fn infra_signature_site(sig: InfraSignature) -> SignatureSite {
     ProcessSpawnFailure => BuildLog
     SccacheFatalError => BuildLog
     RunnerLost => JobSignal
+    ClusteredOutOfMemoryKill => JobSignal
   }
 }
 

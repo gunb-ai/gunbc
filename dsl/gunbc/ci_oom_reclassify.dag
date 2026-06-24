@@ -1,0 +1,91 @@
+module gunbc.ci_oom_reclassify
+
+import gunbc.ci_failure_class {
+  FloorOutcome, NoFailure, FloorFailed,
+  FloorFailureClass, Infra, Structural,
+  InfraSignature, ClusteredOutOfMemoryKill
+}
+
+type OomKillSource
+  = CgroupMemoryEvents
+  | SystemdOomdJournal
+
+type OomKillObservation
+  = OomKillConfirmed { source: OomKillSource }
+  | NoOomKillObserved
+
+type ClusteringSignal
+  = SimultaneousMultiJobDeath { job_count: Int }
+  | HostBootIdReset
+
+type ClusteringEvidence
+  = Clustered { signal: ClusteringSignal }
+  | NotClustered
+
+fn oom_kill_from_cgroup_counter(oom_kill_count: Int) -> OomKillObservation {
+  if oom_kill_count > 0 {
+    OomKillConfirmed { source: CgroupMemoryEvents }
+  } else {
+    NoOomKillObserved
+  }
+}
+
+fn oom_kill_from_oomd_journal(oomd_kill_record_count: Int) -> OomKillObservation {
+  if oomd_kill_record_count > 0 {
+    OomKillConfirmed { source: SystemdOomdJournal }
+  } else {
+    NoOomKillObserved
+  }
+}
+
+fn observe_oom_kill(cgroup: OomKillObservation, oomd: OomKillObservation) -> OomKillObservation {
+  match cgroup {
+    OomKillConfirmed { source: _ } => cgroup
+    NoOomKillObserved => oomd
+  }
+}
+
+fn oom_is_confirmed(o: OomKillObservation) -> Bool {
+  match o {
+    OomKillConfirmed { source: _ } => true
+    NoOomKillObserved => false
+  }
+}
+
+fn host_boot_id_reset(boot_id_before: String, boot_id_after: String) -> Bool {
+  boot_id_before != boot_id_after
+}
+
+fn clustering_signal_from_boot_id(boot_id_before: String, boot_id_after: String) -> ClusteringEvidence {
+  if host_boot_id_reset(boot_id_before: boot_id_before, boot_id_after: boot_id_after) {
+    Clustered { signal: HostBootIdReset }
+  } else {
+    NotClustered
+  }
+}
+
+fn clustering_is_present(c: ClusteringEvidence) -> Bool {
+  match c {
+    Clustered { signal: _ } => true
+    NotClustered => false
+  }
+}
+
+fn reclassify_floor_failure(c: FloorFailureClass, oom: OomKillObservation, clustering: ClusteringEvidence) -> FloorFailureClass {
+  match c {
+    Infra { signature: _ } => c
+    Structural { reason: _ } =>
+      if oom_is_confirmed(o: oom) && clustering_is_present(c: clustering) {
+        Infra { signature: ClusteredOutOfMemoryKill }
+      } else {
+        c
+      }
+  }
+}
+
+fn reclassify_floor_outcome(o: FloorOutcome, oom: OomKillObservation, clustering: ClusteringEvidence) -> FloorOutcome {
+  match o {
+    NoFailure => o
+    FloorFailed { class: c } => FloorFailed { class: reclassify_floor_failure(c: c, oom: oom, clustering: clustering) }
+  }
+}
