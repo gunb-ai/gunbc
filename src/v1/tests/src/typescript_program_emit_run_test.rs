@@ -120,10 +120,23 @@ fn node_strip_types_available() -> bool {
 /// NOTE: richer program emit (a second typed fn, records, operators beyond `+`,
 /// control flow) is gated on the Track A shared value-expr/`CanonicalOperation`
 /// work; today only the `add` typed fn flat-emits to source. See PR notes.
+///
+/// CI-DORMANCY + DISSOLUTION TRIGGER (DESIGN §6): the execution oracle runs only
+/// where node >= ~22.6 (local dev); it HONESTLY SKIPS on the current self-hosted CI
+/// runner, whose node rejects `--experimental-strip-types`. CI-gated coverage for
+/// this increment is the two floor `.dag` test fns (the emitted-string pin + the
+/// Char realization). DISSOLVE this skip — make the oracle CI-gated — when EITHER
+/// the CI runner ships node >= 22.6 OR a node-agnostic TS oracle (`tsc --noEmit`)
+/// lands in `ci.yml` (the latter is the planned oracle for the value-expr-constructs
+/// carrier).
 #[test]
 fn typescript_emitted_typed_fn_type_strips_and_runs_under_node() {
     if !node_strip_types_available() {
-        eprintln!("skipping: no `node` on PATH for the strip-types execution oracle");
+        eprintln!(
+            "skipping node-execution oracle: `node --experimental-strip-types` unavailable \
+             (needs node >= ~22.6). CI coverage is the floor .dag string/realization tests; \
+             dissolve this skip when the CI runner has node >= 22.6 or a `tsc --noEmit` gate lands."
+        );
         return;
     }
 
