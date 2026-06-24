@@ -27,7 +27,7 @@ import v1.compiler.infer_types {
   normalize_access_type_node, node_is_keyed_collection, node_is_set_collection,
   method_receiver_element_node,
   emit_map_has,
-  enrich_kernel_type
+  enrich_kernel_type, is_declared_container_alias_spelling, reground_alias_carrier_identity
 }
 import v1.compiler.infer_env {
   TypeEnv, TypeBinding, authored_name,
@@ -136,6 +136,21 @@ fn lookup_coproduct_common_field_node(variants: List<Node>, field_name: String, 
 
 fn resolve_scrutinee_type_node(env: TypeEnv, n: Node) -> Node {
   resolve_scrutinee_type_node_seen(env: env, n: n, seen: empty_map())
+}
+
+fn resolve_method_receiver_type(receiver_type: Node, env: TypeEnv) -> Node {
+  let raw_name = authored_name_at(source_indices: env.source_indices, node: receiver_type)
+  if receiver_type.connective == Conj || is_declared_container_alias_spelling(name: raw_name) {
+    receiver_type
+  } else {
+    let resolved = reground_alias_carrier_identity(n: resolve_scrutinee_type_node(env: env, n: receiver_type), source_indices: env.source_indices)
+    let resolved_name = authored_name_at(source_indices: env.source_indices, node: resolved)
+    if resolved_name != raw_name && is_declared_container_alias_spelling(name: resolved_name) {
+      resolved
+    } else {
+      receiver_type
+    }
+  }
 }
 
 fn resolve_scrutinee_type_node_seen(env: TypeEnv, n: Node, seen: Map<String, Bool>) -> Node {

@@ -61,11 +61,9 @@ import extdeps.os.systemctl {
   UnitBad,
 }
 
-data gunbc_oomd_install_doc: String = "Instance 1 of std.realization_reconcile, sibling to gunbc.os_install. Composes the systemd-oomd dependency lifecycle: apt-install systemd-oomd-defaults, write the SESSIONS-slice ManagedOOM drop-in (ManagedOOMMemoryPressure=kill), enable+start the unit, then VERIFY via a systemctl show-effective + oomctl read that GROUNDS OomdEnforced. Per the brief this is PURE .dag with NO live host execution: the committed read is ReadAbsent, so the carrier derives OomdUnverified (fail-closed). OomdEnforced is NOT satisfiable by oomd-active alone — that is a fail-open: an active systemd-oomd with no managed session cgroup has nothing to evict-within under aggregate pressure (zero actual protection). So ground_oomd_from_read requires the FULL conjunction: managed sessions slice exists, unit active AND enabled, effective ManagedOOMMemoryPressure=kill on the slice, the per-session memory.max byte ceiling == C, the parent sessions.slice MemoryMax == the measured aggregate reservation, the ManagedOOMMemoryPressureLimit PSI percent == the intended threshold, and oomctl confirms the slice is in oomd's managed set. The byte ceilings reuse the §3 single authority RunnerSliceCapEffectiveness; the PSI percent is a SEPARATE Percent fact (never conflated with the byte caps — ManagedOOMMemoryPressureLimit takes a PSI percentage, not bytes). WHICH slice and WHICH thresholds are gunbc policy and live here, not in extdeps."
 
 data gunbc_oomd_sessions_slice: NonEmptyStr = "sessions.slice"
 
-data gunbc_oomd_sessions_slice_provenance: String = "HELD / NOT-FINAL: the oomd-managed SESSIONS slice — the cgroup parent under which agent sessions run and within which systemd-oomd evicts the heaviest session under aggregate memory pressure. This is the OomdEnforced SUBJECT. Sessions run today as FLAT docker-*.scope under system.slice, so this managed slice does NOT exist yet; 'sessions.slice' is the INTENDED literal, pinned only when the docker cgroup-parent change is operator-blessed (coordinated with fierce-carp-462's reconciler, which applies the slice). The runner slice (live name system-actions-runner.slice) is HARD-CAPPED and NOT oomd-managed (runners are never evicted), so it is deliberately absent from this model — it is not the OomdEnforced subject."
 
 data gunbc_oomd_sessions_policy: UnitManagedOomPolicy = UnitManagedOomPolicy {
   scope_unit: gunbc_oomd_sessions_slice,
@@ -262,7 +260,6 @@ fn gunbc_oomd_install_evidence() -> OomdEnforcementEvidence {
   }
 }
 
-data gunbc_oomd_fleet_evidence_seam_doc: String = "The single public binding seam for the fleet capacity gate (fleet_host_budget.gunbc_fleet_oomd_evidence, consumed by ci_runner_placement REGIME-2). A caller that holds the REGIME-2 thresholds (oomd_eviction_ceiling C, aggregate_reservation, intended PSI percent) assembles OomdGroundingThresholds and binds gunbc_fleet_oomd_evidence to this fn — NOT to a literal OomdEnforced. It grounds OomdEnforced over the committed gunbc_oomd_show_effective_read, so it stays OomdUnverified (fail-closed) until a real live ReadObserved on the managed sessions slice grounds the full conjunction (§5: verify the realization, not the declaration). It returns OomdEnforcementEvidence directly — the std.realization_reconcile.Reconciliation never leaks to the consumer, avoiding the flat-namespace collision with product.budget_tree.Reconciliation that co-loading would trigger. The read shape is internal, so this seam is stable across future grounding-conjunct additions."
 
 fn gunbc_oomd_fleet_evidence(req: OomdGroundingThresholds) -> OomdEnforcementEvidence {
   oomd_evidence_from_reconciliation(r: reconcile_oomd(read: gunbc_oomd_show_effective_read, req: req))
