@@ -31,7 +31,7 @@ import gunbc.fleet_intent { fleet_intent_offers }
 import gunbc.oomd_install { gunbc_oomd_sessions_policy }
 import extdeps.github.actions { RunnerSpec, SelfHosted, HostedRunner, RunsOnExpression }
 import std.measure { byte_size_count, hardware_thread_count_value, percent_count }
-import std.types { String, List, Int, Bool }
+import std.types { String, List, Bool }
 import std.layout {
   Doc, DocConcat,
   LayoutProtocol,
