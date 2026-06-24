@@ -61,6 +61,8 @@ mod fn_as_value_test;
 #[cfg(test)]
 mod fold_list_generic_instantiation_test;
 #[cfg(test)]
+mod fold_unused_element_clone_elision_test;
+#[cfg(test)]
 mod generator_match_arm_test;
 #[cfg(test)]
 mod gunbhub_serve_program_test;
@@ -156,6 +158,8 @@ mod v1_compiler_lib_test;
 mod value_carrier_swap_test;
 #[cfg(test)]
 mod wet_hermetic_equivalence_test;
+#[cfg(test)]
+mod whole_tree_wiring_enum_test;
 #[cfg(test)]
 mod width_nat_type_arg_test;
 #[cfg(test)]

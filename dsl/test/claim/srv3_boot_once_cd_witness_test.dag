@@ -1,0 +1,33 @@
+module test.claim.srv3_boot_once_cd
+
+import std.logic { Bool }
+import extdeps.bmc.types {
+  BootTargetCd,
+  BootOverrideOnce,
+  ResetForceRestart,
+  redfish_boot_target_wire,
+  redfish_boot_override_enabled_wire,
+  redfish_reset_type_wire,
+}
+import gunbc.tools.bmc_onboard { boot_override_body, reset_body }
+import gunbc.srv3_boot_once_cd {
+  srv3_boot_cd_target,
+  srv3_boot_cd_enabled,
+  srv3_boot_cd_reset_type,
+}
+
+test fn boot_cd_once_body_wires_correctly() -> Bool {
+  let body = boot_override_body(target: "Cd", enabled: "Once")
+  body == "{\"Boot\": {\"BootSourceOverrideTarget\": \"Cd\", \"BootSourceOverrideEnabled\": \"Once\"}}"
+}
+
+test fn force_restart_body_wires_correctly() -> Bool {
+  let body = reset_body(reset_type: "ForceRestart")
+  body == "{\"ResetType\": \"ForceRestart\"}"
+}
+
+test fn cd_once_and_restart_redfish_wire_labels_are_grounded() -> Bool {
+  redfish_boot_target_wire(t: srv3_boot_cd_target) == "Cd"
+    && redfish_boot_override_enabled_wire(e: srv3_boot_cd_enabled) == "Once"
+    && redfish_reset_type_wire(r: srv3_boot_cd_reset_type) == "ForceRestart"
+}

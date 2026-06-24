@@ -922,6 +922,22 @@ pub struct InterpContext {
     pub execution_mode: ExecutionMode,
     pub fixture_store: Option<Rc<crate::recorded_fixture::RecordedFixtureStore>>,
     data_cache: std::cell::RefCell<HashMap<usize, Value>>,
+    // Per-call parameter-name derivation is invariant per fn_node but was re-sliced from
+    // source spans on every call (authored_name_at). Memoize it per ctx, keyed by fn_node
+    // pointer identity — sound because the ctx owns fn_nodes, so pointers are stable for the
+    // cache's lifetime and the cache dies with the ctx (same discipline as data_cache above).
+    // Value = (filtered named-param list, all-param list), matching call_function's two uses.
+    param_name_cache: std::cell::RefCell<HashMap<usize, Rc<(Vec<String>, Vec<String>)>>>,
+    // Same chokepoint, ExprVar arm: eval_var rebuilt the variable name String from its source
+    // span (expr_var_name_at) and re-interned it (ctx.sym) on every read. Memoize the interned
+    // Symbol per ExprVar node — keyed by node pointer, sound for the ctx lifetime exactly as
+    // data_cache/param_name_cache above. Eval then skips the slice + re-intern and goes straight
+    // to env.lookup(sym); the name String is materialized lazily only on the registry slow path.
+    var_sym_cache: std::cell::RefCell<HashMap<usize, Symbol>>,
+    // Same chokepoint, ExprCall callee name: eval_call re-sliced the callee name from its source
+    // span (expr_call_func_at -> authored_name_at) on every call. Memoize the decoded name per
+    // call node — keyed by node pointer, sound for the ctx lifetime as the caches above.
+    call_func_name_cache: std::cell::RefCell<HashMap<usize, String>>,
     pure_call_memo: std::cell::RefCell<PureCallMemo>,
     parse_table_memo: std::cell::RefCell<ParseTableMemo>,
     mutation_counters: std::cell::RefCell<MutationCounters>,
@@ -1062,6 +1078,9 @@ impl InterpContext {
             execution_mode,
             fixture_store,
             data_cache: std::cell::RefCell::new(HashMap::new()),
+            param_name_cache: std::cell::RefCell::new(HashMap::new()),
+            var_sym_cache: std::cell::RefCell::new(HashMap::new()),
+            call_func_name_cache: std::cell::RefCell::new(HashMap::new()),
             pure_call_memo: std::cell::RefCell::new(PureCallMemo::default()),
             parse_table_memo: std::cell::RefCell::new(ParseTableMemo::default()),
             mutation_counters: std::cell::RefCell::new(MutationCounters::default()),
@@ -1238,18 +1257,38 @@ fn call_function(
             msg: format!("'{}' has no body", fn_node.name),
         })?;
 
-    let param_names: Vec<String> = fn_node
-        .params
-        .iter()
-        .filter(|p| {
-            let name = authored_name_at(ctx.si(), (*p).clone());
-            match p.children.first() {
-                Some(type_expr) => authored_name_at(ctx.si(), type_expr.clone()) != name,
-                None => false,
-            }
-        })
-        .map(|p| authored_name_at(ctx.si(), p.clone()))
-        .collect();
+    let cached_params = {
+        let key = Rc::as_ptr(fn_node) as usize;
+        // Bind the lookup to a local so the immutable borrow is released before the
+        // None branch takes a mutable borrow (an `if let ...borrow()` would hold it through `else`).
+        let hit = ctx.param_name_cache.borrow().get(&key).cloned();
+        if let Some(c) = hit {
+            c
+        } else {
+            // Each param's authored name is sliced once into `all`; `filtered` reuses it
+            // (only the type-expr side is sliced again) rather than re-slicing the param name.
+            let all: Vec<String> = fn_node
+                .params
+                .iter()
+                .map(|p| authored_name_at(ctx.si(), p.clone()))
+                .collect();
+            let filtered: Vec<String> = fn_node
+                .params
+                .iter()
+                .enumerate()
+                .filter(|(i, p)| match p.children.first() {
+                    Some(type_expr) => authored_name_at(ctx.si(), type_expr.clone()) != all[*i],
+                    None => false,
+                })
+                .map(|(i, _)| all[i].clone())
+                .collect();
+            let c = Rc::new((filtered, all));
+            ctx.param_name_cache.borrow_mut().insert(key, c.clone());
+            c
+        }
+    };
+    let param_names: &Vec<String> = &cached_params.0;
+    let all_param_names: &Vec<String> = &cached_params.1;
 
     let mut bindings = HashMap::new();
     if !args.is_empty() {
@@ -1264,12 +1303,12 @@ fn call_function(
         }
     }
 
-    for param in fn_node.params.iter() {
-        let pname = authored_name_at(ctx.si(), param.clone());
-        if !bindings.contains_key(&ctx.sym(&pname)) {
+    for (i, param) in fn_node.params.iter().enumerate() {
+        let pname = &all_param_names[i];
+        if !bindings.contains_key(&ctx.sym(pname)) {
             if let Some(default_node) = param_node_default_value(param.clone()) {
                 let default_val = eval_expr(&default_node, env, ctx)?;
-                bindings.insert(ctx.sym(&pname), default_val);
+                bindings.insert(ctx.sym(pname), default_val);
             }
         }
     }
@@ -1404,33 +1443,49 @@ fn eval_var(
     env: &Rc<Env>,
     ctx: &InterpContext,
 ) -> InterpResult<Value> {
-    let name = expr_var_name_at(node.clone(), ctx.si());
+    // Resolve and intern this ExprVar's name once, then reuse the Symbol on every eval
+    // (skips the per-eval source-span slice in expr_var_name_at and the ctx.sym re-intern).
+    let key = Rc::as_ptr(node) as usize;
+    let sym = {
+        let hit = ctx.var_sym_cache.borrow().get(&key).copied();
+        match hit {
+            Some(s) => s,
+            None => {
+                let name = expr_var_name_at(node.clone(), ctx.si());
+                let s = ctx.sym(&name);
+                ctx.var_sym_cache.borrow_mut().insert(key, s);
+                s
+            }
+        }
+    };
 
-    if name == "none" || name == "None" {
+    if ctx.sym_eq(sym, "none") || ctx.sym_eq(sym, "None") {
         return Ok(Value::Null);
     }
-    if name == "true" {
+    if ctx.sym_eq(sym, "true") {
         return Ok(Value::Bool(true));
     }
-    if name == "false" {
+    if ctx.sym_eq(sym, "false") {
         return Ok(Value::Bool(false));
     }
 
     if let Some(VarBindingKind::VariantValueBinding { parent_enum }) = binding_kind {
-        if name == "Zero" {
+        if ctx.sym_eq(sym, "Zero") {
             return Ok(Value::Int(0));
         }
         return Ok(Value::Variant {
             type_name: ctx.sym(parent_enum),
-            variant_name: ctx.sym(&name),
+            variant_name: sym,
             fields: Rc::new(HashMap::new()),
         });
     }
 
-    if let Some(val) = env.lookup(ctx.sym(&name)) {
+    if let Some(val) = env.lookup(sym) {
         return Ok(val.clone());
     }
 
+    // Slow path (not a bound variable): materialize the name string for the registry lookup.
+    let name = ctx.resolve(sym);
     if let Some(info) = v1_rt::map_get(&ctx.item_registry, name.clone()) {
         if info.kind == ItemKind::DataItem {
             if let Some(fn_node) = ctx.lookup_fn(&name) {
@@ -2137,7 +2192,18 @@ fn is_v4_std_lexing_bridge_call(ctx: &InterpContext, func_name: &str) -> bool {
 }
 
 fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
-    let func_name = expr_call_func_at(node.clone(), ctx.si());
+    let func_name = {
+        let key = Rc::as_ptr(node) as usize;
+        let hit = ctx.call_func_name_cache.borrow().get(&key).cloned();
+        match hit {
+            Some(s) => s,
+            None => {
+                let s = expr_call_func_at(node.clone(), ctx.si());
+                ctx.call_func_name_cache.borrow_mut().insert(key, s.clone());
+                s
+            }
+        }
+    };
     let arg_nodes = &node.children;
 
     let args: Vec<(Option<String>, Value)> = arg_nodes
