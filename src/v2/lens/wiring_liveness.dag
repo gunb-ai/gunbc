@@ -94,19 +94,6 @@ fn wiring_input_is_wired(output: Node, declared_input: Node) -> Bool {
   )
 }
 
-// --- corpus-wide coverage: real fn arrows (gunbc#5364 widen trigger) ---
-//
-// The wave-1 reachability kernel above decides one (output, declared_input) relation.
-// Over a fn arrow the output is the body skeleton and the declared inputs are the
-// parameter atoms (v2.std.fn_index reflection). Every parameter shares one output, so
-// the reachable set is computed ONCE per fn via `ready_set` -- the same readiness fold
-// over `v2.std.dependency`, linear in body size -- rather than re-saturating per
-// parameter (the saturate kernel is quadratic per pass; that cost is fine for the small
-// synthetic/type-decl witnesses but not for every fn body in the corpus). For a body
-// skeleton (a tree rooted at the output) the readiness closure IS the transitive
-// containment-reachable set from the output, so a parameter atom is in it iff the
-// parameter genuinely reaches the output. This stays the transitive-path question, NOT
-// `unused_parameters`'s referenced-at-least-once edge count.
 
 type WiringDeadWire {
   fn_qualified_name: String
