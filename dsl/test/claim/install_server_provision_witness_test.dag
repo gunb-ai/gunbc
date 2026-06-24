@@ -15,6 +15,8 @@ import gunbc.install_server_provision {
   ubuntu_iso_arch
 }
 
+data witness_classification_doc: String = "HONEST SCOPE (§5): these are EMITTER-SHAPE / CORPUS-HYGIENE assertions, NOT runtime behavioral claims. Each is string_contains over a generated shell string, so it proves a property of the MODEL's emission, not that the shell fails closed at runtime -- exactly the 'typecheck + .contains() grep is not a consumer' line in DESIGN.md §5. What they DO discriminate is the emitter's shape: apt_step_does_not_fail_open goes RED if someone reintroduces `|| true` on the install; iso_url_is_discovered_not_pinned goes RED if the URL is pinned to a point-release; dnsmasq_disable_is_construction_gated goes RED if the presence-gate is dropped. So they are construction-guards against the model regressing to a fail-open/pinned shape -- a legitimate but STRUCTURAL claim. The RUNTIME fail-closed behavior (set -e actually aborting, the sha256 gate actually rejecting a bad ISO, apt failure actually yielding ok=false) is proven separately BY EXECUTION: provision_prep_and_fetch and provision_verify_iso were run live against srv2 (ISO_VERIFIED against upstream SHA256SUMS; per-node .success aggregation observed). The live run is the §5 consumer-green-by-execution; these witnesses are the floor-side guard that the emitted shape does not regress between runs."
+
 test fn iso_url_is_discovered_not_pinned() -> Bool {
   let s = iso_resolve_prelude()
   string_contains(s: s, pattern: "sort -V | tail -1")
