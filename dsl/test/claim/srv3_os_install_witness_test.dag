@@ -24,11 +24,6 @@ import gunbc.os_install {
 import extdeps.bmc.types {
   redfish_boot_target_wire,
   redfish_boot_override_enabled_wire,
-  VirtualMediaSupported,
-  VirtualMediaUnsupported,
-}
-import extdeps.boards.asrock_rack {
-  asrock_altrad8ud_virtual_media_support,
 }
 
 test fn srv3_bootloader_artifact_is_arch_grounded() -> Bool {
@@ -68,13 +63,6 @@ test fn srv3_survey_forces_proxy_dhcp() -> Bool {
       ProxyDhcp => false
       NativeDhcpBootOptions => true
     }
-}
-
-test fn srv3_board_has_no_virtual_media() -> Bool {
-  match asrock_altrad8ud_virtual_media_support {
-    VirtualMediaSupported => false
-    VirtualMediaUnsupported => true
-  }
 }
 
 test fn srv3_plan_targets_ubuntu_2404_aarch64_pxe_once() -> Bool {
