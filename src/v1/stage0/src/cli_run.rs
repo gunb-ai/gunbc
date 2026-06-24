@@ -2011,6 +2011,52 @@ fn scan_test_decl_names(content: &str) -> Vec<String> {
         .collect()
 }
 
+fn scan_wire_contract_decl_names(content: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    for line in content.lines() {
+        let trimmed = line.trim_start();
+        if let Some(rest) = trimmed.strip_prefix("data ") {
+            let name: String = rest
+                .chars()
+                .take_while(|c| c.is_alphanumeric() || *c == '_')
+                .collect();
+            if name.is_empty() {
+                continue;
+            }
+            let after_name = rest.get(name.len()..).unwrap_or("").trim_start();
+            if after_name.starts_with(": CoproductWireContract")
+                || after_name.starts_with(": VariantEncoding")
+            {
+                out.push(name);
+            }
+        }
+    }
+    out
+}
+
+struct SidecarPlacementRule {
+    required_suffix: &'static str,
+    decl_description: &'static str,
+    scan: fn(&str) -> Vec<String>,
+    emit_discovery: bool,
+}
+
+const SIDECAR_PLACEMENT_RULES: &[SidecarPlacementRule] = &[
+    SidecarPlacementRule {
+        required_suffix: "_test.dag",
+        decl_description: "`test`-marked decls",
+        scan: scan_test_decl_names,
+        emit_discovery: true,
+    },
+    SidecarPlacementRule {
+        required_suffix: "_contracts.dag",
+        decl_description:
+            "wire-contract decls (`CoproductWireContract` and `VariantEncoding` data items)",
+        scan: scan_wire_contract_decl_names,
+        emit_discovery: false,
+    },
+];
+
 fn scan_test_decl_lines(content: &str) -> Vec<(String, i64)> {
     let mut out = Vec::new();
     for (i, line) in content.lines().enumerate() {
@@ -2097,7 +2143,8 @@ pub fn discover_floor_corpus_rows(
         }
     }
 
-    let mut test_fn_violations: Vec<String> = Vec::new();
+    let mut sidecar_violations: Vec<Vec<String>> =
+        SIDECAR_PLACEMENT_RULES.iter().map(|_| Vec::new()).collect();
     let mut path_imports: std::collections::HashMap<String, Vec<String>> =
         std::collections::HashMap::new();
     let mut module_to_path: std::collections::HashMap<String, String> =
@@ -2123,31 +2170,46 @@ pub fn discover_floor_corpus_rows(
             if floor_discovery_path_excluded(&entry) {
                 continue;
             }
-            let names = scan_test_decl_names(&content);
-            if names.is_empty() {
-                continue;
-            }
-            if !entry.ends_with("_test.dag") {
-                test_fn_violations.push(entry);
-                continue;
-            }
-            for name in names {
-                if seen.insert((entry.clone(), name.clone())) {
-                    rows.push(DiscoveryRow {
-                        label: name.clone(),
-                        entry: entry.clone(),
-                        function: name,
-                    });
+            let rule_decls: Vec<Vec<String>> = SIDECAR_PLACEMENT_RULES
+                .iter()
+                .map(|rule| (rule.scan)(&content))
+                .collect();
+            for (i, (rule, names)) in SIDECAR_PLACEMENT_RULES
+                .iter()
+                .zip(rule_decls.iter())
+                .enumerate()
+            {
+                if !names.is_empty() && !entry.ends_with(rule.required_suffix) {
+                    sidecar_violations[i].push(entry.clone());
+                }
+                if rule.emit_discovery && entry.ends_with(rule.required_suffix) {
+                    for name in names {
+                        if seen.insert((entry.clone(), name.clone())) {
+                            rows.push(DiscoveryRow {
+                                label: name.clone(),
+                                entry: entry.clone(),
+                                function: name.clone(),
+                            });
+                        }
+                    }
                 }
             }
         }
     }
-    if !test_fn_violations.is_empty() {
-        test_fn_violations.sort();
-        return Err(format!(
-            "`test`-marked tests must live in `*_test.dag` files; found a `test` decl in: {}",
-            test_fn_violations.join(", ")
-        ));
+    for (rule, violations) in SIDECAR_PLACEMENT_RULES
+        .iter()
+        .zip(sidecar_violations.iter())
+    {
+        if !violations.is_empty() {
+            let mut sorted = violations.clone();
+            sorted.sort();
+            return Err(format!(
+                "{} must live in `*{}` files; found in: {}",
+                rule.decl_description,
+                rule.required_suffix,
+                sorted.join(", ")
+            ));
+        }
     }
     rows.sort_by(|a, b| {
         a.entry
@@ -3708,6 +3770,73 @@ mod construction_justification_hygiene_tests {
             result.is_ok(),
             "floor discovery must succeed — every v2.lens.* records a construction-justification: {}",
             result.err().unwrap_or_default()
+        );
+    }
+}
+
+#[cfg(test)]
+mod sidecar_placement_hygiene_tests {
+    use super::{discover_floor_corpus_rows, scan_wire_contract_decl_names};
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static SEQ: AtomicU64 = AtomicU64::new(0);
+    fn tmp_dir() -> std::path::PathBuf {
+        let id = SEQ.fetch_add(1, Ordering::Relaxed);
+        std::env::temp_dir().join(format!(
+            "sidecar_placement_test_{}_{}",
+            std::process::id(),
+            id
+        ))
+    }
+
+    #[test]
+    fn scan_detects_coproduct_wire_contract_data() {
+        let content =
+            "data foo: CoproductWireContract = { coproduct: \"X\", encoding: UntaggedVariant }";
+        assert_eq!(
+            scan_wire_contract_decl_names(content),
+            vec!["foo".to_string()]
+        );
+    }
+
+    #[test]
+    fn scan_detects_variant_encoding_data() {
+        let content = "data bar: VariantEncoding = llm_snake_wire_contract";
+        assert_eq!(
+            scan_wire_contract_decl_names(content),
+            vec!["bar".to_string()]
+        );
+    }
+
+    #[test]
+    fn scan_ignores_non_wire_contract_data() {
+        let content = "data baz: Int = 42\ndata qux: String = \"hello\"\ndata flag: Bool = true";
+        assert!(
+            scan_wire_contract_decl_names(content).is_empty(),
+            "should not fire on non-wire-contract data decls"
+        );
+    }
+
+    #[test]
+    fn misplaced_wire_contract_decl_drives_discover_to_err() {
+        let dir = tmp_dir();
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        let file = dir.join("anthropic.dag");
+        std::fs::write(
+            &file,
+            "data anthropic_chat_message_wire_contract: CoproductWireContract = { \
+             coproduct: \"AnthropicChatMessage\", encoding: UntaggedVariant }\n",
+        )
+        .expect("write temp file");
+        let root = dir.to_string_lossy().into_owned();
+        let result = discover_floor_corpus_rows(&[root], &[]);
+        let _ = std::fs::remove_dir_all(&dir);
+        let msg = result
+            .err()
+            .expect("misplaced wire-contract decl must drive discover_floor_corpus_rows to Err");
+        assert!(
+            msg.contains("wire-contract decls") && msg.contains("_contracts.dag"),
+            "error must name the decl type and required suffix: {msg}"
         );
     }
 }
