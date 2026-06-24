@@ -102,7 +102,7 @@ import v1.compiler.infer_emit_info {
   variant_belongs_to_enum, variant_summary_key
 }
 import v1.compiler.resolve { get_exported_names }
-import v1.compiler.infer_resolve { lookup_unit_variant_phantom_type, is_width_nat_type_literal }
+import v1.compiler.infer_resolve { resolve_node, lookup_unit_variant_phantom_type, is_width_nat_type_literal }
 import v1.compiler.ownership { OwnershipProof, analyze_ownership, analyze_single_fold, build_movable_set, build_read_only_params, collect_callable_refs }
 import std.induction { SubValueUnknown, InductiveField }
 
