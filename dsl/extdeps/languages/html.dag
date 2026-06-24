@@ -9,6 +9,7 @@ import std.markup {
   unescape_text, unescape_attribute, unescape_url,
   validate_href, SafeHref, RejectedHref,
   attr_is_url_attr,
+  find_first_rejected_url,
 }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -306,4 +307,17 @@ fn ingest_html_source(src: String) -> HtmlIngestResult {
 
 fn html_medium_lossless(node: MarkupNode) -> Medium<MarkupNode> {
   Medium { carried: node, fidelity: Lossless }
+}
+
+type HtmlEmitResult
+  = EmitOk { html: String }
+  | EmitRejected { reason: String }
+
+fn try_serialize_html_source(node: MarkupNode) -> HtmlEmitResult {
+  match find_first_rejected_url(node: node) {
+    Present { value: r } =>
+      EmitRejected { reason: r.url }
+    Absent =>
+      EmitOk { html: serialize_html_source(node: node) }
+  }
 }

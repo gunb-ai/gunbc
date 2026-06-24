@@ -52,6 +52,10 @@ fn bounded_host_spawn_width(shard_count: Int, hardware_threads: HardwareThreadCo
   hardware_thread_count(count: width)
 }
 
+fn cpu_cores_available(nproc: HardwareThreadCount, margin: HardwareThreadCount) -> HardwareThreadCount {
+  hardware_thread_count_saturating_sub(a: nproc, b: margin)
+}
+
 fn budget_safety_fraction_apply(budget: ByteSize) -> ByteSize {
   measure_scale_fraction_floor(m: budget, num: 4, den: 5)
 }
@@ -60,6 +64,12 @@ fn byte_size_saturating_sub(total: ByteSize, reserved: ByteSize) -> ByteSize {
   let total_bytes = byte_size_count(b: total)
   let reserved_bytes = byte_size_count(b: reserved)
   if total_bytes > reserved_bytes { byte_size(total_bytes - reserved_bytes) } else { byte_size(0) }
+}
+
+fn hardware_thread_count_saturating_sub(a: HardwareThreadCount, b: HardwareThreadCount) -> HardwareThreadCount {
+  let av = hardware_thread_count_value(t: a)
+  let bv = hardware_thread_count_value(t: b)
+  if av > bv { hardware_thread_count(count: av - bv) } else { hardware_thread_count(count: 0) }
 }
 
 fn memory_effective_budget(budget: ByteSize, reserved: ByteSize) -> ByteSize {

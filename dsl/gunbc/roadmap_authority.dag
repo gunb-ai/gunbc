@@ -122,6 +122,7 @@ fn section_1() -> RoadmapSection {
     elements: [
       section_prose(content: "A flaky or green-but-broken floor means no gate protects anything — so CI is upstream of every §0 claim. CI is also the one workload that flexes *every* substrate layer at once (execution · scheduling · caching · secrets/effects · emission), so it is the forcing function that turns each modeled-but-inert abstraction load-bearing. **Deliverable = shared abstractions proven by CI consuming them** (one Materialization kernel · one Placement authority · one secrets model); faster CI falls *out* of that, it is not the goal (§6 — price the lane in displaced cost, \"move with confidence\", not elegance)."),
       section_prose(content: "→ [charter: causal-chain gap analysis](docs/plans/ci-process-end-to-end.md) — what's on `.dag` today vs not, push→execute."),
+      section_prose(content: "→ [CI humming](docs/plans/ci-humming.md) — the throughput/wall-clock/reliability operations plan for the **▸ NOW** milestone: un-throttle runner slots from the modeled budget (fix the build-pool double-count), verified-effective caps, the carrier, SessionSliceEnforcement, oomd demoted to backstop."),
       section_prose(content: "**◆ Milestones:** execution-as-DAG ✓ (the floor *is* a bounded forward graph walk) · width on `.dag` ✓ (#5444) → **▸ NOW — host-operation on `.dag` (placement · runner deployment · caps are hand-managed, off-fabric)** → resolve-cache enabled → one Materialization kernel (collapse the 5 caches) → one Placement authority (jobs · threads · sessions = 3 forks) → shared secrets · gunbhub closes the GitHub engine (G6, parked)"),
       section_group(
         label: "What's on `.dag` today (the gap map — detail in the charter §2/§4)",
@@ -249,7 +250,8 @@ fn section_4() -> RoadmapSection {
     title: "4. Testgen as the bug-class oracle (coverage by construction)",
     elements: [
       section_prose(content: "Prevent the next class, not the last instance: generate witnesses from declared structure. → [audit + method](docs/plans/testgen-oracle.md)"),
-      section_prose(content: "**◆ Milestones:** output gated ✓ (#5434) · coproduct-exhaustiveness structural ✓ (#5441) · cross-rep-equality ✓ (#5449) · oracle-method mapped ✓ (#5471) → anemia lens? *(parked, likely advisory)*"),
+      section_prose(content: "**◆ Milestones:** output gated ✓ (#5434) · coproduct-exhaustiveness structural ✓ (#5441) · cross-rep-equality ✓ (#5449) · oracle-method mapped ✓ (#5471) → **▸ NOW: wiring-liveness oracle (compile-time lens · fail compilation)** → anemia lens? *(parked, likely advisory)*"),
+      section_prose(content: "Motivating instance: a prod rotation 401'd `CREDENTIALS_MISSING` because `auth_input: access_token` was modeled (§3-correct) but the interpreter REST realization (`resolve_auth`) only realizes the env-var path — a declared input wired into nothing, typechecking but dead, and the only \"auth tests\" were `.contains(\"Bearer\")` greps on emitted source (§5 spec-without-execution). The general class is **wiring-liveness**: a declared input must influence the output it feeds — the cache-purity oracle read backwards (purity: *same* in ⇒ *same* out; liveness: *different* in ⇒ *different* out — one perturbation kernel, two readings). → [audit + design](docs/plans/wiring-liveness-preflight.md)"),
       section_group(
         label: "",
         nodes: [
@@ -257,11 +259,20 @@ fn section_4() -> RoadmapSection {
           derivable(id: "4-coproduct-exhaust", prs: [5441], title: "CoproductExhaustiveness made structural", description: "— over every declared coproduct, not a hand-roster"),
           derivable(id: "4-cross-rep", prs: [5449], title: "cross-representation-equality category", description: "— straddle witness per coproduct × native realization"),
           derivable(id: "4-oracle-method", prs: [5471], title: "**the oracle method (retro)**", description: "— bug-class→mechanism map (generator/lens/wall); testgen owns A + B-routing only, rest are lenses/walls ([map](docs/plans/testgen-oracle.md) §2)"),
-          derivable(id: "4-affected-set", prs: [5430], title: "affected-set = the completeness half", description: "— model the full repo-process universe"),
+          derivable(id: "4-affected-set", prs: [5430], title: "affected-set = the completeness half", description: "— model the full repo-process universe — frontier now has a paying consumer: the wiring residue-preflight (below)"),
           authored(id: "4-anemia", done: false, content: "*anemia lens?* (parked, DESIGN §2 leaf-side) — likely advisory, not a hard gate; decide whether to elevate"),
+          authored_doc(id: "4-wiring-liveness", done: false, content: "**wiring-liveness oracle** — a declared input must influence its output; the cache-purity oracle read backwards (perturbation-response, one kernel two readings). Decidability split (§5): static dataflow reachability over the Node DAG is the **compile-time wall** (declared input with no path to an output = unwired → fail compilation, no runtime gate); perturbation/fuzz is the runtime **confirmation** for the opaque-seed residue (`resolve_auth` is Rust, invisible to `.dag` reflection today).", path: "docs/plans/wiring-liveness-preflight.md"),
+          authored(id: "4-wiring-guard", done: false, content: "**pre-send fail-closed guard** (narrowest seam) — declared-auth-but-no-token ⇒ typed `AuthDeclaredButUnwired` refusal before send. HANDED to the `resolve_auth` realization-fix lane; **this lane must confirm it landed** (perturb to drop the token → typed error, not a remote 401)"),
+          authored(id: "4-wiring-lens", done: false, content: "**wiring lens — static reachability, compile-time** — over `.dag`-modeled input→output relations; fails compilation on a dead wire. Primary mechanism; grows to subsume the seed realizations as they self-host (§5/§7)"),
+          authored(id: "4-wiring-witness", done: false, content: "**wiring witness — opaque-realization generator** — perturbation witness over declared service input→request relations; RED when an input is dropped (the execution-grounded generalization of the auth case, for realizations the compile-time lens can't see)"),
+          authored(id: "4-wiring-preflight", done: false, content: "**runtime preflight — residue only** — run the wiring check over the `affected_set` `ReExecFrontier` (the about-to-run slice) before execution; `FailClosed` on a dead wire. Needed only for opaque realizations; dissolves into the compile-time lens as they self-host"),
         ],
         edges: [
           RoadmapEdge { child: nid(s: "4-anemia"), parent: nid(s: "4-affected-set") },
+          RoadmapEdge { child: nid(s: "4-wiring-guard"), parent: nid(s: "4-wiring-liveness") },
+          RoadmapEdge { child: nid(s: "4-wiring-lens"), parent: nid(s: "4-wiring-liveness") },
+          RoadmapEdge { child: nid(s: "4-wiring-witness"), parent: nid(s: "4-wiring-liveness") },
+          RoadmapEdge { child: nid(s: "4-wiring-preflight"), parent: nid(s: "4-wiring-liveness") },
         ],
       ),
     ],

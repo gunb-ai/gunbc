@@ -5361,6 +5361,12 @@ fn kernel_span(name: String) -> SourceSpan {
   SourceSpan { file: concat("<kernel:", name, ">"), start: 0, end: string_length(s: name) }
 }
 
+fn deps_excluding_leaf_self(b: TypeBinding, source_indices: Map<String, NewlineIndex>) -> List<String> {
+  let deps0 = node_type_deps(n: b.resolved, source_indices: source_indices)
+  let is_bare_self = b.resolved.connective == NoConnective && (b.resolved.children |> count) == 0 && (deps0 |> count) == 1 && (deps0 |> any(d => d == b.name))
+  if is_bare_self { [] } else { deps0 }
+}
+
 fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>, source_indices: Map<String, NewlineIndex>, intern_table: InternTable) -> BuildTypeEnvResult {
   let source_indices = fold(map_keys(kernel_type_set), init: source_indices, f: (acc, name) =>
     map_insert(acc, concat("<kernel:", name, ">"), build_newline_index(file: concat("<kernel:", name, ">"), source: name))
@@ -5480,7 +5486,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
 
   let merged = merge_envs(envs: [kernel, import_env, pre_local_env])
   let all_deps_map = fold(merged.bindings |> map_values, init: empty_map(), f: (acc, b) =>
-    map_insert(acc, b.name, node_type_deps(n: b.resolved, source_indices: source_indices))
+    map_insert(acc, b.name, deps_excluding_leaf_self(b: b, source_indices: source_indices))
   )
 
   let str_bindings = fold(merged.bindings |> map_values, init: empty_map(), f: (acc, b) =>
@@ -5572,7 +5578,7 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
   let pre_local_env = TypeEnv { bindings: local_bindings, recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_indices: source_indices, intern_table: intern_table }
   let merged = merge_envs(envs: [kernel, import_env, pre_local_env])
   let all_deps_map = fold(merged.bindings |> map_values, init: empty_map(), f: (acc, b) =>
-    map_insert(acc, b.name, node_type_deps(n: b.resolved, source_indices: source_indices))
+    map_insert(acc, b.name, deps_excluding_leaf_self(b: b, source_indices: source_indices))
   )
 
   let str_bindings = fold(merged.bindings |> map_values, init: empty_map(), f: (acc, b) =>

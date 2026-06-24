@@ -12097,11 +12097,13 @@ pub fn build_type_env(
             .fold(
                 v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
                 |acc: Rc<HashMap<String, Rc<Vec<String>>>>, b: Rc<TypeBinding>| {
-                    v1_rt::rc_map_insert(
-                        acc,
-                        b.name.clone(),
-                        node_type_deps(b.resolved.clone(), source_indices.clone()),
-                    )
+                    let deps0 = node_type_deps(b.resolved.clone(), source_indices.clone());
+                    let is_bare_self = (b.resolved.connective.clone() == Connective::NoConnective)
+                        && ((b.resolved.children.clone().len() as i64) == 0)
+                        && ((deps0.len() as i64) == 1)
+                        && (deps0[0].as_str() == b.name.as_str());
+                    let deps = if is_bare_self { Rc::new(vec![]) } else { deps0 };
+                    v1_rt::rc_map_insert(acc, b.name.clone(), deps)
                 },
             );
         let str_bindings = Rc::new(v1_rt::map_values(&merged.bindings.clone()))
@@ -12565,11 +12567,13 @@ pub fn build_type_env_unresolved(
             .fold(
                 v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
                 |acc: Rc<HashMap<String, Rc<Vec<String>>>>, b: Rc<TypeBinding>| {
-                    v1_rt::rc_map_insert(
-                        acc,
-                        b.name.clone(),
-                        node_type_deps(b.resolved.clone(), source_indices.clone()),
-                    )
+                    let deps0 = node_type_deps(b.resolved.clone(), source_indices.clone());
+                    let is_bare_self = (b.resolved.connective.clone() == Connective::NoConnective)
+                        && ((b.resolved.children.clone().len() as i64) == 0)
+                        && ((deps0.len() as i64) == 1)
+                        && (deps0[0].as_str() == b.name.as_str());
+                    let deps = if is_bare_self { Rc::new(vec![]) } else { deps0 };
+                    v1_rt::rc_map_insert(acc, b.name.clone(), deps)
                 },
             );
         let str_bindings = Rc::new(v1_rt::map_values(&merged.bindings.clone()))
