@@ -47,15 +47,17 @@ fn enumerated_qualified_names(ctx: &InterpContext) -> Vec<String> {
     };
     items
         .iter()
-        .map(|row| match ctx.field(
-            match row {
-                Value::Record { fields, .. } => fields,
-                other => panic!("expected FnArrowDecl Record, got {other:?}"),
-            },
-            "qualified_name",
-        ) {
-            Some(Value::Str(s)) => s.clone(),
-            other => panic!("expected qualified_name Str, got {other:?}"),
+        .map(|row| {
+            match ctx.field(
+                match row {
+                    Value::Record { fields, .. } => fields,
+                    other => panic!("expected FnArrowDecl Record, got {other:?}"),
+                },
+                "qualified_name",
+            ) {
+                Some(Value::Str(s)) => s.clone(),
+                other => panic!("expected qualified_name Str, got {other:?}"),
+            }
         })
         .collect()
 }
@@ -75,7 +77,8 @@ fn closure_enumerated_qualified_names(entry_rel: &str) -> Vec<String> {
         .graph
         .as_ref()
         .expect("fixture entry closure resolves to a graph");
-    let ctx = cli_run::make_eval_context(graph, resolved.source_indices.clone(), ExecutionMode::Wet);
+    let ctx =
+        cli_run::make_eval_context(graph, resolved.source_indices.clone(), ExecutionMode::Wet);
     enumerated_qualified_names(&ctx)
 }
 
