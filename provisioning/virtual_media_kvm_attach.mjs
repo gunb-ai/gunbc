@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// GENERATED from dsl/gunbc/webui_kvm_runner_emit.dag by gunbc -- DO NOT EDIT.
+// The .dag model is the authority; regenerate via main_wet on dsl/tools/generated_artifact_gate.dag.
+// Hand-edits are reverted by the generated-artifact drift gate.
 import { spawnSync } from 'node:child_process';
 import { chromium } from 'playwright';
 import fs from 'node:fs';
