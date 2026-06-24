@@ -143,7 +143,7 @@ pub fn qualified_name_value_to_module_path(value: &Value) -> String {
             if variant == "QnCons" {
                 let head = fields
                     .iter()
-                    .find(|(k, _)| resolve_sym(**k) == "head")
+                    .find(|(k, _)| resolve_sym(*k) == "head")
                     .and_then(|(_, v)| match v {
                         Value::Str(s) => Some(s.clone()),
                         Value::Variant {
@@ -155,7 +155,7 @@ pub fn qualified_name_value_to_module_path(value: &Value) -> String {
                             if variant == "Symbol" || variant == "Atom" {
                                 sym_fields
                                     .iter()
-                                    .find(|(k, _)| resolve_sym(**k) == "identity")
+                                    .find(|(k, _)| resolve_sym(*k) == "identity")
                                     .and_then(|(_, v)| match v {
                                         Value::Str(s) => Some(s.clone()),
                                         _ => None,
@@ -171,7 +171,7 @@ pub fn qualified_name_value_to_module_path(value: &Value) -> String {
                     });
                 let tail = fields
                     .iter()
-                    .find(|(k, _)| resolve_sym(**k) == "tail")
+                    .find(|(k, _)| resolve_sym(*k) == "tail")
                     .map(|(_, v)| v)
                     .expect("qualified_name_to_module_path: QnCons.tail missing");
                 let rest = qualified_name_value_to_module_path(tail);
@@ -5758,7 +5758,7 @@ pub(crate) fn free_monoid_to_vec(val: &Value) -> Option<Vec<Value>> {
                     return Some(out);
                 }
                 if *variant_name == cons_sym {
-                    match (fields.get(&head_sym), fields.get(&tail_sym)) {
+                    match (fields_get(fields, head_sym), fields_get(fields, tail_sym)) {
                         (Some(head), Some(tail)) => {
                             out.push(head.clone());
                             cur = tail.clone();
@@ -5800,7 +5800,7 @@ fn is_map_lookup_receiver(val: &Value) -> bool {
     match val {
         Value::Map(_) => true,
         Value::Record { fields, .. } | Value::Variant { fields, .. } => active_ctx()
-            .map(|ctx| fields.contains_key(&ctx.sym("lookup")))
+            .map(|ctx| fields_get(fields, ctx.sym("lookup")).is_some())
             .unwrap_or(false),
         _ => false,
     }
@@ -5819,7 +5819,7 @@ fn raw_map_lookup(
         },
         Value::Record { fields, .. } | Value::Variant { fields, .. } => {
             let lookup_sym = ctx.sym("lookup");
-            match fields.get(&lookup_sym) {
+            match fields_get(fields, lookup_sym) {
                 Some(lookup @ Value::Closure { .. }) => {
                     apply_closure(lookup, &[key.clone()], env, ctx)
                 }
@@ -5833,7 +5833,7 @@ fn raw_map_lookup(
                 None => match key {
                     Value::Str(s) => {
                         let k = ctx.sym(s);
-                        Ok(fields.get(&k).cloned().unwrap_or(Value::Null))
+                        Ok(fields_get(fields, k).cloned().unwrap_or(Value::Null))
                     }
                     _ => Ok(Value::Null),
                 },

@@ -6,7 +6,7 @@ use std::rc::Rc;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use crate::v1_interpreter::{InterpContext, Value};
+use crate::v1_interpreter::{sorted_fields, InterpContext, Value};
 use crate::v1_rt;
 use crate::v1_std_core::{authored_name_at, param_node_name_at, Node};
 
@@ -493,10 +493,9 @@ pub fn value_from_fixture_json(
             for (k, v) in fields_obj {
                 fields.push((ctx.sym(k), value_from_fixture_json(v, ctx)?));
             }
-            fields.sort_unstable_by_key(|(k, _)| k.0);
             Ok(Value::Record {
                 type_name,
-                fields: Rc::new(fields),
+                fields: Rc::new(sorted_fields(fields)),
             })
         }
         "Variant" => {
@@ -507,11 +506,10 @@ pub fn value_from_fixture_json(
             for (k, v) in fields_obj {
                 fields.push((ctx.sym(k), value_from_fixture_json(v, ctx)?));
             }
-            fields.sort_unstable_by_key(|(k, _)| k.0);
             Ok(Value::Variant {
                 type_name,
                 variant_name,
-                fields: Rc::new(fields),
+                fields: Rc::new(sorted_fields(fields)),
             })
         }
         "Opaque" => Err(FixtureError::UnknownTag {
