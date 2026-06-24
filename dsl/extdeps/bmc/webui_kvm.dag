@@ -25,12 +25,22 @@ fn webui_kvm_media_transport_wire(t: WebuiKvmMediaTransport) -> NonEmptyStr {
   }
 }
 
+type WebuiVirtualMediaDom {
+  login_username_input_id: NonEmptyStr
+  login_password_input_id: NonEmptyStr
+  login_submit_selector: NonEmptyStr
+  attach_section_heading: NonEmptyStr
+  attach_file_input_id: NonEmptyStr
+  attach_start_button_label: NonEmptyStr
+}
+
 type WebuiVirtualMediaSurface {
   spa_route: NonEmptyStr
   nbd_websocket_path: NonEmptyStr
   transport: WebuiKvmMediaTransport
   requires_local_file: Bool
   session_must_persist_during_mount: Bool
+  dom: WebuiVirtualMediaDom
 }
 
 data openbmc_webui_local_file_virtual_media: WebuiVirtualMediaSurface = WebuiVirtualMediaSurface {
@@ -39,6 +49,14 @@ data openbmc_webui_local_file_virtual_media: WebuiVirtualMediaSurface = WebuiVir
   transport: NbdWebsocketLocalFile,
   requires_local_file: true,
   session_must_persist_during_mount: true,
+  dom: WebuiVirtualMediaDom {
+    login_username_input_id: "username",
+    login_password_input_id: "password",
+    login_submit_selector: "button[type=\"submit\"]",
+    attach_section_heading: "Load image from web browser",
+    attach_file_input_id: "virtual_media_device",
+    attach_start_button_label: "Start",
+  },
 }
 
 fn webui_kvm_realizes_virtual_media_for(support: RedfishVirtualMediaSupport) -> Bool {

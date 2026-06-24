@@ -1,0 +1,41 @@
+module test.claim.srv3_virtual_media_kvm
+
+import std.logic { Bool }
+import extdeps.bmc.types { VirtualMediaSupported, VirtualMediaUnsupported }
+import extdeps.boards.asrock_rack { asrock_altrad8ud_virtual_media_support }
+import extdeps.bmc.webui_kvm {
+  NbdWebsocketLocalFile,
+  RedfishConfiguredRemoteUri,
+  webui_kvm_media_transport_wire,
+  webui_kvm_realizes_virtual_media_for,
+  openbmc_webui_local_file_virtual_media,
+}
+
+test fn srv3_webui_kvm_is_the_arm_redfish_lacks() -> Bool {
+  webui_kvm_realizes_virtual_media_for(support: asrock_altrad8ud_virtual_media_support)
+    && webui_kvm_realizes_virtual_media_for(support: VirtualMediaUnsupported)
+    && !webui_kvm_realizes_virtual_media_for(support: VirtualMediaSupported)
+}
+
+test fn srv3_webui_kvm_transport_is_local_file_nbd() -> Bool {
+  match openbmc_webui_local_file_virtual_media.transport {
+    NbdWebsocketLocalFile => true
+    RedfishConfiguredRemoteUri => false
+  }
+    && webui_kvm_media_transport_wire(t: openbmc_webui_local_file_virtual_media.transport) == "nbd-websocket-local-file"
+}
+
+test fn srv3_webui_kvm_surface_is_grounded() -> Bool {
+  openbmc_webui_local_file_virtual_media.spa_route == "/#/operations/virtual-media"
+    && openbmc_webui_local_file_virtual_media.nbd_websocket_path == "/vm/0/0"
+    && openbmc_webui_local_file_virtual_media.requires_local_file
+    && openbmc_webui_local_file_virtual_media.session_must_persist_during_mount
+}
+
+test fn srv3_webui_kvm_dom_is_grounded() -> Bool {
+  openbmc_webui_local_file_virtual_media.dom.login_username_input_id == "username"
+    && openbmc_webui_local_file_virtual_media.dom.login_password_input_id == "password"
+    && openbmc_webui_local_file_virtual_media.dom.attach_file_input_id == "virtual_media_device"
+    && openbmc_webui_local_file_virtual_media.dom.attach_start_button_label == "Start"
+    && openbmc_webui_local_file_virtual_media.dom.attach_section_heading == "Load image from web browser"
+}

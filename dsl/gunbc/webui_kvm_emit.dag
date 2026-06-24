@@ -1,0 +1,43 @@
+module gunbc.webui_kvm_emit
+
+import std.types { String, List }
+import extdeps.bmc.webui_kvm {
+  WebuiVirtualMediaSurface,
+  webui_kvm_media_transport_wire,
+  openbmc_webui_local_file_virtual_media,
+}
+import extdeps.formats.yaml {
+  YamlKeyValue,
+  yaml_mapping, yaml_string, yaml_bool,
+  kv, serialize_yaml
+}
+
+fn surface_dom_entries(surface: WebuiVirtualMediaSurface) -> List<YamlKeyValue> {
+  [
+    kv(key: "login_username_input_id", value: yaml_string(s: surface.dom.login_username_input_id)),
+    kv(key: "login_password_input_id", value: yaml_string(s: surface.dom.login_password_input_id)),
+    kv(key: "login_submit_selector", value: yaml_string(s: surface.dom.login_submit_selector)),
+    kv(key: "attach_section_heading", value: yaml_string(s: surface.dom.attach_section_heading)),
+    kv(key: "attach_file_input_id", value: yaml_string(s: surface.dom.attach_file_input_id)),
+    kv(key: "attach_start_button_label", value: yaml_string(s: surface.dom.attach_start_button_label)),
+  ]
+}
+
+fn surface_entries(surface: WebuiVirtualMediaSurface) -> List<YamlKeyValue> {
+  [
+    kv(key: "spa_route", value: yaml_string(s: surface.spa_route)),
+    kv(key: "transport", value: yaml_string(s: webui_kvm_media_transport_wire(t: surface.transport))),
+    kv(key: "nbd_websocket_path", value: yaml_string(s: surface.nbd_websocket_path)),
+    kv(key: "requires_local_file", value: yaml_bool(b: surface.requires_local_file)),
+    kv(key: "session_must_persist_during_mount", value: yaml_bool(b: surface.session_must_persist_during_mount)),
+    kv(key: "dom", value: yaml_mapping(entries: surface_dom_entries(surface: surface))),
+  ]
+}
+
+fn webui_kvm_descriptor_yaml() -> String {
+  let top = yaml_mapping(entries: [
+    kv(key: "bmc_webui_virtual_media",
+       value: yaml_mapping(entries: surface_entries(surface: openbmc_webui_local_file_virtual_media))),
+  ])
+  serialize_yaml(v: top)
+}
