@@ -9,11 +9,6 @@ import extdeps.github.log_annotations {
 import v2.extdeps.languages.bash { emit_directive_bash_target_model }
 import v2.std.compilers.target_model { TargetModel }
 
-// DiagnosticSeverity -> GitHub-Actions workflow-command name. This is the
-// realization *dispatch* selecting a GHA command for an agnostic severity, so it
-// lives in the realization (extdeps/), not in std.diagnostic (DESIGN §3:
-// "dispatch lives in extdeps/, not std/"). The command names are grounded on the
-// GHA single authority (extdeps.github.log_annotations), not re-coined here.
 fn gha_severity_command(severity: DiagnosticSeverity) -> String {
   match severity {
     SeverityError => gha_log_command_error
@@ -21,10 +16,6 @@ fn gha_severity_command(severity: DiagnosticSeverity) -> String {
   }
 }
 
-// The GitHub-Actions realization is *layered over* the bash echo>&2 realization:
-// the diagnostic still prints to stderr via `echo`, but the severity — invariant
-// at the bash layer — becomes VISIBLE here as the "::error::" / "::warning::"
-// no-params message-command prefix that GHA's log parser recognizes.
 fn emit_directive_gha_message(d: EmitDirective) -> String {
   concat(
     gha_message_command_prefix(command: gha_severity_command(severity: d.severity)),
@@ -36,9 +27,6 @@ fn emit_directive_gha_directive(d: EmitDirective) -> EmitDirective {
   EmitDirective { severity: d.severity, message: emit_directive_gha_message(d: d) }
 }
 
-// emit(EmitDirective, GitHubActions): reuse the *shared* bash echo>&2 grammar rows
-// (one grammar, N+M not N×M) with the GHA-annotated message. No GHA-specific
-// echo/redirect grammar is minted — only the severity->command prefix row is added.
 fn emit_directive_gha_target_model(d: EmitDirective) -> TargetModel {
   emit_directive_bash_target_model(d: emit_directive_gha_directive(d: d))
 }

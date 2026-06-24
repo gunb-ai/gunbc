@@ -90,10 +90,6 @@ test fn emit_directive_gha_warning_emits_warning_annotation_holds() -> Bool {
   }
 }
 
-// Discriminating tooth: at the GHA layer severity is REALIZED (visible) — error and
-// warning produce DIFFERENT output. This is precisely the property the bash layer
-// lacks (see emit_directive_bash_severity_invariant_holds), so it goes red if the
-// severity->command prefix is dropped or both map to one command.
 test fn emit_directive_gha_severity_variant_holds() -> Bool {
   match emit_directive_gha_emit(d: emit_directive_gha_error_example) {
     Accepted { value: se, diagnostics: _ } =>
@@ -117,9 +113,6 @@ test fn emit_directive_gha_message_flows_holds() -> Bool {
   }
 }
 
-// Discriminating tooth: GHA is a DISTINCT realization layered over bash — same
-// directive, the GHA output carries the "::error::" annotation the bare bash echo
-// does not. Goes red if the GHA realization collapses to the bash one.
 test fn emit_directive_gha_distinct_from_bash_holds() -> Bool {
   match emit_directive_gha_emit(d: emit_directive_gha_error_example) {
     Accepted { value: g, diagnostics: _ } =>

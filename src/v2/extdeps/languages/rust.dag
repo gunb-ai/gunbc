@@ -48,7 +48,7 @@ import v2.std.compilers.lexing {
   lex_rule_set_token_class_member
 }
 import v2.std.collection { Absent, List, Map, Present, Set, empty_map, map_insert, optional_absent, optional_present }
-import v2.std.diagnostic { Accepted, Outcome, Rejected, outcome_accepted }
+import v2.std.diagnostic { Accepted, EmitDirective, Outcome, Rejected, outcome_accepted }
 import v2.std.grounding {
   PerLanguageFactBundleEntry,
   PerLanguageFactBundleKey,
