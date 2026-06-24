@@ -47,10 +47,17 @@ const FIXTURE: &str = concat!(
     "import std.nat { Nat }\n\n",
     "type Quantity = Time | Memory | Currency\n",
     "type Scale = One | Micro\n\n",
+    // `S` and `M` are unit variants of THIS coproduct AND the conventional measure type-param
+    // names below -- the exact name collision that exists in the real corpus (`FermiDepth = Xs |
+    // S | M | L | Xl` in std/types.dag). It is the discriminating control for the generic-param
+    // exclusion: a detector that keyed on variant-name alone would collapse `measure_count`'s
+    // genuine `S`/`M` type-params to `()`.
+    "type FermiDepth = Xs | S | M | L\n\n",
     "type Measure<Q, S, M> {\n  count: M\n}\n\n",
     "type ByteSize = Measure<Memory, One, Nat>\n\n",
     "type CostAccount<S> {\n  t: Measure<Time, S, Nat>\n}\n\n",
-    "fn time_measure<S>(count: Nat) -> Measure<Time, S, Nat> {\n  Measure { count: count }\n}\n"
+    "fn time_measure<S>(count: Nat) -> Measure<Time, S, Nat> {\n  Measure { count: count }\n}\n\n",
+    "fn measure_count<Q, S, M>(m: Measure<Q, S, M>) -> M {\n  m.count\n}\n"
 );
 
 #[test]
@@ -80,6 +87,15 @@ fn value_variant_type_args_collapse_to_unit() {
     assert!(
         emitted.contains("Measure<(), S,"),
         "a genuine type-param `S` must NOT collapse to `()`, got:\n{emitted}"
+    );
+
+    // Control (discriminating, the generic-param/variant-name collision): `measure_count<Q, S, M>`
+    // has type-params `S`/`M` whose names ALSO name `FermiDepth` variants. They are genuine
+    // type-params here and must survive -- collapsing them would emit `Measure<Q, (), ()>` (E0308:
+    // the body returns the `M`-typed `count`). A variant-name-only detector goes RED here.
+    assert!(
+        emitted.contains("Measure<Q, S, M>"),
+        "generic type-params `S`/`M` (which collide with FermiDepth variants) must NOT collapse, got:\n{emitted}"
     );
 }
 

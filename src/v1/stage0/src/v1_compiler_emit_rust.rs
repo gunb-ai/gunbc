@@ -693,18 +693,25 @@ pub fn rust_type_arg_renders_as_unit(
 // collapses such slots to `()`) only when needed -- leaving every other type on its existing path.
 pub fn type_node_has_value_variant_arg(
     n: Rc<Node>,
+    generic_param_names: Rc<Vec<String>>,
     variant_to_enum: Rc<HashMap<String, String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if is_value_variant_type_arg(
+            generic_param_names.clone(),
             variant_to_enum.clone(),
             type_leaf_name_for_collapse(n.clone(), source_indices.clone()),
         ) {
             return true;
         }
         for c in n.children.clone().iter().cloned() {
-            if type_node_has_value_variant_arg(c.clone(), variant_to_enum.clone(), source_indices.clone()) {
+            if type_node_has_value_variant_arg(
+                c.clone(),
+                generic_param_names.clone(),
+                variant_to_enum.clone(),
+                source_indices.clone(),
+            ) {
                 return true;
             }
         }
@@ -718,7 +725,12 @@ pub fn type_node_has_value_variant_arg(
         ) {
             Some(applied) => {
                 for c in applied.children.clone().iter().cloned() {
-                    if type_node_has_value_variant_arg(c.clone(), variant_to_enum.clone(), source_indices.clone()) {
+                    if type_node_has_value_variant_arg(
+                        c.clone(),
+                        generic_param_names.clone(),
+                        variant_to_enum.clone(),
+                        source_indices.clone(),
+                    ) {
                         return true;
                     }
                 }
@@ -744,7 +756,12 @@ pub fn render_rust_phantom_opaque_applied_type_arg(
     module_index: Rc<ModuleIndex>,
     variant_to_enum: Rc<HashMap<String, String>>,
 ) -> String {
-    if rust_type_arg_renders_as_unit(n.clone(), variant_to_enum.clone(), source_indices.clone()) {
+    if rust_type_arg_renders_as_unit(
+        n.clone(),
+        generic_param_names.clone(),
+        variant_to_enum.clone(),
+        source_indices.clone(),
+    ) {
         "()".to_string()
     } else {
         render_rust_alias_rhs_type(
@@ -774,7 +791,12 @@ pub fn render_rust_phantom_opaque_applied_decl_arg(
     variant_to_enum: Rc<HashMap<String, String>>,
     env: Rc<TypeEnv>,
 ) -> String {
-    if rust_type_arg_renders_as_unit(n.clone(), variant_to_enum.clone(), source_indices.clone()) {
+    if rust_type_arg_renders_as_unit(
+        n.clone(),
+        generic_param_names.clone(),
+        variant_to_enum.clone(),
+        source_indices.clone(),
+    ) {
         "()".to_string()
     } else {
         render_rust_decl_type(
@@ -798,7 +820,12 @@ pub fn render_rust_applied_type_arg(
     variant_to_enum: Rc<HashMap<String, String>>,
     env: Rc<TypeEnv>,
 ) -> String {
-    if rust_type_arg_renders_as_unit(n.clone(), variant_to_enum.clone(), source_indices.clone()) {
+    if rust_type_arg_renders_as_unit(
+        n.clone(),
+        generic_param_names.clone(),
+        variant_to_enum.clone(),
+        source_indices.clone(),
+    ) {
         "()".to_string()
     } else {
         match n.inferred.clone().as_deref().cloned() {
@@ -1036,6 +1063,7 @@ pub fn render_rust_decl_type(
                                                     )
                                                 } else if rust_type_arg_renders_as_unit(
                                                     arg.clone(),
+                                                    generic_param_names.clone(),
                                                     variant_to_enum.clone(),
                                                     source_indices.clone(),
                                                 ) {
@@ -1141,6 +1169,7 @@ pub fn render_rust_fn_sig_type(
     // signature type keeps its existing render path.
     if type_node_has_value_variant_arg(
         n.clone(),
+        generic_param_names.clone(),
         variant_to_enum.clone(),
         source_indices.clone(),
     ) {
@@ -2827,7 +2856,14 @@ pub fn rust_render_type_leaf_name(
     name: String,
     variant_to_enum: Rc<HashMap<String, String>>,
 ) -> String {
-    if is_value_variant_type_arg(variant_to_enum.clone(), name.clone()) {
+    // This leaf renderer is only reached for NON-generic-param leaves (both callers in
+    // `render_rust_decl_type` / its sibling short-circuit a generic param to its own name first),
+    // so an empty generic-param scope is correct here.
+    if is_value_variant_type_arg(
+        Rc::new(Vec::new()),
+        variant_to_enum.clone(),
+        name.clone(),
+    ) {
         // A value enum-variant used as a type leaf -> collapse to the unit type (the type/value
         // conflation). Was `name.clone()`, which relied on a module-local ZST marker and broke
         // (E0573) wherever the marker was out of scope.
@@ -8169,6 +8205,7 @@ pub fn emit_struct_field_from_child(
             // those (and only those) fields through the env-aware Rust decl renderer.
             if type_node_has_value_variant_arg(
                 rt_child.clone(),
+                generic_param_names.clone(),
                 emit_info.variant_to_enum.clone(),
                 env.source_indices.clone(),
             ) {
