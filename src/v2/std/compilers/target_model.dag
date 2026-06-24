@@ -710,11 +710,16 @@ type TargetLoopShape {
   loop_token: Symbol
 }
 
+type RecordLiteralTypeNaming
+  = Prepend
+  | Omit
+
 type TargetRecordConstructShape {
   open: Symbol
   close: Symbol
   separator: Symbol
   assign: Symbol
+  record_literal_names_type: RecordLiteralTypeNaming
 }
 
 type TargetFieldAccessShape {
@@ -1509,6 +1514,27 @@ fn decode_loop_shape_bundle(bundle: Node) -> Outcome<TargetLoopShape> {
   )
 }
 
+fn record_literal_type_naming_to_symbol(naming: RecordLiteralTypeNaming) -> Symbol {
+  match naming {
+    Prepend => ^record_literal_type_naming_prepend
+    Omit => ^record_literal_type_naming_omit
+  }
+}
+
+fn record_literal_type_naming_from_symbol(symbol: Symbol) -> Outcome<RecordLiteralTypeNaming> {
+  if symbol == ^record_literal_type_naming_prepend {
+    outcome_accepted(Prepend)
+  } else if symbol == ^record_literal_type_naming_omit {
+    outcome_accepted(Omit)
+  } else {
+    outcome_rejected(
+      target_value_expr_operand_wire_malformed_diagnostic(
+        wire: target_model_type_atom_node(identity: symbol)
+      )
+    )
+  }
+}
+
 fn decode_record_construct_shape_bundle(bundle: Node) -> Outcome<TargetRecordConstructShape> {
   bind_outcome(
     o: projection_bundle_symbol_field(bundle: bundle, field: ^target_value_expr_field_record_open),
@@ -1522,12 +1548,26 @@ fn decode_record_construct_shape_bundle(bundle: Node) -> Outcome<TargetRecordCon
               bind_outcome(
                 o: projection_bundle_symbol_field(bundle: bundle, field: ^target_value_expr_field_record_assign),
                 f: fn(assign) {
-                  outcome_accepted(
-                    TargetRecordConstructShape {
-                      open: open,
-                      close: close,
-                      separator: separator,
-                      assign: assign
+                  bind_outcome(
+                    o: projection_bundle_symbol_field(
+                      bundle: bundle,
+                      field: ^target_value_expr_field_record_names_type
+                    ),
+                    f: fn(names_type_symbol) {
+                      bind_outcome(
+                        o: record_literal_type_naming_from_symbol(symbol: names_type_symbol),
+                        f: fn(names_type) {
+                          outcome_accepted(
+                            TargetRecordConstructShape {
+                              open: open,
+                              close: close,
+                              separator: separator,
+                              assign: assign,
+                              record_literal_names_type: names_type
+                            }
+                          )
+                        }
+                      )
                     }
                   )
                 }
@@ -4863,35 +4903,36 @@ fn target_value_expression_record_construct_to_concrete_tokens(
                   catalog: catalog
                 ),
                 f: fn(field_tokens) {
+                  let type_name_prefix_tokens = match projection.record_construct_form.record_literal_names_type {
+                    Prepend => Cons {
+                      head: target_value_expression_binding_ref_token(
+                        binding: type_name,
+                        projection: projection
+                      ),
+                      tail: Empty
+                    }
+                    Omit => Empty
+                  }
                   outcome_accepted(
                     list_append(
                       left: list_append(
                         left: list_append(
-                          left: list_append(
-                            left: Cons {
-                              head: target_value_expression_binding_ref_token(
-                                binding: type_name,
-                                projection: projection
-                              ),
-                              tail: Empty
+                          left: type_name_prefix_tokens,
+                          right: Cons {
+                            head: FixedToken {
+                              token_class: projection.record_construct_form.open
                             },
-                            right: Cons {
-                              head: FixedToken {
-                                token_class: projection.record_construct_form.open
-                              },
-                              tail: Empty
-                            }
-                          ),
-                          right: field_tokens
+                            tail: Empty
+                          }
                         ),
-                        right: Cons {
-                          head: FixedToken {
-                            token_class: projection.record_construct_form.close
-                          },
-                          tail: Empty
-                        }
+                        right: field_tokens
                       ),
-                      right: Empty
+                      right: Cons {
+                        head: FixedToken {
+                          token_class: projection.record_construct_form.close
+                        },
+                        tail: Empty
+                      }
                     )
                   )
                 }
@@ -6247,6 +6288,14 @@ fn value_expr_projection_bundle_node(projection: TargetValueExpressionProjection
               name: ^target_value_expr_field_record_assign,
               target: target_model_type_atom_node(
                 identity: projection.record_construct_form.assign
+              )
+            ),
+            target_model_named_edge(
+              name: ^target_value_expr_field_record_names_type,
+              target: target_model_type_atom_node(
+                identity: record_literal_type_naming_to_symbol(
+                  naming: projection.record_construct_form.record_literal_names_type
+                )
               )
             )
           ]

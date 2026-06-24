@@ -127,6 +127,8 @@ mod target_model_runtime_import_repro;
 #[cfg(test)]
 mod typescript_effect_io_receipt_test;
 #[cfg(test)]
+mod typescript_field_access_typecheck_test;
+#[cfg(test)]
 mod typescript_program_emit_run_test;
 #[cfg(test)]
 mod v1_compiler_lib_test;
