@@ -1,6 +1,5 @@
 module extdeps.github.github
 
-import std.serialization { VariantEncoding, StringVariant, VariantNaming, AsAuthored }
 import std.types { Timestamp, Url }
 
 import extdeps.external_authority { ExternalAuthority }
@@ -12,8 +11,6 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
     locator: "docs.github.com/en/rest"
   }
 }
-
-data wire_contract: VariantEncoding = StringVariant { naming: AsAuthored }
 
 type UserType = User | Bot | Organization
 
