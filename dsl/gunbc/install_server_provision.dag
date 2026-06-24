@@ -1,14 +1,20 @@
 module gunbc.install_server_provision
 
-import std.types { String, NonEmptyStr, Bool }
+import std.types { String, NonEmptyStr, Bool, List }
 import std.resources { Network }
 import extdeps.shell
+import extdeps.languages.bash.program {
+  ShellWord, ShellStmt, ShellProgram,
+  Lit, VarRef, Concat, CmdSubst,
+  Command, Assign, If, Pipe, Exit, WithRedir, StderrToNull,
+  lit, var_ref, serialize_bash,
+}
 
-data install_server_provision_doc: String = "Live .dag-driven stand-up of the srv3 PXE/UEFI-HTTP install server on the LAN host srv2-lan (192.168.1.188, an aarch64 Altra). Dogfoods the substrate: every named provisioning step is its OWN shell.Exec.Run node dispatched by `gunbc run`, so the .dag node graph -- not a base64 of bash -- is the authority for WHAT runs in WHAT ORDER (effect nodes execute in declaration order, the same idiom proven in bmc_bootstrap_provision). Steps: apt (dnsmasq + grub-efi-arm64-signed + rsync) -> disable stock dnsmasq service -> make webroot -> resolve+fetch ISO -> verify ISO (checksum). FAIL-CLOSED throughout: host_exec applies `set -e` so any failed command in a step fails that node loudly; pattern aggregates per-node .success so a failed apt-install yields ok=false (no PREP_DONE-then-true); the ISO step never conflates presence with completeness -- presence/in-progress is reported, and provision_verify_iso is the loud gate that sha256-verifies against the upstream SHA256SUMS (ISO_CHECKSUM_MISMATCH_FAIL_CLOSED + nonzero exit, never a silent truncated file). HTTP+IP boot URL (http://192.168.1.188/ubuntu-24.04/), no DNS/TLS, per the firmware-trust pragmatics. proxyDHCP hands out no leases (coexists with the router DHCP)."
+data install_server_provision_doc: String = "Live .dag-driven stand-up of the srv3 PXE/UEFI-HTTP install server on the LAN host srv2-lan (192.168.1.188, an aarch64 Altra). Each provisioning step is built as a MODELED ShellProgram value (a bash AST over extdeps.languages.bash.program: Command/Assign/If/Pipe/CmdSubst/Exit), NOT a hand-glued bash string. The shell text exists only at the leaf, produced by serialize_bash -- the same model-then-emit shape os_install_emit uses for cloud-config YAML (typed YamlValue -> serialize_yaml). So the .dag node graph owns step ORDER and the bash AST owns step LOGIC; the control flow (if/grep/pipe/exit), sentinels, regex, and discovery protocol are substrate-modeled and fold-checkable, not opaque. FAIL-CLOSED throughout: every program sets set_e=true (any failed command fails the step loudly); the verify program is the loud sha256 gate (ISO_CHECKSUM_MISMATCH_FAIL_CLOSED + Exit{3}); the discovery program fails closed when no ISO matches (NO_MATCHING_ISO_FAIL_CLOSED + Exit{2}). The pattern aggregates per-node .success so a failed step yields ok=false. HTTP+IP boot URL (http://192.168.1.188/ubuntu-24.04/), no DNS/TLS, per the firmware-trust pragmatics. proxyDHCP hands out no leases (coexists with the router DHCP)."
 
-data host_exec_transport_doc: String = "ssh is ONE realization of the 'run this command on host H' interface; it is centralized in host_exec() so the transport is modeled in a SINGLE authority, not stringified at every call site (the §3 transport-vs-interface seam). Each step fn returns the transport-agnostic command; host_exec binds the ssh transport + the fail-closed `set -e` preamble. The full §3 fix -- a modeled remote-exec interface whose transport (ssh / local sh -c / emit+thin-runner) is a pluggable Realization handler shared with the converge lane -- is the cross-lane coherence work; until it lands, host_exec is the one seam to migrate."
+data host_exec_transport_doc: String = "ssh is ONE realization of the 'run this program on host H' interface; it is centralized in host_exec() so the transport is a SINGLE authority, not stringified at every call site (the §3 transport-vs-interface seam). Each step fn returns a transport-agnostic ShellProgram; host_exec serializes it (serialize_bash) and binds the ssh transport. Because the serialized program is full of single-quotes (serialize_word single-quotes every Lit), it cannot be wrapped in `ssh host '...'`; it is fed to the remote over a quoted heredoc (`ssh host bash -s <<'EOF' ... EOF`), which passes the body verbatim and propagates the remote exit code (set -e -> nonzero -> shell.Exec.Run .success=false). The full §3 fix -- a modeled remote-exec interface whose transport (ssh / local sh -c / emit+thin-runner) is a pluggable Realization handler shared with the converge lane -- is the cross-lane coherence work; until it lands, host_exec is the one seam to migrate."
 
-data shell_as_substrate_debt_doc: String = "NAMED DEBT + DISSOLVE-ON (§4/§6), distinct from the §3 transport seam above. The transport seam (host_exec) is HOW an effect reaches the host; THIS debt is the effect's LOGIC being authored as opaque shell rather than modeled: each step_* returns a hand-written shell blob carrying control flow (if/grep/exit), error sentinels (NO_MATCHING_ISO_FAIL_CLOSED), package lists, regex, the discover-newest-point-release protocol, idempotency gates, and the systemd-run background-fetch protocol -- all opaque to the substrate (the §4 'base64 of bash' the node graph only partially escapes: the graph owns step ORDER, the strings still own step LOGIC). DISSOLVE-ON: this dissolves on the SAME host-effect interface as the transport (#5745 / docs/plans/host-effect-orchestration.md), but a DIFFERENT facet of it -- when HostEffect becomes a structured coproduct value (ShellCommand is one arm, but apt-install / iso-fetch / mount / discovery become MODELED effects whose fail-closed + idempotency + discovery logic lives in the substrate as typed effects + policy=OneShotIdempotent + the Receipt's converged-state, not in bash). Concretely: dissolve when these steps are re-expressed as modeled effect compositions over apply(target, effect, policy) and the shell strings shrink to the irreducible kernel a transport genuinely needs. Until then this whole module is an honestly-marked transient scaffold (the install-server-bootstrap displaced cost is worth shipping now); it must NOT be cited as the modeled end-state."
+data shell_as_substrate_debt_doc: String = "NAMED DEBT + DISSOLVE-ON (§4/§6), distinct from the §3 transport seam above. The step LOGIC is now a MODELED bash AST (ShellProgram), which dissolves the prior 'base64 of bash' debt -- the if/grep/pipe/exit control flow, sentinels, and discovery protocol live in the substrate as typed ShellStmt, not opaque strings. The REMAINING debt is one level up: a bash AST is still SHELL-SHAPED. The semantically-higher form models the OPERATIONS (install-package, ensure-directory, fetch-and-verify-artifact, ensure-service-absent) as typed HOST EFFECTS where bash is just ONE emission -- the proven pattern at gunbc.host_converge (typed ConvergeTarget -> fleet_converge_emit bash) but with a GENERAL provisioning effect vocabulary that does not yet exist. DISSOLVE-ON: that vocabulary is the host-effect orchestration interface (#5745 / docs/plans/host-effect-orchestration.md + the orchestration-as-intent gap in docs/plans/emission-ingestion-inverse.md). When apply(target, effect, policy) lands a general effect coproduct, each step here re-expresses as a modeled effect (PackageInstall / DirectoryEnsure / ArtifactFetchVerified / ServiceAbsent) whose fail-closed + idempotency + discovery logic is the effect's, and serialize_bash becomes one of its handlers. Until then this module is an honestly-marked transient scaffold (the install-server-bootstrap displaced cost is worth shipping now); it must NOT be cited as the modeled end-state."
 
 data install_server_host: NonEmptyStr = "srv2-lan"
 
@@ -16,7 +22,7 @@ data install_server_webroot: NonEmptyStr = "/srv/install"
 
 data install_server_iso_path: NonEmptyStr = "/srv/ubuntu.iso"
 
-data iso_url_determination_doc: String = "The ISO URL is NOT a pinned literal (a pinned point-release silently 404s when Ubuntu ships the next one). It is DECOMPOSED into the real decisions -- mirror, series (the LTS we target), channel, flavor, arch -- and the volatile point-release is DISCOVERED at fetch time in iso_resolve_prelude: list the release directory, regex the matching ubuntu-<series>.<N>-<flavor>-<arch>.iso entries, pick the highest (sort -V | tail -1). FAIL-CLOSED if none match (NO_MATCHING_ISO_FAIL_CLOSED + exit 2). The same prelude is reused by the fetch and verify steps (one authority for WHICH iso)."
+data iso_url_determination_doc: String = "The ISO URL is NOT a pinned literal (a pinned point-release silently 404s when Ubuntu ships the next one). It is DECOMPOSED into the real decisions -- mirror, series (the LTS we target), channel, flavor, arch -- and the volatile point-release is DISCOVERED at fetch time by iso_discovery_stmts: list the release directory, regex the matching ubuntu-<series>.<N>-<flavor>-<arch>.iso entries, pick the highest (sort -V | tail -1). FAIL-CLOSED if none match (NO_MATCHING_ISO_FAIL_CLOSED + Exit{2}). The same prelude statements are reused (append-ed) by the fetch and verify programs (one authority for WHICH iso)."
 
 data ubuntu_iso_mirror_base: NonEmptyStr = "https://cdimage.ubuntu.com/releases"
 
@@ -28,57 +34,108 @@ data ubuntu_iso_flavor: NonEmptyStr = "live-server"
 
 data ubuntu_iso_arch: NonEmptyStr = "arm64"
 
-fn iso_discovery_env() -> String {
-  join([
-    concat("MIRROR=", ubuntu_iso_mirror_base),
-    concat("SERIES=", ubuntu_iso_series),
-    concat("CHANNEL=", ubuntu_iso_channel),
-    concat("FLAVOR=", ubuntu_iso_flavor),
-    concat("ARCH=", ubuntu_iso_arch)
-  ], "; ")
+fn cmd(words: List<ShellWord>) -> ShellStmt {
+  Command { words: words }
 }
 
-fn iso_resolve_prelude() -> String {
-  concat(iso_discovery_env(), "; BASE=\"$MIRROR/$SERIES/$CHANNEL\"; PAT=\"ubuntu-$SERIES[.0-9]*-$FLAVOR-$ARCH[.]iso\"; ISO=$(curl -sL \"$BASE/\" | grep -oE \"$PAT\" | sort -V | tail -1); if [ -z \"$ISO\" ]; then echo NO_MATCHING_ISO_FAIL_CLOSED; exit 2; fi")
+fn echo1(msg: String) -> ShellStmt {
+  Command { words: [lit(text: "echo"), lit(text: msg)] }
 }
 
-fn host_exec(host: NonEmptyStr, command: String) -> String {
-  concat(concat(concat("ssh ", host), " 'set -e; "), concat(command, "'"))
+fn echo_words(parts: List<ShellWord>) -> ShellStmt {
+  Command { words: [lit(text: "echo"), Concat { parts: parts }] }
 }
 
-fn step_apt_install() -> String {
-  "sudo DEBIAN_FRONTEND=noninteractive apt-get update -y; sudo DEBIAN_FRONTEND=noninteractive apt-get install -y dnsmasq grub-efi-arm64-signed rsync; echo APT_DONE"
+fn pipe2(left: ShellStmt, right: ShellStmt) -> ShellStmt {
+  Pipe { left: left, right: right }
 }
 
-fn step_disable_stock_dnsmasq() -> String {
-  "if systemctl list-unit-files dnsmasq.service --no-legend 2>/dev/null | grep -q dnsmasq; then sudo systemctl disable --now dnsmasq; fi; echo DNSMASQ_SERVICE_DISABLED"
+fn fail_closed_program(stmts: List<ShellStmt>) -> ShellProgram {
+  ShellProgram { set_e: true, statements: stmts }
 }
 
-fn step_make_webroot() -> String {
-  "sudo install -d /srv/install /srv/install/autoinstall; echo WEBROOT_READY"
+fn iso_discovery_stmts() -> List<ShellStmt> {
+  [
+    Assign { name: "MIRROR", value: lit(text: ubuntu_iso_mirror_base) },
+    Assign { name: "SERIES", value: lit(text: ubuntu_iso_series) },
+    Assign { name: "CHANNEL", value: lit(text: ubuntu_iso_channel) },
+    Assign { name: "FLAVOR", value: lit(text: ubuntu_iso_flavor) },
+    Assign { name: "ARCH", value: lit(text: ubuntu_iso_arch) },
+    Assign { name: "BASE", value: Concat { parts: [var_ref(name: "MIRROR"), lit(text: "/"), var_ref(name: "SERIES"), lit(text: "/"), var_ref(name: "CHANNEL")] } },
+    Assign { name: "PAT", value: Concat { parts: [lit(text: "ubuntu-"), var_ref(name: "SERIES"), lit(text: "[.0-9]*-"), var_ref(name: "FLAVOR"), lit(text: "-"), var_ref(name: "ARCH"), lit(text: "[.]iso")] } },
+    Assign { name: "ISO", value: CmdSubst { body: pipe2(left: pipe2(left: pipe2(left: cmd(words: [lit(text: "curl"), lit(text: "-sL"), Concat { parts: [var_ref(name: "BASE"), lit(text: "/")] }]), right: cmd(words: [lit(text: "grep"), lit(text: "-oE"), var_ref(name: "PAT")])), right: cmd(words: [lit(text: "sort"), lit(text: "-V")])), right: cmd(words: [lit(text: "tail"), lit(text: "-1")])) } },
+    If { cond: cmd(words: [lit(text: "["), lit(text: "-z"), var_ref(name: "ISO"), lit(text: "]")]), then: [echo1(msg: "NO_MATCHING_ISO_FAIL_CLOSED"), Exit { code: 2 }] },
+  ]
 }
 
-fn step_resolve_and_fetch_iso() -> String {
-  concat(iso_resolve_prelude(), "; echo RESOLVED_URL=$BASE/$ISO; if systemctl is-active --quiet srv3-isodl; then echo ISO_FETCH_IN_PROGRESS; exit 0; fi; if [ -f /srv/ubuntu.iso ]; then echo ISO_FILE_PRESENT $(du -h /srv/ubuntu.iso | cut -f1); exit 0; fi; sudo systemd-run --unit=srv3-isodl --collect wget -q -O /srv/ubuntu.iso \"$BASE/$ISO\"; echo DOWNLOAD_STARTED")
+fn step_apt_install() -> ShellProgram {
+  fail_closed_program(stmts: [
+    cmd(words: [lit(text: "sudo"), lit(text: "DEBIAN_FRONTEND=noninteractive"), lit(text: "apt-get"), lit(text: "update"), lit(text: "-y")]),
+    cmd(words: [lit(text: "sudo"), lit(text: "DEBIAN_FRONTEND=noninteractive"), lit(text: "apt-get"), lit(text: "install"), lit(text: "-y"), lit(text: "dnsmasq"), lit(text: "grub-efi-arm64-signed"), lit(text: "rsync")]),
+    echo1(msg: "APT_DONE"),
+  ])
 }
 
-fn step_verify_iso() -> String {
-  concat(iso_resolve_prelude(), "; cd /tmp; curl -sLO \"$BASE/SHA256SUMS\"; LINE=$(grep \"[* ]$ISO$\" SHA256SUMS); if [ -z \"$LINE\" ]; then echo NO_CHECKSUM_LINE_FAIL_CLOSED; exit 4; fi; WANT=$(echo \"$LINE\" | cut -d\" \" -f1); GOT=$(sha256sum /srv/ubuntu.iso | cut -d\" \" -f1); if [ \"$WANT\" != \"$GOT\" ]; then echo ISO_CHECKSUM_MISMATCH_FAIL_CLOSED; exit 3; fi; echo ISO_VERIFIED $GOT")
+fn step_disable_stock_dnsmasq() -> ShellProgram {
+  fail_closed_program(stmts: [
+    If {
+      cond: pipe2(
+        left: WithRedir { stmt: cmd(words: [lit(text: "systemctl"), lit(text: "list-unit-files"), lit(text: "dnsmasq.service"), lit(text: "--no-legend")]), redir: StderrToNull },
+        right: cmd(words: [lit(text: "grep"), lit(text: "-q"), lit(text: "dnsmasq")])
+      ),
+      then: [cmd(words: [lit(text: "sudo"), lit(text: "systemctl"), lit(text: "disable"), lit(text: "--now"), lit(text: "dnsmasq")])]
+    },
+    echo1(msg: "DNSMASQ_SERVICE_DISABLED"),
+  ])
+}
+
+fn step_make_webroot() -> ShellProgram {
+  fail_closed_program(stmts: [
+    cmd(words: [lit(text: "sudo"), lit(text: "install"), lit(text: "-d"), lit(text: "/srv/install"), lit(text: "/srv/install/autoinstall")]),
+    echo1(msg: "WEBROOT_READY"),
+  ])
+}
+
+fn step_resolve_and_fetch_iso() -> ShellProgram {
+  fail_closed_program(stmts: append(iso_discovery_stmts(), items: [
+    echo_words(parts: [lit(text: "RESOLVED_URL="), var_ref(name: "BASE"), lit(text: "/"), var_ref(name: "ISO")]),
+    If { cond: cmd(words: [lit(text: "systemctl"), lit(text: "is-active"), lit(text: "--quiet"), lit(text: "srv3-isodl")]), then: [echo1(msg: "ISO_FETCH_IN_PROGRESS"), Exit { code: 0 }] },
+    If { cond: cmd(words: [lit(text: "["), lit(text: "-f"), lit(text: "/srv/ubuntu.iso"), lit(text: "]")]), then: [echo1(msg: "ISO_FILE_PRESENT"), Exit { code: 0 }] },
+    cmd(words: [lit(text: "sudo"), lit(text: "systemd-run"), lit(text: "--unit=srv3-isodl"), lit(text: "--collect"), lit(text: "wget"), lit(text: "-q"), lit(text: "-O"), lit(text: "/srv/ubuntu.iso"), Concat { parts: [var_ref(name: "BASE"), lit(text: "/"), var_ref(name: "ISO")] }]),
+    echo1(msg: "DOWNLOAD_STARTED"),
+  ]))
+}
+
+fn step_verify_iso() -> ShellProgram {
+  fail_closed_program(stmts: append(iso_discovery_stmts(), items: [
+    cmd(words: [lit(text: "cd"), lit(text: "/tmp")]),
+    cmd(words: [lit(text: "curl"), lit(text: "-sLO"), Concat { parts: [var_ref(name: "BASE"), lit(text: "/SHA256SUMS")] }]),
+    Assign { name: "LINE", value: CmdSubst { body: cmd(words: [lit(text: "grep"), Concat { parts: [lit(text: "[* ]"), var_ref(name: "ISO"), lit(text: "$")] }, lit(text: "SHA256SUMS")]) } },
+    If { cond: cmd(words: [lit(text: "["), lit(text: "-z"), var_ref(name: "LINE"), lit(text: "]")]), then: [echo1(msg: "NO_CHECKSUM_LINE_FAIL_CLOSED"), Exit { code: 4 }] },
+    Assign { name: "WANT", value: CmdSubst { body: pipe2(left: echo_words(parts: [var_ref(name: "LINE")]), right: cmd(words: [lit(text: "cut"), lit(text: "-d "), lit(text: "-f1")])) } },
+    Assign { name: "GOT", value: CmdSubst { body: pipe2(left: cmd(words: [lit(text: "sha256sum"), lit(text: "/srv/ubuntu.iso")]), right: cmd(words: [lit(text: "cut"), lit(text: "-d "), lit(text: "-f1")])) } },
+    If { cond: cmd(words: [lit(text: "["), var_ref(name: "WANT"), lit(text: "!="), var_ref(name: "GOT"), lit(text: "]")]), then: [echo1(msg: "ISO_CHECKSUM_MISMATCH_FAIL_CLOSED"), Exit { code: 3 }] },
+    echo_words(parts: [lit(text: "ISO_VERIFIED "), var_ref(name: "GOT")]),
+  ]))
+}
+
+fn host_exec(host: NonEmptyStr, program: ShellProgram) -> String {
+  concat("ssh ", concat(host, concat(" bash -s <<'GUNBC_PROVISION_EOF'\n", concat(serialize_bash(p: program), "\nGUNBC_PROVISION_EOF\n"))))
 }
 
 pattern provision_prep_and_fetch() -> { apt: String, webroot: String, fetch: String, ok: Bool }
   uses net: Network
 {
-  node a: shell.Exec.Run(script: host_exec(host: install_server_host, command: step_apt_install()))
-  node d: shell.Exec.Run(script: host_exec(host: install_server_host, command: step_disable_stock_dnsmasq()))
-  node w: shell.Exec.Run(script: host_exec(host: install_server_host, command: step_make_webroot()))
-  node f: shell.Exec.Run(script: host_exec(host: install_server_host, command: step_resolve_and_fetch_iso()))
+  node a: shell.Exec.Run(script: host_exec(host: install_server_host, program: step_apt_install()))
+  node d: shell.Exec.Run(script: host_exec(host: install_server_host, program: step_disable_stock_dnsmasq()))
+  node w: shell.Exec.Run(script: host_exec(host: install_server_host, program: step_make_webroot()))
+  node f: shell.Exec.Run(script: host_exec(host: install_server_host, program: step_resolve_and_fetch_iso()))
   return { apt: a.stdout, webroot: w.stdout, fetch: f.stdout, ok: a.success && d.success && w.success && f.success }
 }
 
 pattern provision_verify_iso() -> { out: String, ok: Bool }
   uses net: Network
 {
-  node v: shell.Exec.Run(script: host_exec(host: install_server_host, command: step_verify_iso()))
+  node v: shell.Exec.Run(script: host_exec(host: install_server_host, program: step_verify_iso()))
   return { out: v.stdout, ok: v.success }
 }

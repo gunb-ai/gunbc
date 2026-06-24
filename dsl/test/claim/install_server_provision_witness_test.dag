@@ -2,8 +2,8 @@ module test.claim.install_server_provision_witness
 
 import std.logic { Bool }
 import std.types { String }
+import extdeps.languages.bash.program { serialize_bash, ShellProgram }
 import gunbc.install_server_provision {
-  iso_resolve_prelude,
   host_exec,
   step_apt_install,
   step_disable_stock_dnsmasq,
@@ -15,11 +15,15 @@ import gunbc.install_server_provision {
   ubuntu_iso_arch
 }
 
-data witness_classification_doc: String = "HONEST SCOPE (§5): these are EMITTER-SHAPE / CORPUS-HYGIENE assertions, NOT runtime behavioral claims. Each is string_contains over a generated shell string, so it proves a property of the MODEL's emission, not that the shell fails closed at runtime -- exactly the 'typecheck + .contains() grep is not a consumer' line in DESIGN.md §5. What they DO discriminate is the emitter's shape: apt_step_does_not_fail_open goes RED if someone reintroduces `|| true` on the install; iso_url_is_discovered_not_pinned goes RED if the URL is pinned to a point-release; dnsmasq_disable_is_construction_gated goes RED if the presence-gate is dropped. So they are construction-guards against the model regressing to a fail-open/pinned shape -- a legitimate but STRUCTURAL claim. The RUNTIME fail-closed behavior (set -e actually aborting, the sha256 gate actually rejecting a bad ISO, apt failure actually yielding ok=false) is proven separately BY EXECUTION: provision_prep_and_fetch and provision_verify_iso were run live against srv2 (ISO_VERIFIED against upstream SHA256SUMS; per-node .success aggregation observed). The live run is the §5 consumer-green-by-execution; these witnesses are the floor-side guard that the emitted shape does not regress between runs."
+data witness_classification_doc: String = "HONEST SCOPE (§5): these are EMITTER-SHAPE / CORPUS-HYGIENE assertions, NOT runtime behavioral claims. Each serializes a MODELED ShellProgram (serialize_bash over the bash AST) and string_contains over the emitted shell, so it proves a property of the MODEL's emission, not that the shell fails closed at runtime -- exactly the 'typecheck + .contains() grep is not a consumer' line in DESIGN.md §5. What they DO discriminate is the emitter's shape: apt_step_does_not_fail_open goes RED if `|| true` is reintroduced on the install; iso_url_is_discovered_not_pinned goes RED if the URL is pinned to a point-release or the discovery pipe is dropped; dnsmasq_disable_is_construction_gated goes RED if the presence-gate is dropped. Because the step LOGIC is now a typed AST, these guards are over emission of that AST, not over a hand-glued string. The RUNTIME fail-closed behavior (set -e actually aborting, the sha256 gate actually rejecting a bad ISO, apt failure actually yielding ok=false) is proven separately BY EXECUTION: provision_prep_and_fetch and provision_verify_iso were run live against srv2 (ISO_VERIFIED against upstream SHA256SUMS; per-node .success aggregation observed). The live run is the §5 consumer-green-by-execution; these witnesses are the floor-side guard that the emitted shape does not regress between runs."
+
+fn emit(p: ShellProgram) -> String {
+  serialize_bash(p: p)
+}
 
 test fn iso_url_is_discovered_not_pinned() -> Bool {
-  let s = iso_resolve_prelude()
-  string_contains(s: s, pattern: "sort -V | tail -1")
+  let s = emit(p: step_resolve_and_fetch_iso())
+  string_contains(s: s, pattern: "'sort' '-V' | 'tail' '-1'")
     && string_contains(s: s, pattern: "NO_MATCHING_ISO_FAIL_CLOSED")
     && string_contains(s: s, pattern: "exit 2")
     && (string_contains(s: s, pattern: "24.04.4") == false)
@@ -27,34 +31,35 @@ test fn iso_url_is_discovered_not_pinned() -> Bool {
 }
 
 test fn iso_url_carries_modeled_parts() -> Bool {
-  let s = iso_resolve_prelude()
+  let s = emit(p: step_resolve_and_fetch_iso())
   string_contains(s: s, pattern: ubuntu_iso_series)
     && string_contains(s: s, pattern: ubuntu_iso_flavor)
     && string_contains(s: s, pattern: ubuntu_iso_arch)
 }
 
 test fn host_exec_applies_fail_closed_preamble() -> Bool {
-  let s = host_exec(host: install_server_host, command: step_apt_install())
+  let s = host_exec(host: install_server_host, program: step_apt_install())
   string_contains(s: s, pattern: "set -e")
     && string_contains(s: s, pattern: "ssh ")
+    && string_contains(s: s, pattern: "bash -s")
 }
 
 test fn apt_step_does_not_fail_open() -> Bool {
-  let s = step_apt_install()
-  string_contains(s: s, pattern: "apt-get install -y dnsmasq")
+  let s = emit(p: step_apt_install())
+  string_contains(s: s, pattern: "'apt-get' 'install' '-y' 'dnsmasq'")
     && (string_contains(s: s, pattern: "|| true") == false)
     && (string_contains(s: s, pattern: "/tmp/isrv-apt.log") == false)
 }
 
 test fn steps_are_transport_agnostic() -> Bool {
-  (string_contains(s: step_apt_install(), pattern: "ssh ") == false)
-    && (string_contains(s: step_resolve_and_fetch_iso(), pattern: "ssh ") == false)
-    && (string_contains(s: step_verify_iso(), pattern: "ssh ") == false)
+  (string_contains(s: emit(p: step_apt_install()), pattern: "ssh ") == false)
+    && (string_contains(s: emit(p: step_resolve_and_fetch_iso()), pattern: "ssh ") == false)
+    && (string_contains(s: emit(p: step_verify_iso()), pattern: "ssh ") == false)
 }
 
 test fn fetch_distinguishes_presence_from_completeness() -> Bool {
-  let f = step_resolve_and_fetch_iso()
-  let v = step_verify_iso()
+  let f = emit(p: step_resolve_and_fetch_iso())
+  let v = emit(p: step_verify_iso())
   string_contains(s: f, pattern: "ISO_FETCH_IN_PROGRESS")
     && string_contains(s: f, pattern: "ISO_FILE_PRESENT")
     && string_contains(s: v, pattern: "ISO_CHECKSUM_MISMATCH_FAIL_CLOSED")
@@ -62,8 +67,15 @@ test fn fetch_distinguishes_presence_from_completeness() -> Bool {
 }
 
 test fn dnsmasq_disable_is_construction_gated() -> Bool {
-  let s = step_disable_stock_dnsmasq()
-  string_contains(s: s, pattern: "list-unit-files dnsmasq.service")
-    && string_contains(s: s, pattern: "systemctl disable --now dnsmasq")
+  let s = emit(p: step_disable_stock_dnsmasq())
+  string_contains(s: s, pattern: "'list-unit-files' 'dnsmasq.service'")
+    && string_contains(s: s, pattern: "'systemctl' 'disable' '--now' 'dnsmasq'")
     && (string_contains(s: s, pattern: "|| true") == false)
+}
+
+test fn step_logic_is_modeled_not_hand_glued() -> Bool {
+  let s = emit(p: step_verify_iso())
+  string_contains(s: s, pattern: "set -e")
+    && string_contains(s: s, pattern: "ISO_VERIFIED")
+    && string_contains(s: s, pattern: "exit 3")
 }
