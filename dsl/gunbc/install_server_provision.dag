@@ -4,13 +4,17 @@ import std.types { String, NonEmptyStr, Bool }
 import std.resources { Network }
 import extdeps.shell
 
-data install_server_provision_doc: String = "Live .dag-driven stand-up of the srv3 PXE/UEFI-HTTP install server on the LAN host srv2-lan (192.168.1.188, an aarch64 Altra). Dogfoods the substrate: every step is a shell.Exec.Run effect dispatched by `gunbc run` (sh -c 'ssh srv2-lan <step>'), so the .dag model is the authority for WHAT runs and gunbc is the executor — no hand-typed provisioning. Sequence: prep (apt dnsmasq + grub-efi-arm64-signed + rsync, webroot, fetch Ubuntu 24.04 arm64 live-server ISO) -> stage webroot (mount ISO, rsync tree, place grubnetaa64.efi, write grub.cfg + autoinstall seed) -> start services (dnsmasq proxyDHCP port=0, python3 HTTP :80) -> drive srv3 BMC (boot-override Pxe once + Reset). HTTP+IP boot URL (http://192.168.1.188/ubuntu-24.04/), no DNS/TLS, per the firmware-trust pragmatics. proxyDHCP hands out no leases (coexists with the router DHCP)."
+data install_server_provision_doc: String = "Live .dag-driven stand-up of the srv3 PXE/UEFI-HTTP install server on the LAN host srv2-lan (192.168.1.188, an aarch64 Altra). Dogfoods the substrate: every named provisioning step is its OWN shell.Exec.Run node dispatched by `gunbc run`, so the .dag node graph -- not a base64 of bash -- is the authority for WHAT runs in WHAT ORDER (effect nodes execute in declaration order, the same idiom proven in bmc_bootstrap_provision). Steps: apt (dnsmasq + grub-efi-arm64-signed + rsync) -> disable stock dnsmasq service -> make webroot -> resolve+fetch ISO -> verify ISO (checksum). FAIL-CLOSED throughout: host_exec applies `set -e` so any failed command in a step fails that node loudly; pattern aggregates per-node .success so a failed apt-install yields ok=false (no PREP_DONE-then-true); the ISO step never conflates presence with completeness -- presence/in-progress is reported, and provision_verify_iso is the loud gate that sha256-verifies against the upstream SHA256SUMS (ISO_CHECKSUM_MISMATCH_FAIL_CLOSED + nonzero exit, never a silent truncated file). HTTP+IP boot URL (http://192.168.1.188/ubuntu-24.04/), no DNS/TLS, per the firmware-trust pragmatics. proxyDHCP hands out no leases (coexists with the router DHCP)."
+
+data host_exec_transport_doc: String = "ssh is ONE realization of the 'run this command on host H' interface; it is centralized in host_exec() so the transport is modeled in a SINGLE authority, not stringified at every call site (the §3 transport-vs-interface seam). Each step fn returns the transport-agnostic command; host_exec binds the ssh transport + the fail-closed `set -e` preamble. The full §3 fix -- a modeled remote-exec interface whose transport (ssh / local sh -c / emit+thin-runner) is a pluggable Realization handler shared with the converge lane -- is the cross-lane coherence work; until it lands, host_exec is the one seam to migrate."
 
 data install_server_host: NonEmptyStr = "srv2-lan"
 
 data install_server_webroot: NonEmptyStr = "/srv/install"
 
-data iso_url_determination_doc: String = "The ISO URL is NOT a pinned literal (a pinned point-release silently 404s when Ubuntu ships the next one). It is DECOMPOSED into the real decisions -- mirror, series (the LTS we target), channel, flavor, arch -- and the volatile point-release is DISCOVERED at fetch time: list the release directory, regex the matching ubuntu-<series>.<N>-<flavor>-<arch>.iso entries, pick the highest (sort -V | tail -1). FAIL-CLOSED if none match (loud NO_MATCHING_ISO_FAIL_CLOSED + nonzero exit, never a silent 404 into a 0-byte file). So the model carries the durable facts; the wire-current version is resolved from the upstream, not guessed."
+data install_server_iso_path: NonEmptyStr = "/srv/ubuntu.iso"
+
+data iso_url_determination_doc: String = "The ISO URL is NOT a pinned literal (a pinned point-release silently 404s when Ubuntu ships the next one). It is DECOMPOSED into the real decisions -- mirror, series (the LTS we target), channel, flavor, arch -- and the volatile point-release is DISCOVERED at fetch time in iso_resolve_prelude: list the release directory, regex the matching ubuntu-<series>.<N>-<flavor>-<arch>.iso entries, pick the highest (sort -V | tail -1). FAIL-CLOSED if none match (NO_MATCHING_ISO_FAIL_CLOSED + exit 2). The same prelude is reused by the fetch and verify steps (one authority for WHICH iso)."
 
 data ubuntu_iso_mirror_base: NonEmptyStr = "https://cdimage.ubuntu.com/releases"
 
@@ -32,14 +36,47 @@ fn iso_discovery_env() -> String {
   ], "; ")
 }
 
-fn provision_prep_fetch_script() -> String {
-  let body = "BASE=$MIRROR/$SERIES/$CHANNEL; PAT=\"ubuntu-$SERIES[.0-9]*-$FLAVOR-$ARCH[.]iso\"; ISO=$(curl -sL \"$BASE/\" | grep -oE \"$PAT\" | sort -V | tail -1); if [ -z \"$ISO\" ]; then echo NO_MATCHING_ISO_FAIL_CLOSED; exit 2; fi; URL=\"$BASE/$ISO\"; echo RESOLVED_URL=$URL; sudo DEBIAN_FRONTEND=noninteractive apt-get update -y >/tmp/isrv-apt.log 2>&1; sudo DEBIAN_FRONTEND=noninteractive apt-get install -y dnsmasq grub-efi-arm64-signed rsync >>/tmp/isrv-apt.log 2>&1; sudo systemctl stop dnsmasq 2>/dev/null || true; sudo systemctl disable dnsmasq 2>/dev/null || true; sudo install -d /srv/install/autoinstall; if [ -f /srv/ubuntu.iso ]; then echo ISO_PRESENT $(du -h /srv/ubuntu.iso | cut -f1); else sudo systemd-run --unit=srv3-isodl --collect wget -q -O /srv/ubuntu.iso \"$URL\"; echo DOWNLOAD_STARTED; fi; echo PREP_DONE"
-  concat(concat("ssh ", concat(install_server_host, " '")), concat(iso_discovery_env(), concat("; ", concat(body, "'"))))
+fn iso_resolve_prelude() -> String {
+  concat(iso_discovery_env(), "; BASE=\"$MIRROR/$SERIES/$CHANNEL\"; PAT=\"ubuntu-$SERIES[.0-9]*-$FLAVOR-$ARCH[.]iso\"; ISO=$(curl -sL \"$BASE/\" | grep -oE \"$PAT\" | sort -V | tail -1); if [ -z \"$ISO\" ]; then echo NO_MATCHING_ISO_FAIL_CLOSED; exit 2; fi")
 }
 
-pattern provision_prep_and_fetch() -> { out: String, ok: Bool }
+fn host_exec(host: NonEmptyStr, command: String) -> String {
+  concat(concat(concat("ssh ", host), " 'set -e; "), concat(command, "'"))
+}
+
+fn step_apt_install() -> String {
+  "sudo DEBIAN_FRONTEND=noninteractive apt-get update -y; sudo DEBIAN_FRONTEND=noninteractive apt-get install -y dnsmasq grub-efi-arm64-signed rsync; echo APT_DONE"
+}
+
+fn step_disable_stock_dnsmasq() -> String {
+  "sudo systemctl disable --now dnsmasq 2>/dev/null || true; echo DNSMASQ_SERVICE_DISABLED"
+}
+
+fn step_make_webroot() -> String {
+  "sudo install -d /srv/install /srv/install/autoinstall; echo WEBROOT_READY"
+}
+
+fn step_resolve_and_fetch_iso() -> String {
+  concat(iso_resolve_prelude(), "; echo RESOLVED_URL=$BASE/$ISO; if systemctl is-active --quiet srv3-isodl; then echo ISO_FETCH_IN_PROGRESS; exit 0; fi; if [ -f /srv/ubuntu.iso ]; then echo ISO_FILE_PRESENT $(du -h /srv/ubuntu.iso | cut -f1); exit 0; fi; sudo systemd-run --unit=srv3-isodl --collect wget -q -O /srv/ubuntu.iso \"$BASE/$ISO\"; echo DOWNLOAD_STARTED")
+}
+
+fn step_verify_iso() -> String {
+  concat(iso_resolve_prelude(), "; cd /tmp; curl -sLO \"$BASE/SHA256SUMS\"; LINE=$(grep \"[* ]$ISO$\" SHA256SUMS); if [ -z \"$LINE\" ]; then echo NO_CHECKSUM_LINE_FAIL_CLOSED; exit 4; fi; WANT=$(echo \"$LINE\" | cut -d\" \" -f1); GOT=$(sha256sum /srv/ubuntu.iso | cut -d\" \" -f1); if [ \"$WANT\" != \"$GOT\" ]; then echo ISO_CHECKSUM_MISMATCH_FAIL_CLOSED; exit 3; fi; echo ISO_VERIFIED $GOT")
+}
+
+pattern provision_prep_and_fetch() -> { apt: String, webroot: String, fetch: String, ok: Bool }
   uses net: Network
 {
-  node r: shell.Exec.Run(script: provision_prep_fetch_script())
-  return { out: r.stdout, ok: r.success }
+  node a: shell.Exec.Run(script: host_exec(host: install_server_host, command: step_apt_install()))
+  node d: shell.Exec.Run(script: host_exec(host: install_server_host, command: step_disable_stock_dnsmasq()))
+  node w: shell.Exec.Run(script: host_exec(host: install_server_host, command: step_make_webroot()))
+  node f: shell.Exec.Run(script: host_exec(host: install_server_host, command: step_resolve_and_fetch_iso()))
+  return { apt: a.stdout, webroot: w.stdout, fetch: f.stdout, ok: a.success && d.success && w.success && f.success }
+}
+
+pattern provision_verify_iso() -> { out: String, ok: Bool }
+  uses net: Network
+{
+  node v: shell.Exec.Run(script: host_exec(host: install_server_host, command: step_verify_iso()))
+  return { out: v.stdout, ok: v.success }
 }
