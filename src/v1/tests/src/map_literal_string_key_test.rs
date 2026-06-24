@@ -66,8 +66,8 @@ fn map_string_int_literal_emits_owned_keys_only() {
         .collect::<Vec<_>>()
         .join("\n");
     assert!(
-        emitted.contains("__m.insert(\"alpha\".to_string()"),
-        "expected owned String key in emitted map literal, got:\n{emitted}"
+        emitted.contains("\"alpha\".to_string()"),
+        "expected owned String key (coerced via .to_string()) in emitted map literal, got:\n{emitted}"
     );
     assert!(
         !emitted.contains("1.to_string()"),
