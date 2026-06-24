@@ -34,6 +34,9 @@ use crate::helpers::{resolve_imports_transitively_with_source_roots, workspace_r
 const WITNESS_ENTRY: &str = "src/v2/compiler/manual/typescript_field_access_emit_test.dag";
 const ADD_FN: &str = "ts_add_emit_source";
 const FIELD_ACCESS_FN: &str = "ts_field_access_emit_source";
+const RECORD_WITNESS_ENTRY: &str =
+    "src/v2/compiler/manual/typescript_record_construct_emit_test.dag";
+const RECORD_CONSTRUCT_FN: &str = "ts_record_construct_emit_source";
 
 fn v2_source_roots() -> Vec<std::path::PathBuf> {
     crate::helpers::v2_layer_roots()
@@ -121,6 +124,32 @@ fn emit_add_and_field_access() -> (String, String) {
     (emit(ADD_FN), emit(FIELD_ACCESS_FN))
 }
 
+/// Resolve a witness `entry` once and emit the FreeMonoid string produced by
+/// `function`. Used for the RecordConstruct witness, which lives in its own
+/// `_test.dag` file.
+fn emit_one(entry: &str, function: &str) -> String {
+    let entry_content = std::fs::read_to_string(workspace_root().join(entry))
+        .unwrap_or_else(|e| panic!("read {entry}: {e}"));
+    let sources =
+        resolve_imports_transitively_with_source_roots(entry, &entry_content, &v2_source_roots());
+    let resolved = compile_to_resolved(Rc::new(sources));
+    let blocking: Vec<String> = resolved
+        .diagnostics
+        .iter()
+        .map(|d| v1_compiler::v1_std_core::diagnostic_to_message(d.diagnostic.clone()))
+        .filter(|m| !m.starts_with("complexity: "))
+        .collect();
+    assert!(
+        blocking.is_empty() && resolved.graph.is_some(),
+        "expected clean resolved graph for {entry}, got diagnostics {blocking:?}"
+    );
+    let graph = resolved.graph.as_ref().expect("resolved graph");
+    let ctx = InterpContext::new(graph, resolved.source_indices.clone(), ExecutionMode::Wet);
+    let value = v1_interpreter::run_in_context(&ctx, function, true)
+        .unwrap_or_else(|e| panic!("run {function}: {e:?}"));
+    decode_freemonoid_string(&value, &ctx)
+}
+
 /// True iff `npx` is on PATH. The CI floor's emit-host gate proves `npx` is
 /// present on the self-hosted runner, so in CI this returns true and the
 /// oracle RUNS (it does not skip).
@@ -197,6 +226,66 @@ fn emitted_typescript_typechecks_under_tsc_noemit() {
     );
     tsc_noemit("ok", &module)
         .unwrap_or_else(|d| panic!("emitted TypeScript failed tsc --noEmit:\n{module}\n{d}"));
+}
+
+#[test]
+fn emitted_typescript_record_construct_typechecks_under_tsc_noemit() {
+    if !npx_available() {
+        eprintln!(
+            "[tsc-oracle] SKIP: npx not on PATH. DISSOLVE this skip when the runner provisions npx \
+             (it already does for dsl/tools/emit_host_gate.dag)."
+        );
+        return;
+    }
+    eprintln!("[tsc-oracle] running emitted_typescript_record_construct_typechecks_under_tsc_noemit");
+
+    // The TS target's `record_literal_names_type: Omit` row makes RecordConstruct
+    // emit an ANONYMOUS object literal (no nominal type name prepended), which is
+    // valid TypeScript. (DAG's row is `Prepend`; the shared fold branches on the
+    // field VALUE, not the target.)
+    let record = emit_one(RECORD_WITNESS_ENTRY, RECORD_CONSTRUCT_FN);
+    assert_eq!(
+        record.trim(),
+        "{ x: a, y: b }",
+        "emitted record construct changed"
+    );
+
+    let module = format!(
+        "const a: number = 1;\n\
+         const b: number = 2;\n\
+         const o ={record};\n\
+         const __x: number = o.x;\n\
+         export {{ __x }};\n"
+    );
+    tsc_noemit("record_ok", &module).unwrap_or_else(|d| {
+        panic!("emitted TypeScript record construct failed tsc --noEmit:\n{module}\n{d}")
+    });
+}
+
+#[test]
+fn tsc_noemit_rejects_nominal_prefixed_object_literal() {
+    if !npx_available() {
+        eprintln!(
+            "[tsc-oracle] SKIP: npx not on PATH. DISSOLVE this skip when the runner provisions npx \
+             (it already does for dsl/tools/emit_host_gate.dag)."
+        );
+        return;
+    }
+    eprintln!("[tsc-oracle] running tsc_noemit_rejects_nominal_prefixed_object_literal");
+
+    // Discriminating control for AXIS 1: the `Prepend` policy (correct for Rust/DAG)
+    // would emit the nominal type name before the brace. In TypeScript that is NOT
+    // a valid object literal. If tsc accepted it, the `Omit` policy would be
+    // unnecessary and the oracle above would be rubber-stamping.
+    let bad_module = "const a: number = 1;\n\
+         const b: number = 2;\n\
+         const o = Point { x: a, y: b };\n\
+         export { o };\n";
+    assert!(
+        tsc_noemit("record_perturb", bad_module).is_err(),
+        "tsc --noEmit accepted a nominal-prefixed object literal (Point {{ ... }}); \
+         the Omit policy / oracle is not discriminating"
+    );
 }
 
 #[test]
