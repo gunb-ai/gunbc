@@ -48,6 +48,21 @@ import gunbc.ci_floor_measurement {
 }
 import gunbc.fleet_intent { fleet_intent_offers }
 
+type WorkloadClass
+  = BatchLatencyTolerant
+  | InteractiveLatencySensitive
+
+data gunbc_ci_cpu_weight_workload_class_marker: String = "WorkloadClass grounds the cgroup v2 cpu.weight kernel axis (range 1-10000, kernel default 100). BatchLatencyTolerant=100 (runner slice: CI builds are batch work, latency-tolerant); InteractiveLatencySensitive=1000 (sessions slice: dashboard/agent sessions are interactive, latency-sensitive, 10x weight). cgroup v2 cpu.weight is WORK-CONSERVING: raising sessions above runners costs zero CI throughput when sessions are idle; under contention the scheduler gives interactive sessions 10x the time slices of runner builds. This is the grounded fix for dashboard slowness under CI load on srv2. dissolve-on: replace the coarse 10x ratio with a weight derived from a measured CPU-PSI/contention curve once contention data is collected."
+
+data gunbc_ci_cpu_weight_unit_modeling_marker: String = "dissolve-on feature:M12-cardinal-count-value-measure-sweep -- workload_class_cpu_weight returns a bare Int for the cgroup v2 cpu.weight kernel scheduler weight (dimensionless range 1-10000). Carrier: Measure<Dimensionless, One, Nat> (same pattern as HardwareThreadCount, Percent). Defer to the M12 value-Measure sweep: convert the full cpu.weight cluster atomically (workload_class_cpu_weight fn + emit down-projection) so the unit modeling stays single-authority -- do NOT peel this field alone (the forked-logic trap). The dissolve-on replaces the bare Int return with a named type (e.g. CpuSchedulerWeight) and updates the manifest emit to extract the count."
+
+fn workload_class_cpu_weight(wc: WorkloadClass) -> Int {
+  match wc {
+    BatchLatencyTolerant => 100
+    InteractiveLatencySensitive => 1000
+  }
+}
+
 type RunnerHostDeployment {
   identity: HostIdentity
   runner_count: Int
@@ -55,6 +70,7 @@ type RunnerHostDeployment {
   per_runner_memory_cap: ByteSize
   build_tokens: HardwareThreadCount
   runner: RunnerSpec
+  workload_class: WorkloadClass
 }
 
 type RunnerDeploymentPlan
@@ -142,7 +158,7 @@ fn resolve_regime1_slice(c: ByteSize, n: Int) -> SessionSliceResolution {
   }
 }
 
-fn resolve_session_slice(mode: SessionReservationMode) -> SessionSliceResolution {
+fn resolve_session_slice(mode: SessionReservationMode, oomd: OomdEnforcementEvidence) -> SessionSliceResolution {
   match mode {
     SessionReservationModeUnset =>
       SessionSliceUnresolved {
@@ -155,10 +171,10 @@ fn resolve_session_slice(mode: SessionReservationMode) -> SessionSliceResolution
         SessionOperatingPointSet { per_session_cap: c, session_concurrency: n } =>
           resolve_regime1_slice(c: c, n: n)
       }
-    Regime2AggregateOomd { oomd_eviction_ceiling: ceiling, session_concurrency: n, aggregate_reservation: agg, oomd_enforcement: oomd } =>
+    Regime2AggregateOomd { oomd_eviction_ceiling: ceiling, session_concurrency: n, aggregate_reservation: agg } =>
       match oomd {
         OomdUnverified =>
-          SessionSliceUnresolved { reason: "REGIME-2 keystone unmet: it over-commits the per-session caps, so it is unsound until per-cgroup memory.max + systemd-oomd eviction is verified live on the hosts (oomd_enforcement = OomdUnverified). Fail closed; do NOT reserve the smaller aggregate without the runtime eviction floor." }
+          SessionSliceUnresolved { reason: "REGIME-2 keystone unmet: it over-commits the per-session caps, so it is unsound until per-cgroup memory.max + systemd-oomd eviction is verified live on the hosts (gunbc_fleet_oomd_evidence = OomdUnverified). Fail closed; do NOT reserve the smaller aggregate without the runtime eviction floor." }
         OomdEnforced =>
           match agg {
             SessionAggregateUnmeasured =>
@@ -212,6 +228,7 @@ fn host_deployment_from_plan(offer: ComputeOffer, cap: ByteSize, tokens: Hardwar
     per_runner_memory_cap: unit_cap,
     build_tokens: tokens,
     runner: runner_spec_from_offer(offer: offer),
+    workload_class: BatchLatencyTolerant,
   }
 }
 
@@ -287,7 +304,7 @@ fn runner_deployment_plan_for(
   match enforcement {
     RunnerSlotUnenforced { reason: r } => PlanUnsound { reason: r }
     RunnerSlotEnforced =>
-      match resolve_session_slice(mode: mode) {
+      match resolve_session_slice(mode: mode, oomd: oomd) {
         SessionSliceUnresolved { reason: r } => PlanUnsound { reason: r }
         SessionSliceResolved { bytes: session_slice, per_session_cap: _, concurrency: _ } =>
           match resolve_run_unit_peak(job_peaks: job_peaks) {
@@ -335,6 +352,7 @@ type SessionHostReservation {
   identity: HostIdentity
   session_count: Int
   per_session_reservation: ByteSize
+  workload_class: WorkloadClass
 }
 
 type SessionReservationPlan
@@ -352,7 +370,7 @@ fn samples_covered(cap: ByteSize) -> Int {
 }
 
 fn session_reservation_plan() -> SessionReservationPlan {
-  match resolve_session_slice(mode: gunbc_ci_session_reservation_mode) {
+  match resolve_session_slice(mode: gunbc_ci_session_reservation_mode, oomd: gunbc_fleet_oomd_evidence) {
     SessionSliceUnresolved { reason: r } => SessionReservationUnsound { reason: r }
     SessionSliceResolved { bytes: _, per_session_cap: c, concurrency: n } =>
       SessionReservationDerived {
@@ -360,6 +378,7 @@ fn session_reservation_plan() -> SessionReservationPlan {
           identity: o.supply.physical.identity,
           session_count: n,
           per_session_reservation: c,
+          workload_class: InteractiveLatencySensitive,
         }),
         fleet_concurrent_sessions: n * fleet_intent_offers.length(),
         per_session_reservation: c,
@@ -382,7 +401,7 @@ type OperatingPointRow {
 }
 
 fn evaluate_operating_point(cap: ByteSize, n: Int) -> OperatingPointRow {
-  let slice = match resolve_session_slice(mode: Regime1WorstCase { point: SessionOperatingPointSet { per_session_cap: cap, session_concurrency: n } }) {
+  let slice = match resolve_session_slice(mode: Regime1WorstCase { point: SessionOperatingPointSet { per_session_cap: cap, session_concurrency: n } }, oomd: gunbc_fleet_oomd_evidence) {
     SessionSliceResolved { bytes: b, per_session_cap: _, concurrency: _ } => b
     SessionSliceUnresolved { reason: _ } => byte_size(0)
   }
