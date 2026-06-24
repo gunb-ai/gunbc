@@ -42,7 +42,7 @@ type UnitManagedOomPolicy {
   managed_oom_swap: ManagedOomAction
   managed_oom_memory_pressure: ManagedOomAction
   managed_oom_memory_pressure_limit: Percent?
-  managed_oom_memory_pressure_duration: Seconds?
+  managed_oom_memory_pressure_duration: Second?
 }
 
 data oomd_managed_oom_memory_pressure_property: NonEmptyStr = "ManagedOOMMemoryPressure"

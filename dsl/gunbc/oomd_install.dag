@@ -1,7 +1,7 @@
 module gunbc.oomd_install
 
 import std.types { NonEmptyStr, String, Bool }
-import std.measure { ByteSize, byte_size_count }
+import std.measure { ByteSize, byte_size_count, second }
 import std.realization_reconcile {
   ShowEffectiveRead,
   ReadObserved,
@@ -50,6 +50,15 @@ import extdeps.os.systemd {
 import extdeps.os.systemctl {
   UnitFileState,
   UnitEnabled,
+  UnitEnabledRuntime,
+  UnitLinked,
+  UnitMasked,
+  UnitStatic,
+  UnitDisabled,
+  UnitIndirect,
+  UnitGenerated,
+  UnitTransient,
+  UnitBad,
 }
 
 data gunbc_oomd_install_doc: String = "Instance 1 of std.realization_reconcile, sibling to gunbc.os_install. Composes the systemd-oomd dependency lifecycle: apt-install systemd-oomd-defaults, write the SESSIONS-slice ManagedOOM drop-in (ManagedOOMMemoryPressure=kill), enable+start the unit, then VERIFY via a systemctl show-effective + oomctl read that GROUNDS OomdEnforced. Per the brief this is PURE .dag with NO live host execution: the committed read is ReadAbsent, so the carrier derives OomdUnverified (fail-closed). OomdEnforced is NOT satisfiable by oomd-active alone — that is a fail-open: an active systemd-oomd with no managed session cgroup has nothing to evict-within under aggregate pressure (zero actual protection). So ground_oomd_from_read requires the FULL conjunction: managed sessions slice exists, unit active AND enabled, effective ManagedOOMMemoryPressure=kill on the slice, the per-session memory.max byte ceiling == C, the parent sessions.slice MemoryMax == the measured aggregate reservation, the ManagedOOMMemoryPressureLimit PSI percent == the intended threshold, and oomctl confirms the slice is in oomd's managed set. The byte ceilings reuse the §3 single authority RunnerSliceCapEffectiveness; the PSI percent is a SEPARATE Percent fact (never conflated with the byte caps — ManagedOOMMemoryPressureLimit takes a PSI percentage, not bytes). WHICH slice and WHICH thresholds are gunbc policy and live here, not in extdeps."
@@ -63,7 +72,7 @@ data gunbc_oomd_sessions_policy: UnitManagedOomPolicy = UnitManagedOomPolicy {
   managed_oom_swap: ManagedOomKill,
   managed_oom_memory_pressure: ManagedOomKill,
   managed_oom_memory_pressure_limit: 60,
-  managed_oom_memory_pressure_duration: 20,
+  managed_oom_memory_pressure_duration: second(20),
 }
 
 type OomdApplyEffect {
@@ -131,7 +140,15 @@ fn unit_is_active(s: SystemdUnitActiveState) -> Bool {
 fn unit_is_enabled(s: UnitFileState) -> Bool {
   match s {
     UnitEnabled => true
-    _ => false
+    UnitEnabledRuntime => false
+    UnitLinked => false
+    UnitMasked => false
+    UnitStatic => false
+    UnitDisabled => false
+    UnitIndirect => false
+    UnitGenerated => false
+    UnitTransient => false
+    UnitBad => false
   }
 }
 
