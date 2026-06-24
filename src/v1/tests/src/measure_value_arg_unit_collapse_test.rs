@@ -11,11 +11,15 @@
 //! `MachineWidth<()>`). The `.dag` authority keeps Q/S (they give a real type-level distinction
 //! between a Time measure and a Length measure); only the Rust seed projection collapses the slot.
 //!
-//! Discriminating witness for the ACTUAL root cause: `Time` is a unit variant of MORE THAN ONE
-//! coproduct in the real corpus (`Quantity`, `realization_measurement`, `realization_width`, ...),
-//! so the prior "exactly one owner" detector (`is_phantom_unit_variant_type_arg`) failed to fire
-//! and emitted the bare name. `OtherClock` below reproduces that ambiguity, so this test goes RED
-//! under the exactly-one predicate and GREEN under the ">=1 owner" fix.
+//! Discriminating witness for the ACTUAL root cause: the alias path already collapsed the slot, but
+//! the fn-SIGNATURE and struct-FIELD render paths did not -- they render applied-type args env-free
+//! (`render_node_type` / `render_rust_type_with_applied_binding`), and the env handed to those paths
+//! does not carry the coproduct's variant->enum bindings, so an env-based variant detector saw
+//! nothing and emitted the bare name (the live E0573 on `std.realization_schedule`'s `CostAccount`
+//! field + `cost_account_measured` signature). The fix keys collapse off the corpus-global
+//! `variant_to_enum` map (env-independent), so all three paths -- alias, field, signature -- agree.
+//! `CostAccount<S>` (field) + `time_measure<S>` (signature) below reproduce the two paths that the
+//! env-based detector missed; both go RED under env-based detection and GREEN under the fix.
 //!
 //! Fixtures are named under `src/v1/...` so `compile_dag_named` exercises the same HostNative emit
 //! as the assembled `--emit-fresh` crate.
@@ -24,25 +28,30 @@ use crate::helpers::compile_dag_named;
 use v1_compiler::v1_compiler_artifact::RenderTarget;
 
 fn emit_host(path: &str, src: &str) -> String {
-    compile_dag_named(path, src, RenderTarget::Rust)
+    let result = compile_dag_named(path, src, RenderTarget::Rust);
+    let out = result
         .files
         .iter()
         .map(|f| f.content.clone())
         .collect::<Vec<_>>()
-        .join("\n")
+        .join("\n");
+    eprintln!(
+        "DBG diags={:?}",
+        crate::helpers::diagnostic_messages(&result)
+    );
+    out
 }
 
 // Mirrors the measure tower: a 3-param product whose first two params are phantom (used only in
 // type-arg slots) and instantiated with `Quantity`/`Scale` value variants, plus a forwarded
-// type-param `S` and a real magnitude type `Nat`. `OtherClock` makes `Time` an AMBIGUOUS variant
-// (owned by two coproducts) -- the exact shape the exactly-one detector could not collapse. The
-// `CostAccount` struct exercises the FIELD render path (which routes through the generic node
-// renderer) in addition to the alias and fn-signature paths.
+// type-param `S` and a real magnitude type `Nat`. The variants are single-owner (as in the real
+// corpus, where `Time` belongs to `Quantity` alone). `CostAccount` exercises the FIELD render path
+// and `time_measure` the fn-SIGNATURE path -- the two paths the env-based detector missed -- in
+// addition to the `ByteSize` alias path.
 const FIXTURE: &str = concat!(
     "module measureunit.fixture\n",
     "import std.nat { Nat }\n\n",
     "type Quantity = Time | Memory | Currency\n",
-    "type OtherClock = Time | Tick\n",
     "type Scale = One | Micro\n\n",
     "type Measure<Q, S, M> {\n  count: M\n}\n\n",
     "type ByteSize = Measure<Memory, One, Nat>\n\n",

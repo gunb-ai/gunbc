@@ -1112,6 +1112,28 @@ pub fn render_rust_fn_sig_type(
     // decl renderer (its `render_rust_applied_type_arg` collapses the slot). Same renderer the
     // generic-params branch below already uses; gated on value-variant presence so every other
     // signature type keeps its existing render path.
+    {
+        let __an = authored_name_at(source_indices.clone(), n.clone());
+        if ((__an.clone() == "Measure".to_string()) || (n.name.clone() == "Measure".to_string())) {
+            let mut __kids = String::new();
+            for c in n.children.clone().iter().cloned() {
+                __kids.push_str(&format!(
+                    "[an={} name={}]",
+                    authored_name_at(source_indices.clone(), c.clone()),
+                    c.name.clone()
+                ));
+            }
+            eprintln!(
+                "DBG2 an={} name={} nchild={} vtoe_has_Time={} vtoe_len={} kids={}",
+                __an,
+                n.name.clone(),
+                n.children.clone().len(),
+                is_value_variant_type_arg(variant_to_enum.clone(), "Time".to_string()),
+                variant_to_enum.len(),
+                __kids
+            );
+        }
+    }
     if type_node_has_value_variant_arg(
         n.clone(),
         variant_to_enum.clone(),
