@@ -22262,6 +22262,20 @@ pub fn data_value_has_cross_refs(value: Rc<Node>) -> bool {
     })
 }
 
+pub fn data_def_annotation_is_named_refinement(
+    annotation: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    let ann_name = authored_name_at(source_indices.clone(), annotation.clone());
+    (((ann_name.clone() != "".to_string()) && annotation.type_annotation.clone().is_some())
+        && !is_container_type(ann_name.clone()))
+        && !is_host_text_carrier_type(
+            annotation.clone(),
+            source_indices.clone(),
+            FaithfulFreeMonoid,
+        )
+}
+
 pub fn emit_data_def(
     name: String,
     type_node: Rc<Node>,
@@ -22282,12 +22296,25 @@ pub fn emit_data_def(
                 _ => annotation_type_node.clone(),
             }
         };
-        let raw_ty_str = render_rust_type_with_applied_binding(
-            render_type_node,
-            shared_types.clone(),
-            emit_info.corpus_repr.clone(),
+        let raw_ty_str = if data_def_annotation_is_named_refinement(
+            annotation_type_node.clone(),
             scope.type_env.clone().source_indices.clone(),
-        );
+        ) {
+            coerce_primitive_type(
+                RenderTarget::Rust,
+                authored_name_at(
+                    scope.type_env.clone().source_indices.clone(),
+                    annotation_type_node.clone(),
+                ),
+            )
+        } else {
+            render_rust_type_with_applied_binding(
+                render_type_node,
+                shared_types.clone(),
+                emit_info.corpus_repr.clone(),
+                scope.type_env.clone().source_indices.clone(),
+            )
+        };
         let ty_str = if ((raw_ty_str.clone() == "BoundedLattice".to_string())
             || (raw_ty_str.clone() == "Rc<BoundedLattice>".to_string()))
         {
