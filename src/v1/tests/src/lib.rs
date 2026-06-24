@@ -155,4 +155,6 @@ mod wet_hermetic_equivalence_test;
 #[cfg(test)]
 mod width_nat_type_arg_test;
 #[cfg(test)]
+mod whole_tree_wiring_enum_test;
+#[cfg(test)]
 mod witness_option_bridge_test;
