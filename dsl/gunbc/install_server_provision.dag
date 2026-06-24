@@ -49,7 +49,7 @@ fn step_apt_install() -> String {
 }
 
 fn step_disable_stock_dnsmasq() -> String {
-  "sudo systemctl disable --now dnsmasq 2>/dev/null || true; echo DNSMASQ_SERVICE_DISABLED"
+  "if systemctl list-unit-files dnsmasq.service --no-legend 2>/dev/null | grep -q dnsmasq; then sudo systemctl disable --now dnsmasq; fi; echo DNSMASQ_SERVICE_DISABLED"
 }
 
 fn step_make_webroot() -> String {

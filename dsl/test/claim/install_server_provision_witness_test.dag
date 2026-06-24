@@ -59,8 +59,9 @@ test fn fetch_distinguishes_presence_from_completeness() -> Bool {
     && string_contains(s: v, pattern: "sha256sum")
 }
 
-test fn dnsmasq_disable_idempotency_is_narrow() -> Bool {
+test fn dnsmasq_disable_is_construction_gated() -> Bool {
   let s = step_disable_stock_dnsmasq()
-  string_contains(s: s, pattern: "systemctl disable --now dnsmasq")
-    && string_contains(s: s, pattern: "|| true")
+  string_contains(s: s, pattern: "list-unit-files dnsmasq.service")
+    && string_contains(s: s, pattern: "systemctl disable --now dnsmasq")
+    && (string_contains(s: s, pattern: "|| true") == false)
 }
