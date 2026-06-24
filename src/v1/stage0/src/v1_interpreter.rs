@@ -299,7 +299,7 @@ fn value_hash(v: &Value) -> u64 {
     h.finish()
 }
 
-fn hash_fields_commutative(fields: &HashMap<Symbol, Value>) -> u64 {
+fn hash_fields_commutative(fields: &[(Symbol, Value)]) -> u64 {
     use std::collections::hash_map::DefaultHasher;
     let mut acc: u64 = 0;
     for (sym, val) in fields.iter() {
@@ -309,6 +309,18 @@ fn hash_fields_commutative(fields: &HashMap<Symbol, Value>) -> u64 {
         acc = acc.wrapping_add(fh.finish());
     }
     acc
+}
+
+pub(crate) fn fields_get(fields: &[(Symbol, Value)], sym: Symbol) -> Option<&Value> {
+    fields
+        .binary_search_by_key(&sym.0, |(s, _)| s.0)
+        .ok()
+        .map(|i| &fields[i].1)
+}
+
+pub(crate) fn sorted_fields(mut v: Vec<(Symbol, Value)>) -> Vec<(Symbol, Value)> {
+    v.sort_unstable_by_key(|(sym, _)| sym.0);
+    v
 }
 
 #[derive(Debug, Clone)]
@@ -323,12 +335,12 @@ pub enum Value {
     Set(Rc<BTreeSet<String>>),
     Record {
         type_name: Symbol,
-        fields: Rc<HashMap<Symbol, Value>>,
+        fields: Rc<Vec<(Symbol, Value)>>,
     },
     Variant {
         type_name: Symbol,
         variant_name: Symbol,
-        fields: Rc<HashMap<Symbol, Value>>,
+        fields: Rc<Vec<(Symbol, Value)>>,
     },
     Closure {
         params: Vec<Symbol>,
@@ -350,12 +362,10 @@ fn map_value(entries: HamtMap<CanonKey, Value>) -> Value {
 }
 
 fn optional_present(value: Value, ctx: &InterpContext) -> Value {
-    let mut fields = HashMap::new();
-    fields.insert(ctx.sym("value"), value);
     Value::Variant {
         type_name: ctx.sym("Optional"),
         variant_name: ctx.sym("Present"),
-        fields: Rc::new(fields),
+        fields: Rc::new(vec![(ctx.sym("value"), value)]),
     }
 }
 
@@ -363,7 +373,7 @@ fn optional_absent(ctx: &InterpContext) -> Value {
     Value::Variant {
         type_name: ctx.sym("Optional"),
         variant_name: ctx.sym("Absent"),
-        fields: Rc::new(HashMap::new()),
+        fields: Rc::new(vec![]),
     }
 }
 
@@ -804,16 +814,16 @@ fn account_env(
 
 fn account_named_fields(
     label: &'static str,
-    fields: &Rc<HashMap<Symbol, Value>>,
+    fields: &Rc<Vec<(Symbol, Value)>>,
     visited: &mut std::collections::HashSet<usize>,
     acc: &mut MemoryAccounting,
 ) {
     if !accounting_first_visit(Rc::as_ptr(fields) as usize, label, visited, acc) {
         return;
     }
-    let mut bytes = (fields.len() * std::mem::size_of::<(Symbol, Value)>()) as u64;
+    let bytes = (fields.len() * std::mem::size_of::<(Symbol, Value)>()) as u64;
     acc.add_unique(label, bytes);
-    for value in fields.values() {
+    for (_, value) in fields.iter() {
         account_value(value, visited, acc);
     }
 }
@@ -960,8 +970,8 @@ impl InterpContext {
         self.symbols.borrow().resolve(sym) == name
     }
 
-    pub fn field<'a>(&self, fields: &'a HashMap<Symbol, Value>, name: &str) -> Option<&'a Value> {
-        fields.get(&self.sym(name))
+    pub fn field<'a>(&self, fields: &'a [(Symbol, Value)], name: &str) -> Option<&'a Value> {
+        fields_get(fields, self.sym(name))
     }
 
     pub fn format_value(&self, val: &Value) -> String {
@@ -1677,11 +1687,11 @@ fn cross_representation_numeric_straddle(a: &Value, b: &Value) -> Option<String>
 }
 
 fn fields_numeric_straddle(
-    af: &HashMap<Symbol, Value>,
-    bf: &HashMap<Symbol, Value>,
+    af: &[(Symbol, Value)],
+    bf: &[(Symbol, Value)],
 ) -> Option<String> {
     af.iter()
-        .filter_map(|(k, av)| bf.get(k).map(|bv| (av, bv)))
+        .filter_map(|(k, av)| fields_get(bf, *k).map(|bv| (av, bv)))
         .filter(|(av, bv)| av != bv)
         .find_map(|(av, bv)| cross_representation_numeric_straddle(av, bv))
 }
@@ -1830,50 +1840,34 @@ fn char_value(c: char) -> Value {
 }
 
 fn native_map_absent_diagnostic_value(ctx: &InterpContext) -> Value {
-    let mut anchor_fields = HashMap::new();
-    anchor_fields.insert(ctx.sym("at"), Value::Str("map_lookup_port".to_string()));
-
-    let mut locus_fields = HashMap::new();
-    locus_fields.insert(
-        ctx.sym("anchor"),
-        Value::Record {
-            type_name: ctx.sym("LocusAnchor"),
-            fields: Rc::new(anchor_fields),
-        },
-    );
-
-    let mut correction_fields = HashMap::new();
-    correction_fields.insert(
-        ctx.sym("reason"),
-        Value::Variant {
-            type_name: ctx.sym("NoCorrectionReason"),
-            variant_name: ctx.sym("ExternalContractUnknown"),
-            fields: Rc::new(HashMap::new()),
-        },
-    );
-
-    let mut diagnostic_fields = HashMap::new();
-    diagnostic_fields.insert(ctx.sym("reason"), Value::Str("map_key_absent".to_string()));
-    diagnostic_fields.insert(
-        ctx.sym("at"),
-        Value::Variant {
-            type_name: ctx.sym("Locus"),
-            variant_name: ctx.sym("PortLocus"),
-            fields: Rc::new(locus_fields),
-        },
-    );
-    diagnostic_fields.insert(
-        ctx.sym("correction"),
-        Value::Variant {
-            type_name: ctx.sym("Correction"),
-            variant_name: ctx.sym("Unavailable"),
-            fields: Rc::new(correction_fields),
-        },
-    );
-
+    let anchor = Value::Record {
+        type_name: ctx.sym("LocusAnchor"),
+        fields: Rc::new(vec![(ctx.sym("at"), Value::Str("map_lookup_port".to_string()))]),
+    };
+    let locus = Value::Variant {
+        type_name: ctx.sym("Locus"),
+        variant_name: ctx.sym("PortLocus"),
+        fields: Rc::new(vec![(ctx.sym("anchor"), anchor)]),
+    };
+    let correction = Value::Variant {
+        type_name: ctx.sym("Correction"),
+        variant_name: ctx.sym("Unavailable"),
+        fields: Rc::new(vec![(
+            ctx.sym("reason"),
+            Value::Variant {
+                type_name: ctx.sym("NoCorrectionReason"),
+                variant_name: ctx.sym("ExternalContractUnknown"),
+                fields: Rc::new(vec![]),
+            },
+        )]),
+    };
     Value::Record {
         type_name: ctx.sym("Diagnostic"),
-        fields: Rc::new(diagnostic_fields),
+        fields: Rc::new(sorted_fields(vec![
+            (ctx.sym("at"), locus),
+            (ctx.sym("correction"), correction),
+            (ctx.sym("reason"), Value::Str("map_key_absent".to_string())),
+        ])),
     }
 }
 
