@@ -71,6 +71,7 @@ import v1.compiler.compiler_tests_rust { compiler_tests_source }
 import v1.compiler.coercion { coerce_primitive_type, is_copy, lookup_checkpoint }
 
 import std.types { is_container_type, is_kernel_type }
+import std.serialization { CoproductWireContract, VariantEncoding, VariantNaming }
 import v1.compiler.infer_env { TypeEnv, TypeBinding, authored_name, lookup_type_by_name, lookup_type_for }
 import v1.compiler.infer_types {
   resolved_type, normalize_access_type_node, for_each_element_type_node,
