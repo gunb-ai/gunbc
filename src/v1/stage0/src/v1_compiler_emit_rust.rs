@@ -1109,6 +1109,22 @@ pub fn render_rust_fn_sig_type_applied_binding(
     }
 }
 
+pub fn alias_rhs_container_arg(
+    arg: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Node> {
+    match arg.inferred.clone().as_deref().cloned() {
+        Some(InferredNode::Resolved { node: rt, .. }) => {
+            if node_is_collection(rt.clone(), source_indices.clone()) {
+                rt.clone()
+            } else {
+                arg.clone()
+            }
+        }
+        _ => arg.clone(),
+    }
+}
+
 pub fn render_rust_alias_rhs_type(
     n: Rc<Node>,
     generic_param_names: Rc<Vec<String>>,
@@ -1240,7 +1256,10 @@ pub fn render_rust_alias_rhs_type(
                                     )
                                 } else {
                                     render_rust_alias_rhs_type(
-                                        arg.clone(),
+                                        alias_rhs_container_arg(
+                                            arg.clone(),
+                                            source_indices.clone(),
+                                        ),
                                         generic_param_names.clone(),
                                         shared_types.clone(),
                                         corpus_repr.clone(),
@@ -14695,6 +14714,28 @@ pub fn emit_typed_fold_lambda(
     }
 }
 
+/// A fold whose lambda binds its element parameter as `_` provably cannot depend on the
+/// element being owned vs borrowed, so the `.cloned()` in the `iter_owned` template is a
+/// spurious clone that forces a `T: Clone` bound the emitter will not synthesize. Detect that
+/// case (the element is the SECOND lambda parameter, after the accumulator) so the caller can
+/// elide `.cloned()`. Conservative: a named-but-unused element does NOT fire this (keeps a
+/// harmless clone), never a wrong elision.
+pub fn fold_lambda_element_unused(
+    lambda_expr: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    match (*lambda_expr.expr_data.clone()).clone() {
+        ExprData::ExprLambda => {
+            let ps = lambda_param_names_at(lambda_expr.clone(), source_indices.clone());
+            match ps.get(1 as usize).cloned() {
+                Some(elem_name) => elem_name == "_".to_string(),
+                None => false,
+            }
+        }
+        _ => false,
+    }
+}
+
 pub fn emit_rust_fold_method_call(
     method_call_node: Rc<Node>,
     fold_accumulator_type: Option<Rc<Node>>,
@@ -15062,12 +15103,28 @@ pub fn emit_rust_fold_method_call(
             None => "compile_error!(\"missing fold function argument\")".to_string(),
         };
         let sharing = language_spec(RenderTarget::Rust).sharing.clone();
+        let elem_unused = match args.clone().get(1 as usize).cloned() {
+            Some(a) => fold_lambda_element_unused(
+                arg_value(a.clone()),
+                scope.type_env.clone().source_indices.clone(),
+            ),
+            None => false,
+        };
+        let iter_template = if elem_unused {
+            v1_rt::replace(
+                sharing.iter_owned.clone(),
+                ".cloned()".to_string(),
+                "".to_string(),
+            )
+        } else {
+            sharing.iter_owned.clone()
+        };
         v1_rt::concat(
             v1_rt::concat(
                 v1_rt::concat(
                     v1_rt::concat(
                         v1_rt::concat(
-                            apply_type_template1(sharing.iter_owned.clone(), recv_str),
+                            apply_type_template1(iter_template, recv_str),
                             ".fold(".to_string(),
                         ),
                         init_str,
@@ -22243,6 +22300,20 @@ pub fn data_value_has_cross_refs(value: Rc<Node>) -> bool {
     })
 }
 
+pub fn data_def_annotation_is_named_refinement(
+    annotation: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    let ann_name = authored_name_at(source_indices.clone(), annotation.clone());
+    (((ann_name.clone() != "".to_string()) && annotation.type_annotation.clone().is_some())
+        && !is_container_type(ann_name.clone()))
+        && !is_host_text_carrier_type(
+            annotation.clone(),
+            source_indices.clone(),
+            FaithfulFreeMonoid,
+        )
+}
+
 pub fn emit_data_def(
     name: String,
     type_node: Rc<Node>,
@@ -22263,12 +22334,25 @@ pub fn emit_data_def(
                 _ => annotation_type_node.clone(),
             }
         };
-        let raw_ty_str = render_rust_type_with_applied_binding(
-            render_type_node,
-            shared_types.clone(),
-            emit_info.corpus_repr.clone(),
+        let raw_ty_str = if data_def_annotation_is_named_refinement(
+            annotation_type_node.clone(),
             scope.type_env.clone().source_indices.clone(),
-        );
+        ) {
+            coerce_primitive_type(
+                RenderTarget::Rust,
+                authored_name_at(
+                    scope.type_env.clone().source_indices.clone(),
+                    annotation_type_node.clone(),
+                ),
+            )
+        } else {
+            render_rust_type_with_applied_binding(
+                render_type_node,
+                shared_types.clone(),
+                emit_info.corpus_repr.clone(),
+                scope.type_env.clone().source_indices.clone(),
+            )
+        };
         let ty_str = if ((raw_ty_str.clone() == "BoundedLattice".to_string())
             || (raw_ty_str.clone() == "Rc<BoundedLattice>".to_string()))
         {

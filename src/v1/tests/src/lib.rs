@@ -35,6 +35,8 @@ mod dag_comment_wall_test;
 #[cfg(test)]
 mod data_cache_scoping_test;
 #[cfg(test)]
+mod data_def_brand_alias_type_test;
+#[cfg(test)]
 mod dependency_pool_index_compile_test;
 #[cfg(test)]
 mod derive_bound_fail_closed_test;
@@ -58,6 +60,8 @@ mod floor_skip_discovery_host_test;
 mod fn_as_value_test;
 #[cfg(test)]
 mod fold_list_generic_instantiation_test;
+#[cfg(test)]
+mod fold_unused_element_clone_elision_test;
 #[cfg(test)]
 mod generator_match_arm_test;
 #[cfg(test)]
@@ -102,6 +106,8 @@ mod measure_periphery_emit_test;
 mod module_authority_resolution_test;
 #[cfg(test)]
 mod money_carrier_cost_witness_test;
+#[cfg(test)]
+mod nested_list_alias_emit_test;
 #[cfg(test)]
 mod nodefold_generic_instantiation_test;
 #[cfg(test)]
@@ -152,6 +158,8 @@ mod v1_compiler_lib_test;
 mod value_carrier_swap_test;
 #[cfg(test)]
 mod wet_hermetic_equivalence_test;
+#[cfg(test)]
+mod whole_tree_wiring_enum_test;
 #[cfg(test)]
 mod width_nat_type_arg_test;
 #[cfg(test)]

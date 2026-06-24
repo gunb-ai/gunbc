@@ -9,7 +9,6 @@ import extdeps.ctrl.jobserver {
   CtrlJobserverCited,
   CtrlJobserverAbsent,
   ctrl_jobserver_config,
-  ctrl_jobserver_flip_values_marker,
   derive_jobserver_tokens,
 }
 import gunbc.fleet_container {
@@ -24,7 +23,6 @@ import gunbc.fleet_container {
   container_baseline_bytes,
   idle_memory_envelope,
   gha_runner_container,
-  fleet_container_baseline_provenance,
 }
 import gunbc.fleet_host_budget {
   HeadroomPolicy,
@@ -43,13 +41,7 @@ import gunbc.fleet_host_budget {
   fleet_host_budget_tree,
   runner_slice_cap,
   runner_slice_cap_drifted,
-  fleet_build_realization_marker,
   gunbc_fleet_oomd_floor_basis,
-  gunbc_fleet_runner_slice_dropin_marker,
-  gunbc_fleet_build_pool_counted_once_marker,
-  gunbc_fleet_session_worstcase_marker,
-  gunbc_fleet_runner_slice_drift_marker,
-  gunbc_fleet_standalone_plan_session_slice_marker,
 }
 import gunbc.ci_floor_measurement {
   OomdEnforcementEvidence,
@@ -58,7 +50,6 @@ import gunbc.ci_floor_measurement {
   RunnerSliceCapEffectiveness,
   CapEffective,
   CapUnbounded,
-  gunbc_ci_regime2_aggregate_dissolution_marker,
 }
 
 fn fixture_cfg() -> CtrlJobserverConfig {
@@ -250,19 +241,6 @@ fn witness_runner_slice_cap_drift_red_receipt() -> Bool {
     && runner_slice_cap_drifted(disk_cap: disk, effective: CapEffective { bytes: byte_size(55307438489) })
 }
 
-fn witness_markers_documented() -> Bool {
-  ctrl_jobserver_flip_values_marker != ""
-    && fleet_container_baseline_provenance != ""
-    && fleet_build_realization_marker != ""
-    && gunbc_fleet_oomd_floor_basis != ""
-    && gunbc_fleet_runner_slice_dropin_marker != ""
-    && gunbc_fleet_build_pool_counted_once_marker != ""
-    && gunbc_fleet_session_worstcase_marker != ""
-    && gunbc_fleet_runner_slice_drift_marker != ""
-    && gunbc_fleet_standalone_plan_session_slice_marker != ""
-    && gunbc_ci_regime2_aggregate_dissolution_marker != ""
-}
-
 test fn fleet_model_holds() -> Bool {
   witness_live_plan_fail_closed()
     && witness_jobserver_absent_unsound()
@@ -281,5 +259,4 @@ test fn fleet_model_holds() -> Bool {
     && witness_tree_conserves()
     && witness_overcommit_tree_refused()
     && witness_runner_slice_cap_drift_red_receipt()
-    && witness_markers_documented()
 }
