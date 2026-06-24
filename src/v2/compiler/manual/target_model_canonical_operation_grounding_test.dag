@@ -2,6 +2,7 @@ module v2.test.manual.target_model_canonical_operation_grounding
 
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }
+import v2.std.node { Node }
 import v2.std.compilers.target_model {
   CanonicalOperation,
   InfixToken,

@@ -653,8 +653,7 @@ fn canonical_order_relation_equal(
   left: CanonicalOrderRelation,
   right: CanonicalOrderRelation
 ) -> Bool {
-  canonical_order_relation_symbol(relation: left)
-    == canonical_order_relation_symbol(relation: right)
+  canonical_order_relation_symbol(relation: left) == canonical_order_relation_symbol(relation: right)
 }
 
 type TargetOperatorShape
