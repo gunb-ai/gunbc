@@ -1606,10 +1606,20 @@ data ts_target_atom_realization_string: TargetAtomRealization = TargetAtomRealiz
   display_name: ^ts_surface_spelling_string
 }
 
+data ts_target_atom_realization_char: TargetAtomRealization = TargetAtomRealization {
+  source_carrier: char_kernel_type_node(),
+  target_model: ts_target_atom_realization_target_model_staging(),
+  type_form: ts_target_atom_type_form(spelling: ^ts_surface_spelling_string),
+  value_form: target_value_template_for_kind(kind: ValueStringLiteral),
+  constructor_form: optional_absent(),
+  display_name: ^char_kernel_type_atom
+}
+
 data ts_target_atom_realization_catalog: List<TargetAtomRealization> = [
   ts_target_atom_realization_symbol,
   ts_target_atom_realization_bool,
-  ts_target_atom_realization_string
+  ts_target_atom_realization_string,
+  ts_target_atom_realization_char
 ]
 
 fn ts_sg2_type_expr_lex_rules() -> LexRuleSet {
