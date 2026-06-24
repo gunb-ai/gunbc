@@ -11,14 +11,15 @@ import extdeps.browser {
 import extdeps.browser.session_program {
   js_str, op_page_js, render_ops,
 }
+import extdeps.uri { Uri, Http, Https, uri_wire }
 
-data srv3_default_bmc_host: String = "https://192.168.1.192"
-data srv3_default_iso_url: String = "http://192.168.1.188/ubuntu-24.04/ubuntu.iso"
+data srv3_default_bmc_host: Uri = Uri { scheme: Https, locator: "192.168.1.192" }
+data srv3_default_iso_url: Uri = Uri { scheme: Http, locator: "192.168.1.188/ubuntu-24.04/ubuntu.iso" }
 data srv3_default_boot_hook_command: String = "gunbc run --source-root dsl --entry dsl/gunbc/srv3_boot_once_cd.dag --function srv3_boot_once_cd"
 
 type WebuiKvmRunner {
-  default_bmc_host: String
-  default_iso_url: String
+  default_bmc_host: Uri
+  default_iso_url: Uri
   default_boot_hook_command: String
   login_ops: List<BrowserPageOp>
   navigate_ops: List<BrowserPageOp>
@@ -71,10 +72,10 @@ fn runner_prelude(r: WebuiKvmRunner) -> List<String> {
     "",
     "function parseArgs(argv) {",
     "  const a = {",
-    concat("    bmcHost: ", concat(js_str(s: r.default_bmc_host), ",")),
+    concat("    bmcHost: ", concat(js_str(s: uri_wire(uri: r.default_bmc_host)), ",")),
     "    bmcUser: 'root',",
     "    bmcPass: process.env.BMC_PASS || '0penBmc',",
-    concat("    isoUrl: ", concat(js_str(s: r.default_iso_url), ",")),
+    concat("    isoUrl: ", concat(js_str(s: uri_wire(uri: r.default_iso_url)), ",")),
     "    isoFile: null,",
     concat("    bootHookCommand: ", concat(js_str(s: r.default_boot_hook_command), ",")),
     "    attach: false,",
