@@ -41,6 +41,17 @@ fn disposition_redundancy_violation_count(dispositions: List<Disposition>, prese
   count_where(xs: dispositions, predicate: fn(d) { disposition_binds_present(d: d, present: present) })
 }
 
+fn disposition_is_terminal(d: Disposition) -> Bool {
+  match d {
+    Terminal { reason: _ } => true
+    Scaffold { dissolves_to: _, bind: _ } => false
+  }
+}
+
+fn terminal_count(dispositions: List<Disposition>) -> Int {
+  count_where(xs: dispositions, predicate: fn(d) { disposition_is_terminal(d: d) })
+}
+
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: SubstrateMandatoryTag },
   rationale: "A Scaffold whose named successor (bind) already exists in the corpus is decidable redundancy (DESIGN sec 2 parallel-representation debt): scaffold + its successor both alive. It is a wall, not a ratchet -- the membership test is exact equality of a field-granular declaration reference. It is a lens rather than a construction only because enumerating the present successors as substrate facts (and ultimately mandating the tag) are not yet available; both are named in grounding_authority. Grounding authority: the parse/resolve walk enumerating every declared decl + field across the corpus as DeclarationRef facts (so present-construction membership is read from the live tree, not passed in), plus the SubstrateMandatoryTag end-state where the substrate requires a Disposition at every coproduct/scaffold definition. Dissolves on: disposition_redundancy_violation_count runs over live dsl/** + src/v2/** Disposition marks against corpus-enumerated DeclarationRef facts; until then it is a lens_unit predicate over explicit (dispositions, present) inputs. The ratcheting redundancy lens itself dissolves once Disposition is a substrate-mandatory field and the bad state is unwritable by construction"
