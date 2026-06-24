@@ -50,7 +50,6 @@ import gunbc.ci_floor_measurement {
   RunnerSliceCapEffectiveness,
   CapEffective,
   CapUnbounded,
-  gunbc_ci_regime2_aggregate_dissolution_marker,
 }
 
 fn fixture_cfg() -> CtrlJobserverConfig {

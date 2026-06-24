@@ -3,6 +3,8 @@ module extdeps.entropy
 import std.integer { UInt8 }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import std.disposition { Disposition, Scaffold, SingleAuthority, RealizationDispatch }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -11,9 +13,23 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data entropy_transport_linux_gnu_only: String = "🟡 SCAFFOLD — transport is Linux/GNU-coreutils-only: head(1) from util-linux, base64(1) -w 0 from GNU coreutils (macOS/BSD base64 uses -b 0). Dissolution trigger: per-OS dispatch realization (extdeps/entropy/linux.dag, bsd.dag) replaces this single shell pipeline."
+data entropy_transport_linux_gnu_only: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "extdeps.os.os",
+    decl_name: "cited_operating_system_surface",
+    field: WholeDeclaration
+  }
+}
 
-data entropy_count_bytes_unit_debt: String = "🟡 SCAFFOLD — count: Int is a flat-scalar unit field for bytes-to-read; grounded carrier is ByteSize (std.measure). std.resources Entropy.read_bytes already uses ByteSize; this transport input stays Int because head(1) accepts a plain integer and ByteSize extraction is not yet wired at the shell-argv interpolation layer. Dissolve-on: feature:bytesize-argv-interpolation — argv interpolation supports ByteSize extraction (byte_size_count); count migrates to ByteSize and this note drops."
+data entropy_count_bytes_unit_debt: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "std.measure",
+    decl_name: "ByteSize",
+    field: WholeDeclaration
+  }
+}
 
 service Urandom {
   operation ReadBytes {

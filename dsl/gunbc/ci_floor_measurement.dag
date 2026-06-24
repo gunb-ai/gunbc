@@ -6,7 +6,7 @@ import std.realization_measurement {
   ConcurrentMemoryPeakSample,
   concurrent_memory_peak_per_share,
 }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.disposition { Disposition, Scaffold, SingleAuthority, Terminal }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data gunbc_ci_floor_measured_peak: ConcurrentMemoryPeakSample = ConcurrentMemoryPeakSample {
@@ -96,14 +96,21 @@ data gunbc_ci_session_reservation_mode: SessionReservationMode = Regime2Aggregat
   aggregate_reservation: SessionAggregateMeasured { bytes: byte_size(21474836480) },
 }
 
-data gunbc_ci_regime2_aggregate_dissolution_marker: String = "dissolve-on stage:per-type-baseline-build-pool -- Regime2AggregateOomd.aggregate_reservation is the COARSE single-aggregate stand-in. It DISSOLVES into the grounded decomposition host = overhead + Sigma(container-type baselines: GhaRunnerContainer idle ~0.2-0.3GiB + AgentSessionContainer idle ~0.35-0.5GiB, each a measured ResourceEnvelope) + ONE capped shared_build_pool + headroom. The shared build pool is NOT new infra: it is the EXISTING host-wide ctrl-jobserver (scheduling arm) + ctrl-sccache (caching arm) = the two arms of std.realization RealizedStep already unifying GHA-CI builds and session ctrl-builds; its authority is the ctrl-jobserver instance config (build_pool_budget = TOKENS x MIB_PER_JOB, gunbc owns the SHAPE, ctrl owns the values, cited in extdeps per shapes-vs-instances). Coarse-form scaffold per DESIGN sec 6: honest forward-composing, NOT parallel-representation debt; the single aggregate is exactly Sigma(baselines)+build_pool collapsed."
+data gunbc_ci_regime2_aggregate_dissolution_marker: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "extdeps.ctrl.jobserver",
+    decl_name: "jobserver_build_pool_bytes",
+    field: WholeDeclaration
+  }
+}
 
 
 
 
-data gunbc_ci_footprint_granularity_note: String = "two distinct memory footprints, intentionally separate carriers (a de-conflation, not a fork): (1) INTER-run whole-run cgroup peak gunbc_ci_job_peaks (~24GiB) decides how many runs/runners CO-RESIDE per host -> the conserving budget tree; (2) WITHIN-run per-shard peak gunbc_ci_floor_per_shard_peak_rss_bytes (~2.9GiB) decides parallelism INSIDE one run against its container cap -> memory_aware_spawn_width (#5444). Different granularity (whole-run vs per-shard) and different decision, so two carriers. Do not consolidate them into one authority."
+data gunbc_ci_footprint_granularity_disposition: Disposition = Terminal { reason: "DESIGN §3 deliberate two-concerns split: INTER-run whole-run cgroup peak (gunbc_ci_job_peaks, ~24GiB) governs co-residence - how many runs share a host, feeding the conserving budget tree; WITHIN-run per-shard peak (gunbc_ci_floor_per_shard_peak_rss_bytes, ~2.9GiB) governs parallelism inside one run against its container cap, feeding memory_aware_spawn_width. Different granularity, different scheduling decision, different consumer. Do not consolidate them into one authority." }
 
-data gunbc_ci_footprint_bridge_followup: String = "deferred unification (named follow-up, NOT done here): the inter-run whole-run peak is plausibly width x per-shard-peak + base, so the INTER-run footprint could eventually DERIVE from the within-run model once both are measured -- the real single authority. Not attempted in this PR: it would re-couple the two carriers and risk zeroing the live floor width. Also a future derive-target: the within-run spawn width (~4) is itself a conservative/hand value under the all-spawns-through-dag end-state."
+data gunbc_ci_footprint_bridge_disposition: Disposition = Terminal { reason: "Deferred unification path (acknowledged, not attempted): INTER-run whole-run peak is plausibly within-run-width x per-shard-peak + base, so the INTER-run footprint could eventually derive from the WITHIN-run model once both are measured - the real single authority. Held back deliberately: re-coupling the two carriers risks zeroing the live floor width before per-type baseline measurement data exists." }
 
 type HostFixedOverhead
   = HostFixedOverheadMeasured { bytes: ByteSize }
