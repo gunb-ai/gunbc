@@ -149,7 +149,10 @@ import v2.std.compilers.target_model {
   BlockEvaluationMode,
   ValueProducing,
   StatementSequenced,
-  derive_bodied_arrow_scaffold
+  derive_bodied_arrow_scaffold,
+  TargetModuleProjection,
+  TargetImportShape,
+  EsModuleImport
 }
 import v2.std.node {
   Arrow,
@@ -2459,7 +2462,13 @@ fn ts_wave2a_lex_rules() -> LexRuleSet {
       ts_lex_rule(token_class: ^ts_token_rbracket, text: "]"),
       ts_lex_rule(token_class: ^ts_token_comma, text: ", "),
       ts_lex_rule(token_class: ^ts_token_colon, text: ": "),
-      ts_lex_rule(token_class: ^ts_token_semicolon, text: ";")
+      ts_lex_rule(token_class: ^ts_token_semicolon, text: ";"),
+      ts_lex_rule(token_class: ^ts_token_kw_import, text: "import "),
+      ts_lex_rule(token_class: ^ts_token_kw_from, text: "from "),
+      ts_lex_rule(token_class: ^ts_token_import_lbrace, text: "{ "),
+      ts_lex_rule(token_class: ^ts_token_import_rbrace, text: " } "),
+      ts_lex_rule(token_class: ^ts_token_module_quote, text: "\""),
+      ts_lex_rule(token_class: ^ts_token_module_path_sep, text: "/")
     ]
   }
 }
