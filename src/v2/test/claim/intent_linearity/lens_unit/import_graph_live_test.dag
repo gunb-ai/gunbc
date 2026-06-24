@@ -39,10 +39,6 @@ fn declared_with_bogus() -> FreeMonoid<String> {
   list_snoc_item(xs: declared_paths(), item: bogus_never_imported)
 }
 
-// The LENS ROW is live: import_closure_is_clean_live derives the closure in-.dag
-// via v2.lens.module_graph.import_closure_live (the import_graph_rule.derive field)
-// rather than trusting a host-projected ClosureFact.derived. Declared == derived over
-// the real corpus is clean; drift in either direction is a hard WallNow violation.
 test fn live_lens_row_clean_when_declared_equals_derived() -> Bool {
   import_closure_is_clean_live(
     unit: ^conformance,
