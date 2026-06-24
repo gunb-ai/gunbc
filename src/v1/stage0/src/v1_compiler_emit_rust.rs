@@ -14905,6 +14905,28 @@ pub fn emit_typed_fold_lambda(
     }
 }
 
+/// A fold whose lambda binds its element parameter as `_` provably cannot depend on the
+/// element being owned vs borrowed, so the `.cloned()` in the `iter_owned` template is a
+/// spurious clone that forces a `T: Clone` bound the emitter will not synthesize. Detect that
+/// case (the element is the SECOND lambda parameter, after the accumulator) so the caller can
+/// elide `.cloned()`. Conservative: a named-but-unused element does NOT fire this (keeps a
+/// harmless clone), never a wrong elision.
+pub fn fold_lambda_element_unused(
+    lambda_expr: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    match (*lambda_expr.expr_data.clone()).clone() {
+        ExprData::ExprLambda => {
+            let ps = lambda_param_names_at(lambda_expr.clone(), source_indices.clone());
+            match ps.get(1 as usize).cloned() {
+                Some(elem_name) => elem_name == "_".to_string(),
+                None => false,
+            }
+        }
+        _ => false,
+    }
+}
+
 pub fn emit_rust_fold_method_call(
     method_call_node: Rc<Node>,
     fold_accumulator_type: Option<Rc<Node>>,
@@ -15272,12 +15294,28 @@ pub fn emit_rust_fold_method_call(
             None => "compile_error!(\"missing fold function argument\")".to_string(),
         };
         let sharing = language_spec(RenderTarget::Rust).sharing.clone();
+        let elem_unused = match args.clone().get(1 as usize).cloned() {
+            Some(a) => fold_lambda_element_unused(
+                arg_value(a.clone()),
+                scope.type_env.clone().source_indices.clone(),
+            ),
+            None => false,
+        };
+        let iter_template = if elem_unused {
+            v1_rt::replace(
+                sharing.iter_owned.clone(),
+                ".cloned()".to_string(),
+                "".to_string(),
+            )
+        } else {
+            sharing.iter_owned.clone()
+        };
         v1_rt::concat(
             v1_rt::concat(
                 v1_rt::concat(
                     v1_rt::concat(
                         v1_rt::concat(
-                            apply_type_template1(sharing.iter_owned.clone(), recv_str),
+                            apply_type_template1(iter_template, recv_str),
                             ".fold(".to_string(),
                         ),
                         init_str,

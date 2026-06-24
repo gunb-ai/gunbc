@@ -61,6 +61,8 @@ mod fn_as_value_test;
 #[cfg(test)]
 mod fold_list_generic_instantiation_test;
 #[cfg(test)]
+mod fold_unused_element_clone_elision_test;
+#[cfg(test)]
 mod generator_match_arm_test;
 #[cfg(test)]
 mod gunbhub_serve_program_test;
