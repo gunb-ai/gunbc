@@ -989,9 +989,12 @@ fn patch_cargo_toml_for_generated_crate(dir: &Path) -> Result<(), String> {
     if contents.contains("ureq") {
         return Ok(());
     }
+    // `im-rc` backs the hand-maintained periphery (v1_interpreter persistent value
+    // carriers); the emitted Cargo.toml omits it, so the assembled crate would not
+    // resolve `im_rc::*` without this. Mirrors the committed stage0 Cargo.toml dep.
     let patched = contents.replace(
         "\n[dependencies]\n",
-        "\n[dependencies]\nureq = { version = \"2\", features = [\"json\"] }\n",
+        "\n[dependencies]\nureq = { version = \"2\", features = [\"json\"] }\nim-rc = \"15.1\"\n",
     );
     fs::write(&cargo_toml, patched).map_err(|e| format!("write {}: {e}", cargo_toml.display()))
 }
