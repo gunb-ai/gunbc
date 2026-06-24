@@ -64,16 +64,21 @@ fn empty_optional_unwrap_panics_not_fabricates() {
 }
 
 // === Part A: the emitter emits the located fail-closed unwrap, type-derived ===
-// PLACEHOLDER fixtures — validated/adjusted against the rebuilt seed (the synthetic
-// fixture must actually route an optional arg into a required param through
-// emit_typed_call). Filled in post-rebuild once the emitted shape is confirmed.
+// `maybe` returns `Int?` (declared `CardOptional`); fed into `consume`'s required
+// `x: Int` slot it is exactly the optional-into-required model hole. The control feeds
+// the same required slot a non-optional literal, proving the unwrap is type-DERIVED
+// (param required AND arg resolved-type optional), not blanket.
+const CONSUME_AND_MAYBE: &str = "module failclosed.fixture\n\nfn maybe(flag: Bool) -> Int? {\n  if flag { Present { value: 1 } } else { none }\n}\n\nfn consume(x: Int) -> Int {\n  x\n}\n";
+
 #[test]
 fn required_param_optional_arg_emits_located_fail_closed_unwrap() {
-    let source = "module failclosed.fixture\n\nfn consume(x: Int) -> Int {\n  x\n}\n\nfn drive(xs: List<Int>) -> Int {\n  consume(x: xs |> first)\n}\n";
-    let emitted = emit(source);
+    let source = format!(
+        "{CONSUME_AND_MAYBE}\nfn drive(flag: Bool) -> Int {{\n  consume(x: maybe(flag: flag))\n}}\n"
+    );
+    let emitted = emit(&source);
     assert!(
         emitted.contains(".expect(\"fail-closed:"),
-        "an optional arg into a required param must emit a located fail-closed `.expect`, got:\n{emitted}"
+        "an optional arg (`maybe(..) -> Int?`) into a required param (`consume(x: Int)`) must emit a located fail-closed `.expect`, got:\n{emitted}"
     );
     assert!(
         !emitted.contains("unwrap_or_default"),
@@ -85,8 +90,10 @@ fn required_param_optional_arg_emits_located_fail_closed_unwrap() {
 fn required_param_nonoptional_arg_stays_bare() {
     // Discriminating control: a non-optional arg into the same required param must NOT
     // get the unwrap — the construction is type-derived, not blanket.
-    let source = "module failclosed.fixture\n\nfn consume(x: Int) -> Int {\n  x\n}\n\nfn drive(y: Int) -> Int {\n  consume(x: y)\n}\n";
-    let emitted = emit(source);
+    let source = format!(
+        "{CONSUME_AND_MAYBE}\nfn drive(y: Int) -> Int {{\n  consume(x: y)\n}}\n"
+    );
+    let emitted = emit(&source);
     let drive_body = emitted
         .split_once("fn drive")
         .map(|(_, r)| r.to_string())
