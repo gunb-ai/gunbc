@@ -1,0 +1,93 @@
+module gunbc.srv3_boot_once_cd
+
+import extdeps.bmc.http
+import extdeps.filesystem.filesystem_io
+import extdeps.bmc.types {
+  BootTargetCd,
+  BootOverrideOnce,
+  ResetForceRestart,
+  redfish_boot_target_wire,
+  redfish_boot_override_enabled_wire,
+  redfish_reset_type_wire,
+}
+import extdeps.boards.asrock_rack { asrock_altrad8ud_redfish_system_id }
+import gunbc.bmc_onboarding { new_altra_onboarding_plan }
+import gunbc.tools.bmc_onboard { boot_override_body, reset_body, netrc_content }
+import std.types { NonEmptyStr, String }
+import std.logic { Bool }
+import std.resources { Network }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.disposition { Disposition, Scaffold, RealizationDispatch }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data srv3_boot_secret_on_disk_debt: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "extdeps.filesystem.filesystem_io",
+    decl_name: "Filesystem",
+    field: WholeDeclaration
+  }
+}
+
+data srv3_boot_netrc_path: String = "/tmp/srv3_boot_netrc"
+
+data srv3_boot_override_body_path: String = "/tmp/srv3_boot_override.json"
+
+data srv3_boot_reset_body_path: String = "/tmp/srv3_boot_reset.json"
+
+func srv3_boot_once_cd() -> ProcessExit
+  uses net: Network
+{
+  let plan = new_altra_onboarding_plan
+  let host = plan.bmc.host
+  let account = plan.factory_login.username
+
+  let netrc = Filesystem.Write(
+    path: srv3_boot_netrc_path,
+    content: netrc_content(host: host, account: account, password: plan.factory_login.published_password as String)
+  )
+  if netrc.success == false {
+    return exit_failure(reason: concat("boot: netrc write failed: ", netrc.error))
+  }
+
+  let ovbody = Filesystem.Write(
+    path: srv3_boot_override_body_path,
+    content: boot_override_body(
+      target: redfish_boot_target_wire(t: BootTargetCd) as String,
+      enabled: redfish_boot_override_enabled_wire(e: BootOverrideOnce) as String
+    )
+  )
+  if ovbody.success == false {
+    return exit_failure(reason: concat("boot: override body write failed: ", ovbody.error))
+  }
+
+  ov = redfish.Http.SetBootSourceOverride(
+    bmc_host: host,
+    netrc_file: srv3_boot_netrc_path as NonEmptyStr,
+    system_id: asrock_altrad8ud_redfish_system_id,
+    request_body_file: srv3_boot_override_body_path as NonEmptyStr
+  )
+  if ov.success == false {
+    return exit_failure(reason: concat("boot: SetBootSourceOverride(Cd/Once) failed: ", ov.body))
+  }
+
+  let rsbody = Filesystem.Write(
+    path: srv3_boot_reset_body_path,
+    content: reset_body(reset_type: redfish_reset_type_wire(r: ResetForceRestart) as String)
+  )
+  if rsbody.success == false {
+    return exit_failure(reason: concat("boot: reset body write failed: ", rsbody.error))
+  }
+
+  rs = redfish.Http.ResetSystem(
+    bmc_host: host,
+    netrc_file: srv3_boot_netrc_path as NonEmptyStr,
+    system_id: asrock_altrad8ud_redfish_system_id,
+    request_body_file: srv3_boot_reset_body_path as NonEmptyStr
+  )
+  return if rs.success {
+    ExitSuccess
+  } else {
+    exit_failure(reason: concat("boot: ComputerSystem.Reset(ForceRestart) failed: ", rs.body))
+  }
+}

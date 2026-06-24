@@ -1,0 +1,29 @@
+module test.claim.srv3_boot_once_cd_witness
+
+import std.logic { Bool }
+import std.types { String }
+import extdeps.bmc.types {
+  BootTargetCd,
+  BootOverrideOnce,
+  ResetForceRestart,
+  redfish_boot_target_wire,
+  redfish_boot_override_enabled_wire,
+  redfish_reset_type_wire,
+}
+import gunbc.tools.bmc_onboard { boot_override_body, reset_body }
+import gunbc.srv3_boot_once_cd { srv3_boot_netrc_path }
+
+test fn srv3_boot_override_body_is_cd_once() -> Bool {
+  boot_override_body(
+    target: redfish_boot_target_wire(t: BootTargetCd) as String,
+    enabled: redfish_boot_override_enabled_wire(e: BootOverrideOnce) as String
+  ) == "{\"Boot\": {\"BootSourceOverrideTarget\": \"Cd\", \"BootSourceOverrideEnabled\": \"Once\"}}"
+}
+
+test fn srv3_reset_body_is_force_restart() -> Bool {
+  reset_body(reset_type: redfish_reset_type_wire(r: ResetForceRestart) as String) == "{\"ResetType\": \"ForceRestart\"}"
+}
+
+test fn srv3_boot_netrc_path_is_staged() -> Bool {
+  string_contains(s: srv3_boot_netrc_path, pattern: "srv3_boot_netrc")
+}
