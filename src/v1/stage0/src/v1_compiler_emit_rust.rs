@@ -17735,20 +17735,43 @@ pub fn emit_typed_record_lit(
                 let si = scope.type_env.clone().source_indices.clone();
                 let tn_is_known_struct =
                     v1_rt::map_contains_key(&emit_info.type_summaries.clone(), tn.clone());
+                if std::env::var("DBG_E0560").is_ok() {
+                    eprintln!(
+                        "DBG_E0560 ENTER tn={} tn_is_known_struct={} lookup_some={}",
+                        tn,
+                        tn_is_known_struct,
+                        lookup_type_by_name(scope.type_env.clone(), tn.clone()).is_some(),
+                    );
+                }
                 let ctor_name = if tn_is_known_struct {
                     tn.clone()
                 } else {
                     match lookup_type_by_name(scope.type_env.clone(), tn.clone()) {
                         Some(decl) => {
-                            let peeled = resolved_type_name(decl.clone(), si.clone());
-                            if ((peeled.clone() != "".to_string())
-                                && (peeled.clone() != tn.clone())
+                            let resolved_struct =
+                                crate::v1_compiler_infer::peel_alias_once_for_field_access(
+                                    decl.clone(),
+                                    scope.type_env.clone(),
+                                    scope.module_name.clone(),
+                                );
+                            let canonical = authored_name_at(si.clone(), resolved_struct.clone());
+                            if std::env::var("DBG_E0560").is_ok() {
+                                eprintln!(
+                                    "DBG_E0560 tn={} resolved.connective={:?} canonical={:?} canonical_in_summaries={}",
+                                    tn,
+                                    resolved_struct.connective,
+                                    canonical,
+                                    v1_rt::map_contains_key(&emit_info.type_summaries.clone(), canonical.clone()),
+                                );
+                            }
+                            if ((resolved_struct.connective.clone() == Connective::Conj)
+                                && (canonical.clone() != tn.clone())
                                 && v1_rt::map_contains_key(
                                     &emit_info.type_summaries.clone(),
-                                    peeled.clone(),
+                                    canonical.clone(),
                                 ))
                             {
-                                peeled.clone()
+                                canonical.clone()
                             } else {
                                 tn.clone()
                             }
