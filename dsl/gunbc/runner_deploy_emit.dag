@@ -28,9 +28,10 @@ import gunbc.ci_floor_measurement {
   gunbc_ci_session_reservation_mode,
 }
 import gunbc.fleet_intent { fleet_intent_offers }
+import gunbc.oomd_install { gunbc_oomd_sessions_policy }
 import extdeps.github.actions { RunnerSpec, SelfHosted, HostedRunner, RunsOnExpression }
-import std.measure { byte_size_count, hardware_thread_count_value }
-import std.types { String, List, Int, Bool }
+import std.measure { byte_size_count, hardware_thread_count_value, percent_count }
+import std.types { String, List, Bool }
 import std.layout {
   Doc, DocConcat,
   LayoutProtocol,
@@ -42,8 +43,7 @@ data runner_deploy_protocol: LayoutProtocol = LayoutProtocol { indent_unit: "" }
 
 data gunbc_runner_deploy_manifest_contract_marker: String = "Byte-exact manifest wire contract (the EMIT is the single authority; ctrl parsers align to THIS, no fallback). Three line-kinds: (1) runner-deploy host=<id> runner_count=<int> runner_slice_cap_bytes=<int> per_slot_memory_max_bytes=<int> build_tokens=<int> labels=<csv> cpu_weight=<int> -- the runner-slice APPLY line. (2) session-slice host=<id> slice_max_bytes=<int> per_session_max_bytes=<int> oom_pressure_kill=<true|false> oom_pressure_limit_pct=<int> cpu_weight=<int> -- the sessions.slice APPLY line (ungated bootstrap from committed REGIME-2 values). (3) session-reservation host=<id> sessions=<int> per_session_cap_bytes=<int> -- REPORTING ONLY (coverage), carries NO cpu_weight and is not an apply target. operating-curve lines are informational. Fields are KV-by-name, order-independent; unknown KV is ignored forward-compatibly."
 
-data gunbc_sessions_oom_pressure_psi_limit_pct: Int = 60
-data gunbc_sessions_oom_pressure_psi_limit_pct_interim_marker: String = "dissolve-on: #5677 (gunbc.oomd_install) merges -- replace gunbc_sessions_oom_pressure_psi_limit_pct + this marker with percent_count(p: gunbc_oomd_sessions_policy.managed_oom_memory_pressure_limit) sourced from import gunbc.oomd_install, and import percent_count from std.measure. The Nat accessor down-projects the Percent Measure to the bare int 0..100 the manifest wire format requires (fierce-carp parses int 0..100). Interim: ONE authority here until #5677 lands."
+data gunbc_sessions_oom_pressure_psi_limit_source_marker: String = "the manifest oom_pressure_limit_pct field is the bare int 0..100 down-projected (percent_count) from the SINGLE PSI authority gunbc.oomd_install.gunbc_oomd_sessions_policy.managed_oom_memory_pressure_limit (a Percent Measure). One authority: the same Percent that the oomd-install drop-in writes AND that the fleet capacity gate (gunbc_fleet_oomd_evidence) grounds against, so the applied PSI, the verified PSI, and the emitted PSI cannot drift. Dissolved the interim local Int 60 on #5677 landing (gunbc.oomd_install merged)."
 
 fn runner_labels_text(spec: RunnerSpec) -> String {
   match spec {
@@ -139,7 +139,7 @@ fn session_slice_doc() -> Doc {
       doc_line_of(text: "session-slice UNSOUND: session reservation mode unset")
     Regime1WorstCase { point: _ } =>
       doc_line_of(text: "session-slice UNSOUND: REGIME-1 mode has no aggregate reservation; session-slice apply requires REGIME-2")
-    Regime2AggregateOomd { oomd_eviction_ceiling: ceiling, session_concurrency: _, aggregate_reservation: agg, oomd_enforcement: _ } =>
+    Regime2AggregateOomd { oomd_eviction_ceiling: ceiling, session_concurrency: _, aggregate_reservation: agg } =>
       match agg {
         SessionAggregateUnmeasured =>
           doc_line_of(text: "session-slice UNSOUND: aggregate_reservation is unmeasured; commit a measured concurrent peak before wiring the apply")
@@ -155,7 +155,7 @@ fn session_slice_doc() -> Doc {
                   ),
                   " oom_pressure_kill=true"
                 ),
-                concat(" oom_pressure_limit_pct=", to_string(gunbc_sessions_oom_pressure_psi_limit_pct))
+                concat(" oom_pressure_limit_pct=", to_string(percent_count(p: gunbc_oomd_sessions_policy.managed_oom_memory_pressure_limit)))
               ),
               concat(" cpu_weight=", to_string(workload_class_cpu_weight(wc: InteractiveLatencySensitive)))
             )

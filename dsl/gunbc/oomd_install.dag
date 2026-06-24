@@ -1,6 +1,7 @@
 module gunbc.oomd_install
 
 import std.types { NonEmptyStr, String, Bool }
+import std.nat { Nat }
 import std.measure { ByteSize, byte_size_count, second, Percent, percent, percent_count }
 import std.realization_reconcile {
   ShowEffectiveRead,
@@ -12,7 +13,7 @@ import std.realization_reconcile {
   Reconciliation,
   Converged,
   NotConverged,
-  reconcile,
+  reconcile_grounded,
 }
 import gunbc.ci_floor_measurement {
   OomdEnforcementEvidence,
@@ -103,6 +104,11 @@ data gunbc_oomd_install_plan: OomdInstallPlan = OomdInstallPlan {
   verify_property: oomd_managed_oom_memory_pressure_property,
 }
 
+type SliceMembershipSignal {
+  sessions_in_slice: Nat
+  sessions_legacy_flat: Nat
+}
+
 type OomdEffectiveRead {
   slice_present: Bool
   unit_active: SystemdUnitActiveState
@@ -112,6 +118,7 @@ type OomdEffectiveRead {
   effective_parent_slice_memory_max: RunnerSliceCapEffectiveness
   effective_managed_oom_memory_pressure_limit: Percent
   oomctl_manages_slice: Bool
+  membership: SliceMembershipSignal
 }
 
 type OomdGroundingThresholds {
@@ -175,6 +182,18 @@ fn parent_slice_cap_ok(eff: RunnerSliceCapEffectiveness, agg: SessionAggregateRe
   }
 }
 
+fn membership_grounding_check(m: SliceMembershipSignal) -> OomdGroundingCheck {
+  if m.sessions_in_slice > 0 {
+    GroundingPass
+  } else {
+    if m.sessions_legacy_flat > 0 {
+      GroundingFail { reason: "100%-legacy migration state: all running session containers (sessions_legacy_flat > 0) are flat docker-*.scope under system.slice and none are parented under sessions.slice (sessions_in_slice == 0) — oomd's managed cgroup has no members; the eviction backstop is hollow (sessions.slice exists, systemd-oomd is active, but the managed set is empty because all session traffic bypasses it)" }
+    } else {
+      GroundingFail { reason: "empty managed cgroup: sessions.slice has no session-container children and no legacy sessions are running (sessions_in_slice == 0, sessions_legacy_flat == 0) — nothing for oomd to evict; the unit is active and the slice is configured but the managed set is empty because no sessions are currently running" }
+    }
+  }
+}
+
 fn grounding_checks(read: OomdEffectiveRead, req: OomdGroundingThresholds) -> List<OomdGroundingCheck> {
   [
     grounding_check(ok: read.slice_present, reason: "managed sessions slice does not exist: systemd-oomd has no managed cgroup to evict within under aggregate pressure (active oomd with no managed slice = zero protection)"),
@@ -185,6 +204,7 @@ fn grounding_checks(read: OomdEffectiveRead, req: OomdGroundingThresholds) -> Li
     grounding_check(ok: parent_slice_cap_ok(eff: read.effective_parent_slice_memory_max, agg: req.parent_slice_cap), reason: "parent sessions.slice MemoryMax does not equal the measured aggregate reservation (or the aggregate is unmeasured / MemoryMax is infinity)"),
     grounding_check(ok: percent_count(p: read.effective_managed_oom_memory_pressure_limit) == percent_count(p: req.pressure_limit), reason: "ManagedOOMMemoryPressureLimit (PSI percent) does not equal the intended threshold"),
     grounding_check(ok: read.oomctl_manages_slice, reason: "oomctl does not list the sessions slice in the systemd-oomd managed set"),
+    membership_grounding_check(m: read.membership),
   ]
 }
 
@@ -210,13 +230,13 @@ fn ground_oomd_from_read(read: OomdEffectiveRead, req: OomdGroundingThresholds) 
 fn reconcile_oomd(read: ShowEffectiveRead<OomdEffectiveRead>, req: OomdGroundingThresholds) -> Reconciliation<OomdApplyEffect, OomdEnforcementEvidence> {
   match read {
     ReadAbsent { reason: why } =>
-      reconcile(
+      reconcile_grounded(
         apply_effect: gunbc_oomd_apply_effect,
         show_read: read,
         grounding: DoesNotGround { reason: why }
       )
     ReadObserved { value: observed } =>
-      reconcile(
+      reconcile_grounded(
         apply_effect: gunbc_oomd_apply_effect,
         show_read: read,
         grounding: ground_oomd_from_read(read: observed, req: req)

@@ -187,14 +187,29 @@ fn main() -> ExitCode {
 fn run() -> Result<(), String> {
     let run_started = Instant::now();
     let args: Vec<String> = env::args().skip(1).collect();
+    // `--emit-fresh <dir>` runs the assembly phases (emit closure + copy hand-
+    // maintained periphery + patches + rustfmt) into a STABLE, caller-named dir and
+    // STOPS -- no copy-back into the committed seed, no temp cleanup. It is the
+    // non-destructive re-baseline harness for the deferred regen-fixpoint lane
+    // (carrier mark above): a faithful full regen WIRES every emitted module
+    // (including the std-tower modules unwired in the committed lib.rs), so the
+    // assembled crate is the "REAL" emitted seed whose emitter-completeness gaps
+    // surface as cargo errors. Build it to measure them; the committed seed is
+    // never touched.
+    let mut emit_fresh: Option<PathBuf> = None;
     let verify_only = match args.as_slice() {
         [] => false,
         [flag] if flag == "--verify" => true,
+        [flag, dir] if flag == "--emit-fresh" => {
+            emit_fresh = Some(PathBuf::from(dir));
+            false
+        }
         unexpected => {
             return Err(format!(
                 "regen_stage0: unexpected arguments: {unexpected:?}\n\
-                 Usage: regen_stage0 [--verify]\n\
-                 Omit flags to write stage0; pass exactly `--verify` to check without writing."
+                 Usage: regen_stage0 [--verify | --emit-fresh <dir>]\n\
+                 Omit flags to write stage0; pass exactly `--verify` to check without writing;\n\
+                 pass `--emit-fresh <dir>` to assemble the faithful emitted crate into <dir> and stop."
             ));
         }
     };
@@ -204,7 +219,10 @@ fn run() -> Result<(), String> {
     let workspace = workspace_root(&manifest_dir)?;
     let receipt_path = bootstrap_timing_receipt_path(&workspace);
     let stage0_src = manifest_dir.join("src");
-    let fresh_dir = temp_dir("v2-regen-stage0-fresh");
+    let fresh_dir = match &emit_fresh {
+        Some(dir) => dir.clone(),
+        None => temp_dir("v2-regen-stage0-fresh"),
+    };
     let _ = fs::remove_dir_all(&fresh_dir);
     fs::create_dir_all(fresh_dir.join("src"))
         .map_err(|e| format!("create {}: {e}", fresh_dir.display()))?;
@@ -235,6 +253,27 @@ fn run() -> Result<(), String> {
     time_phase(&mut phases, "assert_output_set_matches_registry", || {
         assert_output_set_matches_registry(&stage0_src, &fresh_dir.join("src"))
     })?;
+
+    if emit_fresh.is_some() {
+        // Non-destructive: leave the assembled crate in place for cargo build.
+        write_bootstrap_timing_receipt(BootstrapTimingReceiptInput {
+            path: &receipt_path,
+            workspace: &workspace,
+            manifest_dir: &manifest_dir,
+            verify_only,
+            status: "completed_emit_fresh",
+            generated_file_count: GENERATED_STAGE0_FILES.len(),
+            emitted_file_count: emitted.len(),
+            phases,
+            elapsed_ms: elapsed_ms(run_started),
+            changed_generated_files: Vec::new(),
+        })?;
+        println!(
+            "regen_stage0 --emit-fresh: assembled faithful emitted crate at {}",
+            fresh_dir.display()
+        );
+        return Ok(());
+    }
 
     if verify_only {
         let verify_result = time_phase(&mut phases, "verify_stage0_matches", || {
@@ -948,16 +987,30 @@ fn patch_cargo_toml_for_generated_crate(dir: &Path) -> Result<(), String> {
     if !cargo_toml.exists() {
         return Ok(());
     }
-    let contents = fs::read_to_string(&cargo_toml)
+    let mut contents = fs::read_to_string(&cargo_toml)
         .map_err(|e| format!("read {}: {e}", cargo_toml.display()))?;
-    if contents.contains("ureq") {
-        return Ok(());
+    // Each dep is added independently and idempotently (presence-gated per dep) so a
+    // future emitted Cargo.toml that already carries one but not the other still gets
+    // the missing one. `ureq` and `im-rc` (the latter backs the hand-maintained
+    // periphery -- v1_interpreter persistent value carriers) are both omitted by the
+    // emitter; this mirrors the committed stage0 Cargo.toml deps.
+    for (crate_name, dep_line) in [
+        ("ureq", "ureq = { version = \"2\", features = [\"json\"] }"),
+        ("im-rc", "im-rc = \"15.1\""),
+        ("unicode-ident", "unicode-ident = \"1\""),
+        (
+            "unicode-properties",
+            "unicode-properties = { version = \"0.1\", features = [\"emoji\"] }",
+        ),
+    ] {
+        if !contents.contains(crate_name) {
+            contents = contents.replace(
+                "\n[dependencies]\n",
+                &format!("\n[dependencies]\n{dep_line}\n"),
+            );
+        }
     }
-    let patched = contents.replace(
-        "\n[dependencies]\n",
-        "\n[dependencies]\nureq = { version = \"2\", features = [\"json\"] }\n",
-    );
-    fs::write(&cargo_toml, patched).map_err(|e| format!("write {}: {e}", cargo_toml.display()))
+    fs::write(&cargo_toml, contents).map_err(|e| format!("write {}: {e}", cargo_toml.display()))
 }
 
 fn rustfmt_generated_crate(dir: &Path) -> Result<(), String> {

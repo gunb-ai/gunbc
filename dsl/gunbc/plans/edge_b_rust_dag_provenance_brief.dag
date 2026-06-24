@@ -1,0 +1,63 @@
+module gunbc.plans.edge_b_rust_dag_provenance_brief
+
+import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
+import std.markdown { MarkdownBlock }
+import gunbc.plans.md_helpers { h2, p, li, ul, ol }
+
+fn edge_b_rust_dag_provenance_brief_body() -> List<MarkdownBlock> {
+  [
+    p(text: "**Status: SCOPING ONLY.** The multi-day build holds for the operator's explicit greenlight. This document is the decision artifact for that greenlight call."),
+    h2(text: "Goal"),
+    p(text: "Make the rust↔.dag dependency a **declared structural fact**, recorded once and read in two directions. It is the single fact under three consumers (DESIGN §4, one grammar both directions), which is why this is the §1 *coverage keystone*, not a cost follow-up."),
+    h2(text: "Why — one fact, three consumers"),
+    ol(items: [
+      li(text: "**Coverage wall (soundness, fail-closed).** Today a pure-.dag PR fires *no* rust gate: `any_rust_monolith` (`dsl/tools/rust_stage0_gates.dag`) matches only `.rs`/Cargo/toolchain suffixes. But rust tests *read* `.dag` via opaque `filesystem_read`/`ws.join`, so a `.dag` change that breaks a rust test ships **silently green** — a §5 fail-OPEN. That file's own COMPLETENESS CLAIM (\"every change that can alter a rust gate's verdict carries a `.rs`/Cargo suffix\") is *false* for .dag-consuming tests, and its header names per-file rust→.dag dependence as the deliberately-skipped proper model. Edge-(b) FIRES the rust gate when a changed `.dag` is in a rust test's declared closure → makes the claim true. This is the operator's \"lock fail-closed before you expand\" priority."),
+      li(text: "**Affordability selector.** The *same* declared closure read the other way — skip rust tests whose closure the diff doesn't touch — is the affected-set shrink (the ROADMAP end-state: run-all baseline SHRUNK to affected). cargo has *zero* affected-test selection (every `#[test]` every run; nextest too) and can't see `.dag` deps, so a declared closure is the *only* path to it."),
+      li(text: "**Testgen reflection.** The rust-test→.dag closure is the same provenance testgen needs to regenerate the right tests when a `.dag` node changes."),
+    ]),
+    p(text: "FIRE-when-consumed and SKIP-when-unaffected are the single fact read in opposite directions — that unification is the moat (one carrier, three consumers)."),
+    h2(text: "The asymmetry that decides what the build buys (construction, not validation)"),
+    p(text: "The two directions have **asymmetric robustness to an incomplete declaration**, and this is the construction-vs-validation lesson made concrete:"),
+    ul(items: [
+      li(text: "**Affordability (skip-unaffected) is fail-SAFE to over-declaration.** Declare too much → you just run more → never unsound. Robust to a sloppy/partial closure."),
+      li(text: "**Coverage (fire-on-change) is fail-OPEN to UNDER-declaration.** If a test reads `.dag` A and B but its closure declares only A, a change to B does NOT fire the gate → the exact `.dag`→rust fail-open we are closing, silently re-introduced as **declaration drift**. The coverage wall is only as sound as the declaration is COMPLETE: **closure ⊇ actual-.dag-reads**."),
+    ]),
+    p(text: "Consequence: the coverage wall's soundness lives entirely in the *completeness* of the closure, which means a **hand-authored closure is the §3/§5 fork** — for the coverage consumer it silently re-opens the hole. So the closure MUST be structurally derived (drift-proof); any hand-authored interim must be marked **NON-SOUND** (delivers affordability only, not the coverage wall). The \"shared blocker\" below is therefore not the tail of the work — it is *where the soundness lives*."),
+    h2(text: "Bounded core"),
+    ol(items: [
+      li(text: "**Declare rust-test → consumed-.dag-paths on the EXISTING `NodeArtifactProvenance` / `EditLocusBinding` carrier** — no parallel mint (§3 single authority). Implementer must first verify the carrier shape fits `rust-test-identity → .dag-path list`; if not, add a *sibling entry on the same authority*, never a new module."),
+      li(text: "**Gate integration is small and precise:** extend `should_run_gates` / `any_rust_monolith` (`dsl/tools/rust_stage0_gates.dag`) so a changed `.dag` path in the union of declared rust-test closures ALSO returns true."),
+      li(text: "**Fail-closed default AT THE CONSUMER:** a rust test with no declared closure → *must-run*, never skip. Absent provenance = run. This keeps the soundness direction safe while declarations are added incrementally."),
+      li(text: "**Completeness-lens gated — on CORRECTNESS, not presence.** A lens that merely asserts \"every rust test HAS a closure declaration\" checks *presence*, which is exactly the §5 trap: it is satisfiable by editing the declaration while the realization diverges (the faked-cache-key / dead-field pattern). The lens must check **closure ⊇ actual-.dag-reads** — otherwise a partial or stale declaration passes the lens AND leaks coverage. Presence-only is not enough; correctness (the superset relation) is the soundness condition."),
+    ]),
+    h2(text: "Shared blocker (testgen-reflection) — this IS the soundness, not optional polish"),
+    p(text: "Per the asymmetry above: the `.dag`-closure must be DISCOVERED structurally, not hand-listed (hand-listing is the §3/§5 fork that rots, and for the coverage consumer it *silently re-opens the hole*). The reflection infra exists *partially* — `v2.std.node_query` + `dependency_lens` + the `affected_set` node-frontier (compile-time, structural over Node/DependencyView). The missing piece: rust tests reach `.dag` through *opaque host paths* (`ws.join`/`filesystem_read`), so the closure isn't visible to the Node-tree lens. Surfacing each rust test's `.dag` reads as a declared, lens-visible dependency is the shared blocker all three consumers wait on — and because the coverage wall is only sound when `closure ⊇ actual-reads`, this structural discovery is the **load-bearing core**, not the tail. It is the hard part and the multi-day driver precisely because it is where the soundness is bought."),
+    h2(text: "First vertical slice (smallest end-to-end, green-by-execution)"),
+    ul(items: [
+      li(text: "Pick ONE rust test with a clear `.dag` closure — `coproduct_reflection_conformance_test` (inputs entirely `.dag`) is the natural first."),
+      li(text: "Declare its consumed-.dag closure on the carrier."),
+      li(text: "Wire `should_run_gates` to fire when a changed path is in THAT test's declared closure."),
+      li(text: "Prove by execution with a discriminating control: a diff to a `.dag` IN the closure FIRES the gate; a diff to a `.dag` OUTSIDE the closure does NOT. Green = both directions observed."),
+      li(text: "This proves the structural fact end-to-end on one test before any corpus fan-out."),
+      li(text: "**State explicitly which the slice proves.** For the slice to prove the *coverage direction soundly*, `coproduct_reflection_conformance_test`'s closure must be **structurally derived** (so a newly-added `.dag` read is captured automatically). If slice-1 hand-lists the closure as an interim, it proves the *wiring* (fire/skip plumbing) but NOT the *wall* (drift-proof completeness) — and must be labelled accordingly. The keystone's value is the wall, so the slice should target the derived closure, not the hand-listed one."),
+    ]),
+    h2(text: "Honest estimate"),
+    p(text: "Multi-day."),
+    ul(items: [
+      li(text: "Slice 1 (one test: declare + gate-fire + discriminating control): ~1 day."),
+      li(text: "Shared blocker (structural .dag-closure discovery through opaque host reads, lens-visible): the bulk — ~2–4 days, depending on whether the host-read seam can surface declarations cheaply or needs the reflection layer deepened."),
+      li(text: "Corpus fan-out + completeness lens: after."),
+    ]),
+    h2(text: "Decoupling"),
+    p(text: "Independent of #5427. #5427 is the cheap `.rs`-hole-closer (widen the rust gate's test command on `.rs`-touching PRs) — lands now, behind the two operator levers. Edge-(b) is the structural keystone that later makes the rust gate BOTH sound on `.dag` changes AND affordable by selection. Neither blocks the other."),
+  ]
+}
+
+data edge_b_rust_dag_provenance_brief_plan: Plan = Plan {
+  slug: "edge-b-rust-dag-provenance-brief",
+  title: "Edge-(b) scoped dispatch brief — rust-test ↔ consumed-.dag provenance (the coverage keystone)",
+  body: edge_b_rust_dag_provenance_brief_body(),
+  dissolution: HasTrigger {
+    text: "Delete this brief once edge-(b) is built and merged — the rust-test→consumed-.dag closure is a structurally-derived (drift-proof) declared fact on the NodeArtifactProvenance carrier, the coverage wall fires the rust gate on an in-closure .dag change (closure ⊇ actual-reads, lens-checked on correctness not presence), and the affordability selector skips unaffected rust tests — so the scoping decision this doc records is realized."
+  }
+}

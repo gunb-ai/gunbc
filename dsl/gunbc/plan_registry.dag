@@ -8,6 +8,7 @@ import gunbc.plan_registry_batch_c { batch_c_plans }
 import gunbc.plan_registry_batch_d { batch_d_plans }
 import gunbc.plan_registry_batch_e { batch_e_plans }
 import gunbc.plan_registry_batch_f { batch_f_plans }
+import gunbc.plan_registry_batch_g { batch_g_plans }
 
 data all_plans: List<Plan> = concat(
   [idea_machine_plan],
@@ -15,4 +16,5 @@ data all_plans: List<Plan> = concat(
   concat(batch_b_plans,
   concat(batch_c_plans,
   concat(batch_d_plans,
-  concat(batch_e_plans, batch_f_plans))))))
+  concat(batch_e_plans,
+  concat(batch_f_plans, batch_g_plans)))))))

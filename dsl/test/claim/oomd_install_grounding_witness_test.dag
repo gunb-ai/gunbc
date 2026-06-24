@@ -13,7 +13,12 @@ import std.realization_reconcile {
 import gunbc.oomd_install {
   OomdEffectiveRead,
   OomdGroundingThresholds,
+  OomdGroundingCheck,
+  GroundingPass,
+  GroundingFail,
+  SliceMembershipSignal,
   ground_oomd_from_read,
+  membership_grounding_check,
   reconcile_oomd,
   oomd_evidence_from_reconciliation,
   gunbc_oomd_install_evidence,
@@ -40,6 +45,10 @@ fn test_thresholds() -> OomdGroundingThresholds {
   }
 }
 
+fn good_membership() -> SliceMembershipSignal {
+  SliceMembershipSignal { sessions_in_slice: 5, sessions_legacy_flat: 0 }
+}
+
 fn good_read() -> OomdEffectiveRead {
   OomdEffectiveRead {
     slice_present: true,
@@ -50,6 +59,7 @@ fn good_read() -> OomdEffectiveRead {
     effective_parent_slice_memory_max: CapEffective { bytes: byte_size(21474836480) },
     effective_managed_oom_memory_pressure_limit: percent(60),
     oomctl_manages_slice: true,
+    membership: good_membership(),
   }
 }
 
@@ -63,6 +73,7 @@ fn slice_absent_read() -> OomdEffectiveRead {
     effective_parent_slice_memory_max: CapEffective { bytes: byte_size(21474836480) },
     effective_managed_oom_memory_pressure_limit: percent(60),
     oomctl_manages_slice: true,
+    membership: good_membership(),
   }
 }
 
@@ -76,6 +87,7 @@ fn inactive_read() -> OomdEffectiveRead {
     effective_parent_slice_memory_max: CapEffective { bytes: byte_size(21474836480) },
     effective_managed_oom_memory_pressure_limit: percent(60),
     oomctl_manages_slice: true,
+    membership: good_membership(),
   }
 }
 
@@ -89,6 +101,7 @@ fn disabled_read() -> OomdEffectiveRead {
     effective_parent_slice_memory_max: CapEffective { bytes: byte_size(21474836480) },
     effective_managed_oom_memory_pressure_limit: percent(60),
     oomctl_manages_slice: true,
+    membership: good_membership(),
   }
 }
 
@@ -102,6 +115,7 @@ fn auto_pressure_read() -> OomdEffectiveRead {
     effective_parent_slice_memory_max: CapEffective { bytes: byte_size(21474836480) },
     effective_managed_oom_memory_pressure_limit: percent(60),
     oomctl_manages_slice: true,
+    membership: good_membership(),
   }
 }
 
@@ -115,6 +129,7 @@ fn wrong_per_session_cap_read() -> OomdEffectiveRead {
     effective_parent_slice_memory_max: CapEffective { bytes: byte_size(21474836480) },
     effective_managed_oom_memory_pressure_limit: percent(60),
     oomctl_manages_slice: true,
+    membership: good_membership(),
   }
 }
 
@@ -128,6 +143,7 @@ fn unbounded_per_session_cap_read() -> OomdEffectiveRead {
     effective_parent_slice_memory_max: CapEffective { bytes: byte_size(21474836480) },
     effective_managed_oom_memory_pressure_limit: percent(60),
     oomctl_manages_slice: true,
+    membership: good_membership(),
   }
 }
 
@@ -141,6 +157,7 @@ fn wrong_parent_slice_cap_read() -> OomdEffectiveRead {
     effective_parent_slice_memory_max: CapEffective { bytes: byte_size(10737418240) },
     effective_managed_oom_memory_pressure_limit: percent(60),
     oomctl_manages_slice: true,
+    membership: good_membership(),
   }
 }
 
@@ -154,6 +171,7 @@ fn wrong_pressure_limit_read() -> OomdEffectiveRead {
     effective_parent_slice_memory_max: CapEffective { bytes: byte_size(21474836480) },
     effective_managed_oom_memory_pressure_limit: percent(90),
     oomctl_manages_slice: true,
+    membership: good_membership(),
   }
 }
 
@@ -167,6 +185,7 @@ fn oomctl_unmanaged_read() -> OomdEffectiveRead {
     effective_parent_slice_memory_max: CapEffective { bytes: byte_size(21474836480) },
     effective_managed_oom_memory_pressure_limit: percent(60),
     oomctl_manages_slice: false,
+    membership: good_membership(),
   }
 }
 
@@ -175,6 +194,67 @@ fn unmeasured_aggregate_thresholds() -> OomdGroundingThresholds {
     per_session_cap: byte_size(10737418240),
     parent_slice_cap: SessionAggregateUnmeasured,
     pressure_limit: percent(60),
+  }
+}
+
+fn all_legacy_membership() -> SliceMembershipSignal {
+  SliceMembershipSignal { sessions_in_slice: 0, sessions_legacy_flat: 5 }
+}
+
+fn empty_host_membership() -> SliceMembershipSignal {
+  SliceMembershipSignal { sessions_in_slice: 0, sessions_legacy_flat: 0 }
+}
+
+fn partial_migration_membership() -> SliceMembershipSignal {
+  SliceMembershipSignal { sessions_in_slice: 3, sessions_legacy_flat: 2 }
+}
+
+fn membership_check_passes(m: SliceMembershipSignal) -> Bool {
+  match membership_grounding_check(m: m) {
+    GroundingPass => true
+    GroundingFail { reason: _ } => false
+  }
+}
+
+fn all_legacy_read() -> OomdEffectiveRead {
+  OomdEffectiveRead {
+    slice_present: true,
+    unit_active: Active,
+    unit_file_state: UnitEnabled,
+    effective_managed_oom_memory_pressure: ManagedOomKill,
+    effective_per_session_memory_max: CapEffective { bytes: byte_size(10737418240) },
+    effective_parent_slice_memory_max: CapEffective { bytes: byte_size(21474836480) },
+    effective_managed_oom_memory_pressure_limit: percent(60),
+    oomctl_manages_slice: true,
+    membership: all_legacy_membership(),
+  }
+}
+
+fn empty_host_read() -> OomdEffectiveRead {
+  OomdEffectiveRead {
+    slice_present: true,
+    unit_active: Active,
+    unit_file_state: UnitEnabled,
+    effective_managed_oom_memory_pressure: ManagedOomKill,
+    effective_per_session_memory_max: CapEffective { bytes: byte_size(10737418240) },
+    effective_parent_slice_memory_max: CapEffective { bytes: byte_size(21474836480) },
+    effective_managed_oom_memory_pressure_limit: percent(60),
+    oomctl_manages_slice: true,
+    membership: empty_host_membership(),
+  }
+}
+
+fn partial_migration_read() -> OomdEffectiveRead {
+  OomdEffectiveRead {
+    slice_present: true,
+    unit_active: Active,
+    unit_file_state: UnitEnabled,
+    effective_managed_oom_memory_pressure: ManagedOomKill,
+    effective_per_session_memory_max: CapEffective { bytes: byte_size(10737418240) },
+    effective_parent_slice_memory_max: CapEffective { bytes: byte_size(21474836480) },
+    effective_managed_oom_memory_pressure_limit: percent(60),
+    oomctl_manages_slice: true,
+    membership: partial_migration_membership(),
   }
 }
 
@@ -238,6 +318,26 @@ fn witness_fleet_evidence_seam_fail_closed() -> Bool {
   !is_enforced(e: gunbc_oomd_fleet_evidence(req: test_thresholds()))
 }
 
+fn witness_membership_check_contract_passes_with_sessions_in_slice() -> Bool {
+  membership_check_passes(m: good_membership())
+}
+
+fn witness_membership_check_contract_passes_partial_migration() -> Bool {
+  membership_check_passes(m: partial_migration_membership())
+}
+
+fn witness_membership_check_contract_fails_all_legacy() -> Bool {
+  !membership_check_passes(m: all_legacy_membership())
+}
+
+fn witness_membership_check_contract_fails_empty_host() -> Bool {
+  !membership_check_passes(m: empty_host_membership())
+}
+
+fn witness_all_legacy_read_fails_closed() -> Bool { !grounds(read: all_legacy_read()) }
+fn witness_empty_host_read_fails_closed() -> Bool { !grounds(read: empty_host_read()) }
+fn witness_partial_migration_grounds() -> Bool { grounds(read: partial_migration_read()) }
+
 test fn oomd_install_grounding_holds() -> Bool {
   witness_full_conjunction_grounds_enforced()
     && witness_slice_absent_fails_closed()
@@ -254,4 +354,11 @@ test fn oomd_install_grounding_holds() -> Bool {
     && witness_reconcile_good_read_converges()
     && witness_absent_read_is_fail_closed()
     && witness_fleet_evidence_seam_fail_closed()
+    && witness_membership_check_contract_passes_with_sessions_in_slice()
+    && witness_membership_check_contract_passes_partial_migration()
+    && witness_membership_check_contract_fails_all_legacy()
+    && witness_membership_check_contract_fails_empty_host()
+    && witness_all_legacy_read_fails_closed()
+    && witness_empty_host_read_fails_closed()
+    && witness_partial_migration_grounds()
 }
