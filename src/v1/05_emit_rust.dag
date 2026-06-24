@@ -4585,7 +4585,13 @@ fn field_access_field_is_boxed(base: Node, field: String, scope: InferScope, sha
   let base_struct = expand_type_for_field_access(n: resolved_type(n: base), env: scope.type_env, module_name: scope.module_name)
   match find_child_named(n: base_struct, name: field, source_indices: scope.type_env.source_indices) {
     Present { value: field_child } =>
-      needs_box_wrapping(n: resolved_type(n: field_child), recursive_types: emit_info.recursive_type_set, shared_types: shared_types, source_indices: scope.type_env.source_indices)
+      let field_ty = resolved_type(n: field_child)
+      let field_ty_name = authored_name_at(source_indices: scope.type_env.source_indices, node: field_ty)
+      let grounds_to_host_scalar = rust_seed_host_numeric_alias(name: field_ty_name, corpus_repr: emit_info.corpus_repr) != none
+      if grounds_to_host_scalar { false }
+      else {
+        needs_box_wrapping(n: field_ty, recursive_types: emit_info.recursive_type_set, shared_types: shared_types, source_indices: scope.type_env.source_indices)
+      }
     Absent => false
   }
 }

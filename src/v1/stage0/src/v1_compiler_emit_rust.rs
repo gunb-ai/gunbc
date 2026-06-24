@@ -12068,12 +12068,27 @@ pub fn field_access_field_is_boxed(
             field,
             scope.type_env.clone().source_indices.clone(),
         ) {
-            Some(field_child) => needs_box_wrapping(
-                resolved_type(field_child.clone()),
-                emit_info.recursive_type_set.clone(),
-                shared_types,
-                scope.type_env.clone().source_indices.clone(),
-            ),
+            Some(field_child) => {
+                let field_ty = resolved_type(field_child.clone());
+                let field_ty_name = authored_name_at(
+                    scope.type_env.clone().source_indices.clone(),
+                    field_ty.clone(),
+                );
+                let grounds_to_host_scalar = rust_seed_host_numeric_alias(
+                    field_ty_name,
+                    emit_info.corpus_repr.clone(),
+                ) != None;
+                if grounds_to_host_scalar {
+                    false
+                } else {
+                    needs_box_wrapping(
+                        field_ty,
+                        emit_info.recursive_type_set.clone(),
+                        shared_types,
+                        scope.type_env.clone().source_indices.clone(),
+                    )
+                }
+            }
             None => false,
         }
     }
