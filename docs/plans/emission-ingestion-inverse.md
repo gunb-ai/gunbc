@@ -10,7 +10,7 @@
 
 Sweep of the corpus found `.dag` consumers that import the bash-AST sidecar `extdeps.languages.bash.program` (`ShellStmt`/`ShellWord`/`serialize_bash`) to express portable intent. **11 importers at authoring time, shrinking to 0 as the bash-sidecar arc migrates them.** The prose list below is *informational* and will rot — re-grep for the live number; it is **not** the lens's enforcement set:
 
-- `dsl/tools/`: `build_step`, `host_prelude`, `dsl_compile_clean_transport`, `emit_host_transport`, `layering_imports_transport`, `resolved_imports_transport`, `extdeps_external_authority_transport` (the last landed via #5418's external-authority arc, after #5445's roster snapshot — the introduction race, reconciled by #5453)
+- `dsl/tools/`: `build_step`, `host_prelude`, `dsl_compile_clean_transport`, `emit_host_transport`, `layering_imports_transport`, `extdeps_external_authority_transport` (the last landed via #5418's external-authority arc, after #5445's roster snapshot — the introduction race, reconciled by #5453)
 - `dsl/gunbc/`: `ci_yaml_validate`, `ci_spec` (the #5432 build-verification wiring)
 - `src/v2/workflow/`: `compiler_closure_ingest_transport`, `source_root_ingest_transport`
 
@@ -57,7 +57,7 @@ Three-state picture in these terms:
 Extending emission=ingestion⁻¹ past syntax to the intent layer:
 
 - **(A) diagnostic-realization rows** — `Diagnostic{Severity}` (`src/v2/std/diagnostic.dag`) → `{Bash: echo>&2, GitHubActions: ::error::, Rust: eprintln}` as **rows**, dissolving the hand-rolled `render_log_annotation` forward emitter. Filesystem predicates de-fuse the same way (`std/filesystem` → `{Bash: test/find, Rust: fs::metadata}`).
-- **(B) orchestration-as-intent** — a `Pipeline`/`Step`/`Run`/`Check` vocabulary so transports author *intent* and `emit(intent, Bash)` renders shell. Today shell is **both** the surface *and* the only target for orchestration — this is the deeper gap and the reason the anemia is bash-only.
+- **(B) orchestration-as-intent** — a `Pipeline`/`Step`/`Run`/`Check` vocabulary so transports author *intent* and `emit(intent, Bash)` renders shell. Today shell is **both** the surface *and* the only target for orchestration — this is the deeper gap and the reason the anemia is bash-only. → **design proposal (sign-ready):** [orchestration-as-intent-design.md](orchestration-as-intent-design.md) — grounds the vocab into existing carriers (`Check`=`Witness`+gap-A, control flow=substrate `Behavior`+`DescentEvidence`, `Run`=`EffectShape`+`ProcessExit`), shows `emit(intent, Bash)` over **grammar rows** (never extending the deletable `program.dag`), and works the two hardest consumers (`ci_cargo_eagain_retry_core`, `fleet_converge_emit`).
 
 **Cross-arc edges (first-class, not prose):**
 

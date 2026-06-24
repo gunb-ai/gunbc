@@ -1,0 +1,90 @@
+module test.claim.bmc_capability_solve
+
+import std.logic { Bool }
+import std.bmc { OpenBmc }
+import std.types { List }
+import extdeps.bmc.capability {
+  BmcCapability,
+  BmcFirmwareCapabilityRow,
+  BmcFirmwareVersion,
+  CapabilityPowerControl,
+  CapabilityBootSourceOverride,
+  CapabilityAccountManagement,
+  CapabilityFirmwareUpdate,
+  CapabilityVirtualMedia,
+  CapabilityBiosAttributeConfig,
+  firmware_has_capability,
+  catalog_has_vm_capable_firmware,
+  openbmc_2_07_00_capabilities,
+}
+import gunbc.os_install_mechanism {
+  OsInstallMechanism,
+  VirtualMediaInstall,
+  PxeHttpInstall,
+  FirmwareUpdateThenVirtualMedia,
+  solve_install_mechanism,
+  srv3_firmware_catalog,
+  srv3_install_mechanism,
+}
+
+test fn srv3_capabilities_are_grounded() -> Bool {
+  firmware_has_capability(row: openbmc_2_07_00_capabilities, cap: CapabilityPowerControl)
+    && firmware_has_capability(row: openbmc_2_07_00_capabilities, cap: CapabilityBootSourceOverride)
+    && firmware_has_capability(row: openbmc_2_07_00_capabilities, cap: CapabilityAccountManagement)
+    && firmware_has_capability(row: openbmc_2_07_00_capabilities, cap: CapabilityFirmwareUpdate)
+    && firmware_has_capability(row: openbmc_2_07_00_capabilities, cap: CapabilityVirtualMedia) == false
+    && firmware_has_capability(row: openbmc_2_07_00_capabilities, cap: CapabilityBiosAttributeConfig) == false
+}
+
+test fn catalog_has_no_vm_capable_firmware_today() -> Bool {
+  catalog_has_vm_capable_firmware(catalog: srv3_firmware_catalog) == false
+}
+
+test fn srv3_install_mechanism_is_pxe_today() -> Bool {
+  match srv3_install_mechanism {
+    PxeHttpInstall => true
+    VirtualMediaInstall => false
+    FirmwareUpdateThenVirtualMedia => false
+  }
+}
+
+test fn vm_capable_firmware_row_flips_to_update_path() -> Bool {
+  let vm_capable_row = BmcFirmwareCapabilityRow {
+    firmware: BmcFirmwareVersion {
+      family: OpenBmc,
+      version: "3.00.00",
+    },
+    capabilities: [
+      CapabilityPowerControl,
+      CapabilityBootSourceOverride,
+      CapabilityAccountManagement,
+      CapabilityFirmwareUpdate,
+      CapabilityVirtualMedia,
+    ],
+  }
+  let extended_catalog = [openbmc_2_07_00_capabilities, vm_capable_row]
+  match solve_install_mechanism(current: openbmc_2_07_00_capabilities, catalog: extended_catalog) {
+    FirmwareUpdateThenVirtualMedia => true
+    VirtualMediaInstall => false
+    PxeHttpInstall => false
+  }
+}
+
+test fn node_with_virtual_media_solves_direct() -> Bool {
+  let vm_row = BmcFirmwareCapabilityRow {
+    firmware: BmcFirmwareVersion {
+      family: OpenBmc,
+      version: "3.00.00",
+    },
+    capabilities: [
+      CapabilityPowerControl,
+      CapabilityBootSourceOverride,
+      CapabilityVirtualMedia,
+    ],
+  }
+  match solve_install_mechanism(current: vm_row, catalog: [vm_row]) {
+    VirtualMediaInstall => true
+    FirmwareUpdateThenVirtualMedia => false
+    PxeHttpInstall => false
+  }
+}
