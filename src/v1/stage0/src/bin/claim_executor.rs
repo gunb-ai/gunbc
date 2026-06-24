@@ -4,6 +4,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::thread;
+use std::time::Instant;
 
 use v1_compiler::cli_run::{
     make_eval_context, resolve_entry_graph, run_claim, run_discovery_corpus_with_options,
@@ -201,6 +202,17 @@ struct ClaimResult {
     function: String,
     ok: bool,
     detail: String,
+    /// Wall-clock eval time for this single claim (0 for discovery aggregate).
+    wall_nanos: u128,
+    /// Resolve time charged to this result; non-zero only on the first claim in a
+    /// SharedClaims group (the group resolves once, cost attributed to first claim).
+    resolve_nanos: u128,
+    /// For discovery batch nodes: sum of per-file resolve times (serial sum, not wall).
+    corpus_resolve_nanos: u128,
+    /// For discovery batch nodes: sum of per-witness eval times (serial sum, not wall).
+    corpus_eval_nanos: u128,
+    /// Number of discovery witnesses (non-zero only for discovery batch nodes).
+    corpus_witnesses: usize,
 }
 
 /// A batch is partitioned into resolve-groups before scheduling. SingleClaims that share one
@@ -272,27 +284,52 @@ fn group_batch_units(batch: &[Runnable]) -> Vec<BatchUnit> {
     units
 }
 
-fn claim_result_for_outcome(function: String, outcome: ClaimOutcome) -> ClaimResult {
+fn claim_result_for_outcome(
+    function: String,
+    outcome: ClaimOutcome,
+    wall_nanos: u128,
+    resolve_nanos: u128,
+) -> ClaimResult {
     match outcome {
         ClaimOutcome::Pass => ClaimResult {
             function,
             ok: true,
             detail: String::new(),
+            wall_nanos,
+            resolve_nanos,
+            corpus_resolve_nanos: 0,
+            corpus_eval_nanos: 0,
+            corpus_witnesses: 0,
         },
         ClaimOutcome::Fail => ClaimResult {
             function,
             ok: false,
             detail: "returned Bool(false)".to_string(),
+            wall_nanos,
+            resolve_nanos,
+            corpus_resolve_nanos: 0,
+            corpus_eval_nanos: 0,
+            corpus_witnesses: 0,
         },
         ClaimOutcome::NotBool { got } => ClaimResult {
             function,
             ok: false,
             detail: format!("returned `{}`, not Bool", got),
+            wall_nanos,
+            resolve_nanos,
+            corpus_resolve_nanos: 0,
+            corpus_eval_nanos: 0,
+            corpus_witnesses: 0,
         },
         ClaimOutcome::RuntimeError { message } => ClaimResult {
             function,
             ok: false,
             detail: format!("runtime error: {}", message),
+            wall_nanos,
+            resolve_nanos,
+            corpus_resolve_nanos: 0,
+            corpus_eval_nanos: 0,
+            corpus_witnesses: 0,
         },
     }
 }
@@ -308,6 +345,11 @@ fn run_batch_unit(
             ok: false,
             detail: "unrunnable sentinel (unmapped node or non-complete plan) — failing closed"
                 .to_string(),
+            wall_nanos: 0,
+            resolve_nanos: 0,
+            corpus_resolve_nanos: 0,
+            corpus_eval_nanos: 0,
+            corpus_witnesses: 0,
         }],
         BatchUnit::Discovery {
             source_roots: roots,
@@ -332,6 +374,7 @@ fn run_shared_entry_claims(
     entry: &str,
     functions: &[String],
 ) -> Vec<ClaimResult> {
+    let resolve_start = Instant::now();
     let (graph, source_indices) = match resolve_entry_graph(source_roots, entry) {
         Ok(pair) => pair,
         Err(msg) => {
@@ -341,14 +384,32 @@ fn run_shared_entry_claims(
                     function: function.clone(),
                     ok: false,
                     detail: format!("resolve failed for {}: {}", entry, msg),
+                    wall_nanos: 0,
+                    resolve_nanos: 0,
+                    corpus_resolve_nanos: 0,
+                    corpus_eval_nanos: 0,
+                    corpus_witnesses: 0,
                 })
                 .collect();
         }
     };
+    let resolve_nanos = resolve_start.elapsed().as_nanos();
     let ctx = make_eval_context(&graph, source_indices, ExecutionMode::Wet);
+    let mut first = true;
     functions
         .iter()
-        .map(|function| claim_result_for_outcome(function.clone(), run_claim(&ctx, function)))
+        .map(|function| {
+            let claim_start = Instant::now();
+            let outcome = run_claim(&ctx, function);
+            let wall_nanos = claim_start.elapsed().as_nanos();
+            let rn = if first {
+                first = false;
+                resolve_nanos
+            } else {
+                0
+            };
+            claim_result_for_outcome(function.clone(), outcome, wall_nanos, rn)
+        })
         .collect()
 }
 
@@ -389,6 +450,11 @@ fn run_discovery_batch_node(
                 function: format!("{label} ({} witnesses)", summary.total),
                 ok: true,
                 detail: String::new(),
+                wall_nanos: 0,
+                resolve_nanos: 0,
+                corpus_resolve_nanos: summary.total_resolve_nanos,
+                corpus_eval_nanos: summary.total_measured_nanos,
+                corpus_witnesses: summary.total,
             }
         }
         Ok(summary) => ClaimResult {
@@ -400,11 +466,21 @@ fn run_discovery_batch_node(
                 summary.total,
                 summary.failures.join("; ")
             ),
+            wall_nanos: 0,
+            resolve_nanos: 0,
+            corpus_resolve_nanos: summary.total_resolve_nanos,
+            corpus_eval_nanos: summary.total_measured_nanos,
+            corpus_witnesses: summary.total,
         },
         Err(msg) => ClaimResult {
             function: label,
             ok: false,
             detail: format!("discovery corpus failed: {msg}"),
+            wall_nanos: 0,
+            resolve_nanos: 0,
+            corpus_resolve_nanos: 0,
+            corpus_eval_nanos: 0,
+            corpus_witnesses: 0,
         },
     }
 }
