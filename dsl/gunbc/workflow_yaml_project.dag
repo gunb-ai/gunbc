@@ -39,7 +39,10 @@ fn workflow_permissions_yaml(perms: WorkflowPermissions) -> YamlValue {
       optional_permission_key(key: "pull-requests", level: perms.pull_requests),
       concat(
         optional_permission_key(key: "issues", level: perms.issues),
-        optional_permission_key(key: "actions", level: perms.actions)
+        concat(
+          optional_permission_key(key: "actions", level: perms.actions),
+          optional_permission_key(key: "id-token", level: perms.id_token)
+        )
       )
     )
   ))
