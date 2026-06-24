@@ -17738,18 +17738,21 @@ pub fn emit_typed_record_lit(
                 let ctor_name = if tn_is_known_struct {
                     tn.clone()
                 } else {
-                    // Resolve the alias use-site to its canonical struct via the existing inner
-                    // peel (peel_alias_once_for_field_access reuses resolve_node; it returns the
-                    // Conj struct before expand_alias_chain's field-access fail-closed). The
-                    // resolved node wears the alias's identity ("Giga"), so recover the canonical
-                    // struct NAME by its field set via the existing find_unique_struct_name_by_fields
-                    // (fail-closed to `tn` on ambiguity -> loud E0560, never a silent wrong struct).
-                    let resolved_struct =
-                        crate::v1_compiler_infer::peel_alias_once_for_field_access(
-                            resolved_type.clone(),
-                            scope.type_env.clone(),
-                            scope.module_name.clone(),
-                        );
+                    // Resolve the alias use-site one bounded step via resolve_node (the resolution
+                    // primitive; a single call is bounded — unlike the recursive
+                    // peel_alias_once_for_field_access, which has no cycle guard and can diverge on
+                    // a non-progressing corpus literal). One step yields the Conj struct for a
+                    // single-hop alias (the measure case). The resolved node wears the alias's
+                    // identity ("Giga"), so recover the canonical struct NAME by its field set via
+                    // the existing find_unique_struct_name_by_fields (fail-closed to `tn` on
+                    // ambiguity / non-Conj -> loud E0560, never a silent wrong struct).
+                    let resolved_struct = crate::v1_compiler_infer_resolve::resolve_node(
+                        resolved_type.clone(),
+                        scope.type_env.clone(),
+                        scope.module_name.clone(),
+                    )
+                    .resolved
+                    .clone();
                     if (resolved_struct.connective.clone() == Connective::Conj) {
                         let resolved_field_names = Rc::new({
                             let mut __r = Vec::new();
