@@ -365,8 +365,18 @@ pub fn map_literal_key_is_string(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     match map_type_node.children.clone().first().cloned() {
-        Some(key_child) => is_rust_string_like(child_type_node(key_child.clone()), source_indices),
-        None => false,
+        Some(key_child) => is_rust_string_like(key_child.clone(), source_indices.clone()),
+        None => match find_property(
+            map_type_node.properties.clone(),
+            "__applied_type_args".to_string(),
+            source_indices.clone(),
+        ) {
+            Some(applied) => match applied.children.clone().first().cloned() {
+                Some(akey) => is_rust_string_like(akey.clone(), source_indices.clone()),
+                None => false,
+            },
+            None => false,
+        },
     }
 }
 
