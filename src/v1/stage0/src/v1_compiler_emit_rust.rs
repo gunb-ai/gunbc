@@ -626,25 +626,57 @@ pub fn is_parametric_opaque_type_base(
     }
 }
 
-// A type-ARGUMENT position that is occupied by a value (not a type) collapses to the unit type
-// `()` in the emitted Rust. Two cases of the same type/value conflation:
-//   - a Nat width LITERAL (`MachineWidth<8>`) -- the pre-existing `is_width_nat_type_literal` case;
-//   - a VALUE enum-variant used as a type arg (`Measure<Time, ...>`, `Measure<Memory, One, ...>`),
-//     where `Time`/`Memory`/`One` are unit variants of the `Quantity`/`Scale` VALUE sum-types.
-// The `.dag` authority keeps these phantom type-params (Q/S give a real type-level distinction
-// between e.g. a Time measure and a Length measure); but Rust cannot carry a VALUE in a type-arg
-// slot, so the seed projection collapses each such slot to `()` (the same lossy-but-sound move the
-// width-nat literal already takes). This is keyed on the variant being unambiguous: an enum-variant
-// name owned by exactly one coproduct (`is_phantom_unit_variant_type_arg` -> `lookup_unit_variant_
-// phantom_type` returns Some only on a single match), so an ambiguous name fails closed (renders by
-// name, the pre-existing behavior) rather than guessing.
+// A bare type leaf name is a VALUE enum-variant used in a type position (the type/value conflation)
+// when it names a unit variant of SOME coproduct in scope and is NOT itself a defined type. The
+// `.dag` keeps these phantom slots (Q/S give a real type-level distinction between e.g. a Time and a
+// Length measure); Rust cannot carry a value in a type slot, so the seed projection collapses each
+// such slot to `()`. Detection is "≥1 coproduct owns this unit-variant name", NOT the stricter
+// "exactly one" (`is_phantom_unit_variant_type_arg`): the corpus has the SAME variant name in
+// several coproducts (`Time` is a unit variant of `Quantity`, `realization_measurement`,
+// `realization_width`, ...), so the exactly-one form fails to fire and emits the variant name (an
+// `E0573: expected type, found variant` once the marker is out of scope). The `lookup_type_by_name
+// == None` guard keeps it fail-closed: a name that IS a real type in scope (e.g. `Temperature` in
+// the examples corpus) renders normally, never collapses.
+pub fn is_value_variant_type_arg(env: Rc<TypeEnv>, name: String) -> bool {
+    match lookup_type_by_name(env.clone(), name.clone()) {
+        Some(_) => false,
+        None => ((collect_unit_variant_phantom_matches(env, name).len() as i64) >= 1),
+    }
+}
+
+// A type-ARGUMENT position that is occupied by a value collapses to `()` in the emitted Rust: a Nat
+// width LITERAL (`MachineWidth<8>`, the pre-existing `is_width_nat_type_literal` case) or a value
+// enum-variant (`Measure<Time, ...>`, `Measure<Memory, One, ...>`) -- the same lossy-but-sound move.
 pub fn rust_type_arg_renders_as_unit(
     n: Rc<Node>,
     env: Rc<TypeEnv>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     is_width_nat_type_literal(n.clone())
-        || is_phantom_unit_variant_type_arg(env, authored_name_at(source_indices, n.clone()))
+        || is_value_variant_type_arg(env, authored_name_at(source_indices, n.clone()))
+}
+
+// Does a type-expr tree contain a value enum-variant in any (possibly nested) type-arg position?
+// Used to route a struct-field type through the env-aware Rust renderer (which collapses such slots
+// to `()`) only when needed -- leaving every other generic field on its existing render path.
+pub fn type_node_has_value_variant_arg(n: Rc<Node>, env: Rc<TypeEnv>) -> bool {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        if is_value_variant_type_arg(
+            env.clone(),
+            authored_name_at(env.source_indices.clone(), n.clone()),
+        ) {
+            true
+        } else {
+            let mut __found = false;
+            for c in n.children.clone().iter().cloned() {
+                if type_node_has_value_variant_arg(c.clone(), env.clone()) {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        }
+    })
 }
 
 pub fn render_rust_phantom_opaque_applied_type_arg(
@@ -2716,8 +2748,11 @@ pub fn rust_render_type_leaf_name(
     variant_to_enum: Rc<HashMap<String, String>>,
     env: Rc<TypeEnv>,
 ) -> String {
-    if is_phantom_unit_variant_type_arg(env, name.clone()) {
-        name.clone()
+    if is_value_variant_type_arg(env, name.clone()) {
+        // A value enum-variant used as a type leaf -> collapse to the unit type (the type/value
+        // conflation). Was `name.clone()`, which relied on a module-local ZST marker and broke
+        // (E0573) wherever the marker was out of scope.
+        "()".to_string()
     } else {
         match rust_opaque_kernel_alias_carrier(name.clone()) {
             Some(carrier) => carrier.clone(),
@@ -8050,12 +8085,27 @@ pub fn emit_struct_field_from_child(
         let rt_child = resolved_type(child.clone());
         let authored_child_type = field_node_type_expr(child.clone());
         let ty = if ((generic_param_names.len() as i64) > 0) {
-            render_node_type(
-                rt_child.clone(),
-                RenderTarget::Rust,
-                shared_types.clone(),
-                env.source_indices.clone(),
-            )
+            // A value enum-variant in a type-arg slot (`Measure<Time, S, Nat>`) must collapse to
+            // `()`; render_node_type is the generic env-free renderer and cannot detect it, so route
+            // those (and only those) fields through the env-aware Rust decl renderer.
+            if type_node_has_value_variant_arg(rt_child.clone(), env.clone()) {
+                render_rust_decl_type(
+                    rt_child.clone(),
+                    generic_param_names.clone(),
+                    shared_types.clone(),
+                    emit_info.corpus_repr.clone(),
+                    env.source_indices.clone(),
+                    emit_info.variant_to_enum.clone(),
+                    env.clone(),
+                )
+            } else {
+                render_node_type(
+                    rt_child.clone(),
+                    RenderTarget::Rust,
+                    shared_types.clone(),
+                    env.source_indices.clone(),
+                )
+            }
         } else {
             if (find_property(
                 child.properties.clone(),
