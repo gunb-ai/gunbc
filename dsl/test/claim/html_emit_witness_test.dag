@@ -1,4 +1,4 @@
-module test.claim.react_markup_witness
+module test.claim.html_emit_witness
 
 import std.markup {
   ElementNode,
@@ -7,11 +7,10 @@ import std.markup {
   MarkupNode,
   serialize_markup_node,
 }
-import std.react_markup {
+import extdeps.languages.html {
   EmitOk,
   EmitRejected,
-  UntrustedUrlScheme,
-  serialize_react_markup,
+  try_serialize_html_source,
 }
 
 fn sample_button() -> MarkupNode {
@@ -22,15 +21,15 @@ fn sample_button() -> MarkupNode {
   }
 }
 
-fn witness_react_consumer_reduces_and_serializes() -> Bool {
-  match serialize_react_markup(node: sample_button()) {
+fn witness_html_emit_reduces_and_serializes() -> Bool {
+  match try_serialize_html_source(node: sample_button()) {
     EmitOk { html: h } => h == "<button class=\"primary\">Go</button>"
     EmitRejected { reason: _ } => false
   }
 }
 
-fn witness_react_fragment_matches_markup_fold() -> Bool {
-  match serialize_react_markup(node: sample_button()) {
+fn witness_html_emit_matches_markup_fold() -> Bool {
+  match try_serialize_html_source(node: sample_button()) {
     EmitOk { html: h } => h == serialize_markup_node(node: sample_button())
     EmitRejected { reason: _ } => false
   }
@@ -53,7 +52,7 @@ fn hostile_data_href() -> MarkupNode {
 }
 
 fn witness_javascript_reject_discriminates_from_char_escape() -> Bool {
-  match serialize_react_markup(node: hostile_javascript_href()) {
+  match try_serialize_html_source(node: hostile_javascript_href()) {
     EmitRejected { reason: _ } => {
       let unchecked = serialize_markup_node(node: hostile_javascript_href())
       unchecked == "<a href=\"javascript:alert(1)\">click</a>"
@@ -63,7 +62,7 @@ fn witness_javascript_reject_discriminates_from_char_escape() -> Bool {
 }
 
 fn witness_data_reject_discriminates_from_char_escape() -> Bool {
-  match serialize_react_markup(node: hostile_data_href()) {
+  match try_serialize_html_source(node: hostile_data_href()) {
     EmitRejected { reason: _ } => {
       let unchecked = serialize_markup_node(node: hostile_data_href())
       starts_with(s: unchecked, prefix: "<a href=\"data:")
@@ -73,23 +72,23 @@ fn witness_data_reject_discriminates_from_char_escape() -> Bool {
 }
 
 fn witness_serialize_rejects_javascript_href() -> Bool {
-  match serialize_react_markup(node: hostile_javascript_href()) {
-    EmitRejected { reason: UntrustedUrlScheme { url: u } } =>
+  match try_serialize_html_source(node: hostile_javascript_href()) {
+    EmitRejected { reason: u } =>
       u == "javascript:alert(1)"
     EmitOk { html: _ } => false
   }
 }
 
 fn witness_serialize_rejects_data_href() -> Bool {
-  match serialize_react_markup(node: hostile_data_href()) {
-    EmitRejected { reason: UntrustedUrlScheme { url: u } } =>
+  match try_serialize_html_source(node: hostile_data_href()) {
+    EmitRejected { reason: u } =>
       starts_with(s: u, prefix: "data:")
     EmitOk { html: _ } => false
   }
 }
 
 fn witness_http_href_serializes() -> Bool {
-  match serialize_react_markup(
+  match try_serialize_html_source(
     node: ElementNode {
       tag: "a",
       attrs: [ MarkupAttr { name: "href", value: "https://gunbc.dev" } ],
@@ -118,23 +117,23 @@ fn req_a_hostile_but_trusted_scheme() -> MarkupNode {
 }
 
 fn witness_trusted_href_serializes() -> Bool {
-  match serialize_react_markup(node: trusted_relative_link()) {
+  match try_serialize_html_source(node: trusted_relative_link()) {
     EmitOk { html: h } => h == "<a href=\"/tree/dsl\">dsl</a>"
     EmitRejected { reason: _ } => false
   }
 }
 
 fn witness_req_a_hostile_href_still_emits_with_escaping() -> Bool {
-  match serialize_react_markup(node: req_a_hostile_but_trusted_scheme()) {
+  match try_serialize_html_source(node: req_a_hostile_but_trusted_scheme()) {
     EmitOk { html: h } =>
       h == "<a href=\"x%22&amp;%3Cy%20onmouseover=z\"></a>"
     EmitRejected { reason: _ } => false
   }
 }
 
-test fn react_markup_keystone_holds() -> Bool {
-  witness_react_consumer_reduces_and_serializes()
-    && witness_react_fragment_matches_markup_fold()
+test fn html_emit_keystone_holds() -> Bool {
+  witness_html_emit_reduces_and_serializes()
+    && witness_html_emit_matches_markup_fold()
     && witness_javascript_reject_discriminates_from_char_escape()
     && witness_data_reject_discriminates_from_char_escape()
     && witness_serialize_rejects_javascript_href()
