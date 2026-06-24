@@ -1,0 +1,88 @@
+module v2.test.manual.typescript_field_access_emit
+
+import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
+import v2.std.collection { Map, empty_map, map_insert }
+import v2.std.node { Symbol }
+import v2.std.compilers.target_model {
+  ConcreteSyntaxToken,
+  TargetModel,
+  TargetValueExpression,
+  target_value_expression_binding_ref,
+  target_value_expression_field_access,
+  target_value_expression_to_concrete_tokens,
+  target_model_emit_transforms_empty
+}
+import extdeps.communication.medium { Lossless, Medium }
+import v2.compiler.translate { serialize_concrete_syntax_tokens_to_source }
+import v2.extdeps.languages.typescript {
+  ts_mvp1_target_model_node,
+  ts_operator_realizations_catalog_node,
+  ts_value_expression_projection,
+  ts_wave1_lex
+}
+import v2.test.manual.mvp1_typescript_add_translate { anchor_mvp1_ts_emit_accepts }
+
+fn field_access_binding_spellings() -> Map<Symbol, String> {
+  map_insert(
+    map_insert(empty_map(), ^field_access_binding_object, "o"),
+    ^field_access_binding_field,
+    "x"
+  )
+}
+
+fn field_access_target_model() -> TargetModel {
+  TargetModel {
+    bundle: ts_mvp1_target_model_node(),
+    lex: ts_wave1_lex(),
+    binding_spellings: field_access_binding_spellings(),
+    token_class_emit_transforms: target_model_emit_transforms_empty,
+    authority_source_text: "",
+    runtime_row: target_emit_host_runtime_row_unconfigured
+  }
+}
+
+fn ts_field_access_expr() -> TargetValueExpression {
+  target_value_expression_field_access(
+    base: target_value_expression_binding_ref(binding: ^field_access_binding_object),
+    field_name: ^field_access_binding_field
+  )
+}
+
+fn ts_field_access_emit_accepts() -> Outcome<Medium<String>> {
+  bind_outcome(
+    o: target_value_expression_to_concrete_tokens(
+      expr: ts_field_access_expr(),
+      projection: ts_value_expression_projection(),
+      catalog: ts_operator_realizations_catalog_node()
+    ),
+    f: fn(tokens) {
+      serialize_concrete_syntax_tokens_to_source(
+        target: field_access_target_model(),
+        tokens: tokens
+      )
+    }
+  )
+}
+
+fn ts_field_access_emit_source() -> String {
+  match ts_field_access_emit_accepts() {
+    Accepted { value: source, diagnostics: _ } => source.carried
+    Rejected { diagnostics: _ } => "FIELD_ACCESS_EMIT_REJECTED"
+  }
+}
+
+test fn ts_field_access_emit_source_holds() -> Bool {
+  ts_field_access_emit_source() == "o.x"
+}
+
+fn ts_add_emit_source() -> String {
+  match anchor_mvp1_ts_emit_accepts() {
+    Accepted { value: source, diagnostics: _ } => source.carried
+    Rejected { diagnostics: _ } => "ADD_EMIT_REJECTED"
+  }
+}
+
+test fn ts_add_emit_source_holds() -> Bool {
+  ts_add_emit_source() == "function add(x: number, y: number): number { return x + y; }"
+}

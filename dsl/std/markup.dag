@@ -55,27 +55,101 @@ fn unescape_in(ctx: EscapeContext, s: String) -> String {
   }
 }
 
-fn serialize_attribute(a: Attribute) -> String {
-  concat(concat(concat(concat(" ", a.name), "=\""), escape_in(a.ctx, a.value)), "\"")
+type EscapeMode = EscapeHtml | EscapeRaw
+
+type MarkupBracket {
+  tag_open: String
+  end_tag_open: String
+  tag_close: String
+  attr_sep: String
+  attr_assign: String
+  attr_quote: String
 }
 
-fn serialize_attributes(attrs: List<Attribute>) -> String {
-  fold(attrs, init: "", f: (acc, a) => concat(acc, serialize_attribute(a)))
+type TagDelimiter {
+  tag: String
+  open: String
+  close: String
+}
+
+type MarkupMedium {
+  tag_overrides: List<TagDelimiter>
+  bracket: MarkupBracket
+  text_escape: EscapeMode
+}
+
+data canonical_markup_bracket: MarkupBracket = MarkupBracket {
+  tag_open: "<",
+  end_tag_open: "</",
+  tag_close: ">",
+  attr_sep: " ",
+  attr_assign: "=",
+  attr_quote: "\"",
+}
+
+fn html_markup_medium() -> MarkupMedium {
+  MarkupMedium {
+    tag_overrides: [],
+    bracket: canonical_markup_bracket,
+    text_escape: EscapeHtml,
+  }
+}
+
+fn escape_text_for(mode: EscapeMode, s: String) -> String {
+  match mode {
+    EscapeHtml => escape_text(s: s)
+    EscapeRaw => s
+  }
+}
+
+type TagLookup
+  = FoundTag { delim: TagDelimiter }
+  | NoTag
+
+fn lookup_tag_delimiter(overrides: List<TagDelimiter>, tag: String) -> TagLookup {
+  fold(overrides, init: NoTag, f: (acc, d) =>
+    match acc {
+      FoundTag { delim: r } => FoundTag { delim: r }
+      NoTag => if d.tag == tag { FoundTag { delim: d } } else { NoTag }
+    }
+  )
+}
+
+fn serialize_attribute_with(a: Attribute, bracket: MarkupBracket) -> String {
+  join([bracket.attr_sep, a.name, bracket.attr_assign, bracket.attr_quote, escape_in(ctx: a.ctx, s: a.value), bracket.attr_quote], "")
+}
+
+fn serialize_attributes_with(attrs: List<Attribute>, bracket: MarkupBracket) -> String {
+  fold(attrs, init: "", f: (acc, a) => concat(acc, serialize_attribute_with(a: a, bracket: bracket)))
+}
+
+fn serialize_fragment_with(frag: Fragment, medium: MarkupMedium) -> String {
+  match frag {
+    TextNode { content: c } => escape_text_for(mode: medium.text_escape, s: c)
+    RawNode { content: c } => c
+    Element { tag: t, attributes: attrs, children: kids } => {
+      let inner = fold(kids, init: "", f: (acc, k) => concat(acc, serialize_fragment_with(frag: k, medium: medium)))
+      match lookup_tag_delimiter(overrides: medium.tag_overrides, tag: t) {
+        FoundTag { delim: d } =>
+          join([d.open, inner, d.close], "")
+        NoTag =>
+          join([
+            medium.bracket.tag_open,
+            t,
+            serialize_attributes_with(attrs: attrs, bracket: medium.bracket),
+            medium.bracket.tag_close,
+            inner,
+            medium.bracket.end_tag_open,
+            t,
+            medium.bracket.tag_close
+          ], "")
+      }
+    }
+  }
 }
 
 fn serialize_fragment(frag: Fragment) -> String {
-  match frag {
-    TextNode { content: c } => escape_text(c)
-    RawNode { content: c } => c
-    Element { tag: t, attributes: attrs, children: kids } =>
-      concat(
-        concat(
-          concat(concat(concat("<", t), serialize_attributes(attrs)), ">"),
-          fold(kids, init: "", f: (acc, k) => concat(acc, serialize_fragment(k)))
-        ),
-        concat(concat("</", t), ">")
-      )
-  }
+  serialize_fragment_with(frag: frag, medium: html_markup_medium())
 }
 
 type MarkupAttr {
@@ -230,6 +304,10 @@ fn markup_node_to_fragment(node: MarkupNode) -> Fragment {
 
 fn serialize_markup_node(node: MarkupNode) -> String {
   serialize_fragment(frag: markup_node_to_fragment(node: node))
+}
+
+fn serialize_markup_node_with(node: MarkupNode, medium: MarkupMedium) -> String {
+  serialize_fragment_with(frag: markup_node_to_fragment(node: node), medium: medium)
 }
 
 type MarkupSerializeResult

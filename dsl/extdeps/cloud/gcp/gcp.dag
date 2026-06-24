@@ -31,6 +31,11 @@ type GcpServiceAccount {
   disabled: Bool
 }
 
+type GcpOperation {
+  name: String
+  done: Bool?
+}
+
 type GcpOAuth2AccessTokenStrategy
   = AdcRefresh { adc_path: FilePath? }
   | GcloudCli
@@ -98,6 +103,8 @@ fn wif_principal_set_for_repo(project_number: String, pool_id: String, repositor
 type GcpService
   = GcpStorage
   | GcpIam
+  | GcpIamCredentials
+  | GcpServiceUsage
   | GcpSecretManager
   | GcpCloudRun
   | GcpPubsub
@@ -107,11 +114,17 @@ fn gcp_service_wire_label(service: GcpService) -> String {
   match service {
     GcpStorage => "storage"
     GcpIam => "iam"
+    GcpIamCredentials => "iamcredentials"
+    GcpServiceUsage => "serviceusage"
     GcpSecretManager => "secretmanager"
     GcpCloudRun => "run"
     GcpPubsub => "pubsub"
     GcpSts => "sts"
   }
+}
+
+fn gcp_service_api_id(service: GcpService) -> String {
+  concat(gcp_service_wire_label(service: service), ".googleapis.com")
 }
 
 type GcpApiEndpoint {

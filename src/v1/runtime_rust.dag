@@ -304,6 +304,17 @@ fn rt_unicode_ops() -> String {
     "}\n\n",
     "pub fn from_code_point(cp: i64) -> String {\n",
     "    char::from_u32(cp as u32).map(|c| c.to_string()).unwrap_or_default()\n",
+    "}\n\n",
+    "pub fn is_xid_start(cp: i64) -> bool {\n",
+    "    char::from_u32(cp as u32).map(unicode_ident::is_xid_start).unwrap_or(false)\n",
+    "}\n\n",
+    "pub fn is_xid_continue(cp: i64) -> bool {\n",
+    "    char::from_u32(cp as u32).map(unicode_ident::is_xid_continue).unwrap_or(false)\n",
+    "}\n\n",
+    "pub fn is_emoji_ident(cp: i64) -> bool {\n",
+    "    use unicode_properties::emoji::UnicodeEmoji;\n",
+    "    use unicode_properties::emoji::EmojiStatus;\n",
+    "    char::from_u32(cp as u32).map(|c| matches!(c.emoji_status(), EmojiStatus::EmojiPresentation | EmojiStatus::EmojiPresentationAndModifierBase | EmojiStatus::EmojiPresentationAndEmojiComponent | EmojiStatus::EmojiPresentationAndModifierAndEmojiComponent) && !unicode_ident::is_xid_continue(c)).unwrap_or(false)\n",
     "}\n\n")
 }
 

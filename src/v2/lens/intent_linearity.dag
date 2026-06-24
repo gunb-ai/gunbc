@@ -1,17 +1,18 @@
 module v2.lens.intent_linearity
-import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import v2.lens.common.construction_justification { ConstructionJustification, ConstructionClass, WallNow, WallAfterGrounding, RatchetForever }
 import std.disposition { SingleAuthority }
 import v2.lens.simulated_relationship { chain_is_simulated }
 import v2.lens.structural_similarity { type_decls_anti_unify }
 import v2.lens.complexity_lowering { cost_is_lowerable }
 import v2.lens.cost { symbolic_cost_of_node }
 import v2.std.node { Node, Symbol }
-import v2.std.algebra { FreeMonoid, length, any, for_all }
+import v2.std.algebra { FreeMonoid, length, any, for_all, contains }
+import v2.std.text { String }
 import v2.std.logic { Bool }
 
 type CostAxis = ChangeTime | RunTime
 
-type Representation = TermChain | TypeForest
+type Representation = TermChain | TypeForest | ImportGraph
 
 type LinearityRule {
   name: Symbol
@@ -55,6 +56,73 @@ fn linearity_registry() -> FreeMonoid<LinearityRule> {
   [ unroll_to_fold_rule(), complexity_reducible_rule(), dup_type_to_generic_rule() ]
 }
 
+type ClosureFact {
+  unit: Symbol
+  declared: FreeMonoid<String>
+  derived: FreeMonoid<String>
+}
+
+type ParallelRepresentationRule {
+  name: Symbol
+  axis: CostAxis
+  representation: Representation
+  class: ConstructionClass
+}
+
+fn import_graph_rule() -> ParallelRepresentationRule {
+  ParallelRepresentationRule {
+    name: ^consumed_input_closure,
+    axis: ChangeTime,
+    representation: ImportGraph,
+    class: WallNow { construction: "resolve_imports_transitively" }
+  }
+}
+
+fn parallel_representation_registry() -> FreeMonoid<ParallelRepresentationRule> {
+  [ import_graph_rule() ]
+}
+
+fn string_eq(a: String, b: String) -> Bool {
+  a == b
+}
+
+fn list_is_subset(xs: FreeMonoid<String>, ys: FreeMonoid<String>) -> Bool {
+  for_all(xs: xs, predicate: fn(x) { contains(xs: ys, item: x, eq: string_eq) })
+}
+
+fn closures_match(declared: FreeMonoid<String>, derived: FreeMonoid<String>) -> Bool {
+  list_is_subset(xs: declared, ys: derived) && list_is_subset(xs: derived, ys: declared)
+}
+
+fn closure_drift(fact: ClosureFact) -> Bool {
+  !closures_match(declared: fact.declared, derived: fact.derived)
+}
+
+fn closure_is_clean(rule: ParallelRepresentationRule, fact: ClosureFact) -> Bool {
+  match rule.class {
+    WallNow { construction: _ } => !closure_drift(fact: fact)
+    WallAfterGrounding { dissolves_to: _ } => true
+    RatchetForever { undecidable_because: _ } => true
+  }
+}
+
+fn closure_is_clean_for_representation(rep: Representation, fact: ClosureFact) -> Bool {
+  for_all(
+    xs: parallel_representation_registry(),
+    predicate: fn(rule) {
+      if representation_eq(a: rule.representation, b: rep) {
+        closure_is_clean(rule: rule, fact: fact)
+      } else {
+        true
+      }
+    }
+  )
+}
+
+fn import_closure_is_clean(fact: ClosureFact) -> Bool {
+  closure_is_clean_for_representation(rep: ImportGraph, fact: fact)
+}
+
 fn rule_fires(rule: LinearityRule, steps: FreeMonoid<Node>) -> Bool {
   rule.detect(steps)
 }
@@ -68,8 +136,9 @@ fn cost_axis_equal(a: CostAxis, b: CostAxis) -> Bool {
 
 fn representation_eq(a: Representation, b: Representation) -> Bool {
   match a {
-    TermChain => match b { TermChain => true  TypeForest => false }
-    TypeForest => match b { TermChain => false TypeForest => true }
+    TermChain => match b { TermChain => true  TypeForest => false ImportGraph => false }
+    TypeForest => match b { TermChain => false TypeForest => true  ImportGraph => false }
+    ImportGraph => match b { TermChain => false TypeForest => false ImportGraph => true }
   }
 }
 
@@ -114,5 +183,5 @@ fn body_is_linear(levels: FreeMonoid<FreeMonoid<Node>>) -> Bool {
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: SingleAuthority },
-  rationale: "Intent-linearity is a wall up to the substrate's expressible abstraction (anti-unification computes the structural minimum) and a ratchet beyond it (global minimal description is Kolmogorov-uncomputable). One engine, N rows, two tag-axes (§2-horizontal): Representation tags each row's binder (term-chain vs type-forest) so the rows stay off each other's projection; CostAxis tags each row's §5 status. The two compose DIFFERENTLY by §5: chain_is_redundant / forest_is_redundant fold only the ChangeTime rows -- a SOUND wall (anti-unification proves redundancy, no false positive), so level_is_linear / body_is_linear never call a genuine program redundant. The RunTime axis is a CANDIDATE detector (chain_has_runtime_lowering_candidate): O(n^2) class is the decidable NECESSARY condition, but sufficiency (genuine reducibility, not a real all-pairs O(n^2)) waits on the independence carrier, so it must not feed the wall. complexity.dag keeps the RatchetForever optimality residue. Grounding authority: the parse/resolve walk + chain projector decomposing a body into its per-level statement-chains (shared with v2.lens.simulated_relationship / v2.lens.structural_similarity, all over the v2.std.anti_unification kernel). Dissolves on: body_is_linear runs over live dsl bodies once the walk projects per-level chains; the registry grows by rows -- Row 1 the term-chain hand-unrolled fold (ChangeTime/TermChain), Row 2 the type-decl duplicate-to-generic (ChangeTime/TypeForest), Row 3 the complexity cost-recurrence (RunTime/TermChain, see v2.lens.complexity_lowering); until then this is a lens_unit over projected synthetic chains. The RunTime axis is read via chain_has_runtime_lowering_candidate -- NOT chain_is_redundant -- and graduates from candidate to a redundancy claim only when the independence carrier grounds sufficiency"
+  rationale: "Intent-linearity is a wall up to the substrate's expressible abstraction (anti-unification computes the structural minimum) and a ratchet beyond it (global minimal description is Kolmogorov-uncomputable). One engine, N rows, two tag-axes (§2-horizontal): Representation tags each row's binder (term-chain vs type-forest) so the rows stay off each other's projection; CostAxis tags each row's §5 status. The two compose DIFFERENTLY by §5: chain_is_redundant / forest_is_redundant fold only the ChangeTime rows -- a SOUND wall (anti-unification proves redundancy, no false positive), so level_is_linear / body_is_linear never call a genuine program redundant. The RunTime axis is a CANDIDATE detector (chain_has_runtime_lowering_candidate): O(n^2) class is the decidable NECESSARY condition, but sufficiency (genuine reducibility, not a real all-pairs O(n^2)) waits on the independence carrier, so it must not feed the wall. complexity.dag keeps the RatchetForever optimality residue. Grounding authority: the parse/resolve walk + chain projector decomposing a body into its per-level statement-chains (shared with v2.lens.simulated_relationship / v2.lens.structural_similarity, all over the v2.std.anti_unification kernel). Dissolves on: body_is_linear runs over live dsl bodies once the walk projects per-level chains; the registry grows by rows -- Row 1 the term-chain hand-unrolled fold (ChangeTime/TermChain), Row 2 the type-decl duplicate-to-generic (ChangeTime/TypeForest), Row 3 the complexity cost-recurrence (RunTime/TermChain, see v2.lens.complexity_lowering); until then this is a lens_unit over projected synthetic chains. The RunTime axis is read via chain_has_runtime_lowering_candidate -- NOT chain_is_redundant -- and graduates from candidate to a redundancy claim only when the independence carrier grounds sufficiency. THIRD REPRESENTATION (ImportGraph, the parallel-representation family): the same intent-linearity measure (redundancy = declared-description - minimal-description) applied where the minimal form is NOT an anti-unification search but a function the tree ALREADY calls -- the transitive import-graph closure. A ConsumedInputClosure (dsl/tools/rust_stage0_gates.dag) hand-declares a List<Path> the compiler also derives by walking imports; redundancy > 0 exactly when declared != derived, and the wall is declared == derived. Unlike the term/type-chain rows this engine is a PAIR per representation -- a derived-side walk (named in the WallNow payload) + a verdict payload (a ConstructionClass, NOT a bare Bool, so an honestly-marked shrinking scaffold is classified, never falsely failed): closure_is_clean dispatches on the rule's class -- WallNow drift is a hard violation, WallAfterGrounding/RatchetForever drift is tracked, not failed. import_graph_rule carries class WallNow with construction = the String resolve_imports_transitively (decidable, on-hand, no expressibility frontier). BOUNDED SMELL (acknowledged, not widened this lane): WallNow.construction naming a fn as a String is a provenance POINTER, not a second authority -- the REAL derivation runs in the Rust oracle; do not let the String read as the source of truth (carrier-widening to a typed decl-ref is downstream, per the scope fence). The seam extends to the siblings by swapping the walk-plus-payload pair: Axis-2 LayerDAG (the v2 layer-roots roster) is another WallNow row AND is upstream of Axis-1 -- ImportGraph's derived side walks FROM those roots, so the axes form a small stack, not 3 peers; Axis-3 ViolationSet (exception rosters) supplies the WallAfterGrounding rows naming their shrink arcs. DISCRIMINATING WITNESS for the live wall: the Rust drift oracle consumed_input_closure_drift_test.rs asserts derived == declared over the live corpus and goes RED when a declared path is dropped/added (proven by execution, #5669); it is self-protecting -- the entry is in its own declared closure, so adding a .dag import trips should_run_gates edge-(b) closure-hit, fires the rust gate, and the new import surfaces as under-declared drift. NAMED DISSOLUTION TRIGGER (Tier-2): the import-graph transitive walk grounded .dag-callable through the host-read seam (expose resolve_imports_transitively as a builtin, or module_declaration_facts so the closure is a fixpoint fold over the existing import_resolution_facts edge facts) -- at which point WallNow.construction promotes from a named String to a live walk fn field, import_closure_is_clean reads derived from that live .dag walk rather than a host-projected ClosureFact, and the rust_stage0_gates declared values can migrate to graph queries (SEPARATE lane, not this PR). Until then the .dag row is exercised by lens_unit over projected ClosureFacts and the Rust oracle is its live-corpus discriminating witness"
 }

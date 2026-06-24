@@ -1,0 +1,17 @@
+module test.claim.github_merge_state_witness
+
+import extdeps.github.merge_state {
+  MergeStateStatus,
+  Clean,
+  Blocked,
+}
+
+data sample_merge_state_clean: MergeStateStatus = Clean
+data sample_merge_state_blocked: MergeStateStatus = Blocked
+
+test fn witness_clean_and_blocked_are_distinct_variants() -> Bool {
+  match sample_merge_state_clean {
+    Blocked => false
+    _ => true
+  }
+}

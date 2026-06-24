@@ -16,6 +16,7 @@ import v1.std.core {
 }
 
 import extdeps.languages.dag.syntax { dag_keyword_set }
+import v1.compiler.languages { EmojiCharEscape, canonical_emoji_char_escape }
 
 fn is_keyword_text(text: String) -> Bool {
   match lookup(dag_keyword_set, key: text) {
@@ -212,7 +213,9 @@ fn emit(pos: TokPos, shape: TokenShape, text: String, len: Int, file: String) ->
 fn scan_ident(source: SourceRef, pos: TokPos) -> ScanResult {
   let end = source_scan_while(source: source, start: pos.pos, pred: is_ident_char)
   let text = source_substring(source: source, start: pos.pos, end: end)
-  let shape = if is_keyword_text(text: text) { ShKeyword } else { ShIdent }
+  let shape = if is_reserved_emit_sentinel(text: text) { ShUnknown }
+    else if is_keyword_text(text: text) { ShKeyword }
+    else { ShIdent }
   let token = make_token(text: text, span: make_file_span(file: source.file, start: pos.pos, end: end), shape: shape)
   ScanResult { pos: end, token: token, interp_depth: pos.interp_depth }
 }
@@ -390,9 +393,47 @@ fn is_digit(ch: Int) -> Bool {
 }
 
 fn is_ident_start(ch: Int) -> Bool {
-  (ch >= 97 && ch <= 122) || (ch >= 65 && ch <= 90) || ch == 95
+  ch == 95 || is_xid_start(ch: ch) || is_emoji_ident(ch: ch)
 }
 
 fn is_ident_char(ch: Int) -> Bool {
-  is_ident_start(ch: ch) || is_digit(ch: ch)
+  is_xid_continue(ch: ch) || is_emoji_ident(ch: ch)
+}
+
+fn is_hex_upper_digit(ch: Int) -> Bool {
+  (ch >= 48 && ch <= 57) || (ch >= 65 && ch <= 70)
+}
+
+fn all_hex_upper_in_range(text: String, pos: Int, end: Int) -> Bool {
+  if pos >= end { true }
+  else {
+    let ch = code_point(c: char_at(s: text, pos: pos))
+    if is_hex_upper_digit(ch: ch) { all_hex_upper_in_range(text: text, pos: pos + 1, end: end) }
+    else { false }
+  }
+}
+
+fn sentinel_prefix_matches(text: String, prefix: String, pos: Int, len: Int) -> Bool {
+  if pos >= len { true }
+  else if code_point(c: char_at(s: text, pos: pos)) != code_point(c: char_at(s: prefix, pos: pos)) { false }
+  else { sentinel_prefix_matches(text: text, prefix: prefix, pos: pos + 1, len: len) }
+}
+
+fn sentinel_suffix_matches(text: String, suffix: String, pos: Int, sfx_len: Int, text_start: Int) -> Bool {
+  if pos >= sfx_len { true }
+  else if code_point(c: char_at(s: text, pos: text_start + pos)) != code_point(c: char_at(s: suffix, pos: pos)) { false }
+  else { sentinel_suffix_matches(text: text, suffix: suffix, pos: pos + 1, sfx_len: sfx_len, text_start: text_start) }
+}
+
+fn is_reserved_emit_sentinel(text: String) -> Bool {
+  let rule = canonical_emoji_char_escape()
+  let pfx = rule.prefix
+  let sfx = rule.suffix
+  let pfx_len = string_length(s: pfx)
+  let sfx_len = string_length(s: sfx)
+  let n = string_length(s: text)
+  if n < pfx_len + sfx_len + 1 { false }
+  else if !sentinel_prefix_matches(text: text, prefix: pfx, pos: 0, len: pfx_len) { false }
+  else if !sentinel_suffix_matches(text: text, suffix: sfx, pos: 0, sfx_len: sfx_len, text_start: n - sfx_len) { false }
+  else { all_hex_upper_in_range(text: text, pos: pfx_len, end: n - sfx_len) }
 }
