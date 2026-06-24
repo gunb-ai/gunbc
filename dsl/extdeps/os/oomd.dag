@@ -1,7 +1,7 @@
 module extdeps.os.oomd
 
-import std.types { NonEmptyStr, String, FilePath, Bool, Percent }
-import std.measure { Second, second }
+import std.types { NonEmptyStr, String, FilePath, Bool }
+import std.measure { Second, second, Percent, percent }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -30,8 +30,8 @@ type OomdGlobalConfig {
 }
 
 data oomd_default_global_config: OomdGlobalConfig = OomdGlobalConfig {
-  swap_used_limit: 90,
-  default_memory_pressure_limit: 60,
+  swap_used_limit: percent(90),
+  default_memory_pressure_limit: percent(60),
   default_memory_pressure_duration: second(30),
 }
 

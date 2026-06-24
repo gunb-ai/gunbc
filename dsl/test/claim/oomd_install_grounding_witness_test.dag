@@ -1,7 +1,7 @@
 module test.claim.oomd_install_grounding_witness
 
 import std.types { Bool }
-import std.measure { byte_size }
+import std.measure { byte_size, percent }
 import std.realization_reconcile {
   ShowEffectiveRead,
   ReadObserved,
@@ -36,7 +36,7 @@ fn test_thresholds() -> OomdGroundingThresholds {
   OomdGroundingThresholds {
     per_session_cap: byte_size(10737418240),
     parent_slice_cap: SessionAggregateMeasured { bytes: byte_size(21474836480) },
-    pressure_limit: 60,
+    pressure_limit: percent(60),
   }
 }
 
@@ -48,7 +48,7 @@ fn good_read() -> OomdEffectiveRead {
     effective_managed_oom_memory_pressure: ManagedOomKill,
     effective_per_session_memory_max: CapEffective { bytes: byte_size(10737418240) },
     effective_parent_slice_memory_max: CapEffective { bytes: byte_size(21474836480) },
-    effective_managed_oom_memory_pressure_limit: 60,
+    effective_managed_oom_memory_pressure_limit: percent(60),
     oomctl_manages_slice: true,
   }
 }
@@ -61,7 +61,7 @@ fn slice_absent_read() -> OomdEffectiveRead {
     effective_managed_oom_memory_pressure: ManagedOomKill,
     effective_per_session_memory_max: CapEffective { bytes: byte_size(10737418240) },
     effective_parent_slice_memory_max: CapEffective { bytes: byte_size(21474836480) },
-    effective_managed_oom_memory_pressure_limit: 60,
+    effective_managed_oom_memory_pressure_limit: percent(60),
     oomctl_manages_slice: true,
   }
 }
@@ -74,7 +74,7 @@ fn inactive_read() -> OomdEffectiveRead {
     effective_managed_oom_memory_pressure: ManagedOomKill,
     effective_per_session_memory_max: CapEffective { bytes: byte_size(10737418240) },
     effective_parent_slice_memory_max: CapEffective { bytes: byte_size(21474836480) },
-    effective_managed_oom_memory_pressure_limit: 60,
+    effective_managed_oom_memory_pressure_limit: percent(60),
     oomctl_manages_slice: true,
   }
 }
@@ -87,7 +87,7 @@ fn disabled_read() -> OomdEffectiveRead {
     effective_managed_oom_memory_pressure: ManagedOomKill,
     effective_per_session_memory_max: CapEffective { bytes: byte_size(10737418240) },
     effective_parent_slice_memory_max: CapEffective { bytes: byte_size(21474836480) },
-    effective_managed_oom_memory_pressure_limit: 60,
+    effective_managed_oom_memory_pressure_limit: percent(60),
     oomctl_manages_slice: true,
   }
 }
@@ -100,7 +100,7 @@ fn auto_pressure_read() -> OomdEffectiveRead {
     effective_managed_oom_memory_pressure: ManagedOomAuto,
     effective_per_session_memory_max: CapEffective { bytes: byte_size(10737418240) },
     effective_parent_slice_memory_max: CapEffective { bytes: byte_size(21474836480) },
-    effective_managed_oom_memory_pressure_limit: 60,
+    effective_managed_oom_memory_pressure_limit: percent(60),
     oomctl_manages_slice: true,
   }
 }
@@ -113,7 +113,7 @@ fn wrong_per_session_cap_read() -> OomdEffectiveRead {
     effective_managed_oom_memory_pressure: ManagedOomKill,
     effective_per_session_memory_max: CapEffective { bytes: byte_size(8589934592) },
     effective_parent_slice_memory_max: CapEffective { bytes: byte_size(21474836480) },
-    effective_managed_oom_memory_pressure_limit: 60,
+    effective_managed_oom_memory_pressure_limit: percent(60),
     oomctl_manages_slice: true,
   }
 }
@@ -126,7 +126,7 @@ fn unbounded_per_session_cap_read() -> OomdEffectiveRead {
     effective_managed_oom_memory_pressure: ManagedOomKill,
     effective_per_session_memory_max: CapUnbounded,
     effective_parent_slice_memory_max: CapEffective { bytes: byte_size(21474836480) },
-    effective_managed_oom_memory_pressure_limit: 60,
+    effective_managed_oom_memory_pressure_limit: percent(60),
     oomctl_manages_slice: true,
   }
 }
@@ -139,7 +139,7 @@ fn wrong_parent_slice_cap_read() -> OomdEffectiveRead {
     effective_managed_oom_memory_pressure: ManagedOomKill,
     effective_per_session_memory_max: CapEffective { bytes: byte_size(10737418240) },
     effective_parent_slice_memory_max: CapEffective { bytes: byte_size(10737418240) },
-    effective_managed_oom_memory_pressure_limit: 60,
+    effective_managed_oom_memory_pressure_limit: percent(60),
     oomctl_manages_slice: true,
   }
 }
@@ -152,7 +152,7 @@ fn wrong_pressure_limit_read() -> OomdEffectiveRead {
     effective_managed_oom_memory_pressure: ManagedOomKill,
     effective_per_session_memory_max: CapEffective { bytes: byte_size(10737418240) },
     effective_parent_slice_memory_max: CapEffective { bytes: byte_size(21474836480) },
-    effective_managed_oom_memory_pressure_limit: 90,
+    effective_managed_oom_memory_pressure_limit: percent(90),
     oomctl_manages_slice: true,
   }
 }
@@ -165,7 +165,7 @@ fn oomctl_unmanaged_read() -> OomdEffectiveRead {
     effective_managed_oom_memory_pressure: ManagedOomKill,
     effective_per_session_memory_max: CapEffective { bytes: byte_size(10737418240) },
     effective_parent_slice_memory_max: CapEffective { bytes: byte_size(21474836480) },
-    effective_managed_oom_memory_pressure_limit: 60,
+    effective_managed_oom_memory_pressure_limit: percent(60),
     oomctl_manages_slice: false,
   }
 }
@@ -174,7 +174,7 @@ fn unmeasured_aggregate_thresholds() -> OomdGroundingThresholds {
   OomdGroundingThresholds {
     per_session_cap: byte_size(10737418240),
     parent_slice_cap: SessionAggregateUnmeasured,
-    pressure_limit: 60,
+    pressure_limit: percent(60),
   }
 }
 

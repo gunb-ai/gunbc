@@ -1,7 +1,7 @@
 module gunbc.oomd_install
 
-import std.types { NonEmptyStr, String, Bool, Percent }
-import std.measure { ByteSize, byte_size_count, second }
+import std.types { NonEmptyStr, String, Bool }
+import std.measure { ByteSize, byte_size_count, second, Percent, percent, percent_count }
 import std.realization_reconcile {
   ShowEffectiveRead,
   ReadObserved,
@@ -70,7 +70,7 @@ data gunbc_oomd_sessions_policy: UnitManagedOomPolicy = UnitManagedOomPolicy {
   scope_unit: gunbc_oomd_sessions_slice,
   managed_oom_swap: ManagedOomKill,
   managed_oom_memory_pressure: ManagedOomKill,
-  managed_oom_memory_pressure_limit: 60,
+  managed_oom_memory_pressure_limit: percent(60),
   managed_oom_memory_pressure_duration: second(20),
 }
 
@@ -180,7 +180,7 @@ fn grounding_checks(read: OomdEffectiveRead, req: OomdGroundingThresholds) -> Li
     OomdGroundingCheck { ok: pressure_is_kill(a: read.effective_managed_oom_memory_pressure), failure_reason: "effective ManagedOOMMemoryPressure is auto, not kill: eviction is not guaranteed on the sessions slice" },
     OomdGroundingCheck { ok: cap_equals(eff: read.effective_per_session_memory_max, target: req.per_session_cap), failure_reason: "per-session memory.max does not equal the C eviction ceiling (or MemoryMax is infinity — an inert cap)" },
     OomdGroundingCheck { ok: parent_slice_cap_ok(eff: read.effective_parent_slice_memory_max, agg: req.parent_slice_cap), failure_reason: "parent sessions.slice MemoryMax does not equal the measured aggregate reservation (or the aggregate is unmeasured / MemoryMax is infinity)" },
-    OomdGroundingCheck { ok: read.effective_managed_oom_memory_pressure_limit == req.pressure_limit, failure_reason: "ManagedOOMMemoryPressureLimit (PSI percent) does not equal the intended threshold" },
+    OomdGroundingCheck { ok: percent_count(p: read.effective_managed_oom_memory_pressure_limit) == percent_count(p: req.pressure_limit), failure_reason: "ManagedOOMMemoryPressureLimit (PSI percent) does not equal the intended threshold" },
     OomdGroundingCheck { ok: read.oomctl_manages_slice, failure_reason: "oomctl does not list the sessions slice in the systemd-oomd managed set" },
   ]
 }
