@@ -83,7 +83,8 @@ fn shrinking_scaffold_rule() -> ParallelRepresentationRule {
     name: ^exception_roster,
     axis: ChangeTime,
     representation: ImportGraph,
-    class: WallAfterGrounding { dissolves_to: SingleAuthority }
+    class: WallAfterGrounding { dissolves_to: SingleAuthority },
+    derive: fn(entry, roots) { [] }
   }
 }
 

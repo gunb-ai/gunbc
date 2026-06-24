@@ -5,8 +5,10 @@ import v2.lens.simulated_relationship { chain_is_simulated }
 import v2.lens.structural_similarity { type_decls_anti_unify }
 import v2.lens.complexity_lowering { cost_is_lowerable }
 import v2.lens.cost { symbolic_cost_of_node }
+import v2.lens.module_graph { import_closure_live }
 import v2.std.node { Node, Symbol }
 import v2.std.algebra { FreeMonoid, length, any, for_all, contains }
+import v2.std.collection { List }
 import v2.std.text { String }
 import v2.std.logic { Bool }
 
@@ -67,6 +69,7 @@ type ParallelRepresentationRule {
   axis: CostAxis
   representation: Representation
   class: ConstructionClass
+  derive: fn(String, List<String>) -> FreeMonoid<String>
 }
 
 fn import_graph_rule() -> ParallelRepresentationRule {
@@ -74,7 +77,8 @@ fn import_graph_rule() -> ParallelRepresentationRule {
     name: ^consumed_input_closure,
     axis: ChangeTime,
     representation: ImportGraph,
-    class: WallNow { construction: "resolve_imports_transitively" }
+    class: WallNow { construction: "v2.lens.module_graph.import_closure_live" },
+    derive: fn(entry, roots) { import_closure_live(entry_path: entry, pool_roots: roots) }
   }
 }
 
@@ -121,6 +125,47 @@ fn closure_is_clean_for_representation(rep: Representation, fact: ClosureFact) -
 
 fn import_closure_is_clean(fact: ClosureFact) -> Bool {
   closure_is_clean_for_representation(rep: ImportGraph, fact: fact)
+}
+
+fn rule_is_clean_live(
+  rule: ParallelRepresentationRule,
+  unit: Symbol,
+  declared: FreeMonoid<String>,
+  entry_path: String,
+  pool_roots: List<String>
+) -> Bool {
+  closure_is_clean(
+    rule: rule,
+    fact: ClosureFact {
+      unit: unit,
+      declared: declared,
+      derived: rule.derive(entry_path, pool_roots)
+    }
+  )
+}
+
+fn import_closure_is_clean_live(
+  unit: Symbol,
+  declared: FreeMonoid<String>,
+  entry_path: String,
+  pool_roots: List<String>
+) -> Bool {
+  for_all(
+    xs: parallel_representation_registry(),
+    predicate: fn(rule) {
+      if representation_eq(a: rule.representation, b: ImportGraph) {
+        rule_is_clean_live(
+          rule: rule,
+          unit: unit,
+          declared: declared,
+          entry_path: entry_path,
+          pool_roots: pool_roots
+        )
+      } else {
+        true
+      }
+    }
+  )
 }
 
 fn rule_fires(rule: LinearityRule, steps: FreeMonoid<Node>) -> Bool {
