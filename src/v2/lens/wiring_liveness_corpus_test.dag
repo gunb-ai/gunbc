@@ -25,10 +25,29 @@ fn wiring_corpus_probe(alpha: Bool, beta: Bool) -> Bool {
   alpha && beta
 }
 
-fn diag_dead_wire_names() -> List<String> {
-  fold(wiring_dead_wires_over(decls: fn_arrow_decl_facts_live()), init: [], f: fn(acc, w) {
-    list_snoc_item(xs: acc, item: w.fn_qualified_name)
-  })
+fn wiring_corpus_helper(seed: Bool) -> Bool {
+  seed
+}
+
+fn wiring_corpus_probe_live_let(seed: Bool) -> Bool {
+  let live = wiring_corpus_helper(seed: seed)
+  live
+}
+
+fn wiring_corpus_probe_dead_let(seed: Bool) -> Bool {
+  let dead = wiring_corpus_helper(seed: seed)
+  true
+}
+
+fn wiring_corpus_probe_dead_let_transitive(seed: Bool) -> Bool {
+  let mid = wiring_corpus_helper(seed: seed)
+  let tail = mid
+  true
+}
+
+fn wiring_corpus_probe_inert_let(seed: Bool) -> Bool {
+  let _seed = wiring_corpus_helper(seed: seed)
+  true
 }
 
 fn wiring_corpus_probe_lambda(flag: Bool, items: List<Bool>) -> Bool {
@@ -64,6 +83,33 @@ fn probe_named_is_wired(decls: List<FnArrowDecl>, target: String) -> Bool {
     && fold(matches, init: true, f: fn(acc, d) {
         acc && (length(xs: wiring_fn_dead_wires(decl: d)) == 0)
       })
+}
+
+fn probe_named_is_dead_wire(decls: List<FnArrowDecl>, target: String) -> Bool {
+  let matches = decls_named(decls: decls, target: target)
+  (length(xs: matches) > 0)
+    && fold(matches, init: true, f: fn(acc, d) {
+        acc
+          && (length(xs: wiring_fn_dead_wires(decl: d)) == 1)
+          && fold(wiring_fn_dead_wires(decl: d), init: false, f: fn(seen, w) {
+              seen || (w.param == ^seed)
+            })
+      })
+}
+
+fn is_deadlet_witness_fixture(name: String) -> Bool {
+  (name == "wiring_corpus_probe_dead_let")
+    || (name == "wiring_corpus_probe_dead_let_transitive")
+}
+
+fn corpus_clean_excluding_deadlet_fixtures(decls: List<FnArrowDecl>) -> Bool {
+  fold(decls, init: true, f: fn(acc, d) {
+    if is_deadlet_witness_fixture(name: d.name) {
+      acc
+    } else {
+      acc && (length(xs: wiring_fn_dead_wires(decl: d)) == 0)
+    }
+  })
 }
 
 fn probe_atom(s: Symbol) -> Node {
@@ -111,5 +157,9 @@ test fn wiring_liveness_corpus_witnesses() -> Bool {
     && probe_present_with_params(decls: decls)
     && probe_named_is_wired(decls: decls, target: "wiring_corpus_probe")
     && probe_named_is_wired(decls: decls, target: "wiring_corpus_probe_lambda")
-    && (length(xs: wiring_dead_wires_over(decls: decls)) == 0)
+    && probe_named_is_wired(decls: decls, target: "wiring_corpus_probe_live_let")
+    && probe_named_is_wired(decls: decls, target: "wiring_corpus_probe_inert_let")
+    && probe_named_is_dead_wire(decls: decls, target: "wiring_corpus_probe_dead_let")
+    && probe_named_is_dead_wire(decls: decls, target: "wiring_corpus_probe_dead_let_transitive")
+    && corpus_clean_excluding_deadlet_fixtures(decls: decls)
 }
