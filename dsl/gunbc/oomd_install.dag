@@ -103,6 +103,13 @@ data gunbc_oomd_install_plan: OomdInstallPlan = OomdInstallPlan {
   verify_property: oomd_managed_oom_memory_pressure_property,
 }
 
+type SliceMembershipSignal {
+  sessions_in_slice: Int
+  sessions_legacy_flat: Int
+}
+
+data oomd_membership_conjunct_doc: String = "The membership-signal contract for the OomdEnforced grounding guard. Fail-closed: OomdEnforced is NOT satisfiable when sessions.slice has no session-container scopes parented under it. The guard reads SliceMembershipSignal — two live-observable Int counts from the host cgroup hierarchy: sessions_in_slice (scopes currently under sessions.slice) and sessions_legacy_flat (session-container scopes still under the legacy flat system.slice docker-*.scope path). The conjunct covers three properties — (1) parented-into-slice: sessions ARE placed under sessions.slice in the cgroup hierarchy; (2) non-empty: the managed cgroup has live processes; (3) not-100%-legacy: not all running session containers bypass sessions.slice via the legacy path — all three reduce to sessions_in_slice > 0 in the integer-count model. Making (1)/(2)/(3) separate grounding checks would be a §3/§5 violation: each would check the same predicate, making two of the three unreachable failure arms (DESIGN §5 forbids fake walls that concede the bad state is independently reachable when it is not). The sessions_legacy_flat count does NOT add a second check; it discriminates TWO distinct failure modes in the single failure reason so the operator can distinguish 100%-legacy (all sessions bypass the slice) from empty-host (no sessions are running at all) without adding a structurally unreachable second arm."
+
 type OomdEffectiveRead {
   slice_present: Bool
   unit_active: SystemdUnitActiveState
@@ -112,6 +119,7 @@ type OomdEffectiveRead {
   effective_parent_slice_memory_max: RunnerSliceCapEffectiveness
   effective_managed_oom_memory_pressure_limit: Percent
   oomctl_manages_slice: Bool
+  membership: SliceMembershipSignal
 }
 
 type OomdGroundingThresholds {
@@ -175,6 +183,18 @@ fn parent_slice_cap_ok(eff: RunnerSliceCapEffectiveness, agg: SessionAggregateRe
   }
 }
 
+fn membership_grounding_check(m: SliceMembershipSignal) -> OomdGroundingCheck {
+  if m.sessions_in_slice > 0 {
+    GroundingPass
+  } else {
+    if m.sessions_legacy_flat > 0 {
+      GroundingFail { reason: "100%-legacy migration state: all running session containers (sessions_legacy_flat > 0) are flat docker-*.scope under system.slice and none are parented under sessions.slice (sessions_in_slice == 0) — oomd's managed cgroup has no members; the eviction backstop is hollow (sessions.slice exists, systemd-oomd is active, but the managed set is empty because all session traffic bypasses it)" }
+    } else {
+      GroundingFail { reason: "empty managed cgroup: sessions.slice has no session-container children and no legacy sessions are running (sessions_in_slice == 0, sessions_legacy_flat == 0) — nothing for oomd to evict; the unit is active and the slice is configured but the managed set is empty because no sessions are currently running" }
+    }
+  }
+}
+
 fn grounding_checks(read: OomdEffectiveRead, req: OomdGroundingThresholds) -> List<OomdGroundingCheck> {
   [
     grounding_check(ok: read.slice_present, reason: "managed sessions slice does not exist: systemd-oomd has no managed cgroup to evict within under aggregate pressure (active oomd with no managed slice = zero protection)"),
@@ -185,6 +205,7 @@ fn grounding_checks(read: OomdEffectiveRead, req: OomdGroundingThresholds) -> Li
     grounding_check(ok: parent_slice_cap_ok(eff: read.effective_parent_slice_memory_max, agg: req.parent_slice_cap), reason: "parent sessions.slice MemoryMax does not equal the measured aggregate reservation (or the aggregate is unmeasured / MemoryMax is infinity)"),
     grounding_check(ok: percent_count(p: read.effective_managed_oom_memory_pressure_limit) == percent_count(p: req.pressure_limit), reason: "ManagedOOMMemoryPressureLimit (PSI percent) does not equal the intended threshold"),
     grounding_check(ok: read.oomctl_manages_slice, reason: "oomctl does not list the sessions slice in the systemd-oomd managed set"),
+    membership_grounding_check(m: read.membership),
   ]
 }
 
