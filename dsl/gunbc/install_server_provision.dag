@@ -49,7 +49,7 @@ fn step_apt_install() -> String {
 }
 
 fn step_disable_stock_dnsmasq() -> String {
-  "sudo systemctl disable --now dnsmasq 2>/dev/null || true; echo DNSMASQ_SERVICE_DISABLED"
+  "if systemctl list-unit-files dnsmasq.service --no-legend 2>/dev/null | grep -q dnsmasq; then sudo systemctl disable --now dnsmasq; fi; echo DNSMASQ_SERVICE_DISABLED"
 }
 
 fn step_make_webroot() -> String {
@@ -79,4 +79,41 @@ pattern provision_verify_iso() -> { out: String, ok: Bool }
 {
   node v: shell.Exec.Run(script: host_exec(host: install_server_host, command: step_verify_iso()))
   return { out: v.stdout, ok: v.success }
+}
+
+fn step_stage_webroot_tree() -> String {
+  "sudo install -d /srv/install/ubuntu-24.04 /mnt/srv3iso; if ! mountpoint -q /mnt/srv3iso; then sudo mount -o loop,ro /srv/ubuntu.iso /mnt/srv3iso; fi; sudo rsync -a --delete --exclude autoinstall/ /mnt/srv3iso/ /srv/install/ubuntu-24.04/; sudo umount /mnt/srv3iso; sudo install -d /srv/install/ubuntu-24.04/autoinstall; echo TREE_STAGED $(du -sh /srv/install/ubuntu-24.04 | cut -f1); echo KERNEL_PRESENT $(ls /srv/install/ubuntu-24.04/casper/vmlinuz 2>/dev/null || echo NONE)"
+}
+
+fn step_place_grub_binary() -> String {
+  "sudo cp /usr/lib/grub/arm64-efi-signed/grubnetaa64.efi.signed /srv/install/ubuntu-24.04/grubnetaa64.efi; echo GRUB_BINARY_PLACED $(stat -c%s /srv/install/ubuntu-24.04/grubnetaa64.efi)"
+}
+
+pattern provision_stage_webroot() -> { tree: String, grub: String, ok: Bool }
+  uses net: Network
+{
+  node t: shell.Exec.Run(script: host_exec(host: install_server_host, command: step_stage_webroot_tree()))
+  node g: shell.Exec.Run(script: host_exec(host: install_server_host, command: step_place_grub_binary()))
+  return { tree: t.stdout, grub: g.stdout, ok: t.success && g.success }
+}
+
+fn step_place_content() -> String {
+  "sudo install -m644 /tmp/srv3stage/user-data /srv/install/ubuntu-24.04/autoinstall/user-data; sudo install -m644 /tmp/srv3stage/meta-data /srv/install/ubuntu-24.04/autoinstall/meta-data; sudo install -d /srv/install/ubuntu-24.04/grub; sudo install -m644 /tmp/srv3stage/grub.cfg /srv/install/ubuntu-24.04/grub/grub.cfg; sudo install -m644 /tmp/srv3stage/dnsmasq.conf /srv/install/srv3-dnsmasq.conf; sudo ln -sf /srv/ubuntu.iso /srv/install/ubuntu-24.04/ubuntu.iso; echo CONTENT_PLACED; ls -la /srv/install/ubuntu-24.04/autoinstall/ /srv/install/ubuntu-24.04/grub/"
+}
+
+fn step_start_proxydhcp() -> String {
+  "if systemctl is-active --quiet srv3-proxydhcp; then sudo systemctl stop srv3-proxydhcp; fi; sudo systemctl reset-failed srv3-proxydhcp 2>/dev/null || true; sudo systemd-run --unit=srv3-proxydhcp --collect dnsmasq -k -C /srv/install/srv3-dnsmasq.conf; sleep 1; systemctl is-active srv3-proxydhcp; echo PROXYDHCP_STARTED"
+}
+
+fn step_start_http() -> String {
+  "if systemctl is-active --quiet srv3-http; then sudo systemctl stop srv3-http; fi; sudo systemctl reset-failed srv3-http 2>/dev/null || true; sudo systemd-run --unit=srv3-http --collect python3 -m http.server 80 --directory /srv/install; sleep 1; systemctl is-active srv3-http; echo HTTP_SELFTEST; curl -sI http://127.0.0.1/ubuntu-24.04/grub/grub.cfg | head -1; curl -sI http://127.0.0.1/ubuntu-24.04/casper/vmlinuz | head -1; echo HTTP_STARTED"
+}
+
+pattern provision_place_and_serve() -> { place: String, dhcp: String, http: String, ok: Bool }
+  uses net: Network
+{
+  node p: shell.Exec.Run(script: host_exec(host: install_server_host, command: step_place_content()))
+  node d: shell.Exec.Run(script: host_exec(host: install_server_host, command: step_start_proxydhcp()))
+  node h: shell.Exec.Run(script: host_exec(host: install_server_host, command: step_start_http()))
+  return { place: p.stdout, dhcp: d.stdout, http: h.stdout, ok: p.success && d.success && h.success }
 }
