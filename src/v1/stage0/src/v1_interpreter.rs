@@ -1686,10 +1686,7 @@ fn cross_representation_numeric_straddle(a: &Value, b: &Value) -> Option<String>
     }
 }
 
-fn fields_numeric_straddle(
-    af: &[(Symbol, Value)],
-    bf: &[(Symbol, Value)],
-) -> Option<String> {
+fn fields_numeric_straddle(af: &[(Symbol, Value)], bf: &[(Symbol, Value)]) -> Option<String> {
     af.iter()
         .filter_map(|(k, av)| fields_get(bf, *k).map(|bv| (av, bv)))
         .filter(|(av, bv)| av != bv)
@@ -1842,7 +1839,10 @@ fn char_value(c: char) -> Value {
 fn native_map_absent_diagnostic_value(ctx: &InterpContext) -> Value {
     let anchor = Value::Record {
         type_name: ctx.sym("LocusAnchor"),
-        fields: Rc::new(vec![(ctx.sym("at"), Value::Str("map_lookup_port".to_string()))]),
+        fields: Rc::new(vec![(
+            ctx.sym("at"),
+            Value::Str("map_lookup_port".to_string()),
+        )]),
     };
     let locus = Value::Variant {
         type_name: ctx.sym("Locus"),
@@ -3073,14 +3073,12 @@ fn eval_algebra_method(
             let result: Vec<Value> = items
                 .iter()
                 .enumerate()
-                .map(|(i, v)| {
-                    Value::Record {
-                        type_name: ctx.sym("Pair"),
-                        fields: Rc::new(sorted_fields(vec![
-                            (ctx.sym("first"), Value::Int(i as i64)),
-                            (ctx.sym("second"), v.clone()),
-                        ])),
-                    }
+                .map(|(i, v)| Value::Record {
+                    type_name: ctx.sym("Pair"),
+                    fields: Rc::new(sorted_fields(vec![
+                        (ctx.sym("first"), Value::Int(i as i64)),
+                        (ctx.sym("second"), v.clone()),
+                    ])),
                 })
                 .collect();
             Ok(list_value((result)))
@@ -4480,10 +4478,7 @@ pub(crate) fn resolve_published_mock_keys(
     Ok(keys)
 }
 
-fn published_case_operation_key(
-    ctx: &InterpContext,
-    fields: &[(Symbol, Value)],
-) -> Option<String> {
+fn published_case_operation_key(ctx: &InterpContext, fields: &[(Symbol, Value)]) -> Option<String> {
     if let (Some(Value::Str(svc)), Some(Value::Str(op))) =
         (ctx.field(fields, "service"), ctx.field(fields, "operation"))
     {

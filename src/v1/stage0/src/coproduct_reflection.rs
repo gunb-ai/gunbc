@@ -2,7 +2,9 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use crate::v1_compiler_infer_items::ItemKind;
-use crate::v1_interpreter::{fields_get, sorted_fields, InterpContext, InterpError, InterpResult, Value};
+use crate::v1_interpreter::{
+    fields_get, sorted_fields, InterpContext, InterpError, InterpResult, Value,
+};
 use crate::v1_std_core::{
     authored_name_at, expr_var_name_at, field_node_type_expr, inferred_to_node, param_node_name_at,
     Connective, ExprData, NewlineIndex, Node, VarBindingKind,
@@ -148,10 +150,7 @@ fn edge_named(ctx: &InterpContext, name: &str, target: Value) -> Value {
                 Value::Variant {
                     type_name: ctx.sym("EdgeLabel"),
                     variant_name: ctx.sym("Named"),
-                    fields: Rc::new(vec![(
-                        ctx.sym("name"),
-                        Value::Str(name.to_string()),
-                    )]),
+                    fields: Rc::new(vec![(ctx.sym("name"), Value::Str(name.to_string()))]),
                 },
             ),
             (ctx.sym("target"), target),
@@ -865,8 +864,8 @@ pub fn arm_payload_pairs_from_marshaled_node(
             msg: "expected Node record".to_string(),
         });
     };
-    let children = fields_get(fields, ctx.sym("children"))
-        .ok_or_else(|| InterpError::TypeError {
+    let children =
+        fields_get(fields, ctx.sym("children")).ok_or_else(|| InterpError::TypeError {
             msg: "Node missing children".to_string(),
         })?;
     let edges = crate::v1_interpreter::free_monoid_to_vec(children).ok_or_else(|| {
@@ -881,14 +880,12 @@ pub fn arm_payload_pairs_from_marshaled_node(
                 msg: "expected Edge record".to_string(),
             });
         };
-        let label_v = fields_get(&ef, ctx.sym("label"))
-            .ok_or_else(|| InterpError::TypeError {
-                msg: "Edge missing label".to_string(),
-            })?;
-        let target = fields_get(&ef, ctx.sym("target"))
-            .ok_or_else(|| InterpError::TypeError {
-                msg: "Edge missing target".to_string(),
-            })?;
+        let label_v = fields_get(&ef, ctx.sym("label")).ok_or_else(|| InterpError::TypeError {
+            msg: "Edge missing label".to_string(),
+        })?;
+        let target = fields_get(&ef, ctx.sym("target")).ok_or_else(|| InterpError::TypeError {
+            msg: "Edge missing target".to_string(),
+        })?;
         let Value::Variant {
             variant_name,
             fields: lf,
@@ -918,12 +915,11 @@ fn payload_type_name_from_target_node(ctx: &InterpContext, target: &Value) -> In
             msg: "expected Node target record".to_string(),
         });
     };
-    let kind = fields_get(fields, ctx.sym("kind"))
-        .ok_or_else(|| InterpError::TypeError {
-            msg: "target missing kind".to_string(),
-        })?;
-    let children = fields_get(fields, ctx.sym("children"))
-        .ok_or_else(|| InterpError::TypeError {
+    let kind = fields_get(fields, ctx.sym("kind")).ok_or_else(|| InterpError::TypeError {
+        msg: "target missing kind".to_string(),
+    })?;
+    let children =
+        fields_get(fields, ctx.sym("children")).ok_or_else(|| InterpError::TypeError {
             msg: "target missing children".to_string(),
         })?;
     let Value::Variant {
@@ -941,8 +937,8 @@ fn payload_type_name_from_target_node(ctx: &InterpContext, target: &Value) -> In
             msg: "expected TypeNode".to_string(),
         });
     }
-    let connective = fields_get(&kf, ctx.sym("connective"))
-        .ok_or_else(|| InterpError::TypeError {
+    let connective =
+        fields_get(&kf, ctx.sym("connective")).ok_or_else(|| InterpError::TypeError {
             msg: "TypeNode missing connective".to_string(),
         })?;
     match connective {
@@ -977,10 +973,9 @@ fn payload_type_name_from_target_node(ctx: &InterpContext, target: &Value) -> In
                         msg: "named edge missing label".to_string(),
                     })?;
                 let field_target =
-                    fields_get(&ef, ctx.sym("target"))
-                        .ok_or_else(|| InterpError::TypeError {
-                            msg: "edge missing target".to_string(),
-                        })?;
+                    fields_get(&ef, ctx.sym("target")).ok_or_else(|| InterpError::TypeError {
+                        msg: "edge missing target".to_string(),
+                    })?;
                 let type_name = payload_type_name_from_target_node(ctx, field_target)?;
                 parts.push(format!("{field_name}: {type_name}"));
             }
@@ -1013,8 +1008,8 @@ pub fn arm_labels_from_marshaled_node(
             msg: "expected Node record".to_string(),
         });
     };
-    let children = fields_get(fields, ctx.sym("children"))
-        .ok_or_else(|| InterpError::TypeError {
+    let children =
+        fields_get(fields, ctx.sym("children")).ok_or_else(|| InterpError::TypeError {
             msg: "Node missing children".to_string(),
         })?;
     let edges = crate::v1_interpreter::free_monoid_to_vec(children).ok_or_else(|| {
@@ -1029,10 +1024,9 @@ pub fn arm_labels_from_marshaled_node(
                 msg: "expected Edge record".to_string(),
             });
         };
-        let label = fields_get(&ef, ctx.sym("label"))
-            .ok_or_else(|| InterpError::TypeError {
-                msg: "Edge missing label".to_string(),
-            })?;
+        let label = fields_get(&ef, ctx.sym("label")).ok_or_else(|| InterpError::TypeError {
+            msg: "Edge missing label".to_string(),
+        })?;
         let Value::Variant {
             variant_name,
             fields: lf,
@@ -1063,8 +1057,8 @@ pub fn eval_resolve_type_node_with_dropped_last_arm(
             msg: "resolve_type_node: expected Node record".to_string(),
         });
     };
-    let children = fields_get(&fields, ctx.sym("children"))
-        .ok_or_else(|| InterpError::TypeError {
+    let children =
+        fields_get(&fields, ctx.sym("children")).ok_or_else(|| InterpError::TypeError {
             msg: "resolve_type_node: Node missing children".to_string(),
         })?;
     let Some(items) = crate::v1_interpreter::free_monoid_to_vec(children) else {
@@ -1192,10 +1186,7 @@ fn outcome_rejected_value(ctx: &InterpContext, reason: &str) -> Value {
             ctx.sym("diagnostics"),
             crate::v1_interpreter::list_value(vec![Value::Record {
                 type_name: ctx.sym("Diagnostic"),
-                fields: Rc::new(vec![(
-                    ctx.sym("reason"),
-                    Value::Str(reason.to_string()),
-                )]),
+                fields: Rc::new(vec![(ctx.sym("reason"), Value::Str(reason.to_string()))]),
             }]),
         )]),
     }
