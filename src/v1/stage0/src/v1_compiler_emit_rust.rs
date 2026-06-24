@@ -18290,8 +18290,7 @@ pub fn emit_typed_bin_op(
                             right.clone(),
                             scope.type_env.clone().source_indices.clone(),
                         ));
-                        let is_str_concat =
-                            ((op_str.clone() == "+".to_string()) && both_string);
+                        let is_str_concat = ((op_str.clone() == "+".to_string()) && both_string);
                         if is_str_concat {
                             v1_rt::concat(
                                 v1_rt::concat(

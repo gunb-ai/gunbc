@@ -51,8 +51,7 @@ fn fn_body_no_sig(emitted: &str, name: &str) -> String {
 
 #[test]
 fn string_concat_borrows_rhs() {
-    let source =
-        "module strconcat.fixture\n\nfn label(x: String) -> String {\n  \"p:\" + x\n}\n";
+    let source = "module strconcat.fixture\n\nfn label(x: String) -> String {\n  \"p:\" + x\n}\n";
     let body = fn_body(&emit(source), "label");
     assert!(
         body.contains("+ &"),

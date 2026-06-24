@@ -117,13 +117,13 @@ mod rc_probe_wire_decode_call_test;
 #[cfg(test)]
 mod render_repeat_test;
 #[cfg(test)]
-mod route_a_final_six_test;
-#[cfg(test)]
 mod resolve_cross_process_cache_test;
 #[cfg(test)]
 mod resolve_expr_types_retraversal_guard_test;
 #[cfg(test)]
 mod resolve_typed_cache_equivalence_test;
+#[cfg(test)]
+mod route_a_final_six_test;
 #[cfg(test)]
 mod source_audit;
 #[cfg(test)]
