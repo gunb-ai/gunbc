@@ -5,7 +5,7 @@ import gunbc.ci_spec {
   gunbc_ci_spec, CiSpec,
   Gate, RustMonolithGate, EmitHostGate, LayeringImportsGate,
   ExtdepsExternalAuthorityGate, DslCompileCleanGate, GeneratedArtifactDriftGate,
-  SourceRootIngestGate
+  SourceRootIngestGate, WiringLivenessWholeTreeGate
 }
 import v2.std.algebra { length, list_snoc_item }
 import v2.std.collection { List }
@@ -68,6 +68,7 @@ fn gate_node(g: Gate) -> Node {
     DslCompileCleanGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_compile } }, children: [] }
     GeneratedArtifactDriftGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_generated_artifact } }, children: [] }
     SourceRootIngestGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_sourceingest } }, children: [] }
+    WiringLivenessWholeTreeGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_wiring_liveness } }, children: [] }
   }
 }
 
@@ -82,6 +83,10 @@ fn gate_runnable(g: Gate) -> Runnable {
     SourceRootIngestGate => RunnableSingleClaim {
       entry: floor_source_root_ingest_gate_entry,
       function: "source_root_ingest_gate_passes"
+    }
+    WiringLivenessWholeTreeGate => RunnableSingleClaim {
+      entry: floor_gate_witness_entry,
+      function: "wiring_liveness_whole_tree_gate_passes"
     }
   }
 }
@@ -122,6 +127,7 @@ fn gate_is_heavy_resolve(g: Gate) -> Bool {
   match g {
     SourceRootIngestGate => true
     DslCompileCleanGate => true
+    WiringLivenessWholeTreeGate => true
     RustMonolithGate => false
     EmitHostGate => false
     LayeringImportsGate => false

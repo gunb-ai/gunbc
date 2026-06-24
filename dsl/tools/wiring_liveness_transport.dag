@@ -1,0 +1,37 @@
+module tools.wiring_liveness_transport
+
+import extdeps.shell
+import gunbc.ci_layer_roots { witness_layer_roots }
+import std.logic { Bool }
+import extdeps.languages.bash.program {
+  ShellProgram, ShellStmt, ShellWord,
+  Command, Lit, VarRef,
+  lit, var_ref, command, serialize_bash
+}
+import tools.host_prelude { ensure_wiring_liveness_whole_tree_built }
+
+fn wlt_source_root_flags() -> List<ShellWord> {
+  fold(witness_layer_roots, init: [], f: (acc, r) => concat(acc, [lit(text: "--source-root"), lit(text: r)]))
+}
+
+fn wiring_liveness_whole_tree_program() -> ShellProgram {
+  let bin = var_ref(name: "WIRING_LIVENESS_WHOLE_TREE")
+  let root = var_ref(name: "ROOT")
+  ShellProgram {
+    set_e: true,
+    statements: concat(ensure_wiring_liveness_whole_tree_built(), [
+      command(words: [lit(text: "cd"), root]),
+      command(words: concat(
+        [bin],
+        concat(wlt_source_root_flags(), [
+          lit(text: "--exclude-subpath"), lit(text: "lens/wiring_liveness_corpus_test.dag")
+        ])
+      ))
+    ])
+  }
+}
+
+fn run_wiring_liveness_whole_tree() -> Bool {
+  let result = shell.Exec.Run(script: serialize_bash(p: wiring_liveness_whole_tree_program()))
+  result.success
+}

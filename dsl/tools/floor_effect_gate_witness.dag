@@ -2,7 +2,8 @@ module tools.floor_effect_gate_witness
 
 import gunbc.ci_spec {
   RustMonolithGate, EmitHostGate, LayeringImportsGate,
-  ExtdepsExternalAuthorityGate, DslCompileCleanGate, GeneratedArtifactDriftGate
+  ExtdepsExternalAuthorityGate, DslCompileCleanGate, GeneratedArtifactDriftGate,
+  WiringLivenessWholeTreeGate
 }
 import tools.ci_gates { exit_ok, run_spec_gate }
 
@@ -28,4 +29,8 @@ func dsl_compile_clean_gate_passes() -> Bool {
 
 func generated_artifact_drift_gate_passes() -> Bool {
   exit_ok(e: run_spec_gate(g: GeneratedArtifactDriftGate))
+}
+
+func wiring_liveness_whole_tree_gate_passes() -> Bool {
+  exit_ok(e: run_spec_gate(g: WiringLivenessWholeTreeGate))
 }
