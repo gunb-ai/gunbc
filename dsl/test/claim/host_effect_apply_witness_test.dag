@@ -46,7 +46,6 @@ fn directive_is_refused(d: ConvergeDirective) -> Bool {
   }
 }
 
-# REALIZED cell, green by execution: a real local sh exec that exits 0 converges.
 fn witness_shell_on_host_success_converges() -> Bool {
   reconciliation_converged(r: host_effect_apply(
     target: host_os_target(),
@@ -55,8 +54,6 @@ fn witness_shell_on_host_success_converges() -> Bool {
   ))
 }
 
-# Discriminating fail-closed control: a real sh exec that exits nonzero must NOT
-# fabricate Converged -- it grounds DoesNotGround -> NotConverged.
 fn witness_shell_on_host_failure_fails_closed() -> Bool {
   !reconciliation_converged(r: host_effect_apply(
     target: host_os_target(),
@@ -65,7 +62,6 @@ fn witness_shell_on_host_failure_fails_closed() -> Bool {
   ))
 }
 
-# RedfishAction arm is a fail-closed Unimplemented stub in Phase A: never a fake success.
 fn witness_redfish_on_bmc_unimplemented_fails_closed() -> Bool {
   !reconciliation_converged(r: host_effect_apply(
     target: bmc_target(),
@@ -74,7 +70,6 @@ fn witness_redfish_on_bmc_unimplemented_fails_closed() -> Bool {
   ))
 }
 
-# Incompatible cell (RedfishAction at HostOs): typed mismatch -> NotConverged, not a no-op.
 fn witness_redfish_on_hostos_typed_mismatch() -> Bool {
   !reconciliation_converged(r: host_effect_apply(
     target: host_os_target(),
@@ -83,7 +78,6 @@ fn witness_redfish_on_hostos_typed_mismatch() -> Bool {
   ))
 }
 
-# Incompatible cell (ShellCommand at BmcController): typed mismatch -> NotConverged.
 fn witness_shell_on_bmc_typed_mismatch() -> Bool {
   !reconciliation_converged(r: host_effect_apply(
     target: bmc_target(),
@@ -92,7 +86,6 @@ fn witness_shell_on_bmc_typed_mismatch() -> Bool {
   ))
 }
 
-# Policy contract: a compatible NotConverged re-drives under ConvergeToFixpoint.
 fn witness_converge_policy_redrives_not_converged() -> Bool {
   directive_is_redrive(d: host_effect_policy_directive(r: host_effect_apply(
     target: host_os_target(),
@@ -101,7 +94,6 @@ fn witness_converge_policy_redrives_not_converged() -> Bool {
   )))
 }
 
-# Policy contract: the same NotConverged is terminal-this-pass under OneShotIdempotent.
 fn witness_oneshot_policy_terminal_not_converged() -> Bool {
   directive_is_settled(d: host_effect_policy_directive(r: host_effect_apply(
     target: host_os_target(),
@@ -110,8 +102,6 @@ fn witness_oneshot_policy_terminal_not_converged() -> Bool {
   )))
 }
 
-# An incompatible refusal is terminal regardless of policy: a mismatch never converges,
-# so ConvergeToFixpoint must NOT re-drive it forever (Refused, not ReDrive).
 fn witness_incompatible_is_refused_terminal() -> Bool {
   directive_is_refused(d: host_effect_policy_directive(r: host_effect_apply(
     target: host_os_target(),
@@ -120,7 +110,6 @@ fn witness_incompatible_is_refused_terminal() -> Bool {
   )))
 }
 
-# A Converged outcome is Settled (done), regardless of policy.
 fn witness_converged_is_settled() -> Bool {
   directive_is_settled(d: host_effect_policy_directive(r: host_effect_apply(
     target: host_os_target(),
