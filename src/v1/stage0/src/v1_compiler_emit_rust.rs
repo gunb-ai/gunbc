@@ -7444,6 +7444,32 @@ pub fn emit_type_params(
     }
 }
 
+pub fn emit_fn_type_params_with_clone(
+    params: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    if ((params.clone().len() as i64) == 0) {
+        "".to_string()
+    } else {
+        {
+            let names = Rc::new({
+                let mut __result = Vec::new();
+                for p in params.clone().iter().cloned() {
+                    __result.push(v1_rt::concat(
+                        generic_param_name_at(p.clone(), source_indices.clone()),
+                        ": Clone".to_string(),
+                    ));
+                }
+                __result
+            });
+            v1_rt::concat(
+                v1_rt::concat("<".to_string(), names.join(&", ".to_string())),
+                ">".to_string(),
+            )
+        }
+    }
+}
+
 pub fn is_function_type_param(param: Rc<Node>) -> bool {
     {
         let type_expr = param_node_type_expr(param.clone());
@@ -9247,7 +9273,8 @@ pub fn emit_fn_def(
                 if function_type_params_have_collision(type_params.clone()) {
                     return v1_rt::concat(v1_rt::concat("compile_error!(\"type param name collides with a value param in fn '".to_string(), name.clone()), "' — a value param shares its name with a declared type param; rename the value param or dissolve via ParamKind/params-slot partition\");\n".to_string());
                 }
-                let type_params_str = emit_type_params(type_params.clone(), si.clone());
+                let type_params_str =
+                    emit_fn_type_params_with_clone(type_params.clone(), si.clone());
                 let generic_param_names = Rc::new({
                     let mut __result = Vec::new();
                     for p in type_params.clone().iter().cloned() {
@@ -22515,7 +22542,37 @@ pub fn emit_data_def_body(
                             "compile_error!(\"BoundedLattice data missing bottom\")".to_string()
                         }
                     };
-                    v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("            Rc::new(BoundedLattice {\n".to_string(), "                meet: Rc::new(".to_string()), meet_str), "),\n".to_string()), "                join: Rc::new(".to_string()), join_str), "),\n".to_string()), "                top: ".to_string()), top_str), ",\n".to_string()), "                bottom: ".to_string()), bottom_str), ",\n".to_string()), "            })".to_string())
+                    let phantom_line = match lookup_type_by_name(
+                        scope.type_env.clone(),
+                        "BoundedLattice".to_string(),
+                    ) {
+                        Some(struct_decl) => {
+                            let pnames = Rc::new({
+                                let mut __result = Vec::new();
+                                for p in struct_decl.params.clone().iter().cloned() {
+                                    __result.push(generic_param_name_at(
+                                        p.clone(),
+                                        scope.type_env.clone().source_indices.clone(),
+                                    ));
+                                }
+                                __result
+                            });
+                            let unused = struct_unused_param_names(
+                                pnames,
+                                struct_decl.children.clone(),
+                                scope.type_env.clone().source_indices.clone(),
+                            );
+                            if (struct_decl.connective.clone() == Connective::Conj)
+                                && ((unused.len() as i64) > 0)
+                            {
+                                "                _phantom: std::marker::PhantomData,\n".to_string()
+                            } else {
+                                "".to_string()
+                            }
+                        }
+                        None => "".to_string(),
+                    };
+                    v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("            Rc::new(BoundedLattice {\n".to_string(), "                meet: Rc::new(".to_string()), meet_str), "),\n".to_string()), "                join: Rc::new(".to_string()), join_str), "),\n".to_string()), "                top: ".to_string()), top_str), ",\n".to_string()), "                bottom: ".to_string()), bottom_str), ",\n".to_string()), phantom_line), "            })".to_string())
                 }
                 _ => "            compile_error!(\"BoundedLattice data must be a record\")"
                     .to_string(),
