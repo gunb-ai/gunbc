@@ -1,0 +1,51 @@
+module extdeps.cloud.gcp.serviceusage
+
+import extdeps.cloud.gcp.gcp { GcpProjectId, GcpOperation }
+import extdeps.cloud.gcp.errors { GcpErrorShape }
+import std.types { HttpMethod, AuthScheme }
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "cloud.google.com/service-usage/docs/reference/rest/v1/services/batchEnable"
+  }
+}
+
+service gcp.ServiceUsage {
+  config {
+    endpoint: "https://serviceusage.googleapis.com"
+    auth: Bearer
+    auth_input: access_token
+
+    rate_limit: { requests: 60, per: minute, scope: service_usage }
+
+    retry: { max_attempts: 3, backoff: exponential, retry_on: [429, 500, 503] }
+  }
+
+  operation BatchEnableServices {
+    input {
+      access_token: Secret
+      project_id: GcpProjectId
+      service_ids: List<String>
+    }
+    output { operation_name: String from "name" }
+
+    idempotent
+    transport rest {
+      method: POST,
+      path: "/v1/projects/\{project_id\}/services:batchEnable",
+      body: { serviceIds: service_ids }
+    }
+    response {
+      200 => GcpOperation
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      404 => GcpErrorShape
+      429 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
+  }
+}

@@ -30,24 +30,36 @@ data bmc_assimilator_sa_email: ServiceAccountEmail = "bmc-assimilator@gunbai-sec
 
 data bmc_federated_github_repo: String = "gunb-ai/gunbc"
 
+data bmc_wif_pool_id: NonEmptyStr = "github-actions"
+
+data bmc_wif_pool_display_name: NonEmptyStr = "GitHub Actions OIDC"
+
+data bmc_wif_provider_id: NonEmptyStr = "github-oidc"
+
+data bmc_wif_issuer_uri: NonEmptyStr = "https://token.actions.githubusercontent.com"
+
+data bmc_wif_attribute_mapping: Map<String, String> = {
+  "google.subject": "assertion.sub",
+  "attribute.repository": "assertion.repository",
+  "attribute.ref": "assertion.ref"
+}
+
+data bmc_assimilator_account_id: NonEmptyStr = "bmc-assimilator"
+
+data bmc_assimilator_display_name: NonEmptyStr = "BMC assimilator (keyless, srv3 secret only)"
+
 data bmc_wif_pool: WifPool = WifPool {
-  name: "github-actions"
+  name: bmc_wif_pool_id
   project: "gunbai-secrets"
-  display_name: Present { value: "GitHub Actions OIDC" }
+  display_name: Present { value: bmc_wif_pool_display_name }
   disabled: false
 }
 
 data bmc_wif_provider: WifProvider = WifProvider {
-  name: "github-oidc"
-  pool: "github-actions"
-  issuer_uri: "https://token.actions.githubusercontent.com"
-  attribute_mapping: Present {
-    value: {
-      "google.subject": "assertion.sub",
-      "attribute.repository": "assertion.repository",
-      "attribute.ref": "assertion.ref"
-    }
-  }
+  name: bmc_wif_provider_id
+  pool: bmc_wif_pool_id
+  issuer_uri: bmc_wif_issuer_uri
+  attribute_mapping: Present { value: bmc_wif_attribute_mapping }
 }
 
 fn bmc_assimilator_sa_member() -> String {
