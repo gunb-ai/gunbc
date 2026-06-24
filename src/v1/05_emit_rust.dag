@@ -219,6 +219,23 @@ fn emit_rust_host_to_dag_string_via_seam(host_expr: String, corpus_repr: RustCor
   }
 }
 
+// A map-literal's KEY must receive the SAME type-driven String coercion the VALUE
+// gets via emit_typed_expr. The value slot is type-coerced; the key slot used to
+// emit a bare "name" &str literal, so a Map<String,V> data literal inferred
+// HashMap<&str,V> and mismatched the declared HashMap<String,V> (the Family-A
+// E0308 cluster). The coercion is DERIVED from the declared key type, not blanket:
+// a String-like key gets .to_string(); a non-String declared key emits the literal
+// unchanged (fail-closed -- the two slots now consult the same type authority).
+fn emit_rust_map_literal_key(field_name: String, key_type_node: Node, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>) -> String {
+  let key_literal = concat("\"", field_name, "\"")
+  let host_expr = if is_rust_string_like(n: key_type_node, source_indices: source_indices) {
+    concat(key_literal, ".to_string()")
+  } else {
+    key_literal
+  }
+  emit_rust_host_to_dag_string_via_seam(host_expr: host_expr, corpus_repr: corpus_repr)
+}
+
 fn emit_rust_dag_string_to_host_via_seam(dag_expr: String, corpus_repr: RustCorpusRepr) -> String {
   if corpus_repr_is_faithful(corpus_repr: corpus_repr) {
     concat("crate::v2_std_text::host_string_text_to_rust_host(", dag_expr, ")")
@@ -7849,9 +7866,13 @@ fn emit_data_def_body(type_node: Node, value: Node, registry: Map<String, ItemIn
     if is_map {
       match value.expr_data {
         ExprRecordLit { parent_enum: _ } =>
+          let key_type_node = match type_node.children |> first {
+            Present { value: key_child } => child_type_node(ch: key_child)
+            Absent => type_node
+          }
           let inserts = value.children |> map(f =>
             let val_str = emit_typed_expr(texpr: field_init_node_value(n: f), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
-            concat("            __m.insert(", emit_rust_host_to_dag_string_via_seam(host_expr: concat("\"", field_init_node_name_at(n: f, source_indices: scope.type_env.source_indices), "\""), corpus_repr: emit_info.corpus_repr), ", ", val_str, ");")
+            concat("            __m.insert(", emit_rust_map_literal_key(field_name: field_init_node_name_at(n: f, source_indices: scope.type_env.source_indices), key_type_node: key_type_node, corpus_repr: emit_info.corpus_repr, source_indices: scope.type_env.source_indices), ", ", val_str, ");")
           )
           let inserts_str = inserts |> join(separator: "\n")
           concat("            let mut __m = HashMap::new();\n",
