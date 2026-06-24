@@ -87,6 +87,8 @@ mod languages_consumer_census_lens_test;
 #[cfg(test)]
 mod list_free_monoid_chokepoint_test;
 #[cfg(test)]
+mod map_literal_string_key_test;
+#[cfg(test)]
 mod map_lookup_dual_dispatch_test;
 #[cfg(test)]
 mod measure_field_access_test;
@@ -96,6 +98,10 @@ mod module_authority_resolution_test;
 mod money_carrier_cost_witness_test;
 #[cfg(test)]
 mod nodefold_generic_instantiation_test;
+#[cfg(test)]
+mod optional_carrier_signature_test;
+#[cfg(test)]
+mod optional_consumer_fail_closed_test;
 #[cfg(test)]
 mod parse;
 #[cfg(test)]
@@ -118,6 +124,8 @@ mod resolve_cross_process_cache_test;
 mod resolve_expr_types_retraversal_guard_test;
 #[cfg(test)]
 mod resolve_typed_cache_equivalence_test;
+#[cfg(test)]
+mod route_a_final_six_test;
 #[cfg(test)]
 mod source_audit;
 #[cfg(test)]
