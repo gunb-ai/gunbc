@@ -1,16 +1,8 @@
 module gunbc.plans.regen_verify_gate
 
 import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
-import std.markdown {
-  MarkdownBlock, MarkdownListItem,
-  HeadingBlock, ParagraphBlock, OrderedListBlock,
-  TextInline, H2,
-}
-
-fn h2(text: String) -> MarkdownBlock { HeadingBlock { level: H2, inlines: [TextInline { text: text }] } }
-fn p(text: String) -> MarkdownBlock { ParagraphBlock { inlines: [TextInline { text: text }] } }
-fn li(text: String) -> MarkdownListItem { MarkdownListItem { blocks: [p(text: text)] } }
-fn ol(items: List<MarkdownListItem>) -> MarkdownBlock { OrderedListBlock { items: items } }
+import std.markdown { MarkdownBlock }
+import gunbc.plans.md_helpers { h2, p, li, ol }
 
 fn regen_verify_gate_body() -> List<MarkdownBlock> {
   [

@@ -1,20 +1,8 @@
 module gunbc.plans.regime2_shared_emission_fold
 
 import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
-import std.markdown {
-  MarkdownBlock, MarkdownListItem, MarkdownTableCell, MarkdownTableRow, MarkdownAlignment,
-  HeadingBlock, ParagraphBlock, UnorderedListBlock, OrderedListBlock, CodeBlock, TableBlock, BlockquoteBlock,
-  TextInline, H2, H3, AlignNone,
-}
-
-fn h2(text: String) -> MarkdownBlock { HeadingBlock { level: H2, inlines: [TextInline { text: text }] } }
-fn h3(text: String) -> MarkdownBlock { HeadingBlock { level: H3, inlines: [TextInline { text: text }] } }
-fn p(text: String) -> MarkdownBlock { ParagraphBlock { inlines: [TextInline { text: text }] } }
-fn li(text: String) -> MarkdownListItem { MarkdownListItem { blocks: [p(text: text)] } }
-fn ul(items: List<MarkdownListItem>) -> MarkdownBlock { UnorderedListBlock { items: items } }
-fn ol(items: List<MarkdownListItem>) -> MarkdownBlock { OrderedListBlock { items: items } }
-fn cell(text: String) -> MarkdownTableCell { MarkdownTableCell { inlines: [TextInline { text: text }] } }
-fn row(cells: List<MarkdownTableCell>) -> MarkdownTableRow { MarkdownTableRow { cells: cells } }
+import std.markdown { MarkdownBlock, TableBlock, BlockquoteBlock, AlignNone }
+import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, cell, row }
 
 fn regime2_shared_emission_fold_body() -> List<MarkdownBlock> {
   [
