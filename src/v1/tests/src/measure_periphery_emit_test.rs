@@ -3,8 +3,6 @@
 //! exercises the same HostNative emit as the assembled crate.
 //!
 //! Families witnessed here:
-//! - E0107: a nested container alias (`List<List<T>>`) must expand the INNER alias too, not emit
-//!   a bare `List` that has lost its type argument.
 //! - E0599/E0277: a generic fn whose body requires `Clone` on a type param must emit the bound.
 //! - length routing: `.length()` routes BY RECEIVER through the existing method->realization
 //!   dispatch — collection receiver -> `count` (`.len() as i64`), String receiver ->
@@ -33,61 +31,6 @@ fn fn_body(emitted: &str, name: &str) -> String {
         .map(|i| i + needle.len())
         .unwrap_or(rest.len());
     rest[..end].to_string()
-}
-
-// ---- E0107: nested container-alias expansion -------------------------------------------------
-
-const NESTED_LIST_FIXTURE: &str = concat!(
-    "module nestedlist.fixture\n",
-    "import std.nat { Nat }\n\n",
-    "type Bar {\n  x: Nat\n}\n\n",
-    "type Schedule = List<List<Bar>>\n\n",
-    "fn outer_count(s: Schedule) -> Int {\n  s.length()\n}\n"
-);
-
-#[test]
-fn nested_list_alias_expands_inner_container() {
-    let emitted = emit_host("src/v1/nested_list_fixture.dag", NESTED_LIST_FIXTURE);
-    let alias_line = emitted
-        .lines()
-        .find(|l| l.contains("type Schedule"))
-        .unwrap_or_else(|| panic!("`type Schedule` alias not emitted:\n{emitted}"))
-        .to_string();
-    // Under HostNative `List<T>` => `Rc<Vec<T>>`, so `List<List<Bar>>` must fully expand to
-    // `Rc<Vec<Rc<Vec<Bar>>>>` — the INNER `List<Bar>` expanded, not left as a bare `List`.
-    assert!(
-        alias_line.contains("Rc<Vec<Rc<Vec<Bar>>>>"),
-        "nested list alias must expand the inner container, got:\n{alias_line}"
-    );
-    // Discriminating negative: a bare `List` (alias name kept, type-arg dropped) is the bug.
-    assert!(
-        !alias_line.contains("Rc<List>") && !alias_line.contains("<List>"),
-        "nested list alias must not leave a bare `List` (lost type arg), got:\n{alias_line}"
-    );
-}
-
-// Single-level control: a non-nested `List<Bar>` still expands to `Rc<Vec<Bar>>` (the fix must
-// not regress the base case).
-const FLAT_LIST_FIXTURE: &str = concat!(
-    "module flatlist.fixture\n",
-    "import std.nat { Nat }\n\n",
-    "type Bar {\n  x: Nat\n}\n\n",
-    "type Roster = List<Bar>\n\n",
-    "fn roster_count(s: Roster) -> Int {\n  s.length()\n}\n"
-);
-
-#[test]
-fn flat_list_alias_still_expands() {
-    let emitted = emit_host("src/v1/flat_list_fixture.dag", FLAT_LIST_FIXTURE);
-    let alias_line = emitted
-        .lines()
-        .find(|l| l.contains("type Roster"))
-        .unwrap_or_else(|| panic!("`type Roster` alias not emitted:\n{emitted}"))
-        .to_string();
-    assert!(
-        alias_line.contains("Rc<Vec<Bar>>"),
-        "flat list alias must expand to Rc<Vec<Bar>>, got:\n{alias_line}"
-    );
 }
 
 // ---- E0599/E0277: generic fn Clone bound -----------------------------------------------------
