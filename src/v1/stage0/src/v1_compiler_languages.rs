@@ -1342,3 +1342,16 @@ pub fn wrap_shared_type(target: RenderTarget, inner: String) -> String {
         v1_rt::replace(tmpl, "{0}".to_string(), inner)
     }
 }
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct EmojiCharEscape {
+    pub prefix: String,
+    pub suffix: String,
+}
+
+pub fn canonical_emoji_char_escape() -> EmojiCharEscape {
+    EmojiCharEscape {
+        prefix: "_Eu".to_string(),
+        suffix: "_".to_string(),
+    }
+}

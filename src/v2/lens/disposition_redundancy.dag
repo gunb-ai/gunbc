@@ -2,12 +2,13 @@ module v2.lens.disposition_redundancy
 
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 
-import std.disposition { Disposition, Scaffold, Terminal, DeclLocator, ScaffoldTarget, WholeDeclaration, NamedField, SubstrateMandatoryTag }
+import std.disposition { Disposition, Scaffold, Terminal, SubstrateMandatoryTag }
+import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField }
 import v2.std.collection { List }
 import v2.std.algebra { count_where, any }
 import v2.std.logic { Bool }
 
-fn scaffold_target_eq(a: ScaffoldTarget, b: ScaffoldTarget) -> Bool {
+fn decl_field_eq(a: DeclField, b: DeclField) -> Bool {
   match a {
     WholeDeclaration =>
       match b {
@@ -22,25 +23,25 @@ fn scaffold_target_eq(a: ScaffoldTarget, b: ScaffoldTarget) -> Bool {
   }
 }
 
-fn decl_locator_eq(a: DeclLocator, b: DeclLocator) -> Bool {
+fn decl_ref_eq(a: DeclarationRef, b: DeclarationRef) -> Bool {
   a.module_path == b.module_path
     && a.decl_name == b.decl_name
-    && scaffold_target_eq(a: a.field, b: b.field)
+    && decl_field_eq(a: a.field, b: b.field)
 }
 
-fn disposition_binds_present(d: Disposition, present: List<DeclLocator>) -> Bool {
+fn disposition_binds_present(d: Disposition, present: List<DeclarationRef>) -> Bool {
   match d {
     Scaffold { dissolves_to: _, bind } =>
-      any(xs: present, predicate: fn(p) { decl_locator_eq(a: p, b: bind) })
+      any(xs: present, predicate: fn(p) { decl_ref_eq(a: p, b: bind) })
     Terminal { reason: _ } => false
   }
 }
 
-fn disposition_redundancy_violation_count(dispositions: List<Disposition>, present: List<DeclLocator>) -> Int {
+fn disposition_redundancy_violation_count(dispositions: List<Disposition>, present: List<DeclarationRef>) -> Int {
   count_where(xs: dispositions, predicate: fn(d) { disposition_binds_present(d: d, present: present) })
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: SubstrateMandatoryTag },
-  rationale: "A Scaffold whose named successor (bind) already exists in the corpus is decidable redundancy (DESIGN sec 2 parallel-representation debt): scaffold + its successor both alive. It is a wall, not a ratchet -- the membership test is exact equality of a field-granular declaration locator. It is a lens rather than a construction only because enumerating the present successors as substrate facts (and ultimately mandating the tag) are not yet available; both are named in grounding_authority. Grounding authority: the parse/resolve walk enumerating every declared decl + field across the corpus as DeclLocator facts (so present-construction membership is read from the live tree, not passed in), plus the SubstrateMandatoryTag end-state where the substrate requires a Disposition at every coproduct/scaffold definition. Dissolves on: disposition_redundancy_violation_count runs over live dsl/** + src/v2/** Disposition marks against corpus-enumerated DeclLocator facts; until then it is a lens_unit predicate over explicit (dispositions, present) inputs. The ratcheting redundancy lens itself dissolves once Disposition is a substrate-mandatory field and the bad state is unwritable by construction"
+  rationale: "A Scaffold whose named successor (bind) already exists in the corpus is decidable redundancy (DESIGN sec 2 parallel-representation debt): scaffold + its successor both alive. It is a wall, not a ratchet -- the membership test is exact equality of a field-granular declaration reference. It is a lens rather than a construction only because enumerating the present successors as substrate facts (and ultimately mandating the tag) are not yet available; both are named in grounding_authority. Grounding authority: the parse/resolve walk enumerating every declared decl + field across the corpus as DeclarationRef facts (so present-construction membership is read from the live tree, not passed in), plus the SubstrateMandatoryTag end-state where the substrate requires a Disposition at every coproduct/scaffold definition. Dissolves on: disposition_redundancy_violation_count runs over live dsl/** + src/v2/** Disposition marks against corpus-enumerated DeclarationRef facts; until then it is a lens_unit predicate over explicit (dispositions, present) inputs. The ratcheting redundancy lens itself dissolves once Disposition is a substrate-mandatory field and the bad state is unwritable by construction"
 }

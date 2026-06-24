@@ -1,6 +1,6 @@
 module extdeps.apt
 
-import std.types { NonEmptyStr, FilePath }
+import std.types { NonEmptyStr, FilePath, String, Bool }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -18,7 +18,28 @@ data apt_local_bin_dir: FilePath = "/usr/local/bin"
 data package_coreutils: NonEmptyStr = "coreutils"     
 data package_grep: NonEmptyStr = "grep"               
 data package_diffutils: NonEmptyStr = "diffutils"     
-data package_cargo: NonEmptyStr = "cargo"             
-data package_rustc: NonEmptyStr = "rustc"             
+data package_cargo: NonEmptyStr = "cargo"
+data package_rustc: NonEmptyStr = "rustc"
+
+data package_systemd_oomd_defaults: NonEmptyStr = "systemd-oomd-defaults"
 
 data apt_man_url: NonEmptyStr = "https://manpages.debian.org/testing/apt/apt.8.en.html"
+
+data apt_install_effect_doc: String = "Install as an effect (non-readonly operation). The package is a PARAMETER reusing the existing package-name concept (package_* data below); apt owns the install interface shape, WHICH package is workflow policy supplied by the caller, so the argv carries no business literal (DESIGN section 3). Exit codes from apt-get(8): 100 covers a held dpkg/apt lock, fetch error, or unmet dependency."
+
+service apt.PackageManager {
+  operation Install {
+    input { package: NonEmptyStr }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["apt-get", "install", "--yes", "{package}"] }
+    exit {
+      0 => Unit
+      100 => String "apt-get install failed (lock held, fetch error, or unmet dependency)"
+      nonzero => String "apt-get install failed"
+    }
+  }
+}
