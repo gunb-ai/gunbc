@@ -13,7 +13,21 @@ import gunbc.ci_runner_placement {
   session_reservation_plan,
   OperatingPointRow,
   operating_curve,
+  WorkloadClass,
+  BatchLatencyTolerant,
+  InteractiveLatencySensitive,
+  workload_class_cpu_weight,
 }
+import gunbc.ci_floor_measurement {
+  SessionReservationMode,
+  Regime2AggregateOomd,
+  Regime1WorstCase,
+  SessionReservationModeUnset,
+  SessionAggregateMeasured,
+  SessionAggregateUnmeasured,
+  gunbc_ci_session_reservation_mode,
+}
+import gunbc.fleet_intent { fleet_intent_offers }
 import extdeps.github.actions { RunnerSpec, SelfHosted, HostedRunner, RunsOnExpression }
 import std.measure { byte_size_count, hardware_thread_count_value }
 import std.types { String, List, Int, Bool }
@@ -25,6 +39,11 @@ import std.layout {
 }
 
 data runner_deploy_protocol: LayoutProtocol = LayoutProtocol { indent_unit: "" }
+
+data gunbc_runner_deploy_manifest_contract_marker: String = "Byte-exact manifest wire contract (the EMIT is the single authority; ctrl parsers align to THIS, no fallback). Three line-kinds: (1) runner-deploy host=<id> runner_count=<int> runner_slice_cap_bytes=<int> per_slot_memory_max_bytes=<int> build_tokens=<int> labels=<csv> cpu_weight=<int> -- the runner-slice APPLY line. (2) session-slice host=<id> slice_max_bytes=<int> per_session_max_bytes=<int> oom_pressure_kill=<true|false> oom_pressure_limit_pct=<int> cpu_weight=<int> -- the sessions.slice APPLY line (ungated bootstrap from committed REGIME-2 values). (3) session-reservation host=<id> sessions=<int> per_session_cap_bytes=<int> -- REPORTING ONLY (coverage), carries NO cpu_weight and is not an apply target. operating-curve lines are informational. Fields are KV-by-name, order-independent; unknown KV is ignored forward-compatibly."
+
+data gunbc_sessions_oom_pressure_psi_limit_pct: Int = 60
+data gunbc_sessions_oom_pressure_psi_limit_pct_interim_marker: String = "dissolve-on: #5677 (gunbc.oomd_install) merges -- replace gunbc_sessions_oom_pressure_psi_limit_pct + this marker with percent_count(p: gunbc_oomd_sessions_policy.managed_oom_memory_pressure_limit) sourced from import gunbc.oomd_install, and import percent_count from std.measure. The Nat accessor down-projects the Percent Measure to the bare int 0..100 the manifest wire format requires (fierce-carp parses int 0..100). Interim: ONE authority here until #5677 lands."
 
 fn runner_labels_text(spec: RunnerSpec) -> String {
   match spec {
@@ -40,14 +59,17 @@ fn manifest_host_text(h: RunnerHostDeployment) -> String {
     concat(
       concat(
         concat(
-          concat(concat("host=", h.identity), concat(" runner_count=", to_string(h.runner_count))),
-          concat(" runner_slice_cap_bytes=", to_string(byte_size_count(b: h.runner_slice_cap)))
+          concat(
+            concat(concat("host=", h.identity), concat(" runner_count=", to_string(h.runner_count))),
+            concat(" runner_slice_cap_bytes=", to_string(byte_size_count(b: h.runner_slice_cap)))
+          ),
+          concat(" per_slot_memory_max_bytes=", to_string(byte_size_count(b: h.per_runner_memory_cap)))
         ),
-        concat(" per_slot_memory_max_bytes=", to_string(byte_size_count(b: h.per_runner_memory_cap)))
+        concat(" build_tokens=", to_string(hardware_thread_count_value(t: h.build_tokens)))
       ),
-      concat(" build_tokens=", to_string(hardware_thread_count_value(t: h.build_tokens)))
+      concat(" labels=", runner_labels_text(spec: h.runner))
     ),
-    concat(" labels=", runner_labels_text(spec: h.runner))
+    concat(" cpu_weight=", to_string(workload_class_cpu_weight(wc: h.workload_class)))
   )
 }
 
@@ -111,9 +133,41 @@ fn operating_curve_doc() -> Doc {
   ))
 }
 
+fn session_slice_doc() -> Doc {
+  match gunbc_ci_session_reservation_mode {
+    SessionReservationModeUnset =>
+      doc_line_of(text: "session-slice UNSOUND: session reservation mode unset")
+    Regime1WorstCase { point: _ } =>
+      doc_line_of(text: "session-slice UNSOUND: REGIME-1 mode has no aggregate reservation; session-slice apply requires REGIME-2")
+    Regime2AggregateOomd { oomd_eviction_ceiling: ceiling, session_concurrency: _, aggregate_reservation: agg, oomd_enforcement: _ } =>
+      match agg {
+        SessionAggregateUnmeasured =>
+          doc_line_of(text: "session-slice UNSOUND: aggregate_reservation is unmeasured; commit a measured concurrent peak before wiring the apply")
+        SessionAggregateMeasured { bytes: agg_bytes } =>
+          doc_concat(parts: map(fleet_intent_offers, o => doc_line_of(text: concat(
+            "session-slice ",
+            concat(
+              concat(
+                concat(
+                  concat(
+                    concat(concat("host=", o.supply.physical.identity), concat(" slice_max_bytes=", to_string(byte_size_count(b: agg_bytes)))),
+                    concat(" per_session_max_bytes=", to_string(byte_size_count(b: ceiling)))
+                  ),
+                  " oom_pressure_kill=true"
+                ),
+                concat(" oom_pressure_limit_pct=", to_string(gunbc_sessions_oom_pressure_psi_limit_pct))
+              ),
+              concat(" cpu_weight=", to_string(workload_class_cpu_weight(wc: InteractiveLatencySensitive)))
+            )
+          ))))
+      }
+  }
+}
+
 fn project_runner_deploy_to_doc() -> Doc {
   doc_concat(parts: [
     runner_plan_doc(),
+    session_slice_doc(),
     session_plan_doc(),
     operating_curve_doc()
   ])

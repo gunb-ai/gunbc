@@ -1,0 +1,121 @@
+module v2.test.manual.typescript_record_construct_emit
+
+import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
+import v2.std.collection { Map, empty_map, map_insert }
+import v2.std.node { Symbol }
+import v2.std.compilers.target_model {
+  ConcreteSyntaxToken,
+  RecordLiteralTypeNaming,
+  Omit,
+  Prepend,
+  TargetModel,
+  TargetValueExpression,
+  TargetValueExprFieldInitSlot,
+  target_value_expression_binding_ref,
+  target_value_expression_record_construct,
+  target_value_expression_to_concrete_tokens,
+  target_model_emit_transforms_empty
+}
+import extdeps.communication.medium { Lossless, Medium }
+import v2.compiler.translate { serialize_concrete_syntax_tokens_to_source }
+import v2.extdeps.languages.typescript {
+  ts_mvp1_target_model_node,
+  ts_operator_realizations_catalog_node,
+  ts_value_expression_projection_with_record_literal_naming,
+  ts_wave1_lex
+}
+
+fn record_construct_binding_spellings() -> Map<Symbol, String> {
+  map_insert(
+    map_insert(
+      map_insert(
+        map_insert(
+          map_insert(empty_map(), ^record_construct_binding_point, "Point"),
+          ^record_construct_binding_x,
+          "x"
+        ),
+        ^record_construct_binding_y,
+        "y"
+      ),
+      ^record_construct_binding_a,
+      "a"
+    ),
+    ^record_construct_binding_b,
+    "b"
+  )
+}
+
+fn record_construct_target_model() -> TargetModel {
+  TargetModel {
+    bundle: ts_mvp1_target_model_node(),
+    lex: ts_wave1_lex(),
+    binding_spellings: record_construct_binding_spellings(),
+    token_class_emit_transforms: target_model_emit_transforms_empty,
+    authority_source_text: "",
+    runtime_row: target_emit_host_runtime_row_unconfigured
+  }
+}
+
+fn ts_record_construct_expr() -> TargetValueExpression {
+  target_value_expression_record_construct(
+    type_name: ^record_construct_binding_point,
+    fields: [
+      TargetValueExprFieldInitSlot {
+        label: ^record_construct_binding_x,
+        value: target_value_expression_binding_ref(binding: ^record_construct_binding_a)
+      },
+      TargetValueExprFieldInitSlot {
+        label: ^record_construct_binding_y,
+        value: target_value_expression_binding_ref(binding: ^record_construct_binding_b)
+      }
+    ]
+  )
+}
+
+fn ts_record_construct_emit_accepts(
+  record_literal_names_type: RecordLiteralTypeNaming
+) -> Outcome<Medium<String>> {
+  bind_outcome(
+    o: target_value_expression_to_concrete_tokens(
+      expr: ts_record_construct_expr(),
+      projection: ts_value_expression_projection_with_record_literal_naming(
+        record_literal_names_type: record_literal_names_type
+      ),
+      catalog: ts_operator_realizations_catalog_node()
+    ),
+    f: fn(tokens) {
+      serialize_concrete_syntax_tokens_to_source(
+        target: record_construct_target_model(),
+        tokens: tokens
+      )
+    }
+  )
+}
+
+fn ts_record_construct_emit_with_naming(
+  record_literal_names_type: RecordLiteralTypeNaming
+) -> String {
+  match ts_record_construct_emit_accepts(record_literal_names_type: record_literal_names_type) {
+    Accepted { value: source, diagnostics: _ } => source.carried
+    Rejected { diagnostics: _ } => "RECORD_CONSTRUCT_EMIT_REJECTED"
+  }
+}
+
+fn ts_record_construct_emit_source() -> String {
+  ts_record_construct_emit_with_naming(record_literal_names_type: Omit)
+}
+
+fn ts_record_construct_emit_source_prepend() -> String {
+  ts_record_construct_emit_with_naming(record_literal_names_type: Prepend)
+}
+
+test fn ts_record_construct_emit_source_holds() -> Bool {
+  ts_record_construct_emit_source() == " { x: a, y: b }"
+}
+
+test fn ts_record_construct_row_perturbation_flips_type_name_holds() -> Bool {
+  (ts_record_construct_emit_source() == " { x: a, y: b }")
+    && (ts_record_construct_emit_source_prepend() == "Point { x: a, y: b }")
+    && (ts_record_construct_emit_source() != ts_record_construct_emit_source_prepend())
+}
