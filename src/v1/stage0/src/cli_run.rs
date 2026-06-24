@@ -762,6 +762,35 @@ pub fn precompute_whole_tree_published_mock_keys(
         .map_err(|e| format!("whole-tree published mock corpus precompute: {e}"))
 }
 
+/// Build an interpreter context over the WHOLE source-root corpus (every `.dag`
+/// module under `source_roots`), resolved in one pass under the Strict gate — the
+/// same whole-tree resolve `precompute_whole_tree_published_mock_keys` performs,
+/// but retaining the context so a `.dag` reflection accessor (e.g.
+/// `fn_arrow_decl_facts_live`) walks `ctx.modules == the whole tree` rather than a
+/// single entry's import closure. This is the #5364 widening substrate: coverage
+/// goes from per-entry resolve-closure to whole-tree-in-one-pass. The marshaling
+/// runs in THIS context's interner, so reflected `Node` values are self-consistent
+/// (no cross-context Symbol mismatch).
+pub fn whole_tree_resolved_ctx(
+    source_roots: &[String],
+    execution_mode: v1_interpreter::ExecutionMode,
+) -> Result<v1_interpreter::InterpContext, String> {
+    let index = build_module_index(source_roots);
+    let all_sources: Vec<Rc<v1_compiler_compile::SourceFile>> = index.values().cloned().collect();
+    if all_sources.is_empty() {
+        return Err("whole-tree corpus is empty (no .dag modules under source roots)".to_string());
+    }
+    let (graph, source_indices) =
+        resolved_graph_from_sources(all_sources, ResolveTypecheckGate::Strict)?;
+    Ok(v1_interpreter::InterpContext::with_runtime_options(
+        graph.as_ref(),
+        source_indices,
+        execution_mode,
+        None,
+        None,
+    ))
+}
+
 pub fn closure_subject_for_entry(index: &MultiEntryIndex, entry: &str) -> Result<String, String> {
     let sources = load_sources_for_entry_with_index(&index.source_files, entry)?;
     Ok(subject_digest_for_closure(&sources))
