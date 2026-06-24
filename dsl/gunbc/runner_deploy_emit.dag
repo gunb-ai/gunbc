@@ -41,8 +41,6 @@ import std.layout {
 
 data runner_deploy_protocol: LayoutProtocol = LayoutProtocol { indent_unit: "" }
 
-data gunbc_runner_deploy_manifest_contract_marker: String = "Byte-exact manifest wire contract (the EMIT is the single authority; ctrl parsers align to THIS, no fallback). Three line-kinds: (1) runner-deploy host=<id> runner_count=<int> runner_slice_cap_bytes=<int> per_slot_memory_max_bytes=<int> build_tokens=<int> labels=<csv> cpu_weight=<int> -- the runner-slice APPLY line. (2) session-slice host=<id> slice_max_bytes=<int> per_session_max_bytes=<int> oom_pressure_kill=<true|false> oom_pressure_limit_pct=<int> cpu_weight=<int> -- the sessions.slice APPLY line (ungated bootstrap from committed REGIME-2 values). (3) session-reservation host=<id> sessions=<int> per_session_cap_bytes=<int> -- REPORTING ONLY (coverage), carries NO cpu_weight and is not an apply target. operating-curve lines are informational. Fields are KV-by-name, order-independent; unknown KV is ignored forward-compatibly."
-
 
 fn runner_labels_text(spec: RunnerSpec) -> String {
   match spec {

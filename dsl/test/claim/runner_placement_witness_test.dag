@@ -91,7 +91,6 @@ import gunbc.runner_deploy_emit {
   runner_deploy_drifted,
   manifest_host_text,
   session_host_text,
-  gunbc_runner_deploy_manifest_contract_marker,
 }
 import std.measure { ByteSize, byte_size, byte_size_count, HardwareThreadCount, hardware_thread_count, hardware_thread_count_value }
 import std.types { Bool, Int, List, String }
