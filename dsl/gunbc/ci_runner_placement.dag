@@ -158,7 +158,7 @@ fn resolve_regime1_slice(c: ByteSize, n: Int) -> SessionSliceResolution {
   }
 }
 
-fn resolve_session_slice(mode: SessionReservationMode) -> SessionSliceResolution {
+fn resolve_session_slice(mode: SessionReservationMode, oomd: OomdEnforcementEvidence) -> SessionSliceResolution {
   match mode {
     SessionReservationModeUnset =>
       SessionSliceUnresolved {
@@ -171,10 +171,10 @@ fn resolve_session_slice(mode: SessionReservationMode) -> SessionSliceResolution
         SessionOperatingPointSet { per_session_cap: c, session_concurrency: n } =>
           resolve_regime1_slice(c: c, n: n)
       }
-    Regime2AggregateOomd { oomd_eviction_ceiling: ceiling, session_concurrency: n, aggregate_reservation: agg, oomd_enforcement: oomd } =>
+    Regime2AggregateOomd { oomd_eviction_ceiling: ceiling, session_concurrency: n, aggregate_reservation: agg } =>
       match oomd {
         OomdUnverified =>
-          SessionSliceUnresolved { reason: "REGIME-2 keystone unmet: it over-commits the per-session caps, so it is unsound until per-cgroup memory.max + systemd-oomd eviction is verified live on the hosts (oomd_enforcement = OomdUnverified). Fail closed; do NOT reserve the smaller aggregate without the runtime eviction floor." }
+          SessionSliceUnresolved { reason: "REGIME-2 keystone unmet: it over-commits the per-session caps, so it is unsound until per-cgroup memory.max + systemd-oomd eviction is verified live on the hosts (gunbc_fleet_oomd_evidence = OomdUnverified). Fail closed; do NOT reserve the smaller aggregate without the runtime eviction floor." }
         OomdEnforced =>
           match agg {
             SessionAggregateUnmeasured =>
@@ -304,7 +304,7 @@ fn runner_deployment_plan_for(
   match enforcement {
     RunnerSlotUnenforced { reason: r } => PlanUnsound { reason: r }
     RunnerSlotEnforced =>
-      match resolve_session_slice(mode: mode) {
+      match resolve_session_slice(mode: mode, oomd: oomd) {
         SessionSliceUnresolved { reason: r } => PlanUnsound { reason: r }
         SessionSliceResolved { bytes: session_slice, per_session_cap: _, concurrency: _ } =>
           match resolve_run_unit_peak(job_peaks: job_peaks) {
@@ -370,7 +370,7 @@ fn samples_covered(cap: ByteSize) -> Int {
 }
 
 fn session_reservation_plan() -> SessionReservationPlan {
-  match resolve_session_slice(mode: gunbc_ci_session_reservation_mode) {
+  match resolve_session_slice(mode: gunbc_ci_session_reservation_mode, oomd: gunbc_fleet_oomd_evidence) {
     SessionSliceUnresolved { reason: r } => SessionReservationUnsound { reason: r }
     SessionSliceResolved { bytes: _, per_session_cap: c, concurrency: n } =>
       SessionReservationDerived {
