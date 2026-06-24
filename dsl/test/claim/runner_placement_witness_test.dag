@@ -8,6 +8,10 @@ import gunbc.ci_runner_placement {
   runner_deployment_plan,
   runner_deployment_plan_for,
   host_runner_count_from_cap,
+  resolve_run_unit_peak,
+  JobPeakResolution,
+  JobPeaksResolved,
+  JobPeaksUnresolved,
   RunnerSlotEnforcement,
   RunnerSlotEnforced,
   RunnerSlotUnenforced,
@@ -358,11 +362,15 @@ fn witness_count_respects_conserved_runner_slice() -> Bool {
 }
 
 fn witness_per_runner_cap_is_worst_times_margin() -> Bool {
-  let worst = 24000000000
+  let worst = match resolve_run_unit_peak(job_peaks: fitting_job_mix()) {
+    JobPeaksResolved { run_unit_peak: w } => byte_size_count(b: w)
+    JobPeaksUnresolved { reason: _ } => 0
+  }
   let expected = worst * gunbc_ci_runner_unit_cap_safety_margin_num / gunbc_ci_runner_unit_cap_safety_margin_den
   match fully_sound_plan() {
     PlanDerived { hosts: hosts, fleet_concurrent_runs: _ } =>
       hosts.length() > 0
+        && worst > 0
         && all(hosts, h =>
             byte_size_count(b: h.per_runner_memory_cap) == expected
               && byte_size_count(b: h.per_runner_memory_cap) <= byte_size_count(b: h.runner_slice_cap)
