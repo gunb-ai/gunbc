@@ -48,6 +48,7 @@ type WorkflowPermissions {
   pull_requests: PermissionLevel?
   issues: PermissionLevel?
   actions: PermissionLevel?
+  id_token: PermissionLevel?
 }
 
 type PermissionLevel = PermRead | PermWrite | PermNone
@@ -209,6 +210,10 @@ data setup_rust_action: ActionRef = ActionRef {
 
 data cache_action: ActionRef = ActionRef {
   owner: "actions", repo: "cache", ref: "v5"
+}
+
+data google_auth_action: ActionRef = ActionRef {
+  owner: "google-github-actions", repo: "auth", ref: "v2"
 }
 
 data max_job_timeout_minutes: Int = 360
