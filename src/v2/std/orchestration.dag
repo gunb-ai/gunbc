@@ -1,0 +1,92 @@
+module v2.std.orchestration
+
+import v2.std.text { String }
+import v2.std.integer { Int }
+import v2.std.algebra { FreeMonoid }
+import v2.std.collection { Optional }
+import v2.std.cardinality { DescentEvidence }
+import v2.std.diagnostic { EmitDirective }
+import v2.std.node { Symbol }
+
+type CommandRef
+  = OpaqueArgv { spelling: String }
+  | NamedCommand { name: Symbol }
+
+type EnvBinding
+  = EnvSet { name: String, value: String }
+  | EnvUnset { name: String }
+
+type RedirectSpec
+  = StdoutAndStderr
+  | DiscardAll
+  | DiscardErr
+
+type CaptureSpec
+  = TeeTo { log: String }
+  | CmdSubst
+  | IgnoreFail
+
+type Run {
+  command: CommandRef
+  env: FreeMonoid<EnvBinding>
+  redirect: Optional<RedirectSpec>
+  capture: Optional<CaptureSpec>
+}
+
+type GrepAlternation { pattern: String }
+
+type ValueSource
+  = CmdSubstLines { run: Run }
+  | Glob { pattern: String }
+  | ModeledList { items: FreeMonoid<String> }
+
+type Predicate
+  = ExitZero { run: Run }
+  | LogMatches { source: String, pattern: GrepAlternation }
+  | StrEq { lhs: String, rhs: String }
+  | Not { inner: Predicate }
+  | And { lhs: Predicate, rhs: Predicate }
+  | Or { lhs: Predicate, rhs: Predicate }
+
+type FailureClassifier {
+  infra: Predicate
+  escalations: FreeMonoid<EnvBinding>
+  on_infra_warning: EmitDirective
+}
+
+type FailurePolicy = FailFast | Continue
+
+type Step
+  = Do { run: Run }
+  | If { cond: Predicate, then_: Pipeline, else_: Optional<Pipeline> }
+  | For { binder: Symbol, over: ValueSource, body: Pipeline }
+  | While { cond: Predicate, body: Pipeline, bound: DescentEvidence }
+  | Retry {
+      attempts: Int,
+      body: Pipeline,
+      classify: FailureClassifier,
+      on_exhausted: Pipeline
+    }
+
+type Pipeline {
+  steps: FreeMonoid<Step>
+  on_failure: FailurePolicy
+}
+
+fn run_command_spelling(run: Run) -> String {
+  match run.command {
+    OpaqueArgv { spelling: s } => s
+    NamedCommand { name: n } => n
+  }
+}
+
+fn classifier_pattern(classifier: FailureClassifier) -> String {
+  match classifier.infra {
+    LogMatches { source: _, pattern: p } => p.pattern
+    ExitZero { run: _ } => ""
+    StrEq { lhs: _, rhs: _ } => ""
+    Not { inner: _ } => ""
+    And { lhs: _, rhs: _ } => ""
+    Or { lhs: _, rhs: _ } => ""
+  }
+}
