@@ -1,7 +1,7 @@
 module gunbc.host_converge
 
 import std.types { String, List, Int, Bool }
-import std.measure { byte_size_count, hardware_thread_count_value, percent_count }
+import std.measure { ByteSize, byte_size_count, hardware_thread_count_value, percent_count }
 import product.placement_supply { HostIdentity }
 import gunbc.ci_runner_placement {
   RunnerDeploymentPlan,
@@ -173,7 +173,7 @@ fn runner_host_knobs(h: RunnerHostDeployment) -> List<ConvergeKnob> {
   ]
 }
 
-fn session_host_knobs(slice_max_bytes: Int, per_session_bytes: Int) -> List<ConvergeKnob> {
+fn session_host_knobs(slice_max: ByteSize, per_session: ByteSize) -> List<ConvergeKnob> {
   let kill_value = managed_oom_action_value(a: gunbc_oomd_sessions_policy.managed_oom_memory_pressure)
   let pct = to_string(percent_count(p: gunbc_oomd_sessions_policy.managed_oom_memory_pressure_limit))
   [
@@ -182,12 +182,12 @@ fn session_host_knobs(slice_max_bytes: Int, per_session_bytes: Int) -> List<Conv
       name: "slice_max_bytes",
       unit: gunbc_oomd_sessions_slice,
       property: systemd_memory_max_property,
-      value: slice_max_bytes
+      value: byte_size_count(b: slice_max)
     ),
     ConvergeKnob {
       slice: SessionsSlice,
       name: "per_session_max_bytes",
-      desired: to_string(per_session_bytes),
+      desired: to_string(byte_size_count(b: per_session)),
       target: VerifyOnlyCap {
         slice_unit: gunbc_oomd_sessions_slice,
         property: systemd_memory_max_property,
@@ -234,8 +234,8 @@ fn session_knobs_by_host(mode: SessionReservationMode) -> List<ConvergeKnob>? {
         SessionAggregateUnmeasured => none
         SessionAggregateMeasured { bytes: agg_bytes } =>
           Present { value: session_host_knobs(
-            slice_max_bytes: byte_size_count(b: agg_bytes),
-            per_session_bytes: byte_size_count(b: ceiling)
+            slice_max: agg_bytes,
+            per_session: ceiling
           ) }
       }
   }
