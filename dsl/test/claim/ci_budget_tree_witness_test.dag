@@ -17,7 +17,6 @@ import gunbc.ci_budget_tree {
   host_budget_tree_at,
   budget_tree_gha_runner_pool_node,
   budget_tree_dashboard_session_pool_node,
-  gunbc_ci_budget_tree_deconfliction_note,
 }
 
 fn fitting_slice() -> Int {
