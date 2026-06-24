@@ -39,6 +39,9 @@ import gunbc.ci_floor_measurement {
   Regime2AggregateOomd,
   SessionReservationModeUnset,
   gunbc_ci_job_peaks,
+  gunbc_ci_run_count_divisor,
+  gunbc_ci_runner_unit_cap_safety_margin_num,
+  gunbc_ci_runner_unit_cap_safety_margin_den,
   gunbc_ci_host_fixed_overhead,
   gunbc_ci_per_session_peak_samples,
   gunbc_ci_session_reservation_mode,
@@ -61,6 +64,7 @@ fn workload_class_cpu_weight(wc: WorkloadClass) -> Int {
 type RunnerHostDeployment {
   identity: HostIdentity
   runner_count: Int
+  runner_slice_cap: ByteSize
   per_runner_memory_cap: ByteSize
   build_tokens: HardwareThreadCount
   runner: RunnerSpec
@@ -194,7 +198,7 @@ fn resolve_session_slice(mode: SessionReservationMode) -> SessionSliceResolution
 
 data gunbc_ci_runner_count_from_budget_marker: String = "the runner-slot count divides the CONSERVING fleet_host_budget.runner_slice_cap = host - overhead - session_worst_case_slice - headroom (build_pool is NOT subtracted -- the GHA build lives INSIDE the slice, counted once via the per-job peak; see gunbc_fleet_build_pool_counted_once_marker). This is the §3 single-authority fix: the runner slice had two homes (this module's old host_runner_slice and fleet_host_budget's runner_slice_cap) that decomposed host RAM differently; runner_slice_cap is now the single authority and this module is its count CONSUMER. THE SAME resolve_session_slice worst-case figure is subtracted by the runner budget AND drives the dashboard session reservation -- one figure, not a fork -- passed DOWN (here -> fleet_host_plan_for_offer as session_slice: ByteSize), never imported up (no cycle). So the runner count DOES depend on the session operating point (more session reservation -> smaller runner slice -> fewer runners): that runner-vs-session split is the real co-residence tension on 125GiB, surfaced honestly, not hidden. ci_budget_tree.runner_pool_bytes_at remains a parallel non-conserving slice (separate memory-budget-tree consumer) — its convergence is the named follow-up."
 
-data gunbc_ci_runner_cpu_cap_marker: String = "runner_count = min(memory_fit, cpu_cores_available, effective_build_tokens) -- §2 min-over-constraints, three axes: (1) memory = runner_slice_cap / per_job_whole_tree_peak; (2) cpu = cpu_cores_available(nproc, margin), the SAME authority the ctrl jobserver cpu_bound reads (one CPU-core authority, §3) -- same min-over-cores shape as std.realization_width.bounded_host_spawn_width but WITHOUT its >=1 floor (a runner COUNT of 0 on a too-small host is valid and must fail closed via any_unfit -> PlanUnsound, unlike a spawn WIDTH which is always >= 1); (3) build = effective_build_tokens (= derive_jobserver_tokens = how many concurrent compiles the shared jobserver pool admits) -- the build pool's CONCURRENCY survives as this bound rather than as a memory subtraction (its memory is inside the runner cgroup, counted in axis 1's peak)."
+data gunbc_ci_runner_cpu_cap_marker: String = "runner_count = min(memory_fit, cpu_cores_available, effective_build_tokens) -- §2 min-over-constraints, three axes: (1) memory = runner_slice_cap / MEAN whole-run peak (gunbc_ci_run_count_divisor) -- runners are MEAN-packed, not worst-packed: the aggregate is held by a three-part RUNNER belt = ctrl-jobserver (bounds coincident heavy compiles, so the tail cannot all burst at once) + hard runner-slice MemoryMax (aggregate ceiling; breach is a kernel kill+retry of one runner job, recoverable, NOT host OOM) + per-runner memory.max (no single runaway). NOT oomd -- oomd caps the SESSIONS slice (an indirect guard of the runner budget), it does not manage runners. Dividing by the worst would strand the slice at ~2 runners. The per-runner cap is a SEPARATE quantity: per_runner_memory_cap = WORST whole-run peak (gunbc_ci_job_peaks max) * safety_margin (5/4) -- it bounds a single runaway, it is NOT the divisor. A host whose per-runner cap exceeds the whole slice cannot safely host even one runner -> count 0 -> any_unfit -> PlanUnsound (the over-commit refusal, now on unit_cap > slice rather than worst > slice); (2) cpu = cpu_cores_available(nproc, margin), the SAME authority the ctrl jobserver cpu_bound reads (one CPU-core authority, §3) -- same min-over-cores shape as std.realization_width.bounded_host_spawn_width but WITHOUT its >=1 floor (a runner COUNT of 0 on a too-small host is valid and must fail closed, unlike a spawn WIDTH which is always >= 1); (3) build = effective_build_tokens (= derive_jobserver_tokens = how many concurrent compiles the shared jobserver pool admits) -- the build pool's CONCURRENCY survives as this bound rather than as a memory subtraction (its memory is inside the runner cgroup, counted in the per-run peak)."
 
 fn host_runner_count_from_cap(runner_slice_cap: ByteSize, run_unit_peak: ByteSize, cpu_cap: HardwareThreadCount, build_tokens: HardwareThreadCount) -> Int {
   let mem_count = measure_fit_count_floor(capacity: runner_slice_cap, each: run_unit_peak)
@@ -209,12 +213,17 @@ fn host_runner_count_from_cap(runner_slice_cap: ByteSize, run_unit_peak: ByteSiz
 }
 
 fn host_deployment_from_plan(offer: ComputeOffer, cap: ByteSize, tokens: HardwareThreadCount, cpu_cap: HardwareThreadCount, run_unit_peak: ByteSize) -> RunnerHostDeployment {
-  let count = host_runner_count_from_cap(runner_slice_cap: cap, run_unit_peak: run_unit_peak, cpu_cap: cpu_cap, build_tokens: tokens)
-  let safe_den = if count > 0 { count } else { 1 }
+  let unit_cap = measure_scale_fraction_floor(m: run_unit_peak, num: gunbc_ci_runner_unit_cap_safety_margin_num, den: gunbc_ci_runner_unit_cap_safety_margin_den)
+  let count = if measure_le(a: unit_cap, b: cap) {
+    host_runner_count_from_cap(runner_slice_cap: cap, run_unit_peak: gunbc_ci_run_count_divisor, cpu_cap: cpu_cap, build_tokens: tokens)
+  } else {
+    0
+  }
   RunnerHostDeployment {
     identity: offer.supply.physical.identity,
     runner_count: count,
-    per_runner_memory_cap: measure_scale_fraction_floor(m: cap, num: 1, den: safe_den),
+    runner_slice_cap: cap,
+    per_runner_memory_cap: unit_cap,
     build_tokens: tokens,
     runner: runner_spec_from_offer(offer: offer),
     workload_class: BatchLatencyTolerant,
@@ -273,7 +282,7 @@ fn derive_plan_with_budget(
     PlanUnsound { reason: concat("fleet host budget unsound: ", acc.unsound_reason) }
   } else if acc.any_unfit {
     PlanUnsound {
-      reason: "at least one fleet host cannot host a single runner under conservation (runner_slice_cap < one whole-run cgroup peak); raise the host, lower the headroom/sccache reservation, or sharpen the conservative 24GiB per-run peak"
+      reason: "at least one fleet host cannot host a single runner: the per-runner memory.max (worst whole-run peak * safety margin) exceeds the conserving runner_slice_cap, or the slice admits zero runners at the mean divisor; raise the host, lower the headroom/sccache reservation, or re-measure the per-run peaks"
     }
   } else {
     PlanDerived { hosts: acc.deployments, fleet_concurrent_runs: acc.total }

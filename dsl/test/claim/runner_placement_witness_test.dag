@@ -8,6 +8,10 @@ import gunbc.ci_runner_placement {
   runner_deployment_plan,
   runner_deployment_plan_for,
   host_runner_count_from_cap,
+  resolve_run_unit_peak,
+  JobPeakResolution,
+  JobPeaksResolved,
+  JobPeaksUnresolved,
   RunnerSlotEnforcement,
   RunnerSlotEnforced,
   RunnerSlotUnenforced,
@@ -84,6 +88,11 @@ import gunbc.ci_floor_measurement {
   gunbc_ci_session_regime_model,
   gunbc_ci_session_regime2_followup,
   gunbc_ci_regime2_aggregate_dissolution_marker,
+  gunbc_ci_run_count_divisor,
+  gunbc_ci_run_count_divisor_provenance,
+  gunbc_ci_runner_unit_cap_safety_margin_num,
+  gunbc_ci_runner_unit_cap_safety_margin_den,
+  gunbc_ci_runner_unit_cap_safety_margin_provenance,
 }
 import gunbc.fleet_intent { fleet_intent_offers, srv1_offer }
 import std.measure { ByteSize, byte_size, byte_size_count, HardwareThreadCount, hardware_thread_count, hardware_thread_count_value }
@@ -342,16 +351,36 @@ fn witness_sound_manifest_line_is_populated() -> Bool {
 }
 
 fn witness_count_respects_conserved_runner_slice() -> Bool {
-  let peak = 24000000000
+  let mean = byte_size_count(b: gunbc_ci_run_count_divisor)
   match fully_sound_plan() {
     PlanDerived { hosts: hosts, fleet_concurrent_runs: _ } =>
       all(hosts, h =>
         match fleet_host_plan_for_offer(offer: srv1_offer, overhead: byte_size(17179869184), session_slice: fitting_session_slice_bytes(), citation: fixture_citation(), policy: fitting_headroom(), oomd: OomdEnforced) {
           FleetHostPlanDerived { name: _, tree: _, runner_slice_cap: cap, effective_build_tokens: _, effective_runner_cpu_cap: _, build_step: _ } =>
-            h.runner_count * peak <= byte_size_count(b: cap) && h.runner_count >= 1
+            h.runner_count * mean <= byte_size_count(b: cap)
+              && byte_size_count(b: h.per_runner_memory_cap) <= byte_size_count(b: cap)
+              && h.runner_count >= 1
           FleetHostPlanUnsound { reason: _ } => false
         }
       )
+    PlanUnsound { reason: _ } => false
+  }
+}
+
+fn witness_per_runner_cap_is_worst_times_margin() -> Bool {
+  let worst = match resolve_run_unit_peak(job_peaks: fitting_job_mix()) {
+    JobPeaksResolved { run_unit_peak: w } => byte_size_count(b: w)
+    JobPeaksUnresolved { reason: _ } => 0
+  }
+  let expected = worst * gunbc_ci_runner_unit_cap_safety_margin_num / gunbc_ci_runner_unit_cap_safety_margin_den
+  match fully_sound_plan() {
+    PlanDerived { hosts: hosts, fleet_concurrent_runs: _ } =>
+      hosts.length() > 0
+        && worst > 0
+        && all(hosts, h =>
+            byte_size_count(b: h.per_runner_memory_cap) == expected
+              && byte_size_count(b: h.per_runner_memory_cap) <= byte_size_count(b: h.runner_slice_cap)
+          )
     PlanUnsound { reason: _ } => false
   }
 }
@@ -474,6 +503,7 @@ fn witness_followup_markers_documented() -> Bool {
     && gunbc_ci_session_regime_model != ""
     && gunbc_ci_session_regime2_followup != ""
     && gunbc_ci_regime2_aggregate_dissolution_marker != ""
+<<<<<<< HEAD
     && gunbc_ci_cpu_weight_workload_class_marker != ""
 }
 
@@ -492,6 +522,10 @@ fn witness_runner_manifest_line_contains_cpu_weight() -> Bool {
 
 fn witness_runner_and_session_cpu_weights_are_distinct() -> Bool {
   workload_class_cpu_weight(wc: BatchLatencyTolerant) != workload_class_cpu_weight(wc: InteractiveLatencySensitive)
+=======
+    && gunbc_ci_run_count_divisor_provenance != ""
+    && gunbc_ci_runner_unit_cap_safety_margin_provenance != ""
+>>>>>>> origin/main
 }
 
 test fn runner_placement_holds() -> Bool {
@@ -510,6 +544,7 @@ test fn runner_placement_holds() -> Bool {
     && witness_sound_plan_derives_per_host_capacity()
     && witness_sound_manifest_line_is_populated()
     && witness_count_respects_conserved_runner_slice()
+    && witness_per_runner_cap_is_worst_times_margin()
     && witness_bigger_session_reservation_fewer_runners()
     && witness_runner_count_memory_term_binds()
     && witness_runner_count_cpu_term_binds()

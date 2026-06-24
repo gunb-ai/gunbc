@@ -44,7 +44,10 @@ fn manifest_host_text(h: RunnerHostDeployment) -> String {
     concat(
       concat(
         concat(
-          concat(concat("host=", h.identity), concat(" runner_count=", to_string(h.runner_count))),
+          concat(
+            concat(concat("host=", h.identity), concat(" runner_count=", to_string(h.runner_count))),
+            concat(" runner_slice_cap_bytes=", to_string(byte_size_count(b: h.runner_slice_cap)))
+          ),
           concat(" per_slot_memory_max_bytes=", to_string(byte_size_count(b: h.per_runner_memory_cap)))
         ),
         concat(" build_tokens=", to_string(hardware_thread_count_value(t: h.build_tokens)))
