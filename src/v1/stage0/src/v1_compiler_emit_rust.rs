@@ -59,7 +59,7 @@ pub use crate::v1_compiler_infer_env::{TypeBinding, TypeEnv};
 use crate::v1_compiler_infer_items::ItemKind::{DataItem, OtherItem, TypeItem};
 pub use crate::v1_compiler_infer_items::{ItemInfo, ItemKind, ResolvedGraph, TypedModule};
 pub use crate::v1_compiler_infer_resolve::{
-    collect_unit_variant_phantom_matches, is_width_nat_type_literal, lookup_unit_variant_phantom_type,
+    is_width_nat_type_literal, lookup_unit_variant_phantom_type,
 };
 pub use crate::v1_compiler_infer_service::{
     extract_typed_service_name, is_typed_service_call_receiver,
@@ -627,26 +627,21 @@ pub fn is_parametric_opaque_type_base(
 }
 
 // A bare type leaf name is a VALUE enum-variant used in a type position (the type/value conflation)
-// when it names a unit variant of SOME coproduct in scope and is NOT itself a defined type. The
-// `.dag` keeps these phantom slots (Q/S give a real type-level distinction between e.g. a Time and a
-// Length measure); Rust cannot carry a value in a type slot, so the seed projection collapses each
-// such slot to `()`. Detection is "≥1 coproduct owns this unit-variant name", NOT the stricter
-// "exactly one" (`is_phantom_unit_variant_type_arg`): the corpus has the SAME variant name in
-// several coproducts (`Time` is a unit variant of `Quantity`, `realization_measurement`,
-// `realization_width`, ...), so the exactly-one form fails to fire and emits the variant name (an
-// `E0573: expected type, found variant` once the marker is out of scope). The `lookup_type_by_name
-// == None` guard keeps it fail-closed: a name that IS a real type in scope (e.g. `Temperature` in
-// the examples corpus) renders normally, never collapses.
-pub fn is_value_variant_type_arg(env: Rc<TypeEnv>, name: String) -> bool {
-    match lookup_type_by_name(env.clone(), name.clone()) {
-        Some(_) => false,
-        None => ((collect_unit_variant_phantom_matches(env, name).len() as i64) >= 1),
+// iff it is a key of `variant_to_enum` -- the corpus-global "variant name -> owning coproduct" map
+// the emitter already builds (`emit_info.variant_to_enum`). This map is used rather than an env
+// lookup because the env threaded into fn-signature / struct-field rendering does NOT bind the
+// coproducts (an env-keyed check returns false there), whereas `variant_to_enum` is global. A
+// type-PARAM (`Q`/`S`/`M`) is not a variant, so it is never a key -> never collapses; the magnitude
+// type `Nat`/`Int` likewise. The `.dag` keeps these phantom slots (Q/S give a real type-level
+// distinction between e.g. a Time and a Length measure); Rust cannot carry a value in a type slot,
+// so the seed projection collapses each such slot to `()`.
+pub fn is_value_variant_type_arg(variant_to_enum: Rc<HashMap<String, String>>, name: String) -> bool {
+    match v1_rt::map_get(&variant_to_enum, name) {
+        Some(_) => true,
+        None => false,
     }
 }
 
-// A type-ARGUMENT position that is occupied by a value collapses to `()` in the emitted Rust: a Nat
-// width LITERAL (`MachineWidth<8>`, the pre-existing `is_width_nat_type_literal` case) or a value
-// enum-variant (`Measure<Time, ...>`, `Measure<Memory, One, ...>`) -- the same lossy-but-sound move.
 // A type-leaf name that survives resolution: the authored span text when present, else the node's
 // own `name` field. A RESOLVED type-arg (in a fn-signature or struct-field node) often loses its
 // `ident_span`, so `authored_name_at` returns "" while `n.name` still carries e.g. "Time".
@@ -662,28 +657,38 @@ pub fn type_leaf_name_for_collapse(
     }
 }
 
+// A type-ARGUMENT position that is occupied by a value collapses to `()` in the emitted Rust: a Nat
+// width LITERAL (`MachineWidth<8>`, the pre-existing `is_width_nat_type_literal` case) or a value
+// enum-variant (`Measure<Time, ...>`, `Measure<Memory, One, ...>`) -- the same lossy-but-sound move.
 pub fn rust_type_arg_renders_as_unit(
     n: Rc<Node>,
-    env: Rc<TypeEnv>,
+    variant_to_enum: Rc<HashMap<String, String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     is_width_nat_type_literal(n.clone())
-        || is_value_variant_type_arg(env, type_leaf_name_for_collapse(n.clone(), source_indices))
+        || is_value_variant_type_arg(
+            variant_to_enum,
+            type_leaf_name_for_collapse(n.clone(), source_indices),
+        )
 }
 
 // Does a type-expr tree contain a value enum-variant in any (possibly nested) type-arg position?
-// Used to route a struct-field type through the env-aware Rust renderer (which collapses such slots
-// to `()`) only when needed -- leaving every other generic field on its existing render path.
-pub fn type_node_has_value_variant_arg(n: Rc<Node>, env: Rc<TypeEnv>) -> bool {
+// Used to route a fn-signature / struct-field type through the env-aware Rust renderer (which
+// collapses such slots to `()`) only when needed -- leaving every other type on its existing path.
+pub fn type_node_has_value_variant_arg(
+    n: Rc<Node>,
+    variant_to_enum: Rc<HashMap<String, String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if is_value_variant_type_arg(
-            env.clone(),
-            type_leaf_name_for_collapse(n.clone(), env.source_indices.clone()),
+            variant_to_enum.clone(),
+            type_leaf_name_for_collapse(n.clone(), source_indices.clone()),
         ) {
             return true;
         }
         for c in n.children.clone().iter().cloned() {
-            if type_node_has_value_variant_arg(c.clone(), env.clone()) {
+            if type_node_has_value_variant_arg(c.clone(), variant_to_enum.clone(), source_indices.clone()) {
                 return true;
             }
         }
@@ -693,11 +698,11 @@ pub fn type_node_has_value_variant_arg(n: Rc<Node>, env: Rc<TypeEnv>) -> bool {
         match find_property(
             n.properties.clone(),
             "__applied_type_args".to_string(),
-            env.source_indices.clone(),
+            source_indices.clone(),
         ) {
             Some(applied) => {
                 for c in applied.children.clone().iter().cloned() {
-                    if type_node_has_value_variant_arg(c.clone(), env.clone()) {
+                    if type_node_has_value_variant_arg(c.clone(), variant_to_enum.clone(), source_indices.clone()) {
                         return true;
                     }
                 }
@@ -723,7 +728,7 @@ pub fn render_rust_phantom_opaque_applied_type_arg(
     module_index: Rc<ModuleIndex>,
     variant_to_enum: Rc<HashMap<String, String>>,
 ) -> String {
-    if rust_type_arg_renders_as_unit(n.clone(), scope.type_env.clone(), source_indices.clone()) {
+    if rust_type_arg_renders_as_unit(n.clone(), variant_to_enum.clone(), source_indices.clone()) {
         "()".to_string()
     } else {
         render_rust_alias_rhs_type(
@@ -753,7 +758,7 @@ pub fn render_rust_phantom_opaque_applied_decl_arg(
     variant_to_enum: Rc<HashMap<String, String>>,
     env: Rc<TypeEnv>,
 ) -> String {
-    if rust_type_arg_renders_as_unit(n.clone(), env.clone(), source_indices.clone()) {
+    if rust_type_arg_renders_as_unit(n.clone(), variant_to_enum.clone(), source_indices.clone()) {
         "()".to_string()
     } else {
         render_rust_decl_type(
@@ -777,7 +782,7 @@ pub fn render_rust_applied_type_arg(
     variant_to_enum: Rc<HashMap<String, String>>,
     env: Rc<TypeEnv>,
 ) -> String {
-    if rust_type_arg_renders_as_unit(n.clone(), env.clone(), source_indices.clone()) {
+    if rust_type_arg_renders_as_unit(n.clone(), variant_to_enum.clone(), source_indices.clone()) {
         "()".to_string()
     } else {
         match n.inferred.clone().as_deref().cloned() {
@@ -971,7 +976,6 @@ pub fn render_rust_decl_type(
                                 let rendered = rust_render_type_leaf_name(
                                     name.clone(),
                                     variant_to_enum.clone(),
-                                    env.clone(),
                                 );
                                 render_rust_shared_type_if_needed(
                                     name.clone(),
@@ -1108,38 +1112,11 @@ pub fn render_rust_fn_sig_type(
     // decl renderer (its `render_rust_applied_type_arg` collapses the slot). Same renderer the
     // generic-params branch below already uses; gated on value-variant presence so every other
     // signature type keeps its existing render path.
-    {
-        let __an = authored_name_at(source_indices.clone(), n.clone());
-        if ((__an.clone() == "Measure".to_string()) || (n.name.clone() == "Measure".to_string())) {
-            let __ap = match find_property(
-                n.properties.clone(),
-                "__applied_type_args".to_string(),
-                source_indices.clone(),
-            ) {
-                Some(a) => {
-                    let mut s = String::new();
-                    for c in a.children.clone().iter().cloned() {
-                        s.push_str(&format!(
-                            "[an={} name={}]",
-                            authored_name_at(source_indices.clone(), c.clone()),
-                            c.name.clone()
-                        ));
-                    }
-                    s
-                }
-                None => "NOPROP".to_string(),
-            };
-            eprintln!(
-                "DBGFNSIG an={} name={} nchild={} vv={} applied_args={}",
-                __an,
-                n.name.clone(),
-                n.children.clone().len(),
-                type_node_has_value_variant_arg(n.clone(), env.clone()),
-                __ap
-            );
-        }
-    }
-    if type_node_has_value_variant_arg(n.clone(), env.clone()) {
+    if type_node_has_value_variant_arg(
+        n.clone(),
+        variant_to_enum.clone(),
+        source_indices.clone(),
+    ) {
         return render_rust_decl_type(
             n.clone(),
             generic_param_names.clone(),
@@ -1298,7 +1275,6 @@ pub fn render_rust_alias_rhs_type(
                                     let rendered = rust_render_type_leaf_name(
                                         name.clone(),
                                         variant_to_enum.clone(),
-                                        scope.type_env.clone(),
                                     );
                                     render_rust_shared_type_if_needed(
                                         name.clone(),
@@ -2823,9 +2799,8 @@ pub fn rust_qualify_type_leaf_name(
 pub fn rust_render_type_leaf_name(
     name: String,
     variant_to_enum: Rc<HashMap<String, String>>,
-    env: Rc<TypeEnv>,
 ) -> String {
-    if is_value_variant_type_arg(env, name.clone()) {
+    if is_value_variant_type_arg(variant_to_enum.clone(), name.clone()) {
         // A value enum-variant used as a type leaf -> collapse to the unit type (the type/value
         // conflation). Was `name.clone()`, which relied on a module-local ZST marker and broke
         // (E0573) wherever the marker was out of scope.
@@ -8165,7 +8140,11 @@ pub fn emit_struct_field_from_child(
             // A value enum-variant in a type-arg slot (`Measure<Time, S, Nat>`) must collapse to
             // `()`; render_node_type is the generic env-free renderer and cannot detect it, so route
             // those (and only those) fields through the env-aware Rust decl renderer.
-            if type_node_has_value_variant_arg(rt_child.clone(), env.clone()) {
+            if type_node_has_value_variant_arg(
+                rt_child.clone(),
+                emit_info.variant_to_enum.clone(),
+                env.source_indices.clone(),
+            ) {
                 render_rust_decl_type(
                     rt_child.clone(),
                     generic_param_names.clone(),
