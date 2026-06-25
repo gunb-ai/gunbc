@@ -10,6 +10,15 @@ import extdeps.languages.bash.program {
 }
 import extdeps.communication.medium { Medium }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
+import v2.compiler.target_carriers { lossless_source }
+
+test fn dbg_lossless_preserves_dquote_holds() -> Bool {
+  lossless_source(text: "\"$ROOT\"").carried == "\"$ROOT\""
+}
+
+test fn dbg_lossless_preserves_squote_holds() -> Bool {
+  lossless_source(text: "'/target'").carried == "'/target'"
+}
 
 fn word_emits_oracle(w: ShellWord) -> Bool {
   match emit_shell_word(w: w) {
@@ -83,6 +92,26 @@ test fn dbg_concat_emits_expected_string_holds() -> Bool {
 
 test fn dbg_concat_two_lits_emits_ab_holds() -> Bool {
   word_emits_string(w: concat_two_lits(), expected: "'a''b'")
+}
+
+test fn dbg_varref_standalone_emits_literal_holds() -> Bool {
+  word_emits_string(w: VarRef { name: "ROOT" }, expected: "\"$ROOT\"")
+}
+
+test fn dbg_varref_standalone_oracle_is_literal_holds() -> Bool {
+  serialize_word(w: VarRef { name: "ROOT" }) == "\"$ROOT\""
+}
+
+test fn dbg_concat_single_varref_holds() -> Bool {
+  word_emits_string(w: Concat { parts: [VarRef { name: "ROOT" }] }, expected: "\"$ROOT\"")
+}
+
+test fn dbg_concat_lit_then_varref_holds() -> Bool {
+  word_emits_string(w: Concat { parts: [Lit { text: "x" }, VarRef { name: "ROOT" }] }, expected: "'x'\"$ROOT\"")
+}
+
+test fn dbg_concat_single_lit_slash_holds() -> Bool {
+  word_emits_string(w: Concat { parts: [Lit { text: "/target" }] }, expected: "'/target'")
 }
 
 fn emit_word_differs_from_oracle_of(w: ShellWord, other: ShellWord) -> Bool {
