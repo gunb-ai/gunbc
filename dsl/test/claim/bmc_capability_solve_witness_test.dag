@@ -53,7 +53,7 @@ test fn srv3_install_mechanism_is_nbd_proxy_vm_today() -> Bool {
 }
 
 test fn nbd_proxy_vm_capable_row_solves() -> Bool {
-  let webui_only_row = BmcFirmwareCapabilityRow {
+  let nbd_proxy_only_row = BmcFirmwareCapabilityRow {
     firmware: BmcFirmwareVersion {
       family: OpenBmc,
       version: "2.07.00",
@@ -64,7 +64,7 @@ test fn nbd_proxy_vm_capable_row_solves() -> Bool {
       CapabilityNbdProxyVirtualMedia,
     ],
   }
-  match solve_install_mechanism(current: webui_only_row, catalog: [webui_only_row]) {
+  match solve_install_mechanism(current: nbd_proxy_only_row, catalog: [nbd_proxy_only_row]) {
     NbdProxyVirtualMediaInstall => true
     VirtualMediaInstall => false
     PxeHttpInstall => false
