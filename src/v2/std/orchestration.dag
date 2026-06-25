@@ -80,14 +80,14 @@ fn run_command_spelling(run: Run) -> String {
   }
 }
 
-fn classifier_pattern(classifier: FailureClassifier) -> String {
+fn classifier_log_pattern(classifier: FailureClassifier) -> Optional<String> {
   match classifier.infra {
-    LogMatches { source: _, pattern: p } => p.pattern
-    ExitZero { run: _ } => ""
-    StrEq { lhs: _, rhs: _ } => ""
-    Not { inner: _ } => ""
-    And { lhs: _, rhs: _ } => ""
-    Or { lhs: _, rhs: _ } => ""
+    LogMatches { source: _, pattern: p } => Present { value: p.pattern }
+    ExitZero { run: _ } => Absent
+    StrEq { lhs: _, rhs: _ } => Absent
+    Not { inner: _ } => Absent
+    And { lhs: _, rhs: _ } => Absent
+    Or { lhs: _, rhs: _ } => Absent
   }
 }
 
@@ -98,37 +98,12 @@ fn pipeline_first_step(p: Pipeline) -> Optional<Step> {
   }
 }
 
-fn step_run_command_spelling(step: Step) -> String {
+fn step_command_spelling(step: Step) -> Optional<String> {
   match step {
-    Do { run: r } => run_command_spelling(r)
-    If { cond: _, then_: _, else_: _ } => ""
-    For { binder: _, over: _, body: _ } => ""
-    While { cond: _, body: _, bound: _ } => ""
-    Retry { attempts: _, body: _, classify: _, on_exhausted: _ } => ""
-  }
-}
-
-fn retry_eagain_command(step: Step) -> String {
-  match step {
-    Retry { attempts: _, body: b, classify: _, on_exhausted: _ } =>
-      match pipeline_first_step(p: b) {
-        Present { value: s } => step_run_command_spelling(step: s)
-        Absent => ""
-      }
-    Do { run: _ } => ""
-    If { cond: _, then_: _, else_: _ } => ""
-    For { binder: _, over: _, body: _ } => ""
-    While { cond: _, body: _, bound: _ } => ""
-  }
-}
-
-fn retry_eagain_pattern(step: Step) -> String {
-  match step {
-    Retry { attempts: _, body: _, classify: c, on_exhausted: _ } =>
-      classifier_pattern(classifier: c)
-    Do { run: _ } => ""
-    If { cond: _, then_: _, else_: _ } => ""
-    For { binder: _, over: _, body: _ } => ""
-    While { cond: _, body: _, bound: _ } => ""
+    Do { run: r } => Present { value: run_command_spelling(r) }
+    If { cond: _, then_: _, else_: _ } => Absent
+    For { binder: _, over: _, body: _ } => Absent
+    While { cond: _, body: _, bound: _ } => Absent
+    Retry { attempts: _, body: _, classify: _, on_exhausted: _ } => Absent
   }
 }
