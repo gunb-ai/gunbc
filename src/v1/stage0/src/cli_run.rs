@@ -402,6 +402,25 @@ fn resolve_entry_with_parse_cache(
     ),
     String,
 > {
+    resolve_entry_with_parse_cache_advisory(index, entry_file, typecheck_gate, &mut None)
+}
+
+/// Like `resolve_entry_with_parse_cache`, but when `advisory_out` is `Some`, the
+/// advisory-demoted typecheck diagnostics for this entry's closure are pushed into
+/// it (instead of only being logged). Used to census the discovery advisory debt
+/// (#5760 parse-resilience) toward promoting the gate to blocking.
+pub fn resolve_entry_with_parse_cache_advisory(
+    index: &MultiEntryIndex,
+    entry_file: &str,
+    typecheck_gate: ResolveTypecheckGate,
+    advisory_out: &mut Option<&mut Vec<Rc<ErrorNode>>>,
+) -> Result<
+    (
+        Rc<v1_compiler_compile::ResolvedGraph>,
+        Rc<HashMap<String, Rc<NewlineIndex>>>,
+    ),
+    String,
+> {
     let sources = load_sources_for_entry_with_index(&index.source_files, entry_file)?;
 
     if let Some(cache_root) = resolved_graph_cache_root_from_env() {
@@ -490,6 +509,13 @@ fn resolve_entry_with_parse_cache(
 
     for d in typed.diagnostics.iter() {
         log_discovery_advisory_typecheck(d, &source_indices, typecheck_gate);
+        if let Some(out) = advisory_out.as_mut() {
+            if is_discovery_corpus_advisory_typecheck_diagnostic(d.diagnostic.clone())
+                && is_interpreter_blocking_diagnostic(d.diagnostic.clone())
+            {
+                out.push(d.clone());
+            }
+        }
     }
     let has_type_errors = typed
         .diagnostics

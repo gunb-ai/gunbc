@@ -11846,9 +11846,9 @@ fn ownership_stage0_census() {
 fn whole_tree_advisory_typecheck_census() {
     use std::collections::BTreeSet;
     use v1_compiler::cli_run::{
-        build_module_index, discover_floor_corpus_rows, load_sources_for_entry_with_index,
+        build_multi_entry_index, discover_floor_corpus_rows,
+        resolve_entry_with_parse_cache_advisory, ResolveTypecheckGate,
     };
-    use v1_compiler::v1_std_core::is_discovery_corpus_advisory_typecheck_diagnostic;
     let ws = workspace_root();
     std::env::set_current_dir(&ws).expect("chdir to workspace root");
     let roots = vec![
@@ -11862,7 +11862,7 @@ fn whole_tree_advisory_typecheck_census() {
     let rows = discover_floor_corpus_rows(&roots, &scan_dirs).expect("discover roster");
     let entries: BTreeSet<String> = rows.into_iter().map(|r| r.entry).collect();
     eprintln!("census: {} discovery entries", entries.len());
-    let mod_index = build_module_index(&roots);
+    let index = build_multi_entry_index(&roots);
 
     let mut by_kind: HashMap<&'static str, usize> = HashMap::new();
     let mut by_name: HashMap<String, usize> = HashMap::new();
@@ -11871,17 +11871,17 @@ fn whole_tree_advisory_typecheck_census() {
     // dedup advisory diagnostics globally by (file, byte-start, kind, name)
     let mut seen: BTreeSet<(String, i64, &'static str, String)> = BTreeSet::new();
     let mut advisory = 0usize;
+    let mut total_logged = 0usize;
     for entry in &entries {
-        let sources = match load_sources_for_entry_with_index(&mod_index, entry) {
-            Ok(s) => s,
-            Err(_) => continue,
-        };
-        let resolved =
-            v1_compiler::v1_compiler_compile::compile_to_resolved(Rc::new(sources));
-        for d in resolved.diagnostics.iter() {
-            if !is_discovery_corpus_advisory_typecheck_diagnostic(d.diagnostic.clone()) {
-                continue;
-            }
+        let mut diags: Vec<Rc<v1_compiler::v1_std_core::ErrorNode>> = Vec::new();
+        let _ = resolve_entry_with_parse_cache_advisory(
+            &index,
+            entry,
+            ResolveTypecheckGate::DiscoveryCorpusAdvisory,
+            &mut Some(&mut diags),
+        );
+        for d in diags.iter() {
+            total_logged += 1;
             let span = d.diagnostic.span();
             let (kind, name) = census_kind_name(&d.diagnostic);
             let key = (span.file.clone(), span.start, kind, name.clone());
@@ -11895,6 +11895,7 @@ fn whole_tree_advisory_typecheck_census() {
             *by_entry.entry(entry.clone()).or_insert(0) += 1;
         }
     }
+    eprintln!("=== ADVISORY LOGGED (with dups across closures): {} ===", total_logged);
 
     eprintln!("=== ADVISORY TOTAL (distinct): {} ===", advisory);
     let mut kinds: Vec<_> = by_kind.into_iter().collect();
