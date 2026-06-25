@@ -9,6 +9,7 @@ import gunbc.roadmap_model {
   NodeSizing, Unsized, Sized,
   SectionElement, Prose, Group, SectionGroup,
   RoadmapParent, TopLevel, UnderParent, roadmap_parent,
+  roadmap_parents,
 }
 import gunbc.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, PlainLine, item_is_done }
 import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
@@ -57,10 +58,11 @@ fn doc_all_edges(doc: RoadmapDocument) -> List<RoadmapEdge> {
 }
 
 fn node_dep_done(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, id: ProcessNodeId, merged: List<Int>) -> Bool {
-  match roadmap_parent(edges: edges, node: id) {
-    TopLevel => true
-    UnderParent { parent: pid } =>
-      any(nodes, n => n.node == pid && item_is_done(item: n.line, merged: merged))
+  let parents = roadmap_parents(edges: edges, node: id)
+  if count(parents) == 0 {
+    true
+  } else {
+    all(parents, pid => any(nodes, n => n.node == pid && item_is_done(item: n.line, merged: merged)))
   }
 }
 

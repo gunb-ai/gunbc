@@ -65,6 +65,10 @@ fn roadmap_parent(edges: List<RoadmapEdge>, node: ProcessNodeId) -> RoadmapParen
   })
 }
 
+fn roadmap_parents(edges: List<RoadmapEdge>, node: ProcessNodeId) -> List<ProcessNodeId> {
+  fold(edges, init: [], f: (acc, e) => if e.child == node { concat(acc, [e.parent]) } else { acc })
+}
+
 fn is_top_level(edges: List<RoadmapEdge>, node: ProcessNodeId) -> Bool {
   match roadmap_parent(edges: edges, node: node) {
     TopLevel => true
