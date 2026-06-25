@@ -7643,6 +7643,35 @@ pub fn emit_type_params(
     }
 }
 
+pub fn emit_type_params_with_clone_bound(
+    params: Rc<Vec<Rc<Node>>>,
+    clone_param: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    if ((params.clone().len() as i64) == 0) {
+        "".to_string()
+    } else {
+        {
+            let names = Rc::new({
+                let mut __result = Vec::new();
+                for p in params.clone().iter().cloned() {
+                    let pname = generic_param_name_at(p.clone(), source_indices.clone());
+                    __result.push(if (pname.clone() == clone_param.clone()) {
+                        v1_rt::concat(pname, ": Clone".to_string())
+                    } else {
+                        pname
+                    });
+                }
+                __result
+            });
+            v1_rt::concat(
+                v1_rt::concat("<".to_string(), names.join(&", ".to_string())),
+                ">".to_string(),
+            )
+        }
+    }
+}
+
 pub fn is_function_type_param(param: Rc<Node>) -> bool {
     {
         let type_expr = param_node_type_expr(param.clone());
@@ -9466,7 +9495,6 @@ pub fn emit_fn_def(
                 if function_type_params_have_collision(type_params.clone()) {
                     return v1_rt::concat(v1_rt::concat("compile_error!(\"type param name collides with a value param in fn '".to_string(), name.clone()), "' — a value param shares its name with a declared type param; rename the value param or dissolve via ParamKind/params-slot partition\");\n".to_string());
                 }
-                let type_params_str = emit_type_params(type_params.clone(), si.clone());
                 let generic_param_names = Rc::new({
                     let mut __result = Vec::new();
                     for p in type_params.clone().iter().cloned() {
@@ -9474,6 +9502,21 @@ pub fn emit_fn_def(
                     }
                     __result
                 });
+                let ret_name = authored_name_at(si.clone(), inferred.clone());
+                let return_is_bare_generic = ((generic_param_names
+                    .iter()
+                    .filter(|g| (*g).clone() == ret_name.clone())
+                    .count() as i64)
+                    > 0);
+                let type_params_str = if return_is_bare_generic {
+                    emit_type_params_with_clone_bound(
+                        type_params.clone(),
+                        ret_name,
+                        si.clone(),
+                    )
+                } else {
+                    emit_type_params(type_params.clone(), si.clone())
+                };
                 let params_str = emit_params(
                     value_params.clone(),
                     generic_param_names.clone(),
@@ -16368,7 +16411,7 @@ pub fn emit_typed_method_call(
                                                         )
                                                     } else {
                                                         {
-                                                            let recv_str = emit_typed_expr(
+                                                            let recv_str_raw = emit_typed_expr(
                                                                 receiver.clone(),
                                                                 registry.clone(),
                                                                 scope.clone(),
@@ -16377,6 +16420,26 @@ pub fn emit_typed_method_call(
                                                                 emit_info.clone(),
                                                                 1024,
                                                             );
+                                                            let recv_is_optional = (resolved_type(
+                                                                receiver.clone(),
+                                                            )
+                                                            .return_cardinality
+                                                            .clone()
+                                                                == Cardinality::CardOptional);
+                                                            let recv_str = if recv_is_optional {
+                                                                v1_rt::concat(
+                                                                    v1_rt::concat(
+                                                                        recv_str_raw,
+                                                                        ".expect(\"fail-closed: Optional receiver for method ".to_string(),
+                                                                    ),
+                                                                    v1_rt::concat(
+                                                                        method_name.clone(),
+                                                                        " (empty Optional at runtime)\")".to_string(),
+                                                                    ),
+                                                                )
+                                                            } else {
+                                                                recv_str_raw
+                                                            };
                                                             let first_arg_str =
                                                                 emit_typed_first_arg(
                                                                     args.clone(),
