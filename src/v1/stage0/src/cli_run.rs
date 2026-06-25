@@ -789,6 +789,7 @@ pub fn whole_tree_resolved_ctx(
     source_roots: &[String],
     exclude_substrings: &[String],
     execution_mode: v1_interpreter::ExecutionMode,
+    typecheck_gate: ResolveTypecheckGate,
 ) -> Result<WholeTreeCtx, String> {
     let index = build_module_index(source_roots);
     let total = index.len();
@@ -812,7 +813,7 @@ pub fn whole_tree_resolved_ctx(
     }
     let modules_excluded = total - all_sources.len();
     let (graph, source_indices) =
-        resolved_graph_from_sources(all_sources, ResolveTypecheckGate::Strict)?;
+        resolved_graph_from_sources(all_sources, typecheck_gate)?;
     Ok(WholeTreeCtx {
         ctx: v1_interpreter::InterpContext::with_runtime_options(
             graph.as_ref(),
