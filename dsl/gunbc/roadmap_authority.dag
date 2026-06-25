@@ -131,6 +131,7 @@ fn section_1() -> RoadmapSection {
           authored_doc(id: "1-resolve-not-pruned", done: false, content: "**resolve is not affected-set-pruned** — discovery is deliberately tree-wide (fail-closed enrol), but EXECUTION still **resolves all 870** every run; #5427 selection shrinks compile/test, not the 518s resolve. The lever: extend the affected-set across discovery→resolve so unchanged witnesses skip (the floor-selection items below, applied to the resolve phase).", path: "docs/plans/ci-selection-vs-scheduling.md"),
           authored(id: "1-double-resolve", done: false, content: "**kill the within-run double-resolve** — the corpus resolves once for discovery and again for execution (~275s second pass); execution should piggyback the discovery resolve. Pure within-run win, no cross-run cache needed."),
           authored(id: "1-resolver-pathology", done: false, content: "**profile the 518s resolve** — ~0.6s/witness average, but a known machine-independent resolver bug resolves `budget_roster` ~450x its structural twin; a few pathological witnesses likely dominate the 518s. Profile which, fix the resolver."),
+          authored_doc(id: "1-gantt-receipt", done: true, content: "**fractal Gantt profiling receipt (#5757 baseline)** — per-claim timing tap (`GUNBC_FLOOR_GANTT=1`) + Batch 1/2/3 breakdown; hot spots: rust gate ~530s (host-effect, architectural sep), discovery eval ~229s (interpreter, `width=3`), cold resolve ~50s (resolve-cache lever).", path: "docs/plans/ci-floor-fractal-gantt.md"),
         ],
         edges: [],
       ),
