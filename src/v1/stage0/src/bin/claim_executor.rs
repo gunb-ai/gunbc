@@ -1508,4 +1508,63 @@ mod tests {
             .expect("gate group present");
         assert_eq!(gate, &["g1", "g2"], "both gate claims kept in one group");
     }
+
+    // --- build-artifact verification teeth (DESIGN §5 fail-open guard) ---
+
+    fn write_exec(dir: &std::path::Path, name: &str, bytes: &[u8]) -> String {
+        use std::os::unix::fs::PermissionsExt;
+        let p = dir.join(name);
+        std::fs::write(&p, bytes).expect("write artifact");
+        let mut perms = std::fs::metadata(&p).unwrap().permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&p, perms).expect("chmod");
+        p.to_string_lossy().into_owned()
+    }
+
+    #[test]
+    fn verify_build_artifacts_accepts_nonempty_executables() {
+        let dir = std::env::temp_dir().join(format!("cev-ok-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let a = write_exec(&dir, "claim_executor", b"\x7fELF-not-really-but-nonempty");
+        let b = write_exec(&dir, "gunbc", b"binary");
+        let r = verify_build_artifacts(&[a, b]);
+        std::fs::remove_dir_all(&dir).ok();
+        assert!(matches!(r, Ok(c) if c == ExitCode::SUCCESS), "real bins pass");
+    }
+
+    #[test]
+    fn verify_build_artifacts_reds_on_zero_byte() {
+        let dir = std::env::temp_dir().join(format!("cev-zero-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let a = write_exec(&dir, "claim_executor", b"ok");
+        let b = write_exec(&dir, "gunbc", b""); // sccache served a truncated/empty cached artifact
+        let r = verify_build_artifacts(&[a, b]);
+        std::fs::remove_dir_all(&dir).ok();
+        assert!(
+            matches!(r, Err(c) if c == ExitCode::from(1)),
+            "zero-byte artifact fails closed"
+        );
+    }
+
+    #[test]
+    fn verify_build_artifacts_reds_on_missing() {
+        let missing = std::env::temp_dir()
+            .join(format!("cev-missing-{}/gunbc", std::process::id()))
+            .to_string_lossy()
+            .into_owned();
+        let r = verify_build_artifacts(&[missing]);
+        assert!(
+            matches!(r, Err(c) if c == ExitCode::from(1)),
+            "absent artifact fails closed"
+        );
+    }
+
+    #[test]
+    fn verify_build_artifacts_reds_on_empty_arglist() {
+        let r = verify_build_artifacts(&[]);
+        assert!(
+            matches!(r, Err(c) if c == ExitCode::from(2)),
+            "no declared artifacts is a usage error, fail closed"
+        );
+    }
 }
