@@ -70,7 +70,7 @@ fn ci_witness_scan_dirs() -> Vec<String> {
     let ws = workspace_root();
     vec![
         ws.join("dsl/test/claim").to_string_lossy().into_owned(),
-        ws.join("src/v2/compiler/manual")
+        ws.join("src/v2/test/claim/manual")
             .to_string_lossy()
             .into_owned(),
     ]
