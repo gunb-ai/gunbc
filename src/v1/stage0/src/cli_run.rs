@@ -155,9 +155,9 @@ pub fn build_module_path_index(source_roots: &[String]) -> HashMap<String, Strin
     index
 }
 
-type ModuleSourceIndex = HashMap<String, Rc<v1_compiler_compile::SourceFile>>;
+pub type ModuleSourceIndex = HashMap<String, Rc<v1_compiler_compile::SourceFile>>;
 
-fn build_module_index(source_roots: &[String]) -> ModuleSourceIndex {
+pub fn build_module_index(source_roots: &[String]) -> ModuleSourceIndex {
     let mut index = ModuleSourceIndex::new();
     for root in source_roots {
         let root_path = std::path::Path::new(root);
@@ -241,7 +241,7 @@ fn entry_source_from_index_or_disk(
     }))
 }
 
-fn load_sources_for_entry_with_index(
+pub fn load_sources_for_entry_with_index(
     index: &ModuleSourceIndex,
     entry_path: &str,
 ) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {

@@ -11845,7 +11845,9 @@ fn ownership_stage0_census() {
 #[ignore = "census: enumerate whole-tree advisory typecheck debt by kind/name/module"]
 fn whole_tree_advisory_typecheck_census() {
     use std::collections::BTreeSet;
-    use v1_compiler::cli_run::{discover_floor_corpus_rows, load_sources_for_entry};
+    use v1_compiler::cli_run::{
+        build_module_index, discover_floor_corpus_rows, load_sources_for_entry_with_index,
+    };
     use v1_compiler::v1_std_core::is_discovery_corpus_advisory_typecheck_diagnostic;
     let ws = workspace_root();
     std::env::set_current_dir(&ws).expect("chdir to workspace root");
@@ -11860,6 +11862,7 @@ fn whole_tree_advisory_typecheck_census() {
     let rows = discover_floor_corpus_rows(&roots, &scan_dirs).expect("discover roster");
     let entries: BTreeSet<String> = rows.into_iter().map(|r| r.entry).collect();
     eprintln!("census: {} discovery entries", entries.len());
+    let mod_index = build_module_index(&roots);
 
     let mut by_kind: HashMap<&'static str, usize> = HashMap::new();
     let mut by_name: HashMap<String, usize> = HashMap::new();
@@ -11869,7 +11872,7 @@ fn whole_tree_advisory_typecheck_census() {
     let mut seen: BTreeSet<(String, i64, &'static str, String)> = BTreeSet::new();
     let mut advisory = 0usize;
     for entry in &entries {
-        let sources = match load_sources_for_entry(&roots, entry) {
+        let sources = match load_sources_for_entry_with_index(&mod_index, entry) {
             Ok(s) => s,
             Err(_) => continue,
         };
