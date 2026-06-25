@@ -25,7 +25,7 @@ Staged: `FidelityDisposition<Feature>` (`src/v2/extdeps/languages/fidelity.dag`)
 ## 2. Language axis — footholds, breadth partial
 
 - 15+ targets at wave-1 (`src/v2/extdeps/languages/`: rust, python, go, dag, typescript, cpp, lean, wasm, java, kotlin, swift, llvm_ir, machine_code, english, …).
-- **English is a proven emit target** — `english.dag` (article-led SVO + copula), and `src/v2/compiler/manual/english_emit_add_test.dag` round-trips emit(add)→tokenize→parse→identity.
+- **English is a proven emit target** — `english.dag` (article-led SVO + copula), and `src/v2/test/claim/manual/english_emit_add_test.dag` round-trips emit(add)→tokenize→parse→identity.
 - Partial / fail-open: English **ingest** uses a catch-all `english_token_word` → fail-open on out-of-subset prose (also a **§0 lock-down item**); only emit is proven.
 
 ## 3. Remaining work (dependency-ordered → ROADMAP §6 *idea → idea compiler* substeps)

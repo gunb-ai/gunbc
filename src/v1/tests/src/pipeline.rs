@@ -1243,7 +1243,7 @@ fn parse_resilience_unmasked_typecheck_debt_receipt() {
     ];
     let scan_dirs = vec![
         "dsl/test/claim".to_string(),
-        "src/v2/compiler/manual".to_string(),
+        "src/v2/test/claim/manual".to_string(),
     ];
     let rows = discover_floor_corpus_rows(&roots, &scan_dirs).expect("discover roster");
     let unique_entries: BTreeSet<String> = rows.into_iter().map(|r| r.entry).collect();

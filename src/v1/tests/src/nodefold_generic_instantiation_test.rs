@@ -6,8 +6,8 @@ use v1_compiler::v1_interpreter::{self, Value};
 
 use crate::helpers::{resolve_imports_transitively_with_source_roots, workspace_root};
 
-const NODEFOLD_CERT: &str = "src/v2/compiler/manual/nodefold_topdown_inline_algebra.dag";
-const CHAINED_CERT: &str = "src/v2/compiler/manual/chained_generic_field_access.dag";
+const NODEFOLD_CERT: &str = "src/v2/test/claim/manual/nodefold_topdown_inline_algebra.dag";
+const CHAINED_CERT: &str = "src/v2/test/claim/manual/chained_generic_field_access.dag";
 
 fn v2_source_roots() -> Vec<std::path::PathBuf> {
     crate::helpers::v2_layer_roots()

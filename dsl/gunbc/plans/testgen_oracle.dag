@@ -9,7 +9,7 @@ fn testgen_oracle_body() -> List<MarkdownBlock> {
     p(text: "**Status:** audit + direction · **DESIGN.md + carriers are authority** (§6). Linked from `ROADMAP.md` §4 *Testgen as the bug-class oracle*. (Was a §0 lock-down subject — its output is now floor-discovered, #5434.) The operator's frame: testgen is the answer to *\"how do we prevent the next CLASS of bugs, and how do they relate to structure?\"* — cover a class by **generating witnesses from the declared structure**, not one hand-written witness per bug. That is the construction principle (§0) applied to test coverage: instance-by-instance witnesses are validation; a generator over structure is construction."),
     p(text: "**Verified against the live tree 2026-06-21.** Receipts below; re-check before acting."),
     h2(text: "0. What testgen actually is today"),
-    p(text: "A compile-time lens (`src/v2/lens/testgen.dag`, ~2078 lines) that emits conformance test modules into `src/v2/compiler/generated/` (`module v2.test.generated.*`, all stamped one batch). Categories present:"),
+    p(text: "A compile-time lens (`src/v2/lens/testgen.dag`, ~2078 lines) that emits conformance test modules into `src/v2/test/claim/generated/` (`module v2.test.generated.*`, all stamped one batch). Categories present:"),
     TableBlock {
       header: row(cells: [cell(text: "category"), cell(text: "file"), cell(text: "source")]),
       alignments: [AlignNone, AlignNone, AlignNone],

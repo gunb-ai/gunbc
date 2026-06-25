@@ -433,126 +433,126 @@ data witness_integer_interval_bound_compare_orders_pointer_width_bounds: Bool = 
 
 data unified_claim_project_to_core_accepts_sibling: UnifiedTestClaim = BoolWitnessClaim {
   witness: BoolWitness {
-    entry: "src/v2/compiler/manual/find_witness_project_to_core_controls.dag",
+    entry: "src/v2/test/claim/manual/find_witness_project_to_core_controls.dag",
     function: witness_project_to_core_real_dispatch_accepts_sibling
   }
 }
 
 data unified_claim_project_to_core_rejects_wrong_core: UnifiedTestClaim = BoolWitnessClaim {
   witness: BoolWitness {
-    entry: "src/v2/compiler/manual/find_witness_project_to_core_controls.dag",
+    entry: "src/v2/test/claim/manual/find_witness_project_to_core_controls.dag",
     function: witness_project_to_core_real_dispatch_rejects_wrong_core
   }
 }
 
 data unified_claim_project_to_core_rejects_empty_core: UnifiedTestClaim = BoolWitnessClaim {
   witness: BoolWitness {
-    entry: "src/v2/compiler/manual/find_witness_project_to_core_controls.dag",
+    entry: "src/v2/test/claim/manual/find_witness_project_to_core_controls.dag",
     function: witness_project_to_core_rejects_surface_only_empty_core
   }
 }
 
 data unified_claim_project_to_core_rejects_surface_wrapped_core: UnifiedTestClaim = BoolWitnessClaim {
   witness: BoolWitness {
-    entry: "src/v2/compiler/manual/find_witness_project_to_core_controls.dag",
+    entry: "src/v2/test/claim/manual/find_witness_project_to_core_controls.dag",
     function: witness_project_to_core_rejects_core_only_under_surface
   }
 }
 
 data unified_claim_project_to_core_preserves_ambiguity: UnifiedTestClaim = BoolWitnessClaim {
   witness: BoolWitness {
-    entry: "src/v2/compiler/manual/find_witness_project_to_core_controls.dag",
+    entry: "src/v2/test/claim/manual/find_witness_project_to_core_controls.dag",
     function: witness_project_to_core_derives_preserves_ambiguity
   }
 }
 
 data unified_claim_project_to_core_drops_nested_surface: UnifiedTestClaim = BoolWitnessClaim {
   witness: BoolWitness {
-    entry: "src/v2/compiler/manual/find_witness_project_to_core_controls.dag",
+    entry: "src/v2/test/claim/manual/find_witness_project_to_core_controls.dag",
     function: witness_project_to_core_drops_nested_surface
   }
 }
 
 data unified_claim_project_to_core_rejects_nested_core_difference: UnifiedTestClaim = BoolWitnessClaim {
   witness: BoolWitness {
-    entry: "src/v2/compiler/manual/find_witness_project_to_core_controls.dag",
+    entry: "src/v2/test/claim/manual/find_witness_project_to_core_controls.dag",
     function: witness_project_to_core_rejects_nested_core_difference
   }
 }
 
 data unified_claim_project_to_core_rejects_different_connective_same_core_children: UnifiedTestClaim = BoolWitnessClaim {
   witness: BoolWitness {
-    entry: "src/v2/compiler/manual/find_witness_project_to_core_controls.dag",
+    entry: "src/v2/test/claim/manual/find_witness_project_to_core_controls.dag",
     function: witness_project_to_core_rejects_different_connective_same_core_children
   }
 }
 
 data unified_claim_integer_value_set_accepts_subset: UnifiedTestClaim = BoolWitnessClaim {
   witness: BoolWitness {
-    entry: "src/v2/compiler/manual/find_witness_project_to_core_controls.dag",
+    entry: "src/v2/test/claim/manual/find_witness_project_to_core_controls.dag",
     function: witness_integer_value_set_accepts_i32_subset_python_int
   }
 }
 
 data unified_claim_integer_value_set_accepts_proper_subrange: UnifiedTestClaim = BoolWitnessClaim {
   witness: BoolWitness {
-    entry: "src/v2/compiler/manual/find_witness_project_to_core_controls.dag",
+    entry: "src/v2/test/claim/manual/find_witness_project_to_core_controls.dag",
     function: witness_integer_value_set_accepts_i16_subset_i32
   }
 }
 
 data unified_claim_integer_value_set_accepts_cross_signed_subrange: UnifiedTestClaim = BoolWitnessClaim {
   witness: BoolWitness {
-    entry: "src/v2/compiler/manual/find_witness_project_to_core_controls.dag",
+    entry: "src/v2/test/claim/manual/find_witness_project_to_core_controls.dag",
     function: witness_integer_value_set_accepts_u8_subset_i16
   }
 }
 
 data unified_claim_integer_value_set_rejects_malformed_interval: UnifiedTestClaim = BoolWitnessClaim {
   witness: BoolWitness {
-    entry: "src/v2/compiler/manual/find_witness_project_to_core_controls.dag",
+    entry: "src/v2/test/claim/manual/find_witness_project_to_core_controls.dag",
     function: witness_integer_value_set_rejects_malformed_interval_payload
   }
 }
 
 data unified_claim_integer_value_set_interval_rejects_malformed_interval: UnifiedTestClaim = BoolWitnessClaim {
   witness: BoolWitness {
-    entry: "src/v2/compiler/manual/find_witness_project_to_core_controls.dag",
+    entry: "src/v2/test/claim/manual/find_witness_project_to_core_controls.dag",
     function: witness_integer_value_set_interval_containment_rejects_malformed_payload
   }
 }
 
 data unified_claim_integer_value_set_reverse_strict: UnifiedTestClaim = BoolWitnessClaim {
   witness: BoolWitness {
-    entry: "src/v2/compiler/manual/find_witness_project_to_core_controls.dag",
+    entry: "src/v2/test/claim/manual/find_witness_project_to_core_controls.dag",
     function: witness_integer_value_set_reverse_is_strict_coarsening
   }
 }
 
 data unified_claim_integer_value_set_refuses_incompatible: UnifiedTestClaim = BoolWitnessClaim {
   witness: BoolWitness {
-    entry: "src/v2/compiler/manual/find_witness_project_to_core_controls.dag",
+    entry: "src/v2/test/claim/manual/find_witness_project_to_core_controls.dag",
     function: witness_integer_value_set_refuses_incompatible_unknown
   }
 }
 
 data unified_claim_refinement_widening_refuses_semantically_equal_value_sets: UnifiedTestClaim = BoolWitnessClaim {
   witness: BoolWitness {
-    entry: "src/v2/compiler/manual/find_witness_project_to_core_controls.dag",
+    entry: "src/v2/test/claim/manual/find_witness_project_to_core_controls.dag",
     function: witness_refinement_widening_refuses_semantically_equal_value_sets
   }
 }
 
 data unified_claim_integer_interval_bound_compare_orders_pointer_width_bounds: UnifiedTestClaim = BoolWitnessClaim {
   witness: BoolWitness {
-    entry: "src/v2/compiler/manual/find_witness_project_to_core_controls.dag",
+    entry: "src/v2/test/claim/manual/find_witness_project_to_core_controls.dag",
     function: witness_integer_interval_bound_compare_orders_pointer_width_bounds
   }
 }
 
 data unified_claim_integer_value_set_rejects_unbounded_with_extra_field: UnifiedTestClaim = BoolWitnessClaim {
   witness: BoolWitness {
-    entry: "src/v2/compiler/manual/find_witness_project_to_core_controls.dag",
+    entry: "src/v2/test/claim/manual/find_witness_project_to_core_controls.dag",
     function: witness_integer_value_set_rejects_unbounded_with_extra_field
   }
 }

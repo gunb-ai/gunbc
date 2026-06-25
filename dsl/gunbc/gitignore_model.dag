@@ -15,6 +15,7 @@ type DerivableProducerKind
   | GithubCLICache
   | AuthSessionTranscript
   | PythonLocalDevScript
+  | SupersededPlanningDir
 
 type CitedProducerKind
   = JetBrainsIDE
@@ -82,6 +83,8 @@ type IgnoreArtifact
   | PythonCompiledBytecode
   | ClaimMapDir
   | ScratchProbeFile
+  | GunbcPlanningDir
+  | ScriptsFixturesDir
 
 type IgnoreGroup {
   producer: Producer
