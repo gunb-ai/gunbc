@@ -45,7 +45,9 @@ data medium_syntax_markers: List<MediumMarkers> = [
 
   MediumMarkers { medium: "CiYamlStructure", markers: [] },
 
-  MediumMarkers { medium: "ShellInRun", markers: ["#!/", ">/dev/null"] }
+  MediumMarkers { medium: "ShellInRun", markers: ["#!/", ">/dev/null"] },
+
+  MediumMarkers { medium: "Html", markers: [] }
 ]
 
 data emitted_medium_emit_fns: List<String> = [
@@ -63,7 +65,9 @@ data emitted_medium_emit_fns: List<String> = [
   "ci_release_build_script",
   "witness_layer_source_flags",
   "fleet_converge_sh_for",
-  "expected_fleet_converge_sh"
+  "expected_fleet_converge_sh",
+  "serialize_html_source",
+  "serialize_fragment"
 ]
 
 data emitted_medium_string_ops: List<String> = [
@@ -256,5 +260,5 @@ fn medium_structure_containment_clean_live(
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: RealizationDispatch },
-  rationale: "A medium's structure leaking out of a Node into a raw string — written as a grounded-marker literal (emit-side) or grepped over an emitted-medium value (check-side, by call-target provenance) outside the realization edge — is a decidable property; this class is ② (lens residue) ONLY because the media are not all modeled yet, a shrinking-roster ratchet that becomes a pure ① construction wall as each medium becomes a Medium<R> Node. Grounding authority: each medium modeled as a Medium<R> Node emitted via grammar rows (GHA-expr: witty-wolf-587's extdeps.github.expressions / serialize_expression); the §5 realization-vocab guard is the sibling for the imported-sidecar face. Dissolves on: the exception roster empties as each medium is modeled — a check becomes a model walk or unwritable, and authoring or grepping the medium's syntax as a raw string outside the realization edge is then unwritable. HONESTY: the emit-side InlineSyntaxLiteral face is MARKER-sampled (fail-open): a shell literal lacking the grounded markers (#!/ or >/dev/null) passes silently. The check-side EmittedMediumStringOp face is structurally grounded by call-target provenance and is fail-closed within its known emit-fn set. The fail-closed hardening path for the emit-side is to ground it on script-emit PROVENANCE — the same emitted_medium_emit_fns list the check-side uses — rather than on markers; green-here does NOT mean no shell literal, only no SAMPLED shell literal"
+  rationale: "A medium's structure leaking out of a Node into a raw string — written as a grounded-marker literal (emit-side) or grepped over an emitted-medium value (check-side, by call-target provenance) outside the realization edge — is a decidable property; this class is ② (lens residue) ONLY because the media are not all modeled yet, a shrinking-roster ratchet that becomes a pure ① construction wall as each medium becomes a Medium<R> Node. Grounding authority: each medium modeled as a Medium<R> Node emitted via grammar rows (GHA-expr: witty-wolf-587's extdeps.github.expressions / serialize_expression); the §5 realization-vocab guard is the sibling for the imported-sidecar face. Dissolves on: the exception roster empties as each medium is modeled — a check becomes a model walk or unwritable, and authoring or grepping the medium's syntax as a raw string outside the realization edge is then unwritable. HONESTY: the emit-side InlineSyntaxLiteral face is MARKER-sampled (fail-open): a shell literal lacking the grounded markers (#!/ or >/dev/null) passes silently. The check-side EmittedMediumStringOp face is structurally grounded by call-target provenance and is fail-closed within its known emit-fn set. The fail-closed hardening path for the emit-side is to ground it on script-emit PROVENANCE — the same emitted_medium_emit_fns list the check-side uses — rather than on markers; green-here does NOT mean no shell literal, only no SAMPLED shell literal. Html medium specifics: Html is enrolled with empty InlineSyntaxLiteral markers (the CiYamlStructure precedent); the check-side EmittedMediumStringOp face is fail-closed for string-ops over serialize_html_source and serialize_fragment outputs, but the emit-side face is vacuous — a raw HTML string literal that bypasses the serializer entirely (e.g. concat('<p>', x)) passes silently; that is an explicit residual gap. The real wall for that gap is construction — requiring the emission seam to accept a structured MarkupNode so a raw string cannot reach the response — NOT marker coverage. Html medium row retires when the gunbhub emission seam requires a structured HTML Node (the Medium<R> dissolution); until then, Html containment is check-side only. Emit-side raw-arg provenance coverage (emit_side_provenance_walk) arrives in a later PR; merge order: that PR before this one for a complete emit-side wall."
 }
