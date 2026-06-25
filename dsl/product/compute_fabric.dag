@@ -26,6 +26,7 @@ import std.measure {
   ByteSize,
   MoneyAmount,
   HardwareThreadCount,
+  Count,
   byte_size,
   byte_size_count,
   measure_count,
@@ -530,6 +531,51 @@ type ToolchainCapability {
   linked_cache_interface: CacheInterfaceId?
 }
 
+type InputSizeAxis
+  = WitnessCount
+  | SourceNodeCount
+  | CorpusNodeCount
+
+type InputBound {
+  axis: InputSizeAxis
+  max: Measure<Count, One, Nat>
+}
+
+type InputEnvelope
+  = BoundedInput { bounds: List<InputBound> }
+  | EnvelopeUnknown
+
+type AdmissionVerdict
+  = Admitted
+  | RefusedOverEnvelope { axis: InputSizeAxis }
+  | RefusedUndeclared
+
+fn input_admitted(envelope: InputEnvelope, actual: List<InputBound>) -> AdmissionVerdict {
+  match envelope {
+    EnvelopeUnknown => RefusedUndeclared
+    BoundedInput { bounds: declared } =>
+      fold(
+        actual,
+        init: Admitted,
+        f: (verdict, actual_bound) =>
+          match verdict {
+            RefusedOverEnvelope { axis: _ } => verdict
+            RefusedUndeclared => verdict
+            Admitted =>
+              match declared |> filter(b => b.axis == actual_bound.axis) |> first {
+                Absent => RefusedOverEnvelope { axis: actual_bound.axis }
+                Present { value: decl_bound } =>
+                  if actual_bound.max.count > decl_bound.max.count {
+                    RefusedOverEnvelope { axis: actual_bound.axis }
+                  } else {
+                    Admitted
+                  }
+              }
+          }
+      )
+  }
+}
+
 type WorkDemand {
   resources: ResourceEnvelope
   os: OperatingSystemRequirement?
@@ -538,6 +584,7 @@ type WorkDemand {
   parallelism: ParallelismShape
   data_locality: List<ArtifactLocalityRequirement>
   effects: List<EffectBoundary>
+  input_envelope: InputEnvelope
 }
 
 fn projected_concurrent_peak(width: HardwareThreadCount, per_shard_peak: ByteSize) -> ByteSize {
@@ -924,6 +971,7 @@ data vm_isolation_work_demand: WorkDemand = WorkDemand {
   parallelism: SingleWorkItem,
   data_locality: [],
   effects: [],
+  input_envelope: EnvelopeUnknown,
 }
 
 fn witness_shared_host_home_rejects_vm() -> Bool {
@@ -1010,6 +1058,7 @@ data example_thread_work_demand: WorkDemand = WorkDemand {
   parallelism: SingleWorkItem,
   data_locality: [],
   effects: [],
+  input_envelope: EnvelopeUnknown,
 }
 
 data example_memory_work_demand: WorkDemand = WorkDemand {
@@ -1026,6 +1075,7 @@ data example_memory_work_demand: WorkDemand = WorkDemand {
   parallelism: SingleWorkItem,
   data_locality: [],
   effects: [],
+  input_envelope: EnvelopeUnknown,
 }
 
 data example_feasible_resource_work_demand: WorkDemand = WorkDemand {
@@ -1047,6 +1097,7 @@ data example_feasible_resource_work_demand: WorkDemand = WorkDemand {
   parallelism: SingleWorkItem,
   data_locality: [],
   effects: [],
+  input_envelope: EnvelopeUnknown,
 }
 
 fn witness_resource_offer_rejects_insufficient_threads() -> Bool {
@@ -1257,4 +1308,25 @@ fn witness_execution_receipt_digest_differs_by_demand(
   right: WorkDemand,
 ) -> Bool {
   execution_receipt_subject_digest(work_id: work_id, demand: left) != execution_receipt_subject_digest(work_id: work_id, demand: right)
+}
+
+fn input_bound(axis: InputSizeAxis, max: Nat) -> InputBound {
+  InputBound { axis: axis, max: Measure { count: max } }
+}
+
+data gunbc_ci_corpus_envelope: InputEnvelope = BoundedInput {
+  bounds: [
+    InputBound {
+      axis: WitnessCount,
+      max: Measure { count: 2000 }
+    },
+    InputBound {
+      axis: SourceNodeCount,
+      max: Measure { count: 500000 }
+    },
+    InputBound {
+      axis: CorpusNodeCount,
+      max: Measure { count: 5000000 }
+    },
+  ]
 }
