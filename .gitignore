@@ -118,7 +118,7 @@ __pycache__/
 
 # --- claim-corpus execution-map output ---
 .claim-map/
-src/v2/compiler/manual/sg2_scratch_probe.dag
+src/v2/test/claim/manual/sg2_scratch_probe.dag
 
 # --- Superseded planning scratch directories (canonical home: docs/plans/ or DESIGN.md) ---
 # Superseded by docs/plans/ (generated PlanArtifact) and DESIGN.md/ROADMAP.md as canonical authorities

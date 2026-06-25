@@ -91,7 +91,7 @@ fn budget_roster_resolves_after_frontier_warmup() {
         let _ = resolve_entry_with_index(&index, path);
     }
     let entry = workspace_root()
-        .join("src/v2/compiler/complexity_gate/budget_roster_completeness_test.dag")
+        .join("src/v2/test/claim/complexity_gate/budget_roster_completeness_test.dag")
         .to_string_lossy()
         .into_owned();
     resolve_entry_with_index(&index, &entry).expect("budget_roster should resolve");
@@ -105,7 +105,7 @@ fn budget_roster_resolves_cold() {
     let roots = floor_skip_source_roots();
     let index = build_multi_entry_index(&roots);
     let entry = workspace_root()
-        .join("src/v2/compiler/complexity_gate/budget_roster_completeness_test.dag")
+        .join("src/v2/test/claim/complexity_gate/budget_roster_completeness_test.dag")
         .to_string_lossy()
         .into_owned();
     resolve_entry_with_index(&index, &entry).expect("budget_roster should resolve cold");
@@ -307,7 +307,7 @@ fn frontier_warmup_does_not_poison_corpus_resolution() {
     let text = std::fs::read_to_string(&poisoner_abs).expect("ci_floor_plan readable");
     let data_line = fixture_line(&text, "data floor_corpus_node");
     let budget = ws
-        .join("src/v2/compiler/complexity_gate/budget_roster_completeness_test.dag")
+        .join("src/v2/test/claim/complexity_gate/budget_roster_completeness_test.dag")
         .to_string_lossy()
         .into_owned();
     let roster = vec![(

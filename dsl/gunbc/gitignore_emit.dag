@@ -85,7 +85,7 @@ fn artifact_pattern(a: IgnoreArtifact) -> String {
     PythonBytecodeCacheDir => "__pycache__/"
     PythonCompiledBytecode => "*.pyc"
     ClaimMapDir => ".claim-map/"
-    ScratchProbeFile => "src/v2/compiler/manual/sg2_scratch_probe.dag"
+    ScratchProbeFile => "src/v2/test/claim/manual/sg2_scratch_probe.dag"
     GunbcPlanningDir => "/gunbc-planning/"
     ScriptsFixturesDir => "/scripts/fixtures/"
   }
