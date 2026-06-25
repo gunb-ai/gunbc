@@ -870,10 +870,17 @@ pub fn check_wiring_liveness_streaming(
             // strict node_references_param path (which requires LocalValueBinding) misses
             // them — refs is the permissive fallback that catches those.
             let (output, refs) = marshal_fn_body_skeleton(ctx, body, &param_names, &si);
+            let is_debug = qualified_name.contains("floor_nodes");
+            if is_debug {
+                eprintln!("DEBUG {qualified_name}: param_names={param_names:?} refs={refs:?} body.expr_data={:?}", std::mem::discriminant(body.expr_data.as_ref()));
+            }
             for param_name in &param_names {
-                if !value_skeleton_contains_atom(ctx, &output, param_name)
-                    && !refs.contains(param_name.as_str())
-                {
+                let skel_has = value_skeleton_contains_atom(ctx, &output, param_name);
+                let refs_has = refs.contains(param_name.as_str());
+                if is_debug {
+                    eprintln!("DEBUG {qualified_name}:{param_name} skel_has={skel_has} refs_has={refs_has}");
+                }
+                if !skel_has && !refs_has {
                     dead_count += 1;
                     report_dead(&qualified_name, param_name);
                 }
