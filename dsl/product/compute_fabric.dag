@@ -118,6 +118,51 @@ type ContainerRuntime = Docker | Podman | Gvisor | Ubicloud | GcloudRun
 type CostClass = OwnedMarginalZero | PerSecondBilled | Metered | DeveloperAttention
 type OomSignalClass = KillProcess | Throttle | ReportOnly
 
+type LeaseMode = Reserved | BestEffort
+
+type PerformanceIsolation = Shared | Exclusive
+
+type CpuSetRange { first_thread: Int, last_thread: Int }
+
+type ShardCpusetPartition {
+  shard_index: Int
+  cpuset: CpuSetRange
+  memory_max: ByteSize
+}
+
+type ExclusivePartition {
+  host: HostIdentity
+  threads_per_shard: Int
+  shards: List<ShardCpusetPartition>
+}
+
+type ExclusiveAdmission
+  = ExclusiveAdmitted { partition: ExclusivePartition }
+  | ExclusiveRefused { reason: NonEmptyStr }
+
+type SystemdShardDropIn {
+  dropin_path: String
+  content: String
+}
+
+data lease_mode_k8s_qos_grounding: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "extdeps.k8s.qos",
+    decl_name: "KubernetesQosClass",
+    field: WholeDeclaration
+  }
+}
+
+data performance_isolation_cpuset_grounding: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "extdeps.os.systemd",
+    decl_name: "systemd_allowed_cpus_property",
+    field: WholeDeclaration
+  }
+}
+
 type Duration = Measure<Time, One, Nat>
 
 type MoneyMicros = MoneyAmount<Micro>
@@ -339,6 +384,8 @@ type ComputeOffer {
   available_window: AvailabilityWindow
   cost_quote: CostEstimate?
   constraints: List<ProviderConstraint>
+  lease_mode: LeaseMode
+  performance_isolation: PerformanceIsolation
 }
 
 type MachineView { label: NonEmptyStr, host: HostIdentity }
@@ -599,6 +646,8 @@ type WorkDemand {
   data_locality: List<ArtifactLocalityRequirement>
   effects: List<EffectBoundary>
   input_envelope: InputEnvelope
+  lease_mode: LeaseMode
+  performance_isolation: PerformanceIsolation
 }
 
 fn projected_concurrent_peak(width: HardwareThreadCount, per_shard_peak: ByteSize) -> ByteSize {

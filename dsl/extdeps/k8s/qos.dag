@@ -1,0 +1,16 @@
+module extdeps.k8s.qos
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "kubernetes.io/docs/concepts/workloads/pods/pod-qos/"
+  }
+}
+
+type KubernetesQosClass
+  = Guaranteed
+  | Burstable
+  | BestEffort
