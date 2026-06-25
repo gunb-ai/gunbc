@@ -9,5 +9,5 @@ data gofmt_defaults: GofmtConfig = GofmtConfig {}
 type GofmtConfigPatch = ConfigPatchRecord<GofmtConfig>
 
 fn gofmt_layer(base: GofmtConfig, patch: GofmtConfigPatch) -> GofmtConfig {
-  config_patch_layer(base: base, patch: patch)
+  config_patch_layer(base: base, _patch: patch)
 }

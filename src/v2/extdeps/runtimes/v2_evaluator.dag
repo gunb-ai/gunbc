@@ -214,7 +214,7 @@ fn v2_eval_wave1_return_value(value: RuntimeValue, _frame: EvaluationFrame) -> O
   Accepted { value: Return { value: value }, diagnostics: None }
 }
 
-fn v2_eval_wave1_transfer(control: ControlTransfer, frame: EvaluationFrame) -> Outcome<EvaluationFrame> {
+fn v2_eval_wave1_transfer(control: ControlTransfer, _frame: EvaluationFrame) -> Outcome<EvaluationFrame> {
   match control {
     Continue { value: v } =>
       outcome_rejected(d: v2_eval_wave1_runtime_diagnostic(node: runtime_value_resolved_type(value: v)))
@@ -227,7 +227,7 @@ fn v2_eval_wave1_transfer(control: ControlTransfer, frame: EvaluationFrame) -> O
   }
 }
 
-fn v2_eval_wave1_terminal_value(control: ControlTransfer, frame: EvaluationFrame) -> Outcome<RuntimeValue> {
+fn v2_eval_wave1_terminal_value(control: ControlTransfer, _frame: EvaluationFrame) -> Outcome<RuntimeValue> {
   match control {
     Continue { value: v } =>
       Accepted { value: v, diagnostics: None }

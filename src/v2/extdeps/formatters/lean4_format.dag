@@ -184,5 +184,5 @@ data lean4_format_defaults: Lean4FormatConfig = Lean4FormatConfig {
 type Lean4FormatConfigPatch = ConfigPatchRecord<Lean4FormatConfig>
 
 fn lean4_format_layer(base: Lean4FormatConfig, patch: Lean4FormatConfigPatch) -> Lean4FormatConfig {
-  config_patch_layer(base: base, patch: patch)
+  config_patch_layer(base: base, _patch: patch)
 }

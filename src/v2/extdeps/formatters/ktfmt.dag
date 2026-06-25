@@ -76,5 +76,5 @@ data ktfmt_defaults: KtfmtConfig = KtfmtConfig {
 type KtfmtConfigPatch = ConfigPatchRecord<KtfmtConfig>
 
 fn ktfmt_layer(base: KtfmtConfig, patch: KtfmtConfigPatch) -> KtfmtConfig {
-  config_patch_layer(base: base, patch: patch)
+  config_patch_layer(base: base, _patch: patch)
 }

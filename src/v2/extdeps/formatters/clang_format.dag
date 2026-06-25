@@ -888,5 +888,5 @@ data clang_format_defaults: ClangFormatConfig = ClangFormatConfig {
 type ClangFormatConfigPatch = ConfigPatchRecord<ClangFormatConfig>
 
 fn clang_format_layer(base: ClangFormatConfig, patch: ClangFormatConfigPatch) -> ClangFormatConfig {
-  config_patch_layer(base: base, patch: patch)
+  config_patch_layer(base: base, _patch: patch)
 }

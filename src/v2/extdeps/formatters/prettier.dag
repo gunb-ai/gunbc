@@ -174,7 +174,7 @@ data prettier_defaults: PrettierConfig = PrettierConfig {
 type PrettierFormattingOptionsPatch = ConfigPatchRecord<PrettierFormattingOptions>
 
 fn apply_prettier_formatting_options_patch(base: PrettierFormattingOptions, patch: PrettierFormattingOptionsPatch) -> PrettierFormattingOptions {
-  config_patch_layer(base: base, patch: patch)
+  config_patch_layer(base: base, _patch: patch)
 }
 
 type PrettierConfigPatch {
