@@ -9,6 +9,7 @@ fn compute_envelope_model_body() -> List<MarkdownBlock> {
     quote(blocks: [
       p(text: "Plan doc. Resolves the §1 ROADMAP pointer **\"CI on compute fabric\"**. Co-owned: **warm-lark-306** (authoring + operator context) and **quick-ant-298** (§1 CI-floor lead; owns the spawn-width slice). CC **bright-stag-194** (ROADMAP owner + test-profile owner for the fan-out cap). DESIGN refs: §1 (time = cost/safety), §2 (Realization — the parallelization arm), §3 (single authority + the measured-peripheral split), §5 (fail-closed; *derive*, don't hand-set)."),
       p(text: "A few live numbers below are marked **[confirm]** — quick-ant has the freshest values from the §1 investigation; the *model* is the point, not those scalars."),
+      p(text: "Demand-side companion: [`input-envelope-roadmap.md`](input-envelope-roadmap.md) — the declared `InputEnvelope` on `WorkDemand` (the bounded input this host envelope is sized against), with our own CI corpus as the first instance."),
     ]),
     h2(text: "1. The symptom: a fleet with no operating point"),
     p(text: "Two 128-core hosts (srv1, srv2) that are **either oversubscribed/crashing or sitting at ~1% doing nothing — never the sane middle.** That bimodal swing *is* the diagnosis. A system that swings between starvation and thrashing, with no stable middle, is a system with **no modeled operating point**: nothing answers \"how much work fits this host,\" so the fleet falls to one extreme or the other."),

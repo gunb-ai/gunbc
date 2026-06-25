@@ -8,6 +8,7 @@ fn realization_measurement_loop_body() -> List<MarkdownBlock> {
   [
     p(text: "**Status:** stable coordination plan · dispatch workers per phase · **DESIGN.md + the carriers remain the authority** — this doc is a worker-dispatch tracker, not a fact ledger, and each phase dissolves into a mark on its carrier when it lands (DESIGN §6 \"no parallel-ledger docs\"). A phase's real state is its branch/PR, not this file (mirrors `ROADMAP.md`)."),
     p(text: "**Owner:** unowned (original coordinator `zesty-deer-479` archived 2026-06-21) — operator-coordinated; consolidates the formerly-separate quick-ant-298 dependency-ordered roadmap (single authority, no fork). Linked from `ROADMAP.md` §2 *Minimal work — caching by realization*."),
+    p(text: "**Companion:** [`resource-aware-scheduler.md`](resource-aware-scheduler.md) — the four-node spawn-width implementation (larger allocation → larger throughput, by construction) that consumes this loop's measured per-runnable peak."),
     hr(),
     h2(text: "0. Thesis — the substrate is shape-complete but input-starved"),
     p(text: "The realization layer is *fully modeled and almost entirely inert*: every carrier that should drive \"minimal work, as parallel as possible, guaranteed\" exists with the right type and is read by **no scheduler, fed by **no measurement, consulted by **no router. This is DESIGN §6's failure mode — *\"the tier where the machinery exists but nothing gates on it\"* — landed squarely on §1's **cost axis**."),
