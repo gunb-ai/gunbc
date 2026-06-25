@@ -643,6 +643,9 @@ fn resolved_graph_from_sources(
         ResolveTypecheckGate::DiscoveryCorpusAdvisory => {
             v1_compiler_compile::compile_to_resolved_discovery_corpus_advisory(Rc::new(sources))
         }
+        ResolveTypecheckGate::WholeLivenessCorpus => {
+            v1_compiler_compile::compile_to_resolved(Rc::new(sources))
+        }
     };
 
     let has_errors = result
