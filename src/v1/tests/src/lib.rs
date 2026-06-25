@@ -141,6 +141,8 @@ mod resolve_cross_process_cache_test;
 #[cfg(test)]
 mod resolve_expr_types_retraversal_guard_test;
 #[cfg(test)]
+mod resolved_graph_cache_size_bound_test;
+#[cfg(test)]
 mod resolve_typed_cache_equivalence_test;
 #[cfg(test)]
 mod route_a_final_six_test;
