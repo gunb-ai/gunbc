@@ -1,0 +1,202 @@
+module gunbc.roadmap_graph
+
+import ctrl.process_algebra { ProcessNodeId }
+import gunbc.roadmap_model {
+  RoadmapNode, RoadmapEdge,
+  NodeSizing, Sized, Unsized,
+  Intricacy, Volume,
+  RoadmapParent, TopLevel, UnderParent, roadmap_parent, roadmap_parents,
+}
+import gunbc.roadmap_status { RoadmapItem, item_is_done }
+import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
+import gunbc.roadmap_spawner {
+  doc_all_nodes, doc_all_edges, node_dep_done, section_nodes,
+  json_str, join_strings, node_title, intricacy_str, volume_str,
+}
+
+type GraphStatus
+  = GraphDone
+  | GraphNow
+  | GraphSoon
+  | GraphLater
+  | GraphShelved
+
+fn status_str(s: GraphStatus) -> String {
+  match s {
+    GraphDone => "done"
+    GraphNow => "now"
+    GraphSoon => "soon"
+    GraphLater => "later"
+    GraphShelved => "shelved"
+  }
+}
+
+type NodeStatusEntry { id: ProcessNodeId, status: GraphStatus }
+type WaveEntry { id: ProcessNodeId, wave: Int }
+
+fn section_is_shelved(s: RoadmapSection) -> Bool {
+  string_contains(s: s.title, pattern: "(SHELVED)")
+}
+
+fn shelved_ids_from_sections(sections: List<RoadmapSection>) -> List<ProcessNodeId> {
+  fold(sections, init: [], f: (acc, s) =>
+    if section_is_shelved(s: s) {
+      concat(acc, section_nodes(s: s) |> map(n => n.node))
+    } else {
+      acc
+    }
+  )
+}
+
+fn shelved_node_ids(doc: RoadmapDocument) -> List<ProcessNodeId> {
+  concat(
+    shelved_ids_from_sections(sections: doc.sections),
+    shelved_ids_from_sections(sections: doc.lead_lanes)
+  )
+}
+
+fn is_shelved(id: ProcessNodeId, shelved_ids: List<ProcessNodeId>) -> Bool {
+  any(shelved_ids, sid => sid == id)
+}
+
+fn parent_is_done_or_now(pid: ProcessNodeId, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>, shelved_ids: List<ProcessNodeId>) -> Bool {
+  any(nodes, n => n.node == pid && (
+    item_is_done(item: n.line, merged: merged)
+    || (!is_shelved(id: pid, shelved_ids: shelved_ids) && node_dep_done(nodes: nodes, edges: edges, id: pid, merged: merged))
+  ))
+}
+
+fn node_graph_status(node: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>, shelved_ids: List<ProcessNodeId>) -> GraphStatus {
+  let id = node.node
+  if item_is_done(item: node.line, merged: merged) {
+    GraphDone
+  } else if is_shelved(id: id, shelved_ids: shelved_ids) {
+    GraphShelved
+  } else if node_dep_done(nodes: nodes, edges: edges, id: id, merged: merged) {
+    GraphNow
+  } else {
+    let parents = roadmap_parents(edges: edges, node: id)
+    if all(parents, pid => parent_is_done_or_now(pid: pid, nodes: nodes, edges: edges, merged: merged, shelved_ids: shelved_ids)) {
+      GraphSoon
+    } else {
+      GraphLater
+    }
+  }
+}
+
+fn lookup_status(entries: List<NodeStatusEntry>, id: ProcessNodeId) -> GraphStatus {
+  fold(entries, init: GraphLater, f: (acc, e) => if e.id == id { e.status } else { acc })
+}
+
+fn initial_wave_for_status(status: GraphStatus) -> Int {
+  match status {
+    GraphDone => -1
+    GraphNow => 0
+    GraphSoon => 1
+    GraphLater => -99
+    GraphShelved => -99
+  }
+}
+
+fn lookup_wave(entries: List<WaveEntry>, id: ProcessNodeId) -> Int {
+  fold(entries, init: -99, f: (acc, e) => if e.id == id { e.wave } else { acc })
+}
+
+fn update_one_wave(entry: WaveEntry, snapshot: List<WaveEntry>, edges: List<RoadmapEdge>) -> WaveEntry {
+  if entry.wave != -99 {
+    entry
+  } else {
+    let parents = roadmap_parents(edges: edges, node: entry.id)
+    let parent_waves = parents |> map(pid => lookup_wave(entries: snapshot, id: pid))
+    if count(parents) > 0 && all(parent_waves, w => w >= -1) {
+      let max_pw = fold(parent_waves, init: -1, f: (acc, w) => if w > acc { w } else { acc })
+      WaveEntry { id: entry.id, wave: max_pw + 1 }
+    } else {
+      entry
+    }
+  }
+}
+
+fn wave_pass(entries: List<WaveEntry>, edges: List<RoadmapEdge>) -> List<WaveEntry> {
+  let snapshot = entries
+  entries |> map(e => update_one_wave(entry: e, snapshot: snapshot, edges: edges))
+}
+
+fn propagate_waves(entries: List<WaveEntry>, edges: List<RoadmapEdge>) -> List<WaveEntry> {
+  let passes = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
+  fold(passes, init: entries, f: (acc, _) => wave_pass(entries: acc, edges: edges))
+}
+
+fn wave_json_val(status: GraphStatus, wave: Int) -> String {
+  match status {
+    GraphDone => "null"
+    GraphShelved => "null"
+    GraphNow => to_string(wave)
+    GraphSoon => to_string(wave)
+    GraphLater => if wave == -99 { "null" } else { to_string(wave) }
+  }
+}
+
+fn sizing_fields_json(sizing: NodeSizing) -> String {
+  match sizing {
+    Unsized => ", \"repo\": null, \"intricacy\": null, \"volume\": null"
+    Sized { intricacy, volume, repo, acceptance: _ } =>
+      concat(", \"repo\": ", concat(json_str(s: repo),
+        concat(", \"intricacy\": ", concat(json_str(s: intricacy_str(i: intricacy)),
+          concat(", \"volume\": ", json_str(s: volume_str(v: volume)))))))
+  }
+}
+
+fn graph_node_json(n: RoadmapNode, status: GraphStatus, wave_json: String, edges: List<RoadmapEdge>) -> String {
+  let parent_id_json = match roadmap_parent(edges: edges, node: n.node) {
+    TopLevel => "null"
+    UnderParent { parent: pid } => json_str(s: pid)
+  }
+  let title = node_title(item: n.line)
+  let s = status_str(s: status)
+  let sf = sizing_fields_json(sizing: n.sizing)
+  concat("{",
+    concat("\"node_id\": ", concat(json_str(s: n.node),
+    concat(", \"title\": ", concat(json_str(s: title),
+    concat(sf,
+    concat(", \"parent_node_id\": ", concat(parent_id_json,
+    concat(", \"status\": ", concat(json_str(s: s),
+    concat(", \"wave\": ", concat(wave_json, "}")))))))))))))
+}
+
+fn edge_json(e: RoadmapEdge) -> String {
+  concat("{\"parent\": ", concat(json_str(s: e.parent), concat(", \"child\": ", concat(json_str(s: e.child), "}"))))
+}
+
+fn node_init_wave(n: RoadmapNode, status_entries: List<NodeStatusEntry>) -> WaveEntry {
+  let status = lookup_status(entries: status_entries, id: n.node)
+  WaveEntry { id: n.node, wave: initial_wave_for_status(status: status) }
+}
+
+fn node_json_from_entries(n: RoadmapNode, status_entries: List<NodeStatusEntry>, wave_entries: List<WaveEntry>, edges: List<RoadmapEdge>) -> String {
+  let status = lookup_status(entries: status_entries, id: n.node)
+  let wave = lookup_wave(entries: wave_entries, id: n.node)
+  let wj = wave_json_val(status: status, wave: wave)
+  graph_node_json(n: n, status: status, wave_json: wj, edges: edges)
+}
+
+fn roadmap_graph_json(doc: RoadmapDocument, merged: List<Int>, anchor_commit: String) -> String {
+  let nodes = doc_all_nodes(doc: doc)
+  let edges = doc_all_edges(doc: doc)
+  let shelved_ids = shelved_node_ids(doc: doc)
+  let status_entries = nodes |> map(n => NodeStatusEntry {
+    id: n.node,
+    status: node_graph_status(node: n, nodes: nodes, edges: edges, merged: merged, shelved_ids: shelved_ids)
+  })
+  let init_waves = nodes |> map(n => node_init_wave(n: n, status_entries: status_entries))
+  let wave_entries = propagate_waves(entries: init_waves, edges: edges)
+  let node_jsons = nodes |> map(n => node_json_from_entries(n: n, status_entries: status_entries, wave_entries: wave_entries, edges: edges))
+  let edge_jsons = edges |> map(e => edge_json(e: e))
+  concat("{",
+    concat("\"schema\": \"roadmap-graph/v1\"",
+    concat(", \"anchor_commit\": ", concat(json_str(s: anchor_commit),
+    concat(", \"nodes\": [", concat(join_strings(items: node_jsons),
+    concat("], \"edges\": [", concat(join_strings(items: edge_jsons),
+    "]}"))))))
+  )
+}
