@@ -28,6 +28,10 @@ import product.compute_fabric {
   StorageDevice,
   nvme_storage_device,
   Persistent,
+  LeaseMode,
+  BestEffort,
+  PerformanceIsolation,
+  Shared,
 }
 
 data fleet_intent_cpu: CpuFacts = CpuFacts {
@@ -126,6 +130,8 @@ data srv1_offer: ComputeOffer = ComputeOffer {
   available_window: AvailabilityWindow { open: "always-open", close: none },
   cost_quote: none,
   constraints: [],
+  lease_mode: BestEffort,
+  performance_isolation: Shared,
 }
 data srv2_offer: ComputeOffer = ComputeOffer {
   provider: "gunbc-operator-srv2",
@@ -138,6 +144,8 @@ data srv2_offer: ComputeOffer = ComputeOffer {
   available_window: AvailabilityWindow { open: "always-open", close: none },
   cost_quote: none,
   constraints: [],
+  lease_mode: BestEffort,
+  performance_isolation: Shared,
 }
 
 data fleet_intent_offers: List<ComputeOffer> = [srv1_offer, srv2_offer]

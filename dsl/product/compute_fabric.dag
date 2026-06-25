@@ -512,7 +512,7 @@ fn satisfied_dimensions_for(demand: WorkDemand) -> List<DemandDimension> {
     } => []
   }
   concat(
-    [DemandIsolation],
+    [DemandIsolation, DemandPerformanceIsolation, DemandLeaseMode],
     concat(
       parallelism_dims,
       concat(
@@ -743,6 +743,8 @@ type DemandDimension
   | DemandParallelism
   | DemandDataLocality
   | DemandEffects
+  | DemandLeaseMode
+  | DemandPerformanceIsolation
 
 type MissingDemandFact { dimension: DemandDimension, required: NonEmptyStr }
 
@@ -766,6 +768,113 @@ type ComputeLease {
   demand: WorkDemand
   allocation: AllocationReceipt
   eligibility: ComputeWitness<ComputeLeaseEligibility>
+}
+
+fn lease_mode_ordinal(mode: LeaseMode) -> Int {
+  match mode {
+    BestEffort => 0
+    Reserved   => 1
+  }
+}
+
+fn lease_mode_satisfies(supply: LeaseMode, demand: LeaseMode) -> Bool {
+  lease_mode_ordinal(supply) >= lease_mode_ordinal(demand)
+}
+
+fn performance_isolation_ordinal(iso: PerformanceIsolation) -> Int {
+  match iso {
+    Shared    => 0
+    Exclusive => 1
+  }
+}
+
+fn performance_isolation_satisfies(supply: PerformanceIsolation, demand: PerformanceIsolation) -> Bool {
+  performance_isolation_ordinal(supply) >= performance_isolation_ordinal(demand)
+}
+
+fn cpuset_range_string(r: CpuSetRange) -> String {
+  let first_str = to_string(r.first_thread)
+  let last_str = to_string(r.last_thread)
+  "\{first_str\}-\{last_str\}"
+}
+
+fn shard_dropin_content(shard: ShardCpusetPartition) -> String {
+  let cpuset_str = cpuset_range_string(r: shard.cpuset)
+  let mem_str = to_string(byte_size_count(b: shard.memory_max))
+  "[Service]\nAllowedCPUs=\{cpuset_str\}\nMemoryMax=\{mem_str\}\n"
+}
+
+fn shard_dropin_path(host: HostIdentity, shard_index: Int) -> String {
+  let idx_str = to_string(shard_index)
+  "/etc/systemd/system/actions-runner@\{host\}-\{idx_str\}.service.d/30-exclusive-cpuset.conf"
+}
+
+fn shard_dropin(host: HostIdentity, shard: ShardCpusetPartition) -> SystemdShardDropIn {
+  SystemdShardDropIn {
+    dropin_path: shard_dropin_path(host: host, shard_index: shard.shard_index),
+    content: shard_dropin_content(shard: shard),
+  }
+}
+
+fn build_shard_list_loop(
+  threads_per_shard: Int,
+  memory_per_shard: ByteSize,
+  shard_count: Int,
+  idx: Int,
+  acc: List<ShardCpusetPartition>
+) -> List<ShardCpusetPartition> {
+  if idx >= shard_count {
+    acc
+  } else {
+    let first = idx * threads_per_shard
+    let last = first + threads_per_shard - 1
+    let shard = ShardCpusetPartition {
+      shard_index: idx,
+      cpuset: CpuSetRange { first_thread: first, last_thread: last },
+      memory_max: memory_per_shard,
+    }
+    build_shard_list_loop(
+      threads_per_shard: threads_per_shard,
+      memory_per_shard: memory_per_shard,
+      shard_count: shard_count,
+      idx: idx + 1,
+      acc: append(acc, items: [shard]),
+    )
+  }
+}
+
+fn derive_exclusive_partition(
+  supply: PlacementSupplyRow,
+  shard_count: Int,
+  per_shard_memory: ByteSize
+) -> ExclusiveAdmission {
+  let total_threads = hardware_thread_count_value(t: supply.hardware_threads)
+  let total_ram = byte_size_count(b: supply.ram_bytes)
+  let requested_ram = byte_size_count(b: per_shard_memory) * shard_count
+  if shard_count <= 0 {
+    ExclusiveRefused { reason: "shard_count must be positive" }
+  } else {
+    let threads_per_shard = total_threads / shard_count
+    if threads_per_shard <= 0 {
+      ExclusiveRefused { reason: "insufficient hardware threads for shard count" }
+    } else if requested_ram > total_ram {
+      ExclusiveRefused { reason: "reserved memory exceeds host capacity" }
+    } else {
+      ExclusiveAdmitted {
+        partition: ExclusivePartition {
+          host: supply.identity,
+          threads_per_shard: threads_per_shard,
+          shards: build_shard_list_loop(
+            threads_per_shard: threads_per_shard,
+            memory_per_shard: per_shard_memory,
+            shard_count: shard_count,
+            idx: 0,
+            acc: [],
+          ),
+        },
+      }
+    }
+  }
 }
 
 fn isolation_boundary_ordinal(boundary: IsolationBoundary) -> Int {
@@ -796,6 +905,20 @@ fn satisfies(offer: ComputeOffer, demand: WorkDemand) -> ComputeLeaseEligibility
       reason: MissingDemandFact {
         dimension: DemandIsolation,
         required: isolation_boundary_label(boundary: demand.isolation.boundary),
+      },
+    }
+  } else if !performance_isolation_satisfies(supply: offer.performance_isolation, demand: demand.performance_isolation) {
+    Rejected {
+      reason: MissingDemandFact {
+        dimension: DemandPerformanceIsolation,
+        required: "exclusive_performance_isolation",
+      },
+    }
+  } else if !lease_mode_satisfies(supply: offer.lease_mode, demand: demand.lease_mode) {
+    Rejected {
+      reason: MissingDemandFact {
+        dimension: DemandLeaseMode,
+        required: "reserved_lease_mode",
       },
     }
   } else if !requires_placement_facts(demand: demand) {
@@ -1013,6 +1136,8 @@ data example_shared_host_offer: ComputeOffer = ComputeOffer {
   available_window: AvailabilityWindow { open: example_availability_open, close: none },
   cost_quote: none,
   constraints: [],
+  lease_mode: BestEffort,
+  performance_isolation: Shared,
 }
 
 data example_vm_offer: ComputeOffer = ComputeOffer {
@@ -1026,6 +1151,8 @@ data example_vm_offer: ComputeOffer = ComputeOffer {
   available_window: AvailabilityWindow { open: example_availability_open, close: none },
   cost_quote: none,
   constraints: [],
+  lease_mode: BestEffort,
+  performance_isolation: Shared,
 }
 
 data vm_isolation_work_demand: WorkDemand = WorkDemand {
@@ -1043,6 +1170,8 @@ data vm_isolation_work_demand: WorkDemand = WorkDemand {
   data_locality: [],
   effects: [],
   input_envelope: EnvelopeUnknown,
+  lease_mode: BestEffort,
+  performance_isolation: Shared,
 }
 
 fn witness_shared_host_home_rejects_vm() -> Bool {
@@ -1108,6 +1237,8 @@ data example_resource_offer: ComputeOffer = ComputeOffer {
   available_window: AvailabilityWindow { open: example_availability_open, close: none },
   cost_quote: none,
   constraints: [],
+  lease_mode: BestEffort,
+  performance_isolation: Shared,
 }
 
 data example_thread_work_demand: WorkDemand = WorkDemand {
@@ -1130,6 +1261,8 @@ data example_thread_work_demand: WorkDemand = WorkDemand {
   data_locality: [],
   effects: [],
   input_envelope: EnvelopeUnknown,
+  lease_mode: BestEffort,
+  performance_isolation: Shared,
 }
 
 data example_memory_work_demand: WorkDemand = WorkDemand {
@@ -1147,6 +1280,8 @@ data example_memory_work_demand: WorkDemand = WorkDemand {
   data_locality: [],
   effects: [],
   input_envelope: EnvelopeUnknown,
+  lease_mode: BestEffort,
+  performance_isolation: Shared,
 }
 
 data example_feasible_resource_work_demand: WorkDemand = WorkDemand {
@@ -1169,6 +1304,8 @@ data example_feasible_resource_work_demand: WorkDemand = WorkDemand {
   data_locality: [],
   effects: [],
   input_envelope: EnvelopeUnknown,
+  lease_mode: BestEffort,
+  performance_isolation: Shared,
 }
 
 fn witness_resource_offer_rejects_insufficient_threads() -> Bool {
@@ -1188,10 +1325,12 @@ fn witness_resource_offer_rejects_insufficient_memory() -> Bool {
 fn witness_resource_offer_admits_feasible_demand() -> Bool {
   match satisfies(offer: example_resource_offer, demand: example_feasible_resource_work_demand) {
     Eligible { witness: w } =>
-      w.satisfied.length() == 3
+      w.satisfied.length() == 5
         && w.satisfied.first() == DemandIsolation
-        && w.satisfied.skip(n: 1).first() == DemandCpu
-        && w.satisfied.skip(n: 2).first() == DemandMemory
+        && w.satisfied.skip(n: 1).first() == DemandPerformanceIsolation
+        && w.satisfied.skip(n: 2).first() == DemandLeaseMode
+        && w.satisfied.skip(n: 3).first() == DemandCpu
+        && w.satisfied.skip(n: 4).first() == DemandMemory
     Rejected { reason: _ } => false
   }
 }

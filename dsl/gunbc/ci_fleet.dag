@@ -16,6 +16,10 @@ import product.compute_fabric {
   OwnedMarginalZero,
   PerJobFilesystem,
   Dram,
+  LeaseMode,
+  BestEffort,
+  PerformanceIsolation,
+  Shared,
 }
 import extdeps.cpu.types { CpuFacts, CpuDeploymentFacts }
 import std.measure { byte_size, hertz }
@@ -74,6 +78,8 @@ data gunbc_ci_fleet_offer: ComputeOffer = ComputeOffer {
   available_window: AvailabilityWindow { open: "always-open", close: none },
   cost_quote: none,
   constraints: [],
+  lease_mode: BestEffort,
+  performance_isolation: Shared,
 }
 
 fn gunbc_ci_runner_spec() -> RunnerSpec {

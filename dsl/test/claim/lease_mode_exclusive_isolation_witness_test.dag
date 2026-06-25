@@ -1,0 +1,195 @@
+module test.claim.lease_mode_exclusive_isolation_witness
+
+import product.compute_fabric {
+  LeaseMode,
+  Reserved,
+  BestEffort,
+  PerformanceIsolation,
+  Shared,
+  Exclusive,
+  ComputeOffer,
+  ComputeSupplyFacts,
+  ComputeHost,
+  ExecutionSurface,
+  AvailabilityWindow,
+  CostModel,
+  ProviderCostModel,
+  OwnedMarginalZero,
+  SharedHostHome,
+  WorkDemand,
+  ResourceEnvelope,
+  IsolationRequirement,
+  SingleWorkItem,
+  EnvelopeUnknown,
+  satisfies,
+  ComputeLeaseEligibility,
+  Eligible,
+  Rejected,
+  DemandDimension,
+  DemandPerformanceIsolation,
+  DemandLeaseMode,
+  derive_exclusive_partition,
+  ExclusiveAdmission,
+  ExclusiveAdmitted,
+  ExclusiveRefused,
+  ExclusivePartition,
+  ShardCpusetPartition,
+  CpuSetRange,
+  shard_dropin_content,
+  SystemdShardDropIn,
+  example_availability_open,
+  example_compute_host,
+  example_shared_host_execution_surface,
+  example_owned_cost,
+}
+import product.placement_supply { PlacementSupplyRow, HostIdentity }
+import std.measure {
+  byte_size,
+  byte_size_count,
+  hardware_thread_count,
+  hertz,
+}
+import std.types { Bool, String }
+
+fn fixture_srv1_supply() -> PlacementSupplyRow {
+  PlacementSupplyRow {
+    identity: "srv1",
+    hardware_threads: hardware_thread_count(128),
+    clock_hz: hertz(3000000000),
+    ram_bytes: byte_size(137438953472),
+  }
+}
+
+fn fixture_shared_offer() -> ComputeOffer {
+  ComputeOffer {
+    provider: "fixture-shared-host",
+    supply: ComputeSupplyFacts {
+      physical: example_compute_host,
+      execution: example_shared_host_execution_surface,
+      cost: Present { value: example_owned_cost },
+      observed_performance: [],
+    },
+    available_window: AvailabilityWindow { open: example_availability_open, close: none },
+    cost_quote: none,
+    constraints: [],
+    lease_mode: BestEffort,
+    performance_isolation: Shared,
+  }
+}
+
+fn fixture_exclusive_offer() -> ComputeOffer {
+  ComputeOffer {
+    provider: "fixture-exclusive-host",
+    supply: ComputeSupplyFacts {
+      physical: example_compute_host,
+      execution: example_shared_host_execution_surface,
+      cost: Present { value: example_owned_cost },
+      observed_performance: [],
+    },
+    available_window: AvailabilityWindow { open: example_availability_open, close: none },
+    cost_quote: none,
+    constraints: [],
+    lease_mode: Reserved,
+    performance_isolation: Exclusive,
+  }
+}
+
+fn fixture_exclusive_demand() -> WorkDemand {
+  WorkDemand {
+    resources: ResourceEnvelope {
+      cpu: none,
+      gpu: none,
+      memory: none,
+      storage: none,
+      network: none,
+    },
+    os: none,
+    isolation: IsolationRequirement { boundary: SharedHostHome },
+    toolchains: [],
+    parallelism: SingleWorkItem,
+    data_locality: [],
+    effects: [],
+    input_envelope: EnvelopeUnknown,
+    lease_mode: Reserved,
+    performance_isolation: Exclusive,
+  }
+}
+
+fn witness_exclusive_demand_shared_offer_refused() -> Bool {
+  match satisfies(offer: fixture_shared_offer(), demand: fixture_exclusive_demand()) {
+    Rejected { reason: r } => r.dimension == DemandPerformanceIsolation
+    Eligible { witness: _ } => false
+  }
+}
+
+fn witness_exclusive_demand_exclusive_offer_admitted() -> Bool {
+  match satisfies(offer: fixture_exclusive_offer(), demand: fixture_exclusive_demand()) {
+    Eligible { witness: _ } => true
+    Rejected { reason: _ } => false
+  }
+}
+
+fn witness_exclusive_leases_get_disjoint_cpusets() -> Bool {
+  let per_shard_mem = byte_size(60000000000)
+  match derive_exclusive_partition(supply: fixture_srv1_supply(), shard_count: 2, per_shard_memory: per_shard_mem) {
+    ExclusiveRefused { reason: _ } => false
+    ExclusiveAdmitted { partition: p } =>
+      p.shards.length() == 2
+        && match p.shards.first() {
+          Absent => false
+          Present { value: s0 } =>
+            match p.shards.skip(n: 1).first() {
+              Absent => false
+              Present { value: s1 } =>
+                s1.cpuset.first_thread > s0.cpuset.last_thread
+            }
+        }
+  }
+}
+
+fn witness_oversubscribed_memory_admission_refused() -> Bool {
+  let per_shard_mem = byte_size(70000000000)
+  match derive_exclusive_partition(supply: fixture_srv1_supply(), shard_count: 2, per_shard_memory: per_shard_mem) {
+    ExclusiveRefused { reason: _ } => true
+    ExclusiveAdmitted { partition: _ } => false
+  }
+}
+
+fn witness_shard_dropin_content_has_cpuset_and_memory() -> Bool {
+  let shard = ShardCpusetPartition {
+    shard_index: 0,
+    cpuset: CpuSetRange { first_thread: 0, last_thread: 17 },
+    memory_max: byte_size(19327352832),
+  }
+  let content = shard_dropin_content(shard: shard)
+  string_contains(s: content, pattern: "AllowedCPUs=0-17")
+    && string_contains(s: content, pattern: "MemoryMax=19327352832")
+    && string_contains(s: content, pattern: "[Service]")
+}
+
+fn witness_reserved_demand_besteffort_offer_refused() -> Bool {
+  match satisfies(offer: fixture_shared_offer(), demand: fixture_exclusive_demand()) {
+    Rejected { reason: _ } => true
+    Eligible { witness: _ } => false
+  }
+}
+
+fn witness_srv1_seven_shard_partition_fits() -> Bool {
+  let per_shard_mem = byte_size(19327352832)
+  match derive_exclusive_partition(supply: fixture_srv1_supply(), shard_count: 7, per_shard_memory: per_shard_mem) {
+    ExclusiveAdmitted { partition: p } =>
+      p.shards.length() == 7
+        && p.threads_per_shard == 18
+    ExclusiveRefused { reason: _ } => false
+  }
+}
+
+test fn lease_mode_exclusive_isolation_holds() -> Bool {
+  witness_exclusive_demand_shared_offer_refused()
+    && witness_exclusive_demand_exclusive_offer_admitted()
+    && witness_exclusive_leases_get_disjoint_cpusets()
+    && witness_oversubscribed_memory_admission_refused()
+    && witness_shard_dropin_content_has_cpuset_and_memory()
+    && witness_reserved_demand_besteffort_offer_refused()
+    && witness_srv1_seven_shard_partition_fits()
+}
