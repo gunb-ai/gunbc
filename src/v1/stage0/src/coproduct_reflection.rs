@@ -7,7 +7,7 @@ use crate::v1_interpreter::{
 };
 use crate::v1_std_core::{
     authored_name_at, expr_var_name_at, field_node_type_expr, inferred_to_node, param_node_name_at,
-    source_text_at, Connective, ExprData, NewlineIndex, Node, VarBindingKind,
+    Connective, ExprData, NewlineIndex, Node, VarBindingKind,
 };
 
 pub(crate) const NULLARY_PAYLOAD_TYPE_NAME: &str = "coproduct_nullary_payload";
@@ -604,8 +604,8 @@ fn marshal_fn_body_skeleton(
     node: &Rc<Node>,
     param_names: &[String],
     si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Value {
-    marshal_skeleton(ctx, node, param_names, si).0
+) -> (Value, std::collections::BTreeSet<String>) {
+    marshal_skeleton(ctx, node, param_names, si)
 }
 
 fn conj_record(ctx: &InterpContext, edges: Vec<Value>) -> Value {
@@ -817,24 +817,6 @@ pub fn eval_fn_arrow_decl_facts_live(
 
 /// Source-text fallback: true iff `param_name` appears as a complete identifier token
 /// anywhere in the source text of `body`'s span. Used when the strict skeleton check
-/// misses a genuine use because `binding_kind = None` (unresolved inference in whole-tree
-/// context). Reading from source is immune to inference state and catches every syntactic
-/// use of the parameter name.
-fn body_source_mentions_name(
-    body: &Rc<Node>,
-    param_name: &str,
-    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
-    let span = body.span.clone();
-    let Some(index) = si.get(&span.file) else {
-        return false;
-    };
-    let text = source_text_at(index.clone(), span);
-    // Split on any char that cannot appear in a .dag identifier (non-alphanumeric, non-_).
-    // If any token equals param_name exactly, the param is used in the body.
-    text.split(|c: char| !c.is_alphanumeric() && c != '_')
-        .any(|word| word == param_name)
-}
 
 /// Streaming wiring-liveness check over all fn/func items in the context.
 ///
@@ -884,24 +866,22 @@ pub fn check_wiring_liveness_streaming(
             }
             fn_count += 1;
             let qualified_name = logical_qualified_name(&info.module_name, &name);
-            // Build skeleton and check; skeleton is dropped at end of this block.
-            let output = marshal_fn_body_skeleton(ctx, body, &param_names, &si);
+            // Build skeleton and refs; both drop at end of this block.
+            // `refs` accumulates every ExprVar/ExprCall node.name seen during the walk
+            // (via node_local_reference_name, which requires no binding_kind).  In the
+            // whole-tree context some ExprVar nodes have binding_kind=None so the
+            // strict node_references_param path (which requires LocalValueBinding) misses
+            // them — refs is the permissive fallback that catches those.
+            let (output, refs) = marshal_fn_body_skeleton(ctx, body, &param_names, &si);
             for param_name in &param_names {
-                if !value_skeleton_contains_atom(ctx, &output, param_name) {
-                    // Fallback: in a whole-tree context some ExprVar nodes may have
-                    // binding_kind=None (type inference did not fully resolve them).
-                    // node_references_param requires Some(LocalValueBinding), so they
-                    // don't emit Atom leaves. Do a raw-AST walk; if the param name
-                    // appears as an authored ExprVar or ExprCall callee name anywhere
-                    // in the body tree, treat the wire as ambiguously live (don't report).
-                    if body_source_mentions_name(body, param_name, &si) {
-                        continue;
-                    }
+                if !value_skeleton_contains_atom(ctx, &output, param_name)
+                    && !refs.contains(param_name.as_str())
+                {
                     dead_count += 1;
                     report_dead(&qualified_name, param_name);
                 }
             }
-            // `output` drops here — peak memory is bounded by the largest single skeleton.
+            // `output` and `refs` drop here — memory bounded per-fn.
         }
     }
     (fn_count, dead_count)
