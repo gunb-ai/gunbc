@@ -55,14 +55,14 @@ fn node_dep_done(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, id: Process
 
 fn node_is_spawnable(n: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>) -> Bool {
   match n.intricacy {
-    Absent => false
-    Present { value: _ } => match n.volume {
-      Absent => false
-      Present { value: _ } => match n.repo {
-        Absent => false
-        Present { value: _ } => match n.acceptance {
-          Absent => false
-          Present { value: _ } =>
+    null => false
+    _ => match n.volume {
+      null => false
+      _ => match n.repo {
+        null => false
+        _ => match n.acceptance {
+          null => false
+          _ =>
             !item_is_done(item: n.line, merged: merged)
               && node_dep_done(nodes: nodes, edges: edges, id: n.node, merged: merged)
         }
@@ -79,13 +79,6 @@ fn next_spawnable(doc: RoadmapDocument, merged: List<Int>) -> List<RoadmapNode> 
 
 fn json_str(s: String) -> String {
   concat("\"", concat(s, "\""))
-}
-
-fn json_str_nullable(v: String?) -> String {
-  match v {
-    Present { value: s } => json_str(s: s)
-    Absent => "null"
-  }
 }
 
 fn json_int_list(nums: List<Int>) -> String {
@@ -131,21 +124,21 @@ fn node_title(item: RoadmapItem) -> String {
   }
 }
 
-fn node_plan_doc(carriers: List<Pointer>) -> String? {
-  fold(carriers, init: Absent, f: (acc, p) =>
-    match acc {
-      Present { value: _ } => acc
-      Absent => if p.label == "plan" { Present { value: p.path } } else { Absent }
-    }
-  )
+fn node_plan_doc_json(carriers: List<Pointer>) -> String {
+  let plans = carriers |> filter(p => p.label == "plan")
+  if count(plans) > 0 {
+    fold(plans, init: "null", f: (acc, p) => if acc == "null" { json_str(s: p.path) } else { acc })
+  } else {
+    "null"
+  }
 }
 
 fn node_json(n: RoadmapNode, edges: List<RoadmapEdge>) -> String {
-  let parent_id = match roadmap_parent(edges: edges, node: n.node) {
-    TopLevel => Absent
-    UnderParent { parent: pid } => Present { value: node_id_string(id: pid) }
+  let parent_id_json = match roadmap_parent(edges: edges, node: n.node) {
+    TopLevel => "null"
+    UnderParent { parent: pid } => json_str(s: node_id_string(id: pid))
   }
-  let plan = node_plan_doc(carriers: n.carriers)
+  let plan_json = node_plan_doc_json(carriers: n.carriers)
   let intricacy_s = match n.intricacy {
     Present { value: i } => intricacy_str(i: i)
     Absent => "low"
@@ -163,28 +156,24 @@ fn node_json(n: RoadmapNode, edges: List<RoadmapEdge>) -> String {
     Absent => "{\"kind\": \"manual\"}"
   }
   let title = node_title(item: n.line)
-  concat("{",
-    concat("\"node_id\": ", concat(json_str(s: node_id_string(id: n.node)),
-    concat(", \"title\": ", concat(json_str(s: title),
-    concat(", \"repo\": ", concat(json_str(s: repo_s),
-    concat(", \"intricacy\": ", concat(json_str(s: intricacy_s),
-    concat(", \"volume\": ", concat(json_str(s: volume_s),
-    concat(", \"parent_node_id\": ", concat(json_str_nullable(v: parent_id),
-    concat(", \"plan_doc\": ", concat(json_str_nullable(v: plan),
-    concat(", \"acceptance\": ", concat(acceptance_s, "}")))))))))))))))
+  let f1 = concat("\"node_id\": ", concat(json_str(s: node_id_string(id: n.node)), concat(", \"title\": ", json_str(s: title))))
+  let f2 = concat(", \"repo\": ", concat(json_str(s: repo_s), concat(", \"intricacy\": ", json_str(s: intricacy_s))))
+  let f3 = concat(", \"volume\": ", concat(json_str(s: volume_s), concat(", \"parent_node_id\": ", parent_id_json)))
+  let f4 = concat(", \"plan_doc\": ", concat(plan_json, concat(", \"acceptance\": ", acceptance_s)))
+  concat("{", concat(f1, concat(f2, concat(f3, concat(f4, "}")))))
+}
+
+
+fn join_strings(items: List<String>) -> String {
+  fold(items, init: { s: "", first: true }, f: (acc, item) => {
+    s: if acc.first { item } else { concat(acc.s, concat(", ", item)) },
+    first: false
+  }).s
 }
 
 fn ready_array_json(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> String {
-  concat("[",
-    concat(
-      fold(nodes, init: { s: "", first: true }, f: (acc, n) => {
-        let item = node_json(n: n, edges: edges)
-        s: if acc.first { item } else { concat(acc.s, concat(", ", item)) },
-        first: false
-      }).s,
-      "]"
-    )
-  )
+  let items = nodes |> map(n => node_json(n: n, edges: edges))
+  concat("[", concat(join_strings(items: items), "]"))
 }
 
 fn roadmap_spawn_request_json(doc: RoadmapDocument, merged: List<Int>, anchor_commit: String) -> String {
