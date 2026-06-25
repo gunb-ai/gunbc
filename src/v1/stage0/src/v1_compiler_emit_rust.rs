@@ -9509,11 +9509,7 @@ pub fn emit_fn_def(
                     .count() as i64)
                     > 0);
                 let type_params_str = if return_is_bare_generic {
-                    emit_type_params_with_clone_bound(
-                        type_params.clone(),
-                        ret_name,
-                        si.clone(),
-                    )
+                    emit_type_params_with_clone_bound(type_params.clone(), ret_name, si.clone())
                 } else {
                     emit_type_params(type_params.clone(), si.clone())
                 };
@@ -16420,12 +16416,11 @@ pub fn emit_typed_method_call(
                                                                 emit_info.clone(),
                                                                 1024,
                                                             );
-                                                            let recv_is_optional = (resolved_type(
-                                                                receiver.clone(),
-                                                            )
-                                                            .return_cardinality
-                                                            .clone()
-                                                                == Cardinality::CardOptional);
+                                                            let recv_is_optional =
+                                                                (resolved_type(receiver.clone())
+                                                                    .return_cardinality
+                                                                    .clone()
+                                                                    == Cardinality::CardOptional);
                                                             let recv_str = if recv_is_optional {
                                                                 v1_rt::concat(
                                                                     v1_rt::concat(

@@ -65,6 +65,8 @@ mod fold_unused_element_clone_elision_test;
 #[cfg(test)]
 mod generator_match_arm_test;
 #[cfg(test)]
+mod generic_return_clone_bound_test;
+#[cfg(test)]
 mod gunbhub_serve_program_test;
 #[cfg(test)]
 mod html_markup_smoke_test;
@@ -116,6 +118,8 @@ mod nodefold_generic_instantiation_test;
 mod optional_carrier_signature_test;
 #[cfg(test)]
 mod optional_consumer_fail_closed_test;
+#[cfg(test)]
+mod optional_receiver_method_unwrap_test;
 #[cfg(test)]
 mod parse;
 #[cfg(test)]

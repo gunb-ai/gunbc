@@ -15,8 +15,10 @@ use v1_compiler::v1_compiler_artifact::RenderTarget;
 
 const FIXTURE: &str = concat!(
     "module generic_return.fixture\n\n",
-    "record Wrapper<M> {\n",
+    // Two fields prevent single-field collapse; `value: M` is the bare-generic-return field.
+    "type Wrapper<M> {\n",
     "  value: M\n",
+    "  tag: Int\n",
     "}\n\n",
     // Bare generic return — must get M: Clone.
     "fn unwrap_value<M>(w: Wrapper<M>) -> M {\n",
