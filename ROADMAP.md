@@ -154,8 +154,8 @@ Gate: uncached non-redundant work is an ERROR, not "slow". The cache-key-from-in
   - [x] P1 honest keys by construction — warm==cold purity oracle **LANDED (#5429)**
     - [ ] P2 one door: `realize(subject)` sole API — kernel inhabits `cache_interface.dag` (#5446); ParseTable dissolution is downstream of the dsl→v2 de-fork (§5)
       - hermetic fixtures feed P2: [x] M4.1 universal hermetic corpus governance (#5236, [plan](docs/plans/m4-universal-hermetic-corpus.md)); [ ] M5 fixture-store onto one Realization kernel ([plan](docs/plans/m5-fixture-store-consolidation.md))
-      - [ ] P3 **resolve-cache enable** — purity proven (616/616); **#5429 gate CLEARED (landed)** — unblocked, pending the net-positive measurement (cold-CI re-cold) ← **core ask**
-- [ ] P4 economic tier (measured cost → `Materialization`) — instrument done (#5431); remaining = the consumer feedback + width-fold
+      - [x] P3 **resolve-cache enable** — purity proven (616/616); #5789 makes cache **always-on** (default `$TMPDIR/gunbc-rg-cache`, no env var required; CI pending merge 2026-06-25) ← **core ask landed**
+- [ ] P4 economic tier (measured cost → `Materialization`) — instrument done (#5431); remaining = (a) space arm: per-shard RSS plumbing → `CostEstimate.space` on `Runnable` (nodes A+B, [plan](docs/plans/resource-aware-scheduler.md)); (b) time arm: consumer feedback → `CostAccount.time = Measured` feeds width-fold (node C+D); dissolves `cost_account_predicted_zero()` on the floor path
 - [ ] P5 native `content(T) = content_hash(subgraph)` — gated on B2
 
 - blockers: [ ] B1 #5295 generic-instantiation (gates cross-shard `Share`) · [ ] B2 cross-tree content-hash (gates P5)
