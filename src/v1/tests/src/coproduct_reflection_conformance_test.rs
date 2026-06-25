@@ -7,7 +7,8 @@ use v1_compiler::v1_interpreter::{self, ExecutionMode, Value};
 
 use crate::helpers::{resolve_imports_transitively_with_source_roots, workspace_root};
 
-const CONFORMANCE_ENTRY: &str = "src/v2/test/claim/manual/coproduct_reflection_conformance_test.dag";
+const CONFORMANCE_ENTRY: &str =
+    "src/v2/test/claim/manual/coproduct_reflection_conformance_test.dag";
 const WITNESS_FN: &str = "coproduct_reflection_conformance_holds";
 
 fn v2_source_roots() -> Vec<std::path::PathBuf> {
