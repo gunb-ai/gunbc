@@ -5,6 +5,7 @@ import std.types { list_length }
 import std.measure { byte_size_count }
 import gunbc.fleet_intent { srv1_host, srv2_host, srv3_host, srv1_nvme0, srv3_nvme0 }
 import extdeps.observability { OutOfBand, StorageInventory, route_observation }
+import product.compute_fabric { storage_device_capacity, storage_device_pcie_link, storage_device_serial }
 
 test fn every_host_carries_its_real_drive() -> Bool {
   list_length(items: srv1_host.storage) == 1
@@ -13,11 +14,11 @@ test fn every_host_carries_its_real_drive() -> Bool {
 }
 
 test fn srv1_drive_is_catalog_grounded_wd_sn850x() -> Bool {
-  byte_size_count(srv1_nvme0.capacity) == 2000398934016
-    && match srv1_nvme0.catalog {
-      Present { value: c } =>
-        c.pcie_link.lane_count == 4
-          && match c.pcie_link.generation {
+  byte_size_count(storage_device_capacity(d: srv1_nvme0)) == 2000398934016
+    && match storage_device_pcie_link(d: srv1_nvme0) {
+      Present { value: link } =>
+        link.lane_count == 4
+          && match link.generation {
             Gen4 => true
             Gen3 => false
             Gen5 => false
@@ -27,10 +28,10 @@ test fn srv1_drive_is_catalog_grounded_wd_sn850x() -> Bool {
 }
 
 test fn srv3_drive_is_catalog_grounded_samsung_970_evo_plus_2tb() -> Bool {
-  byte_size_count(srv3_nvme0.capacity) == 2000398934016
-    && match srv3_nvme0.catalog {
-      Present { value: c } =>
-        match c.pcie_link.generation {
+  byte_size_count(storage_device_capacity(d: srv3_nvme0)) == 2000398934016
+    && match storage_device_pcie_link(d: srv3_nvme0) {
+      Present { value: link } =>
+        match link.generation {
           Gen3 => true
           Gen4 => false
           Gen5 => false
@@ -40,7 +41,7 @@ test fn srv3_drive_is_catalog_grounded_samsung_970_evo_plus_2tb() -> Bool {
 }
 
 test fn drive_serial_is_pending_until_in_band_enumeration() -> Bool {
-  (srv1_nvme0.serial == none) && (srv3_nvme0.serial == none)
+  (storage_device_serial(d: srv1_nvme0) == none) && (storage_device_serial(d: srv3_nvme0) == none)
 }
 
 test fn bmc_cannot_observe_drives_even_though_they_are_known() -> Bool {
