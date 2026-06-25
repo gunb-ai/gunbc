@@ -123,7 +123,7 @@ fn witness_multi_parent_partial_dep_excluded() -> Bool {
     RoadmapEdge { child: nid(s: "multi-child"), parent: nid(s: "multi-parent-2") },
   ]
   let doc = fixture_doc(nodes: [node_p1, node_p2, node_child], edges: edges)
-  let spawnable_partial = next_spawnable(doc: doc, merged: [100])
+  let spawnable_partial = next_spawnable(doc: doc, merged: [200])
   let spawnable_both = next_spawnable(doc: doc, merged: [100, 200])
   !any(spawnable_partial, n => n.node == nid(s: "multi-child"))
     && any(spawnable_both, n => n.node == nid(s: "multi-child"))
