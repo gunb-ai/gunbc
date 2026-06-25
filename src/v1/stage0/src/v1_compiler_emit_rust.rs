@@ -7407,6 +7407,37 @@ pub fn emit_typed_item(
                                             item.clone(),
                                             env.source_indices.clone(),
                                         );
+                                        let alias_rhs = resolved_type(item.clone());
+                                        let unused_params = alias_unused_param_names(
+                                            generic_names.clone(),
+                                            alias_rhs.clone(),
+                                            env.source_indices.clone(),
+                                        );
+                                        let rhs_str = if ((unused_params.clone().len() as i64) > 0) {
+                                            v1_rt::concat(
+                                                v1_rt::concat(
+                                                    "std::marker::PhantomData<".to_string(),
+                                                    rust_phantom_marker_inner(unused_params),
+                                                ),
+                                                ">".to_string(),
+                                            )
+                                        } else {
+                                            render_rust_alias_rhs_type(
+                                                alias_rhs,
+                                                generic_names,
+                                                shared_types,
+                                                emit_info.corpus_repr.clone(),
+                                                env.source_indices.clone(),
+                                                scope.clone(),
+                                                imports.clone(),
+                                                registry.clone(),
+                                                module_name.clone(),
+                                                export_sets.clone(),
+                                                typed_modules.clone(),
+                                                module_index.clone(),
+                                                emit_info.variant_to_enum.clone(),
+                                            )
+                                        };
                                         v1_rt::concat(
                                             v1_rt::concat(
                                                 v1_rt::concat(
@@ -7427,21 +7458,7 @@ pub fn emit_typed_item(
                                                     ),
                                                     " = ".to_string(),
                                                 ),
-                                                render_rust_alias_rhs_type(
-                                                    resolved_type(item.clone()),
-                                                    generic_names,
-                                                    shared_types,
-                                                    emit_info.corpus_repr.clone(),
-                                                    env.source_indices.clone(),
-                                                    scope.clone(),
-                                                    imports.clone(),
-                                                    registry.clone(),
-                                                    module_name.clone(),
-                                                    export_sets.clone(),
-                                                    typed_modules.clone(),
-                                                    module_index.clone(),
-                                                    emit_info.variant_to_enum.clone(),
-                                                ),
+                                                rhs_str,
                                             ),
                                             ";".to_string(),
                                         )
@@ -7924,6 +7941,22 @@ pub fn struct_unused_param_names(
                 }
                 __found
             } {
+                __result.push(p);
+            }
+        }
+        __result
+    })
+}
+
+pub fn alias_unused_param_names(
+    generic_param_names: Rc<Vec<String>>,
+    rhs: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for p in generic_param_names.iter().cloned() {
+            if !type_node_mentions_name(rhs.clone(), p.clone(), source_indices.clone()) {
                 __result.push(p);
             }
         }
