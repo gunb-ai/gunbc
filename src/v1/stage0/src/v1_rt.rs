@@ -148,6 +148,10 @@ pub fn ends_with(s: String, suffix: String) -> bool {
     s.ends_with(&*suffix)
 }
 
+pub fn trim(s: String) -> String {
+    s.trim().to_string()
+}
+
 pub fn count<T>(items: Rc<Vec<T>>) -> i64 {
     items.len() as i64
 }
