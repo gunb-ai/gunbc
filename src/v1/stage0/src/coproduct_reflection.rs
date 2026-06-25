@@ -822,6 +822,14 @@ pub fn eval_fn_arrow_decl_facts_live(
 /// O(max_skeleton_per_fn) rather than O(sum_of_all_skeletons). The callback
 /// `report_dead` is called with `(qualified_name, param_name)` for every dead wire.
 /// Returns `(fn_count, dead_wire_count)`.
+///
+/// PARALLEL-REP DEBT (§3): this Rust traversal duplicates the reachability logic
+/// in `dsl/test/claim/wiring_liveness/wiring_liveness_corpus_test.dag`
+/// (`wiring_reach_saturate` / `wiring_liveness_corpus_dead_wires`). The two must
+/// stay in lockstep or the floor gate silently diverges from the per-entry lens.
+/// dissolve-on: the interpreter fixpoint becomes O(n) (Realization carrier lands
+/// for `wiring_reach_saturate`) so the whole-tree bin can run the DAG lens directly,
+/// collapsing this Rust copy to zero.
 pub fn check_wiring_liveness_streaming(
     ctx: &InterpContext,
     mut report_dead: impl FnMut(&str, &str),
