@@ -1962,14 +1962,20 @@ pub fn compute_percentiles(mut values: Vec<u128>) -> TimingPercentiles {
     }
 }
 
+// SCAFFOLD (§7 hand-Rust shrink-to-zero): witness timing histogram is currently hand-written
+// Rust diagnostic output. Dissolution trigger: migrate to .dag-driven reporting surface
+// alongside existing performance/discovery summary in dsl/gunbc/ci_spec.dag once
+// v2 self-hosting pipeline reporting stabilizes. Until then, this hand-Rust handler
+// is the sole witness-granularity timing telemetry for CI floor profiling.
 pub fn generate_witness_timing_histogram(summary: &DiscoverySummary) -> String {
     if summary.performance_receipts.len() != summary.witness_outcomes.len() {
-        eprintln!(
-            "[histogram] ERROR: mismatched vector lengths (performance_receipts={}, witness_outcomes={}) — timings unreliable; skipping histogram",
+        let msg = format!(
+            "[histogram] SKIPPED: mismatched vector lengths (performance_receipts={}, witness_outcomes={}) — timings unreliable",
             summary.performance_receipts.len(),
             summary.witness_outcomes.len()
         );
-        return String::new();
+        eprintln!("{}", msg);
+        return format!("╔════════════════════════════════════════════════════════════════════════════╗\n║ {:<74} ║\n╚════════════════════════════════════════════════════════════════════════════╝\n", msg);
     }
 
     let mut entry_resolve_map: HashMap<String, u128> = HashMap::new();
