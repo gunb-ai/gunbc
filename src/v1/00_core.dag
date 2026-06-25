@@ -215,30 +215,6 @@ fn is_interpreter_blocking_diagnostic(d: CompilerDiagnostic) -> Bool {
   }
 }
 
-fn is_discovery_corpus_advisory_typecheck_diagnostic(d: CompilerDiagnostic) -> Bool {
-  match d {
-    UnresolvedType { name: _, span: _ } => true
-    TypeMismatch { expected: _, got: _, span: _ } => true
-    ArityMismatch { name: _, expected: _, got: _, span: _ } => true
-    VariantNotFound { variant: _, type_name: _, span: _ } => true
-    FieldNotFound { field: _, type_name: _, span: _ } => true
-    NonExhaustiveMatch { missing: _, span: _ } => true
-    MissingAnnotation { fn_name: _, what: _, span: _ } => true
-    VariantCollision { variant: _, enum1: _, enum2: _, span: _ } => true
-    _ => false
-  }
-}
-
-fn is_discovery_corpus_blocking_diagnostic(d: CompilerDiagnostic) -> Bool {
-  if is_interpreter_blocking_diagnostic(d: d) == false {
-    false
-  } else if is_discovery_corpus_advisory_typecheck_diagnostic(d: d) {
-    false
-  } else {
-    true
-  }
-}
-
 fn make_error_node(diagnostic: CompilerDiagnostic, module_name: String) -> ErrorNode {
   ErrorNode { diagnostic: diagnostic, module_name: module_name }
 }

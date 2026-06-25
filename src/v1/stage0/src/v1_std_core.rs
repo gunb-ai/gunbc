@@ -675,30 +675,6 @@ pub fn is_interpreter_blocking_diagnostic(d: Rc<CompilerDiagnostic>) -> bool {
     }
 }
 
-pub fn is_discovery_corpus_advisory_typecheck_diagnostic(d: Rc<CompilerDiagnostic>) -> bool {
-    match (*d).clone() {
-        CompilerDiagnostic::UnresolvedType { .. } => true,
-        CompilerDiagnostic::TypeMismatch { .. } => true,
-        CompilerDiagnostic::ArityMismatch { .. } => true,
-        CompilerDiagnostic::VariantNotFound { .. } => true,
-        CompilerDiagnostic::FieldNotFound { .. } => true,
-        CompilerDiagnostic::NonExhaustiveMatch { .. } => true,
-        CompilerDiagnostic::MissingAnnotation { .. } => true,
-        CompilerDiagnostic::VariantCollision { .. } => true,
-        _ => false,
-    }
-}
-
-pub fn is_discovery_corpus_blocking_diagnostic(d: Rc<CompilerDiagnostic>) -> bool {
-    if !is_interpreter_blocking_diagnostic(d.clone()) {
-        false
-    } else if is_discovery_corpus_advisory_typecheck_diagnostic(d.clone()) {
-        false
-    } else {
-        true
-    }
-}
-
 pub fn make_error_node(diagnostic: Rc<CompilerDiagnostic>, module_name: String) -> Rc<ErrorNode> {
     Rc::new(ErrorNode {
         diagnostic: diagnostic,

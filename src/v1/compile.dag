@@ -1178,10 +1178,6 @@ fn compile_to_resolved(sources: List<SourceFile>) -> ResolvedPipelineResult {
   )
 }
 
-fn compile_to_resolved_discovery_corpus_advisory(sources: List<SourceFile>) -> ResolvedPipelineResult {
-  compile_to_resolved(sources: sources)
-}
-
 fn compile_to_resolved_with_options(sources: List<SourceFile>, options: CompilePipelineOptions) -> ResolvedPipelineResult {
   let frontend = front_end_sources(sources: sources)
   let newline_indices = frontend.newline_indices

@@ -1180,119 +1180,34 @@ fn bare_import_wildcard_survives_pipeline() {
 }
 
 #[test]
-fn discovery_corpus_advisory_demotes_typecheck_not_parse_or_resolve() {
+fn discovery_corpus_typecheck_diagnostics_are_blocking() {
+    // PROMOTION receipt: the discovery-corpus advisory typecheck gate (#5760) was
+    // promoted to blocking once the whole-tree advisory debt reached zero. The
+    // discovery floor now uses `is_interpreter_blocking_diagnostic` for typecheck
+    // diagnostics (no demotion), so a typecheck error fails resolution loudly.
     use std::rc::Rc;
-    use v1_compiler::v1_std_core::{
-        is_discovery_corpus_blocking_diagnostic, is_interpreter_blocking_diagnostic, no_span,
-        CompilerDiagnostic,
-    };
+    use v1_compiler::v1_compiler_compile::{compile_to_resolved, SourceFile};
+    use v1_compiler::v1_std_core::is_interpreter_blocking_diagnostic;
 
-    let typecheck = Rc::new(CompilerDiagnostic::VariantNotFound {
-        variant: "Empty".to_string(),
-        type_name: "FreeMonoid<T>".to_string(),
-        span: no_span(),
-    });
-    assert!(is_interpreter_blocking_diagnostic(typecheck.clone()));
-    assert!(!is_discovery_corpus_blocking_diagnostic(typecheck));
-
-    let parse = Rc::new(CompilerDiagnostic::ParseError {
-        message: "expected module".to_string(),
-        span: no_span(),
-    });
-    assert!(is_discovery_corpus_blocking_diagnostic(parse));
-}
-
-#[test]
-fn resolve_typecheck_gate_strict_blocks_advisory_demoted_typecheck() {
-    use std::rc::Rc;
-    use v1_compiler::v1_std_core::{
-        is_discovery_corpus_advisory_typecheck_diagnostic, is_discovery_corpus_blocking_diagnostic,
-        is_interpreter_blocking_diagnostic, no_span, CompilerDiagnostic,
-    };
-
-    let typecheck = Rc::new(CompilerDiagnostic::VariantNotFound {
-        variant: "Empty".to_string(),
-        type_name: "FreeMonoid<T>".to_string(),
-        span: no_span(),
-    });
-    assert!(is_interpreter_blocking_diagnostic(typecheck.clone()));
-    assert!(is_discovery_corpus_advisory_typecheck_diagnostic(
-        typecheck.clone()
-    ));
-    assert!(!is_discovery_corpus_blocking_diagnostic(typecheck.clone()));
-    assert!(is_interpreter_blocking_diagnostic(typecheck));
-}
-
-#[test]
-#[ignore = "receipt: parse-resilience unmasks ~779 typecheck diags demoted by discovery advisory gate"]
-fn parse_resilience_unmasked_typecheck_debt_receipt() {
-    use std::collections::BTreeSet;
-    use v1_compiler::cli_run::{
-        build_multi_entry_index, discover_floor_corpus_rows,
-        resolve_entry_with_index_for_discovery_corpus,
-    };
-    use v1_compiler::v1_std_core::{
-        is_discovery_corpus_advisory_typecheck_diagnostic, is_interpreter_blocking_diagnostic,
-    };
-
-    let ws = workspace_root();
-    std::env::set_current_dir(&ws).expect("chdir to workspace root");
-    let roots = vec![
-        ws.join("dsl").to_string_lossy().into_owned(),
-        ws.join("src/v2").to_string_lossy().into_owned(),
-    ];
-    let scan_dirs = vec![
-        "dsl/test/claim".to_string(),
-        "src/v2/compiler/manual".to_string(),
-    ];
-    let rows = discover_floor_corpus_rows(&roots, &scan_dirs).expect("discover roster");
-    let unique_entries: BTreeSet<String> = rows.into_iter().map(|r| r.entry).collect();
-    let index = build_multi_entry_index(&roots);
-
-    let mut advisory = 0usize;
-    let mut blocking_non_advisory = 0usize;
-    let mut resolve_failures = 0usize;
-    for entry in &unique_entries {
-        match resolve_entry_with_index_for_discovery_corpus(&index, entry) {
-            Ok(_) => {}
-            Err(_) => resolve_failures += 1,
-        }
-    }
-
-    let sample = ws
-        .join("src/v2/workflow/ci_floor_plan.dag")
-        .to_string_lossy()
-        .into_owned();
-    let sources = v1_compiler::cli_run::load_sources_for_entry(&roots, &sample)
-        .expect("load ci_floor_plan closure");
-    let resolved = v1_compiler::v1_compiler_compile::compile_to_resolved(Rc::new(sources));
-    for d in resolved.diagnostics.iter() {
-        if !is_interpreter_blocking_diagnostic(d.diagnostic.clone()) {
-            continue;
-        }
-        if is_discovery_corpus_advisory_typecheck_diagnostic(d.diagnostic.clone()) {
-            advisory += 1;
-        } else {
-            blocking_non_advisory += 1;
-        }
-    }
-
-    eprintln!(
-        "parse-resilience debt receipt: unique_entries={} resolve_failures_with_advisory={} \
-         ci_floor_plan_advisory_typecheck={} ci_floor_plan_blocking_non_advisory={}",
-        unique_entries.len(),
-        resolve_failures,
-        advisory,
-        blocking_non_advisory
-    );
-    assert_eq!(
-        resolve_failures, 0,
-        "discovery resolve must not fail on advisory-demoted typecheck debt"
-    );
+    let sources = vec![Rc::new(SourceFile {
+        path: "typeerr.dag".to_string(),
+        content: "module test.typeerr\nfn bad() -> Int { Nonexistent { x: 1 } }\n".to_string(),
+    })];
+    let resolved = compile_to_resolved(Rc::new(sources));
+    let blocking = resolved
+        .diagnostics
+        .iter()
+        .filter(|d| is_interpreter_blocking_diagnostic(d.diagnostic.clone()))
+        .count();
     assert!(
-        unique_entries.len() >= 200,
-        "expected substantial discovery corpus breadth, got {}",
-        unique_entries.len()
+        blocking >= 1,
+        "a typecheck error must surface as a blocking diagnostic under the promoted \
+         (no-demotion) discovery gate; got diagnostics: {:?}",
+        resolved
+            .diagnostics
+            .iter()
+            .map(|d| v1_compiler::v1_std_core::diagnostic_to_message(d.diagnostic.clone()))
+            .collect::<Vec<_>>()
     );
 }
 
@@ -11841,124 +11756,3 @@ fn ownership_stage0_census() {
     );
 }
 
-#[test]
-#[ignore = "census: enumerate whole-tree advisory typecheck debt by kind/name/module"]
-fn whole_tree_advisory_typecheck_census() {
-    use std::collections::BTreeSet;
-    use v1_compiler::cli_run::{
-        build_multi_entry_index, discover_floor_corpus_rows,
-        resolve_entry_with_parse_cache_advisory, ResolveTypecheckGate,
-    };
-    let ws = workspace_root();
-    std::env::set_current_dir(&ws).expect("chdir to workspace root");
-    let roots = vec![
-        ws.join("dsl").to_string_lossy().into_owned(),
-        ws.join("src/v2").to_string_lossy().into_owned(),
-    ];
-    let scan_dirs = vec![
-        "dsl/test/claim".to_string(),
-        "src/v2/compiler/manual".to_string(),
-    ];
-    let rows = discover_floor_corpus_rows(&roots, &scan_dirs).expect("discover roster");
-    let entries: BTreeSet<String> = rows.into_iter().map(|r| r.entry).collect();
-    eprintln!("census: {} discovery entries", entries.len());
-    let index = build_multi_entry_index(&roots);
-
-    let mut by_kind: HashMap<&'static str, usize> = HashMap::new();
-    let mut by_name: HashMap<String, usize> = HashMap::new();
-    let mut by_module: HashMap<String, usize> = HashMap::new();
-    let mut by_entry: HashMap<String, usize> = HashMap::new();
-    // dedup advisory diagnostics globally by (file, byte-start, kind, name)
-    let mut seen: BTreeSet<(String, i64, &'static str, String)> = BTreeSet::new();
-    let mut advisory = 0usize;
-    let mut total_logged = 0usize;
-    let mut done = 0usize;
-    for entry in &entries {
-        let mut diags: Vec<Rc<v1_compiler::v1_std_core::ErrorNode>> = Vec::new();
-        let _ = resolve_entry_with_parse_cache_advisory(
-            &index,
-            entry,
-            ResolveTypecheckGate::DiscoveryCorpusAdvisory,
-            &mut Some(&mut diags),
-        );
-        for d in diags.iter() {
-            total_logged += 1;
-            let span = d.diagnostic.span();
-            let (kind, name) = census_kind_name(&d.diagnostic);
-            let key = (span.file.clone(), span.start, kind, name.clone());
-            if !seen.insert(key) {
-                continue;
-            }
-            advisory += 1;
-            *by_kind.entry(kind).or_insert(0) += 1;
-            *by_name.entry(format!("{} {}", kind, name)).or_insert(0) += 1;
-            *by_module.entry(span.file.clone()).or_insert(0) += 1;
-            *by_entry.entry(entry.clone()).or_insert(0) += 1;
-            eprintln!("ADV\t{}\t{}\t{}:{}", kind, name, span.file, span.start);
-        }
-        done += 1;
-        if done % 25 == 0 {
-            eprintln!(
-                "PROGRESS {}/{} distinct={} logged={}",
-                done,
-                entries.len(),
-                advisory,
-                total_logged
-            );
-        }
-    }
-    eprintln!(
-        "=== ADVISORY LOGGED (with dups across closures): {} ===",
-        total_logged
-    );
-
-    eprintln!("=== ADVISORY TOTAL (distinct): {} ===", advisory);
-    let mut kinds: Vec<_> = by_kind.into_iter().collect();
-    kinds.sort_by(|a, b| b.1.cmp(&a.1));
-    eprintln!("--- by kind ---");
-    for (k, c) in &kinds {
-        eprintln!("  {:5} {}", c, k);
-    }
-    let mut names: Vec<_> = by_name.into_iter().collect();
-    names.sort_by(|a, b| b.1.cmp(&a.1));
-    eprintln!("--- top 40 by name ---");
-    for (n, c) in names.iter().take(40) {
-        eprintln!("  {:5} {}", c, n);
-    }
-    let mut mods: Vec<_> = by_module.into_iter().collect();
-    mods.sort_by(|a, b| b.1.cmp(&a.1));
-    eprintln!("--- top 40 files ---");
-    for (m, c) in mods.iter().take(40) {
-        eprintln!("  {:5} {}", c, m);
-    }
-    let mut ents: Vec<_> = by_entry.into_iter().collect();
-    ents.sort_by(|a, b| b.1.cmp(&a.1));
-    eprintln!("--- top 30 entries (new-distinct introduced) ---");
-    for (e, c) in ents.iter().take(30) {
-        eprintln!("  {:5} {}", c, e);
-    }
-}
-
-fn census_kind_name(d: &Rc<CompilerDiagnostic>) -> (&'static str, String) {
-    match &**d {
-        CompilerDiagnostic::UnresolvedType { name, .. } => ("UnresolvedType", name.clone()),
-        CompilerDiagnostic::TypeMismatch { expected, got, .. } => {
-            ("TypeMismatch", format!("{} != {}", expected, got))
-        }
-        CompilerDiagnostic::ArityMismatch { name, .. } => ("ArityMismatch", name.clone()),
-        CompilerDiagnostic::VariantNotFound {
-            variant, type_name, ..
-        } => ("VariantNotFound", format!("{}::{}", type_name, variant)),
-        CompilerDiagnostic::FieldNotFound {
-            field, type_name, ..
-        } => ("FieldNotFound", format!("{}.{}", type_name, field)),
-        CompilerDiagnostic::NonExhaustiveMatch { .. } => ("NonExhaustiveMatch", String::new()),
-        CompilerDiagnostic::MissingAnnotation { fn_name, what, .. } => {
-            ("MissingAnnotation", format!("{}:{}", fn_name, what))
-        }
-        CompilerDiagnostic::VariantCollision { variant, .. } => {
-            ("VariantCollision", variant.clone())
-        }
-        _ => ("Other", String::new()),
-    }
-}

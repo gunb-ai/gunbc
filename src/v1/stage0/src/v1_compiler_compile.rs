@@ -2352,12 +2352,6 @@ pub fn compile_to_resolved(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<ResolvedPipel
     compile_to_resolved_with_options(sources, default_compile_pipeline_options())
 }
 
-pub fn compile_to_resolved_discovery_corpus_advisory(
-    sources: Rc<Vec<Rc<SourceFile>>>,
-) -> Rc<ResolvedPipelineResult> {
-    compile_to_resolved(sources)
-}
-
 pub fn compile_to_resolved_with_options(
     sources: Rc<Vec<Rc<SourceFile>>>,
     options: CompilePipelineOptions,
