@@ -15,6 +15,7 @@ import extdeps.uri_validation {
   SchemeNotAllowlisted,
   JavascriptScheme,
   DataScheme,
+
 }
 import extdeps.languages.html {
   try_serialize_html_source,
