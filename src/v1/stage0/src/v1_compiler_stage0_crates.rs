@@ -271,8 +271,6 @@ pub fn stage0_crate_plan() -> Rc<Stage0CratePlan> {
                 header_doc: stage0_core_header_doc(),
                 modules: Rc::new(vec![
                     "extdeps_external_authority".to_string(),
-                    "extdeps_uri".to_string(),
-                    "extdeps_uri_path".to_string(),
                     "extdeps_languages_dag_emit".to_string(),
                     "extdeps_languages_dag_syntax".to_string(),
                     "extdeps_languages_dag_types".to_string(),
@@ -285,6 +283,8 @@ pub fn stage0_crate_plan() -> Rc<Stage0CratePlan> {
                     "extdeps_languages_rust_emit".to_string(),
                     "extdeps_languages_rust_syntax".to_string(),
                     "extdeps_languages_rust_types".to_string(),
+                    "extdeps_uri".to_string(),
+                    "extdeps_uri_path".to_string(),
                     "std_algebra".to_string(),
                     "std_coercion".to_string(),
                     "std_computation".to_string(),
