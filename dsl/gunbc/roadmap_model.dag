@@ -16,7 +16,7 @@ type Volume
   | VolumeLarge
 
 type Acceptance
-  = PrsMerged { prs: List<Int> }
+  = PrsMerged
   | ManualAcceptance
 
 type NodeSizing
@@ -29,8 +29,6 @@ type RoadmapNode {
   carriers: List<Pointer>
   sizing: NodeSizing
 }
-
-fn node_id_string(id: ProcessNodeId) -> String { id }
 
 type RoadmapEdge {
   child: ProcessNodeId
