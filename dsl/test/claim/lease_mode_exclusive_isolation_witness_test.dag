@@ -49,6 +49,7 @@ import std.measure {
   byte_size,
   byte_size_count,
   hardware_thread_count,
+  hardware_thread_count_value,
   hertz,
 }
 import std.types { Bool, String }
@@ -177,7 +178,7 @@ fn witness_srv1_seven_shard_partition_fits() -> Bool {
   match derive_exclusive_partition(supply: fixture_srv1_supply(), shard_count: 7, per_shard_memory: per_shard_mem, oomd_headroom: fixture_oomd_headroom()) {
     ExclusiveAdmitted { partition: p } =>
       p.shards.length() == 7
-        && p.threads_per_shard == 18
+        && hardware_thread_count_value(t: p.threads_per_shard) == 18
     ExclusiveRefused { reason: _ } => false
   }
 }

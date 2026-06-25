@@ -132,7 +132,7 @@ type ShardCpusetPartition {
 
 type ExclusivePartition {
   host: HostIdentity
-  threads_per_shard: Int
+  threads_per_shard: HardwareThreadCount
   shards: List<ShardCpusetPartition>
 }
 
@@ -770,26 +770,24 @@ type ComputeLease {
   eligibility: ComputeWitness<ComputeLeaseEligibility>
 }
 
-fn lease_mode_ordinal(mode: LeaseMode) -> Int {
-  match mode {
-    BestEffort => 0
-    Reserved   => 1
-  }
-}
-
 fn lease_mode_satisfies(supply: LeaseMode, demand: LeaseMode) -> Bool {
-  lease_mode_ordinal(supply) >= lease_mode_ordinal(demand)
-}
-
-fn performance_isolation_ordinal(iso: PerformanceIsolation) -> Int {
-  match iso {
-    Shared    => 0
-    Exclusive => 1
+  match demand {
+    BestEffort => true
+    Reserved => match supply {
+      Reserved   => true
+      BestEffort => false
+    }
   }
 }
 
 fn performance_isolation_satisfies(supply: PerformanceIsolation, demand: PerformanceIsolation) -> Bool {
-  performance_isolation_ordinal(supply) >= performance_isolation_ordinal(demand)
+  match demand {
+    Shared => true
+    Exclusive => match supply {
+      Exclusive => true
+      Shared    => false
+    }
+  }
 }
 
 fn cpuset_range_string(r: CpuSetRange) -> String {
@@ -815,7 +813,7 @@ fn shard_dropin(host: HostIdentity, shard: ShardCpusetPartition) -> SystemdShard
 }
 
 fn build_shard_list_loop(
-  threads_per_shard: Int,
+  threads_per_shard: HardwareThreadCount,
   memory_per_shard: ByteSize,
   shard_count: Int,
   idx: Int,
@@ -824,8 +822,9 @@ fn build_shard_list_loop(
   if idx >= shard_count {
     acc
   } else {
-    let first = idx * threads_per_shard
-    let last = first + threads_per_shard - 1
+    let t = hardware_thread_count_value(t: threads_per_shard)
+    let first = idx * t
+    let last = first + t - 1
     let shard = ShardCpusetPartition {
       shard_index: idx,
       cpuset: CpuSetRange { first_thread: first, last_thread: last },
@@ -853,12 +852,13 @@ fn derive_exclusive_partition(
   if shard_count <= 0 {
     ExclusiveRefused { reason: "shard_count must be positive" }
   } else {
-    let threads_per_shard = total_threads / shard_count
-    if threads_per_shard <= 0 {
+    let threads_per_shard_count = total_threads / shard_count
+    if threads_per_shard_count <= 0 {
       ExclusiveRefused { reason: "insufficient hardware threads for shard count" }
     } else if requested_ram > available_ram {
       ExclusiveRefused { reason: "reserved memory exceeds host capacity minus oomd headroom" }
     } else {
+      let threads_per_shard = hardware_thread_count(threads_per_shard_count)
       ExclusiveAdmitted {
         partition: ExclusivePartition {
           host: supply.identity,
