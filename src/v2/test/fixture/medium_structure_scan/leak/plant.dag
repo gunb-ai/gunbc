@@ -26,3 +26,8 @@ fn clean_string_op_over_plain(s: String) -> Bool {
 fn planted_shell_emit_side_leak() -> String {
   "#!/usr/bin/env bash"
 }
+
+fn planted_html_check_side_leak() -> Bool {
+  let html = serialize_fragment(frag: "placeholder")
+  starts_with(s: html, prefix: "<button>")
+}
