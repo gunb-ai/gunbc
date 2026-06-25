@@ -16,20 +16,11 @@
 //! holds the modules), so reflected `Node` values are self-consistent — no
 //! cross-context `Symbol` mismatch.
 //!
-//! SCAFFOLD / not floor-enrolled yet (DESIGN §5 "wall after grounding"). The
-//! whole-tree wiring GATE over the real corpus is BLOCKED on a single named
-//! authority: the `v2.lens.resolved_imports` whole-tree-resolve grounding — i.e.
-//! `front_end_sources` no longer short-circuiting the whole graph to `None` on an
-//! unresolved import. The `src/v2` corpus does not whole-tree-resolve today
-//! (test scaffolds and even non-test modules like `v2.lens.testgen` import
-//! modules that only resolve inside a scoped closure), so this bin can run the
-//! lens only over a source-root set that fully resolves. The enumeration
-//! SUBSTRATE it stands on (`whole_tree_resolved_ctx` + the reflection accessor)
-//! is proven green-by-execution by `v1-compiler-tests`
-//! `whole_tree_wiring_enum_test`. DISSOLVES INTO a live floor gate (flip the
-//! existing per-entry `wiring_liveness_corpus_is_clean` to whole-tree) the moment
-//! that resolve grounding lands and `--source-root src/v2 --source-root dsl`
-//! resolves clean.
+//! Live CI floor gate (gunbc#5364 + #5760). The `v2.lens.resolved_imports`
+//! whole-tree-resolve grounding landed in #5760 (per-module fail-closed
+//! `front_end_sources`), unblocking this gate. Enrolled as
+//! `WiringLivenessWholeTreeGate` in `gunbc_ci_floor_gates`; invoked via
+//! `tools.wiring_liveness_transport` / `tools.wiring_liveness_gate`.
 
 use std::process::ExitCode;
 
