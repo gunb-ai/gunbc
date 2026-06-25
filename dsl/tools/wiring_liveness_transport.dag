@@ -14,14 +14,6 @@ fn wlt_source_root_flags() -> List<ShellWord> {
   fold(witness_layer_roots, init: [], f: (acc, r) => concat(acc, [lit(text: "--source-root"), lit(text: r)]))
 }
 
-fn wlt_exclude_flags() -> List<ShellWord> {
-  [
-    lit(text: "--exclude-subpath"), lit(text: "lens/wiring_liveness_corpus_test.dag"),
-    lit(text: "--exclude-subpath"), lit(text: "v2.test."),
-    lit(text: "--exclude-subpath"), lit(text: "m4_universal_corpus_witness")
-  ]
-}
-
 fn wiring_liveness_whole_tree_program() -> ShellProgram {
   let bin = var_ref(name: "WIRING_LIVENESS_WHOLE_TREE")
   let root = var_ref(name: "ROOT")
@@ -29,7 +21,12 @@ fn wiring_liveness_whole_tree_program() -> ShellProgram {
     set_e: true,
     statements: concat(ensure_wiring_liveness_whole_tree_built(), [
       command(words: [lit(text: "cd"), root]),
-      command(words: concat([bin], concat(wlt_source_root_flags(), wlt_exclude_flags())))
+      command(words: concat(
+        [bin],
+        concat(wlt_source_root_flags(), [
+          lit(text: "--exclude-subpath"), lit(text: "lens/wiring_liveness_corpus_test.dag")
+        ])
+      ))
     ])
   }
 }

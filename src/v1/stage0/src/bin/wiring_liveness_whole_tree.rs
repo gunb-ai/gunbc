@@ -79,7 +79,7 @@ fn run() -> Result<ExitCode, ExitCode> {
         &source_roots,
         &exclude_subpaths,
         ExecutionMode::Wet,
-        ResolveTypecheckGate::DiscoveryCorpusAdvisory,
+        ResolveTypecheckGate::WholeLivenessCorpus,
     )
     .map_err(
         |e| {

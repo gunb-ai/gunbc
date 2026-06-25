@@ -36,12 +36,19 @@ use crate::resolved_graph_cache::{
 pub enum ResolveTypecheckGate {
     Strict,
     DiscoveryCorpusAdvisory,
+    /// Best-effort whole-liveness-corpus mode: no errors are blocking. Requires
+    /// that `front_end_sources` is per-module fail-closed (post-#5760) so the
+    /// graph is `Some` even when individual modules have unresolvable imports or
+    /// type errors. Used by `wiring_liveness_whole_tree` to compile as much of
+    /// the corpus as possible and run the dead-wire check on the partial graph.
+    WholeLivenessCorpus,
 }
 
 fn is_resolve_typecheck_blocking(d: Rc<CompilerDiagnostic>, gate: ResolveTypecheckGate) -> bool {
     match gate {
         ResolveTypecheckGate::Strict => is_interpreter_blocking_diagnostic(d),
         ResolveTypecheckGate::DiscoveryCorpusAdvisory => is_discovery_corpus_blocking_diagnostic(d),
+        ResolveTypecheckGate::WholeLivenessCorpus => false,
     }
 }
 
