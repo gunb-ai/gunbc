@@ -795,7 +795,7 @@ pub fn eval_fn_arrow_decl_facts_live(
                 }
                 param_names.push(pn);
             }
-            let output = marshal_fn_body_skeleton(ctx, body, &param_names, &si);
+            let output = marshal_fn_body_skeleton(ctx, body, &param_names, &si).0;
             let params: Vec<Value> = param_names
                 .iter()
                 .map(|pn| fn_arrow_param_record(ctx, pn))
@@ -814,9 +814,6 @@ pub fn eval_fn_arrow_decl_facts_live(
     }
     Ok(crate::v1_interpreter::list_value(rows))
 }
-
-/// Source-text fallback: true iff `param_name` appears as a complete identifier token
-/// anywhere in the source text of `body`'s span. Used when the strict skeleton check
 
 /// Streaming wiring-liveness check over all fn/func items in the context.
 ///
