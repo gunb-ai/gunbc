@@ -262,7 +262,7 @@ fn translate_target_bundle_malformed_diagnostic(target: TargetModel) -> Diagnost
 }
 fn translate_target_bundle_duplicate_edge_diagnostic(
   target: TargetModel,
-  edge_name: Symbol
+  _edge_name: Symbol
 ) -> Diagnostic {
   Diagnostic {
     reason: ^translate_target_bundle_duplicate_edge,
@@ -501,7 +501,7 @@ fn grammar_relation_row_with_bodied_scaffold(rules: Node) -> Outcome<Node> {
 
 fn grammar_relation_row_for_bodied_arrow_serialize(
   rules: Node,
-  emitted: Node
+  _emitted: Node
 ) -> Outcome<TargetBodiedArrowStatementScaffold> {
   bind_outcome(
     o: grammar_relation_row_with_bodied_scaffold(rules: rules),
@@ -519,7 +519,7 @@ fn grammar_inverse_bodied_arrow_validated(
     o: target_bundle_child(target: target, edge_name: ^target_model_edge_translation_rules),
     f: fn(rules) {
       bind_outcome(
-        o: grammar_relation_row_for_bodied_arrow_serialize(rules: rules, emitted: emitted),
+        o: grammar_relation_row_for_bodied_arrow_serialize(rules: rules, _emitted: emitted),
         f: fn(_) {
           outcome_accepted(emitted)
         }
@@ -873,7 +873,7 @@ fn target_serialize_bodied_arrow_from_model(
     o: target_bundle_child(target: target, edge_name: ^target_model_edge_translation_rules),
     f: fn(rules) {
       bind_outcome(
-        o: grammar_relation_row_for_bodied_arrow_serialize(rules: rules, emitted: emitted),
+        o: grammar_relation_row_for_bodied_arrow_serialize(rules: rules, _emitted: emitted),
         f: fn(scaffold) {
           bind_outcome(
             o: target_value_expression_projection_from_target(target: target),
@@ -1167,7 +1167,7 @@ fn target_bundle_child(target: TargetModel, edge_name: Symbol) -> Outcome<Node> 
           outcome_rejected(
             translate_target_bundle_duplicate_edge_diagnostic(
               target: target,
-              edge_name: edge_name
+              _edge_name: edge_name
             )
           )
         BundleChildInvalidEdge =>
@@ -1195,7 +1195,7 @@ fn target_bundle_optional_child(target: TargetModel, edge_name: Symbol) -> Outco
           outcome_rejected(
             translate_target_bundle_duplicate_edge_diagnostic(
               target: target,
-              edge_name: edge_name
+              _edge_name: edge_name
             )
           )
         BundleChildInvalidEdge =>
@@ -1698,7 +1698,7 @@ fn translate_type_expression_arrow_project(
           original_split: original_split,
           target: target,
           projection: projection,
-          anchor: node
+          _anchor: node
         ),
         f: fn(split) {
           outcome_accepted(
@@ -2898,7 +2898,7 @@ fn translate_project_arrow_split_types(
   original_split: TypeExprArrowSplit,
   target: TargetModel,
   projection: TargetTypeExpressionProjection,
-  anchor: Node
+  _anchor: Node
 ) -> Outcome<TypeExprArrowSplit> {
   bind_outcome(
     o: translate_project_arrow_input_types(
@@ -3473,8 +3473,8 @@ fn translate_computation_fold_init(node: Node) -> Outcome<Node> {
 }
 fn translate_fold_init(
   node: Node,
-  tree: InferredTree,
-  target: TargetModel
+  _tree: InferredTree,
+  _target: TargetModel
 ) -> Outcome<Node> {
   match node.kind {
     TypeNode { connective: _ } => translate_type_fold_init(node: node)
@@ -3565,7 +3565,7 @@ fn translate_grammar_relation_row_match(target: TargetModel, emitted: Node) -> O
 }
 fn translate_type_expression_tree(
   node: Node,
-  tree: InferredTree,
+  _tree: InferredTree,
   target: TargetModel,
   projection: TargetTypeExpressionProjection
 ) -> Outcome<Node> {
@@ -3603,7 +3603,7 @@ fn translate_node_with_projection(
         TypeNode { connective: _ } =>
           translate_type_expression_tree(
             node: node,
-            tree: tree,
+            _tree: tree,
             target: target,
             projection: projection
           )
@@ -3678,7 +3678,7 @@ fn translate_node_computation(
   fold_node(
     n: node,
     algebra: NodeFold {
-      init: fn(n0) { translate_fold_init(node: n0, tree: tree, target: target) },
+      init: fn(n0) { translate_fold_init(node: n0, _tree: tree, _target: target) },
       step: fn(acc, e, child) { translate_fold_step(acc: acc, edge: e, child: child) }
     }
   )

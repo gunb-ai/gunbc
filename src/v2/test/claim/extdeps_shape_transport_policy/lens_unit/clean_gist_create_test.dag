@@ -19,7 +19,7 @@ data clean_gist_create_fusion_facts: List<ExtdepsTransportFusionFact> = []
 test fn clean_gist_create_is_green_holds() -> Bool {
   extdeps_shape_transport_policy_violation_count_for_operation(
     argv_facts: clean_gist_create_argv_facts,
-    fusion_facts: clean_gist_create_fusion_facts,
+    _fusion_facts: clean_gist_create_fusion_facts,
     module: extdeps_github_gists_module,
     service: clean_gist_create_service,
     operation: clean_gist_create_operation

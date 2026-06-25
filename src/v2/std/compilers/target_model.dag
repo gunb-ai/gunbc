@@ -1434,7 +1434,7 @@ fn target_operator_realizations_catalog_node(rows: List<Node>) -> Node {
   )
 }
 
-fn target_value_projection_field_missing_diagnostic(bundle: Node, field: Symbol) -> Diagnostic {
+fn target_value_projection_field_missing_diagnostic(bundle: Node, _field: Symbol) -> Diagnostic {
   Diagnostic {
     reason: ^target_value_projection_field_missing,
     at: node_locus(node: bundle),
@@ -10924,10 +10924,10 @@ fn target_project_bind_let(
 }
 
 fn target_project_loop(
-  arrow: Node,
+  _arrow: Node,
   body: Node,
-  target: TargetModel,
-  handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
+  _target: TargetModel,
+  _handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
 ) -> Outcome<TargetValueExpression> {
   if !target_value_expr_loop_gate(node: body) {
     outcome_rejected(
@@ -10992,10 +10992,10 @@ fn target_value_expr_project_body_subexpression(
       )
     ComputationNode { behavior: Loop } =>
       target_project_loop(
-        arrow: arrow,
+        _arrow: arrow,
         body: node,
-        target: target,
-        handle_transform: handle_transform
+        _target: target,
+        _handle_transform: handle_transform
       )
     ComputationNode { behavior: Match } =>
       target_project_match(
@@ -11137,10 +11137,10 @@ fn target_project_arrow_body_to_value_expression(
           )
         ComputationNode { behavior: Loop } =>
           target_project_loop(
-            arrow: arrow,
+            _arrow: arrow,
             body: body,
-            target: target,
-            handle_transform: handle_transform
+            _target: target,
+            _handle_transform: handle_transform
           )
         ComputationNode { behavior: Match } =>
           target_project_match(

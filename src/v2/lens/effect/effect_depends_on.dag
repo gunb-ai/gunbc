@@ -146,14 +146,14 @@ fn effect_runtime_type_node() -> Node {
   claim_atom_node(s: ^effect_type_symbol)
 }
 
-fn effect_runtime_unit(node: Node) -> RuntimeValue {
+fn effect_runtime_unit(_node: Node) -> RuntimeValue {
   RuntimeUnit {
     value: RuntimeUnitValue { unit_type: effect_runtime_type_node() }
   }
 }
 
 fn effect_allocate_literal(node: Node, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
-  Accepted { value: effect_runtime_unit(node: node), diagnostics: None }
+  Accepted { value: effect_runtime_unit(_node: node), diagnostics: None }
 }
 
 fn effect_reject_runtime(node: Node) -> Outcome<RuntimeValue> {
@@ -185,7 +185,7 @@ fn effect_choose_branch(
 }
 
 fn effect_step_loop(node: Node, _env: EvaluationEnvironment) -> Outcome<ControlTransfer> {
-  Accepted { value: Continue { value: effect_runtime_unit(node: node) }, diagnostics: None }
+  Accepted { value: Continue { value: effect_runtime_unit(_node: node) }, diagnostics: None }
 }
 
 fn effect_bind_value(

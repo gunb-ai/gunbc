@@ -73,18 +73,18 @@ fn candidate_promotion_witness(
 ) -> PromotionWitness {
   PromotionWitness {
     candidate_bootstrap_roundtrip_sub_check: bootstrap_roundtrip_scaffold(
-      produced_stage: stage1_candidate,
+      _produced_stage: stage1_candidate,
       expected_stage: reference_stage1
     ),
     candidate_fixed_point_sub_check: fixed_point_scaffold(
-      emitted_stage: stage1_candidate,
+      _emitted_stage: stage1_candidate,
       reference_stage: reference_stage1
     )
   }
 }
 
 fn bootstrap_roundtrip_scaffold(
-  produced_stage: CoreNode,
+  _produced_stage: CoreNode,
   expected_stage: CoreNode
 ) -> BootstrapRoundtripCheck {
   Violates {
@@ -97,7 +97,7 @@ fn bootstrap_roundtrip_scaffold(
 }
 
 fn fixed_point_scaffold(
-  emitted_stage: CoreNode,
+  _emitted_stage: CoreNode,
   reference_stage: CoreNode
 ) -> FixedPointCheck {
   Violates {
@@ -152,9 +152,9 @@ fn stage_emission_equality(
 }
 
 fn self_host_fixed_point_validate(
-  stage1_candidate: CoreNode,
-  source_models: SourceModels,
-  reference_stage1: CoreNode
+  _stage1_candidate: CoreNode,
+  _source_models: SourceModels,
+  _reference_stage1: CoreNode
 ) -> Outcome<PromotionWitness> {
   Rejected {
     diagnostics: diagnostics_singleton(d: self_host_runner_not_realized_diagnostic())

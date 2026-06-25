@@ -128,15 +128,15 @@ fn runtime_value_parse(target: TargetModel, stdout: HostRunStdout) -> Outcome<Ru
   )
 }
 
-fn runtime_value_signed_i32_le_as_int(value: RuntimeValue) -> Outcome<Int> {
+fn runtime_value_signed_i32_le_as_int(_value: RuntimeValue) -> Outcome<Int> {
   outcome_rejected(d: emit_host_run_unsupported_target_diagnostic())
 }
 
 fn run_host_process(
   row: EmitHostRuntimeRow,
-  target: TargetModel,
-  source: Medium<String>,
-  fixture_inputs: Inputs
+  _target: TargetModel,
+  _source: Medium<String>,
+  _fixture_inputs: Inputs
 ) -> Outcome<EmitHostRunReceipt> {
   let _transport = row.transport
   Rejected {
@@ -154,9 +154,9 @@ fn run_emit_host(
     f: fn(row) {
       run_host_process(
         row: row,
-        target: target,
-        source: source,
-        fixture_inputs: fixture_inputs
+        _target: target,
+        _source: source,
+        _fixture_inputs: fixture_inputs
       )
     }
   )
@@ -164,7 +164,7 @@ fn run_emit_host(
 
 fn run_test_claim_emit_vs_eval_verdict(
   subject: TestClaimEvalSubject<Node>,
-  target: TargetModel,
+  _target: TargetModel,
   host_receipt: EmitHostRunReceipt,
   host_actual: RuntimeValue,
   expected: Outcome<RuntimeValue>
@@ -229,7 +229,7 @@ fn run_test_claim_emit_vs_eval_for_claim(
                 Accepted { value: host_actual, diagnostics: _ } =>
                   run_test_claim_emit_vs_eval_verdict(
                     subject: subject,
-                    target: target,
+                    _target: target,
                     host_receipt: host_receipt,
                     host_actual: host_actual,
                     expected: expected
@@ -253,7 +253,7 @@ fn run_test_claim_emit_vs_eval_for_claim(
 
 fn run_test_claim_emit_vs_eval_run(
   subject: TestClaimEvalSubject<Node>,
-  target: TargetModel,
+  _target: TargetModel,
   verdict: Verdict<TestClaimEvalSubject<Node>, RuntimeValue>
 ) -> TestClaimRun<Node, RuntimeValue> {
   TestClaimRun {
@@ -270,7 +270,7 @@ fn run_test_claim_emit_vs_eval(
     EqualsClaim { rhs: rhs, label: _, anchor: _, lhs: lhs, classification: _ } =>
       run_test_claim_emit_vs_eval_run(
         subject: subject,
-        target: target,
+        _target: target,
         verdict: run_test_claim_emit_vs_eval_for_claim(
           subject: subject,
           target: target,
@@ -281,7 +281,7 @@ fn run_test_claim_emit_vs_eval(
     CompilesClaim { expected_value: expected_value, label: _, anchor: _, input: input, classification: _ } =>
       run_test_claim_emit_vs_eval_run(
         subject: subject,
-        target: target,
+        _target: target,
         verdict: run_test_claim_emit_vs_eval_for_claim(
           subject: subject,
           target: target,

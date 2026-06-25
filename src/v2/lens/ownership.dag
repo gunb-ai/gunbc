@@ -58,7 +58,7 @@ fn ownership_classify(view: DependencyView) -> ClassifiedDependencyView<Ownershi
   classify_dependency_view(classifier: ownership_dependency_kind_classifier(), view: view)
 }
 
-fn ownership_fact(tree: InferredTree, dependencies: List<DependencyView>) -> OwnershipFact {
+fn ownership_fact(_tree: InferredTree, dependencies: List<DependencyView>) -> OwnershipFact {
   OwnershipFact {
     dependencies: fold(dependencies, init: [], f: fn(acc, view) {
       list_snoc_item(xs: acc, item: ownership_classify(view: view))
@@ -91,7 +91,7 @@ fn ownership_witness_diagnostic() -> Diagnostic {
 }
 
 fn ownership_witness(tree: InferredTree, dependencies: List<DependencyView>) -> Witness<OwnershipFact> {
-  let fact = ownership_fact(tree: tree, dependencies: dependencies)
+  let fact = ownership_fact(_tree: tree, dependencies: dependencies)
   if ownership_fact_unresolved(fact: fact) {
     Violates { diagnostic: ownership_witness_diagnostic() }
   } else {

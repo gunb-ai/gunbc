@@ -196,7 +196,7 @@ fn nominal_distinct_runtime_type_node() -> Node {
 }
 }
 
-fn nominal_distinct_runtime_unit(node: Node) -> RuntimeValue {
+fn nominal_distinct_runtime_unit(_node: Node) -> RuntimeValue {
   RuntimeUnit {
     value: RuntimeUnitValue { unit_type: nominal_distinct_runtime_type_node() }
   }
@@ -207,18 +207,18 @@ fn nominal_distinct_compile_for_input(node: Node) -> Outcome<RuntimeValue> {
     match nominal_distinct_records_compile_receipt {
       Rejected { diagnostics: r } => Rejected { diagnostics: r }
       Accepted { value: _, diagnostics: _ } =>
-        Accepted { value: nominal_distinct_runtime_unit(node: node), diagnostics: None }
+        Accepted { value: nominal_distinct_runtime_unit(_node: node), diagnostics: None }
     }
   } else if node == nominal_distinct_brands_input {
     match nominal_distinct_brands_compile_receipt {
       Rejected { diagnostics: r } => Rejected { diagnostics: r }
       Accepted { value: _, diagnostics: _ } =>
-        Accepted { value: nominal_distinct_runtime_unit(node: node), diagnostics: None }
+        Accepted { value: nominal_distinct_runtime_unit(_node: node), diagnostics: None }
     }
   } else if node == nominal_distinct_control_input {
     match nominal_distinct_control_compile_receipt {
       Accepted { value: _, diagnostics: _ } =>
-        Accepted { value: nominal_distinct_runtime_unit(node: node), diagnostics: None }
+        Accepted { value: nominal_distinct_runtime_unit(_node: node), diagnostics: None }
       Rejected { diagnostics: r } => Rejected { diagnostics: r }
     }
   } else {
@@ -255,7 +255,7 @@ fn nominal_distinct_step_loop(
   node: Node,
   _env: EvaluationEnvironment
 ) -> Outcome<ControlTransfer> {
-  Accepted { value: Continue { value: nominal_distinct_runtime_unit(node: node) }, diagnostics: None }
+  Accepted { value: Continue { value: nominal_distinct_runtime_unit(_node: node) }, diagnostics: None }
 }
 
 fn nominal_distinct_bind_value(

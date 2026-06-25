@@ -96,9 +96,9 @@ test fn stage_emission_equality_violates_on_perturbed() -> Bool {
 
 test fn self_host_fixed_point_fails_closed_until_substrate() -> Bool {
   match self_host_fixed_point_validate(
-    stage1_candidate: stage_emission_leaf(),
-    source_models: SourceModels { model_corpus: [] },
-    reference_stage1: stage_emission_leaf()
+    _stage1_candidate: stage_emission_leaf(),
+    _source_models: SourceModels { model_corpus: [] },
+    _reference_stage1: stage_emission_leaf()
   ) {
     Rejected { diagnostics: d } => d.head.reason == ^self_host_runner_not_realized
     Accepted { value: _, diagnostics: _ } => false

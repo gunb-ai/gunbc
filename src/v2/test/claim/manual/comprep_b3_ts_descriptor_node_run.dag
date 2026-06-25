@@ -48,7 +48,7 @@ fn comprep_b3_host_run_i32(target: TargetModel, source: Medium<String>) -> Outco
         Accepted { value: HostLogicalRun { stdout: stdout }, diagnostics: None } =>
           match runtime_value_parse(target: target, stdout: stdout) {
             Accepted { value: rv, diagnostics: None } =>
-              runtime_value_signed_i32_le_as_int(value: rv)
+              runtime_value_signed_i32_le_as_int(_value: rv)
             Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
           }
         _ =>

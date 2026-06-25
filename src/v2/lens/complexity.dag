@@ -54,7 +54,7 @@ import v2.std.refinement {
 }
 import v2.std.witness { Holds, Violates, Witness }
 
-fn complexity_variables_admits(xs: List<SizeVariable>) -> Bool {
+fn complexity_variables_admits(_xs: List<SizeVariable>) -> Bool {
   true
 }
 

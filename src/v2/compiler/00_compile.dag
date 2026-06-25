@@ -434,7 +434,7 @@ fn stage_resolve(lm: LanguageModel) -> fn(NormalizedTree) -> Outcome<ResolvedTre
   fn(normalized) { resolve(tree: normalized, lm: lm) }
 }
 
-fn resolve_cache_miss(normalized: NormalizedTree) -> CacheProbe<ResolvedTree> {
+fn resolve_cache_miss(_normalized: NormalizedTree) -> CacheProbe<ResolvedTree> {
   Miss
 }
 

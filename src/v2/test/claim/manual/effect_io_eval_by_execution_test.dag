@@ -123,7 +123,7 @@ data effect_io_eval_roundtrip_node: Node = effect_io_roundtrip_transform(
   payload: effect_io_eval_payload_literal
 )
 
-fn effect_io_eval_allocate_literal(node: Node, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
+fn effect_io_eval_allocate_literal(_node: Node, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
   Accepted { value: effect_io_eval_literal_value(), diagnostics: None }
 }
 

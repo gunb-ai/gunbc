@@ -122,7 +122,7 @@ fn runtime_run_step_state(
 
 fn runtime_run_result_from_state(
   nodes: List<Node>,
-  dependencies: List<DependencyView>,
+  _dependencies: List<DependencyView>,
   state: RuntimeRunState
 ) -> RuntimeRunResult {
   let remaining = scheduler_remaining_nodes(nodes: nodes, scheduled: state.scheduled)
@@ -163,5 +163,5 @@ fn runtime_run(
       )
     }
   )
-  runtime_run_result_from_state(nodes: nodes, dependencies: dependencies, state: state)
+  runtime_run_result_from_state(nodes: nodes, _dependencies: dependencies, state: state)
 }

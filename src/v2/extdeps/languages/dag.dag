@@ -307,7 +307,7 @@ fn dag_mvp1_field_access_concrete_tokens() -> List<ConcreteSyntaxToken> {
   ]
 }
 
-fn dag_surface_operator_canonicalization_miss_diagnostic(surface_token: Symbol) -> Diagnostic {
+fn dag_surface_operator_canonicalization_miss_diagnostic(_surface_token: Symbol) -> Diagnostic {
   Diagnostic {
     reason: ^dag_surface_operator_canonicalization_miss,
     at: port_locus(port: ^dag_surface_operator_canonicalization_port),
@@ -320,13 +320,13 @@ fn dag_surface_operator_canonicalization_member(surface_token: Symbol) -> Outcom
     outcome_accepted(canonical_operation_op_add())
   } else {
     outcome_rejected(
-      dag_surface_operator_canonicalization_miss_diagnostic(surface_token: surface_token)
+      dag_surface_operator_canonicalization_miss_diagnostic(_surface_token: surface_token)
     )
   }
 }
 
 fn dag_surface_operator_canonicalization_lookup(
-  lm: LanguageModel,
+  _lm: LanguageModel,
   surface_token: Symbol
 ) -> Outcome<CanonicalOperation> {
   dag_surface_operator_canonicalization_member(surface_token: surface_token)

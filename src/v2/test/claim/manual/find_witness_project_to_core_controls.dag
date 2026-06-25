@@ -78,7 +78,7 @@ fn control_rule_accepts(source: Node, target: Node, rule: Symbol) -> Bool {
   }
 }
 
-fn control_stub_project_to_core_returns_false(source: Node, target: Node) -> Bool {
+fn control_stub_project_to_core_returns_false(_source: Node, _target: Node) -> Bool {
   false
 }
 
@@ -91,7 +91,7 @@ fn control_old_rules_faithful_for_siblings() -> Bool {
 
 fn project_to_core_stub_gap_stays_true() -> Bool {
   let old_rules = control_old_rules_faithful_for_siblings()
-  let stub = control_stub_project_to_core_returns_false(source: task_id_api_inhabitant_node(), target: task_id_db_inhabitant_node())
+  let stub = control_stub_project_to_core_returns_false(_source: task_id_api_inhabitant_node(), _target: task_id_db_inhabitant_node())
   !old_rules && !stub
 }
 

@@ -35,7 +35,7 @@ type EffectFact {
 }
 
 fn effect_classify(
-  tree: InferredTree,
+  _tree: InferredTree,
   view: DependencyView
 ) -> ClassifiedDependencyView<EffectClassification> {
   ClassifiedDependencyView {
@@ -47,7 +47,7 @@ fn effect_classify(
 fn effect_fact(tree: InferredTree, dependencies: List<DependencyView>) -> EffectFact {
   EffectFact {
     dependencies: fold(dependencies, init: [], f: fn(acc, view) {
-      list_snoc_item(xs: acc, item: effect_classify(tree: tree, view: view))
+      list_snoc_item(xs: acc, item: effect_classify(_tree: tree, view: view))
     })
   }
 }
@@ -98,7 +98,7 @@ fn effect_witness(tree: InferredTree, dependencies: List<DependencyView>) -> Wit
   }
 }
 
-fn effect_classification_eq(a: EffectClassification, b: EffectClassification) -> Bool {
+fn effect_classification_eq(_a: EffectClassification, _b: EffectClassification) -> Bool {
   true
 }
 

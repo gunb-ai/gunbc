@@ -293,7 +293,7 @@ fn resolve_surface_operator_atom(
   lm: LanguageModel,
   identity: Symbol
 ) -> Outcome<Node> {
-  match dag_surface_operator_canonicalization_lookup(lm: lm, surface_token: identity) {
+  match dag_surface_operator_canonicalization_lookup(_lm: lm, surface_token: identity) {
     Accepted { value: canonical_op, diagnostics: pending } => {
       let wire = target_model_canonical_operation_wire_node(operation: canonical_op)
       Accepted {

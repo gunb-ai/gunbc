@@ -218,7 +218,7 @@ fn bootstrap_construct_fold_init(n: Node) -> BootstrapConstructFoldState {
 
 fn bootstrap_construct_fold_step(
   acc: BootstrapConstructFoldState,
-  edge: Edge,
+  _edge: Edge,
   child: BootstrapConstructFoldState
 ) -> BootstrapConstructFoldState {
   BootstrapConstructFoldState {
@@ -251,14 +251,14 @@ fn bootstrap_target_model_bundle_construct_facet(label: Symbol) -> List<Bootstra
   }
 }
 
-fn bootstrap_target_model_bundle_construct_fold_init(n: Node) -> BootstrapConstructFoldState {
+fn bootstrap_target_model_bundle_construct_fold_init(_n: Node) -> BootstrapConstructFoldState {
   BootstrapConstructFoldState { constructs: [] }
 }
 
 fn bootstrap_target_model_bundle_construct_fold_step(
   acc: BootstrapConstructFoldState,
   edge: Edge,
-  child: BootstrapConstructFoldState
+  _child: BootstrapConstructFoldState
 ) -> BootstrapConstructFoldState {
   let facet_constructs = match edge.label {
     Named { name: label } => bootstrap_target_model_bundle_construct_facet(label: label)

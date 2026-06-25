@@ -266,7 +266,7 @@ fn leaf_model_python_static_falsification_invocation(
 }
 
 fn leaf_model_python_static_happy_verdict(
-  c: LeafModelPythonStaticHappyCase
+  _c: LeafModelPythonStaticHappyCase
 ) -> TargetStaticAnalysisVerdict {
   StaticAnalysisAccepted
 }

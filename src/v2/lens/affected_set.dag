@@ -1220,7 +1220,7 @@ fn canonical_transitive_frontier(dag: Dag, edit_dimension: EditDimension) -> Fro
 }
 
 fn canonical_propagation_receipt(
-  dag: Dag,
+  _dag: Dag,
   edit_dimension: EditDimension,
   dependency: DependencyView
 ) -> PropagationReceipt {

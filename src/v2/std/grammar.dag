@@ -1626,7 +1626,7 @@ fn grammar_symbol_fold_init(n: Node, sym: Symbol) -> GrammarSymbolFoldState {
 
 fn grammar_symbol_fold_step(
   acc: GrammarSymbolFoldState,
-  edge: Edge,
+  _edge: Edge,
   child_has_symbol: GrammarSymbolFoldState
 ) -> GrammarSymbolFoldState {
   GrammarSymbolFoldState { found: acc.found || child_has_symbol.found }

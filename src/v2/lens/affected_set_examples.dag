@@ -124,25 +124,25 @@ data expected_affected_set_whole_dag_absorbs_later_unknown: ReExecFrontier = Fai
   }
 }
 
-fn affected_set_example_boundary_hash_receipt(dag: Dag, path: Path, replacement: Node) -> HashReceipt {
+fn affected_set_example_boundary_hash_receipt(_dag: Dag, _path: Path, _replacement: Node) -> HashReceipt {
   HashChanged
 }
 
-fn affected_set_example_changed_dimension_receipt(dag: Dag, edit: Edit) -> ChangedDimensionReceipt {
+fn affected_set_example_changed_dimension_receipt(_dag: Dag, _edit: Edit) -> ChangedDimensionReceipt {
   ChangedDimensions {
     first: ^affected_set_example_dimension,
     rest: []
   }
 }
 
-fn affected_set_example_transitive_frontier(dag: Dag, edit_dimension: EditDimension) -> FrontierReceipt {
+fn affected_set_example_transitive_frontier(_dag: Dag, _edit_dimension: EditDimension) -> FrontierReceipt {
   FrontierProduced { dependencies: [] }
 }
 
 fn affected_set_example_propagation_receipt(
-  dag: Dag,
-  edit_dimension: EditDimension,
-  dependency: DependencyView
+  _dag: Dag,
+  _edit_dimension: EditDimension,
+  _dependency: DependencyView
 ) -> PropagationReceipt {
   Propagates
 }
@@ -158,13 +158,13 @@ data affected_set_example_read: AffectedSetRead = AffectedSetRead {
   propagation_receipt: affected_set_example_propagation_receipt
 }
 
-fn affected_set_example_post_edit_accepts(dag: Dag, edit: Edit) -> AffectedPostEditDagRead {
+fn affected_set_example_post_edit_accepts(dag: Dag, _edit: Edit) -> AffectedPostEditDagRead {
   AffectedPostEditDagRead {
     outcome: Accepted { value: dag, diagnostics: None }
   }
 }
 
-fn affected_set_example_post_edit_rejects(dag: Dag, edit: Edit) -> AffectedPostEditDagRead {
+fn affected_set_example_post_edit_rejects(_dag: Dag, _edit: Edit) -> AffectedPostEditDagRead {
   AffectedPostEditDagRead {
     outcome: Rejected {
       diagnostics: diagnostics_singleton(d: affected_set_example_invalid_edit_diagnostic)

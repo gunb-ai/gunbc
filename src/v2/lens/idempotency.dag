@@ -62,7 +62,7 @@ fn idempotency_classify(view: DependencyView) -> ClassifiedDependencyView<Idempo
   classify_dependency_view(classifier: idempotency_dependency_kind_classifier(), view: view)
 }
 
-fn idempotency_fact(tree: InferredTree, dependencies: List<DependencyView>) -> IdempotencyFact {
+fn idempotency_fact(_tree: InferredTree, dependencies: List<DependencyView>) -> IdempotencyFact {
   IdempotencyFact {
     dependencies: fold(dependencies, init: [], f: fn(acc, view) {
       list_snoc_item(xs: acc, item: idempotency_classify(view: view))
@@ -109,7 +109,7 @@ fn idempotency_witness_diagnostic() -> Diagnostic {
 }
 
 fn idempotency_witness(tree: InferredTree, dependencies: List<DependencyView>) -> Witness<IdempotencyFact> {
-  let fact = idempotency_fact(tree: tree, dependencies: dependencies)
+  let fact = idempotency_fact(_tree: tree, dependencies: dependencies)
   let law_diagnostic = idempotency_first_law_violation_diagnostic(fact: fact)
   match optional_present_witness(opt: law_diagnostic) {
     Holds { value: d } =>

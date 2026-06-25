@@ -720,7 +720,7 @@ fn comprep_eval_lazy_arm_branch_suppression_holds() -> Bool {
   }
 }
 
-fn comprep_eval_step_loop_continue(node: Node, _env: EvaluationEnvironment) -> Outcome<ControlTransfer> {
+fn comprep_eval_step_loop_continue(_node: Node, _env: EvaluationEnvironment) -> Outcome<ControlTransfer> {
   outcome_accepted(value: Continue { value: comprep_eval_five_value() })
 }
 

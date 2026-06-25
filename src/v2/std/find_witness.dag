@@ -98,7 +98,7 @@ fn find_witness_invalid_witness_diagnostic(source_facts: Node) -> Diagnostic {
 
 fn enumeration_candidate_list(
   candidates: CandidateSet,
-  predicate: PreservationPredicate
+  _predicate: PreservationPredicate
 ) -> List<Node> {
   candidates.candidates
 }
@@ -141,7 +141,7 @@ fn passing_candidate_count(
   candidates: CandidateSet,
   predicate: PreservationPredicate
 ) -> Int {
-  fold(enumeration_candidate_list(candidates: candidates, predicate: predicate), init: 0, f: fn(acc, candidate) {
+  fold(enumeration_candidate_list(candidates: candidates, _predicate: predicate), init: 0, f: fn(acc, candidate) {
     if preservation_predicate_holds(
       source_facts: source_facts,
       candidate: candidate,
@@ -158,7 +158,7 @@ fn only_passing_candidate(
   candidates: CandidateSet,
   predicate: PreservationPredicate
 ) -> Outcome<Node> {
-  match fold(enumeration_candidate_list(candidates: candidates, predicate: predicate), init: NoPassingCandidate, f: fn(acc, candidate) {
+  match fold(enumeration_candidate_list(candidates: candidates, _predicate: predicate), init: NoPassingCandidate, f: fn(acc, candidate) {
     if preservation_predicate_holds(
       source_facts: source_facts,
       candidate: candidate,
@@ -187,7 +187,7 @@ fn selected_candidate_count(
   predicate: PreservationPredicate,
   selection: Node
 ) -> Int {
-  fold(enumeration_candidate_list(candidates: candidates, predicate: predicate), init: 0, f: fn(acc, candidate) {
+  fold(enumeration_candidate_list(candidates: candidates, _predicate: predicate), init: 0, f: fn(acc, candidate) {
     if (candidate == selection) && preservation_predicate_holds(
       source_facts: source_facts,
       candidate: candidate,

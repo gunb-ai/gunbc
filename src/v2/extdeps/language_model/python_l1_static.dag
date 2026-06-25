@@ -67,7 +67,7 @@ data claim_python_l1_static_fixture_pair_wired: TestClaim = EqualsClaim {
 }
 
 fn python_l1_static_expected_verdicts_wired() -> Bool {
-  match leaf_model_python_static_happy_verdict(c: python_l1_static_fixture().happy) {
+  match leaf_model_python_static_happy_verdict(_c: python_l1_static_fixture().happy) {
     StaticAnalysisAccepted => true
     StaticAnalysisRejected { tool_id: _, diagnostic_code: _ } => false
     StaticAnalysisAdvisory { tool_id: _, diagnostic_code: _ } => false
@@ -110,7 +110,7 @@ fn python_l1_static_roster_pair_verdicts_wired(
   p: LeafModelPythonStaticFixturePair,
   expected_diag_code: Symbol
 ) -> Bool {
-  match leaf_model_python_static_happy_verdict(c: p.happy) {
+  match leaf_model_python_static_happy_verdict(_c: p.happy) {
     StaticAnalysisAccepted => true
     StaticAnalysisRejected { tool_id: _, diagnostic_code: _ } => false
     StaticAnalysisAdvisory { tool_id: _, diagnostic_code: _ } => false
@@ -191,7 +191,7 @@ data claim_python_l1_static_mypy_fixture_pair_wired: TestClaim = EqualsClaim {
 }
 
 fn python_l1_static_mypy_expected_verdicts_wired() -> Bool {
-  match leaf_model_python_static_happy_verdict(c: python_l1_static_mypy_fixture().happy) {
+  match leaf_model_python_static_happy_verdict(_c: python_l1_static_mypy_fixture().happy) {
     StaticAnalysisAccepted => true
     StaticAnalysisRejected { tool_id: _, diagnostic_code: _ } => false
     StaticAnalysisAdvisory { tool_id: _, diagnostic_code: _ } => false

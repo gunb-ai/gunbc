@@ -61,7 +61,7 @@ fn refinement_preservation_stub_locus() -> Locus {
   port_locus(port: ^refinement_preservation_stub_locus_port)
 }
 
-fn refinement_preservation_stub_admits(xs: List<Node>) -> Bool {
+fn refinement_preservation_stub_admits(_xs: List<Node>) -> Bool {
   true
 }
 

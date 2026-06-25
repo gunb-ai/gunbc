@@ -115,7 +115,7 @@ fn partition_grounding_subject_in_segment(
 fn partition_fail_closed_boundary_admits(
   segment_root: Node,
   boundary: PartitionBoundaryPolicy,
-  node: Node,
+  _node: Node,
   facts: InferredFacts
 ) -> Bool {
   match boundary {
@@ -136,7 +136,7 @@ fn partition_closure_entry_for_node(
       if partition_fail_closed_boundary_admits(
         segment_root: segment_root,
         boundary: boundary,
-        node: node,
+        _node: node,
         facts: facts
       ) {
         admitted_inferred_facts_entry(node: node, facts: facts)

@@ -77,7 +77,7 @@ data witness_v4_evaluator_semantics_fail_closed: Bool = match v2_eval_wave1_call
 
 data witness_v4_evaluator_transfer_fail_closed: Bool = match v2_eval_wave1_transfer(
   control: Suspend { continuation: v2_eval_wave1_empty_frame() },
-  frame: v2_eval_wave1_empty_frame()
+  _frame: v2_eval_wave1_empty_frame()
 ) {
   Rejected { diagnostics: _ } => true
   _ => false

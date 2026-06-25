@@ -60,7 +60,7 @@ fn fold_call_positional(target: Node) -> Edge {
   Edge { label: Positional, target: target }
 }
 
-fn fold_call_domain_conj(params: List<Symbol>) -> Node {
+fn fold_call_domain_conj(_params: List<Symbol>) -> Node {
   node_synthetic(
     kind: TypeNode { connective: Conj },
     children: [
@@ -122,7 +122,7 @@ fn fold_call_arrow(closure: Node) -> Node {
     kind: TypeNode { connective: Arrow },
     children: [
       fold_call_positional(
-        target: fold_call_domain_conj(params: [^fold_call_param_xs, ^fold_call_param_z])
+        target: fold_call_domain_conj(_params: [^fold_call_param_xs, ^fold_call_param_z])
       ),
       fold_call_positional(target: fold_call_atom(id: ^fold_call_type_int)),
       fold_call_named_edge(

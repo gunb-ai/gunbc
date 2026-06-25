@@ -142,7 +142,7 @@ fn unknown_cost(diagnostic: Diagnostic) -> SymbolicCost {
   UnknownCost { diagnostic: diagnostic }
 }
 
-fn symbolic_cost_witness(c: SymbolicCost, n: Node) -> Witness<SymbolicCost> {
+fn symbolic_cost_witness(c: SymbolicCost, _n: Node) -> Witness<SymbolicCost> {
   match c {
     UnknownCost { diagnostic: d } =>
       Violates { diagnostic: d }
@@ -403,7 +403,7 @@ fn symbolic_cost_of_node(n: Node) -> SymbolicCost {
 }
 
 fn cost_lens(n: Node) -> Witness<SymbolicCost> {
-  symbolic_cost_witness(c: symbolic_cost_of_node(n: n), n: n)
+  symbolic_cost_witness(c: symbolic_cost_of_node(n: n), _n: n)
 }
 
 fn asymptotic_class_join(a: AsymptoticClass, b: AsymptoticClass) -> AsymptoticClass {

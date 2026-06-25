@@ -49,7 +49,7 @@ fn void_language_model(identity: Symbol) -> LanguageModel {
   }
 }
 
-fn language_model_canonical_symbols_to_node(symbols: Set<Symbol>) -> Node {
+fn language_model_canonical_symbols_to_node(_symbols: Set<Symbol>) -> Node {
   grammar_empty_node()
 }
 
@@ -71,7 +71,7 @@ fn language_model_to_node(lm: LanguageModel) -> Node {
       ),
       language_model_named_edge(
         name: ^language_model_field_canonical_symbols,
-        target: language_model_canonical_symbols_to_node(symbols: lm.canonical_symbols)
+        target: language_model_canonical_symbols_to_node(_symbols: lm.canonical_symbols)
       ),
       language_model_named_edge(
         name: ^language_model_field_core,

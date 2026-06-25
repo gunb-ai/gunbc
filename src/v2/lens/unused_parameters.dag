@@ -59,7 +59,7 @@ fn use_classify(view: DependencyView) -> ClassifiedDependencyView<UseRelation> {
   classify_dependency_view(classifier: use_relation_dependency_kind_classifier(), view: view)
 }
 
-fn use_classification_fact(tree: InferredTree, dependencies: List<DependencyView>) -> UseClassificationFact {
+fn use_classification_fact(_tree: InferredTree, dependencies: List<DependencyView>) -> UseClassificationFact {
   UseClassificationFact {
     uses: fold(dependencies, init: [], f: fn(acc, view) {
       list_snoc_item(xs: acc, item: use_classify(view: view))
@@ -69,7 +69,7 @@ fn use_classification_fact(tree: InferredTree, dependencies: List<DependencyView
 
 fn use_classification_witness(tree: InferredTree, dependencies: List<DependencyView>) -> Witness<UseClassificationFact> {
   Holds {
-    value: use_classification_fact(tree: tree, dependencies: dependencies)
+    value: use_classification_fact(_tree: tree, dependencies: dependencies)
   }
 }
 
@@ -126,7 +126,7 @@ fn rollup_unused(use_fact: UseClassificationFact) -> UnusedParametersFact {
 }
 
 fn unused_parameters_fact(tree: InferredTree, dependencies: List<DependencyView>) -> UnusedParametersFact {
-  rollup_unused(use_fact: use_classification_fact(tree: tree, dependencies: dependencies))
+  rollup_unused(use_fact: use_classification_fact(_tree: tree, dependencies: dependencies))
 }
 
 fn unused_parameters_witness(tree: InferredTree, dependencies: List<DependencyView>) -> Witness<UnusedParametersFact> {

@@ -315,7 +315,7 @@ fn irt1_public_affected_set_missing_path_fails_closed() -> Bool {
 
 fn irt1_public_nonfrontier_dependency_without_read_receipt_reruns() -> Bool {
   match canonical_propagation_receipt(
-    dag: affected_set_example_node,
+    _dag: affected_set_example_node,
     edit_dimension: irt1_public_propagation_edit_dimension,
     dependency: irt1_public_nonfrontier_dependency_without_receipt
   ) {
@@ -326,7 +326,7 @@ fn irt1_public_nonfrontier_dependency_without_read_receipt_reruns() -> Bool {
 
 fn irt1_public_nonfrontier_dependency_with_read_receipt_excludes() -> Bool {
   match canonical_propagation_receipt(
-    dag: affected_set_example_node,
+    _dag: affected_set_example_node,
     edit_dimension: irt1_public_propagation_edit_dimension,
     dependency: irt1_public_nonfrontier_dependency_with_receipt
   ) {
@@ -337,7 +337,7 @@ fn irt1_public_nonfrontier_dependency_with_read_receipt_excludes() -> Bool {
 
 fn irt1_public_nonfrontier_dependency_with_mismatched_read_receipt_reruns() -> Bool {
   match canonical_propagation_receipt(
-    dag: affected_set_example_node,
+    _dag: affected_set_example_node,
     edit_dimension: irt1_public_propagation_edit_dimension,
     dependency: irt1_public_nonfrontier_dependency_with_mismatched_receipt
   ) {
@@ -348,7 +348,7 @@ fn irt1_public_nonfrontier_dependency_with_mismatched_read_receipt_reruns() -> B
 
 fn irt1_public_contains_dependency_with_read_receipt_reruns() -> Bool {
   match canonical_propagation_receipt(
-    dag: affected_set_example_node,
+    _dag: affected_set_example_node,
     edit_dimension: irt1_public_propagation_edit_dimension,
     dependency: irt1_public_contains_dependency_with_read_receipt
   ) {

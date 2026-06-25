@@ -503,7 +503,7 @@ fn filter_fusion_facts_for_module(
 
 fn extdeps_shape_transport_policy_violation_count_for_operation(
   argv_facts: List<ExtdepsTransportArgvFact>,
-  fusion_facts: List<ExtdepsTransportFusionFact>,
+  _fusion_facts: List<ExtdepsTransportFusionFact>,
   module: QualifiedName,
   service: String,
   operation: String

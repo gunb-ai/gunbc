@@ -996,7 +996,7 @@ fn infer_gather_failed_non_empty(acc: InferGatherFoldAcc) -> NonEmptyDiagnostics
 
 fn infer_gather_fold_step(
   acc: InferGatherFoldAcc,
-  edge: Edge,
+  _edge: Edge,
   child: InferGatherFoldAcc,
   partials: List<Node>,
 ) -> InferGatherFoldAcc {
@@ -1050,7 +1050,7 @@ fn infer_gather_fold_algebra(partials: List<Node>) -> NodeFold<InferGatherFoldAc
       infer_gather_fold_init(n: n0, partials: partials)
     },
     step: fn(acc, e, child) {
-      infer_gather_fold_step(acc: acc, edge: e, child: child, partials: partials)
+      infer_gather_fold_step(acc: acc, _edge: e, child: child, partials: partials)
     }
   }
 }
