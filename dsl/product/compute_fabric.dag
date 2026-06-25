@@ -735,10 +735,6 @@ fn cost_account_from_performance_receipts(receipts: List<PerformanceReceipt>) ->
   )
 }
 
-fn performance_receipt_wall_duration(r: PerformanceReceipt) -> NanosecondDuration {
-  r.cost.time
-}
-
 type PerformanceReceiptSpaceContext {
   space: ByteSize
   cache_state: NonEmptyStr?
