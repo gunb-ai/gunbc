@@ -3,7 +3,6 @@ module test.claim.uri_grounding_witness
 import extdeps.uri { Uri, Https, uri_is_url, uri_wire }
 import extdeps.transports.rest { RestTransportConfig }
 import std.serialization { WireFormat, Json }
-import std.types { NonEmptyStr }
 import std.logic { Bool }
 
 fn w_rest_transport_config_requires_typed_uri() -> Bool {
