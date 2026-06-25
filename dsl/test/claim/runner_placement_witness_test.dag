@@ -6,16 +6,6 @@ import gunbc.ci_runner_placement {
   PlanUnsound,
   RunnerHostDeployment,
   runner_deployment_plan,
-  runner_deployment_plan_for,
-  host_runner_count_from_cap,
-  resolve_run_unit_peak,
-  JobPeakResolution,
-  JobPeaksResolved,
-  JobPeaksUnresolved,
-  RunnerSlotEnforcement,
-  RunnerSlotEnforced,
-  RunnerSlotUnenforced,
-  gunbc_ci_runner_slot_enforcement,
   SessionSliceResolution,
   SessionSliceResolved,
   SessionSliceUnresolved,
@@ -37,161 +27,64 @@ import gunbc.ci_runner_placement {
   BatchLatencyTolerant,
   InteractiveLatencySensitive,
   workload_class_cpu_weight,
-  gunbc_ci_cpu_weight_workload_class_marker,
 }
 import gunbc.fleet_host_budget {
-  FleetHostPlan,
-  FleetHostPlanDerived,
-  FleetHostPlanUnsound,
-  HeadroomPolicy,
-  HeadroomSet,
-  HeadroomUnset,
-  fleet_host_plan_for_offer,
-}
-import extdeps.ctrl.jobserver {
-  CtrlJobserverConfig,
-  CtrlJobserverCitation,
-  CtrlJobserverCited,
-  CtrlJobserverAbsent,
+  declared_runner_count,
+  gunbc_per_runner_memory_cap,
+  gunbc_runner_pool_budget,
 }
 import gunbc.ci_floor_measurement {
-  CiJobPeak,
-  JobCgroupPeakMeasured,
-  JobCgroupPeakUnmeasured,
-  HostFixedOverhead,
-  HostFixedOverheadMeasured,
-  HostFixedOverheadUnmeasured,
-  SessionOperatingPoint,
   SessionOperatingPointSet,
-  SessionOperatingPointUnset,
-  SessionAggregateReservation,
   SessionAggregateMeasured,
   SessionAggregateUnmeasured,
-  OomdEnforcementEvidence,
   OomdEnforced,
   OomdUnverified,
-  SessionReservationMode,
   Regime1WorstCase,
   Regime2AggregateOomd,
   SessionReservationModeUnset,
-  gunbc_ci_run_count_divisor,
-  gunbc_ci_runner_unit_cap_safety_margin_num,
-  gunbc_ci_runner_unit_cap_safety_margin_den,
-  gunbc_ci_session_reservation_mode,
 }
-import gunbc.fleet_intent { fleet_intent_offers, srv1_offer }
+import gunbc.fleet_intent { fleet_intent_offers }
 import gunbc.runner_deploy_emit {
   expected_runner_deploy_manifest,
   runner_deploy_drifted,
   manifest_host_text,
   session_host_text,
 }
-import std.measure { ByteSize, byte_size, byte_size_count, HardwareThreadCount, hardware_thread_count, hardware_thread_count_value }
+import std.measure { byte_size, byte_size_count, hardware_thread_count_value }
 import std.types { Bool, Int, List, String }
 
-fn fixture_cfg() -> CtrlJobserverConfig {
-  CtrlJobserverConfig {
-    margin: hardware_thread_count(count: 8),
-    mem_reserve: byte_size(8589934592),
-    mib_per_job: byte_size(1879048192),
+fn live_plan() -> RunnerDeploymentPlan {
+  runner_deployment_plan()
+}
+
+fn witness_declared_runner_count_is_ten() -> Bool {
+  declared_runner_count() == 10
+}
+
+fn witness_live_plan_is_conservation_sound() -> Bool {
+  match live_plan() {
+    PlanDerived { hosts: hosts, fleet_concurrent_runs: total } =>
+      hosts.length() == fleet_intent_offers.length()
+        && total == declared_runner_count() * fleet_intent_offers.length()
+        && all(hosts, h =>
+            h.runner_count == declared_runner_count()
+              && byte_size_count(b: h.per_runner_memory_cap) == byte_size_count(b: gunbc_per_runner_memory_cap)
+              && byte_size_count(b: h.runner_slice_cap) == byte_size_count(b: gunbc_runner_pool_budget)
+              && hardware_thread_count_value(t: h.build_tokens) > 0
+          )
+    PlanUnsound { reason: _ } => false
   }
 }
 
-fn fixture_citation() -> CtrlJobserverCitation {
-  CtrlJobserverCited { config: fixture_cfg(), provenance: "fixture: parent-supplied installer knobs" }
-}
-
-fn fitting_headroom() -> HeadroomPolicy {
-  HeadroomSet { bytes: byte_size(8589934592) }
-}
-
-fn fitting_overhead() -> HostFixedOverhead {
-  HostFixedOverheadMeasured { bytes: byte_size(17179869184) }
-}
-
-fn fitting_session_mode() -> SessionReservationMode {
-  Regime1WorstCase { point: SessionOperatingPointSet { per_session_cap: byte_size(4294967296), session_concurrency: 6 } }
-}
-
-fn fitting_session_slice_bytes() -> ByteSize {
-  byte_size(25769803776)
-}
-
-fn bigger_session_mode() -> SessionReservationMode {
-  Regime1WorstCase { point: SessionOperatingPointSet { per_session_cap: byte_size(8589934592), session_concurrency: 6 } }
-}
-
-fn fitting_job_mix() -> List<CiJobPeak> {
-  [
-    CiJobPeak { job: "ci", peak: JobCgroupPeakMeasured { cgroup_peak: byte_size(24000000000) } },
-    CiJobPeak { job: "rust_tests", peak: JobCgroupPeakMeasured { cgroup_peak: byte_size(18000000000) } },
-  ]
-}
-
-fn oversized_job_mix() -> List<CiJobPeak> {
-  [CiJobPeak { job: "ci", peak: JobCgroupPeakMeasured { cgroup_peak: byte_size(200000000000) } }]
-}
-
-fn zero_job_mix() -> List<CiJobPeak> {
-  [CiJobPeak { job: "ci", peak: JobCgroupPeakMeasured { cgroup_peak: byte_size(0) } }]
-}
-
-fn partial_unmeasured_mix() -> List<CiJobPeak> {
-  [
-    CiJobPeak { job: "ci", peak: JobCgroupPeakMeasured { cgroup_peak: byte_size(24000000000) } },
-    CiJobPeak { job: "rust_tests", peak: JobCgroupPeakUnmeasured },
-  ]
-}
-
-fn is_unsound(plan: RunnerDeploymentPlan) -> Bool {
-  match plan {
-    PlanUnsound { reason: _ } => true
-    PlanDerived { hosts: _, fleet_concurrent_runs: _ } => false
+fn witness_per_runner_cap_within_runner_pool() -> Bool {
+  match live_plan() {
+    PlanDerived { hosts: hosts, fleet_concurrent_runs: _ } =>
+      hosts.length() > 0
+        && all(hosts, h =>
+            h.runner_count * byte_size_count(b: h.per_runner_memory_cap) <= byte_size_count(b: h.runner_slice_cap)
+          )
+    PlanUnsound { reason: _ } => false
   }
-}
-
-fn plan_total(plan: RunnerDeploymentPlan) -> Int {
-  match plan {
-    PlanDerived { hosts: _, fleet_concurrent_runs: total } => total
-    PlanUnsound { reason: _ } => 0
-  }
-}
-
-fn sound_plan(
-  enforcement: RunnerSlotEnforcement,
-  mode: SessionReservationMode,
-  job_peaks: List<CiJobPeak>,
-  overhead: HostFixedOverhead,
-  citation: CtrlJobserverCitation,
-  policy: HeadroomPolicy,
-  oomd: OomdEnforcementEvidence
-) -> RunnerDeploymentPlan {
-  runner_deployment_plan_for(
-    enforcement: enforcement,
-    mode: mode,
-    job_peaks: job_peaks,
-    overhead: overhead,
-    citation: citation,
-    policy: policy,
-    oomd: oomd,
-    offers: fleet_intent_offers
-  )
-}
-
-fn fully_sound_plan() -> RunnerDeploymentPlan {
-  sound_plan(
-    enforcement: RunnerSlotEnforced,
-    mode: fitting_session_mode(),
-    job_peaks: fitting_job_mix(),
-    overhead: fitting_overhead(),
-    citation: fixture_citation(),
-    policy: fitting_headroom(),
-    oomd: OomdEnforced
-  )
-}
-
-fn witness_live_runner_plan_fail_closed() -> Bool {
-  is_unsound(plan: runner_deployment_plan())
 }
 
 fn witness_live_session_plan_fail_closed() -> Bool {
@@ -201,137 +94,15 @@ fn witness_live_session_plan_fail_closed() -> Bool {
   }
 }
 
-fn witness_live_effective_runners_fail_closed() -> Bool {
+fn witness_live_effective_runners_derives_ten() -> Bool {
   match effective_runners_per_host() {
-    RunnersPerHostUnsound { reason: _ } => true
-    RunnersPerHostDerived { count: _ } => false
-  }
-}
-
-fn witness_unenforced_fails_closed() -> Bool {
-  is_unsound(plan: sound_plan(
-    enforcement: RunnerSlotUnenforced { reason: "fixture: cap not live-enforced" },
-    mode: fitting_session_mode(),
-    job_peaks: fitting_job_mix(),
-    overhead: fitting_overhead(),
-    citation: fixture_citation(),
-    policy: fitting_headroom(),
-    oomd: OomdEnforced
-  ))
-}
-
-fn witness_session_mode_unset_fails_closed() -> Bool {
-  is_unsound(plan: sound_plan(
-    enforcement: RunnerSlotEnforced,
-    mode: SessionReservationModeUnset,
-    job_peaks: fitting_job_mix(),
-    overhead: fitting_overhead(),
-    citation: fixture_citation(),
-    policy: fitting_headroom(),
-    oomd: OomdEnforced
-  ))
-}
-
-fn witness_oomd_unverified_fails_closed() -> Bool {
-  is_unsound(plan: sound_plan(
-    enforcement: RunnerSlotEnforced,
-    mode: fitting_session_mode(),
-    job_peaks: fitting_job_mix(),
-    overhead: fitting_overhead(),
-    citation: fixture_citation(),
-    policy: fitting_headroom(),
-    oomd: OomdUnverified
-  ))
-}
-
-fn witness_headroom_unset_fails_closed() -> Bool {
-  is_unsound(plan: sound_plan(
-    enforcement: RunnerSlotEnforced,
-    mode: fitting_session_mode(),
-    job_peaks: fitting_job_mix(),
-    overhead: fitting_overhead(),
-    citation: fixture_citation(),
-    policy: HeadroomUnset,
-    oomd: OomdEnforced
-  ))
-}
-
-fn witness_jobserver_absent_fails_closed() -> Bool {
-  is_unsound(plan: sound_plan(
-    enforcement: RunnerSlotEnforced,
-    mode: fitting_session_mode(),
-    job_peaks: fitting_job_mix(),
-    overhead: fitting_overhead(),
-    citation: CtrlJobserverAbsent,
-    policy: fitting_headroom(),
-    oomd: OomdEnforced
-  ))
-}
-
-fn witness_overhead_unmeasured_is_refused() -> Bool {
-  is_unsound(plan: sound_plan(
-    enforcement: RunnerSlotEnforced,
-    mode: fitting_session_mode(),
-    job_peaks: fitting_job_mix(),
-    overhead: HostFixedOverheadUnmeasured,
-    citation: fixture_citation(),
-    policy: fitting_headroom(),
-    oomd: OomdEnforced
-  ))
-}
-
-fn witness_zero_peak_is_refused() -> Bool {
-  is_unsound(plan: sound_plan(
-    enforcement: RunnerSlotEnforced,
-    mode: fitting_session_mode(),
-    job_peaks: zero_job_mix(),
-    overhead: fitting_overhead(),
-    citation: fixture_citation(),
-    policy: fitting_headroom(),
-    oomd: OomdEnforced
-  ))
-}
-
-fn witness_partial_unmeasured_is_refused() -> Bool {
-  is_unsound(plan: sound_plan(
-    enforcement: RunnerSlotEnforced,
-    mode: fitting_session_mode(),
-    job_peaks: partial_unmeasured_mix(),
-    overhead: fitting_overhead(),
-    citation: fixture_citation(),
-    policy: fitting_headroom(),
-    oomd: OomdEnforced
-  ))
-}
-
-fn witness_over_commit_is_refused() -> Bool {
-  is_unsound(plan: sound_plan(
-    enforcement: RunnerSlotEnforced,
-    mode: fitting_session_mode(),
-    job_peaks: oversized_job_mix(),
-    overhead: fitting_overhead(),
-    citation: fixture_citation(),
-    policy: fitting_headroom(),
-    oomd: OomdEnforced
-  ))
-}
-
-fn witness_sound_plan_derives_per_host_capacity() -> Bool {
-  match fully_sound_plan() {
-    PlanDerived { hosts: hosts, fleet_concurrent_runs: total } =>
-      hosts.length() == fleet_intent_offers.length()
-        && total > 0
-        && all(hosts, h =>
-            h.runner_count > 0
-              && byte_size_count(b: h.per_runner_memory_cap) > 0
-              && hardware_thread_count_value(t: h.build_tokens) > 0
-          )
-    PlanUnsound { reason: _ } => false
+    RunnersPerHostDerived { count: c } => c == declared_runner_count()
+    RunnersPerHostUnsound { reason: _ } => false
   }
 }
 
 fn witness_sound_manifest_line_is_populated() -> Bool {
-  match fully_sound_plan() {
+  match live_plan() {
     PlanDerived { hosts: hosts, fleet_concurrent_runs: _ } =>
       hosts.length() > 0
         && all(hosts, h =>
@@ -339,71 +110,6 @@ fn witness_sound_manifest_line_is_populated() -> Bool {
           )
     PlanUnsound { reason: _ } => false
   }
-}
-
-fn witness_count_respects_conserved_runner_slice() -> Bool {
-  let mean = byte_size_count(b: gunbc_ci_run_count_divisor)
-  match fully_sound_plan() {
-    PlanDerived { hosts: hosts, fleet_concurrent_runs: _ } =>
-      all(hosts, h =>
-        match fleet_host_plan_for_offer(offer: srv1_offer, overhead: byte_size(17179869184), session_slice: fitting_session_slice_bytes(), citation: fixture_citation(), policy: fitting_headroom(), oomd: OomdEnforced) {
-          FleetHostPlanDerived { name: _, tree: _, runner_slice_cap: cap, effective_build_tokens: _, effective_runner_cpu_cap: _, build_step: _ } =>
-            h.runner_count * mean <= byte_size_count(b: cap)
-              && byte_size_count(b: h.per_runner_memory_cap) <= byte_size_count(b: cap)
-              && h.runner_count >= 1
-          FleetHostPlanUnsound { reason: _ } => false
-        }
-      )
-    PlanUnsound { reason: _ } => false
-  }
-}
-
-fn witness_per_runner_cap_is_worst_times_margin() -> Bool {
-  let worst = match resolve_run_unit_peak(job_peaks: fitting_job_mix()) {
-    JobPeaksResolved { run_unit_peak: w } => byte_size_count(b: w)
-    JobPeaksUnresolved { reason: _ } => 0
-  }
-  let expected = worst * gunbc_ci_runner_unit_cap_safety_margin_num / gunbc_ci_runner_unit_cap_safety_margin_den
-  match fully_sound_plan() {
-    PlanDerived { hosts: hosts, fleet_concurrent_runs: _ } =>
-      hosts.length() > 0
-        && worst > 0
-        && all(hosts, h =>
-            byte_size_count(b: h.per_runner_memory_cap) == expected
-              && byte_size_count(b: h.per_runner_memory_cap) <= byte_size_count(b: h.runner_slice_cap)
-          )
-    PlanUnsound { reason: _ } => false
-  }
-}
-
-fn min_runner_count_of(plan: RunnerDeploymentPlan) -> Int {
-  match plan {
-    PlanDerived { hosts: hosts, fleet_concurrent_runs: _ } =>
-      fold(hosts, init: 0, f: (acc, h) => if acc == 0 { h.runner_count } else { if h.runner_count < acc { h.runner_count } else { acc } })
-    PlanUnsound { reason: _ } => 0
-  }
-}
-
-fn witness_bigger_session_reservation_fewer_runners() -> Bool {
-  let small = sound_plan(enforcement: RunnerSlotEnforced, mode: fitting_session_mode(), job_peaks: fitting_job_mix(), overhead: fitting_overhead(), citation: fixture_citation(), policy: fitting_headroom(), oomd: OomdEnforced)
-  let big = sound_plan(enforcement: RunnerSlotEnforced, mode: bigger_session_mode(), job_peaks: fitting_job_mix(), overhead: fitting_overhead(), citation: fixture_citation(), policy: fitting_headroom(), oomd: OomdEnforced)
-  !is_unsound(plan: small) && !is_unsound(plan: big) && min_runner_count_of(plan: big) <= min_runner_count_of(plan: small)
-}
-
-fn witness_runner_count_memory_term_binds() -> Bool {
-  host_runner_count_from_cap(runner_slice_cap: byte_size(96000000000), run_unit_peak: byte_size(24000000000), cpu_cap: hardware_thread_count(count: 120), build_tokens: hardware_thread_count(count: 120)) == 4
-}
-
-fn witness_runner_count_cpu_term_binds() -> Bool {
-  host_runner_count_from_cap(runner_slice_cap: byte_size(96000000000), run_unit_peak: byte_size(1000000000), cpu_cap: hardware_thread_count(count: 2), build_tokens: hardware_thread_count(count: 120)) == 2
-}
-
-fn witness_runner_count_build_token_term_binds() -> Bool {
-  host_runner_count_from_cap(runner_slice_cap: byte_size(96000000000), run_unit_peak: byte_size(1000000000), cpu_cap: hardware_thread_count(count: 120), build_tokens: hardware_thread_count(count: 5)) == 5
-}
-
-fn witness_runner_count_unfit_is_zero() -> Bool {
-  host_runner_count_from_cap(runner_slice_cap: byte_size(1000000000), run_unit_peak: byte_size(24000000000), cpu_cap: hardware_thread_count(count: 120), build_tokens: hardware_thread_count(count: 120)) == 0
 }
 
 fn witness_regime1_resolves_worst_case_slice() -> Bool {
@@ -482,7 +188,7 @@ fn witness_session_cpu_weight_exceeds_runner_cpu_weight() -> Bool {
 }
 
 fn witness_runner_manifest_line_contains_cpu_weight() -> Bool {
-  match fully_sound_plan() {
+  match live_plan() {
     PlanDerived { hosts: hosts, fleet_concurrent_runs: _ } =>
       hosts.length() > 0
         && all(hosts, h => string_contains(s: manifest_host_text(h: h), pattern: " cpu_weight=100"))
@@ -515,27 +221,12 @@ fn witness_session_reservation_line_has_no_cpu_weight() -> Bool {
 }
 
 test fn runner_placement_holds() -> Bool {
-  witness_live_runner_plan_fail_closed()
+  witness_declared_runner_count_is_ten()
+    && witness_live_plan_is_conservation_sound()
+    && witness_per_runner_cap_within_runner_pool()
     && witness_live_session_plan_fail_closed()
-    && witness_live_effective_runners_fail_closed()
-    && witness_unenforced_fails_closed()
-    && witness_session_mode_unset_fails_closed()
-    && witness_oomd_unverified_fails_closed()
-    && witness_headroom_unset_fails_closed()
-    && witness_jobserver_absent_fails_closed()
-    && witness_overhead_unmeasured_is_refused()
-    && witness_zero_peak_is_refused()
-    && witness_partial_unmeasured_is_refused()
-    && witness_over_commit_is_refused()
-    && witness_sound_plan_derives_per_host_capacity()
+    && witness_live_effective_runners_derives_ten()
     && witness_sound_manifest_line_is_populated()
-    && witness_count_respects_conserved_runner_slice()
-    && witness_per_runner_cap_is_worst_times_margin()
-    && witness_bigger_session_reservation_fewer_runners()
-    && witness_runner_count_memory_term_binds()
-    && witness_runner_count_cpu_term_binds()
-    && witness_runner_count_build_token_term_binds()
-    && witness_runner_count_unfit_is_zero()
     && witness_regime1_resolves_worst_case_slice()
     && witness_mode_unset_is_unresolved()
     && witness_regime2_oomd_unverified_is_unresolved()

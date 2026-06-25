@@ -30,6 +30,7 @@ import gunbc.oomd_install { gunbc_oomd_sessions_policy, gunbc_oomd_sessions_slic
 import gunbc.runner_slot_enforcement { gunbc_runner_slot_unit_placeholder }
 import extdeps.os.systemd {
   systemd_memory_max_property,
+  systemd_memory_swap_max_property,
   systemd_cpu_weight_property,
 }
 import extdeps.os.oomd {
@@ -44,6 +45,7 @@ data gunbc_sessions_legacy_parent_slice: String = "system.slice"
 
 data gunbc_runner_unit_template: String = "actions-runner@.service"
 data gunbc_runner_per_slot_dropin_path: String = "/etc/systemd/system/actions-runner@.service.d/20-fleet-width.conf"
+data gunbc_runner_per_slot_swap_dropin_path: String = "/etc/systemd/system/actions-runner@.service.d/30-fleet-swap.conf"
 data gunbc_runner_jobserver_env_file: String = "/etc/default/ctrl-jobserver"
 data gunbc_runner_jobserver_env_key: String = "CTRL_JOBSERVER_TOKENS"
 data gunbc_runner_jobserver_service: String = "ctrl-jobserver.service"
@@ -148,6 +150,17 @@ fn runner_host_knobs(h: RunnerHostDeployment) -> List<ConvergeKnob> {
         instance_glob: glob,
         property: systemd_memory_max_property,
         bytes_value: to_string(byte_size_count(b: h.per_runner_memory_cap)),
+      },
+    },
+    ConvergeKnob {
+      slice: RunnerSlice,
+      name: "per_slot_memory_swap_max_bytes",
+      desired: "0",
+      target: PerSlotMemoryCap {
+        dropin_path: gunbc_runner_per_slot_swap_dropin_path,
+        instance_glob: glob,
+        property: systemd_memory_swap_max_property,
+        bytes_value: "0",
       },
     },
     slice_numeric_knob(
