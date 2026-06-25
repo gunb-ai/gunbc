@@ -95,7 +95,8 @@ data medium_realization_edge_path_prefixes: List<String> = [
   "src/v2/compiler/06_translate",
   "src/v2/compiler/self_host/candidate_generation",
 
-  "src/v2/lens/medium_structure_containment.dag"
+  "src/v2/lens/medium_structure_containment.dag",
+  "src/v2/test/claim/medium_structure_containment/lens_unit/grammar_template_discriminators_test.dag"
 ]
 
 data medium_emit_side_scan_roots: List<String> = [
