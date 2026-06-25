@@ -420,6 +420,12 @@ mod compiler_tests {
                     })
                     .collect();
                 let violation_in_b = sole_ctor_errors.iter().any(|e| e.module_name == "module_b");
+                // enforcement check result
+                assert!(
+                    violation_in_b,
+                    "FieldlessFoo: expected SoleConstructorViolation in module_b, got: {:?}",
+                    result.diagnostics
+                );
                 // leaf-classification check: no TypeMismatch on the identity fn in module_a
                 let type_mismatch_in_a: Vec<_> = result
                     .diagnostics
@@ -432,22 +438,15 @@ mod compiler_tests {
                             )
                     })
                     .collect();
-                (violation_in_b, type_mismatch_in_a.is_empty(), result.diagnostics.clone())
+                assert!(
+                    type_mismatch_in_a.is_empty(),
+                    "FieldlessFoo: TypeMismatch in module_a identity fn — leaf mis-classified by phantom property, got: {:?}",
+                    type_mismatch_in_a
+                );
             })
             .expect("failed to spawn thread")
-            .join()
-            .expect("sole_constructor_fieldless_newtype_witness panicked");
-        let (violation_in_b, no_leaf_misclassification, all_diagnostics) = result;
-        assert!(
-            violation_in_b,
-            "FieldlessFoo: expected SoleConstructorViolation in module_b, got: {:?}",
-            all_diagnostics
-        );
-        assert!(
-            no_leaf_misclassification,
-            "FieldlessFoo: TypeMismatch in module_a identity fn — leaf mis-classified by phantom property, got: {:?}",
-            all_diagnostics
-        );
+            .join();
+        result.expect("sole_constructor_fieldless_newtype_witness panicked");
     }
 
     #[test]
