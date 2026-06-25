@@ -109,6 +109,7 @@ fn rt_string_ops() -> String {
     "pub fn contains(s: String, sub: String) -> bool { string_contains(&s, sub) }\n\n",
     "pub fn starts_with(s: String, prefix: String) -> bool { s.starts_with(&*prefix) }\n\n",
     "pub fn ends_with(s: String, suffix: String) -> bool { s.ends_with(&*suffix) }\n\n",
+    "pub fn trim(s: String) -> String { s.trim().to_string() }\n\n",
     "pub fn count<T>(items: Rc<Vec<T>>) -> i64 { items.len() as i64 }\n\n",
     "pub fn str_eq(a: String, b: String) -> bool { a == b }\n\n",
     "pub fn to_string(value: i64) -> String { value.to_string() }\n\n",
