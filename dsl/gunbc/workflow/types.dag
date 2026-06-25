@@ -9,6 +9,7 @@ import std.types {
   Timestamp
 }
 import extdeps.cloud.gcp.gcp { GcpProjectId, ServiceAccountEmail }
+import extdeps.uri { Uri }
 
 type ArtifactKind = Design | Review | Plan | CiReport
 type AuthorSource = Llm | Human
@@ -190,7 +191,7 @@ type ArtifactType
 
 type ArtifactPayload
   = Inline { body: String }
-  | BlobRef { uri: NonEmptyStr, size_bytes: Int }
+  | BlobRef { uri: Uri, size_bytes: Int }
 
 type Artifact {
   artifact_id: NonEmptyStr
