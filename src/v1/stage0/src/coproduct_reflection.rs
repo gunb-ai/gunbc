@@ -7,7 +7,7 @@ use crate::v1_interpreter::{
 };
 use crate::v1_std_core::{
     authored_name_at, expr_var_name_at, field_node_type_expr, inferred_to_node, param_node_name_at,
-    Connective, ExprData, NewlineIndex, Node, VarBindingKind,
+    source_text_at, Connective, ExprData, NewlineIndex, Node, VarBindingKind,
 };
 
 pub(crate) const NULLARY_PAYLOAD_TYPE_NAME: &str = "coproduct_nullary_payload";
@@ -815,35 +815,25 @@ pub fn eval_fn_arrow_decl_facts_live(
     Ok(crate::v1_interpreter::list_value(rows))
 }
 
-/// Raw-AST walk: true iff `param_name` appears as the authored name of any ExprVar or
-/// ExprCall node anywhere in `body`'s subtree. Used as a fallback when the strict skeleton
-/// check (which requires `binding_kind = Some(LocalValueBinding)`) misses a genuine use
-/// due to unresolved type inference in whole-tree context (binding_kind = None).
-fn ast_body_mentions_name(
-    node: &Rc<Node>,
+/// Source-text fallback: true iff `param_name` appears as a complete identifier token
+/// anywhere in the source text of `body`'s span. Used when the strict skeleton check
+/// misses a genuine use because `binding_kind = None` (unresolved inference in whole-tree
+/// context). Reading from source is immune to inference state and catches every syntactic
+/// use of the parameter name.
+fn body_source_mentions_name(
+    body: &Rc<Node>,
     param_name: &str,
     si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    // Check this node's authored name first (catches ExprVar and ExprCall callee).
-    let name = node_authored_name(node, si);
-    if name == param_name {
-        return true;
-    }
-    // Also check node.name directly (the stored string, distinct from ident_span text).
-    if !node.name.is_empty() && node.name == param_name {
-        return true;
-    }
-    for child in node.children.iter() {
-        if ast_body_mentions_name(child, param_name, si) {
-            return true;
-        }
-    }
-    if let Some(inner) = node.body.as_ref() {
-        if ast_body_mentions_name(inner, param_name, si) {
-            return true;
-        }
-    }
-    false
+    let span = body.span.clone();
+    let Some(index) = si.get(&span.file) else {
+        return false;
+    };
+    let text = source_text_at(index.clone(), span);
+    // Split on any char that cannot appear in a .dag identifier (non-alphanumeric, non-_).
+    // If any token equals param_name exactly, the param is used in the body.
+    text.split(|c: char| !c.is_alphanumeric() && c != '_')
+        .any(|word| word == param_name)
 }
 
 /// Streaming wiring-liveness check over all fn/func items in the context.
@@ -904,7 +894,7 @@ pub fn check_wiring_liveness_streaming(
                     // don't emit Atom leaves. Do a raw-AST walk; if the param name
                     // appears as an authored ExprVar or ExprCall callee name anywhere
                     // in the body tree, treat the wire as ambiguously live (don't report).
-                    if ast_body_mentions_name(body, param_name, &si) {
+                    if body_source_mentions_name(body, param_name, &si) {
                         continue;
                     }
                     dead_count += 1;
