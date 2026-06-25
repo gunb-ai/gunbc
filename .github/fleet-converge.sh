@@ -151,4 +151,3 @@ converge_slice_property "srv2" "sessions" "cpu_weight" "sessions.slice" "CPUWeig
 emit_sessions_membership "srv2" "/sys/fs/cgroup/sessions.slice" "/sys/fs/cgroup/system.slice"
 host_summary "srv2"
 exit "$host_failed"
-
