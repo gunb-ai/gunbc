@@ -1962,13 +1962,12 @@ pub fn compute_percentiles(mut values: Vec<u128>) -> TimingPercentiles {
     }
 }
 
-// SCAFFOLD (§7 hand-Rust shrink-to-zero): witness timing histogram measures the v1 evaluator's
-// execution characteristics (resolve+eval per-witness percentiles). This is legitimately seed-side
-// infrastructure — the evaluator cannot measure itself without circularity. Dissolution trigger:
-// when claim_executor emits timing data as machine-readable lines (dsl/gunbc/ci_spec.dag or
-// equivalent), a .dag witness can ingest and process histograms natively. At that point this
-// hand-Rust diagnostic drops. Until then, this is the sole witness-granularity timing telemetry
-// for CI floor profiling and profile-driven optimization.
+// SCAFFOLD (§7 hand-Rust shrink-to-zero, dissolution named): witness timing histogram measures v1
+// evaluator execution characteristics (resolve+eval per-witness percentiles). Seed-side justified
+// (evaluator cannot measure itself without circularity). Dissolution: ROADMAP lane "CI observability"
+// adds machine-readable timing-data emission to claim_executor (dsl/gunbc/ci_spec.dag TimingRecord
+// rows), then dsl/ .dag witness consumes and histograms natively. At full dissolution, delete this
+// hand-Rust output and hand_generated_percentiles_test.dag coverage.
 pub fn generate_witness_timing_histogram(summary: &DiscoverySummary) -> String {
     if summary.performance_receipts.len() != summary.witness_outcomes.len() {
         let msg = format!(
@@ -1985,28 +1984,14 @@ pub fn generate_witness_timing_histogram(summary: &DiscoverySummary) -> String {
         entry_resolve_map.insert(receipt.entry.clone(), receipt.resolve_nanos);
     }
 
-    let mut witness_outcome_map: HashMap<String, &DiscoveryWitnessOutcome> = HashMap::new();
-    for outcome in &summary.witness_outcomes {
-        let key = format!("{}/{}", outcome.entry, outcome.function);
-        witness_outcome_map.insert(key, outcome);
-    }
-
     let mut total_times: Vec<u128> = Vec::new();
     let mut resolve_times: Vec<u128> = Vec::new();
     let mut eval_times: Vec<u128> = Vec::new();
-    let mut skipped_missing_witness_outcome = 0;
     let mut skipped_missing_entry_resolve = 0;
 
-    for perf in &summary.performance_receipts {
-        let witness_key = format!("{}/{}", "unknown", perf.work_shape);
-        let outcome = match witness_outcome_map.iter().find(|(_, o)| o.function == perf.work_shape) {
-            Some((_, o)) => *o,
-            None => {
-                skipped_missing_witness_outcome += 1;
-                continue;
-            }
-        };
-
+    // performance_receipts and witness_outcomes are both generated in the same discovery pass
+    // with matching cardinality and order, so positional matching is stable across discovery runs.
+    for (perf, outcome) in summary.performance_receipts.iter().zip(summary.witness_outcomes.iter()) {
         let resolve_nanos = match entry_resolve_map.get(&outcome.entry).copied() {
             Some(nanos) => nanos,
             None => {
@@ -2034,8 +2019,8 @@ pub fn generate_witness_timing_histogram(summary: &DiscoverySummary) -> String {
     output.push_str("╚════════════════════════════════════════════════════════════════════════════╝\n\n");
 
     output.push_str(&format!(
-        "Total witnesses: {} (included in histogram); {} skipped (no outcome), {} skipped (no entry-resolve)\n\n",
-        included_witnesses, skipped_missing_witness_outcome, skipped_missing_entry_resolve
+        "Total witnesses: {} (included in histogram); {} skipped (no entry-resolve timing)\n\n",
+        included_witnesses, skipped_missing_entry_resolve
     ));
 
     output.push_str("┌─ TOTAL TIME (Resolve + Eval) ───────────────────────────────────────────────┐\n");
