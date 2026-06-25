@@ -1,0 +1,11 @@
+module test.claim.ci_corpus_envelope
+
+import gunbc.ci_spec {
+  witness_ci_corpus_current_within_envelope,
+  witness_ci_corpus_roster_bound_rejects_one_over,
+}
+
+test fn ci_corpus_envelope_holds() -> Bool {
+  witness_ci_corpus_current_within_envelope()
+    && witness_ci_corpus_roster_bound_rejects_one_over()
+}

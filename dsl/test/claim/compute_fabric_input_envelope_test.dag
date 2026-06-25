@@ -1,0 +1,18 @@
+module test.claim.compute_fabric_input_envelope
+
+import product.compute_fabric {
+  witness_bounded_envelope_admits_at_max,
+  witness_bounded_envelope_rejects_one_over,
+  witness_unknown_envelope_rejects,
+  witness_envelope_digest_bounded_differs_from_unknown,
+}
+
+test fn input_envelope_admission_holds() -> Bool {
+  witness_bounded_envelope_admits_at_max()
+    && witness_bounded_envelope_rejects_one_over()
+    && witness_unknown_envelope_rejects()
+}
+
+test fn input_envelope_digest_discriminates() -> Bool {
+  witness_envelope_digest_bounded_differs_from_unknown()
+}

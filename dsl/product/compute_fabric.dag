@@ -71,7 +71,7 @@ import extdeps.toolchain.types {
 import product.placement_supply { HostIdentity, PlacementSupplyRow }
 import std.baseboard { ServerBaseboard }
 import std.realization_width { bounded_host_spawn_width, memory_aware_spawn_width, int_min }
-import std.termination { RankingDimension }
+import std.termination { RankingDimension, TreeSize, ListLength, ArithmeticValue, TokenPosition, SetCardinality }
 
 type ComputeWitness<C> = Node
 type Outcome<T> = Node

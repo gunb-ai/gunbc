@@ -7,8 +7,16 @@ import gunbc.ci_layer_roots {
 import tools.build_step { BuildArtifact, verifications_script }
 import extdeps.languages.bash.program { Concat, lit, var_ref }
 import gunbc.ci_failure_class { infra_retry_grep_alternation }
-import product.compute_fabric { InputEnvelope }
-import std.termination { RankingDimension }
+import std.nat { Nat }
+import product.compute_fabric {
+  InputEnvelope,
+  Bounded,
+  envelope_admits,
+  Admitted,
+  EnvelopeExceeded,
+  BoundUnknown,
+}
+import std.termination { RankingDimension, SetCardinality, TreeSize, ArithmeticValue }
 
 type Gate
   = RustMonolithGate
@@ -220,4 +228,57 @@ fn gunbc_ci_rust_job_run() -> String {
       gunbc_ci_rust_gate_invoke()
     )
   )
+}
+
+data ci_corpus_witness_roster_bound: InputEnvelope =
+  Bounded { axis: SetCardinality { param: "witness_roster" }, max: 800 }
+
+data ci_corpus_node_per_file_bound: InputEnvelope =
+  Bounded { axis: TreeSize { param: "dag_file_node_count" }, max: 3000 }
+
+data ci_corpus_tree_bytes_bound: InputEnvelope =
+  Bounded { axis: ArithmeticValue { param: "dsl_tree_bytes" }, max: 8000000 }
+
+data ci_corpus_envelope: List<InputEnvelope> = [
+  ci_corpus_witness_roster_bound,
+  ci_corpus_node_per_file_bound,
+  ci_corpus_tree_bytes_bound,
+]
+
+fn ci_corpus_roster_bound_admits(actual: Nat) -> Bool {
+  match envelope_admits(envelope: ci_corpus_witness_roster_bound, actual: actual) {
+    Admitted => true
+    EnvelopeExceeded { axis: _, envelope_max: _, actual: _ } => false
+    BoundUnknown { actual: _ } => false
+  }
+}
+
+fn ci_corpus_node_bound_admits(actual: Nat) -> Bool {
+  match envelope_admits(envelope: ci_corpus_node_per_file_bound, actual: actual) {
+    Admitted => true
+    EnvelopeExceeded { axis: _, envelope_max: _, actual: _ } => false
+    BoundUnknown { actual: _ } => false
+  }
+}
+
+fn ci_corpus_bytes_bound_admits(actual: Nat) -> Bool {
+  match envelope_admits(envelope: ci_corpus_tree_bytes_bound, actual: actual) {
+    Admitted => true
+    EnvelopeExceeded { axis: _, envelope_max: _, actual: _ } => false
+    BoundUnknown { actual: _ } => false
+  }
+}
+
+fn witness_ci_corpus_current_within_envelope() -> Bool {
+  ci_corpus_roster_bound_admits(actual: 510)
+    && ci_corpus_node_bound_admits(actual: 1300)
+    && ci_corpus_bytes_bound_admits(actual: 2500000)
+}
+
+fn witness_ci_corpus_roster_bound_rejects_one_over() -> Bool {
+  match envelope_admits(envelope: ci_corpus_witness_roster_bound, actual: 801) {
+    EnvelopeExceeded { axis: _, envelope_max: m, actual: a } => m == 800 && a == 801
+    Admitted => false
+    BoundUnknown { actual: _ } => false
+  }
 }
