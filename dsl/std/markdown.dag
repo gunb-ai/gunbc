@@ -7,10 +7,7 @@ import std.markup {
   Attribute,
   AttributeContext,
   UrlContext,
-  RejectedUrlScheme,
-  SafeHref,
-  RejectedHref,
-  validate_href,
+
 }
 
 type HeadingLevel = H1 | H2 | H3 | H4 | H5 | H6
@@ -50,116 +47,6 @@ type MarkdownBlock
   | ThematicBreak
 
 type MarkdownDocument { blocks: List<MarkdownBlock> }
-
-fn markdown_url_validation(url: String) -> RejectedUrlScheme? {
-  match validate_href(url: url) {
-    SafeHref { url: _ } => Absent
-    RejectedHref { reason: r } => Present { value: r }
-  }
-}
-
-fn find_first_rejected_url_in_inlines(inlines: List<MarkdownInline>) -> RejectedUrlScheme? {
-  fold(inlines,
-    init: Absent,
-    f: (acc, inline) => match acc {
-      Present { value: r } => Present { value: r }
-      Absent => find_first_rejected_url_in_inline(inline: inline)
-    }
-  )
-}
-
-fn find_first_rejected_url_in_inline(inline: MarkdownInline) -> RejectedUrlScheme? {
-  match inline {
-    TextInline { text: _ } => Absent
-    CodeInline { text: _ } => Absent
-    ImageInline { alt: _, url } => markdown_url_validation(url: url)
-    LinkInline { inlines, url } =>
-      match markdown_url_validation(url: url) {
-        Present { value: r } => Present { value: r }
-        Absent => find_first_rejected_url_in_inlines(inlines: inlines)
-      }
-    EmphasisInline { inlines } =>
-      find_first_rejected_url_in_inlines(inlines: inlines)
-    StrongInline { inlines } =>
-      find_first_rejected_url_in_inlines(inlines: inlines)
-  }
-}
-
-fn find_first_rejected_url_in_blocks(blocks: List<MarkdownBlock>) -> RejectedUrlScheme? {
-  fold(blocks,
-    init: Absent,
-    f: (acc, block) => match acc {
-      Present { value: r } => Present { value: r }
-      Absent => find_first_rejected_url_in_block(block: block)
-    }
-  )
-}
-
-fn find_first_rejected_url_in_cells(cells: List<MarkdownTableCell>) -> RejectedUrlScheme? {
-  fold(cells,
-    init: Absent,
-    f: (acc, cell) => match acc {
-      Present { value: r } => Present { value: r }
-      Absent => find_first_rejected_url_in_inlines(inlines: cell.inlines)
-    }
-  )
-}
-
-fn find_first_rejected_url_in_rows(rows: List<MarkdownTableRow>) -> RejectedUrlScheme? {
-  fold(rows,
-    init: Absent,
-    f: (acc, row) => match acc {
-      Present { value: r } => Present { value: r }
-      Absent => find_first_rejected_url_in_cells(cells: row.cells)
-    }
-  )
-}
-
-fn find_first_rejected_url_in_block(block: MarkdownBlock) -> RejectedUrlScheme? {
-  match block {
-    CodeBlock { code: _ } => Absent
-    HeadingBlock { level: _, inlines } =>
-      find_first_rejected_url_in_inlines(inlines: inlines)
-    ParagraphBlock { inlines } =>
-      find_first_rejected_url_in_inlines(inlines: inlines)
-    UnorderedListBlock { items } =>
-      fold(items,
-        init: Absent,
-        f: (acc, item) => match acc {
-          Present { value: r } => Present { value: r }
-          Absent => find_first_rejected_url_in_blocks(blocks: item.blocks)
-        }
-      )
-    OrderedListBlock { items } =>
-      fold(items,
-        init: Absent,
-        f: (acc, item) => match acc {
-          Present { value: r } => Present { value: r }
-          Absent => find_first_rejected_url_in_blocks(blocks: item.blocks)
-        }
-      )
-    TaskListBlock { items } =>
-      fold(items,
-        init: Absent,
-        f: (acc, item) => match acc {
-          Present { value: r } => Present { value: r }
-          Absent => find_first_rejected_url_in_blocks(blocks: item.blocks)
-        }
-      )
-    TableBlock { header, alignments: _, rows } =>
-      match find_first_rejected_url_in_cells(cells: header.cells) {
-        Present { value: r } => Present { value: r }
-        Absent => find_first_rejected_url_in_rows(rows: rows)
-      }
-    BlockquoteBlock { blocks } =>
-      find_first_rejected_url_in_blocks(blocks: blocks)
-    ThematicBreak => Absent
-  }
-}
-
-fn find_first_rejected_url_in_document(doc: MarkdownDocument) -> RejectedUrlScheme? {
-  find_first_rejected_url_in_blocks(blocks: doc.blocks)
-}
 
 fn heading_level_to_tag(level: HeadingLevel) -> String {
   match level {
