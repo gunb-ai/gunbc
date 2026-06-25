@@ -1928,15 +1928,6 @@ pub struct DiscoverySummary {
 }
 
 #[derive(Debug, Clone)]
-pub struct WitnessTimingData {
-    pub function: String,
-    pub entry: String,
-    pub resolve_nanos: u128,
-    pub eval_nanos: u128,
-    pub total_nanos: u128,
-}
-
-#[derive(Debug, Clone)]
 pub struct TimingPercentiles {
     pub p50: u128,
     pub p90: u128,
@@ -1957,52 +1948,48 @@ pub fn compute_percentiles(mut values: Vec<u128>) -> TimingPercentiles {
     }
     values.sort_unstable();
     let len = values.len();
-    let p50_idx = (len as f64 * 0.50) as usize;
-    let p90_idx = (len as f64 * 0.90) as usize;
-    let p95_idx = (len as f64 * 0.95) as usize;
-    let p99_idx = (len as f64 * 0.99) as usize;
-    let p100_idx = len - 1;
+    let clamp_idx = |f: f64| {
+        let idx = (len as f64 * f) as usize;
+        idx.min(len - 1)
+    };
 
     TimingPercentiles {
-        p50: values[p50_idx],
-        p90: values[p90_idx],
-        p95: values[p95_idx],
-        p99: values[p99_idx],
-        p100: values[p100_idx],
+        p50: values[clamp_idx(0.50)],
+        p90: values[clamp_idx(0.90)],
+        p95: values[clamp_idx(0.95)],
+        p99: values[clamp_idx(0.99)],
+        p100: values[len - 1],
     }
 }
 
 pub fn generate_witness_timing_histogram(summary: &DiscoverySummary) -> String {
+    if summary.performance_receipts.len() != summary.witness_outcomes.len() {
+        eprintln!(
+            "[histogram] ERROR: mismatched vector lengths (performance_receipts={}, witness_outcomes={}) — timings unreliable; skipping histogram",
+            summary.performance_receipts.len(),
+            summary.witness_outcomes.len()
+        );
+        return String::new();
+    }
+
     let mut entry_resolve_map: HashMap<String, u128> = HashMap::new();
     for receipt in &summary.entry_resolve_receipts {
         entry_resolve_map.insert(receipt.entry.clone(), receipt.resolve_nanos);
     }
 
-    let mut timings: Vec<WitnessTimingData> = Vec::new();
-    for (idx, perf) in summary.performance_receipts.iter().enumerate() {
-        let (entry, function) = if idx < summary.witness_outcomes.len() {
-            let outcome = &summary.witness_outcomes[idx];
-            (outcome.entry.clone(), outcome.function.clone())
-        } else {
-            (String::new(), perf.work_shape.clone())
-        };
+    let mut total_times: Vec<u128> = Vec::new();
+    let mut resolve_times: Vec<u128> = Vec::new();
+    let mut eval_times: Vec<u128> = Vec::new();
 
-        let resolve_nanos = entry_resolve_map.get(&entry).copied().unwrap_or(0);
+    for (perf, outcome) in summary.performance_receipts.iter().zip(summary.witness_outcomes.iter()) {
+        let resolve_nanos = entry_resolve_map.get(&outcome.entry).copied().unwrap_or(0);
         let eval_nanos = perf.wall_nanos;
         let total_nanos = resolve_nanos + eval_nanos;
 
-        timings.push(WitnessTimingData {
-            function,
-            entry,
-            resolve_nanos,
-            eval_nanos,
-            total_nanos,
-        });
+        total_times.push(total_nanos);
+        resolve_times.push(resolve_nanos);
+        eval_times.push(eval_nanos);
     }
-
-    let total_times: Vec<u128> = timings.iter().map(|t| t.total_nanos).collect();
-    let resolve_times: Vec<u128> = timings.iter().map(|t| t.resolve_nanos).collect();
-    let eval_times: Vec<u128> = timings.iter().map(|t| t.eval_nanos).collect();
 
     let total_percentiles = compute_percentiles(total_times);
     let resolve_percentiles = compute_percentiles(resolve_times);
@@ -2014,7 +2001,7 @@ pub fn generate_witness_timing_histogram(summary: &DiscoverySummary) -> String {
     output.push_str("║                Per-Witness Resolve+Eval Percentiles                         ║\n");
     output.push_str("╚════════════════════════════════════════════════════════════════════════════╝\n\n");
 
-    output.push_str(&format!("Total witnesses: {}\n\n", timings.len()));
+    output.push_str(&format!("Total witnesses: {}\n\n", summary.performance_receipts.len()));
 
     output.push_str("┌─ TOTAL TIME (Resolve + Eval) ───────────────────────────────────────────────┐\n");
     output.push_str(&format!(
