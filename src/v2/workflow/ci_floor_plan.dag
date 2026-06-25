@@ -250,8 +250,12 @@ fn gunbc_ci_floor_spawn_width_for_budget(memory_budget: ByteSize) -> HardwareThr
   )
 }
 
-fn gunbc_ci_floor_spawn_width() -> HardwareThreadCount {
+fn gunbc_ci_floor_spawn_width_from_tree() -> HardwareThreadCount {
   gunbc_ci_floor_spawn_width_for_budget(memory_budget: srv1_floor_memory_budget())
+}
+
+fn gunbc_ci_floor_spawn_width(memory_budget_bytes: Int) -> HardwareThreadCount {
+  gunbc_ci_floor_spawn_width_for_budget(memory_budget: byte_size(memory_budget_bytes))
 }
 
 fn gunbc_ci_floor_run_envelope(memory_budget_bytes: Int) -> ResourceEnvelope {
@@ -290,14 +294,25 @@ fn witness_floor_unreadable_budget_uses_conservative_envelope() -> Bool {
 }
 
 fn witness_floor_width_governed_by_budget_tree() -> Bool {
-  let tree_width = hardware_thread_count_value(t: gunbc_ci_floor_spawn_width())
+  let tree_width = hardware_thread_count_value(t: gunbc_ci_floor_spawn_width_from_tree())
   let cpu_only_width = hardware_thread_count_value(t: bounded_host_spawn_width(shard_count: gunbc_ci_floor_breadth(), hardware_threads: gunbc_ci_floor_hardware_threads()))
   return tree_width < cpu_only_width
 }
 
 fn witness_floor_width_derived_from_tree_is_positive() -> Bool {
   byte_size_count(b: srv1_floor_memory_budget()) > 0
-    && hardware_thread_count_value(t: gunbc_ci_floor_spawn_width()) > 0
+    && hardware_thread_count_value(t: gunbc_ci_floor_spawn_width_from_tree()) > 0
+}
+
+fn witness_floor_spawn_width_tight_budget_backs_off() -> Bool {
+  let tight = 10000000000
+  let width = hardware_thread_count_value(t: gunbc_ci_floor_spawn_width(memory_budget_bytes: tight))
+  width < gunbc_ci_floor_breadth()
+}
+
+fn witness_floor_spawn_width_zero_budget_falls_back() -> Bool {
+  let width = hardware_thread_count_value(t: gunbc_ci_floor_spawn_width(memory_budget_bytes: 0))
+  width == gunbc_ci_floor_conservative_fallback_width
 }
 
 fn floor_layer_heavy_resolve_count(batch: ExecutorBatch, spec: CiSpec) -> Int {
