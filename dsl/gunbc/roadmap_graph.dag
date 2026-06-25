@@ -161,7 +161,7 @@ fn graph_node_json(n: RoadmapNode, status: GraphStatus, wave_json: String, edges
     concat(sf,
     concat(", \"parent_node_id\": ", concat(parent_id_json,
     concat(", \"status\": ", concat(json_str(s: s),
-    concat(", \"wave\": ", concat(wave_json, "}")))))))))))))
+    concat(", \"wave\": ", concat(wave_json, "}"))))))))))))
 }
 
 fn edge_json(e: RoadmapEdge) -> String {
@@ -198,5 +198,5 @@ fn roadmap_graph_json(doc: RoadmapDocument, merged: List<Int>, anchor_commit: St
     concat(", \"nodes\": [", concat(join_strings(items: node_jsons),
     concat("], \"edges\": [", concat(join_strings(items: edge_jsons),
     "]}"))))))
-  )
+  ))
 }

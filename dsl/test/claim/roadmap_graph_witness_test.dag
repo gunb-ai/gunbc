@@ -1,0 +1,172 @@
+module test.claim.roadmap_graph
+
+import ctrl.process_algebra { ProcessNodeId }
+import gunbc.roadmap_model {
+  RoadmapNode, RoadmapEdge,
+  IntricacyHigh, VolumeMedium,
+  PrsMerged,
+  NodeSizing, Sized, Unsized,
+  SectionElement, Group, SectionGroup,
+}
+import gunbc.roadmap_status { DerivableLine }
+import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
+import gunbc.roadmap_graph {
+  GraphStatus, GraphDone, GraphNow, GraphSoon, GraphLater, GraphShelved,
+  node_graph_status, roadmap_graph_json, shelved_node_ids,
+}
+
+fn nid(s: String) -> ProcessNodeId { s }
+
+fn sized_derivable(id: String, prs: List<Int>, title: String) -> RoadmapNode {
+  RoadmapNode {
+    node: nid(s: id),
+    line: DerivableLine { prs: prs, title: title, description: "" },
+    carriers: [],
+    sizing: Sized { intricacy: IntricacyHigh, volume: VolumeMedium, repo: "gunbc", acceptance: PrsMerged },
+  }
+}
+
+fn fixture_section(label: String, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> RoadmapSection {
+  RoadmapSection {
+    title: label,
+    elements: [Group { group: SectionGroup { label: label, nodes: nodes, edges: edges } }],
+  }
+}
+
+fn fixture_doc(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> RoadmapDocument {
+  RoadmapDocument {
+    preamble: [],
+    lead_lanes: [],
+    sections: [fixture_section(label: "test", nodes: nodes, edges: edges)],
+  }
+}
+
+fn fixture_doc_with_shelved(active_nodes: List<RoadmapNode>, shelved_nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> RoadmapDocument {
+  RoadmapDocument {
+    preamble: [],
+    lead_lanes: [],
+    sections: [
+      fixture_section(label: "active", nodes: active_nodes, edges: edges),
+      fixture_section(label: "shelved-zone (SHELVED)", nodes: shelved_nodes, edges: []),
+    ],
+  }
+}
+
+fn status_is(s: GraphStatus, expected: GraphStatus) -> Bool {
+  match s {
+    GraphDone => match expected { GraphDone => true, _ => false }
+    GraphNow => match expected { GraphNow => true, _ => false }
+    GraphSoon => match expected { GraphSoon => true, _ => false }
+    GraphLater => match expected { GraphLater => true, _ => false }
+    GraphShelved => match expected { GraphShelved => true, _ => false }
+  }
+}
+
+fn witness_status_wave_chain() -> Bool {
+  let node_a = sized_derivable(id: "chain-a", prs: [100], title: "Chain A")
+  let node_b = sized_derivable(id: "chain-b", prs: [200], title: "Chain B")
+  let node_c = sized_derivable(id: "chain-c", prs: [300], title: "Chain C")
+  let nodes = [node_a, node_b, node_c]
+  let edges = [
+    RoadmapEdge { child: nid(s: "chain-b"), parent: nid(s: "chain-a") },
+    RoadmapEdge { child: nid(s: "chain-c"), parent: nid(s: "chain-b") },
+  ]
+  let shelved_ids = []
+  let sa = node_graph_status(node: node_a, nodes: nodes, edges: edges, merged: [], shelved_ids: shelved_ids)
+  let sb = node_graph_status(node: node_b, nodes: nodes, edges: edges, merged: [], shelved_ids: shelved_ids)
+  let sc = node_graph_status(node: node_c, nodes: nodes, edges: edges, merged: [], shelved_ids: shelved_ids)
+  status_is(s: sa, expected: GraphNow)
+    && status_is(s: sb, expected: GraphSoon)
+    && status_is(s: sc, expected: GraphLater)
+}
+
+fn witness_done_frontier_shift_reclassifies() -> Bool {
+  let node_a = sized_derivable(id: "shift-a", prs: [100], title: "Shift A")
+  let node_b = sized_derivable(id: "shift-b", prs: [200], title: "Shift B")
+  let node_c = sized_derivable(id: "shift-c", prs: [300], title: "Shift C")
+  let nodes = [node_a, node_b, node_c]
+  let edges = [
+    RoadmapEdge { child: nid(s: "shift-b"), parent: nid(s: "shift-a") },
+    RoadmapEdge { child: nid(s: "shift-c"), parent: nid(s: "shift-b") },
+  ]
+  let shelved_ids = []
+  let sb_before = node_graph_status(node: node_b, nodes: nodes, edges: edges, merged: [], shelved_ids: shelved_ids)
+  let sc_before = node_graph_status(node: node_c, nodes: nodes, edges: edges, merged: [], shelved_ids: shelved_ids)
+  let sb_after = node_graph_status(node: node_b, nodes: nodes, edges: edges, merged: [100], shelved_ids: shelved_ids)
+  let sc_after = node_graph_status(node: node_c, nodes: nodes, edges: edges, merged: [100], shelved_ids: shelved_ids)
+  status_is(s: sb_before, expected: GraphSoon)
+    && status_is(s: sc_before, expected: GraphLater)
+    && status_is(s: sb_after, expected: GraphNow)
+    && status_is(s: sc_after, expected: GraphSoon)
+}
+
+fn witness_wave_numbers_in_json() -> Bool {
+  let node_a = sized_derivable(id: "wn-a", prs: [100], title: "WN A")
+  let node_b = sized_derivable(id: "wn-b", prs: [200], title: "WN B")
+  let node_c = sized_derivable(id: "wn-c", prs: [300], title: "WN C")
+  let doc = fixture_doc(
+    nodes: [node_a, node_b, node_c],
+    edges: [
+      RoadmapEdge { child: nid(s: "wn-b"), parent: nid(s: "wn-a") },
+      RoadmapEdge { child: nid(s: "wn-c"), parent: nid(s: "wn-b") },
+    ]
+  )
+  let json = roadmap_graph_json(doc: doc, merged: [], anchor_commit: "abc")
+  string_contains(s: json, pattern: "\"wave\": 0")
+    && string_contains(s: json, pattern: "\"wave\": 1")
+    && string_contains(s: json, pattern: "\"wave\": 2")
+}
+
+fn witness_wave_recomputes_after_shift() -> Bool {
+  let node_a = sized_derivable(id: "wr-a", prs: [100], title: "WR A")
+  let node_b = sized_derivable(id: "wr-b", prs: [200], title: "WR B")
+  let node_c = sized_derivable(id: "wr-c", prs: [300], title: "WR C")
+  let doc = fixture_doc(
+    nodes: [node_a, node_b, node_c],
+    edges: [
+      RoadmapEdge { child: nid(s: "wr-b"), parent: nid(s: "wr-a") },
+      RoadmapEdge { child: nid(s: "wr-c"), parent: nid(s: "wr-b") },
+    ]
+  )
+  let json_initial = roadmap_graph_json(doc: doc, merged: [], anchor_commit: "t0")
+  let json_shifted = roadmap_graph_json(doc: doc, merged: [100], anchor_commit: "t0")
+  string_contains(s: json_initial, pattern: "\"wave\": 2")
+    && !string_contains(s: json_shifted, pattern: "\"wave\": 2")
+    && string_contains(s: json_shifted, pattern: "\"wave\": 1")
+}
+
+fn witness_shelved_section_excluded_from_wave() -> Bool {
+  let active = sized_derivable(id: "shelve-active", prs: [100], title: "Active")
+  let shelved = sized_derivable(id: "shelve-shelved", prs: [999], title: "Shelved")
+  let doc = fixture_doc_with_shelved(
+    active_nodes: [active],
+    shelved_nodes: [shelved],
+    edges: []
+  )
+  let nodes = [active, shelved]
+  let edges = []
+  let sids = shelved_node_ids(doc: doc)
+  let status_active = node_graph_status(node: active, nodes: nodes, edges: edges, merged: [], shelved_ids: sids)
+  let status_shelved = node_graph_status(node: shelved, nodes: nodes, edges: edges, merged: [], shelved_ids: sids)
+  status_is(s: status_active, expected: GraphNow)
+    && status_is(s: status_shelved, expected: GraphShelved)
+}
+
+fn witness_schema_field_present() -> Bool {
+  let node_a = sized_derivable(id: "schema-a", prs: [], title: "Schema A")
+  let doc = fixture_doc(nodes: [node_a], edges: [])
+  let json = roadmap_graph_json(doc: doc, merged: [], anchor_commit: "deadbeef")
+  string_contains(s: json, pattern: "roadmap-graph/v1")
+    && string_contains(s: json, pattern: "deadbeef")
+    && string_contains(s: json, pattern: "\"nodes\"")
+    && string_contains(s: json, pattern: "\"edges\"")
+}
+
+test fn roadmap_graph_witnesses() -> Bool {
+  witness_status_wave_chain()
+    && witness_done_frontier_shift_reclassifies()
+    && witness_wave_numbers_in_json()
+    && witness_wave_recomputes_after_shift()
+    && witness_shelved_section_excluded_from_wave()
+    && witness_schema_field_present()
+}
