@@ -20,7 +20,7 @@ type BmcCapability
   | CapabilityAccountManagement
   | CapabilityFirmwareUpdate
   | CapabilityVirtualMedia
-  | CapabilityWebuiVirtualMedia
+  | CapabilityNbdProxyVirtualMedia
   | CapabilityBiosAttributeConfig
 
 type BmcFirmwareVersion {
@@ -51,6 +51,6 @@ data openbmc_2_07_00_capabilities: BmcFirmwareCapabilityRow = BmcFirmwareCapabil
     CapabilityBootSourceOverride,
     CapabilityAccountManagement,
     CapabilityFirmwareUpdate,
-    CapabilityWebuiVirtualMedia,
+    CapabilityNbdProxyVirtualMedia,
   ],
 }

@@ -12,7 +12,7 @@ import extdeps.bmc.capability {
   CapabilityAccountManagement,
   CapabilityFirmwareUpdate,
   CapabilityVirtualMedia,
-  CapabilityWebuiVirtualMedia,
+  CapabilityNbdProxyVirtualMedia,
   CapabilityBiosAttributeConfig,
   firmware_has_capability,
   catalog_has_vm_capable_firmware,
@@ -21,7 +21,7 @@ import extdeps.bmc.capability {
 import gunbc.os_install_mechanism {
   OsInstallMechanism,
   VirtualMediaInstall,
-  WebuiVirtualMediaInstall,
+  NbdProxyVirtualMediaInstall,
   PxeHttpInstall,
   FirmwareUpdateThenVirtualMedia,
   solve_install_mechanism,
@@ -34,7 +34,7 @@ test fn srv3_capabilities_are_grounded() -> Bool {
     && firmware_has_capability(row: openbmc_2_07_00_capabilities, cap: CapabilityBootSourceOverride)
     && firmware_has_capability(row: openbmc_2_07_00_capabilities, cap: CapabilityAccountManagement)
     && firmware_has_capability(row: openbmc_2_07_00_capabilities, cap: CapabilityFirmwareUpdate)
-    && firmware_has_capability(row: openbmc_2_07_00_capabilities, cap: CapabilityWebuiVirtualMedia)
+    && firmware_has_capability(row: openbmc_2_07_00_capabilities, cap: CapabilityNbdProxyVirtualMedia)
     && firmware_has_capability(row: openbmc_2_07_00_capabilities, cap: CapabilityVirtualMedia) == false
     && firmware_has_capability(row: openbmc_2_07_00_capabilities, cap: CapabilityBiosAttributeConfig) == false
 }
@@ -43,16 +43,16 @@ test fn catalog_has_no_redfish_vm_capable_firmware_today() -> Bool {
   catalog_has_vm_capable_firmware(catalog: srv3_firmware_catalog) == false
 }
 
-test fn srv3_install_mechanism_is_webui_vm_today() -> Bool {
+test fn srv3_install_mechanism_is_nbd_proxy_vm_today() -> Bool {
   match srv3_install_mechanism {
-    WebuiVirtualMediaInstall => true
+    NbdProxyVirtualMediaInstall => true
     VirtualMediaInstall => false
     PxeHttpInstall => false
     FirmwareUpdateThenVirtualMedia => false
   }
 }
 
-test fn webui_vm_capable_row_solves_webui() -> Bool {
+test fn nbd_proxy_vm_capable_row_solves() -> Bool {
   let webui_only_row = BmcFirmwareCapabilityRow {
     firmware: BmcFirmwareVersion {
       family: OpenBmc,
@@ -61,18 +61,18 @@ test fn webui_vm_capable_row_solves_webui() -> Bool {
     capabilities: [
       CapabilityPowerControl,
       CapabilityBootSourceOverride,
-      CapabilityWebuiVirtualMedia,
+      CapabilityNbdProxyVirtualMedia,
     ],
   }
   match solve_install_mechanism(current: webui_only_row, catalog: [webui_only_row]) {
-    WebuiVirtualMediaInstall => true
+    NbdProxyVirtualMediaInstall => true
     VirtualMediaInstall => false
     PxeHttpInstall => false
     FirmwareUpdateThenVirtualMedia => false
   }
 }
 
-test fn redfish_vm_preferred_over_webui() -> Bool {
+test fn redfish_vm_preferred_over_nbd_proxy() -> Bool {
   let both_vm_row = BmcFirmwareCapabilityRow {
     firmware: BmcFirmwareVersion {
       family: OpenBmc,
@@ -81,12 +81,12 @@ test fn redfish_vm_preferred_over_webui() -> Bool {
     capabilities: [
       CapabilityPowerControl,
       CapabilityVirtualMedia,
-      CapabilityWebuiVirtualMedia,
+      CapabilityNbdProxyVirtualMedia,
     ],
   }
   match solve_install_mechanism(current: both_vm_row, catalog: [both_vm_row]) {
     VirtualMediaInstall => true
-    WebuiVirtualMediaInstall => false
+    NbdProxyVirtualMediaInstall => false
     PxeHttpInstall => false
     FirmwareUpdateThenVirtualMedia => false
   }
@@ -122,7 +122,7 @@ test fn vm_capable_firmware_row_flips_to_update_path() -> Bool {
   match solve_install_mechanism(current: update_only_row, catalog: extended_catalog) {
     FirmwareUpdateThenVirtualMedia => true
     VirtualMediaInstall => false
-    WebuiVirtualMediaInstall => false
+    NbdProxyVirtualMediaInstall => false
     PxeHttpInstall => false
   }
 }
@@ -141,7 +141,7 @@ test fn update_only_row_without_vm_catalog_falls_to_pxe() -> Bool {
   match solve_install_mechanism(current: update_only_row, catalog: [update_only_row]) {
     PxeHttpInstall => true
     VirtualMediaInstall => false
-    WebuiVirtualMediaInstall => false
+    NbdProxyVirtualMediaInstall => false
     FirmwareUpdateThenVirtualMedia => false
   }
 }
@@ -160,7 +160,7 @@ test fn node_with_virtual_media_solves_direct() -> Bool {
   }
   match solve_install_mechanism(current: vm_row, catalog: [vm_row]) {
     VirtualMediaInstall => true
-    WebuiVirtualMediaInstall => false
+    NbdProxyVirtualMediaInstall => false
     FirmwareUpdateThenVirtualMedia => false
     PxeHttpInstall => false
   }
