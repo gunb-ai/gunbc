@@ -35,6 +35,13 @@ fn artifact_generate(a: GeneratedArtifact) -> String {
 fn artifact_extra_valid(a: GeneratedArtifact) -> Bool {
   match a {
     CiYamlArtifact => ci_yml_parses(path: artifact_path(a: a))
-    _ => true
+    GitignoreArtifact => true
+    RoadmapArtifact => true
+    DesignArtifact => true
+    RunnerDeployArtifact => true
+    FleetConvergeArtifact => true
+    AutoinstallUserDataArtifact { spec: _ } => true
+    ProxyDhcpDnsmasqArtifact { spec: _ } => true
+    PlanArtifact { plan: _ } => true
   }
 }
