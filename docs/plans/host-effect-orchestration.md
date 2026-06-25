@@ -34,7 +34,7 @@ Three refinements proved by driving srv3's BMC live (neat-boar-71), each load-be
 **Layer split** (keeps the import arrow pointing toward std; std stays product-free per DESIGN open-decision #2):
 
 | Part | Layer | Why |
-|---|---|---|
+| --- | --- | --- |
 | `EffectShape` (an effect: inputs/outputs/exit semantics) | **std** (`std.effects`, exists) | framework-level, no fleet knowledge |
 | `HostEffect` coproduct, `NodeControlPlane`, `apply(target, effect, policy)`, `Receipt` | **product** | references `HostIdentity`/`BmcEndpoint`/`fleet_intent` (product); homing in std would drag product upward |
 | concrete transports (Redfish / ssh / systemd), each citing its real spec, + the dispatch that selects them | **extdeps** | external authorities; dispatch is realization → peripheral |
@@ -74,3 +74,7 @@ The `HostEffect` coproduct must not fork — arms co-design, the shape mints as 
 - **neat-boar-71** — the `RedfishAction` arm + `BmcController` control-plane + bmc extdeps (has the live srv3 evidence + the Redfish spec); install/BMC bootstrap + transports (Phase B/C/E bootstrap). Continues srv3 install on `host_exec()` through `OsInstalled`, then migrates.
 - **Co-owned, lands together in Phase A:** the `HostEffect` coproduct, `NodeControlPlane`, and the `apply()` signature — so neither arm is minted alone.
 - Decom (Phase F) co-owned; fail-closed stubs land with the interface.
+
+## Dissolution trigger (DESIGN §6)
+
+Delete this doc when the `apply(target, effect, policy) -> Receipt` interface is minted in product (the `HostEffect` coproduct + `NodeControlPlane` co-owned as one unit), every `host_exec()` call is migrated onto it, the BMC `RedfishAction` arm over `RedfishRest` and the converge-lane `EmitArtifactThenThinRun` handler have landed, ctrl host-apply LOC (the `runner_host_reconcile.mjs` hash/fan-out + `defaultContainerResourceCaps`) is deleted, and the on-host self-converge policy + the decom reverse-fold are realized (or their fail-closed `Unimplemented` stubs are witnessed) — at which point the lifecycle is one tested interface and this design note is redundant.

@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -7,7 +6,7 @@ use std::rc::Rc;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use crate::v1_interpreter::{InterpContext, Value};
+use crate::v1_interpreter::{sorted_fields, InterpContext, Value};
 use crate::v1_rt;
 use crate::v1_std_core::{authored_name_at, param_node_name_at, Node};
 
@@ -490,27 +489,27 @@ pub fn value_from_fixture_json(
         "Record" => {
             let type_name = ctx.sym(&require_str(obj, "__type")?);
             let fields_obj = require_fields_obj(obj)?;
-            let mut fields = HashMap::new();
+            let mut fields = Vec::with_capacity(fields_obj.len());
             for (k, v) in fields_obj {
-                fields.insert(ctx.sym(k), value_from_fixture_json(v, ctx)?);
+                fields.push((ctx.sym(k), value_from_fixture_json(v, ctx)?));
             }
             Ok(Value::Record {
                 type_name,
-                fields: Rc::new(fields),
+                fields: Rc::new(sorted_fields(fields)),
             })
         }
         "Variant" => {
             let type_name = ctx.sym(&require_str(obj, "__type")?);
             let variant_name = ctx.sym(&require_str(obj, "__variant")?);
             let fields_obj = require_fields_obj(obj)?;
-            let mut fields = HashMap::new();
+            let mut fields = Vec::with_capacity(fields_obj.len());
             for (k, v) in fields_obj {
-                fields.insert(ctx.sym(k), value_from_fixture_json(v, ctx)?);
+                fields.push((ctx.sym(k), value_from_fixture_json(v, ctx)?));
             }
             Ok(Value::Variant {
                 type_name,
                 variant_name,
-                fields: Rc::new(fields),
+                fields: Rc::new(sorted_fields(fields)),
             })
         }
         "Opaque" => Err(FixtureError::UnknownTag {

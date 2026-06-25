@@ -23,6 +23,7 @@ fn disposition_carrier_body() -> List<MarkdownBlock> {
     p(text: "Lens-lifecycle tags and coproduct dissolve-markers are the **same concept**. One typed carrier:"),
     CodeBlock { code: "type Disposition =\n  | Terminal \{ reason: String \}                      // legitimately closed/lens-forever (the unstructurable: complexity / cost / necessity)\n  | Scaffold \{ dissolves_to: ConstructionMechanism, bind: NodeRef \}   // stand-in until that construction lands\n" },
     p(text: "Applied to **both** a coproduct `type` decl and a lens registry entry. Single authority — not two marking schemes. (`dissolves_to` is itself modeled, not a string: the mechanism that will make the scaffold dead code — e.g. `SingleAuthority`, `RealizationDispatch`, `SubstrateMandatoryTag`.)"),
+    p(text: "**Carrier note (drift to reconcile):** `bind: NodeRef` above is the *resolved, symbolic* end-state. The landed `std/disposition.dag` ships `bind: DeclarationRef` — a stringly `\{ module_path, decl_name, field \}` pair — as a gated-interim shim (the resolution it needs is blocked on gunbc#5364). That stringly form is itself a §3 anemia the carrier exists to dissolve; tracked as its own region in **§7**."),
     h2(text: "2. The decision — #1 vs #2 vs middle (proactive vs lens-enforced)"),
     TableBlock {
       header: MarkdownTableRow { cells: [cell(text: "approach"), cell(text: "what"), cell(text: "verdict")] },
@@ -67,9 +68,58 @@ fn disposition_carrier_body() -> List<MarkdownBlock> {
       li(text: "Add a non-optional disposition field to `LensRegistryEntryV0`; **complete the registry to all ~35 lenses** (or move disposition onto each lens module, discovered tree-wide like `*_test.dag`) — this roster gap is the prerequisite to making the field non-optional. Each existing lens resolves to `Terminal\{reason\}` (complexity/cost/necessity) or `Scaffold\{dissolves_to\}` (everything §0 tier-1)."),
       li(text: "Migrate the `🟡` extdeps comments → typed `Disposition` fields, region by region."),
       li(text: "Land the redundancy lens (§3) over all dispositions; enroll it on the first region."),
-      li(text: "Ratchet the enforced region outward PR by PR."),
+      li(text: "Ratchet the enforced region outward PR by PR — next region is the **`_contracts` coproduct wire-contracts** (§6: 20 contracts, ungated via `enumerate_coproduct_decls()`)."),
+      li(text: "Add the decl-ref **resolution lens** (§7 step 1) — every `Scaffold.bind` / `CoproductWireContract.coproduct` must resolve to an enumerated coproduct decl (ungated); then **ground `DeclarationRef` → resolved `NodeRef`** once gunbc#5364 lands (§7 step 2)."),
       li(text: "**Escalate** the substrate change (#1: can't-define-untagged) when coverage = whole tree and the taxonomy is proven; then the lens dissolves."),
     ]),
+    h2(text: "6. The total migration surface (what \"cleaned up\" means in full)"),
+    p(text: "\"Total migration\" = every place a disposition lives as prose **or** as an untyped/stringly carrier becomes a typed, resolvable `Disposition`. Five regions, ordered by what the substrate can already enumerate (buildable-now first, gated last):"),
+    TableBlock {
+      header: MarkdownTableRow { cells: [cell(text: "region"), cell(text: "count / where"), cell(text: "enumerable now?"), cell(text: "status")] },
+      alignments: [AlignNone, AlignNone, AlignNone, AlignNone],
+      rows: [
+        MarkdownTableRow { cells: [
+          cell(text: "**post-#5579 `data:String` fleet**"),
+          cell(text: "fleet / runner / ci / entropy / bmc marks"),
+          cell(text: "yes (already Node rows)"),
+          cell(text: "in progress — #5746 (9 → `Scaffold`), #5740 (4 → `Terminal`)"),
+        ] },
+        MarkdownTableRow { cells: [
+          cell(text: "**`_contracts` coproduct wire-contracts**"),
+          cell(text: "20 across 9 files (docker, github×6, llm×2, systemd)"),
+          cell(text: "**yes** — `enumerate_coproduct_decls()` is structural / landed"),
+          cell(text: "**0/20 tagged** — the recommended next ratchet region"),
+        ] },
+        MarkdownTableRow { cells: [
+          cell(text: "**lens registry entries**"),
+          cell(text: "~26 of ~35 untagged (`LensRegistryEntryV0`)"),
+          cell(text: "yes (registry roster)"),
+          cell(text: "§5 step 2 — the registry-completion prerequisite"),
+        ] },
+        MarkdownTableRow { cells: [
+          cell(text: "**`🟡` extdeps comments**"),
+          cell(text: "`mock_corpus.dag` dissolve-on-arrival"),
+          cell(text: "§4 Realization dissolves these (no tag at all)"),
+          cell(text: "deepest form — dispatch makes the hand-arm dead code"),
+        ] },
+        MarkdownTableRow { cells: [
+          cell(text: "**stringly `bind` itself (§7)**"),
+          cell(text: "every `Scaffold.bind` + every `CoproductWireContract.coproduct`"),
+          cell(text: "module→path now (#5675); field-granular **gated on gunbc#5364**"),
+          cell(text: "`DeclarationRef` → resolved `NodeRef` — see §7"),
+        ] },
+      ],
+    },
+    p(text: "The `_contracts` region is the **right next slice after the `data:String` fleet**: the carrier is already typed (`CoproductWireContract`) and the substrate can already enumerate every coproduct (`v2.std.concept_index.enumerate_coproduct_decls()`, landed structural per the testgen oracle), so the presence/redundancy lens can run over real coproduct decls **today with no #5364 dependency**. Each of the 20 contracts gets a `Disposition` — almost all `Terminal \{ reason: closed by the upstream wire-protocol grammar \}`, since a service's enum *is* its closed wire vocabulary — and the presence lens ratchets to cover the `_contracts` region. (Operator's question — \"is there a requirement to tag coproducts in `_contracts` with a dissolution tag?\" — answer: **not enforced yet**; that requirement *is* the #1 `SubstrateMandatoryTag` end-state, reached here region-by-region with `_contracts` as the next region, not by flag-day.)"),
+    h2(text: "7. Symbolic binds — `DeclarationRef` (stringly) → resolved `NodeRef`"),
+    p(text: "**Carrier drift to reconcile:** §1 specifies `Scaffold \{ dissolves_to, bind: NodeRef \}` (a *resolved, symbolic* reference). The landed `std/disposition.dag` shipped `bind: DeclarationRef` — `\{ module_path: NonEmptyStr, decl_name: NonEmptyStr, field: DeclField \}`, i.e. **two raw strings**. That is itself the §3 anemia / nickname problem the carrier exists to remove: `decl_name: \"cited_operating_system_surface\"` is a *string that names a decl*, not a reference *to* it, so nothing verifies the decl exists — a typo, a rename, or a deletion leaves the bind silently dangling (fail-open). The same stringly pair is already load-bearing in all 20 `CoproductWireContract.coproduct` fields."),
+    p(text: "**Why it shipped stringly (the gate):** resolving `module_path` + `decl_name` (+ `field`) to the actual declaration Node needs field-granular decl enumeration over the self-host compile graph, **gated on gunbc#5364**. What exists today: `module_declaration_facts` (#5675, module→path) and `enumerate_coproduct_decls()` (type-decl granular). So `DeclarationRef` is an honest *transitional shim* — but, until now, an **untracked** one."),
+    p(text: "**The enforcement gap the operator flagged** (\"a lens to enforce that?\"): there is **no lens today that resolves a `DeclarationRef`** — neither that the named decl exists, nor that wire-contract / disposition decls live where they should. `module_graph.dag` reads imports, not decl-ref targets. So a `DeclarationRef` is currently a §5 *wall-after-grounding*: decidable (does `module_path::decl_name` resolve to a real decl?) but waiting on its single authority (the #5364 enumeration)."),
+    ol(items: [
+      li(text: "**Now (ungated):** add a **resolution lens** keyed on `enumerate_coproduct_decls()` — every `CoproductWireContract.coproduct` and every coproduct-targeting `Scaffold.bind` must resolve to an enumerated coproduct decl; **RED on a dangling `decl_name`**. This already covers the 20 `_contracts` (all target coproducts) and the coproduct binds, with no #5364 dependency. It is the discriminating consumer that makes the `_contracts` migration non-inert."),
+      li(text: "**Gated on gunbc#5364:** widen the resolution lens to *all* decls and to field-granularity (`NamedField`), then **ground `DeclarationRef` → `NodeRef`**: `bind` / `coproduct` carries a *resolved* node reference, and an unresolvable reference is **unwritable** (construction, not validation — §5). At that point `DeclarationRef`'s raw-string form dissolves into the resolved carrier."),
+    ]),
+    p(text: "This recovers §1's original `NodeRef` intent: stringly `DeclarationRef` is the gated-interim, resolved `NodeRef` is the end-state, and the resolution lens is the ratchet between them — itself a `Scaffold \{ dissolves_to: SubstrateMandatoryTag \}` that dies when the substrate resolves references at definition."),
   ]
 }
 

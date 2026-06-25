@@ -5,10 +5,14 @@ import gunbc.plans.ci_humming { ci_humming_plan }
 import gunbc.plans.edge_b_rust_dag_provenance_brief { edge_b_rust_dag_provenance_brief_plan }
 import gunbc.plans.resolver_type_name_collision_wall { resolver_type_name_collision_wall_plan }
 import gunbc.plans.realization_measurement_loop { realization_measurement_loop_plan }
+import gunbc.plans.host_effect_orchestration { host_effect_orchestration_plan }
+import gunbc.plans.ci_floor_fractal_gantt { ci_floor_fractal_gantt_plan }
 
 data batch_g_plans: List<Plan> = [
   ci_humming_plan,
   edge_b_rust_dag_provenance_brief_plan,
   resolver_type_name_collision_wall_plan,
-  realization_measurement_loop_plan
+  realization_measurement_loop_plan,
+  host_effect_orchestration_plan,
+  ci_floor_fractal_gantt_plan
 ]

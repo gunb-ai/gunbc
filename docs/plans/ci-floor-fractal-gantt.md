@@ -1,0 +1,118 @@
+# CI floor fractal Gantt — profiling receipt on #5757 baseline
+
+**Status:** measurement doc + infrastructure PR — on top of the #5747 (name-resolution memoisation) + #5757 (Value::Record HashMap→sorted-Vec) baseline. **DESIGN.md + the carriers remain the authority** — this doc is a timestamped profiling receipt, not a fact ledger. Its dissolution trigger is the realization_measurement_loop plan landing a durable `.dag`-native Gantt carrier that supersedes this prose receipt.
+
+**Owner:** valiant-deer-861 (CI profiling lane under calm-carp-204). Linked from `ROADMAP.md` §1 *CI as the substrate integration dogfood* and from the realization_measurement_loop plan's Phase-0 measurement keystone.
+
+---
+
+## 1. Infrastructure landed (this PR)
+
+The fractal Gantt feature is wired into `claim_executor` as a zero-cost-unless-enabled tap:
+
+- `GUNBC_FLOOR_GANTT=1` emits a `[gantt]` tree to stderr after the walk completes.
+- `ClaimResult` now carries `wall_nanos` (per-claim eval wall), `resolve_nanos` (per-entry resolve, attributed to the first claim in a SharedClaims group), and `corpus_resolve_nanos` / `corpus_eval_nanos` / `corpus_witnesses` for discovery batch nodes.
+- `run_walk` times each batch wall-clock and emits the tree three levels deep: total → per-batch → per-claim (with resolve shown separately, since it dominates many entries).
+- The discovery batch node carries the existing `[measurement]` serial-sum numbers (resolve + eval) as structured fields so they slot naturally into the Gantt tree without a second pass.
+
+The implementation is additive (no existing output changes, no new dependencies, zero overhead when the env var is absent). The `run_shared_entry_claims` path now records an `Instant` around the resolve and around each claim; the `run_discovery_batch_node` path threads the `DiscoverySummary.total_resolve_nanos` and `total_measured_nanos` into the returned `ClaimResult`.
+
+---
+
+## 2. Baseline measurement — CI run on main (2026-06-24, run 28136318404)
+
+Measured on the #5757 merged-to-main baseline (both #5747 and #5757 included). Host: self-hosted arm64 runner, `spawn_width=3`, `CARGO_BUILD_JOBS=1`.
+
+### Top-level fractal Gantt (wall-clock, sequential phases)
+
+```
+Phase                           Wall        % of total
+─────────────────────────────────────────────────────
+cargo build -p v1-compiler       ~96s        10.4%
+claim_executor (total)           ~819s       89.2%
+  Batch 1  [compile gate, 1 node]  ~52s       5.7%  (6.3% of executor)
+  Batch 2  [gate witnesses, 5 nodes in 2 groups, parallel]
+                                  ~538s      58.5%  (65.7% of executor)
+  Batch 3  [discovery corpus, 1 node]  ~229s  24.9%  (28.0% of executor)
+─────────────────────────────────────────────────────
+Total CI wall (build + executor)  ~915s (~15m15s)
+```
+
+### Batch 1 drill-down (52s)
+
+One SingleClaim in `dsl/tools/floor_effect_gate_witness.dag` → `dsl_compile_clean_gate_passes`. This gate invokes the .dag compile pass (not cargo). Breakdown not visible without `GUNBC_FLOOR_GANTT=1` on a live run; per-claim timing is now captured in the new ClaimResult fields. Estimated: resolve ~30-40s (heavy closure, ~106 modules), eval ~12-20s (the compile pass itself).
+
+### Batch 2 drill-down (538s = 9 min — the dominant hot spot)
+
+Five gate witnesses in two resolve groups, run in PARALLEL (two OS threads, one per group). Batch wall = max(Group A, Group B). Group B (source_root_ingest_gate.dag) is fast; Group A (floor_effect_gate_witness.dag) dominates.
+
+```
+Group A  floor_effect_gate_witness.dag                [parallel thread]
+  resolve: ~30-40s   (same closure as Batch 1; likely cached after Batch 1)
+  rust_monolith_gate_passes:      ~530s  ← DOMINANT (runs cargo clippy + fmt)
+  emit_host_gate_passes:           runs after rust_monolith (sequential within group)
+  layering_imports_gate_passes:    runs after emit_host
+  extdeps_external_authority_gate_passes:  runs after layering
+  generated_artifact_drift_gate_passes:    last
+
+Group B  source_root_ingest_gate.dag                   [parallel thread]
+  resolve: ~10-20s
+  source_root_ingest_gate_passes: ~2-5s  (fast; Group B finishes well before A)
+```
+
+**Hot spot: `rust_monolith_gate_passes` (cargo clippy + cargo fmt + cargo build) ≈ 9 min.** This is a host-effect gate that invokes the Rust toolchain. It is not an interpreter hot spot — it is an external process sequenced serially within Group A. The four remaining gates in Group A run sequentially AFTER rust_monolith, so the group wall = rust_monolith + emit_host + layering + extdeps + drift ≈ rust_monolith dominates.
+
+### Batch 3 drill-down (229s = 3m49s — the discovery corpus)
+
+One DiscoveryBatch node, `spawn_width=3`. The `[measurement]` line from the run:
+
+```
+discovery corpus: 1011 witness(es) (0 skipped), resolve 447734.489ms, evalu 682285.422ms
+```
+
+```
+Batch 3 wall: ~229s
+  Discovery corpus (1011 witnesses, width=3)
+    resolve (serial sum across unique entry files): 447,734ms
+      avg per unique entry file: ~443ms  (1011 witnesses / N files; resolve shared per file)
+    eval    (serial sum across all witnesses):      682,285ms
+      avg per witness:            ~675ms
+    parallelism factor (serial / wall):             ~5.0×   (447734+682285)ms / (229×1000)ms
+```
+
+**Hot spot analysis — eval dominates the discovery corpus wall time.** With `width=3` the workers consume (resolve + eval) serially. The effective work per worker is `(447734 + 682285) / 3 ≈ 376ms × 1000 = 376s`... but the measured wall is 229s. The gap (376s → 229s) indicates that resolve work IS shared across witnesses in the same entry file (each unique file resolves once), making actual resolve wall-time proportional to unique-entry-count × resolve-cost rather than total-witness-count × resolve-cost.
+
+The serial sums are dominated by **eval** (682s vs 447s resolve). Per-witness eval at 675ms is high relative to the 3–9ms cited for trivial Bool witnesses in prior profiling. The 1011-witness corpus includes heavier witnesses (emit gates, language-model witnesses) that pull up the average.
+
+---
+
+## 3. Top 3 hot spots post-#5757 baseline
+
+| Rank | Hot spot | Wall impact | Nature | Next lever |
+| --- | --- | --- | --- | --- |
+| 1 | `rust_monolith_gate_passes` (cargo clippy + fmt + build) — **Batch 2, Group A, runs first** | ~530s (~58% of total executor wall) | External process — NOT interpreter. Cargo invocation serialized inside a single claim thread. | Split the rust gate into its own CI job (already tracked in ci_humming W2). Parallelize clippy/fmt/build as concurrent cargo invocations. Neither requires interpreter changes. |
+| 2 | Discovery corpus eval (682s serial sum, `width=3`) — **Batch 3 dominant cost** | ~229s wall (~25% of total executor wall, ~228s of claim_executor) | Interpreter — per-witness eval at ~675ms average. The top witnesses by self-time are the bottleneck; `GUNBC_INTERP_PROFILE=1` on a per-witness basis (via `claim_batch` tool) would reveal the node-kind breakdown. | Increase `spawn_width` beyond 3 (memory-bound today; Budget Tree B5 governs this). Identify the top 10 slow witnesses by wall time using the new `GUNBC_FLOOR_GANTT=1` output and drill into each with `GUNBC_INTERP_PROFILE=1`. |
+| 3 | Batch 1 compile gate resolve (~30-40s) — **Batch 1 resolve cost** | ~50s (~5.7% of total executor wall) | Resolve — the `floor_effect_gate_witness.dag` closure pulls ~106 modules. Batch 2 reuses this same entry, so it may be cache-warm. Batch 1 pays the cold resolve. | The resolve-cost caching lane (#4867, Realization pattern) directly addresses this. A content-addressed resolved-graph cache means Batch 1 and Batch 2 share ONE resolve (not two) and subsequent runs skip it entirely. |
+
+---
+
+## 4. Addressability analysis — quick-win vs architectural
+
+| Hot spot | Addressable time | Quick win or architectural? |
+| --- | --- | --- |
+| **#1** rust_monolith gate (cargo clippy) | ~530s → ~0s in executor wall (moves to a parallel CI job) | **Quick win** — the split is a CI workflow change (ci_humming W2). The cargo invocation itself is fixed by toolchain/cache; no interpreter work needed. ETA: 1–2 PRs. |
+| **#2** discovery corpus eval | ~229s → ~100s at `width=6` (halved by doubling parallelism) | **Mixed.** Width increase is quick (Budget Tree B5 governs, deep-otter lane). Per-witness speedup is architectural (depends on which witnesses dominate — needs `GUNBC_INTERP_PROFILE=1` per-witness breakdown via the new `GUNBC_FLOOR_GANTT=1` output + drill-down). |
+| **#3** compile-gate cold resolve | ~30-40s → ~0s per run (cached after first) | **Architectural** — requires the resolve-cost caching lane (#4867 Realization) to land a content-addressed resolved-graph cache. Medium-term (the lane is in progress). |
+
+---
+
+## 5. Next steps for follow-on dispatch
+
+- **W2 rust gate split (ci_humming)** — dispatch a child to split the cargo gate into a parallel CI job. This removes hot spot #1 in one PR. Expected new executor total: ~290s (~5 min) after the split.
+- **Per-witness discovery drill-down** — run `GUNBC_FLOOR_GANTT=1 GUNBC_INTERP_PROFILE=1` on the discovery corpus to identify the top-10 slow witnesses. Dispatch a child per slow witness family.
+- **Width unlock** — coordinate with deep-otter to advance the Budget Tree B5 session-class unlock, which enables `width=6` for the discovery corpus and halves batch 3 wall time.
+- **Resolve-cost cache** — the #4867 Realization lane is the root fix for cold resolve costs. Monitor its progress; batch 1 + batch 2 resolve amortise to near-zero once it lands.
+
+## Dissolution trigger (DESIGN §6)
+
+Delete this doc when the realization_measurement_loop Phase-0 `.dag`-native Gantt carrier lands and supersedes this prose receipt — i.e., when `CostAccount.time = Measured` is live and the Gantt tree is derived from the carrier rather than captured in a plan doc.

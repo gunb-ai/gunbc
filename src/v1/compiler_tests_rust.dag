@@ -1029,7 +1029,7 @@ fn ct_profile_full_pipeline_test() -> String {
     "                    crate::v1_compiler_artifact::RenderTarget::Rust,\n",
     "                );\n",
     "                let t = Instant::now();\n",
-    "                let emit_result = crate::v1_compiler_compile::emit_from_artifact_plan(typed.clone(), artifact_plan);\n",
+    "                let emit_result = crate::v1_compiler_compile::emit_from_artifact_plan(std::rc::Rc::new(crate::v1_compiler_compile::EmittableGraph { graph: typed.clone() }), artifact_plan);\n",
     "                let emit_elapsed = t.elapsed();\n",
     "                let emitted_files = emit_result.files.len();\n",
     "                let emitted_bytes: usize = emit_result.files.iter().map(|f| f.content.len()).sum();\n",
