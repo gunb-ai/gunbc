@@ -119,3 +119,15 @@ __pycache__/
 # --- claim-corpus execution-map output ---
 .claim-map/
 src/v2/compiler/manual/sg2_scratch_probe.dag
+
+# --- Superseded planning scratch directories (canonical home: docs/plans/ or DESIGN.md) ---
+# Superseded by docs/plans/ (generated PlanArtifact) and DESIGN.md/ROADMAP.md as canonical authorities
+/gunbc-planning/
+/scripts/fixtures/
+
+# --- Generated artifacts (gitignored-by-default, derived from generated_artifact_registry) ---
+# Regenerable; not committed. Whitelist: ci.yml, .gitignore, .md docs (ROADMAP.md, DESIGN.md, docs/plans/).
+/.github/fleet-runner-deploy.manifest
+/.github/fleet-converge.sh
+/provisioning/srv3/user-data
+/provisioning/srv3/dnsmasq.conf
