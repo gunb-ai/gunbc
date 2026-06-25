@@ -6,7 +6,7 @@ import extdeps.communication.medium { Medium, Lossless }
 import std.markup {
   MarkupNode, MarkupAttr, ElementNode, TextNode,
   MarkupBracket, MarkupMedium, EscapeHtml,
-  canonical_markup_bracket, serialize_markup_node_with,
+  serialize_markup_node_with,
   unescape_text, unescape_attribute, unescape_url,
   validate_href, SafeHref, RejectedHref,
   attr_is_url_attr,
@@ -20,7 +20,14 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data canonical_html_spellings: MarkupBracket = canonical_markup_bracket
+data canonical_html_spellings: MarkupBracket = MarkupBracket {
+  tag_open: "<",
+  end_tag_open: "</",
+  tag_close: ">",
+  attr_sep: " ",
+  attr_assign: "=",
+  attr_quote: "\"",
+}
 
 type HtmlIngestResult
   = IngestedNode { node: MarkupNode }
@@ -279,4 +286,12 @@ fn try_serialize_html_source(node: MarkupNode) -> HtmlEmitResult {
     Absent =>
       EmitOk { html: serialize_html_source(node: node) }
   }
+}
+
+fn html_markup_medium() -> MarkupMedium {
+  html_medium_with(sp: canonical_html_spellings)
+}
+
+fn serialize_markup_node(node: MarkupNode) -> String {
+  serialize_markup_node_with(node: node, medium: html_markup_medium())
 }
