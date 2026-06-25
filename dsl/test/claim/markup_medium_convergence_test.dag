@@ -3,9 +3,7 @@ module test.claim.markup_medium_convergence
 import std.markup {
   MarkupNode, MarkupAttr, ElementNode, TextNode,
   MarkupMedium, MarkupBracket, TagDelimiter, EscapeHtml, EscapeRaw,
-  canonical_markup_bracket,
   serialize_markup_node_with,
-  html_markup_medium,
 }
 import extdeps.languages.markdown {
   commonmark_gfm_spellings,
@@ -25,6 +23,8 @@ import extdeps.languages.html {
   HtmlEmitResult,
   EmitOk,
   EmitRejected,
+  canonical_html_spellings,
+  html_markup_medium,
 }
 
 fn em_hi() -> MarkupNode {
@@ -44,7 +44,7 @@ fn witness_same_fold_html_vs_md() -> Bool {
 fn md_medium_underscore() -> MarkupMedium {
   MarkupMedium {
     tag_overrides: [ TagDelimiter { tag: "em", open: "_", close: "_" } ],
-    bracket: canonical_markup_bracket,
+    bracket: canonical_html_spellings,
     text_escape: EscapeRaw,
   }
 }
