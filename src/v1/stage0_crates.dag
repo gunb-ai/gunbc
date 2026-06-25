@@ -176,6 +176,7 @@ fn stage0_crate_plan() -> Stage0CratePlan {
           "std_algebra",
           "std_coercion",
           "std_computation",
+          "std_constructors",
           "std_effects",
           "std_emit_model",
           "std_error_primitives",
