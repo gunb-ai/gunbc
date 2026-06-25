@@ -19,14 +19,15 @@ type Acceptance
   = PrsMerged
   | ManualAcceptance
 
+type NodeSizing
+  = Unsized
+  | Sized { intricacy: Intricacy, volume: Volume, repo: String, acceptance: Acceptance }
+
 type RoadmapNode {
   node: ProcessNodeId
   line: RoadmapItem
   carriers: List<Pointer>
-  intricacy: Intricacy?
-  volume: Volume?
-  repo: String?
-  acceptance: Acceptance?
+  sizing: NodeSizing
 }
 
 fn node_id_string(id: ProcessNodeId) -> String { id }

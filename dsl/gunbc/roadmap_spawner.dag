@@ -6,6 +6,7 @@ import gunbc.roadmap_model {
   Intricacy, IntricacyLow, IntricacyMedium, IntricacyHigh,
   Volume, VolumeSmall, VolumeMedium, VolumeLarge,
   Acceptance, PrsMerged, ManualAcceptance,
+  NodeSizing, Unsized, Sized,
   SectionElement, Prose, Group, SectionGroup,
   RoadmapParent, TopLevel, UnderParent, roadmap_parent,
   node_id_string,
@@ -54,20 +55,11 @@ fn node_dep_done(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, id: Process
 }
 
 fn node_is_spawnable(n: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>) -> Bool {
-  match n.intricacy {
-    null => false
-    _ => match n.volume {
-      null => false
-      _ => match n.repo {
-        null => false
-        _ => match n.acceptance {
-          null => false
-          _ =>
-            !item_is_done(item: n.line, merged: merged)
-              && node_dep_done(nodes: nodes, edges: edges, id: n.node, merged: merged)
-        }
-      }
-    }
+  match n.sizing {
+    Unsized => false
+    Sized { intricacy: _, volume: _, repo: _, acceptance: _ } =>
+      !item_is_done(item: n.line, merged: merged)
+        && node_dep_done(nodes: nodes, edges: edges, id: n.node, merged: merged)
   }
 }
 
@@ -141,32 +133,19 @@ fn node_plan_doc_json(carriers: List<Pointer>) -> String {
   }
 }
 
-fn node_json(n: RoadmapNode, edges: List<RoadmapEdge>) -> String {
+fn node_json(n: RoadmapNode, intricacy: Intricacy, volume: Volume, repo: String, acceptance: Acceptance, edges: List<RoadmapEdge>) -> String {
   let parent_id_json = match roadmap_parent(edges: edges, node: n.node) {
     TopLevel => "null"
     UnderParent { parent: pid } => json_str(s: node_id_string(id: pid))
   }
   let plan_json = node_plan_doc_json(carriers: n.carriers)
-  let intricacy_s = match n.intricacy {
-    i => intricacy_str(i: i)
-  }
-  let volume_s = match n.volume {
-    v => volume_str(v: v)
-  }
-  let repo_s = match n.repo {
-    r => r
-  }
-  let acceptance_s = match n.acceptance {
-    a => acceptance_json(a: a, line: n.line)
-  }
   let title = node_title(item: n.line)
   let f1 = concat("\"node_id\": ", concat(json_str(s: node_id_string(id: n.node)), concat(", \"title\": ", json_str(s: title))))
-  let f2 = concat(", \"repo\": ", concat(json_str(s: repo_s), concat(", \"intricacy\": ", json_str(s: intricacy_s))))
-  let f3 = concat(", \"volume\": ", concat(json_str(s: volume_s), concat(", \"parent_node_id\": ", parent_id_json)))
-  let f4 = concat(", \"plan_doc\": ", concat(plan_json, concat(", \"acceptance\": ", acceptance_s)))
+  let f2 = concat(", \"repo\": ", concat(json_str(s: repo), concat(", \"intricacy\": ", json_str(s: intricacy_str(i: intricacy)))))
+  let f3 = concat(", \"volume\": ", concat(json_str(s: volume_str(v: volume)), concat(", \"parent_node_id\": ", parent_id_json)))
+  let f4 = concat(", \"plan_doc\": ", concat(plan_json, concat(", \"acceptance\": ", acceptance_json(a: acceptance, line: n.line))))
   concat("{", concat(f1, concat(f2, concat(f3, concat(f4, "}")))))
 }
-
 
 fn join_strings(items: List<String>) -> String {
   fold(items, init: { s: "", first: true }, f: (acc, item) => {
@@ -176,7 +155,11 @@ fn join_strings(items: List<String>) -> String {
 }
 
 fn ready_array_json(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> String {
-  let items = nodes |> map(n => node_json(n: n, edges: edges))
+  let items = nodes |> map(n => match n.sizing {
+    Unsized => "{}"
+    Sized { intricacy, volume, repo, acceptance } =>
+      node_json(n: n, intricacy: intricacy, volume: volume, repo: repo, acceptance: acceptance, edges: edges)
+  })
   concat("[", concat(join_strings(items: items), "]"))
 }
 
