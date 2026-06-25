@@ -640,6 +640,9 @@ fn marshal_generic(
     let name = node_authored_name(node, si);
     let mut edges: Vec<Value> = Vec::with_capacity(node.children.len() + 1);
     let mut refs: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    if TRACE_WIRING.load(std::sync::atomic::Ordering::Relaxed) {
+        eprintln!("  TRACE node name={name:?} expr_disc={:?} children={} node_name={:?}", std::mem::discriminant(node.expr_data.as_ref()), node.children.len(), &node.name);
+    }
     if node_references_param(node, &name, param_names) {
         edges.push(edge_positional(ctx, atom_identity_node(ctx, &name)));
     }
@@ -663,6 +666,9 @@ fn marshal_generic(
     }
     (conj_record(ctx, edges), refs)
 }
+
+static TRACE_WIRING: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
 
 // A statement sequence -- a block's children, or a single standalone `let` (whose optional
 // children[1] is its continuation) -- folded RIGHT-TO-LEFT so the live reference set flows
@@ -869,17 +875,19 @@ pub fn check_wiring_liveness_streaming(
             // whole-tree context some ExprVar nodes have binding_kind=None so the
             // strict node_references_param path (which requires LocalValueBinding) misses
             // them — refs is the permissive fallback that catches those.
-            let (output, refs) = marshal_fn_body_skeleton(ctx, body, &param_names, &si);
             let is_debug = qualified_name.contains("floor_nodes");
             if is_debug {
-                eprintln!("DEBUG {qualified_name}: param_names={param_names:?} refs={refs:?} body.expr_data={:?}", std::mem::discriminant(body.expr_data.as_ref()));
+                TRACE_WIRING.store(true, std::sync::atomic::Ordering::Relaxed);
+                eprintln!("TRACE {qualified_name}: param_names={param_names:?} body.expr_data={:?} body.name={:?} body.children={}", std::mem::discriminant(body.expr_data.as_ref()), &body.name, body.children.len());
+            }
+            let (output, refs) = marshal_fn_body_skeleton(ctx, body, &param_names, &si);
+            if is_debug {
+                TRACE_WIRING.store(false, std::sync::atomic::Ordering::Relaxed);
+                eprintln!("TRACE {qualified_name}: refs={refs:?}");
             }
             for param_name in &param_names {
                 let skel_has = value_skeleton_contains_atom(ctx, &output, param_name);
                 let refs_has = refs.contains(param_name.as_str());
-                if is_debug {
-                    eprintln!("DEBUG {qualified_name}:{param_name} skel_has={skel_has} refs_has={refs_has}");
-                }
                 if !skel_has && !refs_has {
                     dead_count += 1;
                     report_dead(&qualified_name, param_name);
