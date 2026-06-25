@@ -26,3 +26,11 @@ fn clean_string_op_over_plain(s: String) -> Bool {
 fn planted_shell_emit_side_leak() -> String {
   "#!/usr/bin/env bash"
 }
+
+fn ci_yml_drifted(committed: String) -> Bool {
+  committed == ""
+}
+
+fn planted_provenance_leak_markerfree() -> Bool {
+  ci_yml_drifted(committed: "git add && git commit")
+}
