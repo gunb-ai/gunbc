@@ -270,6 +270,9 @@ pub fn stage0_crate_plan() -> Rc<Stage0CratePlan> {
                 kind: Stage0CrateKind::CoreCrate,
                 header_doc: stage0_core_header_doc(),
                 modules: Rc::new(vec![
+                    "extdeps_external_authority".to_string(),
+                    "extdeps_uri".to_string(),
+                    "extdeps_uri_path".to_string(),
                     "extdeps_languages_dag_emit".to_string(),
                     "extdeps_languages_dag_syntax".to_string(),
                     "extdeps_languages_dag_types".to_string(),
