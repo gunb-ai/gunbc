@@ -149,7 +149,10 @@ import v2.std.compilers.target_model {
   BlockEvaluationMode,
   ValueProducing,
   StatementSequenced,
-  derive_bodied_arrow_scaffold
+  derive_bodied_arrow_scaffold,
+  TargetModuleProjection,
+  TargetImportShape,
+  EsModuleImport
 }
 import v2.std.node {
   Arrow,
@@ -544,6 +547,24 @@ fn ts_value_expression_projection() -> TargetValueExpressionProjection {
     record_literal_names_type: Omit,
     block_evaluation_mode: ts_block_evaluation_mode()
   )
+}
+
+fn ts_module_projection() -> TargetModuleProjection {
+  TargetModuleProjection {
+    import_form: EsModuleImport {
+      import_token: ^ts_token_kw_import,
+      names_open: ^ts_token_import_lbrace,
+      names_separator: ^ts_token_comma,
+      names_close: ^ts_token_import_rbrace,
+      from_token: ^ts_token_kw_from,
+      path_open: ^ts_token_module_quote,
+      path_segment_separator: ^ts_token_module_path_sep,
+      path_close: ^ts_token_module_quote,
+      terminator: ^ts_token_semicolon,
+      name_ident_token: ^ts_token_ident,
+      path_segment_token: ^ts_token_module_path_segment
+    }
+  }
 }
 
 fn ts_value_expression_projection_with_record_literal_naming(
@@ -2459,7 +2480,13 @@ fn ts_wave2a_lex_rules() -> LexRuleSet {
       ts_lex_rule(token_class: ^ts_token_rbracket, text: "]"),
       ts_lex_rule(token_class: ^ts_token_comma, text: ", "),
       ts_lex_rule(token_class: ^ts_token_colon, text: ": "),
-      ts_lex_rule(token_class: ^ts_token_semicolon, text: ";")
+      ts_lex_rule(token_class: ^ts_token_semicolon, text: ";"),
+      ts_lex_rule(token_class: ^ts_token_kw_import, text: "import "),
+      ts_lex_rule(token_class: ^ts_token_kw_from, text: "from "),
+      ts_lex_rule(token_class: ^ts_token_import_lbrace, text: "{ "),
+      ts_lex_rule(token_class: ^ts_token_import_rbrace, text: " } "),
+      ts_lex_rule(token_class: ^ts_token_module_quote, text: "\""),
+      ts_lex_rule(token_class: ^ts_token_module_path_sep, text: "/")
     ]
   }
 }
