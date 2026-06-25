@@ -45,7 +45,9 @@ data medium_syntax_markers: List<MediumMarkers> = [
 
   MediumMarkers { medium: "CiYamlStructure", markers: [] },
 
-  MediumMarkers { medium: "ShellInRun", markers: ["#!/", ">/dev/null"] }
+  MediumMarkers { medium: "ShellInRun", markers: ["#!/", ">/dev/null"] },
+
+  MediumMarkers { medium: "Html", markers: [] }
 ]
 
 data emitted_medium_emit_fns: List<String> = [
@@ -63,7 +65,9 @@ data emitted_medium_emit_fns: List<String> = [
   "ci_release_build_script",
   "witness_layer_source_flags",
   "fleet_converge_sh_for",
-  "expected_fleet_converge_sh"
+  "expected_fleet_converge_sh",
+  "serialize_html_source",
+  "serialize_fragment"
 ]
 
 data emitted_medium_string_ops: List<String> = [

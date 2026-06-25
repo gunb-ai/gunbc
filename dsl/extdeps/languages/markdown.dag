@@ -3,6 +3,10 @@ module extdeps.languages.markdown
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.communication.medium { Medium, Lossless }
+import extdeps.languages.html {
+  canonical_html_spellings,
+  serialize_fragment,
+}
 import std.render_repeat_string_bootstrap { repeat_string }
 import std.markup {
   Fragment,
@@ -12,8 +16,10 @@ import std.markup {
   MarkupMedium,
   TagDelimiter,
   EscapeRaw,
-  canonical_markup_bracket,
   serialize_fragment_with,
+  MarkupSerializeResult,
+  Serialized,
+  Rejected,
 }
 import std.markdown {
   MarkdownDocument,
@@ -52,6 +58,8 @@ import std.markdown {
   AlignLeft,
   AlignCenter,
   AlignRight,
+  markdown_document_to_fragment,
+  find_first_rejected_url_in_document,
 }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -131,7 +139,7 @@ fn markdown_markup_medium(sp: MarkdownSpellings) -> MarkupMedium {
       TagDelimiter { tag: "strong", open: sp.strong_delim, close: sp.strong_delim },
       TagDelimiter { tag: "code", open: sp.code_span_delim, close: sp.code_span_delim },
     ],
-    bracket: canonical_markup_bracket,
+    bracket: canonical_html_spellings,
     text_escape: EscapeRaw,
   }
 }
@@ -478,4 +486,17 @@ fn ingest_markdown_source(src: String) -> MarkdownDocument {
 
 fn markdown_medium_lossless(doc: MarkdownDocument) -> Medium<MarkdownDocument> {
   Medium { carried: doc, fidelity: Lossless }
+}
+
+fn serialize_markdown_document(doc: MarkdownDocument) -> String {
+  serialize_fragment(frag: markdown_document_to_fragment(doc: doc))
+}
+
+fn try_serialize_markdown_document(doc: MarkdownDocument) -> MarkupSerializeResult {
+  match find_first_rejected_url_in_document(doc: doc) {
+    Present { value: _ } =>
+      Rejected { reason: "URL scheme not allowlisted for markdown link/image" }
+    Absent =>
+      Serialized { html: serialize_markdown_document(doc: doc) }
+  }
 }
