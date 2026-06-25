@@ -22,3 +22,7 @@ fn clean_plain_literal() -> String {
 fn clean_string_op_over_plain(s: String) -> Bool {
   string_contains(s: s, pattern: "runs-on")
 }
+
+fn planted_shell_emit_side_leak() -> String {
+  "#!/usr/bin/env bash"
+}

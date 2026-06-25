@@ -78,11 +78,11 @@ fn read_declared_closures() -> Vec<DeclaredClosure> {
             let Value::Record { fields, .. } = item else {
                 panic!("expected ConsumedInputClosure record, got {item:?}");
             };
-            let unit = match fields.get(&unit_sym) {
+            let unit = match v1_compiler::v1_interpreter::fields_get(fields, unit_sym) {
                 Some(Value::Str(s)) => s.clone(),
                 other => panic!("expected Str `unit`, got {other:?}"),
             };
-            let declared_paths = match fields.get(&paths_sym) {
+            let declared_paths = match v1_compiler::v1_interpreter::fields_get(fields, paths_sym) {
                 Some(Value::List(xs)) => xs
                     .iter()
                     .map(|v| match v {

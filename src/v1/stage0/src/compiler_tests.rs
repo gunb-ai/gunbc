@@ -1350,7 +1350,9 @@ mod compiler_tests {
                 );
                 let t = Instant::now();
                 let emit_result = crate::v1_compiler_compile::emit_from_artifact_plan(
-                    typed.clone(),
+                    std::rc::Rc::new(crate::v1_compiler_compile::EmittableGraph {
+                        graph: typed.clone(),
+                    }),
                     artifact_plan,
                 );
                 let emit_elapsed = t.elapsed();
