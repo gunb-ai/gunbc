@@ -1,0 +1,125 @@
+module v2.workflow.orchestration_emit
+
+import v2.compiler.emit { emit }
+import v2.compiler.infer { InferredFacts, InferredTree }
+import extdeps.communication.medium { Medium }
+import v2.extdeps.languages.bash {
+  orch_run_emitted_command,
+  orch_run_target_model,
+  orch_seq2_emitted_command,
+  orch_seq2_target_model
+}
+import v2.std.orchestration {
+  Run,
+  Step,
+  Do,
+  Pipeline
+}
+import v2.std.algebra { list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent }
+import v2.std.collection { List, Map }
+import v2.compiler.target_carriers { lossless_source }
+import v2.std.diagnostic {
+  Diagnostic,
+  ExternalContractUnknown,
+  Outcome,
+  Unavailable,
+  bind_outcome,
+  node_locus,
+  outcome_accepted,
+  outcome_rejected
+}
+import v2.std.node { Node }
+import v2.std.witness { Violates, Witness }
+
+fn orch_emit_facts_lookup(key: Node) -> Witness<InferredFacts> {
+  Violates {
+    diagnostic: Diagnostic {
+      reason: ^orch_emit_facts_unexpected_consultation,
+      at: node_locus(node: key),
+      correction: Unavailable { reason: ExternalContractUnknown }
+    }
+  }
+}
+
+fn orch_emit_run(r: Run) -> Outcome<Medium<String>> {
+  emit(
+    tree: InferredTree {
+      root: orch_run_emitted_command,
+      facts: Map { lookup: orch_emit_facts_lookup }
+    },
+    target: orch_run_target_model(r: r)
+  )
+}
+
+fn orch_emit_join2(left: String, right: String) -> Outcome<Medium<String>> {
+  emit(
+    tree: InferredTree {
+      root: orch_seq2_emitted_command,
+      facts: Map { lookup: orch_emit_facts_lookup }
+    },
+    target: orch_seq2_target_model(left: left, right: right)
+  )
+}
+
+fn orch_emit_step(s: Step) -> Outcome<Medium<String>> {
+  match s {
+    Do { run: r } => orch_emit_run(r: r)
+    If { cond: _, then_: _, else_: _ } =>
+      outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_step_if_unsupported))
+    For { binder: _, over: _, body: _ } =>
+      outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_step_for_unsupported))
+    While { cond: _, body: _, bound: _ } =>
+      outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_step_while_unsupported))
+    Retry { body: _, escalations: _, on_exhausted: _ } =>
+      outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_step_retry_unsupported))
+  }
+}
+
+fn orch_emit_unsupported_step_diagnostics(reason: Symbol) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: node_locus(node: orch_run_emitted_command),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn orch_emit_steps_from(head_str: String, rest: List<Step>) -> Outcome<Medium<String>> {
+  match list_head(xs: rest) {
+    HeadAbsent =>
+      outcome_accepted(lossless_source(text: head_str))
+    HeadFound { value: next } =>
+      bind_outcome(
+        o: orch_emit_step(s: next),
+        f: fn(next_medium) {
+          bind_outcome(
+            o: orch_emit_join2(left: head_str, right: next_medium.carried),
+            f: fn(joined) {
+              match list_tail(xs: rest) {
+                TailFound { tail: t } => orch_emit_steps_from(head_str: joined.carried, rest: t)
+                TailAbsent => outcome_accepted(joined)
+              }
+            }
+          )
+        }
+      )
+  }
+}
+
+fn orch_emit_pipeline(p: Pipeline) -> Outcome<Medium<String>> {
+  match list_head(xs: p.steps) {
+    HeadAbsent =>
+      outcome_accepted(lossless_source(text: ""))
+    HeadFound { value: first } =>
+      bind_outcome(
+        o: orch_emit_step(s: first),
+        f: fn(first_medium) {
+          match list_tail(xs: p.steps) {
+            TailFound { tail: t } =>
+              orch_emit_steps_from(head_str: first_medium.carried, rest: t)
+            TailAbsent =>
+              outcome_accepted(first_medium)
+          }
+        }
+      )
+  }
+}

@@ -1689,3 +1689,53 @@ fn orch_run_target_model(r: Run) -> TargetModel {
     binding_spellings: orch_run_binding_spellings(r: r)
   )
 }
+
+fn orch_seq2_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_seq2_left },
+    FixedToken { token_class: ^bash_token_orch_seq_newline },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_seq2_right }
+  ]
+}
+
+data orch_seq2_emitted_command: Node = bash_conj_emitted_from_tokens(
+  tokens: orch_seq2_tokens()
+)
+
+fn orch_seq2_source_text(left: String, right: String) -> String {
+  concat(left, concat("\n", right))
+}
+
+fn orch_seq2_lex() -> LexRules {
+  phrase_to_lex_rules(p: phrase([
+    span(text: "\n", class: ^bash_token_orch_seq_newline)
+  ]))
+}
+
+fn orch_seq2_translation_rules_node() -> Node {
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_orch_seq2,
+    lhs: ^bash_production_orch_seq2,
+    tokens: orch_seq2_tokens(),
+    emitted: orch_seq2_emitted_command
+  )
+}
+
+fn orch_seq2_binding_spellings(left: String, right: String) -> Map<Symbol, String> {
+  map_insert(
+    map_insert(empty_map(), ^orch_seq2_left, left),
+    ^orch_seq2_right, right
+  )
+}
+
+fn orch_seq2_target_model(left: String, right: String) -> TargetModel {
+  bash_make_bound_tokens_target_model(
+    rules: orch_seq2_translation_rules_node(),
+    source_literal: ^bash_orch_seq2_source_literal,
+    production_name: ^bash_production_orch_seq2,
+    tokens: orch_seq2_tokens(),
+    source_text: orch_seq2_source_text(left: left, right: right),
+    lex: orch_seq2_lex(),
+    binding_spellings: orch_seq2_binding_spellings(left: left, right: right)
+  )
+}
