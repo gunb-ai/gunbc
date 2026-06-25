@@ -3057,15 +3057,13 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
           if is_emittable_parametric_type_alias_item(item: item, item_text: item_text, source_indices: env.source_indices, module_name: module_name, imports: imports, scope: scope, registry: registry, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index) {
             let type_params = emit_type_params(params: item.params, source_indices: env.source_indices)
             let generic_names = item_generic_param_names(item: item, source_indices: env.source_indices)
-            concat(
-              rust_visibility_prefix(),
-              rust_items().type_alias_keyword,
-              " ",
-              item_text,
-              type_params,
-              " = ",
+            let alias_rhs = resolved_type(n: item)
+            let unused_params = alias_unused_param_names(generic_param_names: generic_names, rhs: alias_rhs, source_indices: env.source_indices)
+            let rhs_str = if unused_params |> count > 0 {
+              concat("std::marker::PhantomData<", rust_phantom_marker_inner(unused: unused_params), ">")
+            } else {
               render_rust_alias_rhs_type(
-                n: resolved_type(n: item),
+                n: alias_rhs,
                 generic_param_names: generic_names,
                 shared_types: shared_types,
                 corpus_repr: emit_info.corpus_repr,
@@ -3077,7 +3075,16 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
                 export_sets: export_sets,
                 typed_modules: typed_modules,
               module_index: module_index,
-              variant_to_enum: emit_info.variant_to_enum),
+              variant_to_enum: emit_info.variant_to_enum)
+            }
+            concat(
+              rust_visibility_prefix(),
+              rust_items().type_alias_keyword,
+              " ",
+              item_text,
+              type_params,
+              " = ",
+              rhs_str,
               ";"
             )
           } else if is_parametric_opaque_type_decl_item(item: item, source_indices: env.source_indices) {
@@ -3154,6 +3161,17 @@ fn emit_type_params(params: List<Node>, source_indices: Map<String, NewlineIndex
   if params |> count == 0 { "" }
   else {
     let names = params |> map(p => generic_param_name_at(n: p, source_indices: source_indices))
+    concat("<", names |> join(separator: ", "), ">")
+  }
+}
+
+fn emit_type_params_with_clone_bound(params: List<Node>, clone_param: String, source_indices: Map<String, NewlineIndex>) -> String {
+  if params |> count == 0 { "" }
+  else {
+    let names = params |> map(p =>
+      let pname = generic_param_name_at(n: p, source_indices: source_indices)
+      if pname == clone_param { concat(pname, ": Clone") } else { pname }
+    )
     concat("<", names |> join(separator: ", "), ">")
   }
 }
@@ -3239,6 +3257,12 @@ fn type_node_mentions_name(n: Node, target: String, source_indices: Map<String, 
 fn struct_unused_param_names(generic_param_names: List<String>, children: List<Node>, source_indices: Map<String, NewlineIndex>) -> List<String> {
   generic_param_names |> filter(p =>
     !(children |> any(child => type_node_mentions_name(n: field_node_type_expr(n: child), target: p, source_indices: source_indices)))
+  )
+}
+
+fn alias_unused_param_names(generic_param_names: List<String>, rhs: Node, source_indices: Map<String, NewlineIndex>) -> List<String> {
+  generic_param_names |> filter(p =>
+    !type_node_mentions_name(n: rhs, target: p, source_indices: source_indices)
   )
 }
 
@@ -3721,8 +3745,17 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
   if function_type_params_have_collision(type_params: type_params) {
     return concat("compile_error!(\"type param name collides with a value param in fn '", name, "' — a value param shares its name with a declared type param; rename the value param or dissolve via ParamKind/params-slot partition\");\n")
   }
-  let type_params_str = emit_type_params(params: type_params, source_indices: si)
   let generic_param_names = type_params |> map(p => generic_param_name_at(n: p, source_indices: si))
+  let value_param_names = value_params |> map(p => p.name)
+  let ret_name = authored_name_at(source_indices: si, node: inferred)
+  let return_is_bare_generic = (generic_param_names |> filter(g => g == ret_name) |> count) > 0
+  let body_is_param_ref = (value_param_names |> filter(n => n == body.name) |> count) > 0
+  let needs_clone_bound = return_is_bare_generic && !body_is_param_ref
+  let type_params_str = if needs_clone_bound {
+    emit_type_params_with_clone_bound(params: type_params, clone_param: ret_name, source_indices: si)
+  } else {
+    emit_type_params(params: type_params, source_indices: si)
+  }
   let params_str = emit_params(params: value_params, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: si, read_only_params: emit_info.read_only_params, variant_to_enum: emit_info.variant_to_enum, env: scope.type_env)
   let ret_str = emit_inferred(inferred: inferred, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: si, variant_to_enum: emit_info.variant_to_enum, env: scope.type_env)
   let body_scope = build_params_scope(scope: scope, params: value_params)
@@ -5921,7 +5954,11 @@ fn emit_typed_method_call(method_call_node: Node, receiver: Node, method: String
       } else if method_name == "first" {
         emit_rust_first_method_call(receiver: receiver, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
       } else {
-        let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+        let recv_str_raw = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+        let recv_is_optional = resolved_type(n: receiver).return_cardinality == CardOptional
+        let recv_str = if recv_is_optional {
+          concat(recv_str_raw, concat(".expect(\"fail-closed: Optional receiver for method ", concat(method_name, " (empty Optional at runtime)\")")))
+        } else { recv_str_raw }
         let first_arg_str = emit_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
         match map_get(rust_method_templates(), method_name) {
           Present { value: tmpl } =>

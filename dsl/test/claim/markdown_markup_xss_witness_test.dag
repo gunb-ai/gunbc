@@ -2,13 +2,21 @@ module test.claim.markdown_markup_xss_witness
 
 import std.markup {
   escape_url,
-  serialize_fragment,
+  Serialized,
+  Rejected,
+}
+import extdeps.uri_validation {
+  validate_href,
+  SafeHref,
+  RejectedHref,
   DangerousScheme,
   DataScheme,
   JavascriptScheme,
-  RejectedHref,
-  SafeHref,
-  validate_href,
+}
+import extdeps.languages.html_fragment { serialize_fragment }
+import extdeps.languages.markdown {
+  serialize_markdown_document,
+  try_serialize_markdown_document,
 }
 import std.markdown {
   CodeBlock,
@@ -25,14 +33,10 @@ import std.markdown {
   MarkdownListItem,
   OrderedListBlock,
   ParagraphBlock,
-  Rejected,
-  Serialized,
   StrongInline,
   TextInline,
   UnorderedListBlock,
   markdown_document_to_fragment,
-  serialize_markdown_document,
-  try_serialize_markdown_document,
 }
 
 fn sample_readme_doc() -> MarkdownDocument {

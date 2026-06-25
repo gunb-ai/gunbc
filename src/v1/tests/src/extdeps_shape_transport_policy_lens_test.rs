@@ -151,87 +151,87 @@ fn extdeps_shape_transport_policy_lens_parses_and_runs_witnesses() {
 
     for (entry, witness_fn) in [
         (
-            "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/policy_leak_cargo_build_test.dag",
+            "src/v2/test/claim/extdeps_shape_transport_policy/lens_unit/policy_leak_cargo_build_test.dag",
             "policy_leak_cargo_build_is_red_holds",
         ),
         (
-            "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/policy_leak_cargo_fmt_test.dag",
+            "src/v2/test/claim/extdeps_shape_transport_policy/lens_unit/policy_leak_cargo_fmt_test.dag",
             "policy_leak_cargo_fmt_is_red_holds",
         ),
         (
-            "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/policy_leak_cargo_doc_test.dag",
+            "src/v2/test/claim/extdeps_shape_transport_policy/lens_unit/policy_leak_cargo_doc_test.dag",
             "policy_leak_cargo_doc_is_red_holds",
         ),
         (
-            "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/clean_git_diff_test.dag",
+            "src/v2/test/claim/extdeps_shape_transport_policy/lens_unit/clean_git_diff_test.dag",
             "clean_git_diff_is_green_holds",
         ),
         (
-            "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/dead_param_cargo_build_test.dag",
+            "src/v2/test/claim/extdeps_shape_transport_policy/lens_unit/dead_param_cargo_build_test.dag",
             "dead_param_cargo_build_is_red_holds",
         ),
         (
-            "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/dead_param_gcp_login_test.dag",
+            "src/v2/test/claim/extdeps_shape_transport_policy/lens_unit/dead_param_gcp_login_test.dag",
             "dead_param_gcp_login_is_red_holds",
         ),
         (
-            "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/dead_param_cargo_clippy_test.dag",
+            "src/v2/test/claim/extdeps_shape_transport_policy/lens_unit/dead_param_cargo_clippy_test.dag",
             "dead_param_cargo_clippy_is_red_holds",
         ),
         (
-            "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/transport_fusion_gcp_oauth_test.dag",
+            "src/v2/test/claim/extdeps_shape_transport_policy/lens_unit/transport_fusion_gcp_oauth_test.dag",
             "transport_fusion_gcp_oauth_is_red_holds",
         ),
         (
-            "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/module_path_rename_test.dag",
+            "src/v2/test/claim/extdeps_shape_transport_policy/lens_unit/module_path_rename_test.dag",
             "module_path_rename_resolves_by_qn_not_filepath_holds",
         ),
         (
-            "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/module_path_rename_test.dag",
+            "src/v2/test/claim/extdeps_shape_transport_policy/lens_unit/module_path_rename_test.dag",
             "module_path_rename_unknown_qn_does_not_resolve_holds",
         ),
         (
-            "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/module_source_nickname_literal_local_red_test.dag",
+            "src/v2/test/claim/extdeps_shape_transport_policy/lens_unit/module_source_nickname_literal_local_red_test.dag",
             "module_source_nickname_literal_local_red_is_red_holds",
         ),
         (
-            "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/module_source_nickname_literal_coverage_domain_green_test.dag",
+            "src/v2/test/claim/extdeps_shape_transport_policy/lens_unit/module_source_nickname_literal_coverage_domain_green_test.dag",
             "module_source_nickname_literal_coverage_domain_is_green_holds",
         ),
         (
-            "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/module_source_nickname_literal_absent_green_test.dag",
+            "src/v2/test/claim/extdeps_shape_transport_policy/lens_unit/module_source_nickname_literal_absent_green_test.dag",
             "module_source_nickname_literal_exempt_literals_is_green_holds",
         ),
         (
-            "src/v2/compiler/extdeps_shape_transport_policy/corpus/cargo_clippy_dead_param_test.dag",
+            "src/v2/test/claim/extdeps_shape_transport_policy/corpus/cargo_clippy_dead_param_test.dag",
             "corpus_cargo_clippy_dead_param_defused_holds",
         ),
         (
-            "src/v2/compiler/extdeps_shape_transport_policy/corpus/cargo_fmt_dead_param_test.dag",
+            "src/v2/test/claim/extdeps_shape_transport_policy/corpus/cargo_fmt_dead_param_test.dag",
             "corpus_cargo_fmt_dead_param_defused_holds",
         ),
         (
-            "src/v2/compiler/extdeps_shape_transport_policy/corpus/cargo_doc_dead_param_test.dag",
+            "src/v2/test/claim/extdeps_shape_transport_policy/corpus/cargo_doc_dead_param_test.dag",
             "corpus_cargo_doc_dead_param_defused_holds",
         ),
         (
-            "src/v2/compiler/extdeps_shape_transport_policy/corpus/gcp_login_dead_param_test.dag",
+            "src/v2/test/claim/extdeps_shape_transport_policy/corpus/gcp_login_dead_param_test.dag",
             "corpus_gcp_login_dead_param_defused_holds",
         ),
         (
-            "src/v2/compiler/extdeps_shape_transport_policy/corpus/cargo_build_policy_leak_test.dag",
+            "src/v2/test/claim/extdeps_shape_transport_policy/corpus/cargo_build_policy_leak_test.dag",
             "corpus_cargo_build_defused_holds",
         ),
         (
-            "src/v2/compiler/extdeps_shape_transport_policy/corpus/git_policy_leak_test.dag",
+            "src/v2/test/claim/extdeps_shape_transport_policy/corpus/git_policy_leak_test.dag",
             "corpus_git_policy_leak_defused_holds",
         ),
         (
-            "src/v2/compiler/extdeps_shape_transport_policy/corpus/gcp_oauth_fusion_fork_test.dag",
+            "src/v2/test/claim/extdeps_shape_transport_policy/corpus/gcp_oauth_fusion_fork_test.dag",
             "corpus_gcp_oauth_defused_holds",
         ),
         (
-            "src/v2/compiler/extdeps_shape_transport_policy/corpus/gist_create_policy_leak_test.dag",
+            "src/v2/test/claim/extdeps_shape_transport_policy/corpus/gist_create_policy_leak_test.dag",
             "corpus_gist_create_defused_holds",
         ),
     ] {
@@ -240,15 +240,15 @@ fn extdeps_shape_transport_policy_lens_parses_and_runs_witnesses() {
 
     for (entry, witness_fn) in [
         (
-            "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/embedded_policy_literal_local_test.dag",
+            "src/v2/test/claim/extdeps_shape_transport_policy/lens_unit/embedded_policy_literal_local_test.dag",
             "embedded_policy_literal_local_is_red_holds",
         ),
         (
-            "src/v2/compiler/extdeps_shape_transport_policy/corpus/runtime_local_embedded_policy_test.dag",
+            "src/v2/test/claim/extdeps_shape_transport_policy/corpus/runtime_local_embedded_policy_test.dag",
             "corpus_runtime_local_embedded_policy_defused_holds",
         ),
         (
-            "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/clean_gist_create_test.dag",
+            "src/v2/test/claim/extdeps_shape_transport_policy/lens_unit/clean_gist_create_test.dag",
             "clean_gist_create_is_green_holds",
         ),
     ] {
@@ -268,26 +268,26 @@ fn extdeps_embedded_policy_projection_catches_pre_5109_class() {
 
 #[test]
 fn module_source_nickname_literal_projection_uses_constructed_qn_not_module_path_string() {
-    use std::collections::HashMap;
     use std::rc::Rc;
 
     use v1_compiler::v1_compiler_compile::compile_to_resolved;
     use v1_compiler::v1_interpreter::{self, ExecutionMode, InterpContext, Value};
 
     fn build_qn(ctx: &InterpContext, segments: &[&str]) -> Value {
+        use v1_compiler::v1_interpreter::sorted_fields;
         let mut qn = Value::Variant {
             type_name: ctx.sym("QualifiedName"),
             variant_name: ctx.sym("QnEmpty"),
-            fields: Rc::new(HashMap::new()),
+            fields: Rc::new(vec![]),
         };
         for seg in segments.iter().rev() {
-            let mut fields = HashMap::new();
-            fields.insert(ctx.sym("head"), Value::Str((*seg).to_string()));
-            fields.insert(ctx.sym("tail"), qn);
             qn = Value::Variant {
                 type_name: ctx.sym("QualifiedName"),
                 variant_name: ctx.sym("QnCons"),
-                fields: Rc::new(fields),
+                fields: Rc::new(sorted_fields(vec![
+                    (ctx.sym("head"), Value::Str((*seg).to_string())),
+                    (ctx.sym("tail"), qn),
+                ])),
             };
         }
         qn

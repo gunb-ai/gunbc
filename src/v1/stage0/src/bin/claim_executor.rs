@@ -4,6 +4,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::thread;
+use std::time::Instant;
 
 use v1_compiler::cli_run::{
     make_eval_context, resolve_entry_graph, run_claim, run_discovery_corpus_with_options,
@@ -87,7 +88,7 @@ fn str_list_from_value(value: &Value, ctx: &InterpContext) -> Result<Vec<String>
 }
 
 fn str_field(
-    fields: &std::collections::HashMap<v1_compiler::v1_interpreter::Symbol, Value>,
+    fields: &[(v1_compiler::v1_interpreter::Symbol, Value)],
     name: &str,
     owner: &str,
     ctx: &InterpContext,
@@ -201,6 +202,17 @@ struct ClaimResult {
     function: String,
     ok: bool,
     detail: String,
+    /// Wall-clock eval time for this single claim (0 for discovery aggregate).
+    wall_nanos: u128,
+    /// Resolve time charged to this result; non-zero only on the first claim in a
+    /// SharedClaims group (the group resolves once, cost attributed to first claim).
+    resolve_nanos: u128,
+    /// For discovery batch nodes: sum of per-file resolve times (serial sum, not wall).
+    corpus_resolve_nanos: u128,
+    /// For discovery batch nodes: sum of per-witness eval times (serial sum, not wall).
+    corpus_eval_nanos: u128,
+    /// Number of discovery witnesses (non-zero only for discovery batch nodes).
+    corpus_witnesses: usize,
 }
 
 /// A batch is partitioned into resolve-groups before scheduling. SingleClaims that share one
@@ -272,27 +284,52 @@ fn group_batch_units(batch: &[Runnable]) -> Vec<BatchUnit> {
     units
 }
 
-fn claim_result_for_outcome(function: String, outcome: ClaimOutcome) -> ClaimResult {
+fn claim_result_for_outcome(
+    function: String,
+    outcome: ClaimOutcome,
+    wall_nanos: u128,
+    resolve_nanos: u128,
+) -> ClaimResult {
     match outcome {
         ClaimOutcome::Pass => ClaimResult {
             function,
             ok: true,
             detail: String::new(),
+            wall_nanos,
+            resolve_nanos,
+            corpus_resolve_nanos: 0,
+            corpus_eval_nanos: 0,
+            corpus_witnesses: 0,
         },
         ClaimOutcome::Fail => ClaimResult {
             function,
             ok: false,
             detail: "returned Bool(false)".to_string(),
+            wall_nanos,
+            resolve_nanos,
+            corpus_resolve_nanos: 0,
+            corpus_eval_nanos: 0,
+            corpus_witnesses: 0,
         },
         ClaimOutcome::NotBool { got } => ClaimResult {
             function,
             ok: false,
             detail: format!("returned `{}`, not Bool", got),
+            wall_nanos,
+            resolve_nanos,
+            corpus_resolve_nanos: 0,
+            corpus_eval_nanos: 0,
+            corpus_witnesses: 0,
         },
         ClaimOutcome::RuntimeError { message } => ClaimResult {
             function,
             ok: false,
             detail: format!("runtime error: {}", message),
+            wall_nanos,
+            resolve_nanos,
+            corpus_resolve_nanos: 0,
+            corpus_eval_nanos: 0,
+            corpus_witnesses: 0,
         },
     }
 }
@@ -308,6 +345,11 @@ fn run_batch_unit(
             ok: false,
             detail: "unrunnable sentinel (unmapped node or non-complete plan) — failing closed"
                 .to_string(),
+            wall_nanos: 0,
+            resolve_nanos: 0,
+            corpus_resolve_nanos: 0,
+            corpus_eval_nanos: 0,
+            corpus_witnesses: 0,
         }],
         BatchUnit::Discovery {
             source_roots: roots,
@@ -332,6 +374,7 @@ fn run_shared_entry_claims(
     entry: &str,
     functions: &[String],
 ) -> Vec<ClaimResult> {
+    let resolve_start = Instant::now();
     let (graph, source_indices) = match resolve_entry_graph(source_roots, entry) {
         Ok(pair) => pair,
         Err(msg) => {
@@ -341,14 +384,32 @@ fn run_shared_entry_claims(
                     function: function.clone(),
                     ok: false,
                     detail: format!("resolve failed for {}: {}", entry, msg),
+                    wall_nanos: 0,
+                    resolve_nanos: 0,
+                    corpus_resolve_nanos: 0,
+                    corpus_eval_nanos: 0,
+                    corpus_witnesses: 0,
                 })
                 .collect();
         }
     };
+    let resolve_nanos = resolve_start.elapsed().as_nanos();
     let ctx = make_eval_context(&graph, source_indices, ExecutionMode::Wet);
+    let mut first = true;
     functions
         .iter()
-        .map(|function| claim_result_for_outcome(function.clone(), run_claim(&ctx, function)))
+        .map(|function| {
+            let claim_start = Instant::now();
+            let outcome = run_claim(&ctx, function);
+            let wall_nanos = claim_start.elapsed().as_nanos();
+            let rn = if first {
+                first = false;
+                resolve_nanos
+            } else {
+                0
+            };
+            claim_result_for_outcome(function.clone(), outcome, wall_nanos, rn)
+        })
         .collect()
 }
 
@@ -385,10 +446,17 @@ fn run_discovery_batch_node(
                 summary.total_measured_nanos as f64 / 1.0e6,
                 summary.total_measured_nanos,
             );
+            let histogram = v1_compiler::cli_run::generate_witness_timing_histogram(&summary);
+            eprintln!("{}", histogram);
             ClaimResult {
                 function: format!("{label} ({} witnesses)", summary.total),
                 ok: true,
                 detail: String::new(),
+                wall_nanos: 0,
+                resolve_nanos: 0,
+                corpus_resolve_nanos: summary.total_resolve_nanos,
+                corpus_eval_nanos: summary.total_measured_nanos,
+                corpus_witnesses: summary.total,
             }
         }
         Ok(summary) => ClaimResult {
@@ -400,11 +468,21 @@ fn run_discovery_batch_node(
                 summary.total,
                 summary.failures.join("; ")
             ),
+            wall_nanos: 0,
+            resolve_nanos: 0,
+            corpus_resolve_nanos: summary.total_resolve_nanos,
+            corpus_eval_nanos: summary.total_measured_nanos,
+            corpus_witnesses: summary.total,
         },
         Err(msg) => ClaimResult {
             function: label,
             ok: false,
             detail: format!("discovery corpus failed: {msg}"),
+            wall_nanos: 0,
+            resolve_nanos: 0,
+            corpus_resolve_nanos: 0,
+            corpus_eval_nanos: 0,
+            corpus_witnesses: 0,
         },
     }
 }
@@ -735,10 +813,92 @@ fn sccache_server_cgroup_rel() -> Option<String> {
     None
 }
 
+/// Per-batch timing record collected during run_walk for Gantt emission.
+struct BatchRecord {
+    batch_index: usize,
+    wall_nanos: u128,
+    /// Flattened results from all units in this batch (order: unit by unit).
+    results: Vec<ClaimResult>,
+}
+
+/// Emit a fractal Gantt tree to stderr when GUNBC_FLOOR_GANTT=1.
+fn emit_gantt(batch_records: &[BatchRecord], total_wall_nanos: u128) {
+    let gantt_enabled = std::env::var("GUNBC_FLOOR_GANTT")
+        .map(|v| v == "1")
+        .unwrap_or(false);
+    if !gantt_enabled {
+        return;
+    }
+    let total_ms = total_wall_nanos / 1_000_000;
+    eprintln!("[gantt] claim_executor wall: {}ms", total_ms);
+    for rec in batch_records {
+        let batch_ms = rec.wall_nanos / 1_000_000;
+        let pct = if total_ms == 0 {
+            0.0
+        } else {
+            100.0 * batch_ms as f64 / total_ms as f64
+        };
+        eprintln!(
+            "[gantt]   batch {} wall: {}ms ({:.1}%)",
+            rec.batch_index + 1,
+            batch_ms,
+            pct,
+        );
+        for result in &rec.results {
+            let batch_pct = |ns: u128| -> f64 {
+                if rec.wall_nanos == 0 {
+                    0.0
+                } else {
+                    100.0 * ns as f64 / rec.wall_nanos as f64
+                }
+            };
+            if result.corpus_witnesses > 0 {
+                // Discovery batch: show serial-sum breakdown.
+                let corpus_resolve_ms = result.corpus_resolve_nanos / 1_000_000;
+                let corpus_eval_ms = result.corpus_eval_nanos / 1_000_000;
+                eprintln!(
+                    "[gantt]     {} ({} witnesses)",
+                    result.function, result.corpus_witnesses
+                );
+                eprintln!(
+                    "[gantt]       resolve (serial sum): {}ms  ({:.1}% of batch wall)",
+                    corpus_resolve_ms,
+                    batch_pct(result.corpus_resolve_nanos),
+                );
+                eprintln!(
+                    "[gantt]       eval    (serial sum): {}ms  ({:.1}% of batch wall)",
+                    corpus_eval_ms,
+                    batch_pct(result.corpus_eval_nanos),
+                );
+            } else {
+                // Single claim: show resolve (if charged) + eval.
+                if result.resolve_nanos > 0 {
+                    let resolve_ms = result.resolve_nanos / 1_000_000;
+                    eprintln!(
+                        "[gantt]     resolve (entry): {}ms  ({:.1}% of batch wall)",
+                        resolve_ms,
+                        batch_pct(result.resolve_nanos),
+                    );
+                }
+                let wall_ms = result.wall_nanos / 1_000_000;
+                let ok = if result.ok { "PASS" } else { "FAIL" };
+                eprintln!(
+                    "[gantt]     {}: {}ms  [{ok}]  ({:.1}% of batch wall)",
+                    result.function,
+                    wall_ms,
+                    batch_pct(result.wall_nanos),
+                );
+            }
+        }
+    }
+}
+
 fn run_walk(source_roots: &[String], batches: &[Vec<Runnable>], spawn_width: usize) -> WalkOutcome {
     let width = spawn_width.max(1);
     let mut any_failed = false;
     let mut batches_run = 0usize;
+    let walk_start = Instant::now();
+    let mut batch_records: Vec<BatchRecord> = Vec::new();
     for (bi, batch) in batches.iter().enumerate() {
         batches_run = bi + 1;
         let units = group_batch_units(batch);
@@ -749,6 +909,7 @@ fn run_walk(source_roots: &[String], batches: &[Vec<Runnable>], spawn_width: usi
             units.len(),
             width
         );
+        let batch_start = Instant::now();
         let handles: Vec<_> = units
             .into_iter()
             .map(|unit| {
@@ -756,6 +917,7 @@ fn run_walk(source_roots: &[String], batches: &[Vec<Runnable>], spawn_width: usi
                 thread::spawn(move || run_batch_unit(roots, unit, width))
             })
             .collect();
+        let mut batch_results: Vec<ClaimResult> = Vec::new();
         for handle in handles {
             match handle.join() {
                 Ok(results) => {
@@ -771,6 +933,7 @@ fn run_walk(source_roots: &[String], batches: &[Vec<Runnable>], spawn_width: usi
                             );
                             any_failed = true;
                         }
+                        batch_results.push(result);
                     }
                 }
                 Err(_) => {
@@ -779,6 +942,12 @@ fn run_walk(source_roots: &[String], batches: &[Vec<Runnable>], spawn_width: usi
                 }
             }
         }
+        let batch_wall_nanos = batch_start.elapsed().as_nanos();
+        batch_records.push(BatchRecord {
+            batch_index: bi,
+            wall_nanos: batch_wall_nanos,
+            results: batch_results,
+        });
         if any_failed {
             eprintln!(
                 "claim_executor: batch {} had failures — stopping before dependent batches",
@@ -787,6 +956,8 @@ fn run_walk(source_roots: &[String], batches: &[Vec<Runnable>], spawn_width: usi
             break;
         }
     }
+    let total_wall_nanos = walk_start.elapsed().as_nanos();
+    emit_gantt(&batch_records, total_wall_nanos);
     WalkOutcome {
         any_failed,
         batches_run,
@@ -1077,9 +1248,16 @@ fn run() -> Result<ExitCode, ExitCode> {
 
     let outcome = run_walk(&source_roots, &batches, spawn_width);
     match peak_rss_bytes() {
-        Some(bytes) => eprintln!(
-            "[measurement] floor peak RSS: {bytes} bytes (VmHWM) at spawn_width={spawn_width}"
-        ),
+        Some(bytes) => {
+            eprintln!(
+                "[measurement] floor peak RSS: {bytes} bytes (VmHWM) at spawn_width={spawn_width}"
+            );
+            let width = spawn_width.max(1) as u64;
+            let per_shard = bytes.div_ceil(width);
+            eprintln!(
+                "[calibration] max-per-shard-peak-rss: {per_shard} bytes at spawn_width={spawn_width}"
+            );
+        }
         None => eprintln!(
             "[measurement] floor peak RSS: unavailable (no /proc/self/status) at spawn_width={spawn_width}"
         ),

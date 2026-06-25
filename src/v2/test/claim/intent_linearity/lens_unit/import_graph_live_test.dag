@@ -7,7 +7,7 @@ import v2.std.algebra { FreeMonoid, list_snoc_item, fold_list }
 import v2.std.text { String }
 import v2.std.logic { Bool }
 
-data conformance_entry: String = "src/v2/compiler/manual/coproduct_reflection_conformance_test.dag"
+data conformance_entry: String = "src/v2/test/claim/manual/coproduct_reflection_conformance_test.dag"
 
 data bogus_never_imported: String = "src/v2/std/__bogus_never_imported__.dag"
 

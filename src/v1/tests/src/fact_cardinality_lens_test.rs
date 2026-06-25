@@ -58,27 +58,27 @@ fn fact_cardinality_lens_parses_and_runs_witnesses() {
     )));
 
     assert_witness_true(
-        "src/v2/compiler/fact_cardinality/lens_unit/synthetic_fork_red_test.dag",
+        "src/v2/test/claim/fact_cardinality/lens_unit/synthetic_fork_red_test.dag",
         "synthetic_fork_red_holds",
     );
     assert_witness_true(
-        "src/v2/compiler/fact_cardinality/lens_unit/synthetic_unified_green_test.dag",
+        "src/v2/test/claim/fact_cardinality/lens_unit/synthetic_unified_green_test.dag",
         "synthetic_unified_green_holds",
     );
     assert_witness_true(
-        "src/v2/compiler/fact_cardinality/corpus/free_monoid_diverged_fork_test.dag",
+        "src/v2/test/claim/fact_cardinality/corpus/free_monoid_diverged_fork_test.dag",
         "corpus_free_monoid_diverged_fork_detected_holds",
     );
     assert_witness_true(
-        "src/v2/compiler/fact_cardinality/corpus/lattice_coexistence_debt_test.dag",
+        "src/v2/test/claim/fact_cardinality/corpus/lattice_coexistence_debt_test.dag",
         "corpus_lattice_coexistence_debt_holds",
     );
     assert_witness_true(
-        "src/v2/compiler/fact_cardinality/corpus/lattice_not_diverged_green_test.dag",
+        "src/v2/test/claim/fact_cardinality/corpus/lattice_not_diverged_green_test.dag",
         "corpus_lattice_not_diverged_green_holds",
     );
     assert_witness_true(
-        "src/v2/compiler/fact_cardinality/corpus/ratchet_baseline_test.dag",
+        "src/v2/test/claim/fact_cardinality/corpus/ratchet_baseline_test.dag",
         "corpus_coexistence_ratchet_baseline_holds",
     );
 }

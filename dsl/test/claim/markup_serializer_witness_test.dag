@@ -3,10 +3,10 @@ module test.claim.markup_serializer_witness
 import std.markup {
   Fragment, Element, TextNode,
   Attribute, AttributeContext, UrlContext,
-  serialize_fragment,
   escape_text, escape_attribute, escape_url,
   unescape_text, unescape_attribute, unescape_url
 }
+import extdeps.languages.html_fragment { serialize_fragment }
 
 fn witness_text_escaping_by_execution() -> Bool {
   escape_text(s: "a <b> & c") == "a &lt;b&gt; &amp; c"
