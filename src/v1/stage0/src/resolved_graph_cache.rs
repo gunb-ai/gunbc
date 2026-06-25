@@ -48,7 +48,12 @@ pub enum CacheWriteOutcome {
 pub fn resolved_graph_cache_root() -> PathBuf {
     std::env::var_os("GUNBC_RESOLVED_GRAPH_CACHE_DIR")
         .map(PathBuf::from)
-        .unwrap_or_else(|| std::env::temp_dir().join("gunbc-rg-cache"))
+        .unwrap_or_else(|| {
+            let user_tag = std::env::var("USER")
+                .or_else(|_| std::env::var("USERNAME"))
+                .unwrap_or_else(|_| "shared".to_string());
+            std::env::temp_dir().join(format!("gunbc-rg-cache-{user_tag}"))
+        })
 }
 
 fn extract_module_path(content: &str) -> Option<String> {
