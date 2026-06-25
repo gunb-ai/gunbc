@@ -71,6 +71,7 @@ import extdeps.toolchain.types {
 import product.placement_supply { HostIdentity, PlacementSupplyRow }
 import std.baseboard { ServerBaseboard }
 import std.realization_width { bounded_host_spawn_width, memory_aware_spawn_width, int_min }
+import std.termination { RankingDimension }
 
 type ComputeWitness<C> = Node
 type Outcome<T> = Node
@@ -530,6 +531,27 @@ type ToolchainCapability {
   linked_cache_interface: CacheInterfaceId?
 }
 
+type InputEnvelope
+  = Bounded { axis: RankingDimension, max: Nat }
+  | EnvelopeUnknown
+
+type EnvelopeAdmission
+  = Admitted
+  | EnvelopeExceeded { axis: RankingDimension, envelope_max: Nat, actual: Nat }
+  | BoundUnknown { actual: Nat }
+
+fn envelope_admits(envelope: InputEnvelope, actual: Nat) -> EnvelopeAdmission {
+  match envelope {
+    EnvelopeUnknown => BoundUnknown { actual: actual }
+    Bounded { axis: a, max: m } =>
+      if actual <= m {
+        Admitted
+      } else {
+        EnvelopeExceeded { axis: a, envelope_max: m, actual: actual }
+      }
+  }
+}
+
 type WorkDemand {
   resources: ResourceEnvelope
   os: OperatingSystemRequirement?
@@ -538,6 +560,7 @@ type WorkDemand {
   parallelism: ParallelismShape
   data_locality: List<ArtifactLocalityRequirement>
   effects: List<EffectBoundary>
+  input_bounds: List<InputEnvelope>
 }
 
 fn projected_concurrent_peak(width: HardwareThreadCount, per_shard_peak: ByteSize) -> ByteSize {
@@ -924,6 +947,7 @@ data vm_isolation_work_demand: WorkDemand = WorkDemand {
   parallelism: SingleWorkItem,
   data_locality: [],
   effects: [],
+  input_bounds: [],
 }
 
 fn witness_shared_host_home_rejects_vm() -> Bool {
@@ -1010,6 +1034,7 @@ data example_thread_work_demand: WorkDemand = WorkDemand {
   parallelism: SingleWorkItem,
   data_locality: [],
   effects: [],
+  input_bounds: [],
 }
 
 data example_memory_work_demand: WorkDemand = WorkDemand {
@@ -1026,6 +1051,7 @@ data example_memory_work_demand: WorkDemand = WorkDemand {
   parallelism: SingleWorkItem,
   data_locality: [],
   effects: [],
+  input_bounds: [],
 }
 
 data example_feasible_resource_work_demand: WorkDemand = WorkDemand {
@@ -1047,6 +1073,7 @@ data example_feasible_resource_work_demand: WorkDemand = WorkDemand {
   parallelism: SingleWorkItem,
   data_locality: [],
   effects: [],
+  input_bounds: [],
 }
 
 fn witness_resource_offer_rejects_insufficient_threads() -> Bool {
@@ -1211,6 +1238,35 @@ fn parallelism_shape_digest(shape: ParallelismShape) -> ContentHash {
   }
 }
 
+fn ranking_dimension_digest(axis: RankingDimension) -> ContentHash {
+  match axis {
+    TreeSize { param: p } =>
+      content_hash_combine(content_hash_atom(value: "axis:TreeSize"), content_hash_atom(value: p))
+    ListLength { param: p } =>
+      content_hash_combine(content_hash_atom(value: "axis:ListLength"), content_hash_atom(value: p))
+    ArithmeticValue { param: p } =>
+      content_hash_combine(content_hash_atom(value: "axis:ArithmeticValue"), content_hash_atom(value: p))
+    TokenPosition { param: p } =>
+      content_hash_combine(content_hash_atom(value: "axis:TokenPosition"), content_hash_atom(value: p))
+    SetCardinality { param: p } =>
+      content_hash_combine(content_hash_atom(value: "axis:SetCardinality"), content_hash_atom(value: p))
+  }
+}
+
+fn input_envelope_digest(envelope: InputEnvelope) -> ContentHash {
+  match envelope {
+    EnvelopeUnknown => content_hash_atom(value: "envelope:unknown")
+    Bounded { axis: a, max: m } =>
+      content_hash_combine(
+        content_hash_atom(value: "envelope:bounded"),
+        content_hash_combine(
+          ranking_dimension_digest(axis: a),
+          content_hash_atom(value: to_string(m)),
+        ),
+      )
+  }
+}
+
 fn work_demand_content_digest(demand: WorkDemand) -> ContentHash {
   content_hash_combine(
     resource_envelope_digest(envelope: demand.resources),
@@ -1218,7 +1274,14 @@ fn work_demand_content_digest(demand: WorkDemand) -> ContentHash {
       isolation_boundary_digest(boundary: demand.isolation.boundary),
       content_hash_combine(
         parallelism_shape_digest(shape: demand.parallelism),
-        content_hash_atom(value: "work-demand-v1"),
+        content_hash_combine(
+          fold(
+            demand.input_bounds,
+            init: content_hash_atom(value: "input-bounds-v1"),
+            f: (acc, b) => content_hash_combine(acc, input_envelope_digest(envelope: b)),
+          ),
+          content_hash_atom(value: "work-demand-v1"),
+        ),
       ),
     ),
   )
@@ -1257,4 +1320,35 @@ fn witness_execution_receipt_digest_differs_by_demand(
   right: WorkDemand,
 ) -> Bool {
   execution_receipt_subject_digest(work_id: work_id, demand: left) != execution_receipt_subject_digest(work_id: work_id, demand: right)
+}
+
+fn witness_bounded_envelope_admits_at_max() -> Bool {
+  let env = Bounded { axis: SetCardinality { param: "witness_roster" }, max: 10 }
+  match envelope_admits(envelope: env, actual: 10) {
+    Admitted => true
+    EnvelopeExceeded { axis: _, envelope_max: _, actual: _ } => false
+    BoundUnknown { actual: _ } => false
+  }
+}
+
+fn witness_bounded_envelope_rejects_one_over() -> Bool {
+  let env = Bounded { axis: SetCardinality { param: "witness_roster" }, max: 10 }
+  match envelope_admits(envelope: env, actual: 11) {
+    EnvelopeExceeded { axis: _, envelope_max: m, actual: a } => m == 10 && a == 11
+    Admitted => false
+    BoundUnknown { actual: _ } => false
+  }
+}
+
+fn witness_unknown_envelope_rejects() -> Bool {
+  match envelope_admits(envelope: EnvelopeUnknown, actual: 0) {
+    BoundUnknown { actual: _ } => true
+    Admitted => false
+    EnvelopeExceeded { axis: _, envelope_max: _, actual: _ } => false
+  }
+}
+
+fn witness_envelope_digest_bounded_differs_from_unknown() -> Bool {
+  let b = Bounded { axis: SetCardinality { param: "witness_roster" }, max: 800 }
+  input_envelope_digest(envelope: b) != input_envelope_digest(envelope: EnvelopeUnknown)
 }

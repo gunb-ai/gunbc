@@ -7,6 +7,8 @@ import gunbc.ci_layer_roots {
 import tools.build_step { BuildArtifact, verifications_script }
 import extdeps.languages.bash.program { Concat, lit, var_ref }
 import gunbc.ci_failure_class { infra_retry_grep_alternation }
+import product.compute_fabric { InputEnvelope }
+import std.termination { RankingDimension }
 
 type Gate
   = RustMonolithGate
