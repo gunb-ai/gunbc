@@ -8,10 +8,6 @@ import v2.std.cardinality { DescentEvidence }
 import v2.std.diagnostic { EmitDirective }
 import v2.std.node { Symbol }
 
-type CommandRef
-  = OpaqueArgv { spelling: String }
-  | NamedCommand { name: Symbol }
-
 type EnvBinding
   = EnvSet { name: String, value: String }
   | EnvUnset { name: String }
