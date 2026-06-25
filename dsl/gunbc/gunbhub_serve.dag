@@ -1,8 +1,8 @@
 module gunbc.gunbhub_serve
 
 import std.types { HttpMethod, HttpStatus, GET }
-import std.http_path {
-  PathTemplate,
+import std.http_path { PathTemplate }
+import extdeps.uri_path {
   PathTemplateParseResult,
   ParsedPathTemplate,
   MalformedPathTemplate,

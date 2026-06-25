@@ -5,7 +5,7 @@ use v1_compiler::v1_interpreter::{self, ExecutionMode, InterpContext, Value};
 
 use crate::helpers::{resolve_imports_transitively_with_source_roots, workspace_root};
 
-const WITNESS_ENTRY: &str = "src/v2/compiler/manual/typescript_effect_io_emit_test.dag";
+const WITNESS_ENTRY: &str = "src/v2/test/claim/manual/typescript_effect_io_emit_test.dag";
 const WRITE_FN: &str = "ts_effect_write_call_source";
 const READ_FN: &str = "ts_effect_read_call_source";
 

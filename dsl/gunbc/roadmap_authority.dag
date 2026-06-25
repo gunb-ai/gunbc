@@ -171,6 +171,7 @@ fn section_1() -> RoadmapSection {
       ),
       section_prose(content: "**Host-operation band — off-fabric, unmodeled, unenforced (G1–G3, NOW):**"),
       section_prose(content: "→ [host-effect orchestration plan](docs/plans/host-effect-orchestration.md) — the unifying design: one `apply(target, effect, policy) → Receipt` interface (install · manage · decom on the same fleet authority), the shell→`.dag` migration phasing, and the ctrl-exodus / host-self-converge end-state. G1–G3 below are its consumers."),
+      section_prose(content: "→ [srv3 virtual-media install (design for sign-off)](docs/plans/srv3-webui-kvm-virtual-media.md) — the first *install*-band consumer instance: a BMC `apply` transport `NbdProxyServe` (a direct wss+NBD seed client over OpenBMC's nbd-proxy, no browser/JS), capability-solver-dispatched (`os_install_mechanism`). srv3's cited row stays honestly grounded (PXE today) until an operator-gated ws-upgrade dry-run confirms the nbd-proxy surface; seed client gated on that."),
       section_group(
         label: "",
         nodes: [
@@ -423,11 +424,12 @@ fn section_8() -> RoadmapSection {
   RoadmapSection {
     title: "8. Session dashboard on `.dag` (SHELVED)",
     elements: [
-      section_prose(content: "Product/infra tooling — shelved during the stability window (no `.dag`-correctness leverage right now)."),
+      section_prose(content: "Product/infra tooling — shelved during the stability window (no `.dag`-correctness leverage right now). **One slice un-shelved (operator-directed): the roadmap-as-spawner MVP below** — it earns `.dag`-correctness leverage by making the roadmap the single authority for tracked work (§3) and is the first inhabitant of migrating ctrl onto the substrate (§7)."),
       section_group(
         label: "",
         nodes: [
           authored(id: "8-pipeline", done: false, content: "idea → PR pipeline *(deferred)*"),
+          authored_doc(id: "8-roadmap-spawner", done: false, content: "**roadmap-as-spawner MVP** *(active — operator-directed, un-shelves this slice)* — the gunbc roadmap `.dag` becomes the work-tracking DAG that drives ctrl session spawns. **Structure** (what work exists, deps, sizing, acceptance) lives only in the `.dag` (single authority §3, edited by committing to main); **runtime state** (done/live-session) flows ctrl→gunbc read-only as acceptance evidence — two kinds of fact, one home each, no dual authority. gunbc emits `roadmap-spawn-request/v1` via `roadmap_next_spawnable` (graph readiness = not-done ∧ deps-done); a thin ctrl bridge consumes it, dedups vs live sessions, and reuses the existing auto-spawn poller (zero new spawn code, #1812 merged). **Fail-closed pause kill switch** (§5, default paused — a missing/garbled control file spawns nothing). Stage 2 migrates spawn/session-management onto the `.dag` host-effect `apply()` seam (host-effect-orchestration Phase D/E), shrinking the ctrl realization toward zero (§7).", path: "docs/plans/roadmap-spawner.md"),
         ],
         edges: [],
       ),

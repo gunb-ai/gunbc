@@ -20,7 +20,7 @@ fn medium_source_read_witness() -> DagSourceReadWitness {
     artifact: Artifact {
       kind: SourceFile,
       id: ^medium_source_fixture_artifact,
-      file_path: "src/v2/compiler/manual/medium_source_text_instantiation_test.dag"
+      file_path: "src/v2/test/claim/manual/medium_source_text_instantiation_test.dag"
     },
     compilation_unit: ^medium_source_fixture_compilation_unit,
     source_root: V2Tree

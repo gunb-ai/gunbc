@@ -93,7 +93,7 @@ fn strip_comments_and_string_literals(source: &str) -> String {
 
 fn is_census_infrastructure_path(rel: &str) -> bool {
     rel == "src/v1/stage0/src/languages_consumer_census.rs"
-        || rel.starts_with("src/v2/compiler/languages_consumer_census/")
+        || rel.starts_with("src/v2/test/claim/languages_consumer_census/")
         || rel == "src/v2/lens/languages_consumer_census.dag"
 }
 

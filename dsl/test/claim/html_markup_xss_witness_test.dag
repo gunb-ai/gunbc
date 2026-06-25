@@ -6,18 +6,21 @@ import std.markup {
   MarkupNode,
   ElementNode,
   TextNode,
+}
+import extdeps.uri_validation {
+  validate_href,
   SafeHref,
   RejectedHref,
   DangerousScheme,
   SchemeNotAllowlisted,
   JavascriptScheme,
   DataScheme,
-  validate_href,
-  Serialized,
-  Rejected,
+
 }
-import std.html_markup {
-  try_serialize_html_node,
+import extdeps.languages.html {
+  try_serialize_html_source,
+  EmitOk,
+  EmitRejected,
 }
 
 fn witness_javascript_href_rejects() -> Bool {
@@ -92,9 +95,9 @@ fn javascript_link_node() -> MarkupNode {
 }
 
 fn witness_unsafe_href_blocks_serialization() -> Bool {
-  match try_serialize_html_node(node: javascript_link_node()) {
-    Rejected { reason: _ } => true
-    Serialized { html: _ } => false
+  match try_serialize_html_source(node: javascript_link_node()) {
+    EmitRejected { reason: _ } => true
+    EmitOk { html: _ } => false
   }
 }
 

@@ -9,7 +9,7 @@ import v2.lens.extdeps_shape_transport_policy.module_refs {
 import v2.std.logic { Bool }
 import v2.std.text { String }
 
-data nicknamed_policy_leak_witness_entry: String = "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/policy_leak_cargo_build_test.dag"
+data nicknamed_policy_leak_witness_entry: String = "src/v2/test/claim/extdeps_shape_transport_policy/lens_unit/policy_leak_cargo_build_test.dag"
 
 test fn module_source_nickname_literal_local_red_is_red_holds() -> Bool {
   extdeps_live_module_source_nickname_literal_count(
