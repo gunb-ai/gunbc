@@ -1787,7 +1787,7 @@ fn orch_retry_source_text(
   concat(warn2,
   concat(retry_eagain_seg_g(),
   concat(occ3,
-         retry_eagain_seg_h())))))))))))))))
+         retry_eagain_seg_h()))))))))))))))
 }
 
 fn orch_retry_translation_rules_node() -> Node {
