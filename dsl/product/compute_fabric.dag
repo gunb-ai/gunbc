@@ -38,6 +38,8 @@ import std.measure {
   Bandwidth,
 }
 import std.currency { CurrencyCode }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.verification { NanosecondDuration, nanosecond_duration, nanosecond_duration_count }
 import std.realization_schedule { CostAccount }
 import std.realization_measurement { cost_account_measured_from_time }
@@ -1341,4 +1343,13 @@ data gunbc_ci_corpus_envelope: InputEnvelope = BoundedInput {
       max: Measure { count: 5000000 }
     },
   ]
+}
+
+data gunbc_ci_corpus_envelope_ceiling_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.plans.input_envelope_roadmap",
+    decl_name: "input_envelope_roadmap_plan",
+    field: WholeDeclaration
+  }
 }
