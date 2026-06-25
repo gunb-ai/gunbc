@@ -31,6 +31,8 @@ fn input_envelope_roadmap_body() -> List<MarkdownBlock> {
   ]
 }
 
+data input_envelope_roadmap_plan_doc: String = "bind: docs/plans/input-envelope-roadmap.md"
+
 data input_envelope_roadmap_plan: Plan = Plan {
   slug: "input-envelope-roadmap",
   title: "InputEnvelope: bounded input declaration for WorkDemand + CI corpus instance",

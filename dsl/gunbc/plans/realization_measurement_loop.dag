@@ -177,6 +177,8 @@ fn realization_measurement_loop_body() -> List<MarkdownBlock> {
   ]
 }
 
+data resource_aware_scheduler_plan_doc: String = "bind: docs/plans/resource-aware-scheduler.md"
+
 data realization_measurement_loop_plan: Plan = Plan {
   slug: "realization-measurement-loop",
   title: "Plan — Realization & Measurement: closing the cost → schedule loop (+ infra onto `.dag`)",
