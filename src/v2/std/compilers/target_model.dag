@@ -117,6 +117,12 @@ import v2.std.node_query {
   node_labeled_child_edges,
   node_positional_child_targets
 }
+import v2.std.qualified_name {
+  QnCons,
+  QnEmpty,
+  QualifiedName,
+  qualified_name_from_node
+}
 import v2.std.logic { Bool }
 import v2.std.text { Char, String }
 import v2.std.host_transport {
