@@ -16,245 +16,245 @@ type ClaimWitnessCorpusClaimRunRow {
 
 data corpus_ci_gate_row_mvp1_emit_matches_serialize: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "mvp1 emit matches serialize",
-  entry: "src/v2/compiler/manual/mvp1_dag_add_round_trip_test.dag",
+  entry: "src/v2/test/claim/manual/mvp1_dag_add_round_trip_test.dag",
   function: "mvp1_dag_emit_matches_serialize_holds",
   expected: ExpectPass
 }
 
 data corpus_ci_gate_row_mvp1_emit_ingest_round_trip: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "mvp1 emit ingest round trip",
-  entry: "src/v2/compiler/manual/mvp1_dag_add_round_trip_test.dag",
+  entry: "src/v2/test/claim/manual/mvp1_dag_add_round_trip_test.dag",
   function: "mvp1_dag_add_emit_ingest_round_trip_holds",
   expected: ExpectPass
 }
 
 data corpus_ci_gate_row_english_emit_ingest_round_trip: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "english emit ingest round trip",
-  entry: "src/v2/compiler/manual/english_emit_add_test.dag",
+  entry: "src/v2/test/claim/manual/english_emit_add_test.dag",
   function: "english_emit_add_emit_ingest_round_trip_holds",
   expected: ExpectPass
 }
 
 data corpus_ci_gate_row_emit_ingest_grammar_relation_round_trip: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "emit ingest grammar relation round trip",
-  entry: "src/v2/compiler/manual/emit_ingest_grammar_relation_round_trip_test.dag",
+  entry: "src/v2/test/claim/manual/emit_ingest_grammar_relation_round_trip_test.dag",
   function: "emit_ingest_grammar_relation_round_trip_holds",
   expected: ExpectPass
 }
 
 data corpus_ci_gate_row_emit_ingest_type_decl_round_trip: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "emit ingest type-decl Conj node round trip (grammar-inverse, .dag target)",
-  entry: "src/v2/compiler/manual/emit_ingest_type_decl_round_trip_test.dag",
+  entry: "src/v2/test/claim/manual/emit_ingest_type_decl_round_trip_test.dag",
   function: "emit_ingest_type_decl_round_trip_holds",
   expected: ExpectPass
 }
 
 data corpus_ci_gate_row_emit_ingest_python_same_language_round_trip: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "emit ingest python same language selector bijectivity",
-  entry: "src/v2/compiler/manual/emit_ingest_python_same_language_round_trip_test.dag",
+  entry: "src/v2/test/claim/manual/emit_ingest_python_same_language_round_trip_test.dag",
   function: "emit_ingest_python_selector_bijectivity_holds",
   expected: ExpectPass
 }
 
 data corpus_ci_gate_row_comprep_eval_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "comprep eval by execution keystone",
-  entry: "src/v2/compiler/manual/comprep_eval_by_execution_test.dag",
+  entry: "src/v2/test/claim/manual/comprep_eval_by_execution_test.dag",
   function: "comprep_eval_by_execution_keystone_holds",
   expected: ExpectPass
 }
 
 data corpus_ci_gate_row_comprep_branch_eval_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "comprep branch eval by execution keystone",
-  entry: "src/v2/compiler/manual/comprep_branch_eval_by_execution_test.dag",
+  entry: "src/v2/test/claim/manual/comprep_branch_eval_by_execution_test.dag",
   function: "comprep_branch_eval_by_execution_keystone_holds",
   expected: ExpectPass
 }
 
 data corpus_ci_gate_row_branch_if_then_else_round_trip_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "branch if then else emit ingest round trip",
-  entry: "src/v2/compiler/manual/branch_if_then_else_round_trip_test.dag",
+  entry: "src/v2/test/claim/manual/branch_if_then_else_round_trip_test.dag",
   function: "branch_if_then_else_round_trip_keystone_holds",
   expected: ExpectPass
 }
 
 data corpus_ci_gate_row_branch_if_then_else_emit_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "branch if then else emit keystone",
-  entry: "src/v2/compiler/manual/branch_if_then_else_emit_test.dag",
+  entry: "src/v2/test/claim/manual/branch_if_then_else_emit_test.dag",
   function: "branch_if_then_else_emit_keystone_holds",
   expected: ExpectPass
 }
 
 data corpus_ci_gate_row_comprep_bind_eval_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "comprep bind eval by execution keystone",
-  entry: "src/v2/compiler/manual/comprep_bind_eval_by_execution_test.dag",
+  entry: "src/v2/test/claim/manual/comprep_bind_eval_by_execution_test.dag",
   function: "comprep_bind_eval_by_execution_keystone_holds",
   expected: ExpectPass
 }
 
 data corpus_ci_gate_row_comprep_bind_emit_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "comprep bind emit keystone",
-  entry: "src/v2/compiler/manual/comprep_bind_emit_test.dag",
+  entry: "src/v2/test/claim/manual/comprep_bind_emit_test.dag",
   function: "comprep_bind_emit_keystone_holds",
   expected: ExpectPass
 }
 
 data corpus_ci_gate_row_comprep_bind_round_trip_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "comprep bind emit ingest round trip",
-  entry: "src/v2/compiler/manual/comprep_bind_round_trip_test.dag",
+  entry: "src/v2/test/claim/manual/comprep_bind_round_trip_test.dag",
   function: "comprep_bind_round_trip_keystone_holds",
   expected: ExpectPass
 }
 
 data corpus_ci_gate_row_comprep_loop_eval_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "comprep loop eval by execution keystone",
-  entry: "src/v2/compiler/manual/comprep_loop_eval_by_execution_test.dag",
+  entry: "src/v2/test/claim/manual/comprep_loop_eval_by_execution_test.dag",
   function: "comprep_loop_eval_by_execution_keystone_holds",
   expected: ExpectPass
 }
 
 data corpus_ci_gate_row_comprep_loop_emit_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "comprep loop emit keystone",
-  entry: "src/v2/compiler/manual/comprep_loop_emit_test.dag",
+  entry: "src/v2/test/claim/manual/comprep_loop_emit_test.dag",
   function: "comprep_loop_emit_keystone_holds",
   expected: ExpectPass
 }
 
 data corpus_ci_gate_row_comprep_loop_round_trip_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "comprep loop emit ingest round trip",
-  entry: "src/v2/compiler/manual/comprep_loop_round_trip_test.dag",
+  entry: "src/v2/test/claim/manual/comprep_loop_round_trip_test.dag",
   function: "comprep_loop_round_trip_keystone_holds",
   expected: ExpectPass
 }
 
 data corpus_ci_gate_row_bind_demand_driven_eval_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "bind demand driven eval keystone",
-  entry: "src/v2/compiler/manual/bind_demand_driven_eval_test.dag",
+  entry: "src/v2/test/claim/manual/bind_demand_driven_eval_test.dag",
   function: "bind_demand_driven_eval_keystone_holds",
   expected: ExpectPass
 }
 
 data corpus_ci_gate_row_loop_demand_driven_eval_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "loop demand driven eval keystone",
-  entry: "src/v2/compiler/manual/loop_demand_driven_eval_test.dag",
+  entry: "src/v2/test/claim/manual/loop_demand_driven_eval_test.dag",
   function: "loop_demand_driven_eval_keystone_holds",
   expected: ExpectPass
 }
 
 data corpus_ci_gate_row_lazy_arm_eval_acceptance_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "lazy arm eval acceptance keystone",
-  entry: "src/v2/compiler/manual/comprep_branch_lazy_arm_eval_acceptance_test.dag",
+  entry: "src/v2/test/claim/manual/comprep_branch_lazy_arm_eval_acceptance_test.dag",
   function: "lazy_arm_eval_acceptance_keystone_holds",
   expected: ExpectPass
 }
 
 data corpus_ci_gate_row_comprep_ts_bodied_emit_add_fn: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "comprep ts bodied emit add fn accepts",
-  entry: "src/v2/compiler/manual/comprep_add_body_emit_typescript_test.dag",
+  entry: "src/v2/test/claim/manual/comprep_add_body_emit_typescript_test.dag",
   function: "comprep_ts_bodied_emit_add_fn_accepts_holds",
   expected: ExpectPass
 }
 
 data corpus_ci_gate_row_comprep_ts_bodied_emit_operand_swap: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "comprep ts bodied emit operand swap discriminates",
-  entry: "src/v2/compiler/manual/comprep_add_body_emit_typescript_test.dag",
+  entry: "src/v2/test/claim/manual/comprep_add_body_emit_typescript_test.dag",
   function: "comprep_ts_bodied_emit_operand_swap_discriminates",
   expected: ExpectPass
 }
 
 data corpus_ci_gate_row_comprep_ts_bodied_emit_catalog_minus: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "comprep ts bodied emit catalog minus discriminates",
-  entry: "src/v2/compiler/manual/comprep_add_body_emit_typescript_test.dag",
+  entry: "src/v2/test/claim/manual/comprep_add_body_emit_typescript_test.dag",
   function: "comprep_ts_bodied_emit_catalog_minus_discriminates",
   expected: ExpectPass
 }
 
 data corpus_ci_gate_row_comprep_ts_bodied_emit_missing_catalog: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "comprep ts bodied emit missing catalog rejects",
-  entry: "src/v2/compiler/manual/comprep_add_body_emit_typescript_test.dag",
+  entry: "src/v2/test/claim/manual/comprep_add_body_emit_typescript_test.dag",
   function: "comprep_ts_bodied_emit_missing_catalog_rejects",
   expected: ExpectPass
 }
 
 data corpus_ci_gate_row_program_partition_body_emit_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "program partition body emit keystone (E-10)",
-  entry: "src/v2/compiler/manual/program_partition_comprep_body_emit_test.dag",
+  entry: "src/v2/test/claim/manual/program_partition_comprep_body_emit_test.dag",
   function: "program_partition_body_emit_accepts_and_differs_from_whole",
   expected: ExpectPass
 }
 
 data corpus_ci_gate_row_program_partition_whole_program_parity: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "program partition whole program emit parity",
-  entry: "src/v2/compiler/manual/program_partition_comprep_body_emit_test.dag",
+  entry: "src/v2/test/claim/manual/program_partition_comprep_body_emit_test.dag",
   function: "program_partition_whole_program_emit_matches_direct",
   expected: ExpectPass
 }
 
 data corpus_ci_gate_row_program_partition_section_adapter_fail_closed: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "program partition section adapter fail closed",
-  entry: "src/v2/compiler/manual/program_partition_comprep_body_emit_test.dag",
+  entry: "src/v2/test/claim/manual/program_partition_comprep_body_emit_test.dag",
   function: "program_partition_section_adapter_unavailable_rejects",
   expected: ExpectPass
 }
 
 data corpus_ci_gate_row_program_partition_closure_enumeration_duplicate_free: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "program partition closure enumeration duplicate free",
-  entry: "src/v2/compiler/manual/program_partition_comprep_body_emit_test.dag",
+  entry: "src/v2/test/claim/manual/program_partition_comprep_body_emit_test.dag",
   function: "program_partition_body_canonical_closure_enumeration_is_duplicate_free",
   expected: ExpectPass
 }
 
 data corpus_ci_gate_row_program_partition_fail_closed_facts_closure_fold: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "program partition fail closed facts closure fold accepts",
-  entry: "src/v2/compiler/manual/program_partition_comprep_body_emit_test.dag",
+  entry: "src/v2/test/claim/manual/program_partition_comprep_body_emit_test.dag",
   function: "program_partition_body_fail_closed_facts_closure_fold_accepts",
   expected: ExpectPass
 }
 
 data corpus_ci_gate_row_witness_rust_wire_serde_screaming_snake: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "rust wire serde screaming snake enum serialize",
-  entry: "src/v2/compiler/manual/rust_wire_serde_naming_policy_test.dag",
+  entry: "src/v2/test/claim/manual/rust_wire_serde_naming_policy_test.dag",
   function: "witness_rust_wire_serde_screaming_snake_holds",
   expected: ExpectPass
 }
 
 data corpus_ci_gate_row_witness_rust_wire_serde_snake_case: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "rust wire serde snake case enum serialize",
-  entry: "src/v2/compiler/manual/rust_wire_serde_naming_policy_test.dag",
+  entry: "src/v2/test/claim/manual/rust_wire_serde_naming_policy_test.dag",
   function: "witness_rust_wire_serde_snake_case_holds",
   expected: ExpectPass
 }
 
 data corpus_ci_gate_row_witness_rust_wire_serde_naming_discriminates: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "rust wire serde naming policy discriminates",
-  entry: "src/v2/compiler/manual/rust_wire_serde_naming_policy_test.dag",
+  entry: "src/v2/test/claim/manual/rust_wire_serde_naming_policy_test.dag",
   function: "witness_rust_wire_serde_naming_discriminates",
   expected: ExpectPass
 }
 
 data corpus_ci_gate_row_cwc_nary_coproduct_normalize: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "n-ary coproduct type-alias RHS folds to kernel Disj",
-  entry: "src/v2/compiler/manual/cwc_resolution_probe_test.dag",
+  entry: "src/v2/test/claim/manual/cwc_resolution_probe_test.dag",
   function: "cwc_nary_coproduct_normalize_boundary_holds",
   expected: ExpectPass
 }
 
 data corpus_ci_gate_row_witness_sg2_arrow: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "self-gen arrow type-expression projection",
-  entry: "src/v2/compiler/manual/sg2_type_expression_projection.dag",
+  entry: "src/v2/test/claim/manual/sg2_type_expression_projection.dag",
   function: "witness_sg2_arrow_holds",
   expected: ExpectPass
 }
 
 data corpus_ci_gate_row_witness_sg2_projection_falsification: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "self-gen projection falsification",
-  entry: "src/v2/compiler/manual/sg2_type_expression_projection.dag",
+  entry: "src/v2/test/claim/manual/sg2_type_expression_projection.dag",
   function: "witness_sg2_projection_falsification_holds",
   expected: ExpectPass
 }
 
 data corpus_ci_gate_row_witness_sg2_fold_row_delimiter: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "self-gen fold row delimiter discriminates",
-  entry: "src/v2/compiler/manual/sg2_type_expression_projection.dag",
+  entry: "src/v2/test/claim/manual/sg2_type_expression_projection.dag",
   function: "witness_sg2_fold_row_delimiter_discriminates_holds",
   expected: ExpectPass
 }
@@ -296,21 +296,21 @@ data corpus_ci_gate_row_effect_io_host_http_backend: ClaimWitnessCorpusClaimRunR
 
 data corpus_ci_gate_row_ts_effect_io_emit: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "typescript effect io emit",
-  entry: "src/v2/compiler/manual/typescript_effect_io_emit.dag",
+  entry: "src/v2/test/claim/manual/typescript_effect_io_emit.dag",
   function: "ts_effect_io_emit_holds",
   expected: ExpectPass
 }
 
 data corpus_ci_gate_row_effect_io_eval_roundtrip: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "effect io eval roundtrip",
-  entry: "src/v2/compiler/manual/effect_io_eval_by_execution_test.dag",
+  entry: "src/v2/test/claim/manual/effect_io_eval_by_execution_test.dag",
   function: "effect_io_eval_roundtrip_holds",
   expected: ExpectPass
 }
 
 data corpus_ci_gate_row_effect_io_eval_unbound_fail_closed: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "effect io eval unbound fail closed",
-  entry: "src/v2/compiler/manual/effect_io_eval_by_execution_test.dag",
+  entry: "src/v2/test/claim/manual/effect_io_eval_by_execution_test.dag",
   function: "effect_io_eval_unbound_fail_closed_holds",
   expected: ExpectPass
 }
@@ -401,49 +401,49 @@ data corpus_ci_gate_row_measure_two_hop_alias_count_roundtrip: ClaimWitnessCorpu
 
 data corpus_ci_gate_row_timeseries_resistor_map: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "timeseries S1 resistor map v=R*i",
-  entry: "src/v2/compiler/manual/timeseries_passive_map_fold_anchor.dag",
+  entry: "src/v2/test/claim/manual/timeseries_passive_map_fold_anchor.dag",
   function: "timeseries_anchor_resistor_map_holds",
   expected: ExpectPass
 }
 
 data corpus_ci_gate_row_timeseries_signed_magnitude_resistor_map: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "timeseries S1 signed negative current resistor map (int_mul R·i)",
-  entry: "src/v2/compiler/manual/timeseries_passive_map_fold_anchor.dag",
+  entry: "src/v2/test/claim/manual/timeseries_passive_map_fold_anchor.dag",
   function: "timeseries_signed_magnitude_resistor_map_holds",
   expected: ExpectPass
 }
 
 data corpus_ci_gate_row_timeseries_signed_magnitude_capacitor_fold: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "timeseries S1 signed Form-B capacitor fold (zero-cross discriminating)",
-  entry: "src/v2/compiler/manual/timeseries_passive_map_fold_anchor.dag",
+  entry: "src/v2/test/claim/manual/timeseries_passive_map_fold_anchor.dag",
   function: "timeseries_signed_magnitude_capacitor_fold_holds",
   expected: ExpectPass
 }
 
 data corpus_ci_gate_row_timeseries_capacitor_fold: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "timeseries S1 capacitor fold dv=i*dt/C",
-  entry: "src/v2/compiler/manual/timeseries_passive_map_fold_anchor.dag",
+  entry: "src/v2/test/claim/manual/timeseries_passive_map_fold_anchor.dag",
   function: "timeseries_anchor_capacitor_fold_holds",
   expected: ExpectPass
 }
 
 data corpus_ci_gate_row_timeseries_inductor_fold: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "timeseries S1 inductor fold di=V*dt/L",
-  entry: "src/v2/compiler/manual/timeseries_passive_map_fold_anchor.dag",
+  entry: "src/v2/test/claim/manual/timeseries_passive_map_fold_anchor.dag",
   function: "timeseries_anchor_inductor_fold_holds",
   expected: ExpectPass
 }
 
 data corpus_ci_gate_row_timeseries_capacitor_fold_chronological: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "timeseries S1 capacitor fold_list chronological integration",
-  entry: "src/v2/compiler/manual/timeseries_passive_map_fold_anchor.dag",
+  entry: "src/v2/test/claim/manual/timeseries_passive_map_fold_anchor.dag",
   function: "timeseries_anchor_capacitor_fold_chronological_holds",
   expected: ExpectPass
 }
 
 data corpus_ci_gate_row_timeseries_capacitor_zero_rating_rejects: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "timeseries S1 capacitor int_div fail-closed on zero rating",
-  entry: "src/v2/compiler/manual/timeseries_passive_map_fold_anchor.dag",
+  entry: "src/v2/test/claim/manual/timeseries_passive_map_fold_anchor.dag",
   function: "timeseries_anchor_capacitor_zero_rating_rejects",
   expected: ExpectPass
 }

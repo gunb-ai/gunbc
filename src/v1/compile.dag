@@ -1067,7 +1067,7 @@ fn validate_boundaries(plan: ArtifactPlan) -> List<ErrorNode> {
   )
 }
 
-type EmittableGraph {
+type EmittableGraph sole_constructor {
   graph: ResolvedGraph
 }
 
@@ -1081,6 +1081,10 @@ fn emittable_graph(resolved: ResolvedPipelineResult) -> EmittableGraph? {
       Absent => none
     }
   }
+}
+
+fn emittable_graph_from_graph(typed: ResolvedGraph) -> EmittableGraph {
+  EmittableGraph { graph: typed }
 }
 
 fn emit_from_artifact_plan(emittable: EmittableGraph, artifact_plan: ArtifactPlan) -> EmitResult {

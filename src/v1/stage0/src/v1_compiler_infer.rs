@@ -5439,6 +5439,16 @@ pub fn record_lit_alias_struct_fields(
     }
 }
 
+pub fn type_has_sole_constructor(type_name: String, scope: Rc<InferScope>) -> bool {
+    match lookup_type_by_name(scope.type_env.clone(), type_name) {
+        Some(decl) => decl
+            .properties
+            .iter()
+            .any(|p| p.name.as_str() == "sole_constructor"),
+        None => false,
+    }
+}
+
 pub fn record_lit_construction_field_names(
     type_name: String,
     scope: Rc<InferScope>,
@@ -5848,6 +5858,31 @@ pub fn infer_record_lit(
                         scope.module_name.clone(),
                     )]),
                 };
+                let sole_ctor_diags = match type_name.clone() {
+                    Some(tn) => {
+                        if type_has_sole_constructor(tn.clone(), scope.clone()) {
+                            match lookup_type_by_name(scope.type_env.clone(), tn.clone()) {
+                                Some(decl) => {
+                                    if decl.span.file == span.file {
+                                        Rc::new(vec![])
+                                    } else {
+                                        Rc::new(vec![make_error_node(
+                                            Rc::new(CompilerDiagnostic::SoleConstructorViolation {
+                                                type_name: tn.clone(),
+                                                span: span.clone(),
+                                            }),
+                                            scope.module_name.clone(),
+                                        )])
+                                    }
+                                }
+                                None => Rc::new(vec![]),
+                            }
+                        } else {
+                            Rc::new(vec![])
+                        }
+                    }
+                    None => Rc::new(vec![]),
+                };
                 let typed_field_nodes2 = typed_fields;
                 let rl_name = match type_name.clone() {
                     Some(tn_val) => tn_val.clone(),
@@ -5867,7 +5902,10 @@ pub fn infer_record_lit(
                 );
                 Rc::new(InferResult {
                     typed: texpr,
-                    diagnostics: v1_rt::concat(fi_diags, type_diags),
+                    diagnostics: v1_rt::concat(
+                        v1_rt::concat(fi_diags, type_diags),
+                        sole_ctor_diags,
+                    ),
                 })
             }
         }
@@ -11892,7 +11930,7 @@ pub fn build_type_env(
                             uses: Rc::new(vec![]),
                             body: None,
                             transport: None,
-                            properties: Rc::new(vec![]),
+                            properties: item.properties.clone(),
                             type_annotation: None,
                             is_self_recursive: false,
                             has_non_tail_self_call: false,

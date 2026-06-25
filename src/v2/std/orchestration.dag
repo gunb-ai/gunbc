@@ -1,0 +1,66 @@
+module v2.std.orchestration
+
+import v2.std.text { String }
+import v2.std.algebra { FreeMonoid }
+import v2.std.collection { Optional }
+import v2.std.cardinality { DescentEvidence }
+import v2.std.diagnostic { EmitDirective }
+import v2.std.node { Symbol }
+
+type EnvBinding
+  = EnvSet { name: String, value: String }
+  | EnvUnset { name: String }
+
+type RedirectSpec
+  = StdoutAndStderr
+  | DiscardAll
+  | DiscardErr
+
+type CaptureSpec
+  = TeeTo { log: String }
+  | CmdSubst
+  | IgnoreFail
+
+type Run {
+  command: String
+  env: FreeMonoid<EnvBinding>
+  redirect: Optional<RedirectSpec>
+  capture: Optional<CaptureSpec>
+}
+
+type ValueSource
+  = CmdSubstLines { run: Run }
+  | Glob { pattern: String }
+  | ModeledList { items: FreeMonoid<String> }
+
+type Predicate
+  = ExitZero { run: Run }
+  | LogMatches { source: String, pattern: String }
+  | StrEq { lhs: String, rhs: String }
+  | Not { inner: Predicate }
+  | And { lhs: Predicate, rhs: Predicate }
+  | Or { lhs: Predicate, rhs: Predicate }
+
+type EscalationLevel {
+  detect: Predicate
+  warning: EmitDirective
+  env: FreeMonoid<EnvBinding>
+}
+
+type FailurePolicy = FailFast | Continue
+
+type Step
+  = Do { run: Run }
+  | If { cond: Predicate, then_: Pipeline, else_: Optional<Pipeline> }
+  | For { binder: Symbol, over: ValueSource, body: Pipeline }
+  | While { cond: Predicate, body: Pipeline, bound: DescentEvidence }
+  | Retry {
+      body: Pipeline,
+      escalations: FreeMonoid<EscalationLevel>,
+      on_exhausted: Pipeline
+    }
+
+type Pipeline {
+  steps: FreeMonoid<Step>
+  on_failure: FailurePolicy
+}
