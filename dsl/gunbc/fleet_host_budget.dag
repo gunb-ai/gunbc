@@ -188,15 +188,11 @@ fn host_allocation_conserves(
 }
 
 fn declared_runner_count() -> Int {
-  let pool = byte_size_count(b: gunbc_runner_pool_budget)
-  let per = byte_size_count(b: gunbc_per_runner_memory_cap)
-  if per <= 0 { 0 } else { pool / per }
+  byte_size_count(b: gunbc_runner_pool_budget) / byte_size_count(b: gunbc_per_runner_memory_cap)
 }
 
 fn max_concurrent_sessions(session_pool: ByteSize) -> Int {
-  let pool = byte_size_count(b: session_pool)
-  let per = byte_size_count(b: gunbc_session_container_memory)
-  if per <= 0 { 0 } else { pool / per }
+  byte_size_count(b: session_pool) / byte_size_count(b: gunbc_session_container_memory)
 }
 
 
