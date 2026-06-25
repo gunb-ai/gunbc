@@ -137,6 +137,7 @@ data medium_structure_exception_roster: List<String> = [
   "dsl/tools/emit_host_transport.dag",
   "dsl/gunbc/assimilate/bmc_token_federation.dag",
   "dsl/gunbc/tools/review.dag",
+  "dsl/gunbc/tools/roadmap_spawn_request.dag",
   "dsl/test/claim/fleet_converge_emit_test.dag",
 
   "dsl/test/claim/srv3_os_install_emit_test.dag",
