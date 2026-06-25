@@ -1,6 +1,8 @@
 module v2.test.fixture.medium_structure_scan.leak_plant
 import v2.std.logic { Bool }
 import v2.std.text { String }
+import std.markup { Fragment, TextNode }
+import extdeps.languages.html_fragment { serialize_fragment }
 
 fn planted_emit_side_leak() -> String {
   "HOME: ${{ runner.temp }}/cargo"
@@ -25,6 +27,11 @@ fn clean_string_op_over_plain(s: String) -> Bool {
 
 fn planted_shell_emit_side_leak() -> String {
   "#!/usr/bin/env bash"
+}
+
+fn planted_html_check_side_leak() -> Bool {
+  let html = serialize_fragment(frag: TextNode { content: "x" })
+  starts_with(s: html, prefix: "<")
 }
 
 fn ci_yml_drifted(committed: String) -> Bool {
