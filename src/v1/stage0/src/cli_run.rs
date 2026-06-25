@@ -325,23 +325,6 @@ pub fn resolve_entry_with_index(
     resolve_entry_with_parse_cache(index, entry_file)
 }
 
-/// Discovery-floor entry resolution. The typecheck gate is now blocking (the
-/// advisory-demotion seam from #5760 was promoted once the corpus reached zero
-/// advisory typecheck debt), so this is identical to `resolve_entry_with_index`
-/// — kept as a named call site for the floor.
-pub fn resolve_entry_with_index_for_discovery_corpus(
-    index: &MultiEntryIndex,
-    entry_file: &str,
-) -> Result<
-    (
-        Rc<v1_compiler_compile::ResolvedGraph>,
-        Rc<HashMap<String, Rc<NewlineIndex>>>,
-    ),
-    String,
-> {
-    resolve_entry_with_index(index, entry_file)
-}
-
 fn resolve_entry_graph_with_index(
     index: &ModuleSourceIndex,
     entry_file: &str,
@@ -2947,9 +2930,8 @@ fn run_discovery_rows(
                 .map_err(|msg| format!("load sources failed for {}: {}", row.entry, msg))?;
             let closure_subject = subject_digest_for_closure(&sources);
             let resolve_started = std::time::Instant::now();
-            let (graph, source_indices) =
-                resolve_entry_with_index_for_discovery_corpus(index, &row.entry)
-                    .map_err(|msg| format!("resolve failed for {}: {}", row.entry, msg))?;
+            let (graph, source_indices) = resolve_entry_with_index(index, &row.entry)
+                .map_err(|msg| format!("resolve failed for {}: {}", row.entry, msg))?;
             let resolve_nanos = resolve_started.elapsed().as_nanos();
             summary.total_resolve_nanos += resolve_nanos;
             summary.entry_resolve_receipts.push(EntryResolveReceipt {
