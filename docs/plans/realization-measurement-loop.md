@@ -4,7 +4,7 @@
 
 **Owner:** unowned (original coordinator `zesty-deer-479` archived 2026-06-21) — operator-coordinated; consolidates the formerly-separate quick-ant-298 dependency-ordered roadmap (single authority, no fork). Linked from `ROADMAP.md` §2 *Minimal work — caching by realization*.
 
-**Companion:** [`resource-aware-scheduler.md`](resource-aware-scheduler.md) — the four-node spawn-width implementation (larger allocation → larger throughput, by construction) that consumes this loop's measured per-runnable peak.
+**Companion plans** (same cost to schedule loop, different arm): the Schedule-width arm is detailed in [`resource-aware-scheduler.md`](resource-aware-scheduler.md) (larger allocations give larger throughput; `spawn_width = floor(available_memory / per_runnable_peak)`); the input-admission arm — the data side of the loop, gating which corpus a `WorkDemand` may accept — is detailed in [`input-envelope-roadmap.md`](input-envelope-roadmap.md) (`InputEnvelope = BoundedInput | EnvelopeUnknown`, fail-closed admission via `input_admitted`).
 
 ---
 
