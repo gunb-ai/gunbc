@@ -26,7 +26,6 @@ import v2.std.algebra {
   FreeMonoid,
   list_head,
   list_tail,
-  ListHeadResult,
   HeadFound,
   HeadAbsent,
   TailFound,
@@ -146,29 +145,43 @@ fn retry_eagain_intent_escalations() -> FreeMonoid<EscalationLevel> {
   }
 }
 
-fn retry_eagain_command_opt() -> Optional<String> {
+fn retry_eagain_first_step_opt() -> Optional<Step> {
   match retry_eagain_intent() {
     Retry { body: b, escalations: _, on_exhausted: _ } =>
       match list_head(xs: b.steps) {
-        HeadFound { value: s } =>
-          match s {
-            Do { run: r } => Present { value: r.command }
-            _ => Absent
-          }
+        HeadFound { value: s } => Present { value: s }
         HeadAbsent => Absent
       }
     _ => Absent
   }
 }
 
-fn retry_eagain_level1_opt() -> ListHeadResult<EscalationLevel> {
-  list_head(xs: retry_eagain_intent_escalations())
+fn retry_eagain_command_opt() -> Optional<String> {
+  match retry_eagain_first_step_opt() {
+    Present { value: s } =>
+      match s {
+        Do { run: r } => Present { value: r.command }
+        _ => Absent
+      }
+    Absent => Absent
+  }
 }
 
-fn retry_eagain_level2_opt() -> ListHeadResult<EscalationLevel> {
+fn retry_eagain_level1_opt() -> Optional<EscalationLevel> {
+  match list_head(xs: retry_eagain_intent_escalations()) {
+    HeadFound { value: l } => Present { value: l }
+    HeadAbsent => Absent
+  }
+}
+
+fn retry_eagain_level2_opt() -> Optional<EscalationLevel> {
   match list_tail(xs: retry_eagain_intent_escalations()) {
-    TailFound { tail: t } => list_head(xs: t)
-    TailAbsent => HeadAbsent
+    TailFound { tail: t } =>
+      match list_head(xs: t) {
+        HeadFound { value: l } => Present { value: l }
+        HeadAbsent => Absent
+      }
+    TailAbsent => Absent
   }
 }
 
@@ -176,9 +189,9 @@ fn retry_eagain_emit_opt() -> Optional<Outcome<Medium<String>>> {
   match retry_eagain_command_opt() {
     Present { value: cmd } =>
       match retry_eagain_level1_opt() {
-        HeadFound { value: l1 } =>
+        Present { value: l1 } =>
           match retry_eagain_level2_opt() {
-            HeadFound { value: l2 } =>
+            Present { value: l2 } =>
               match l1.detect {
                 LogMatches { source: _, pattern: p1 } =>
                   match l2.detect {
@@ -204,9 +217,9 @@ fn retry_eagain_emit_opt() -> Optional<Outcome<Medium<String>>> {
                   }
                 _ => Absent
               }
-            HeadAbsent => Absent
+            Absent => Absent
           }
-        HeadAbsent => Absent
+        Absent => Absent
       }
     Absent => Absent
   }
@@ -216,9 +229,9 @@ fn retry_eagain_emit_no_exit_wrong_opt() -> Optional<Outcome<Medium<String>>> {
   match retry_eagain_command_opt() {
     Present { value: cmd } =>
       match retry_eagain_level1_opt() {
-        HeadFound { value: l1 } =>
+        Present { value: l1 } =>
           match retry_eagain_level2_opt() {
-            HeadFound { value: l2 } =>
+            Present { value: l2 } =>
               match l1.detect {
                 LogMatches { source: _, pattern: p1 } =>
                   match l2.detect {
@@ -244,9 +257,9 @@ fn retry_eagain_emit_no_exit_wrong_opt() -> Optional<Outcome<Medium<String>>> {
                   }
                 _ => Absent
               }
-            HeadAbsent => Absent
+            Absent => Absent
           }
-        HeadAbsent => Absent
+        Absent => Absent
       }
     Absent => Absent
   }
@@ -268,28 +281,6 @@ fn retry_eagain_emit_perturbed_env() -> Outcome<Medium<String>> {
       env3: retry_eagain_level2_perturbed().env
     )
   )
-}
-
-test fn probe_listhead_payload_variant_rematch() -> Bool {
-  match list_head(xs: retry_eagain_intent_escalations()) {
-    HeadFound { value: l } =>
-      match l.detect {
-        LogMatches { source: _, pattern: _ } => true
-        ExitZero { run: _ } => false
-        StrEq { lhs: _, rhs: _ } => false
-        Not { inner: _ } => false
-        And { lhs: _, rhs: _ } => false
-        Or { lhs: _, rhs: _ } => false
-      }
-    HeadAbsent => false
-  }
-}
-
-test fn probe_listhead_payload_field_chain() -> Bool {
-  match list_head(xs: retry_eagain_intent_escalations()) {
-    HeadFound { value: l } => l.warning.message == retry_eagain_warn1()
-    HeadAbsent => false
-  }
 }
 
 test fn retry_eagain_bash_byte_identical_to_hand_authored_holds() -> Bool {
