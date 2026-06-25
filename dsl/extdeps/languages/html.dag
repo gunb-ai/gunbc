@@ -8,8 +8,10 @@ import std.markup {
   MarkupBracket, MarkupMedium, EscapeHtml,
   serialize_markup_node_with,
   unescape_text, unescape_attribute, unescape_url,
-  validate_href, SafeHref, RejectedHref,
   attr_is_url_attr,
+}
+import extdeps.uri_validation {
+  validate_href, SafeHref, RejectedHref,
   find_first_rejected_url,
 }
 
