@@ -162,6 +162,64 @@ fn witness_schema_field_present() -> Bool {
     && string_contains(s: json, pattern: "\"edges\"")
 }
 
+fn witness_fixpoint_deep_chain() -> Bool {
+  let n0  = sized_derivable(id: "deep-n0",  prs: [1],  title: "N0")
+  let n1  = sized_derivable(id: "deep-n1",  prs: [2],  title: "N1")
+  let n2  = sized_derivable(id: "deep-n2",  prs: [3],  title: "N2")
+  let n3  = sized_derivable(id: "deep-n3",  prs: [4],  title: "N3")
+  let n4  = sized_derivable(id: "deep-n4",  prs: [5],  title: "N4")
+  let n5  = sized_derivable(id: "deep-n5",  prs: [6],  title: "N5")
+  let n6  = sized_derivable(id: "deep-n6",  prs: [7],  title: "N6")
+  let n7  = sized_derivable(id: "deep-n7",  prs: [8],  title: "N7")
+  let n8  = sized_derivable(id: "deep-n8",  prs: [9],  title: "N8")
+  let n9  = sized_derivable(id: "deep-n9",  prs: [10], title: "N9")
+  let n10 = sized_derivable(id: "deep-n10", prs: [11], title: "N10")
+  let n11 = sized_derivable(id: "deep-n11", prs: [12], title: "N11")
+  let n12 = sized_derivable(id: "deep-n12", prs: [13], title: "N12")
+  let n13 = sized_derivable(id: "deep-n13", prs: [14], title: "N13")
+  let n14 = sized_derivable(id: "deep-n14", prs: [15], title: "N14")
+  let n15 = sized_derivable(id: "deep-n15", prs: [16], title: "N15")
+  let n16 = sized_derivable(id: "deep-n16", prs: [17], title: "N16")
+  let n17 = sized_derivable(id: "deep-n17", prs: [18], title: "N17")
+  let n18 = sized_derivable(id: "deep-n18", prs: [19], title: "N18")
+  let n19 = sized_derivable(id: "deep-n19", prs: [20], title: "N19")
+  let n20 = sized_derivable(id: "deep-n20", prs: [21], title: "N20")
+  let n21 = sized_derivable(id: "deep-n21", prs: [22], title: "N21")
+  let n22 = sized_derivable(id: "deep-n22", prs: [23], title: "N22")
+  let n23 = sized_derivable(id: "deep-n23", prs: [24], title: "N23")
+  let n24 = sized_derivable(id: "deep-n24", prs: [25], title: "N24")
+  let nodes = [n0, n1, n2, n3, n4, n5, n6, n7, n8, n9, n10, n11, n12, n13, n14, n15, n16, n17, n18, n19, n20, n21, n22, n23, n24]
+  let edges = [
+    RoadmapEdge { child: nid(s: "deep-n1"),  parent: nid(s: "deep-n0") },
+    RoadmapEdge { child: nid(s: "deep-n2"),  parent: nid(s: "deep-n1") },
+    RoadmapEdge { child: nid(s: "deep-n3"),  parent: nid(s: "deep-n2") },
+    RoadmapEdge { child: nid(s: "deep-n4"),  parent: nid(s: "deep-n3") },
+    RoadmapEdge { child: nid(s: "deep-n5"),  parent: nid(s: "deep-n4") },
+    RoadmapEdge { child: nid(s: "deep-n6"),  parent: nid(s: "deep-n5") },
+    RoadmapEdge { child: nid(s: "deep-n7"),  parent: nid(s: "deep-n6") },
+    RoadmapEdge { child: nid(s: "deep-n8"),  parent: nid(s: "deep-n7") },
+    RoadmapEdge { child: nid(s: "deep-n9"),  parent: nid(s: "deep-n8") },
+    RoadmapEdge { child: nid(s: "deep-n10"), parent: nid(s: "deep-n9") },
+    RoadmapEdge { child: nid(s: "deep-n11"), parent: nid(s: "deep-n10") },
+    RoadmapEdge { child: nid(s: "deep-n12"), parent: nid(s: "deep-n11") },
+    RoadmapEdge { child: nid(s: "deep-n13"), parent: nid(s: "deep-n12") },
+    RoadmapEdge { child: nid(s: "deep-n14"), parent: nid(s: "deep-n13") },
+    RoadmapEdge { child: nid(s: "deep-n15"), parent: nid(s: "deep-n14") },
+    RoadmapEdge { child: nid(s: "deep-n16"), parent: nid(s: "deep-n15") },
+    RoadmapEdge { child: nid(s: "deep-n17"), parent: nid(s: "deep-n16") },
+    RoadmapEdge { child: nid(s: "deep-n18"), parent: nid(s: "deep-n17") },
+    RoadmapEdge { child: nid(s: "deep-n19"), parent: nid(s: "deep-n18") },
+    RoadmapEdge { child: nid(s: "deep-n20"), parent: nid(s: "deep-n19") },
+    RoadmapEdge { child: nid(s: "deep-n21"), parent: nid(s: "deep-n20") },
+    RoadmapEdge { child: nid(s: "deep-n22"), parent: nid(s: "deep-n21") },
+    RoadmapEdge { child: nid(s: "deep-n23"), parent: nid(s: "deep-n22") },
+    RoadmapEdge { child: nid(s: "deep-n24"), parent: nid(s: "deep-n23") },
+  ]
+  let doc = fixture_doc(nodes: nodes, edges: edges)
+  let json = roadmap_graph_json(doc: doc, merged: [1], anchor_commit: "deep")
+  string_contains(s: json, pattern: "\"wave\": 23")
+}
+
 test fn roadmap_graph_witnesses() -> Bool {
   witness_status_wave_chain()
     && witness_done_frontier_shift_reclassifies()
@@ -169,4 +227,5 @@ test fn roadmap_graph_witnesses() -> Bool {
     && witness_wave_recomputes_after_shift()
     && witness_shelved_section_excluded_from_wave()
     && witness_schema_field_present()
+    && witness_fixpoint_deep_chain()
 }
