@@ -48,7 +48,7 @@ type WorkflowRun {
   conclusion: WorkflowRunConclusion?
   workflow_id: Int
   run_number: Int
-  html_url: Url
+  html_url: NonEmptyStr
   created_at: Timestamp
   updated_at: Timestamp
 }
