@@ -4,6 +4,8 @@
 
 **Owner:** unowned (original coordinator `zesty-deer-479` archived 2026-06-21) — operator-coordinated; consolidates the formerly-separate quick-ant-298 dependency-ordered roadmap (single authority, no fork). Linked from `ROADMAP.md` §2 *Minimal work — caching by realization*.
 
+**Companion:** [`resource-aware-scheduler.md`](resource-aware-scheduler.md) — the four-node spawn-width implementation (larger allocation → larger throughput, by construction) that consumes this loop's measured per-runnable peak.
+
 ---
 
 ## 0. Thesis — the substrate is shape-complete but input-starved

@@ -2,6 +2,7 @@
 
 > Plan doc. Resolves the §1 ROADMAP pointer **"CI on compute fabric"**. Co-owned: **warm-lark-306** (authoring + operator context) and **quick-ant-298** (§1 CI-floor lead; owns the spawn-width slice). CC **bright-stag-194** (ROADMAP owner + test-profile owner for the fan-out cap). DESIGN refs: §1 (time = cost/safety), §2 (Realization — the parallelization arm), §3 (single authority + the measured-peripheral split), §5 (fail-closed; *derive*, don't hand-set).
 > A few live numbers below are marked **[confirm]** — quick-ant has the freshest values from the §1 investigation; the *model* is the point, not those scalars.
+> Demand-side companion: [`input-envelope-roadmap.md`](input-envelope-roadmap.md) — the declared `InputEnvelope` on `WorkDemand` (the bounded input this host envelope is sized against), with our own CI corpus as the first instance.
 
 ## 1. The symptom: a fleet with no operating point
 
