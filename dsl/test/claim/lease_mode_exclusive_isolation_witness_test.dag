@@ -135,15 +135,7 @@ fn witness_exclusive_leases_get_disjoint_cpusets() -> Bool {
     ExclusiveRefused { reason: _ } => false
     ExclusiveAdmitted { partition: p } =>
       p.shards.length() == 2
-        && match p.shards.first() {
-          Absent => false
-          Present { value: s0 } =>
-            match p.shards.skip(n: 1).first() {
-              Absent => false
-              Present { value: s1 } =>
-                s1.cpuset.first_thread > s0.cpuset.last_thread
-            }
-        }
+        && p.shards.first().cpuset.last_thread < p.shards.skip(n: 1).first().cpuset.first_thread
   }
 }
 
