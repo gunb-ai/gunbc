@@ -34,8 +34,8 @@ test fn srv3_capabilities_are_grounded() -> Bool {
     && firmware_has_capability(row: openbmc_2_07_00_capabilities, cap: CapabilityBootSourceOverride)
     && firmware_has_capability(row: openbmc_2_07_00_capabilities, cap: CapabilityAccountManagement)
     && firmware_has_capability(row: openbmc_2_07_00_capabilities, cap: CapabilityFirmwareUpdate)
-    && firmware_has_capability(row: openbmc_2_07_00_capabilities, cap: CapabilityNbdProxyVirtualMedia)
     && firmware_has_capability(row: openbmc_2_07_00_capabilities, cap: CapabilityVirtualMedia) == false
+    && firmware_has_capability(row: openbmc_2_07_00_capabilities, cap: CapabilityNbdProxyVirtualMedia) == false
     && firmware_has_capability(row: openbmc_2_07_00_capabilities, cap: CapabilityBiosAttributeConfig) == false
 }
 
@@ -43,11 +43,11 @@ test fn catalog_has_no_redfish_vm_capable_firmware_today() -> Bool {
   catalog_has_vm_capable_firmware(catalog: srv3_firmware_catalog) == false
 }
 
-test fn srv3_install_mechanism_is_nbd_proxy_vm_today() -> Bool {
+test fn srv3_install_mechanism_is_pxe_until_dry_run() -> Bool {
   match srv3_install_mechanism {
-    NbdProxyVirtualMediaInstall => true
+    PxeHttpInstall => true
+    NbdProxyVirtualMediaInstall => false
     VirtualMediaInstall => false
-    PxeHttpInstall => false
     FirmwareUpdateThenVirtualMedia => false
   }
 }

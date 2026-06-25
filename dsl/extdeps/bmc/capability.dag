@@ -51,6 +51,5 @@ data openbmc_2_07_00_capabilities: BmcFirmwareCapabilityRow = BmcFirmwareCapabil
     CapabilityBootSourceOverride,
     CapabilityAccountManagement,
     CapabilityFirmwareUpdate,
-    CapabilityNbdProxyVirtualMedia,
   ],
 }
