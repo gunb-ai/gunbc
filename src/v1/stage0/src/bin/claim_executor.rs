@@ -1077,9 +1077,16 @@ fn run() -> Result<ExitCode, ExitCode> {
 
     let outcome = run_walk(&source_roots, &batches, spawn_width);
     match peak_rss_bytes() {
-        Some(bytes) => eprintln!(
-            "[measurement] floor peak RSS: {bytes} bytes (VmHWM) at spawn_width={spawn_width}"
-        ),
+        Some(bytes) => {
+            eprintln!(
+                "[measurement] floor peak RSS: {bytes} bytes (VmHWM) at spawn_width={spawn_width}"
+            );
+            let width = spawn_width.max(1) as u64;
+            let per_shard = bytes.div_ceil(width);
+            eprintln!(
+                "[calibration] max-per-shard-peak-rss: {per_shard} bytes at spawn_width={spawn_width}"
+            );
+        }
         None => eprintln!(
             "[measurement] floor peak RSS: unavailable (no /proc/self/status) at spawn_width={spawn_width}"
         ),
