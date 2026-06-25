@@ -24,8 +24,6 @@ import v2.std.orchestration {
 }
 import v2.std.algebra {
   FreeMonoid,
-  Cons,
-  Empty,
   list_head,
   list_tail,
   ListHeadResult,
@@ -151,13 +149,13 @@ fn retry_eagain_intent_escalations() -> FreeMonoid<EscalationLevel> {
 fn retry_eagain_command_opt() -> Optional<String> {
   match retry_eagain_intent() {
     Retry { body: b, escalations: _, on_exhausted: _ } =>
-      match b.steps {
-        Cons { head: s, tail: _ } =>
+      match list_head(xs: b.steps) {
+        HeadFound { value: s } =>
           match s {
             Do { run: r } => Present { value: r.command }
             _ => Absent
           }
-        Empty => Absent
+        HeadAbsent => Absent
       }
     _ => Absent
   }
@@ -270,6 +268,28 @@ fn retry_eagain_emit_perturbed_env() -> Outcome<Medium<String>> {
       env3: retry_eagain_level2_perturbed().env
     )
   )
+}
+
+test fn probe_listhead_payload_variant_rematch() -> Bool {
+  match list_head(xs: retry_eagain_intent_escalations()) {
+    HeadFound { value: l } =>
+      match l.detect {
+        LogMatches { source: _, pattern: _ } => true
+        ExitZero { run: _ } => false
+        StrEq { lhs: _, rhs: _ } => false
+        Not { inner: _ } => false
+        And { lhs: _, rhs: _ } => false
+        Or { lhs: _, rhs: _ } => false
+      }
+    HeadAbsent => false
+  }
+}
+
+test fn probe_listhead_payload_field_chain() -> Bool {
+  match list_head(xs: retry_eagain_intent_escalations()) {
+    HeadFound { value: l } => l.warning.message == retry_eagain_warn1()
+    HeadAbsent => false
+  }
 }
 
 test fn retry_eagain_bash_byte_identical_to_hand_authored_holds() -> Bool {
