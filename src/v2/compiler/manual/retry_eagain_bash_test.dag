@@ -20,14 +20,18 @@ import v2.std.orchestration {
   StdoutAndStderr,
   TeeTo,
   LogMatches,
-  FailFast,
-  pipeline_first_step,
-  step_command_spelling,
-  predicate_log_pattern,
-  escalations_head,
-  escalations_rest
+  FailFast
 }
-import v2.std.algebra { FreeMonoid }
+import v2.std.algebra {
+  FreeMonoid,
+  list_head,
+  list_tail,
+  ListHeadResult,
+  HeadFound,
+  HeadAbsent,
+  TailFound,
+  TailAbsent
+}
 import v2.std.collection { Map, Optional, Present, Absent }
 import v2.std.diagnostic {
   Accepted,
@@ -145,36 +149,40 @@ fn retry_eagain_intent_escalations() -> FreeMonoid<EscalationLevel> {
 fn retry_eagain_command_opt() -> Optional<String> {
   match retry_eagain_intent() {
     Retry { body: b, escalations: _, on_exhausted: _ } =>
-      match pipeline_first_step(p: b) {
-        Present { value: s } => step_command_spelling(step: s)
-        Absent => Absent
+      match list_head(xs: b.steps) {
+        HeadFound { value: s } =>
+          match s {
+            Do { run: r } => Present { value: r.command }
+            _ => Absent
+          }
+        HeadAbsent => Absent
       }
-    Do { run: _ } => Absent
-    If { cond: _, then_: _, else_: _ } => Absent
-    For { binder: _, over: _, body: _ } => Absent
-    While { cond: _, body: _, bound: _ } => Absent
+    _ => Absent
   }
 }
 
-fn retry_eagain_level1_opt() -> Optional<EscalationLevel> {
-  escalations_head(levels: retry_eagain_intent_escalations())
+fn retry_eagain_level1_opt() -> ListHeadResult<EscalationLevel> {
+  list_head(xs: retry_eagain_intent_escalations())
 }
 
-fn retry_eagain_level2_opt() -> Optional<EscalationLevel> {
-  escalations_head(levels: escalations_rest(levels: retry_eagain_intent_escalations()))
+fn retry_eagain_level2_opt() -> ListHeadResult<EscalationLevel> {
+  match list_tail(xs: retry_eagain_intent_escalations()) {
+    TailFound { tail: t } => list_head(xs: t)
+    TailAbsent => HeadAbsent
+  }
 }
 
 fn retry_eagain_emit_opt() -> Optional<Outcome<Medium<String>>> {
   match retry_eagain_command_opt() {
     Present { value: cmd } =>
       match retry_eagain_level1_opt() {
-        Present { value: l1 } =>
+        HeadFound { value: l1 } =>
           match retry_eagain_level2_opt() {
-            Present { value: l2 } =>
-              match predicate_log_pattern(pred: l1.detect) {
-                Present { value: p1 } =>
-                  match predicate_log_pattern(pred: l2.detect) {
-                    Present { value: p2 } =>
+            HeadFound { value: l2 } =>
+              match l1.detect {
+                LogMatches { source: _, pattern: p1 } =>
+                  match l2.detect {
+                    LogMatches { source: _, pattern: p2 } =>
                       Present {
                         value: emit(
                           tree: InferredTree {
@@ -192,13 +200,13 @@ fn retry_eagain_emit_opt() -> Optional<Outcome<Medium<String>>> {
                           )
                         )
                       }
-                    Absent => Absent
+                    _ => Absent
                   }
-                Absent => Absent
+                _ => Absent
               }
-            Absent => Absent
+            HeadAbsent => Absent
           }
-        Absent => Absent
+        HeadAbsent => Absent
       }
     Absent => Absent
   }
