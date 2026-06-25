@@ -143,7 +143,7 @@ pub fn qualified_name_value_to_module_path(value: &Value) -> String {
             if variant == "QnCons" {
                 let head = fields
                     .iter()
-                    .find(|(k, _)| resolve_sym(**k) == "head")
+                    .find(|(k, _)| resolve_sym(*k) == "head")
                     .and_then(|(_, v)| match v {
                         Value::Str(s) => Some(s.clone()),
                         Value::Variant {
@@ -155,7 +155,7 @@ pub fn qualified_name_value_to_module_path(value: &Value) -> String {
                             if variant == "Symbol" || variant == "Atom" {
                                 sym_fields
                                     .iter()
-                                    .find(|(k, _)| resolve_sym(**k) == "identity")
+                                    .find(|(k, _)| resolve_sym(*k) == "identity")
                                     .and_then(|(_, v)| match v {
                                         Value::Str(s) => Some(s.clone()),
                                         _ => None,
@@ -171,7 +171,7 @@ pub fn qualified_name_value_to_module_path(value: &Value) -> String {
                     });
                 let tail = fields
                     .iter()
-                    .find(|(k, _)| resolve_sym(**k) == "tail")
+                    .find(|(k, _)| resolve_sym(*k) == "tail")
                     .map(|(_, v)| v)
                     .expect("qualified_name_to_module_path: QnCons.tail missing");
                 let rest = qualified_name_value_to_module_path(tail);
@@ -299,7 +299,7 @@ fn value_hash(v: &Value) -> u64 {
     h.finish()
 }
 
-fn hash_fields_commutative(fields: &HashMap<Symbol, Value>) -> u64 {
+fn hash_fields_commutative(fields: &[(Symbol, Value)]) -> u64 {
     use std::collections::hash_map::DefaultHasher;
     let mut acc: u64 = 0;
     for (sym, val) in fields.iter() {
@@ -309,6 +309,18 @@ fn hash_fields_commutative(fields: &HashMap<Symbol, Value>) -> u64 {
         acc = acc.wrapping_add(fh.finish());
     }
     acc
+}
+
+pub fn fields_get(fields: &[(Symbol, Value)], sym: Symbol) -> Option<&Value> {
+    fields
+        .binary_search_by_key(&sym.0, |(s, _)| s.0)
+        .ok()
+        .map(|i| &fields[i].1)
+}
+
+pub fn sorted_fields(mut v: Vec<(Symbol, Value)>) -> Vec<(Symbol, Value)> {
+    v.sort_unstable_by_key(|(sym, _)| sym.0);
+    v
 }
 
 #[derive(Debug, Clone)]
@@ -323,12 +335,12 @@ pub enum Value {
     Set(Rc<BTreeSet<String>>),
     Record {
         type_name: Symbol,
-        fields: Rc<HashMap<Symbol, Value>>,
+        fields: Rc<Vec<(Symbol, Value)>>,
     },
     Variant {
         type_name: Symbol,
         variant_name: Symbol,
-        fields: Rc<HashMap<Symbol, Value>>,
+        fields: Rc<Vec<(Symbol, Value)>>,
     },
     Closure {
         params: Vec<Symbol>,
@@ -350,12 +362,10 @@ fn map_value(entries: HamtMap<CanonKey, Value>) -> Value {
 }
 
 fn optional_present(value: Value, ctx: &InterpContext) -> Value {
-    let mut fields = HashMap::new();
-    fields.insert(ctx.sym("value"), value);
     Value::Variant {
         type_name: ctx.sym("Optional"),
         variant_name: ctx.sym("Present"),
-        fields: Rc::new(fields),
+        fields: Rc::new(vec![(ctx.sym("value"), value)]),
     }
 }
 
@@ -363,7 +373,7 @@ fn optional_absent(ctx: &InterpContext) -> Value {
     Value::Variant {
         type_name: ctx.sym("Optional"),
         variant_name: ctx.sym("Absent"),
-        fields: Rc::new(HashMap::new()),
+        fields: Rc::new(vec![]),
     }
 }
 
@@ -804,16 +814,16 @@ fn account_env(
 
 fn account_named_fields(
     label: &'static str,
-    fields: &Rc<HashMap<Symbol, Value>>,
+    fields: &Rc<Vec<(Symbol, Value)>>,
     visited: &mut std::collections::HashSet<usize>,
     acc: &mut MemoryAccounting,
 ) {
     if !accounting_first_visit(Rc::as_ptr(fields) as usize, label, visited, acc) {
         return;
     }
-    let mut bytes = (fields.len() * std::mem::size_of::<(Symbol, Value)>()) as u64;
+    let bytes = (fields.len() * std::mem::size_of::<(Symbol, Value)>()) as u64;
     acc.add_unique(label, bytes);
-    for value in fields.values() {
+    for (_, value) in fields.iter() {
         account_value(value, visited, acc);
     }
 }
@@ -960,8 +970,8 @@ impl InterpContext {
         self.symbols.borrow().resolve(sym) == name
     }
 
-    pub fn field<'a>(&self, fields: &'a HashMap<Symbol, Value>, name: &str) -> Option<&'a Value> {
-        fields.get(&self.sym(name))
+    pub fn field<'a>(&self, fields: &'a [(Symbol, Value)], name: &str) -> Option<&'a Value> {
+        fields_get(fields, self.sym(name))
     }
 
     pub fn format_value(&self, val: &Value) -> String {
@@ -1476,7 +1486,7 @@ fn eval_var(
         return Ok(Value::Variant {
             type_name: ctx.sym(parent_enum),
             variant_name: sym,
-            fields: Rc::new(HashMap::new()),
+            fields: Rc::new(vec![]),
         });
     }
 
@@ -1676,12 +1686,9 @@ fn cross_representation_numeric_straddle(a: &Value, b: &Value) -> Option<String>
     }
 }
 
-fn fields_numeric_straddle(
-    af: &HashMap<Symbol, Value>,
-    bf: &HashMap<Symbol, Value>,
-) -> Option<String> {
+fn fields_numeric_straddle(af: &[(Symbol, Value)], bf: &[(Symbol, Value)]) -> Option<String> {
     af.iter()
-        .filter_map(|(k, av)| bf.get(k).map(|bv| (av, bv)))
+        .filter_map(|(k, av)| fields_get(bf, *k).map(|bv| (av, bv)))
         .filter(|(av, bv)| av != bv)
         .find_map(|(av, bv)| cross_representation_numeric_straddle(av, bv))
 }
@@ -1830,50 +1837,37 @@ fn char_value(c: char) -> Value {
 }
 
 fn native_map_absent_diagnostic_value(ctx: &InterpContext) -> Value {
-    let mut anchor_fields = HashMap::new();
-    anchor_fields.insert(ctx.sym("at"), Value::Str("map_lookup_port".to_string()));
-
-    let mut locus_fields = HashMap::new();
-    locus_fields.insert(
-        ctx.sym("anchor"),
-        Value::Record {
-            type_name: ctx.sym("LocusAnchor"),
-            fields: Rc::new(anchor_fields),
-        },
-    );
-
-    let mut correction_fields = HashMap::new();
-    correction_fields.insert(
-        ctx.sym("reason"),
-        Value::Variant {
-            type_name: ctx.sym("NoCorrectionReason"),
-            variant_name: ctx.sym("ExternalContractUnknown"),
-            fields: Rc::new(HashMap::new()),
-        },
-    );
-
-    let mut diagnostic_fields = HashMap::new();
-    diagnostic_fields.insert(ctx.sym("reason"), Value::Str("map_key_absent".to_string()));
-    diagnostic_fields.insert(
-        ctx.sym("at"),
-        Value::Variant {
-            type_name: ctx.sym("Locus"),
-            variant_name: ctx.sym("PortLocus"),
-            fields: Rc::new(locus_fields),
-        },
-    );
-    diagnostic_fields.insert(
-        ctx.sym("correction"),
-        Value::Variant {
-            type_name: ctx.sym("Correction"),
-            variant_name: ctx.sym("Unavailable"),
-            fields: Rc::new(correction_fields),
-        },
-    );
-
+    let anchor = Value::Record {
+        type_name: ctx.sym("LocusAnchor"),
+        fields: Rc::new(vec![(
+            ctx.sym("at"),
+            Value::Str("map_lookup_port".to_string()),
+        )]),
+    };
+    let locus = Value::Variant {
+        type_name: ctx.sym("Locus"),
+        variant_name: ctx.sym("PortLocus"),
+        fields: Rc::new(vec![(ctx.sym("anchor"), anchor)]),
+    };
+    let correction = Value::Variant {
+        type_name: ctx.sym("Correction"),
+        variant_name: ctx.sym("Unavailable"),
+        fields: Rc::new(vec![(
+            ctx.sym("reason"),
+            Value::Variant {
+                type_name: ctx.sym("NoCorrectionReason"),
+                variant_name: ctx.sym("ExternalContractUnknown"),
+                fields: Rc::new(vec![]),
+            },
+        )]),
+    };
     Value::Record {
         type_name: ctx.sym("Diagnostic"),
-        fields: Rc::new(diagnostic_fields),
+        fields: Rc::new(sorted_fields(vec![
+            (ctx.sym("at"), locus),
+            (ctx.sym("correction"), correction),
+            (ctx.sym("reason"), Value::Str("map_key_absent".to_string())),
+        ])),
     }
 }
 
@@ -1943,8 +1937,7 @@ fn match_pattern(
                 for fb in field_bindings.iter() {
                     let field_name = field_binding_name_at(fb.clone(), ctx.source_indices.clone());
                     let fb_pat = field_binding_pattern(fb.clone());
-                    let field_val = fields
-                        .get(&ctx.sym(&field_name))
+                    let field_val = fields_get(fields, ctx.sym(&field_name))
                         .cloned()
                         .unwrap_or(Value::Null);
                     let sub_bindings = match_pattern(&fb_pat, &field_val, ctx)?;
@@ -1960,8 +1953,7 @@ fn match_pattern(
                 for fb in field_bindings.iter() {
                     let field_name = field_binding_name_at(fb.clone(), ctx.source_indices.clone());
                     let fb_pat = field_binding_pattern(fb.clone());
-                    let field_val = fields
-                        .get(&ctx.sym(&field_name))
+                    let field_val = fields_get(fields, ctx.sym(&field_name))
                         .cloned()
                         .unwrap_or(Value::Null);
                     let sub_bindings = match_pattern(&fb_pat, &field_val, ctx)?;
@@ -2357,12 +2349,10 @@ fn eval_fold_list_right_native(
 }
 
 fn witness_holds(value: Value, ctx: &InterpContext) -> Value {
-    let mut fields = HashMap::new();
-    fields.insert(ctx.sym("value"), value);
     Value::Variant {
         type_name: ctx.sym("Witness"),
         variant_name: ctx.sym("Holds"),
-        fields: Rc::new(fields),
+        fields: Rc::new(vec![(ctx.sym("value"), value)]),
     }
 }
 
@@ -2387,11 +2377,11 @@ fn parse_table_memo_scope_and_key(
         Value::Record { fields, .. } | Value::Variant { fields, .. } => fields,
         _ => return None,
     };
-    let position = match key_fields.get(&ctx.sym("position")) {
+    let position = match fields_get(key_fields, ctx.sym("position")) {
         Some(Value::Int(n)) => *n,
         _ => return None,
     };
-    let production = match key_fields.get(&ctx.sym("production")) {
+    let production = match fields_get(key_fields, ctx.sym("production")) {
         Some(Value::Str(s)) => ctx.sym(s),
         _ => return None,
     };
@@ -2534,7 +2524,7 @@ fn eval_method_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> Inte
     }
 
     if let Value::Record { fields, .. } | Value::Variant { fields, .. } = &receiver_val {
-        if let Some(field_val) = fields.get(&ctx.sym(&method_name)) {
+        if let Some(field_val) = fields_get(fields, ctx.sym(&method_name)) {
             match field_val {
                 Value::Closure { .. } => {
                     let f = field_val.clone();
@@ -2598,8 +2588,7 @@ fn extract_field(
     let field_sym = ctx.sym(field);
     match value {
         Value::Record { type_name, fields } => {
-            fields
-                .get(&field_sym)
+            fields_get(fields, field_sym)
                 .cloned()
                 .ok_or_else(|| InterpError::NoSuchField {
                     type_name: ctx.resolve(*type_name).to_string(),
@@ -2608,8 +2597,7 @@ fn extract_field(
         }
         Value::Variant {
             type_name, fields, ..
-        } => fields
-            .get(&field_sym)
+        } => fields_get(fields, field_sym)
             .cloned()
             .ok_or_else(|| InterpError::NoSuchField {
                 type_name: ctx.resolve(*type_name).to_string(),
@@ -2630,16 +2618,17 @@ fn eval_record_lit(
 ) -> InterpResult<Value> {
     let type_name = record_lit_type_name_at(node.clone(), ctx.si()).unwrap_or_default();
 
-    let mut fields = HashMap::new();
+    let mut fields: Vec<(Symbol, Value)> = Vec::new();
     for child in node.children.iter() {
         let fname = field_init_node_name_at(child.clone(), ctx.si());
         let fval = eval_expr(&field_init_node_value(child.clone()), env, ctx)?;
-        fields.insert(ctx.sym(&fname), fval);
+        fields.push((ctx.sym(&fname), fval));
     }
+    fields.sort_unstable_by_key(|(k, _)| k.0);
 
     if let Some(pe) = parent_enum {
         if type_name == "Succ" {
-            if let Some(Value::Int(p)) = fields.get(&ctx.sym("prev")) {
+            if let Some(Value::Int(p)) = fields_get(&fields, ctx.sym("prev")) {
                 if *p >= 0 {
                     return Ok(Value::Int(p + 1));
                 }
@@ -3084,14 +3073,12 @@ fn eval_algebra_method(
             let result: Vec<Value> = items
                 .iter()
                 .enumerate()
-                .map(|(i, v)| {
-                    let mut fields = HashMap::new();
-                    fields.insert(ctx.sym("first"), Value::Int(i as i64));
-                    fields.insert(ctx.sym("second"), v.clone());
-                    Value::Record {
-                        type_name: ctx.sym("Pair"),
-                        fields: Rc::new(fields),
-                    }
+                .map(|(i, v)| Value::Record {
+                    type_name: ctx.sym("Pair"),
+                    fields: Rc::new(sorted_fields(vec![
+                        (ctx.sym("first"), Value::Int(i as i64)),
+                        (ctx.sym("second"), v.clone()),
+                    ])),
                 })
                 .collect();
             Ok(list_value((result)))
@@ -3727,7 +3714,7 @@ fn map_shell_outputs(
         return Ok(Value::Unit);
     }
 
-    let mut fields = HashMap::new();
+    let mut fields: Vec<(Symbol, Value)> = Vec::new();
     for child in children.iter() {
         let field_name = authored_name_at(ctx.si(), child.clone());
         let from_key = extract_from_key(child, ctx);
@@ -3753,8 +3740,9 @@ fn map_shell_outputs(
                 _ => Value::Null,
             },
         };
-        fields.insert(ctx.sym(&field_name), value);
+        fields.push((ctx.sym(&field_name), value));
     }
+    fields.sort_unstable_by_key(|(k, _)| k.0);
 
     Ok(Value::Record {
         type_name: ctx.sym(&authored_name_at(ctx.si(), op_node.clone())),
@@ -3890,7 +3878,7 @@ fn map_file_outputs(
         return Ok(Value::Unit);
     }
 
-    let mut fields = HashMap::new();
+    let mut fields: Vec<(Symbol, Value)> = Vec::new();
     for child in children.iter() {
         let field_name = authored_name_at(ctx.si(), child.clone());
         let from_key = extract_from_key(child, ctx);
@@ -3903,8 +3891,9 @@ fn map_file_outputs(
             "content" => Value::Str(result.content.clone()),
             _ => Value::Null,
         };
-        fields.insert(ctx.sym(&field_name), value);
+        fields.push((ctx.sym(&field_name), value));
     }
+    fields.sort_unstable_by_key(|(k, _)| k.0);
 
     Ok(Value::Record {
         type_name: ctx.sym(&authored_name_at(ctx.si(), op_node.clone())),
@@ -4340,11 +4329,12 @@ fn map_response_to_value(
     if children.len() == 1 {
         return Ok(Value::Str(text.to_string()));
     }
-    let mut fields = HashMap::new();
+    let mut fields: Vec<(Symbol, Value)> = Vec::new();
     for child in children.iter() {
         let field_name = authored_name_at(ctx.si(), child.clone());
-        fields.insert(ctx.sym(&field_name), Value::Str(text.to_string()));
+        fields.push((ctx.sym(&field_name), Value::Str(text.to_string())));
     }
+    fields.sort_unstable_by_key(|(k, _)| k.0);
     Ok(Value::Record {
         type_name: ctx.sym(&authored_name_at(ctx.si(), op_node.clone())),
         fields: Rc::new(fields),
@@ -4371,16 +4361,14 @@ fn map_response_to_value_json(
     }
 
     if json.is_array() && !children.is_empty() {
-        let mut fields = HashMap::new();
         let first_field = authored_name_at(ctx.si(), children[0].clone());
-        fields.insert(ctx.sym(&first_field), json_to_value(json));
         return Ok(Value::Record {
             type_name: ctx.sym(&authored_name_at(ctx.si(), op_node.clone())),
-            fields: Rc::new(fields),
+            fields: Rc::new(vec![(ctx.sym(&first_field), json_to_value(json))]),
         });
     }
 
-    let mut fields = HashMap::new();
+    let mut fields: Vec<(Symbol, Value)> = Vec::new();
     for child in children.iter() {
         let field_name = authored_name_at(ctx.si(), child.clone());
         let from_key = extract_from_key(child, ctx);
@@ -4403,8 +4391,9 @@ fn map_response_to_value_json(
                 }
             },
         };
-        fields.insert(ctx.sym(&field_name), val);
+        fields.push((ctx.sym(&field_name), val));
     }
+    fields.sort_unstable_by_key(|(k, _)| k.0);
 
     Ok(Value::Record {
         type_name: ctx.sym(&authored_name_at(ctx.si(), op_node.clone())),
@@ -4489,10 +4478,7 @@ pub(crate) fn resolve_published_mock_keys(
     Ok(keys)
 }
 
-fn published_case_operation_key(
-    ctx: &InterpContext,
-    fields: &HashMap<Symbol, Value>,
-) -> Option<String> {
+fn published_case_operation_key(ctx: &InterpContext, fields: &[(Symbol, Value)]) -> Option<String> {
     if let (Some(Value::Str(svc)), Some(Value::Str(op))) =
         (ctx.field(fields, "service"), ctx.field(fields, "operation"))
     {
@@ -4573,11 +4559,9 @@ fn eval_filesystem_read_builtin(path: String, ctx: &InterpContext) -> InterpResu
         });
     }
 
-    let mut out_fields = HashMap::new();
-    out_fields.insert(ctx.sym("content"), Value::Str(content));
     Ok(Value::Record {
         type_name: ctx.sym("FilesystemReadResult"),
-        fields: Rc::new(out_fields),
+        fields: Rc::new(vec![(ctx.sym("content"), Value::Str(content))]),
     })
 }
 
@@ -5002,15 +4986,15 @@ fn eval_builtin(
                 let layer = Value::Variant {
                     type_name: ctx.sym("LayerPrefix"),
                     variant_name: ctx.sym(f.layer),
-                    fields: Rc::new(HashMap::new()),
+                    fields: Rc::new(vec![]),
                 };
-                let mut fields = HashMap::new();
-                fields.insert(ctx.sym("layer"), layer);
-                fields.insert(ctx.sym("path"), Value::Str(f.path));
-                fields.insert(ctx.sym("import_module"), Value::Str(f.import_module));
                 items.push(Value::Record {
                     type_name: ctx.sym("LayerImportFact"),
-                    fields: Rc::new(fields),
+                    fields: Rc::new(sorted_fields(vec![
+                        (ctx.sym("import_module"), Value::Str(f.import_module)),
+                        (ctx.sym("layer"), layer),
+                        (ctx.sym("path"), Value::Str(f.path)),
+                    ])),
                 });
             }
             Ok(Some(list_value(items)))
@@ -5030,13 +5014,13 @@ fn eval_builtin(
             );
             let mut items: Vec<Value> = Vec::new();
             for f in facts {
-                let mut fields = HashMap::new();
-                fields.insert(ctx.sym("path"), Value::Str(f.path));
-                fields.insert(ctx.sym("import_module"), Value::Str(f.import_module));
-                fields.insert(ctx.sym("target_declared"), Value::Bool(f.target_declared));
                 items.push(Value::Record {
                     type_name: ctx.sym("ImportResolutionFact"),
-                    fields: Rc::new(fields),
+                    fields: Rc::new(sorted_fields(vec![
+                        (ctx.sym("import_module"), Value::Str(f.import_module)),
+                        (ctx.sym("path"), Value::Str(f.path)),
+                        (ctx.sym("target_declared"), Value::Bool(f.target_declared)),
+                    ])),
                 });
             }
             Ok(Some(list_value(items)))
@@ -5048,12 +5032,12 @@ fn eval_builtin(
             let facts = crate::import_resolution_project::module_declaration_facts(&pool_roots);
             let mut items: Vec<Value> = Vec::new();
             for f in facts {
-                let mut fields = HashMap::new();
-                fields.insert(ctx.sym("module"), Value::Str(f.module));
-                fields.insert(ctx.sym("path"), Value::Str(f.path));
                 items.push(Value::Record {
                     type_name: ctx.sym("ModuleDeclarationFact"),
-                    fields: Rc::new(fields),
+                    fields: Rc::new(sorted_fields(vec![
+                        (ctx.sym("module"), Value::Str(f.module)),
+                        (ctx.sym("path"), Value::Str(f.path)),
+                    ])),
                 });
             }
             Ok(Some(list_value(items)))
@@ -5082,15 +5066,15 @@ fn eval_builtin(
                 let face = Value::Variant {
                     type_name: ctx.sym("MediumLeakFace"),
                     variant_name: ctx.sym(f.face),
-                    fields: Rc::new(HashMap::new()),
+                    fields: Rc::new(vec![]),
                 };
-                let mut fields = HashMap::new();
-                fields.insert(ctx.sym("path"), Value::Str(f.path));
-                fields.insert(ctx.sym("face"), face);
-                fields.insert(ctx.sym("detail"), Value::Str(f.detail));
                 items.push(Value::Record {
                     type_name: ctx.sym("MediumStructureLeakFact"),
-                    fields: Rc::new(fields),
+                    fields: Rc::new(sorted_fields(vec![
+                        (ctx.sym("detail"), Value::Str(f.detail)),
+                        (ctx.sym("face"), face),
+                        (ctx.sym("path"), Value::Str(f.path)),
+                    ])),
                 });
             }
             Ok(Some(list_value(items)))
@@ -5769,7 +5753,7 @@ pub(crate) fn free_monoid_to_vec(val: &Value) -> Option<Vec<Value>> {
                     return Some(out);
                 }
                 if *variant_name == cons_sym {
-                    match (fields.get(&head_sym), fields.get(&tail_sym)) {
+                    match (fields_get(fields, head_sym), fields_get(fields, tail_sym)) {
                         (Some(head), Some(tail)) => {
                             out.push(head.clone());
                             cur = tail.clone();
@@ -5811,7 +5795,7 @@ fn is_map_lookup_receiver(val: &Value) -> bool {
     match val {
         Value::Map(_) => true,
         Value::Record { fields, .. } | Value::Variant { fields, .. } => active_ctx()
-            .map(|ctx| fields.contains_key(&ctx.sym("lookup")))
+            .map(|ctx| fields_get(fields, ctx.sym("lookup")).is_some())
             .unwrap_or(false),
         _ => false,
     }
@@ -5830,7 +5814,7 @@ fn raw_map_lookup(
         },
         Value::Record { fields, .. } | Value::Variant { fields, .. } => {
             let lookup_sym = ctx.sym("lookup");
-            match fields.get(&lookup_sym) {
+            match fields_get(fields, lookup_sym) {
                 Some(lookup @ Value::Closure { .. }) => {
                     apply_closure(lookup, &[key.clone()], env, ctx)
                 }
@@ -5844,7 +5828,7 @@ fn raw_map_lookup(
                 None => match key {
                     Value::Str(s) => {
                         let k = ctx.sym(s);
-                        Ok(fields.get(&k).cloned().unwrap_or(Value::Null))
+                        Ok(fields_get(fields, k).cloned().unwrap_or(Value::Null))
                     }
                     _ => Ok(Value::Null),
                 },

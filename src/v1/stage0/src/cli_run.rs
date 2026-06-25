@@ -2494,7 +2494,7 @@ fn collect_node_values(
     match val {
         v1_interpreter::Value::Record { fields, .. }
         | v1_interpreter::Value::Variant { fields, .. } => {
-            for v in fields.values() {
+            for (_, v) in fields.iter() {
                 collect_node_values(v, ctx, out);
             }
         }

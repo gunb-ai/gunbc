@@ -20,9 +20,21 @@ type LogAnnotation
   | AddMask { value: String }
   | StopCommands { token: String }
 
-data annotation_error_prefix: String = "::error "
-data annotation_warning_prefix: String = "::warning "
-data annotation_notice_prefix: String = "::notice "
+data gha_log_command_error: String = "error"
+data gha_log_command_warning: String = "warning"
+data gha_log_command_notice: String = "notice"
+
+fn gha_param_command_prefix(command: String) -> String {
+  concat("::", concat(command, " "))
+}
+
+fn gha_message_command_prefix(command: String) -> String {
+  concat("::", concat(command, "::"))
+}
+
+data annotation_error_prefix: String = gha_param_command_prefix(command: gha_log_command_error)
+data annotation_warning_prefix: String = gha_param_command_prefix(command: gha_log_command_warning)
+data annotation_notice_prefix: String = gha_param_command_prefix(command: gha_log_command_notice)
 data annotation_group_prefix: String = "::group::"
 data annotation_endgroup: String = "::endgroup::"
 data annotation_set_output_prefix: String = "::set-output name="
