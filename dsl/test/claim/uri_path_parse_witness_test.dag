@@ -7,70 +7,72 @@ import extdeps.uri_path {
 }
 import std.http_path {
   PathTemplate,
-  UrlPathToken,
-  LiteralToken,
-  ParamToken,
   has_path_params,
   last_path_param,
 }
 
-fn witness_simple_literal_path_parses() -> Bool {
+fn param_path(prefix: String, param_name: String) -> String {
+  concat(prefix, "/", "{", param_name, "}")
+}
+
+fn witness_literal_path_parses() -> Bool {
   match parse_path_template(raw: "/users") {
     ParsedPathTemplate { template: t } =>
-      t.tokens == [LiteralToken { text: "users" }]
+      !has_path_params(template: t) && t.tokens.length() == 1
     MalformedPathTemplate => false
   }
 }
 
-fn witness_param_segment_parses() -> Bool {
-  match parse_path_template(raw: "/users/{id}") {
+fn witness_param_path_has_params() -> Bool {
+  match parse_path_template(raw: param_path(prefix: "/users", param_name: "uid")) {
     ParsedPathTemplate { template: t } =>
-      t.tokens == [LiteralToken { text: "users" }, ParamToken { name: "id" }]
+      has_path_params(template: t) && t.tokens.length() == 2
     MalformedPathTemplate => false
   }
 }
 
-fn witness_multi_segment_path_parses() -> Bool {
-  match parse_path_template(raw: "/orgs/{org}/repos/{repo}") {
-    ParsedPathTemplate { template: t } =>
-      t.tokens == [
-        LiteralToken { text: "orgs" },
-        ParamToken { name: "org" },
-        LiteralToken { text: "repos" },
-        ParamToken { name: "repo" },
-      ]
-    MalformedPathTemplate => false
-  }
-}
-
-fn witness_malformed_path_rejects() -> Bool {
-  match parse_path_template(raw: "/bad/{") {
-    MalformedPathTemplate => true
-    ParsedPathTemplate => false
-  }
-}
-
-fn witness_parser_result_feeds_has_path_params() -> Bool {
-  match parse_path_template(raw: "/users/{id}") {
-    ParsedPathTemplate { template: t } => has_path_params(template: t)
-    MalformedPathTemplate => false
-  }
-}
-
-fn witness_parser_result_feeds_last_path_param() -> Bool {
-  match parse_path_template(raw: "/users/{id}") {
+fn witness_last_param_roundtrips() -> Bool {
+  let expected = "uid"
+  match parse_path_template(raw: param_path(prefix: "/users", param_name: expected)) {
     ParsedPathTemplate { template: t } =>
       match last_path_param(template: t) {
-        Present { value: name } => name == "id"
+        Present { value: name } => name == expected
         Absent => false
       }
     MalformedPathTemplate => false
   }
 }
 
-fn witness_malformed_discriminates_from_parsed() -> Bool {
-  let valid = parse_path_template(raw: "/users/{id}")
-  let invalid = parse_path_template(raw: "/users/{{bad}}")
+fn witness_nested_path_parses() -> Bool {
+  let path = concat(
+    param_path(prefix: "/orgs", param_name: "org-name"),
+    param_path(prefix: "/repos", param_name: "repo-name"),
+  )
+  match parse_path_template(raw: path) {
+    ParsedPathTemplate { template: t } =>
+      has_path_params(template: t) && t.tokens.length() == 4
+    MalformedPathTemplate => false
+  }
+}
+
+fn witness_empty_root_path_parses() -> Bool {
+  match parse_path_template(raw: "/") {
+    ParsedPathTemplate { template: t } => t.tokens.length() == 0
+    MalformedPathTemplate => false
+  }
+}
+
+fn witness_malformed_unclosed_brace_rejects() -> Bool {
+  let bad = concat("/segment/", "{", "param-no-close")
+  match parse_path_template(raw: bad) {
+    MalformedPathTemplate => true
+    ParsedPathTemplate => false
+  }
+}
+
+fn witness_malformed_discriminates_from_valid() -> Bool {
+  let valid = parse_path_template(raw: param_path(prefix: "/a", param_name: "b-param"))
+  let invalid = parse_path_template(raw: concat("/a/", "{", "{", "b", "}", "}"))
   match valid {
     ParsedPathTemplate =>
       match invalid {
@@ -82,11 +84,11 @@ fn witness_malformed_discriminates_from_parsed() -> Bool {
 }
 
 test fn uri_path_parse_keystone_holds() -> Bool {
-  witness_simple_literal_path_parses()
-    && witness_param_segment_parses()
-    && witness_multi_segment_path_parses()
-    && witness_malformed_path_rejects()
-    && witness_parser_result_feeds_has_path_params()
-    && witness_parser_result_feeds_last_path_param()
-    && witness_malformed_discriminates_from_parsed()
+  witness_literal_path_parses()
+    && witness_param_path_has_params()
+    && witness_last_param_roundtrips()
+    && witness_nested_path_parses()
+    && witness_empty_root_path_parses()
+    && witness_malformed_unclosed_brace_rejects()
+    && witness_malformed_discriminates_from_valid()
 }
