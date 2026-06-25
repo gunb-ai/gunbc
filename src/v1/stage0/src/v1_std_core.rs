@@ -423,6 +423,10 @@ pub enum CompilerDiagnostic {
         enum2: String,
         span: Rc<SourceSpan>,
     },
+    SoleConstructorViolation {
+        type_name: String,
+        span: Rc<SourceSpan>,
+    },
 }
 impl CompilerDiagnostic {
     pub fn span(&self) -> Rc<SourceSpan> {
@@ -443,6 +447,7 @@ impl CompilerDiagnostic {
             CompilerDiagnostic::ComplexityUnknown { span: __val, .. } => __val.clone(),
             CompilerDiagnostic::OwnershipViolation { span: __val, .. } => __val.clone(),
             CompilerDiagnostic::VariantCollision { span: __val, .. } => __val.clone(),
+            CompilerDiagnostic::SoleConstructorViolation { span: __val, .. } => __val.clone(),
         }
     }
 }
@@ -476,6 +481,7 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         CompilerDiagnostic::ComplexityUnknown { span: s, .. } => s.clone(),
         CompilerDiagnostic::OwnershipViolation { span: s, .. } => s.clone(),
         CompilerDiagnostic::VariantCollision { span: s, .. } => s.clone(),
+        CompilerDiagnostic::SoleConstructorViolation { span: s, .. } => s.clone(),
     }
 }
 
@@ -639,6 +645,10 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
                 (c.clone()).to_string(),
             ),
             " consumers".to_string(),
+        ),
+        CompilerDiagnostic::SoleConstructorViolation { type_name: t, .. } => v1_rt::concat(
+            v1_rt::concat("sole_constructor type '".to_string(), t.clone()),
+            "' cannot be constructed outside its defining module".to_string(),
         ),
         CompilerDiagnostic::VariantCollision {
             variant: v,

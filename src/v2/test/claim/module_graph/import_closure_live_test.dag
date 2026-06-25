@@ -8,7 +8,7 @@ import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 
-data conformance_entry: String = "src/v2/compiler/manual/coproduct_reflection_conformance_test.dag"
+data conformance_entry: String = "src/v2/test/claim/manual/coproduct_reflection_conformance_test.dag"
 
 data bogus_never_imported: String = "src/v2/std/__bogus_never_imported__.dag"
 

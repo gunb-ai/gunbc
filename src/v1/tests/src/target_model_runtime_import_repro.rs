@@ -5,7 +5,7 @@ use v1_compiler::v1_compiler_compile::{compile_to_resolved, SourceFile};
 use crate::helpers::{resolve_imports_transitively_with_source_roots, workspace_root};
 
 const TARGET_MODEL: &str = "src/v2/std/compilers/target_model.dag";
-const CLAIM_ENTRY: &str = "src/v2/compiler/manual/mvp1_rust_add_translate_test.dag";
+const CLAIM_ENTRY: &str = "src/v2/test/claim/manual/mvp1_rust_add_translate_test.dag";
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum TargetModelPatch {
