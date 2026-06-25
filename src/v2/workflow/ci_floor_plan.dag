@@ -3,7 +3,7 @@ module v2.workflow.ci_floor_plan
 import gunbc.ci_layer_roots { witness_layer_roots, witness_discovery_scan_dirs }
 import gunbc.ci_spec {
   gunbc_ci_spec, CiSpec,
-  Gate, RustMonolithGate, EmitHostGate, LayeringImportsGate, ResolvedImportsGate,
+  Gate, RustMonolithGate, EmitHostGate, LayeringImportsGate,
   ExtdepsExternalAuthorityGate, DslCompileCleanGate, GeneratedArtifactDriftGate,
   SourceRootIngestGate
 }
@@ -64,7 +64,6 @@ fn gate_node(g: Gate) -> Node {
     RustMonolithGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_rust } }, children: [] }
     EmitHostGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_emit } }, children: [] }
     LayeringImportsGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_layering } }, children: [] }
-    ResolvedImportsGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_resolved_imports } }, children: [] }
     ExtdepsExternalAuthorityGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_extdeps_external_authority } }, children: [] }
     DslCompileCleanGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_compile } }, children: [] }
     GeneratedArtifactDriftGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_generated_artifact } }, children: [] }
@@ -77,7 +76,6 @@ fn gate_runnable(g: Gate) -> Runnable {
     RustMonolithGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "rust_monolith_gate_passes" }
     EmitHostGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "emit_host_gate_passes" }
     LayeringImportsGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "layering_imports_gate_passes" }
-    ResolvedImportsGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "resolved_imports_gate_passes" }
     ExtdepsExternalAuthorityGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "extdeps_external_authority_gate_passes" }
     DslCompileCleanGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "dsl_compile_clean_gate_passes" }
     GeneratedArtifactDriftGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "generated_artifact_drift_gate_passes" }
@@ -127,7 +125,6 @@ fn gate_is_heavy_resolve(g: Gate) -> Bool {
     RustMonolithGate => false
     EmitHostGate => false
     LayeringImportsGate => false
-    ResolvedImportsGate => false
     ExtdepsExternalAuthorityGate => false
     GeneratedArtifactDriftGate => false
   }
