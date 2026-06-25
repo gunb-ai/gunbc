@@ -640,9 +640,6 @@ fn marshal_generic(
     let name = node_authored_name(node, si);
     let mut edges: Vec<Value> = Vec::with_capacity(node.children.len() + 1);
     let mut refs: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
-    if TRACE_WIRING.load(std::sync::atomic::Ordering::Relaxed) {
-        eprintln!("  TRACE node name={name:?} expr_disc={:?} children={} node_name={:?}", std::mem::discriminant(node.expr_data.as_ref()), node.children.len(), &node.name);
-    }
     if node_references_param(node, &name, param_names) {
         edges.push(edge_positional(ctx, atom_identity_node(ctx, &name)));
     }
@@ -666,9 +663,6 @@ fn marshal_generic(
     }
     (conj_record(ctx, edges), refs)
 }
-
-static TRACE_WIRING: std::sync::atomic::AtomicBool =
-    std::sync::atomic::AtomicBool::new(false);
 
 // A statement sequence -- a block's children, or a single standalone `let` (whose optional
 // children[1] is its continuation) -- folded RIGHT-TO-LEFT so the live reference set flows
@@ -837,6 +831,21 @@ pub fn check_wiring_liveness_streaming(
     let mut dead_count = 0usize;
 
     for module in ctx.modules.iter() {
+        // Index the original (pre-inference) module items by authored name so we
+        // can walk the original body for refs in addition to the inferred body.
+        // In the whole-tree context, field-access inference occasionally produces
+        // ExprError nodes when a cross-root type's field lookup fails — the
+        // original body retains the genuine ExprVar reference that refs needs.
+        let orig_item_by_name: HashMap<&str, &Rc<Node>> = module
+            .module
+            .children
+            .iter()
+            .filter_map(|orig| {
+                let n = orig.name.as_str();
+                if n.is_empty() { None } else { Some((n, orig)) }
+            })
+            .collect();
+
         for item in module.items.iter() {
             let name = authored_name_at(si.clone(), item.clone());
             if name.is_empty() {
@@ -869,21 +878,19 @@ pub fn check_wiring_liveness_streaming(
             }
             fn_count += 1;
             let qualified_name = logical_qualified_name(&info.module_name, &name);
-            // Build skeleton and refs; both drop at end of this block.
-            // `refs` accumulates every ExprVar/ExprCall node.name seen during the walk
-            // (via node_local_reference_name, which requires no binding_kind).  In the
-            // whole-tree context some ExprVar nodes have binding_kind=None so the
-            // strict node_references_param path (which requires LocalValueBinding) misses
-            // them — refs is the permissive fallback that catches those.
-            let is_debug = qualified_name.contains("floor_nodes");
-            if is_debug {
-                TRACE_WIRING.store(true, std::sync::atomic::Ordering::Relaxed);
-                eprintln!("TRACE {qualified_name}: param_names={param_names:?} body.expr_data={:?} body.name={:?} body.children={}", std::mem::discriminant(body.expr_data.as_ref()), &body.name, body.children.len());
-            }
-            let (output, refs) = marshal_fn_body_skeleton(ctx, body, &param_names, &si);
-            if is_debug {
-                TRACE_WIRING.store(false, std::sync::atomic::Ordering::Relaxed);
-                eprintln!("TRACE {qualified_name}: refs={refs:?}");
+            // Walk the inferred body for skeleton (strict LocalValueBinding atoms)
+            // AND refs (permissive ExprVar/ExprCall names).
+            let (output, mut refs) =
+                marshal_fn_body_skeleton(ctx, body, &param_names, &si);
+            // Also walk the original body for refs: handles the case where the
+            // inferred tree has ExprError standing in for a genuine param reference
+            // (e.g. field-access-on-param fails in whole-tree cross-root context).
+            if let Some(orig) = orig_item_by_name.get(name.as_str()) {
+                if let Some(orig_body) = orig.body.as_ref() {
+                    let (_, orig_refs) =
+                        marshal_fn_body_skeleton(ctx, orig_body, &param_names, &si);
+                    refs.extend(orig_refs);
+                }
             }
             for param_name in &param_names {
                 let skel_has = value_skeleton_contains_atom(ctx, &output, param_name);
