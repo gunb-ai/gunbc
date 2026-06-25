@@ -1529,7 +1529,10 @@ mod tests {
         let b = write_exec(&dir, "gunbc", b"binary");
         let r = verify_build_artifacts(&[a, b]);
         std::fs::remove_dir_all(&dir).ok();
-        assert!(matches!(r, Ok(c) if c == ExitCode::SUCCESS), "real bins pass");
+        assert!(
+            matches!(r, Ok(c) if c == ExitCode::SUCCESS),
+            "real bins pass"
+        );
     }
 
     #[test]
