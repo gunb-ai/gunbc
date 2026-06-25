@@ -1962,11 +1962,13 @@ pub fn compute_percentiles(mut values: Vec<u128>) -> TimingPercentiles {
     }
 }
 
-// SCAFFOLD (§7 hand-Rust shrink-to-zero): witness timing histogram is currently hand-written
-// Rust diagnostic output. Dissolution trigger: migrate to .dag-driven reporting surface
-// alongside existing performance/discovery summary in dsl/gunbc/ci_spec.dag once
-// v2 self-hosting pipeline reporting stabilizes. Until then, this hand-Rust handler
-// is the sole witness-granularity timing telemetry for CI floor profiling.
+// SCAFFOLD (§7 hand-Rust shrink-to-zero): witness timing histogram measures the v1 evaluator's
+// execution characteristics (resolve+eval per-witness percentiles). This is legitimately seed-side
+// infrastructure — the evaluator cannot measure itself without circularity. Dissolution trigger:
+// when claim_executor emits timing data as machine-readable lines (dsl/gunbc/ci_spec.dag or
+// equivalent), a .dag witness can ingest and process histograms natively. At that point this
+// hand-Rust diagnostic drops. Until then, this is the sole witness-granularity timing telemetry
+// for CI floor profiling and profile-driven optimization.
 pub fn generate_witness_timing_histogram(summary: &DiscoverySummary) -> String {
     if summary.performance_receipts.len() != summary.witness_outcomes.len() {
         let msg = format!(
@@ -2032,8 +2034,8 @@ pub fn generate_witness_timing_histogram(summary: &DiscoverySummary) -> String {
     output.push_str("╚════════════════════════════════════════════════════════════════════════════╝\n\n");
 
     output.push_str(&format!(
-        "Total witnesses: {} (included in histogram); {} skipped (missing entry resolve time)\n\n",
-        included_witnesses, skipped_missing_entry_resolve
+        "Total witnesses: {} (included in histogram); {} skipped (no outcome), {} skipped (no entry-resolve)\n\n",
+        included_witnesses, skipped_missing_witness_outcome, skipped_missing_entry_resolve
     ));
 
     output.push_str("┌─ TOTAL TIME (Resolve + Eval) ───────────────────────────────────────────────┐\n");
