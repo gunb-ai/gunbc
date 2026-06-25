@@ -1212,7 +1212,8 @@ pub fn drop_leading_test_marker(tokens: Rc<Vec<Rc<Token>>>) -> Rc<Vec<Rc<Token>>
 }
 
 pub fn type_body_tokens_after_modifiers(tokens: Rc<Vec<Rc<Token>>>) -> Rc<Vec<Rc<Token>>> {
-    drop_leading_type_modifier(tokens, "nominal_opaque".to_string())
+    let t = drop_leading_type_modifier(tokens, "nominal_opaque".to_string());
+    drop_leading_type_modifier(t, "sole_constructor".to_string())
 }
 
 pub fn tok_is_newline(tok: Option<Rc<Token>>) -> bool {
@@ -3090,6 +3091,10 @@ pub fn parse_type_after_kw(
         let type_params = type_params_result.params.clone();
         let tokens = skip_newlines(type_params_result.tokens.clone());
         let ctx = type_params_result.ctx.clone();
+        let is_sole_constructor = tok_is_ident_text(
+            tokens.clone().first().cloned(),
+            "sole_constructor".to_string(),
+        );
         let tokens = type_body_tokens_after_modifiers(tokens.clone());
         match (*eat(tokens.clone(), Rc::new(ExpectedToken::ExpectLBrace))).clone() {
             EatResult::EatConsumed { tokens: __ec, .. } => {
@@ -3140,6 +3145,23 @@ pub fn parse_type_after_kw(
                     }
                     __result
                 });
+                let sole_ctor_props: Rc<Vec<Rc<Node>>> = if is_sole_constructor {
+                    Rc::new(vec![make_field_init_node(
+                        "sole_constructor".to_string(),
+                        make_expr_node(
+                            Rc::new(ExprData::ExprLiteral {
+                                value: Rc::new(LiteralValue::LitBool { value: true }),
+                            }),
+                            Rc::new(vec![]),
+                            None,
+                            start_span.clone(),
+                        ),
+                        start_span.clone(),
+                        no_span(),
+                    )])
+                } else {
+                    Rc::new(vec![])
+                };
                 let item = Rc::new(Node {
                     name: name.clone(),
                     span: start_span.clone(),
@@ -3152,7 +3174,7 @@ pub fn parse_type_after_kw(
                     uses: Rc::new(vec![]),
                     body: None,
                     transport: None,
-                    properties: Rc::new(vec![]),
+                    properties: sole_ctor_props,
                     type_annotation: None,
                     is_self_recursive: false,
                     has_non_tail_self_call: false,
@@ -3245,7 +3267,12 @@ pub fn parse_type_body_from_prefix(
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
-        let tokens = type_body_tokens_after_modifiers(skip_newlines(prefix.tokens.clone()));
+        let raw_tokens = skip_newlines(prefix.tokens.clone());
+        let is_sole_constructor = tok_is_ident_text(
+            raw_tokens.clone().first().cloned(),
+            "sole_constructor".to_string(),
+        );
+        let tokens = type_body_tokens_after_modifiers(raw_tokens);
         match (*eat(tokens.clone(), Rc::new(ExpectedToken::ExpectLBrace))).clone() {
             EatResult::EatConsumed { tokens: __ec, .. } => {
                 let r = parse_field_list(skip_newlines(__ec.clone()), ctx.clone());
@@ -3275,6 +3302,23 @@ pub fn parse_type_body_from_prefix(
                     }
                     __result
                 });
+                let sole_ctor_props: Rc<Vec<Rc<Node>>> = if is_sole_constructor {
+                    Rc::new(vec![make_field_init_node(
+                        "sole_constructor".to_string(),
+                        make_expr_node(
+                            Rc::new(ExprData::ExprLiteral {
+                                value: Rc::new(LiteralValue::LitBool { value: true }),
+                            }),
+                            Rc::new(vec![]),
+                            None,
+                            start_span.clone(),
+                        ),
+                        start_span.clone(),
+                        no_span(),
+                    )])
+                } else {
+                    Rc::new(vec![])
+                };
                 let item = Rc::new(Node {
                     name: name.clone(),
                     span: start_span.clone(),
@@ -3287,7 +3331,7 @@ pub fn parse_type_body_from_prefix(
                     uses: Rc::new(vec![]),
                     body: None,
                     transport: None,
-                    properties: Rc::new(vec![]),
+                    properties: sole_ctor_props,
                     type_annotation: None,
                     is_self_recursive: false,
                     has_non_tail_self_call: false,

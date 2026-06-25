@@ -151,87 +151,87 @@ fn extdeps_shape_transport_policy_lens_parses_and_runs_witnesses() {
 
     for (entry, witness_fn) in [
         (
-            "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/policy_leak_cargo_build_test.dag",
+            "src/v2/test/claim/extdeps_shape_transport_policy/lens_unit/policy_leak_cargo_build_test.dag",
             "policy_leak_cargo_build_is_red_holds",
         ),
         (
-            "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/policy_leak_cargo_fmt_test.dag",
+            "src/v2/test/claim/extdeps_shape_transport_policy/lens_unit/policy_leak_cargo_fmt_test.dag",
             "policy_leak_cargo_fmt_is_red_holds",
         ),
         (
-            "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/policy_leak_cargo_doc_test.dag",
+            "src/v2/test/claim/extdeps_shape_transport_policy/lens_unit/policy_leak_cargo_doc_test.dag",
             "policy_leak_cargo_doc_is_red_holds",
         ),
         (
-            "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/clean_git_diff_test.dag",
+            "src/v2/test/claim/extdeps_shape_transport_policy/lens_unit/clean_git_diff_test.dag",
             "clean_git_diff_is_green_holds",
         ),
         (
-            "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/dead_param_cargo_build_test.dag",
+            "src/v2/test/claim/extdeps_shape_transport_policy/lens_unit/dead_param_cargo_build_test.dag",
             "dead_param_cargo_build_is_red_holds",
         ),
         (
-            "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/dead_param_gcp_login_test.dag",
+            "src/v2/test/claim/extdeps_shape_transport_policy/lens_unit/dead_param_gcp_login_test.dag",
             "dead_param_gcp_login_is_red_holds",
         ),
         (
-            "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/dead_param_cargo_clippy_test.dag",
+            "src/v2/test/claim/extdeps_shape_transport_policy/lens_unit/dead_param_cargo_clippy_test.dag",
             "dead_param_cargo_clippy_is_red_holds",
         ),
         (
-            "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/transport_fusion_gcp_oauth_test.dag",
+            "src/v2/test/claim/extdeps_shape_transport_policy/lens_unit/transport_fusion_gcp_oauth_test.dag",
             "transport_fusion_gcp_oauth_is_red_holds",
         ),
         (
-            "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/module_path_rename_test.dag",
+            "src/v2/test/claim/extdeps_shape_transport_policy/lens_unit/module_path_rename_test.dag",
             "module_path_rename_resolves_by_qn_not_filepath_holds",
         ),
         (
-            "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/module_path_rename_test.dag",
+            "src/v2/test/claim/extdeps_shape_transport_policy/lens_unit/module_path_rename_test.dag",
             "module_path_rename_unknown_qn_does_not_resolve_holds",
         ),
         (
-            "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/module_source_nickname_literal_local_red_test.dag",
+            "src/v2/test/claim/extdeps_shape_transport_policy/lens_unit/module_source_nickname_literal_local_red_test.dag",
             "module_source_nickname_literal_local_red_is_red_holds",
         ),
         (
-            "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/module_source_nickname_literal_coverage_domain_green_test.dag",
+            "src/v2/test/claim/extdeps_shape_transport_policy/lens_unit/module_source_nickname_literal_coverage_domain_green_test.dag",
             "module_source_nickname_literal_coverage_domain_is_green_holds",
         ),
         (
-            "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/module_source_nickname_literal_absent_green_test.dag",
+            "src/v2/test/claim/extdeps_shape_transport_policy/lens_unit/module_source_nickname_literal_absent_green_test.dag",
             "module_source_nickname_literal_exempt_literals_is_green_holds",
         ),
         (
-            "src/v2/compiler/extdeps_shape_transport_policy/corpus/cargo_clippy_dead_param_test.dag",
+            "src/v2/test/claim/extdeps_shape_transport_policy/corpus/cargo_clippy_dead_param_test.dag",
             "corpus_cargo_clippy_dead_param_defused_holds",
         ),
         (
-            "src/v2/compiler/extdeps_shape_transport_policy/corpus/cargo_fmt_dead_param_test.dag",
+            "src/v2/test/claim/extdeps_shape_transport_policy/corpus/cargo_fmt_dead_param_test.dag",
             "corpus_cargo_fmt_dead_param_defused_holds",
         ),
         (
-            "src/v2/compiler/extdeps_shape_transport_policy/corpus/cargo_doc_dead_param_test.dag",
+            "src/v2/test/claim/extdeps_shape_transport_policy/corpus/cargo_doc_dead_param_test.dag",
             "corpus_cargo_doc_dead_param_defused_holds",
         ),
         (
-            "src/v2/compiler/extdeps_shape_transport_policy/corpus/gcp_login_dead_param_test.dag",
+            "src/v2/test/claim/extdeps_shape_transport_policy/corpus/gcp_login_dead_param_test.dag",
             "corpus_gcp_login_dead_param_defused_holds",
         ),
         (
-            "src/v2/compiler/extdeps_shape_transport_policy/corpus/cargo_build_policy_leak_test.dag",
+            "src/v2/test/claim/extdeps_shape_transport_policy/corpus/cargo_build_policy_leak_test.dag",
             "corpus_cargo_build_defused_holds",
         ),
         (
-            "src/v2/compiler/extdeps_shape_transport_policy/corpus/git_policy_leak_test.dag",
+            "src/v2/test/claim/extdeps_shape_transport_policy/corpus/git_policy_leak_test.dag",
             "corpus_git_policy_leak_defused_holds",
         ),
         (
-            "src/v2/compiler/extdeps_shape_transport_policy/corpus/gcp_oauth_fusion_fork_test.dag",
+            "src/v2/test/claim/extdeps_shape_transport_policy/corpus/gcp_oauth_fusion_fork_test.dag",
             "corpus_gcp_oauth_defused_holds",
         ),
         (
-            "src/v2/compiler/extdeps_shape_transport_policy/corpus/gist_create_policy_leak_test.dag",
+            "src/v2/test/claim/extdeps_shape_transport_policy/corpus/gist_create_policy_leak_test.dag",
             "corpus_gist_create_defused_holds",
         ),
     ] {
@@ -240,15 +240,15 @@ fn extdeps_shape_transport_policy_lens_parses_and_runs_witnesses() {
 
     for (entry, witness_fn) in [
         (
-            "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/embedded_policy_literal_local_test.dag",
+            "src/v2/test/claim/extdeps_shape_transport_policy/lens_unit/embedded_policy_literal_local_test.dag",
             "embedded_policy_literal_local_is_red_holds",
         ),
         (
-            "src/v2/compiler/extdeps_shape_transport_policy/corpus/runtime_local_embedded_policy_test.dag",
+            "src/v2/test/claim/extdeps_shape_transport_policy/corpus/runtime_local_embedded_policy_test.dag",
             "corpus_runtime_local_embedded_policy_defused_holds",
         ),
         (
-            "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/clean_gist_create_test.dag",
+            "src/v2/test/claim/extdeps_shape_transport_policy/lens_unit/clean_gist_create_test.dag",
             "clean_gist_create_is_green_holds",
         ),
     ] {

@@ -12,6 +12,7 @@ import extdeps.bmc.capability {
   CapabilityAccountManagement,
   CapabilityFirmwareUpdate,
   CapabilityVirtualMedia,
+  CapabilityNbdProxyVirtualMedia,
   CapabilityBiosAttributeConfig,
   firmware_has_capability,
   catalog_has_vm_capable_firmware,
@@ -20,6 +21,7 @@ import extdeps.bmc.capability {
 import gunbc.os_install_mechanism {
   OsInstallMechanism,
   VirtualMediaInstall,
+  NbdProxyVirtualMediaInstall,
   PxeHttpInstall,
   FirmwareUpdateThenVirtualMedia,
   solve_install_mechanism,
@@ -33,22 +35,76 @@ test fn srv3_capabilities_are_grounded() -> Bool {
     && firmware_has_capability(row: openbmc_2_07_00_capabilities, cap: CapabilityAccountManagement)
     && firmware_has_capability(row: openbmc_2_07_00_capabilities, cap: CapabilityFirmwareUpdate)
     && firmware_has_capability(row: openbmc_2_07_00_capabilities, cap: CapabilityVirtualMedia) == false
+    && firmware_has_capability(row: openbmc_2_07_00_capabilities, cap: CapabilityNbdProxyVirtualMedia) == false
     && firmware_has_capability(row: openbmc_2_07_00_capabilities, cap: CapabilityBiosAttributeConfig) == false
 }
 
-test fn catalog_has_no_vm_capable_firmware_today() -> Bool {
+test fn catalog_has_no_redfish_vm_capable_firmware_today() -> Bool {
   catalog_has_vm_capable_firmware(catalog: srv3_firmware_catalog) == false
 }
 
-test fn srv3_install_mechanism_is_pxe_today() -> Bool {
+test fn srv3_install_mechanism_is_pxe_until_dry_run() -> Bool {
   match srv3_install_mechanism {
     PxeHttpInstall => true
+    NbdProxyVirtualMediaInstall => false
     VirtualMediaInstall => false
     FirmwareUpdateThenVirtualMedia => false
   }
 }
 
+test fn nbd_proxy_vm_capable_row_solves() -> Bool {
+  let nbd_proxy_only_row = BmcFirmwareCapabilityRow {
+    firmware: BmcFirmwareVersion {
+      family: OpenBmc,
+      version: "2.07.00",
+    },
+    capabilities: [
+      CapabilityPowerControl,
+      CapabilityBootSourceOverride,
+      CapabilityNbdProxyVirtualMedia,
+    ],
+  }
+  match solve_install_mechanism(current: nbd_proxy_only_row, catalog: [nbd_proxy_only_row]) {
+    NbdProxyVirtualMediaInstall => true
+    VirtualMediaInstall => false
+    PxeHttpInstall => false
+    FirmwareUpdateThenVirtualMedia => false
+  }
+}
+
+test fn redfish_vm_preferred_over_nbd_proxy() -> Bool {
+  let both_vm_row = BmcFirmwareCapabilityRow {
+    firmware: BmcFirmwareVersion {
+      family: OpenBmc,
+      version: "4.00.00",
+    },
+    capabilities: [
+      CapabilityPowerControl,
+      CapabilityVirtualMedia,
+      CapabilityNbdProxyVirtualMedia,
+    ],
+  }
+  match solve_install_mechanism(current: both_vm_row, catalog: [both_vm_row]) {
+    VirtualMediaInstall => true
+    NbdProxyVirtualMediaInstall => false
+    PxeHttpInstall => false
+    FirmwareUpdateThenVirtualMedia => false
+  }
+}
+
 test fn vm_capable_firmware_row_flips_to_update_path() -> Bool {
+  let update_only_row = BmcFirmwareCapabilityRow {
+    firmware: BmcFirmwareVersion {
+      family: OpenBmc,
+      version: "1.00.00",
+    },
+    capabilities: [
+      CapabilityPowerControl,
+      CapabilityBootSourceOverride,
+      CapabilityAccountManagement,
+      CapabilityFirmwareUpdate,
+    ],
+  }
   let vm_capable_row = BmcFirmwareCapabilityRow {
     firmware: BmcFirmwareVersion {
       family: OpenBmc,
@@ -62,11 +118,31 @@ test fn vm_capable_firmware_row_flips_to_update_path() -> Bool {
       CapabilityVirtualMedia,
     ],
   }
-  let extended_catalog = [openbmc_2_07_00_capabilities, vm_capable_row]
-  match solve_install_mechanism(current: openbmc_2_07_00_capabilities, catalog: extended_catalog) {
+  let extended_catalog = [update_only_row, vm_capable_row]
+  match solve_install_mechanism(current: update_only_row, catalog: extended_catalog) {
     FirmwareUpdateThenVirtualMedia => true
     VirtualMediaInstall => false
+    NbdProxyVirtualMediaInstall => false
     PxeHttpInstall => false
+  }
+}
+
+test fn update_only_row_without_vm_catalog_falls_to_pxe() -> Bool {
+  let update_only_row = BmcFirmwareCapabilityRow {
+    firmware: BmcFirmwareVersion {
+      family: OpenBmc,
+      version: "1.00.00",
+    },
+    capabilities: [
+      CapabilityPowerControl,
+      CapabilityFirmwareUpdate,
+    ],
+  }
+  match solve_install_mechanism(current: update_only_row, catalog: [update_only_row]) {
+    PxeHttpInstall => true
+    VirtualMediaInstall => false
+    NbdProxyVirtualMediaInstall => false
+    FirmwareUpdateThenVirtualMedia => false
   }
 }
 
@@ -84,6 +160,7 @@ test fn node_with_virtual_media_solves_direct() -> Bool {
   }
   match solve_install_mechanism(current: vm_row, catalog: [vm_row]) {
     VirtualMediaInstall => true
+    NbdProxyVirtualMediaInstall => false
     FirmwareUpdateThenVirtualMedia => false
     PxeHttpInstall => false
   }

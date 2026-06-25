@@ -5,10 +5,29 @@ import gunbc.roadmap_status { RoadmapItem, DriftVerdict, status_drift }
 
 type Pointer { label: String, path: String }
 
+type Intricacy
+  = IntricacyLow
+  | IntricacyMedium
+  | IntricacyHigh
+
+type Volume
+  = VolumeSmall
+  | VolumeMedium
+  | VolumeLarge
+
+type Acceptance
+  = PrsMerged
+  | ManualAcceptance
+
+type NodeSizing
+  = Unsized
+  | Sized { intricacy: Intricacy, volume: Volume, repo: String, acceptance: Acceptance }
+
 type RoadmapNode {
   node: ProcessNodeId
   line: RoadmapItem
   carriers: List<Pointer>
+  sizing: NodeSizing
 }
 
 type RoadmapEdge {

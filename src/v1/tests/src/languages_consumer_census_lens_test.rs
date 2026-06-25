@@ -58,23 +58,23 @@ fn languages_consumer_census_lens_parses_and_runs_witnesses() {
     )));
 
     assert_witness_true(
-        "src/v2/compiler/languages_consumer_census/corpus/data_decl_ratchet_test.dag",
+        "src/v2/test/claim/languages_consumer_census/corpus/data_decl_ratchet_test.dag",
         "corpus_data_decl_ratchet_holds",
     );
     assert_witness_true(
-        "src/v2/compiler/languages_consumer_census/corpus/per_language_row_ratchet_test.dag",
+        "src/v2/test/claim/languages_consumer_census/corpus/per_language_row_ratchet_test.dag",
         "corpus_per_language_row_ratchet_holds",
     );
     assert_witness_true(
-        "src/v2/compiler/languages_consumer_census/corpus/rust_statements_composition_only_test.dag",
+        "src/v2/test/claim/languages_consumer_census/corpus/rust_statements_composition_only_test.dag",
         "corpus_rust_statements_is_composition_only",
     );
     assert_witness_true(
-        "src/v2/compiler/languages_consumer_census/corpus/rust_spec_external_consumer_test.dag",
+        "src/v2/test/claim/languages_consumer_census/corpus/rust_spec_external_consumer_test.dag",
         "corpus_rust_spec_has_external_consumer",
     );
     assert_witness_true(
-        "src/v2/compiler/languages_consumer_census/corpus/rust_language_external_consumer_test.dag",
+        "src/v2/test/claim/languages_consumer_census/corpus/rust_language_external_consumer_test.dag",
         "corpus_rust_language_has_external_consumer",
     );
 }

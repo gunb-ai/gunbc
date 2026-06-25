@@ -6,7 +6,7 @@
 
 ## 0. What testgen actually is today
 
-A compile-time lens (`src/v2/lens/testgen.dag`, ~2078 lines) that emits conformance test modules into `src/v2/compiler/generated/` (`module v2.test.generated.*`, all stamped one batch). Categories present:
+A compile-time lens (`src/v2/lens/testgen.dag`, ~2078 lines) that emits conformance test modules into `src/v2/test/claim/generated/` (`module v2.test.generated.*`, all stamped one batch). Categories present:
 
 | category | file | source |
 | --- | --- | --- |

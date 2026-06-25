@@ -33,3 +33,11 @@ fn planted_html_check_side_leak() -> Bool {
   let html = serialize_fragment(frag: TextNode { content: "x" })
   starts_with(s: html, prefix: "<")
 }
+
+fn ci_yml_drifted(committed: String) -> Bool {
+  committed == ""
+}
+
+fn planted_provenance_leak_markerfree() -> Bool {
+  ci_yml_drifted(committed: "git add && git commit")
+}

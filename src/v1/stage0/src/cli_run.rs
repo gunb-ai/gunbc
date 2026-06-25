@@ -1929,6 +1929,152 @@ pub struct DiscoverySummary {
     pub total_measured_nanos: u128,
 }
 
+#[derive(Debug, Clone)]
+pub struct TimingPercentiles {
+    pub p50: u128,
+    pub p90: u128,
+    pub p95: u128,
+    pub p99: u128,
+    pub p100: u128,
+}
+
+pub fn compute_percentiles(mut values: Vec<u128>) -> TimingPercentiles {
+    if values.is_empty() {
+        return TimingPercentiles {
+            p50: 0,
+            p90: 0,
+            p95: 0,
+            p99: 0,
+            p100: 0,
+        };
+    }
+    values.sort_unstable();
+    let len = values.len();
+    let clamp_idx = |f: f64| {
+        let idx = (len as f64 * f) as usize;
+        idx.min(len - 1)
+    };
+
+    TimingPercentiles {
+        p50: values[clamp_idx(0.50)],
+        p90: values[clamp_idx(0.90)],
+        p95: values[clamp_idx(0.95)],
+        p99: values[clamp_idx(0.99)],
+        p100: values[len - 1],
+    }
+}
+
+// SCAFFOLD (§7 hand-Rust shrink-to-zero, dissolution named): witness timing histogram measures v1
+// evaluator execution characteristics (resolve+eval per-witness percentiles). Seed-side justified
+// (evaluator cannot measure itself without circularity). Dissolution: ROADMAP lane "CI observability"
+// adds machine-readable timing-data emission to claim_executor (dsl/gunbc/ci_spec.dag TimingRecord
+// rows), then dsl/ .dag witness consumes and histograms natively. At full dissolution, delete this
+// hand-Rust output and hand_generated_percentiles_test.dag coverage.
+pub fn generate_witness_timing_histogram(summary: &DiscoverySummary) -> String {
+    if summary.performance_receipts.len() != summary.witness_outcomes.len() {
+        let msg = format!(
+            "[histogram] SKIPPED: mismatched vector lengths (performance_receipts={}, witness_outcomes={}) — timings unreliable",
+            summary.performance_receipts.len(),
+            summary.witness_outcomes.len()
+        );
+        eprintln!("{}", msg);
+        return format!("╔════════════════════════════════════════════════════════════════════════════╗\n║ {:<74} ║\n╚════════════════════════════════════════════════════════════════════════════╝\n", msg);
+    }
+
+    let mut entry_resolve_map: HashMap<String, u128> = HashMap::new();
+    for receipt in &summary.entry_resolve_receipts {
+        entry_resolve_map.insert(receipt.entry.clone(), receipt.resolve_nanos);
+    }
+
+    let mut total_times: Vec<u128> = Vec::new();
+    let mut resolve_times: Vec<u128> = Vec::new();
+    let mut eval_times: Vec<u128> = Vec::new();
+    let mut skipped_missing_entry_resolve = 0;
+
+    // performance_receipts and witness_outcomes are both generated in the same discovery pass
+    // with matching cardinality and order, so positional matching is stable across discovery runs.
+    for (perf, outcome) in summary.performance_receipts.iter().zip(summary.witness_outcomes.iter()) {
+        let resolve_nanos = match entry_resolve_map.get(&outcome.entry).copied() {
+            Some(nanos) => nanos,
+            None => {
+                skipped_missing_entry_resolve += 1;
+                continue;
+            }
+        };
+        let eval_nanos = perf.wall_nanos;
+        let total_nanos = resolve_nanos + eval_nanos;
+
+        total_times.push(total_nanos);
+        resolve_times.push(resolve_nanos);
+        eval_times.push(eval_nanos);
+    }
+
+    let included_witnesses = total_times.len();
+    let total_percentiles = compute_percentiles(total_times);
+    let resolve_percentiles = compute_percentiles(resolve_times);
+    let eval_percentiles = compute_percentiles(eval_times);
+
+    let mut output = String::new();
+    output.push_str("╔════════════════════════════════════════════════════════════════════════════╗\n");
+    output.push_str("║                    WITNESS TIMING HISTOGRAM                                 ║\n");
+    output.push_str("║                Per-Witness Resolve+Eval Percentiles                         ║\n");
+    output.push_str("╚════════════════════════════════════════════════════════════════════════════╝\n\n");
+
+    output.push_str(&format!(
+        "Total witnesses: {} (included in histogram); {} skipped (no entry-resolve timing)\n",
+        included_witnesses, skipped_missing_entry_resolve
+    ));
+    output.push_str("Note: Resolve times are per-entry-amortized (all witnesses in an entry share the\n");
+    output.push_str("entry's resolve cost). Eval times are per-witness measurements.\n\n");
+
+    output.push_str("┌─ TOTAL TIME (Resolve + Eval) ───────────────────────────────────────────────┐\n");
+    output.push_str(&format!(
+        "│ p50: {:>12} | p90: {:>12} | p95: {:>12} | p99: {:>12} | max: {:>12} │\n",
+        format_nanos(total_percentiles.p50),
+        format_nanos(total_percentiles.p90),
+        format_nanos(total_percentiles.p95),
+        format_nanos(total_percentiles.p99),
+        format_nanos(total_percentiles.p100),
+    ));
+    output.push_str("└─────────────────────────────────────────────────────────────────────────────┘\n\n");
+
+    output.push_str("┌─ RESOLVE TIME ──────────────────────────────────────────────────────────────┐\n");
+    output.push_str(&format!(
+        "│ p50: {:>12} | p90: {:>12} | p95: {:>12} | p99: {:>12} | max: {:>12} │\n",
+        format_nanos(resolve_percentiles.p50),
+        format_nanos(resolve_percentiles.p90),
+        format_nanos(resolve_percentiles.p95),
+        format_nanos(resolve_percentiles.p99),
+        format_nanos(resolve_percentiles.p100),
+    ));
+    output.push_str("└─────────────────────────────────────────────────────────────────────────────┘\n\n");
+
+    output.push_str("┌─ EVAL TIME ─────────────────────────────────────────────────────────────────┐\n");
+    output.push_str(&format!(
+        "│ p50: {:>12} | p90: {:>12} | p95: {:>12} | p99: {:>12} | max: {:>12} │\n",
+        format_nanos(eval_percentiles.p50),
+        format_nanos(eval_percentiles.p90),
+        format_nanos(eval_percentiles.p95),
+        format_nanos(eval_percentiles.p99),
+        format_nanos(eval_percentiles.p100),
+    ));
+    output.push_str("└─────────────────────────────────────────────────────────────────────────────┘\n");
+
+    output
+}
+
+fn format_nanos(nanos: u128) -> String {
+    if nanos < 1_000 {
+        format!("{}ns", nanos)
+    } else if nanos < 1_000_000 {
+        format!("{:.1}µs", nanos as f64 / 1_000.0)
+    } else if nanos < 1_000_000_000 {
+        format!("{:.1}ms", nanos as f64 / 1_000_000.0)
+    } else {
+        format!("{:.1}s", nanos as f64 / 1_000_000_000.0)
+    }
+}
+
 pub const WET_HERMETIC_EQUIVALENCE_WITNESS_ENTRY: &str =
     "dsl/test/claim/wet_hermetic_equivalence_witness_test.dag";
 pub const WET_HERMETIC_SCAFFOLD_ROSTER_PREFIX_DATA: &str =
@@ -3746,7 +3892,7 @@ mod inert_lens_hygiene_tests {
         ];
         let scan_dirs = vec![
             "dsl/test/claim".to_string(),
-            "src/v2/compiler/manual".to_string(),
+            "src/v2/test/claim/manual".to_string(),
         ];
         let result = discover_floor_corpus_rows(&roots, &scan_dirs);
         assert!(
@@ -3829,7 +3975,7 @@ mod construction_justification_hygiene_tests {
         ];
         let scan_dirs = vec![
             "dsl/test/claim".to_string(),
-            "src/v2/compiler/manual".to_string(),
+            "src/v2/test/claim/manual".to_string(),
         ];
         let result = discover_floor_corpus_rows(&roots, &scan_dirs);
         assert!(
