@@ -6,7 +6,6 @@ import extdeps.communication.medium { Medium }
 import v2.extdeps.languages.bash {
   retry_eagain_bash_emitted_command,
   retry_eagain_bash_target_model,
-  retry_eagain_bash_no_exit_wrong_emitted_command,
   retry_eagain_bash_no_exit_wrong_target_model
 }
 import v2.std.orchestration {
@@ -219,7 +218,7 @@ fn retry_eagain_emit_no_exit_wrong_opt() -> Optional<Outcome<Medium<String>>> {
                       Present {
                         value: emit(
                           tree: InferredTree {
-                            root: retry_eagain_bash_no_exit_wrong_emitted_command,
+                            root: retry_eagain_bash_emitted_command,
                             facts: Map { lookup: retry_eagain_facts_lookup }
                           },
                           target: retry_eagain_bash_no_exit_wrong_target_model(
