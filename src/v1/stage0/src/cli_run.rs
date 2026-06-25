@@ -2019,9 +2019,11 @@ pub fn generate_witness_timing_histogram(summary: &DiscoverySummary) -> String {
     output.push_str("╚════════════════════════════════════════════════════════════════════════════╝\n\n");
 
     output.push_str(&format!(
-        "Total witnesses: {} (included in histogram); {} skipped (no entry-resolve timing)\n\n",
+        "Total witnesses: {} (included in histogram); {} skipped (no entry-resolve timing)\n",
         included_witnesses, skipped_missing_entry_resolve
     ));
+    output.push_str("Note: Resolve times are per-entry-amortized (all witnesses in an entry share the\n");
+    output.push_str("entry's resolve cost). Eval times are per-witness measurements.\n\n");
 
     output.push_str("┌─ TOTAL TIME (Resolve + Eval) ───────────────────────────────────────────────┐\n");
     output.push_str(&format!(
