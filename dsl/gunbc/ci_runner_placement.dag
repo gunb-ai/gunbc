@@ -2,22 +2,14 @@ module gunbc.ci_runner_placement
 
 import product.compute_fabric { ComputeOffer, compute_host_ram_bytes_total, compute_host_primary_cpu }
 import product.placement_supply { HostIdentity }
-import std.realization_width { measure_max, int_min }
-import std.measure { ByteSize, byte_size, byte_size_count, measure_scale_fraction_floor, measure_fit_count_floor, measure_le, HardwareThreadCount, hardware_thread_count, hardware_thread_count_value }
+import std.measure { ByteSize, byte_size, byte_size_count, measure_scale_fraction_floor, measure_le, HardwareThreadCount }
 import std.types { Int, List, String, Bool }
 import std.disposition { Disposition, Terminal }
 import extdeps.github.actions { RunnerSpec }
-import extdeps.ctrl.jobserver { CtrlJobserverCitation, ctrl_jobserver_config }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.runner_spec_from_offer { runner_spec_from_offer }
 import gunbc.fleet_host_budget {
-  FleetHostPlan,
-  FleetHostPlanDerived,
-  FleetHostPlanUnsound,
-  HeadroomPolicy,
-  fleet_host_plan_for_offer,
-  gunbc_fleet_headroom_policy,
   gunbc_fleet_oomd_evidence,
   gunbc_runner_pool_budget,
   gunbc_per_runner_memory_cap,
@@ -27,17 +19,12 @@ import gunbc.fleet_host_budget {
 }
 import extdeps.cpu { cpu_facts_threads }
 import gunbc.ci_floor_measurement {
-  CiJobPeak,
-  JobCgroupPeakMeasurement,
-  JobCgroupPeakMeasured,
-  JobCgroupPeakUnmeasured,
   HostFixedOverhead,
   HostFixedOverheadMeasured,
   HostFixedOverheadUnmeasured,
   SessionOperatingPoint,
   SessionOperatingPointSet,
   SessionOperatingPointUnset,
-  SessionAggregateReservation,
   SessionAggregateMeasured,
   SessionAggregateUnmeasured,
   OomdEnforcementEvidence,
@@ -47,10 +34,6 @@ import gunbc.ci_floor_measurement {
   Regime1WorstCase,
   Regime2AggregateOomd,
   SessionReservationModeUnset,
-  gunbc_ci_job_peaks,
-  gunbc_ci_run_count_divisor,
-  gunbc_ci_runner_unit_cap_safety_margin_num,
-  gunbc_ci_runner_unit_cap_safety_margin_den,
   gunbc_ci_host_fixed_overhead,
   gunbc_ci_per_session_peak_samples,
   gunbc_ci_session_reservation_mode,
@@ -159,141 +142,79 @@ fn resolve_session_slice(mode: SessionReservationMode, oomd: OomdEnforcementEvid
   }
 }
 
-data gunbc_ci_runner_count_from_budget_disposition: Disposition = Terminal { reason: "DESIGN §3 single-authority fix complete: runner slot count divides fleet_host_budget.runner_slice_cap (now the single authority). The old fork between this module's host_runner_slice and fleet_host_budget.runner_slice_cap is dissolved; this module is the count consumer only. ci_budget_tree.runner_pool_bytes_at remains a separate non-conserving slice - its convergence with runner_slice_cap is a named follow-up. Session slice is passed down (not imported up) to avoid a cycle: more session reservation means fewer runners, the co-residence tension surfaced honestly." }
+data gunbc_ci_runner_count_from_budget_disposition: Disposition = Terminal { reason: "DESIGN conservation model: the runner count divides the DECLARED runner_pool_budget by the DECLARED per_runner_memory_cap (gunbc.fleet_host_budget). Soundness is host_allocation_conserves (node_conserves over runner_pool + session_pool + fixed_overhead + headroom <= host RAM); it replaces the old chicken-and-egg RunnerSlotUnenforced gate (which refused to derive a count premised on a cap not yet enforced live). 'Is the cap live on the host' is no longer a plan-soundness question - it is a converge-receipt question. Session pool is the uniform 1 GiB demand class shared with the ctrl session dashboard." }
 
-
-fn host_runner_count_from_cap(runner_slice_cap: ByteSize, run_unit_peak: ByteSize, cpu_cap: HardwareThreadCount, build_tokens: HardwareThreadCount) -> Int {
-  let mem_count = measure_fit_count_floor(capacity: runner_slice_cap, each: run_unit_peak)
-  if mem_count <= 0 {
-    0
-  } else {
-    int_min(
-      a: int_min(a: mem_count, b: hardware_thread_count_value(t: cpu_cap)),
-      b: hardware_thread_count_value(t: build_tokens)
-    )
+fn host_fixed_overhead_bytes(o: HostFixedOverhead) -> ByteSize {
+  match o {
+    HostFixedOverheadMeasured { bytes: b } => b
+    HostFixedOverheadUnmeasured => byte_size(0)
   }
 }
 
-fn host_deployment_from_plan(offer: ComputeOffer, cap: ByteSize, tokens: HardwareThreadCount, cpu_cap: HardwareThreadCount, run_unit_peak: ByteSize) -> RunnerHostDeployment {
-  let unit_cap = measure_scale_fraction_floor(m: run_unit_peak, num: gunbc_ci_runner_unit_cap_safety_margin_num, den: gunbc_ci_runner_unit_cap_safety_margin_den)
-  let count = if measure_le(a: unit_cap, b: cap) {
-    host_runner_count_from_cap(runner_slice_cap: cap, run_unit_peak: gunbc_ci_run_count_divisor, cpu_cap: cpu_cap, build_tokens: tokens)
-  } else {
-    0
-  }
+fn conservation_host_deployment(offer: ComputeOffer, nproc: HardwareThreadCount) -> RunnerHostDeployment {
   RunnerHostDeployment {
     identity: offer.supply.physical.identity,
-    runner_count: count,
-    runner_slice_cap: cap,
-    per_runner_memory_cap: unit_cap,
-    build_tokens: tokens,
+    runner_count: declared_runner_count(),
+    runner_slice_cap: gunbc_runner_pool_budget,
+    per_runner_memory_cap: gunbc_per_runner_memory_cap,
+    build_tokens: nproc,
     runner: runner_spec_from_offer(offer: offer),
     workload_class: BatchLatencyTolerant,
   }
 }
 
-fn empty_deployment_accumulator() -> DeploymentAccumulator {
-  DeploymentAccumulator { deployments: [], unsound_reason: "", any_unfit: false, total: 0 }
-}
-
-fn accumulate_host_deployment(
-  acc: DeploymentAccumulator,
-  offer: ComputeOffer,
-  overhead: ByteSize,
-  session_slice: ByteSize,
-  citation: CtrlJobserverCitation,
-  policy: HeadroomPolicy,
-  oomd: OomdEnforcementEvidence,
-  run_unit_peak: ByteSize
-) -> DeploymentAccumulator {
-  match fleet_host_plan_for_offer(offer: offer, overhead: overhead, session_slice: session_slice, citation: citation, policy: policy, oomd: oomd) {
-    FleetHostPlanUnsound { reason: r } =>
+fn accumulate_conservation_deployment(acc: DeploymentAccumulator, offer: ComputeOffer) -> DeploymentAccumulator {
+  match compute_host_primary_cpu(host: offer.supply.physical) {
+    Absent =>
       DeploymentAccumulator {
         deployments: acc.deployments,
-        unsound_reason: if acc.unsound_reason == "" { r } else { acc.unsound_reason },
+        unsound_reason: if acc.unsound_reason == "" { concat("compute offer has no primary CPU facts: ", offer.supply.physical.identity) } else { acc.unsound_reason },
         any_unfit: acc.any_unfit,
         total: acc.total,
       }
-    FleetHostPlanDerived { name: _, tree: _, runner_slice_cap: cap, effective_build_tokens: tokens, effective_runner_cpu_cap: cpu_cap, build_step: _ } => {
-      let dep = host_deployment_from_plan(offer: offer, cap: cap, tokens: tokens, cpu_cap: cpu_cap, run_unit_peak: run_unit_peak)
-      DeploymentAccumulator {
-        deployments: concat(acc.deployments, [dep]),
-        unsound_reason: acc.unsound_reason,
-        any_unfit: acc.any_unfit || (dep.runner_count == 0),
-        total: acc.total + dep.runner_count,
+    Present { value: cpu } => {
+      let host_ram = compute_host_ram_bytes_total(host: offer.supply.physical)
+      let overhead = host_fixed_overhead_bytes(o: gunbc_ci_host_fixed_overhead)
+      let headroom = oomd_actuation_floor(host: host_ram)
+      if host_allocation_conserves(
+        host: host_ram,
+        overhead: overhead,
+        headroom: headroom,
+        runner_pool: gunbc_runner_pool_budget,
+        session_pool: byte_size(0)
+      ) {
+        let dep = conservation_host_deployment(offer: offer, nproc: cpu_facts_threads(cpu: cpu))
+        DeploymentAccumulator {
+          deployments: concat(acc.deployments, [dep]),
+          unsound_reason: acc.unsound_reason,
+          any_unfit: acc.any_unfit || (dep.runner_count == 0),
+          total: acc.total + dep.runner_count,
+        }
+      } else {
+        DeploymentAccumulator {
+          deployments: acc.deployments,
+          unsound_reason: if acc.unsound_reason == "" { concat("host allocation over-committed (runner_pool + session_pool + overhead + headroom exceeds host RAM): ", offer.supply.physical.identity) } else { acc.unsound_reason },
+          any_unfit: acc.any_unfit,
+          total: acc.total,
+        }
       }
     }
-  }
-}
-
-fn derive_plan_with_budget(
-  offers: List<ComputeOffer>,
-  overhead: ByteSize,
-  session_slice: ByteSize,
-  citation: CtrlJobserverCitation,
-  policy: HeadroomPolicy,
-  oomd: OomdEnforcementEvidence,
-  run_unit_peak: ByteSize
-) -> RunnerDeploymentPlan {
-  let acc = fold(
-    offers,
-    init: empty_deployment_accumulator(),
-    f: (a, o) => accumulate_host_deployment(acc: a, offer: o, overhead: overhead, session_slice: session_slice, citation: citation, policy: policy, oomd: oomd, run_unit_peak: run_unit_peak)
-  )
-  if acc.unsound_reason != "" {
-    PlanUnsound { reason: concat("fleet host budget unsound: ", acc.unsound_reason) }
-  } else if acc.any_unfit {
-    PlanUnsound {
-      reason: "at least one fleet host cannot host a single runner: the per-runner memory.max (worst whole-run peak * safety margin) exceeds the conserving runner_slice_cap, or the slice admits zero runners at the mean divisor; raise the host, lower the headroom/sccache reservation, or re-measure the per-run peaks"
-    }
-  } else {
-    PlanDerived { hosts: acc.deployments, fleet_concurrent_runs: acc.total }
-  }
-}
-
-fn runner_deployment_plan_for(
-  enforcement: RunnerSlotEnforcement,
-  mode: SessionReservationMode,
-  job_peaks: List<CiJobPeak>,
-  overhead: HostFixedOverhead,
-  citation: CtrlJobserverCitation,
-  policy: HeadroomPolicy,
-  oomd: OomdEnforcementEvidence,
-  offers: List<ComputeOffer>
-) -> RunnerDeploymentPlan {
-  match enforcement {
-    RunnerSlotUnenforced { reason: r } => PlanUnsound { reason: r }
-    RunnerSlotEnforced =>
-      match resolve_session_slice(mode: mode, oomd: oomd) {
-        SessionSliceUnresolved { reason: r } => PlanUnsound { reason: r }
-        SessionSliceResolved { bytes: session_slice, per_session_cap: _, concurrency: _ } =>
-          match resolve_run_unit_peak(job_peaks: job_peaks) {
-            JobPeaksUnresolved { reason: r } => PlanUnsound { reason: r }
-            JobPeaksResolved { run_unit_peak: peak } =>
-              match overhead {
-                HostFixedOverheadUnmeasured =>
-                  PlanUnsound {
-                    reason: "host fixed overhead unmeasured: the sccache server daemon may live in a sibling host cgroup outside every per-job cgroup, so it is counted by no per-job peak; refuse to derive runner capacity until it is classified and reserved exactly once"
-                  }
-                HostFixedOverheadMeasured { bytes: oh } =>
-                  derive_plan_with_budget(offers: offers, overhead: oh, session_slice: session_slice, citation: citation, policy: policy, oomd: oomd, run_unit_peak: peak)
-              }
-          }
-      }
   }
 }
 
 fn runner_deployment_plan() -> RunnerDeploymentPlan {
-  runner_deployment_plan_for(
-    enforcement: gunbc_ci_runner_slot_enforcement,
-    mode: gunbc_ci_session_reservation_mode,
-    job_peaks: gunbc_ci_job_peaks,
-    overhead: gunbc_ci_host_fixed_overhead,
-    citation: ctrl_jobserver_config,
-    policy: gunbc_fleet_headroom_policy,
-    oomd: gunbc_fleet_oomd_evidence,
-    offers: fleet_intent_offers
+  let acc = fold(
+    fleet_intent_offers,
+    init: DeploymentAccumulator { deployments: [], unsound_reason: "", any_unfit: false, total: 0 },
+    f: (a, o) => accumulate_conservation_deployment(acc: a, offer: o)
   )
+  if acc.unsound_reason != "" {
+    PlanUnsound { reason: acc.unsound_reason }
+  } else if acc.any_unfit {
+    PlanUnsound { reason: "declared runner_pool_budget admits zero runners at the declared per_runner_memory_cap: raise runner_pool_budget or lower per_runner_memory_cap" }
+  } else {
+    PlanDerived { hosts: acc.deployments, fleet_concurrent_runs: acc.total }
+  }
 }
 
 type RunnersPerHostResolution
