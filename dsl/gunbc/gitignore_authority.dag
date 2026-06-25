@@ -6,7 +6,7 @@ import gunbc.gitignore_model {
   CargoArtifacts, CargoCacheLocal, CodegenSymlink, CoverageReport,
   GeneratorStamp, WorkflowRuntime, TestgenOutput, RegenTempDir,
   ClaudeCodeSession, ClaimMapOutput, OpenClawArtifact, GithubCLICache,
-  AuthSessionTranscript, PythonLocalDevScript,
+  AuthSessionTranscript, PythonLocalDevScript, SupersededPlanningDir,
   JetBrainsIDE, VSCodeIDE, VimEditor, EmacsEditor, GenericEditorBackup,
   MacOSFinder, WindowsExplorer, Tmux, NodeJS, SecretsConvention, CPythonInterpreter,
   Derivable, Cited,
@@ -23,7 +23,8 @@ import gunbc.gitignore_model {
   OpenClawSoulFile, OpenClawToolsFile, OpenClawUserFile, OpenClawWorkboardFile,
   OpenClawScriptsDir, V2InspectFile, V2InspectErrorsFile, GithubCLICacheDir,
   PythonLocalDevScriptFile, PythonBytecodeCacheDir, PythonCompiledBytecode,
-  ClaimMapDir, ScratchProbeFile
+  ClaimMapDir, ScratchProbeFile,
+  GunbcPlanningDir, ScriptsFixturesDir
 }
 
 data gitignore_authority: List<IgnoreGroup> = [
@@ -130,5 +131,9 @@ data gitignore_authority: List<IgnoreGroup> = [
   IgnoreGroup {
     producer: Derivable { kind: ClaimMapOutput },
     artifacts: [ClaimMapDir, ScratchProbeFile]
+  },
+  IgnoreGroup {
+    producer: Derivable { kind: SupersededPlanningDir },
+    artifacts: [GunbcPlanningDir, ScriptsFixturesDir]
   }
 ]
