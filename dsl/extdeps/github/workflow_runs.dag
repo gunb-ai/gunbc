@@ -2,7 +2,7 @@ module extdeps.github.workflow_runs
 
 import extdeps.github.github { GitHubUser, default_api_base, default_per_page }
 import extdeps.github.errors { GitHubErrorShape }
-import std.types { CommitSha, Timestamp, Url }
+import std.types { CommitSha, NonEmptyStr, Timestamp }
 import std.credentials { EnvVar }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }

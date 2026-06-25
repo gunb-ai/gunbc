@@ -1,7 +1,7 @@
 module extdeps.github.gists
 
 import extdeps.github.github { GitHubUser, default_api_base }
-import std.types { Timestamp, GistId, Url, HttpMethod, AuthScheme }
+import std.types { Timestamp, GistId, NonEmptyStr, HttpMethod, AuthScheme }
 import extdeps.github.errors { GitHubErrorShape }
 
 import extdeps.external_authority { ExternalAuthority }
@@ -29,7 +29,7 @@ type Gist {
   owner: GitHubUser
   created_at: Timestamp
   updated_at: Timestamp
-  html_url: Url
+  html_url: NonEmptyStr
 }
 
 service github.Gist {
@@ -53,7 +53,7 @@ service github.Gist {
     }
     output {
       id: GistId
-      html_url: Url
+      html_url: NonEmptyStr
     }
     transport rest {
       method: POST,
