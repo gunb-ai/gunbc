@@ -12,8 +12,6 @@ import v2.extdeps.languages.bash {
   orch_retry_target_model,
   bash_word_pass_emitted,
   bash_word_pass_target_model,
-  bash_word_varref_emitted,
-  bash_word_varref_target_model,
   bash_word_cmdsubst_emitted,
   bash_word_cmdsubst_target_model,
   bash_single_quote,
@@ -248,16 +246,6 @@ fn emit_word_pass(spelling: String) -> Outcome<Medium<String>> {
   )
 }
 
-fn emit_word_varref(name: String) -> Outcome<Medium<String>> {
-  emit(
-    tree: InferredTree {
-      root: bash_word_varref_emitted,
-      facts: Map { lookup: orch_emit_facts_lookup }
-    },
-    target: bash_word_varref_target_model(name: name)
-  )
-}
-
 fn emit_word_concat_from(acc: String, rest: List<ShellWord>) -> Outcome<Medium<String>> {
   match list_head(xs: rest) {
     HeadAbsent => outcome_accepted(lossless_source(text: acc))
@@ -286,7 +274,7 @@ fn emit_word_cmdsubst(body: String) -> Outcome<Medium<String>> {
 fn emit_shell_word(w: ShellWord) -> Outcome<Medium<String>> {
   match w {
     Lit { text: t } => emit_word_pass(spelling: bash_single_quote(spelling: t))
-    VarRef { name: n } => emit_word_varref(name: n)
+    VarRef { name: n } => emit_word_pass(spelling: bash_var_ref_spelling(spelling: n))
     Concat { parts: ps } => emit_word_concat_from(acc: "", rest: ps)
     CmdSubst { body: _ } =>
       outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^emit_shell_word_cmdsubst_pending_stmt_layer))

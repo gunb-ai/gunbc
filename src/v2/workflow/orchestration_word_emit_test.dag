@@ -8,18 +8,7 @@ import extdeps.languages.bash.program {
   Concat,
   serialize_word
 }
-import extdeps.communication.medium { Medium }
-import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
-import v2.compiler.target_carriers { lossless_source }
-import v2.std.algebra { list_head, HeadFound, HeadAbsent }
-
-test fn dbg_lossless_preserves_dquote_holds() -> Bool {
-  lossless_source(text: "\"$ROOT\"").carried == "\"$ROOT\""
-}
-
-test fn dbg_lossless_preserves_squote_holds() -> Bool {
-  lossless_source(text: "'/target'").carried == "'/target'"
-}
+import v2.std.diagnostic { Accepted, None, Rejected }
 
 fn word_emits_oracle(w: ShellWord) -> Bool {
   match emit_shell_word(w: w) {
@@ -29,9 +18,9 @@ fn word_emits_oracle(w: ShellWord) -> Bool {
   }
 }
 
-fn word_emits_string(w: ShellWord, expected: String) -> Bool {
+fn emit_word_differs_from_oracle_of(w: ShellWord, other: ShellWord) -> Bool {
   match emit_shell_word(w: w) {
-    Accepted { value: src, diagnostics: _ } => src.carried == expected
+    Accepted { value: src, diagnostics: _ } => src.carried != serialize_word(w: other)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -73,128 +62,4 @@ test fn word_concat_has_teeth_holds() -> Bool {
     w: concat_root_slash(),
     other: Concat { parts: [VarRef { name: "ROOT" }, Lit { text: "/release" }] }
   )
-}
-
-fn concat_two_lits() -> ShellWord {
-  Concat { parts: [Lit { text: "a" }, Lit { text: "b" }] }
-}
-
-test fn dbg_oracle_concat_is_expected_holds() -> Bool {
-  serialize_word(w: concat_root_slash()) == "\"$ROOT\"'/target'"
-}
-
-test fn dbg_concat_two_lits_oracle_holds() -> Bool {
-  word_emits_oracle(w: concat_two_lits())
-}
-
-test fn dbg_concat_emits_expected_string_holds() -> Bool {
-  word_emits_string(w: concat_root_slash(), expected: "\"$ROOT\"'/target'")
-}
-
-test fn dbg_concat_two_lits_emits_ab_holds() -> Bool {
-  word_emits_string(w: concat_two_lits(), expected: "'a''b'")
-}
-
-test fn dbg_varref_standalone_emits_literal_holds() -> Bool {
-  word_emits_string(w: VarRef { name: "ROOT" }, expected: "\"$ROOT\"")
-}
-
-test fn dbg_varref_standalone_oracle_is_literal_holds() -> Bool {
-  serialize_word(w: VarRef { name: "ROOT" }) == "\"$ROOT\""
-}
-
-fn first_word(ws: List<ShellWord>) -> ShellWord {
-  match list_head(xs: ws) {
-    HeadFound { value: w } => w
-    HeadAbsent => Lit { text: "none" }
-  }
-}
-
-test fn dbg_varref_from_list_emits_literal_holds() -> Bool {
-  word_emits_string(w: first_word(ws: [VarRef { name: "ROOT" }]), expected: "\"$ROOT\"")
-}
-
-test fn dbg_two_emits_varref_then_varref_holds() -> Bool {
-  (carried(w: VarRef { name: "ROOT" }) == "\"$ROOT\"") && (carried(w: VarRef { name: "WORKDIR" }) == "\"$WORKDIR\"")
-}
-
-test fn dbg_concat_empty_dquote_holds() -> Bool {
-  concat("", "\"$ROOT\"") == "\"$ROOT\""
-}
-
-test fn dbg_concat_prefix_dquote_holds() -> Bool {
-  concat("p", "\"$ROOT\"") == "p\"$ROOT\""
-}
-
-test fn dbg_concat_empty_dollar_holds() -> Bool {
-  concat("", "$ROOT") == "$ROOT"
-}
-
-test fn dbg_dquote_literal_self_eq_holds() -> Bool {
-  "\"$ROOT\"" == "\"$ROOT\""
-}
-
-fn carried(w: ShellWord) -> String {
-  match emit_shell_word(w: w) {
-    Accepted { value: src, diagnostics: _ } => src.carried
-    Rejected { diagnostics: _ } => "<rejected>"
-  }
-}
-
-test fn dbg_concat_varref_eq_standalone_holds() -> Bool {
-  carried(w: Concat { parts: [VarRef { name: "ROOT" }] }) == carried(w: VarRef { name: "ROOT" })
-}
-
-test fn dbg_concat_varref_carried_len_check_holds() -> Bool {
-  carried(w: Concat { parts: [VarRef { name: "ROOT" }] }) == concat("", carried(w: VarRef { name: "ROOT" }))
-}
-
-fn is_rejected(w: ShellWord) -> Bool {
-  match emit_shell_word(w: w) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => true
-  }
-}
-
-test fn dbg_concat_varref_is_rejected_holds() -> Bool {
-  is_rejected(w: Concat { parts: [VarRef { name: "ROOT" }] })
-}
-
-test fn dbg_concat_lit_is_accepted_holds() -> Bool {
-  is_rejected(w: Concat { parts: [Lit { text: "x" }] }) == false
-}
-
-test fn dbg_probe_concat_varref_empty_name_holds() -> Bool {
-  word_emits_string(w: Concat { parts: [VarRef { name: "ROOT" }] }, expected: "\"$\"")
-}
-
-test fn dbg_probe_concat_varref_dollar_root_holds() -> Bool {
-  word_emits_string(w: Concat { parts: [VarRef { name: "ROOT" }] }, expected: "$ROOT")
-}
-
-test fn dbg_probe_concat_varref_raw_root_holds() -> Bool {
-  word_emits_string(w: Concat { parts: [VarRef { name: "ROOT" }] }, expected: "ROOT")
-}
-
-test fn dbg_probe_concat_varref_empty_holds() -> Bool {
-  word_emits_string(w: Concat { parts: [VarRef { name: "ROOT" }] }, expected: "")
-}
-
-test fn dbg_concat_single_varref_holds() -> Bool {
-  word_emits_string(w: Concat { parts: [VarRef { name: "ROOT" }] }, expected: "\"$ROOT\"")
-}
-
-test fn dbg_concat_lit_then_varref_holds() -> Bool {
-  word_emits_string(w: Concat { parts: [Lit { text: "x" }, VarRef { name: "ROOT" }] }, expected: "'x'\"$ROOT\"")
-}
-
-test fn dbg_concat_single_lit_slash_holds() -> Bool {
-  word_emits_string(w: Concat { parts: [Lit { text: "/target" }] }, expected: "'/target'")
-}
-
-fn emit_word_differs_from_oracle_of(w: ShellWord, other: ShellWord) -> Bool {
-  match emit_shell_word(w: w) {
-    Accepted { value: src, diagnostics: _ } => src.carried != serialize_word(w: other)
-    Rejected { diagnostics: _ } => false
-  }
 }
