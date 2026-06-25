@@ -3144,26 +3144,19 @@ pub fn parse_type_after_kw(
                     __result
                 });
                 let sole_ctor_props: Rc<Vec<Rc<Node>>> = if is_sole_constructor {
-                    Rc::new(vec![Rc::new(Node {
-                        name: "sole_constructor".to_string(),
-                        span: start_span.clone(),
-                        ident_span: None,
-                        children: Rc::new(vec![]),
-                        params: Rc::new(vec![]),
-                        inferred: None,
-                        return_cardinality: Cardinality::Required,
-                        uses: Rc::new(vec![]),
-                        body: None,
-                        connective: Connective::NoConnective,
-                        transport: None,
-                        properties: Rc::new(vec![]),
-                        type_annotation: None,
-                        is_self_recursive: false,
-                        has_non_tail_self_call: false,
-                        match_pattern: None,
-                        expr_data: Rc::new(ExprData::NoExprData),
-                        ident: None,
-                    })])
+                    Rc::new(vec![make_field_init_node(
+                        "sole_constructor".to_string(),
+                        make_expr_node(
+                            Rc::new(ExprData::ExprLiteral {
+                                value: Rc::new(LiteralValue::LitBool { value: true }),
+                            }),
+                            Rc::new(vec![]),
+                            None,
+                            start_span.clone(),
+                        ),
+                        start_span.clone(),
+                        no_span(),
+                    )])
                 } else {
                     Rc::new(vec![])
                 };
@@ -3306,26 +3299,19 @@ pub fn parse_type_body_from_prefix(
                     __result
                 });
                 let sole_ctor_props: Rc<Vec<Rc<Node>>> = if is_sole_constructor {
-                    Rc::new(vec![Rc::new(Node {
-                        name: "sole_constructor".to_string(),
-                        span: start_span.clone(),
-                        ident_span: None,
-                        children: Rc::new(vec![]),
-                        params: Rc::new(vec![]),
-                        inferred: None,
-                        return_cardinality: Cardinality::Required,
-                        uses: Rc::new(vec![]),
-                        body: None,
-                        connective: Connective::NoConnective,
-                        transport: None,
-                        properties: Rc::new(vec![]),
-                        type_annotation: None,
-                        is_self_recursive: false,
-                        has_non_tail_self_call: false,
-                        match_pattern: None,
-                        expr_data: Rc::new(ExprData::NoExprData),
-                        ident: None,
-                    })])
+                    Rc::new(vec![make_field_init_node(
+                        "sole_constructor".to_string(),
+                        make_expr_node(
+                            Rc::new(ExprData::ExprLiteral {
+                                value: Rc::new(LiteralValue::LitBool { value: true }),
+                            }),
+                            Rc::new(vec![]),
+                            None,
+                            start_span.clone(),
+                        ),
+                        start_span.clone(),
+                        no_span(),
+                    )])
                 } else {
                     Rc::new(vec![])
                 };

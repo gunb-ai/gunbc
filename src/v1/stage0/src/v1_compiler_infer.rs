@@ -11930,7 +11930,7 @@ pub fn build_type_env(
                             uses: Rc::new(vec![]),
                             body: None,
                             transport: None,
-                            properties: Rc::new(vec![]),
+                            properties: item.properties.clone(),
                             type_annotation: None,
                             is_self_recursive: false,
                             has_non_tail_self_call: false,
