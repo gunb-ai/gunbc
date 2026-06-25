@@ -177,11 +177,11 @@ fn coproduct_reflection_connective_reflection_pairs_match_syntactic() {
                 let Value::Record { fields, .. } = v else {
                     panic!("pair record");
                 };
-                let label = match fields.get(&ctx.sym("label")) {
+                let label = match ctx.field(fields, "label") {
                     Some(Value::Str(s)) => s.clone(),
                     _ => panic!("label"),
                 };
-                let payload = match fields.get(&ctx.sym("payload_type_name")) {
+                let payload = match ctx.field(fields, "payload_type_name") {
                     Some(Value::Str(s)) => s.clone(),
                     _ => panic!("payload"),
                 };
@@ -221,11 +221,11 @@ fn coproduct_reflection_path3_pair_witness_fails_on_perturbed_atom_payload_type(
                     panic!("pair");
                 };
                 (
-                    match fields.get(&ctx.sym("label")) {
+                    match ctx.field(fields, "label") {
                         Some(Value::Str(s)) => s.clone(),
                         _ => panic!("label"),
                     },
-                    match fields.get(&ctx.sym("payload_type_name")) {
+                    match ctx.field(fields, "payload_type_name") {
                         Some(Value::Str(s)) => s.clone(),
                         _ => panic!("payload"),
                     },

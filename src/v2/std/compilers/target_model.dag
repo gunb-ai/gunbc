@@ -45,6 +45,7 @@ import v2.std.diagnostic {
   node_locus,
   outcome_accepted,
   outcome_rejected,
+  port_locus,
   rejected_with_pending
 }
 import v2.std.compilers.lexing {
@@ -759,6 +760,30 @@ type TargetValueExpressionProjection {
 type TargetBodiedArrowStatementScaffold {
   prefix: List<ConcreteSyntaxToken>
   suffix: List<ConcreteSyntaxToken>
+}
+
+type TargetImportShape
+  = EsModuleImport {
+      import_token: Symbol
+      names_open: Symbol
+      names_separator: Symbol
+      names_close: Symbol
+      from_token: Symbol
+      path_open: Symbol
+      path_segment_separator: Symbol
+      path_close: Symbol
+      terminator: Symbol
+      name_ident_token: Symbol
+      path_segment_token: Symbol
+    }
+
+type TargetModuleProjection {
+  import_form: TargetImportShape
+}
+
+type TargetImport {
+  path_segments: List<Symbol>
+  names: List<Symbol>
 }
 
 fn derive_bodied_arrow_scaffold(
@@ -5216,6 +5241,111 @@ fn target_value_expression_record_construct_to_concrete_tokens(
       )
     }
   )
+}
+
+fn target_import_empty_names_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: ^target_import_names_empty,
+    at: port_locus(port: ^target_import_names_empty),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn target_import_empty_path_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: ^target_import_path_empty,
+    at: port_locus(port: ^target_import_path_empty),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn target_import_bound_tokens_intersperse(
+  bindings: List<Symbol>,
+  ident_token: Symbol,
+  separator: Symbol
+) -> List<ConcreteSyntaxToken> {
+  fold(
+    bindings,
+    init: Empty,
+    f: fn(acc, binding) {
+      if is_empty(xs: acc) {
+        Cons { head: BoundToken { token_class: ident_token, binding: binding }, tail: Empty }
+      } else {
+        list_append(
+          left: acc,
+          right: Cons {
+            head: FixedToken { token_class: separator },
+            tail: Cons {
+              head: BoundToken { token_class: ident_token, binding: binding },
+              tail: Empty
+            }
+          }
+        )
+      }
+    }
+  )
+}
+
+fn target_import_to_concrete_tokens(
+  import_value: TargetImport,
+  projection: TargetModuleProjection
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  match projection.import_form {
+    EsModuleImport {
+      import_token: import_token,
+      names_open: names_open,
+      names_separator: names_separator,
+      names_close: names_close,
+      from_token: from_token,
+      path_open: path_open,
+      path_segment_separator: path_segment_separator,
+      path_close: path_close,
+      terminator: terminator,
+      name_ident_token: name_ident_token,
+      path_segment_token: path_segment_token
+    } =>
+      if is_empty(xs: import_value.names) {
+        outcome_rejected(target_import_empty_names_diagnostic())
+      } else if is_empty(xs: import_value.path_segments) {
+        outcome_rejected(target_import_empty_path_diagnostic())
+      } else {
+        outcome_accepted(
+          list_append(
+            left: Cons {
+              head: FixedToken { token_class: import_token },
+              tail: Cons { head: FixedToken { token_class: names_open }, tail: Empty }
+            },
+            right: list_append(
+              left: target_import_bound_tokens_intersperse(
+                bindings: import_value.names,
+                ident_token: name_ident_token,
+                separator: names_separator
+              ),
+              right: list_append(
+                left: Cons {
+                  head: FixedToken { token_class: names_close },
+                  tail: Cons {
+                    head: FixedToken { token_class: from_token },
+                    tail: Cons { head: FixedToken { token_class: path_open }, tail: Empty }
+                  }
+                },
+                right: list_append(
+                  left: target_import_bound_tokens_intersperse(
+                    bindings: import_value.path_segments,
+                    ident_token: path_segment_token,
+                    separator: path_segment_separator
+                  ),
+                  right: Cons {
+                    head: FixedToken { token_class: path_close },
+                    tail: Cons { head: FixedToken { token_class: terminator }, tail: Empty }
+                  }
+                )
+              )
+            )
+          )
+        )
+      }
+  }
 }
 
 fn target_value_expr_field_access_wire_schema_valid(wire: Node) -> Outcome<Bool> {
