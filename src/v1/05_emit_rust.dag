@@ -3733,9 +3733,12 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
     return concat("compile_error!(\"type param name collides with a value param in fn '", name, "' — a value param shares its name with a declared type param; rename the value param or dissolve via ParamKind/params-slot partition\");\n")
   }
   let generic_param_names = type_params |> map(p => generic_param_name_at(n: p, source_indices: si))
+  let value_param_names = value_params |> map(p => p.name)
   let ret_name = authored_name_at(source_indices: si, node: inferred)
   let return_is_bare_generic = (generic_param_names |> filter(g => g == ret_name) |> count) > 0
-  let type_params_str = if return_is_bare_generic {
+  let body_is_param_ref = (value_param_names |> filter(n => n == body.name) |> count) > 0
+  let needs_clone_bound = return_is_bare_generic && !body_is_param_ref
+  let type_params_str = if needs_clone_bound {
     emit_type_params_with_clone_bound(params: type_params, clone_param: ret_name, source_indices: si)
   } else {
     emit_type_params(params: type_params, source_indices: si)
