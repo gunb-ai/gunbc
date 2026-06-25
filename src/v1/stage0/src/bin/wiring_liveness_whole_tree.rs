@@ -27,7 +27,7 @@ use std::process::ExitCode;
 use v1_compiler::cli_run::{whole_tree_resolved_ctx, ResolveTypecheckGate, WholeTreeCtx};
 use v1_compiler::v1_interpreter::{self, ExecutionMode, Value};
 
-const DEAD_WIRES_FN: &str = "wiring_liveness_corpus_dead_wires";
+const IS_CLEAN_FN: &str = "wiring_liveness_corpus_is_clean";
 
 fn require_value(args: &[String], idx: usize, flag: &str) -> Result<String, ExitCode> {
     match args.get(idx) {
@@ -44,7 +44,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     let mut source_roots: Vec<String> = Vec::new();
     // Intentionally-malformed scanner fixture inputs (test DATA referenced by string
     // path, not live code) declare imports of nonexistent modules and so cannot be
-    // part of a Strict whole-tree resolve. Excluded by default; extendable via flag.
+    // part of a whole-tree resolve. Excluded by default; extendable via flag.
     let mut exclude_subpaths: Vec<String> = vec!["test/fixture/".to_string()];
 
     let mut i = 1;
@@ -96,35 +96,28 @@ fn run() -> Result<ExitCode, ExitCode> {
         exclude_subpaths
     );
 
-    let dead = v1_interpreter::run_in_context(&ctx, DEAD_WIRES_FN, false).map_err(|e| {
-        eprintln!("wiring_liveness_whole_tree: interpreter error running {DEAD_WIRES_FN}: {e}");
+    let clean = v1_interpreter::run_in_context(&ctx, IS_CLEAN_FN, false).map_err(|e| {
+        eprintln!("wiring_liveness_whole_tree: interpreter error running {IS_CLEAN_FN}: {e}");
         ExitCode::from(2)
     })?;
 
-    let items = match &dead {
-        Value::List(items) => items,
+    match &clean {
+        Value::Bool(true) => {
+            eprintln!("wiring_liveness_whole_tree: CLEAN — 0 dead wires across the whole corpus");
+            Ok(ExitCode::SUCCESS)
+        }
+        Value::Bool(false) => {
+            eprintln!("wiring_liveness_whole_tree: FAIL — dead wires detected across the corpus");
+            Ok(ExitCode::from(1))
+        }
         other => {
             eprintln!(
-                "wiring_liveness_whole_tree: {DEAD_WIRES_FN} returned {}, not a List",
+                "wiring_liveness_whole_tree: {IS_CLEAN_FN} returned {}, not a Bool",
                 ctx.format_value(other)
             );
-            return Err(ExitCode::from(2));
+            Err(ExitCode::from(2))
         }
-    };
-
-    if items.is_empty() {
-        eprintln!("wiring_liveness_whole_tree: CLEAN — 0 dead wires across the whole corpus");
-        return Ok(ExitCode::SUCCESS);
     }
-
-    eprintln!(
-        "wiring_liveness_whole_tree: {} dead wire(s) across the whole corpus:",
-        items.len()
-    );
-    for item in items.iter() {
-        eprintln!("  {}", ctx.format_value(item));
-    }
-    Ok(ExitCode::from(1))
 }
 
 fn main() -> ExitCode {
