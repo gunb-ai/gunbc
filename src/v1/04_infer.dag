@@ -22,7 +22,7 @@ import v1.std.core {
   has_inferred, is_compiler_error, InferredNode, Resolved, CompilerError, TypeVariable,
   Cardinality, Required, CardOptional,
   ErrorNode, make_error_node, is_error_diagnostic,
-  InternalError, TypeMismatch, VariantCollision,
+  InternalError, TypeMismatch, VariantCollision, SoleConstructorViolation,
   resource_use_name_at, resource_use_resource,
   kernel_type_set, is_kernel_type,
   is_child_accessor_in_model, is_tree_size_reducing, is_property_contraction,
@@ -2765,6 +2765,13 @@ fn field_in_any_variant_named(type_name: String, field: String, scope: InferScop
   )
 }
 
+fn type_has_sole_constructor(type_name: String, scope: InferScope) -> Bool {
+  match lookup_type_by_name(env: scope.type_env, name: type_name) {
+    Present { value: decl } => decl.properties |> any(p => p.name == "sole_constructor")
+    Absent => false
+  }
+}
+
 fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpan, name_span: SourceSpan, scope: InferScope, expected: Node?) -> InferResult {
   let struct_fields = match type_name {
     Present { value: tn } =>
@@ -2910,6 +2917,17 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
         module_name: scope.module_name
       )]
     }
+    let sole_ctor_diags = if type_has_sole_constructor(type_name: type_name.value, scope: scope) {
+      match lookup_type_by_name(env: scope.type_env, name: type_name.value) {
+        Present { value: decl } =>
+          if decl.span.file == span.file {
+            []
+          } else {
+            [make_error_node(diagnostic: SoleConstructorViolation { type_name: type_name.value, span: span }, module_name: scope.module_name)]
+          }
+        Absent => []
+      }
+    } else { [] }
     let typed_field_nodes2 = typed_fields
     let rl_name = match type_name { Present { value: tn_val } => tn_val  Absent => "" }
     let texpr = make_named_expr_node(
@@ -2922,7 +2940,7 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
     )
     InferResult {
       typed: texpr,
-      diagnostics: concat(fi_diags, type_diags)
+      diagnostics: concat(concat(fi_diags, type_diags), sole_ctor_diags)
     }
   }
 }
@@ -5438,7 +5456,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
         name: item.name, span: item.span, ident_span: item.ident_span, children: item.children,
         connective: item.connective, params: item.params, inferred: none,
         return_cardinality: item.return_cardinality,
-        uses: [], body: none, transport: none, properties: [],
+        uses: [], body: none, transport: none, properties: item.properties,
         type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
       }
       map_insert(acc, item_ident, TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: type_node, provenance: SubValueUnknown })

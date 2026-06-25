@@ -532,14 +532,14 @@ fn witness_sg2_fold_row_delimiter_discriminates_holds() -> Bool {
 
 data unified_claim_sg2_arrow: UnifiedTestClaim = BoolWitnessClaim {
   witness: BoolWitness {
-    entry: "src/v2/compiler/manual/sg2_type_expression_projection.dag",
+    entry: "src/v2/test/claim/manual/sg2_type_expression_projection.dag",
     function: witness_sg2_arrow_holds
   }
 }
 
 data unified_claim_sg2_projection_falsification: UnifiedTestClaim = BoolWitnessClaim {
   witness: BoolWitness {
-    entry: "src/v2/compiler/manual/sg2_type_expression_projection.dag",
+    entry: "src/v2/test/claim/manual/sg2_type_expression_projection.dag",
     function: witness_sg2_projection_falsification_holds
   }
 }

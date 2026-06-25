@@ -5,12 +5,12 @@ import std.markup {
   TextNode,
   MarkupAttr,
   MarkupNode,
-  serialize_markup_node,
 }
 import extdeps.languages.html {
   EmitOk,
   EmitRejected,
   try_serialize_html_source,
+  serialize_markup_node,
 }
 
 fn sample_button() -> MarkupNode {

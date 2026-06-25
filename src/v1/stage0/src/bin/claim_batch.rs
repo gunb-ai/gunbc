@@ -38,6 +38,13 @@ fn peak_rss_lines() -> String {
         .unwrap_or_default()
 }
 
+fn peak_rss_bytes() -> Option<u64> {
+    let status = std::fs::read_to_string("/proc/self/status").ok()?;
+    let line = status.lines().find(|l| l.starts_with("VmHWM"))?;
+    let kb: u64 = line.split_whitespace().nth(1)?.parse().ok()?;
+    Some(kb.saturating_mul(1024))
+}
+
 fn print_interp_stats(ctx: &InterpContext, flatten_baseline: (u64, u64)) {
     eprintln!("[interp-stats] mutation-primitive copy work (this context):");
     eprint!("{}", ctx.mutation_counters_snapshot());
@@ -555,6 +562,11 @@ fn run() -> Result<ExitCode, ExitCode> {
         "[resolve-summary] {} resolve(s) in {}ms; {} witness(es) in {}ms",
         timings.resolves, timings.resolve_ms, timings.witnesses, timings.witness_ms,
     );
+
+    match peak_rss_bytes() {
+        Some(bytes) => eprintln!("[measurement] per-shard-peak-rss: {bytes} bytes"),
+        None => eprintln!("[measurement] per-shard-peak-rss: unavailable (no /proc/self/status)"),
+    }
 
     if any_failed {
         return Ok(ExitCode::from(1));

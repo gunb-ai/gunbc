@@ -10,10 +10,13 @@ import std.measure {
   measure_scale_fraction_ceil,
   ByteSize,
   byte_size,
+  Watt,
+  watt,
 }
 import std.realization_schedule {
   CostAccount,
   CostBasis,
+  Measured,
   cost_account_measured,
   cost_account_predicted_zero,
   cost_account_time_count,
@@ -27,6 +30,15 @@ type RealizationMeasureEffect
 
 fn cost_account_measured_from_time<S>(time: Measure<Time, S, Nat>) -> CostAccount<S> {
   cost_account_measured(time: time)
+}
+
+fn cost_account_measured_from_time_and_space<S>(time: Measure<Time, S, Nat>, space: ByteSize) -> CostAccount<S> {
+  CostAccount {
+    time: time
+    space: space
+    power: watt(count: 0)
+    basis: Measured
+  }
 }
 
 fn time_measure_list_total<S>(times: List<Measure<Time, S, Nat>>) -> Measure<Time, S, Nat> {
