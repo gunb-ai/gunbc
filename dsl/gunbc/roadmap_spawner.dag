@@ -140,20 +140,20 @@ fn node_json(n: RoadmapNode, edges: List<RoadmapEdge>) -> String {
   }
   let plan_json = node_plan_doc_json(carriers: n.carriers)
   let intricacy_s = match n.intricacy {
-    Present { value: i } => intricacy_str(i: i)
-    Absent => "low"
+    null => "low"
+    i => intricacy_str(i: i)
   }
   let volume_s = match n.volume {
-    Present { value: v } => volume_str(v: v)
-    Absent => "small"
+    null => "small"
+    v => volume_str(v: v)
   }
   let repo_s = match n.repo {
-    Present { value: r } => r
-    Absent => ""
+    null => ""
+    r => r
   }
   let acceptance_s = match n.acceptance {
-    Present { value: a } => acceptance_json(a: a)
-    Absent => "{\"kind\": \"manual\"}"
+    null => "{\"kind\": \"manual\"}"
+    a => acceptance_json(a: a)
   }
   let title = node_title(item: n.line)
   let f1 = concat("\"node_id\": ", concat(json_str(s: node_id_string(id: n.node)), concat(", \"title\": ", json_str(s: title))))

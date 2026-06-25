@@ -103,13 +103,13 @@ fn witness_json_schema_field_present() -> Bool {
 }
 
 fn witness_json_satisfied_dep_in_ready() -> Bool {
-  let node_a = sized_derivable(id: "test-a2", prs: [100], title: "A2")
-  let node_b = sized_derivable(id: "test-b2", prs: [200], title: "B2")
-  let edges = [RoadmapEdge { child: nid(s: "test-b2"), parent: nid(s: "test-a2") }]
+  let node_a = sized_derivable(id: "parent-done-node", prs: [100], title: "A2")
+  let node_b = sized_derivable(id: "child-ready-node", prs: [200], title: "B2")
+  let edges = [RoadmapEdge { child: nid(s: "child-ready-node"), parent: nid(s: "parent-done-node") }]
   let doc = fixture_doc(nodes: [node_a, node_b], edges: edges)
   let json = roadmap_spawn_request_json(doc: doc, merged: [100], anchor_commit: "sha1")
-  string_contains(s: json, pattern: "test-b2")
-    && !string_contains(s: json, pattern: "test-a2")
+  string_contains(s: json, pattern: "child-ready-node")
+    && !string_contains(s: json, pattern: "\"node_id\": \"parent-done-node\"")
 }
 
 test fn roadmap_spawner_witnesses() -> Bool {
@@ -121,3 +121,4 @@ test fn roadmap_spawner_witnesses() -> Bool {
     && witness_json_schema_field_present()
     && witness_json_satisfied_dep_in_ready()
 }
+
