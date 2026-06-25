@@ -176,6 +176,64 @@ fn check_side_scan_function(
     check_side_walk(body, &bindings, emit_fns, string_ops, path, si, out);
 }
 
+fn is_string_literal_arg(
+    val: &Rc<Node>,
+    bindings: &HashMap<String, Rc<Node>>,
+    si: &SourceIndices,
+) -> bool {
+    if string_literal_text(val).is_some() {
+        return true;
+    }
+    if let ExprData::ExprVar { .. } = val.expr_data.as_ref() {
+        let name = expr_var_name_at(val.clone(), si.clone());
+        if let Some(bound) = bindings.get(&name) {
+            return string_literal_text(bound).is_some();
+        }
+    }
+    false
+}
+
+fn emit_side_provenance_walk(
+    node: &Rc<Node>,
+    bindings: &HashMap<String, Rc<Node>>,
+    emit_fns: &[String],
+    path: &str,
+    si: &SourceIndices,
+    out: &mut Vec<MediumStructureLeakRaw>,
+) {
+    if let ExprData::ExprCall { .. } = node.expr_data.as_ref() {
+        let callee = expr_call_func_at(node.clone(), si.clone());
+        if emit_fns.iter().any(|f| f == &callee) {
+            let has_str_arg = node
+                .children
+                .iter()
+                .any(|arg| is_string_literal_arg(&arg_value(arg.clone()), bindings, si));
+            if has_str_arg {
+                out.push(MediumStructureLeakRaw {
+                    path: path.to_string(),
+                    face: FACE_INLINE_SYNTAX_LITERAL,
+                    detail: format!("provenance@{callee}"),
+                });
+            }
+        }
+    }
+    for child in node.children.iter() {
+        emit_side_provenance_walk(child, bindings, emit_fns, path, si, out);
+    }
+}
+
+fn emit_side_provenance_scan_function(
+    body: &Rc<Node>,
+    emit_fns: &[String],
+    path: &str,
+    si: &SourceIndices,
+    out: &mut Vec<MediumStructureLeakRaw>,
+) {
+    let mut bindings: HashMap<String, Rc<Node>> = HashMap::new();
+    collect_let_values(body, &mut bindings, si);
+    emit_side_provenance_walk(body, &bindings, emit_fns, path, si, out);
+}
+
 fn any_present(text: &str, needles: &[String]) -> bool {
     needles
         .iter()
@@ -214,6 +272,24 @@ pub fn medium_structure_leak_facts(
                 let rel = rel_path(&file);
                 for body in item_value_bodies(&items) {
                     emit_side_walk(&body, markers, &rel, &mut out);
+                }
+            }
+        }
+    }
+
+    // Emit-side provenance scan (fail-closed: string literal as arg to an emit fn)
+    for root in emit_roots {
+        for file in dag_files_sorted(root) {
+            let Ok(content) = std::fs::read_to_string(&file) else {
+                continue;
+            };
+            if !any_present(&content, emit_fns) {
+                continue;
+            }
+            if let Some((items, si)) = parse_file(&file) {
+                let rel = rel_path(&file);
+                for body in function_bodies(&items) {
+                    emit_side_provenance_scan_function(&body, emit_fns, &rel, &si, &mut out);
                 }
             }
         }
