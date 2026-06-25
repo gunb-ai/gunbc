@@ -385,6 +385,8 @@ fn run_discovery_batch_node(
                 summary.total_measured_nanos as f64 / 1.0e6,
                 summary.total_measured_nanos,
             );
+            let histogram = v1_compiler::cli_run::generate_witness_timing_histogram(&summary);
+            eprintln!("{}", histogram);
             ClaimResult {
                 function: format!("{label} ({} witnesses)", summary.total),
                 ok: true,
