@@ -1,0 +1,92 @@
+module test.claim.uri_path_parse_witness
+
+import extdeps.uri_path {
+  parse_path_template,
+  ParsedPathTemplate,
+  MalformedPathTemplate,
+}
+import std.http_path {
+  PathTemplate,
+  UrlPathToken,
+  LiteralToken,
+  ParamToken,
+  has_path_params,
+  last_path_param,
+}
+
+fn witness_simple_literal_path_parses() -> Bool {
+  match parse_path_template(raw: "/users") {
+    ParsedPathTemplate { template: t } =>
+      t.tokens == [LiteralToken { text: "users" }]
+    MalformedPathTemplate => false
+  }
+}
+
+fn witness_param_segment_parses() -> Bool {
+  match parse_path_template(raw: "/users/{id}") {
+    ParsedPathTemplate { template: t } =>
+      t.tokens == [LiteralToken { text: "users" }, ParamToken { name: "id" }]
+    MalformedPathTemplate => false
+  }
+}
+
+fn witness_multi_segment_path_parses() -> Bool {
+  match parse_path_template(raw: "/orgs/{org}/repos/{repo}") {
+    ParsedPathTemplate { template: t } =>
+      t.tokens == [
+        LiteralToken { text: "orgs" },
+        ParamToken { name: "org" },
+        LiteralToken { text: "repos" },
+        ParamToken { name: "repo" },
+      ]
+    MalformedPathTemplate => false
+  }
+}
+
+fn witness_malformed_path_rejects() -> Bool {
+  match parse_path_template(raw: "/bad/{") {
+    MalformedPathTemplate => true
+    ParsedPathTemplate => false
+  }
+}
+
+fn witness_parser_result_feeds_has_path_params() -> Bool {
+  match parse_path_template(raw: "/users/{id}") {
+    ParsedPathTemplate { template: t } => has_path_params(template: t)
+    MalformedPathTemplate => false
+  }
+}
+
+fn witness_parser_result_feeds_last_path_param() -> Bool {
+  match parse_path_template(raw: "/users/{id}") {
+    ParsedPathTemplate { template: t } =>
+      match last_path_param(template: t) {
+        Present { value: name } => name == "id"
+        Absent => false
+      }
+    MalformedPathTemplate => false
+  }
+}
+
+fn witness_malformed_discriminates_from_parsed() -> Bool {
+  let valid = parse_path_template(raw: "/users/{id}")
+  let invalid = parse_path_template(raw: "/users/{{bad}}")
+  match valid {
+    ParsedPathTemplate =>
+      match invalid {
+        MalformedPathTemplate => true
+        ParsedPathTemplate => false
+      }
+    MalformedPathTemplate => false
+  }
+}
+
+test fn uri_path_parse_keystone_holds() -> Bool {
+  witness_simple_literal_path_parses()
+    && witness_param_segment_parses()
+    && witness_multi_segment_path_parses()
+    && witness_malformed_path_rejects()
+    && witness_parser_result_feeds_has_path_params()
+    && witness_parser_result_feeds_last_path_param()
+    && witness_malformed_discriminates_from_parsed()
+}
