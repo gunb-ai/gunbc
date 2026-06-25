@@ -1,7 +1,6 @@
 module v2.std.orchestration
 
 import v2.std.text { String }
-import v2.std.integer { Int }
 import v2.std.algebra { FreeMonoid, Cons, Empty }
 import v2.std.collection { Optional, Present, Absent }
 import v2.std.cardinality { DescentEvidence }
@@ -23,13 +22,11 @@ type CaptureSpec
   | IgnoreFail
 
 type Run {
-  command: CommandRef
+  command: String
   env: FreeMonoid<EnvBinding>
   redirect: Optional<RedirectSpec>
   capture: Optional<CaptureSpec>
 }
-
-type GrepAlternation { pattern: String }
 
 type ValueSource
   = CmdSubstLines { run: Run }
@@ -38,16 +35,16 @@ type ValueSource
 
 type Predicate
   = ExitZero { run: Run }
-  | LogMatches { source: String, pattern: GrepAlternation }
+  | LogMatches { source: String, pattern: String }
   | StrEq { lhs: String, rhs: String }
   | Not { inner: Predicate }
   | And { lhs: Predicate, rhs: Predicate }
   | Or { lhs: Predicate, rhs: Predicate }
 
-type FailureClassifier {
-  infra: Predicate
-  escalations: FreeMonoid<EnvBinding>
-  on_infra_warning: EmitDirective
+type EscalationLevel {
+  detect: Predicate
+  warning: EmitDirective
+  env: FreeMonoid<EnvBinding>
 }
 
 type FailurePolicy = FailFast | Continue
@@ -58,9 +55,8 @@ type Step
   | For { binder: Symbol, over: ValueSource, body: Pipeline }
   | While { cond: Predicate, body: Pipeline, bound: DescentEvidence }
   | Retry {
-      attempts: Int,
       body: Pipeline,
-      classify: FailureClassifier,
+      escalations: FreeMonoid<EscalationLevel>,
       on_exhausted: Pipeline
     }
 
@@ -69,16 +65,9 @@ type Pipeline {
   on_failure: FailurePolicy
 }
 
-fn run_command_spelling(run: Run) -> String {
-  match run.command {
-    OpaqueArgv { spelling: s } => s
-    NamedCommand { name: n } => n
-  }
-}
-
-fn classifier_log_pattern(classifier: FailureClassifier) -> Optional<String> {
-  match classifier.infra {
-    LogMatches { source: _, pattern: p } => Present { value: p.pattern }
+fn predicate_log_pattern(pred: Predicate) -> Optional<String> {
+  match pred {
+    LogMatches { source: _, pattern: p } => Present { value: p }
     ExitZero { run: _ } => Absent
     StrEq { lhs: _, rhs: _ } => Absent
     Not { inner: _ } => Absent
@@ -96,10 +85,24 @@ fn pipeline_first_step(p: Pipeline) -> Optional<Step> {
 
 fn step_command_spelling(step: Step) -> Optional<String> {
   match step {
-    Do { run: r } => Present { value: run_command_spelling(r) }
+    Do { run: r } => Present { value: r.command }
     If { cond: _, then_: _, else_: _ } => Absent
     For { binder: _, over: _, body: _ } => Absent
     While { cond: _, body: _, bound: _ } => Absent
-    Retry { attempts: _, body: _, classify: _, on_exhausted: _ } => Absent
+    Retry { body: _, escalations: _, on_exhausted: _ } => Absent
+  }
+}
+
+fn escalations_head(levels: FreeMonoid<EscalationLevel>) -> Optional<EscalationLevel> {
+  match levels {
+    Cons { head: h, tail: _ } => Present { value: h }
+    Empty => Absent
+  }
+}
+
+fn escalations_rest(levels: FreeMonoid<EscalationLevel>) -> FreeMonoid<EscalationLevel> {
+  match levels {
+    Cons { head: _, tail: t } => t
+    Empty => []
   }
 }

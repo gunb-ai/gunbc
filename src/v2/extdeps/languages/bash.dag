@@ -1,6 +1,6 @@
 module v2.extdeps.languages.bash
 
-import v2.std.algebra { Empty, fold_list, list_snoc_item }
+import v2.std.algebra { Empty, FreeMonoid, fold_list, list_snoc_item }
 import v2.std.grammar {
   FormalGrammarSymbol,
   FormalProduction,
@@ -31,6 +31,7 @@ import v2.std.compilers.target_model {
 }
 import v2.std.collection { List, Map, empty_map, map_insert }
 import v2.std.diagnostic { EmitDirective }
+import v2.std.orchestration { EnvBinding, EnvSet, EnvUnset }
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
 import v2.std.node {
   Atom,
