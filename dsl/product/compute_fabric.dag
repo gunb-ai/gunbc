@@ -793,20 +793,18 @@ fn performance_isolation_satisfies(supply: PerformanceIsolation, demand: Perform
 }
 
 fn cpuset_range_string(r: CpuSetRange) -> String {
-  let first_str = to_string(r.first_thread)
-  let last_str = to_string(r.last_thread)
-  "\{first_str\}-\{last_str\}"
+  concat(to_string(r.first_thread), concat("-", to_string(r.last_thread)))
 }
 
 fn shard_dropin_content(shard: ShardCpusetPartition) -> String {
   let cpuset_str = cpuset_range_string(r: shard.cpuset)
   let mem_str = to_string(byte_size_count(b: shard.memory_max))
-  "[Service]\nAllowedCPUs=\{cpuset_str\}\nMemoryMax=\{mem_str\}\n"
+  "[Service]\nAllowedCPUs={cpuset_str}\nMemoryMax={mem_str}\n"
 }
 
 fn shard_dropin_path(host: HostIdentity, shard_index: Int) -> String {
   let idx_str = to_string(shard_index)
-  "/etc/systemd/system/actions-runner@\{host\}-\{idx_str\}.service.d/30-exclusive-cpuset.conf"
+  concat("/etc/systemd/system/actions-runner@", concat(host, concat("-", concat(idx_str, ".service.d/30-exclusive-cpuset.conf"))))
 }
 
 fn shard_dropin(host: HostIdentity, shard: ShardCpusetPartition) -> SystemdShardDropIn {
