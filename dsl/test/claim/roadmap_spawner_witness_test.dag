@@ -19,7 +19,7 @@ fn sized_derivable(id: String, prs: List<Int>, title: String) -> RoadmapNode {
     node: nid(s: id),
     line: DerivableLine { prs: prs, title: title, description: "" },
     carriers: [],
-    sizing: Sized { intricacy: IntricacyHigh, volume: VolumeMedium, repo: "gunbc", acceptance: PrsMerged { prs: prs } },
+    sizing: Sized { intricacy: IntricacyHigh, volume: VolumeMedium, repo: "gunbc", acceptance: PrsMerged },
   }
 }
 
