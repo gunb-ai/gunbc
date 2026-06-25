@@ -14,7 +14,6 @@ import product.compute_fabric {
   RefusedOverEnvelope,
   RefusedUndeclared,
   input_admitted,
-  input_bound,
   gunbc_ci_corpus_envelope,
 }
 import std.measure { Measure }

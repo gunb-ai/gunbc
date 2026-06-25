@@ -1324,10 +1324,6 @@ fn witness_execution_receipt_digest_differs_by_demand(
   execution_receipt_subject_digest(work_id: work_id, demand: left) != execution_receipt_subject_digest(work_id: work_id, demand: right)
 }
 
-fn input_bound(axis: InputSizeAxis, max: Nat) -> InputBound {
-  InputBound { axis: axis, max: Measure { count: max } }
-}
-
 data gunbc_ci_corpus_envelope: InputEnvelope = BoundedInput {
   bounds: [
     InputBound {
