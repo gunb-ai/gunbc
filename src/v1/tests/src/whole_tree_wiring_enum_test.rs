@@ -21,7 +21,7 @@
 
 use std::rc::Rc;
 
-use v1_compiler::cli_run::{self, whole_tree_resolved_ctx, WholeTreeCtx};
+use v1_compiler::cli_run::{self, whole_tree_resolved_ctx, ResolveTypecheckGate, WholeTreeCtx};
 use v1_compiler::coproduct_reflection::eval_fn_arrow_decl_facts_live;
 use v1_compiler::v1_compiler_compile::{compile_to_resolved, SourceFile};
 use v1_compiler::v1_interpreter::{ExecutionMode, InterpContext, Value};
@@ -89,8 +89,14 @@ fn whole_tree_enumeration_sees_fns_outside_a_per_entry_closure() {
         ctx,
         modules_resolved,
         modules_excluded,
-    } = whole_tree_resolved_ctx(&[fixture_root()], &[], ExecutionMode::Wet)
-        .expect("whole-tree resolve of the self-contained fixture");
+        resolve_diagnostics: _,
+    } = whole_tree_resolved_ctx(
+        &[fixture_root()],
+        &[],
+        ExecutionMode::Wet,
+        ResolveTypecheckGate::Strict,
+    )
+    .expect("whole-tree resolve of the self-contained fixture");
     assert_eq!(modules_excluded, 0, "fixture excludes nothing");
     assert_eq!(
         modules_resolved, 3,

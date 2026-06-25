@@ -1,0 +1,7 @@
+module wtd.broken
+
+import wtd.clean { Flag }
+
+fn wtd_broken_call(p: Flag) -> Flag {
+  wtd_nonexistent_function(p)
+}

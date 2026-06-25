@@ -169,6 +169,8 @@ mod value_carrier_swap_test;
 #[cfg(test)]
 mod wet_hermetic_equivalence_test;
 #[cfg(test)]
+mod whole_tree_diagnostics_collector_test;
+#[cfg(test)]
 mod whole_tree_wiring_enum_test;
 #[cfg(test)]
 mod width_nat_type_arg_test;

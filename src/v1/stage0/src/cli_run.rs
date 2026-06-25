@@ -36,12 +36,22 @@ use crate::resolved_graph_cache::{
 pub enum ResolveTypecheckGate {
     Strict,
     DiscoveryCorpusAdvisory,
+    /// Collect-and-continue: no diagnostic is blocking (the resolve never
+    /// short-circuits), and the full diagnostic set is returned in
+    /// `WholeTreeCtx.resolve_diagnostics` rather than discarded. Consumer gates
+    /// use this to count/classify the whole-tree typecheck diagnostics that a
+    /// closure-scoped resolve never surfaces. The returned vec is empty for all
+    /// other gate variants.
+    DiagnosticsCollector,
 }
 
 fn is_resolve_typecheck_blocking(d: Rc<CompilerDiagnostic>, gate: ResolveTypecheckGate) -> bool {
     match gate {
         ResolveTypecheckGate::Strict => is_interpreter_blocking_diagnostic(d),
         ResolveTypecheckGate::DiscoveryCorpusAdvisory => is_discovery_corpus_blocking_diagnostic(d),
+        // Collect-and-continue: nothing blocks, so the resolve runs to completion
+        // and every diagnostic is returned to the consumer for counting/classification.
+        ResolveTypecheckGate::DiagnosticsCollector => false,
     }
 }
 
@@ -388,7 +398,9 @@ fn resolve_entry_graph_with_index(
     String,
 > {
     let sources = load_sources_for_entry_with_index(index, entry_file)?;
-    resolved_graph_from_sources(sources, ResolveTypecheckGate::Strict)
+    let (graph, source_indices, _) =
+        resolved_graph_from_sources(sources, ResolveTypecheckGate::Strict)?;
+    Ok((graph, source_indices))
 }
 
 fn resolve_entry_with_parse_cache(
@@ -630,6 +642,7 @@ fn resolved_graph_from_sources(
     (
         Rc<v1_compiler_compile::ResolvedGraph>,
         Rc<HashMap<String, Rc<NewlineIndex>>>,
+        Vec<Rc<ErrorNode>>,
     ),
     String,
 > {
@@ -637,6 +650,11 @@ fn resolved_graph_from_sources(
         ResolveTypecheckGate::Strict => v1_compiler_compile::compile_to_resolved(Rc::new(sources)),
         ResolveTypecheckGate::DiscoveryCorpusAdvisory => {
             v1_compiler_compile::compile_to_resolved_discovery_corpus_advisory(Rc::new(sources))
+        }
+        // Plain (un-downgraded) resolve so the full diagnostic set is produced;
+        // none are blocking (the gate is non-blocking above), so all are returned.
+        ResolveTypecheckGate::DiagnosticsCollector => {
+            v1_compiler_compile::compile_to_resolved(Rc::new(sources))
         }
     };
 
@@ -673,11 +691,17 @@ fn resolved_graph_from_sources(
         return Err(msgs.join("\n"));
     }
 
+    let resolve_diagnostics: Vec<Rc<ErrorNode>> =
+        if typecheck_gate == ResolveTypecheckGate::DiagnosticsCollector {
+            result.diagnostics.iter().cloned().collect()
+        } else {
+            Vec::new()
+        };
     let graph = result
         .graph
         .clone()
         .ok_or_else(|| "compilation produced no graph".to_string())?;
-    Ok((graph, result.source_indices.clone()))
+    Ok((graph, result.source_indices.clone(), resolve_diagnostics))
 }
 
 pub fn make_eval_context(
@@ -751,7 +775,7 @@ pub fn precompute_whole_tree_published_mock_keys(
     if all_sources.is_empty() {
         return Ok(std::collections::HashSet::new());
     }
-    let (graph, source_indices) =
+    let (graph, source_indices, _) =
         resolved_graph_from_sources(all_sources, ResolveTypecheckGate::Strict)?;
     let ctx = v1_interpreter::InterpContext::with_runtime_options(
         &graph,
@@ -765,7 +789,10 @@ pub fn precompute_whole_tree_published_mock_keys(
 }
 
 /// Build an interpreter context over the WHOLE source-root corpus (every `.dag`
-/// module under `source_roots`), resolved in one pass under the Strict gate — the
+/// module under `source_roots`), resolved in one pass under the caller-chosen
+/// `typecheck_gate` (Strict to fail-closed on the first blocking module, or
+/// DiagnosticsCollector to resolve every module and return the full diagnostic
+/// set in `resolve_diagnostics`) — the
 /// same whole-tree resolve `precompute_whole_tree_published_mock_keys` performs,
 /// but retaining the context so a `.dag` reflection accessor (e.g.
 /// `fn_arrow_decl_facts_live`) walks `ctx.modules == the whole tree` rather than a
@@ -785,12 +812,18 @@ pub struct WholeTreeCtx {
     pub ctx: v1_interpreter::InterpContext,
     pub modules_resolved: usize,
     pub modules_excluded: usize,
+    /// The whole-tree resolve diagnostics, populated only when the resolve ran
+    /// under `ResolveTypecheckGate::DiagnosticsCollector` (collect-and-continue);
+    /// empty for every other gate. A consumer gate counts/classifies these to
+    /// surface the orphan-module diagnostics a closure-scoped resolve never sees.
+    pub resolve_diagnostics: Vec<Rc<ErrorNode>>,
 }
 
 pub fn whole_tree_resolved_ctx(
     source_roots: &[String],
     exclude_substrings: &[String],
     execution_mode: v1_interpreter::ExecutionMode,
+    typecheck_gate: ResolveTypecheckGate,
 ) -> Result<WholeTreeCtx, String> {
     let index = build_module_index(source_roots);
     let total = index.len();
@@ -813,8 +846,8 @@ pub fn whole_tree_resolved_ctx(
         return Err("whole-tree corpus is empty (no .dag modules under source roots)".to_string());
     }
     let modules_excluded = total - all_sources.len();
-    let (graph, source_indices) =
-        resolved_graph_from_sources(all_sources, ResolveTypecheckGate::Strict)?;
+    let (graph, source_indices, resolve_diagnostics) =
+        resolved_graph_from_sources(all_sources, typecheck_gate)?;
     Ok(WholeTreeCtx {
         ctx: v1_interpreter::InterpContext::with_runtime_options(
             graph.as_ref(),
@@ -825,6 +858,7 @@ pub fn whole_tree_resolved_ctx(
         ),
         modules_resolved: total - modules_excluded,
         modules_excluded,
+        resolve_diagnostics,
     })
 }
 
@@ -1610,7 +1644,7 @@ pub fn discover_owned_data_decls(
         let mut sources: Vec<Rc<v1_compiler_compile::SourceFile>> =
             group.sources.into_values().collect();
         sources.sort_by(|a, b| a.path.cmp(&b.path));
-        let (graph, source_indices) =
+        let (graph, source_indices, _) =
             resolved_graph_from_sources(sources, ResolveTypecheckGate::DiscoveryCorpusAdvisory)?;
         let si: HashMap<String, Rc<NewlineIndex>> = source_indices
             .iter()
@@ -1993,7 +2027,11 @@ pub fn generate_witness_timing_histogram(summary: &DiscoverySummary) -> String {
 
     // performance_receipts and witness_outcomes are both generated in the same discovery pass
     // with matching cardinality and order, so positional matching is stable across discovery runs.
-    for (perf, outcome) in summary.performance_receipts.iter().zip(summary.witness_outcomes.iter()) {
+    for (perf, outcome) in summary
+        .performance_receipts
+        .iter()
+        .zip(summary.witness_outcomes.iter())
+    {
         let resolve_nanos = match entry_resolve_map.get(&outcome.entry).copied() {
             Some(nanos) => nanos,
             None => {
@@ -2015,19 +2053,31 @@ pub fn generate_witness_timing_histogram(summary: &DiscoverySummary) -> String {
     let eval_percentiles = compute_percentiles(eval_times);
 
     let mut output = String::new();
-    output.push_str("╔════════════════════════════════════════════════════════════════════════════╗\n");
-    output.push_str("║                    WITNESS TIMING HISTOGRAM                                 ║\n");
-    output.push_str("║                Per-Witness Resolve+Eval Percentiles                         ║\n");
-    output.push_str("╚════════════════════════════════════════════════════════════════════════════╝\n\n");
+    output.push_str(
+        "╔════════════════════════════════════════════════════════════════════════════╗\n",
+    );
+    output.push_str(
+        "║                    WITNESS TIMING HISTOGRAM                                 ║\n",
+    );
+    output.push_str(
+        "║                Per-Witness Resolve+Eval Percentiles                         ║\n",
+    );
+    output.push_str(
+        "╚════════════════════════════════════════════════════════════════════════════╝\n\n",
+    );
 
     output.push_str(&format!(
         "Total witnesses: {} (included in histogram); {} skipped (no entry-resolve timing)\n",
         included_witnesses, skipped_missing_entry_resolve
     ));
-    output.push_str("Note: Resolve times are per-entry-amortized (all witnesses in an entry share the\n");
+    output.push_str(
+        "Note: Resolve times are per-entry-amortized (all witnesses in an entry share the\n",
+    );
     output.push_str("entry's resolve cost). Eval times are per-witness measurements.\n\n");
 
-    output.push_str("┌─ TOTAL TIME (Resolve + Eval) ───────────────────────────────────────────────┐\n");
+    output.push_str(
+        "┌─ TOTAL TIME (Resolve + Eval) ───────────────────────────────────────────────┐\n",
+    );
     output.push_str(&format!(
         "│ p50: {:>12} | p90: {:>12} | p95: {:>12} | p99: {:>12} | max: {:>12} │\n",
         format_nanos(total_percentiles.p50),
@@ -2036,9 +2086,13 @@ pub fn generate_witness_timing_histogram(summary: &DiscoverySummary) -> String {
         format_nanos(total_percentiles.p99),
         format_nanos(total_percentiles.p100),
     ));
-    output.push_str("└─────────────────────────────────────────────────────────────────────────────┘\n\n");
+    output.push_str(
+        "└─────────────────────────────────────────────────────────────────────────────┘\n\n",
+    );
 
-    output.push_str("┌─ RESOLVE TIME ──────────────────────────────────────────────────────────────┐\n");
+    output.push_str(
+        "┌─ RESOLVE TIME ──────────────────────────────────────────────────────────────┐\n",
+    );
     output.push_str(&format!(
         "│ p50: {:>12} | p90: {:>12} | p95: {:>12} | p99: {:>12} | max: {:>12} │\n",
         format_nanos(resolve_percentiles.p50),
@@ -2047,9 +2101,13 @@ pub fn generate_witness_timing_histogram(summary: &DiscoverySummary) -> String {
         format_nanos(resolve_percentiles.p99),
         format_nanos(resolve_percentiles.p100),
     ));
-    output.push_str("└─────────────────────────────────────────────────────────────────────────────┘\n\n");
+    output.push_str(
+        "└─────────────────────────────────────────────────────────────────────────────┘\n\n",
+    );
 
-    output.push_str("┌─ EVAL TIME ─────────────────────────────────────────────────────────────────┐\n");
+    output.push_str(
+        "┌─ EVAL TIME ─────────────────────────────────────────────────────────────────┐\n",
+    );
     output.push_str(&format!(
         "│ p50: {:>12} | p90: {:>12} | p95: {:>12} | p99: {:>12} | max: {:>12} │\n",
         format_nanos(eval_percentiles.p50),
@@ -2058,7 +2116,9 @@ pub fn generate_witness_timing_histogram(summary: &DiscoverySummary) -> String {
         format_nanos(eval_percentiles.p99),
         format_nanos(eval_percentiles.p100),
     ));
-    output.push_str("└─────────────────────────────────────────────────────────────────────────────┘\n");
+    output.push_str(
+        "└─────────────────────────────────────────────────────────────────────────────┘\n",
+    );
 
     output
 }

@@ -33,7 +33,7 @@
 
 use std::process::ExitCode;
 
-use v1_compiler::cli_run::{whole_tree_resolved_ctx, WholeTreeCtx};
+use v1_compiler::cli_run::{whole_tree_resolved_ctx, ResolveTypecheckGate, WholeTreeCtx};
 use v1_compiler::v1_interpreter::{self, ExecutionMode, Value};
 
 const DEAD_WIRES_FN: &str = "wiring_liveness_corpus_dead_wires";
@@ -84,12 +84,17 @@ fn run() -> Result<ExitCode, ExitCode> {
         ctx,
         modules_resolved,
         modules_excluded,
-    } = whole_tree_resolved_ctx(&source_roots, &exclude_subpaths, ExecutionMode::Wet).map_err(
-        |e| {
-            eprintln!("wiring_liveness_whole_tree: whole-tree resolve failed:\n{e}");
-            ExitCode::from(2)
-        },
-    )?;
+        resolve_diagnostics: _,
+    } = whole_tree_resolved_ctx(
+        &source_roots,
+        &exclude_subpaths,
+        ExecutionMode::Wet,
+        ResolveTypecheckGate::Strict,
+    )
+    .map_err(|e| {
+        eprintln!("wiring_liveness_whole_tree: whole-tree resolve failed:\n{e}");
+        ExitCode::from(2)
+    })?;
     eprintln!(
         "wiring_liveness_whole_tree: resolved {} module(s) over {} source root(s) \
          ({} excluded by subpath: {:?})",

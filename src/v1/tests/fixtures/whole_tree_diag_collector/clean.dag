@@ -1,0 +1,7 @@
+module wtd.clean
+
+type Flag = On | Off
+
+fn wtd_clean_id(p: Flag) -> Flag {
+  p
+}
