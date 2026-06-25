@@ -78,23 +78,6 @@ type MarkupMedium {
   text_escape: EscapeMode
 }
 
-data canonical_markup_bracket: MarkupBracket = MarkupBracket {
-  tag_open: "<",
-  end_tag_open: "</",
-  tag_close: ">",
-  attr_sep: " ",
-  attr_assign: "=",
-  attr_quote: "\"",
-}
-
-fn html_markup_medium() -> MarkupMedium {
-  MarkupMedium {
-    tag_overrides: [],
-    bracket: canonical_markup_bracket,
-    text_escape: EscapeHtml,
-  }
-}
-
 fn escape_text_for(mode: EscapeMode, s: String) -> String {
   match mode {
     EscapeHtml => escape_text(s: s)
@@ -146,10 +129,6 @@ fn serialize_fragment_with(frag: Fragment, medium: MarkupMedium) -> String {
       }
     }
   }
-}
-
-fn serialize_fragment(frag: Fragment) -> String {
-  serialize_fragment_with(frag: frag, medium: html_markup_medium())
 }
 
 type MarkupAttr {
@@ -302,10 +281,6 @@ fn markup_node_to_fragment(node: MarkupNode) -> Fragment {
   }
 }
 
-fn serialize_markup_node(node: MarkupNode) -> String {
-  serialize_fragment(frag: markup_node_to_fragment(node: node))
-}
-
 fn serialize_markup_node_with(node: MarkupNode, medium: MarkupMedium) -> String {
   serialize_fragment_with(frag: markup_node_to_fragment(node: node), medium: medium)
 }
@@ -313,12 +288,3 @@ fn serialize_markup_node_with(node: MarkupNode, medium: MarkupMedium) -> String 
 type MarkupSerializeResult
   = Serialized { html: String }
   | Rejected { reason: String }
-
-fn try_serialize_markup_node(node: MarkupNode) -> MarkupSerializeResult {
-  match find_first_rejected_url(node: node) {
-    Present { value: _ } =>
-      Rejected { reason: "URL scheme not allowlisted for href/src" }
-    Absent =>
-      Serialized { html: serialize_markup_node(node: node) }
-  }
-}
