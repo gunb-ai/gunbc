@@ -24,7 +24,7 @@ fn idea_machine_body() -> List<MarkdownBlock> {
     h2(text: "2. Language axis — footholds, breadth partial"),
     ul(items: [
       li(text: "15+ targets at wave-1 (`src/v2/extdeps/languages/`: rust, python, go, dag, typescript, cpp, lean, wasm, java, kotlin, swift, llvm_ir, machine_code, english, …)."),
-      li(text: "**English is a proven emit target** — `english.dag` (article-led SVO + copula), and `src/v2/compiler/manual/english_emit_add_test.dag` round-trips emit(add)→tokenize→parse→identity."),
+      li(text: "**English is a proven emit target** — `english.dag` (article-led SVO + copula), and `src/v2/test/claim/manual/english_emit_add_test.dag` round-trips emit(add)→tokenize→parse→identity."),
       li(text: "Partial / fail-open: English **ingest** uses a catch-all `english_token_word` → fail-open on out-of-subset prose (also a **§0 lock-down item**); only emit is proven."),
     ]),
     h2(text: "3. Remaining work (dependency-ordered → ROADMAP §6 *idea → idea compiler* substeps)"),
