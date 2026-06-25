@@ -131,5 +131,9 @@ data gitignore_authority: List<IgnoreGroup> = [
   IgnoreGroup {
     producer: Derivable { kind: ClaimMapOutput },
     artifacts: [ClaimMapDir, ScratchProbeFile]
+  },
+  IgnoreGroup {
+    producer: Derivable { kind: SupersededPlanningDir },
+    artifacts: [GunbcPlanningDir, ScriptsFixturesDir]
   }
 ]

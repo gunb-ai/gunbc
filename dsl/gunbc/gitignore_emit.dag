@@ -5,7 +5,7 @@ import gunbc.gitignore_model {
   CargoArtifacts, CargoCacheLocal, CodegenSymlink, CoverageReport,
   GeneratorStamp, WorkflowRuntime, TestgenOutput, RegenTempDir,
   ClaudeCodeSession, ClaimMapOutput, OpenClawArtifact, GithubCLICache,
-  AuthSessionTranscript, PythonLocalDevScript,
+  AuthSessionTranscript, PythonLocalDevScript, SupersededPlanningDir,
   JetBrainsIDE, VSCodeIDE, VimEditor, EmacsEditor, GenericEditorBackup,
   MacOSFinder, WindowsExplorer, Tmux, NodeJS, SecretsConvention, CPythonInterpreter,
   Derivable, Cited,
@@ -22,7 +22,8 @@ import gunbc.gitignore_model {
   OpenClawSoulFile, OpenClawToolsFile, OpenClawUserFile, OpenClawWorkboardFile,
   OpenClawScriptsDir, V2InspectFile, V2InspectErrorsFile, GithubCLICacheDir,
   PythonLocalDevScriptFile, PythonBytecodeCacheDir, PythonCompiledBytecode,
-  ClaimMapDir, ScratchProbeFile
+  ClaimMapDir, ScratchProbeFile,
+  GunbcPlanningDir, ScriptsFixturesDir
 }
 import gunbc.generated_artifact {
   GeneratedArtifact, generated_artifact_registry, artifact_is_committed, artifact_path
@@ -85,6 +86,8 @@ fn artifact_pattern(a: IgnoreArtifact) -> String {
     PythonCompiledBytecode => "*.pyc"
     ClaimMapDir => ".claim-map/"
     ScratchProbeFile => "src/v2/compiler/manual/sg2_scratch_probe.dag"
+    GunbcPlanningDir => "/gunbc-planning/"
+    ScriptsFixturesDir => "/scripts/fixtures/"
   }
 }
 
@@ -104,6 +107,7 @@ fn producer_display(p: Producer) -> String {
     Derivable { kind: GithubCLICache } => "GitHub CLI local cache (dashboard / gh API)"
     Derivable { kind: AuthSessionTranscript } => "Interactive auth/session transcripts"
     Derivable { kind: PythonLocalDevScript } => "Python local dev scripts"
+    Derivable { kind: SupersededPlanningDir } => "Superseded planning scratch directories (canonical home: docs/plans/ or DESIGN.md)"
     Cited { kind: JetBrainsIDE, upstream: u } => concat("JetBrains IDE project state [cited: ", concat(u, "]"))
     Cited { kind: VSCodeIDE, upstream: u } => concat("VS Code workspace state [cited: ", concat(u, "]"))
     Cited { kind: VimEditor, upstream: u } => concat("Vim editor state [cited: ", concat(u, "]"))
@@ -134,6 +138,7 @@ fn producer_rationale_line(p: Producer) -> String {
     Derivable { kind: GithubCLICache } => ""
     Derivable { kind: AuthSessionTranscript } => "# Should never be committed; may contain OAuth URLs or session state"
     Derivable { kind: PythonLocalDevScript } => "# Python is used only for local dev tooling; never committed to the .dag/.rs substrate"
+    Derivable { kind: SupersededPlanningDir } => "# Superseded by docs/plans/ (generated PlanArtifact) and DESIGN.md/ROADMAP.md as canonical authorities"
     Cited { kind: JetBrainsIDE, upstream: _ } => "# Per-developer configuration, not project state"
     Cited { kind: VSCodeIDE, upstream: _ } => "# Per-developer configuration, not project state"
     Cited { kind: VimEditor, upstream: _ } => "# Per-developer configuration, not project state"
