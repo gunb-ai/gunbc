@@ -52,7 +52,7 @@ fn derivable_wi(id: String, prs: List<Int>, title: String, description: String, 
     intricacy: intricacy,
     volume: volume,
     repo: repo,
-    acceptance: PrsMerged { prs: prs },
+    acceptance: PrsMerged,
   }
 }
 

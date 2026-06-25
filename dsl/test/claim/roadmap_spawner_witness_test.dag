@@ -21,7 +21,7 @@ fn sized_derivable(id: String, prs: List<Int>, title: String) -> RoadmapNode {
     intricacy: IntricacyHigh,
     volume: VolumeMedium,
     repo: "gunbc",
-    acceptance: PrsMerged { prs: prs },
+    acceptance: PrsMerged,
   }
 }
 
@@ -112,6 +112,13 @@ fn witness_json_satisfied_dep_in_ready() -> Bool {
     && !string_contains(s: json, pattern: "\"node_id\": \"parent-done-node\"")
 }
 
+fn witness_json_title_escaping() -> Bool {
+  let node = sized_derivable(id: "escape-test", prs: [1], title: "Title \"quoted\" and \\back")
+  let doc = fixture_doc(nodes: [node], edges: [])
+  let json = roadmap_spawn_request_json(doc: doc, merged: [], anchor_commit: "x")
+  string_contains(s: json, pattern: "Title \\\"quoted\\\" and \\\\back")
+}
+
 test fn roadmap_spawner_witnesses() -> Bool {
   witness_satisfied_dep_is_spawnable()
     && witness_unsatisfied_dep_not_spawnable()
@@ -120,5 +127,6 @@ test fn roadmap_spawner_witnesses() -> Bool {
     && witness_top_level_sized_node_spawnable()
     && witness_json_schema_field_present()
     && witness_json_satisfied_dep_in_ready()
+    && witness_json_title_escaping()
 }
 

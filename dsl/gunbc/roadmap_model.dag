@@ -16,7 +16,7 @@ type Volume
   | VolumeLarge
 
 type Acceptance
-  = PrsMerged { prs: List<Int> }
+  = PrsMerged
   | ManualAcceptance
 
 type RoadmapNode {

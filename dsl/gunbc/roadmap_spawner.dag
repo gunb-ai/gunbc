@@ -77,8 +77,12 @@ fn next_spawnable(doc: RoadmapDocument, merged: List<Int>) -> List<RoadmapNode> 
   nodes |> filter(n => node_is_spawnable(n: n, nodes: nodes, edges: edges, merged: merged))
 }
 
+fn json_escape(s: String) -> String {
+  replace(replace(s, "\\", "\\\\"), "\"", "\\\"")
+}
+
 fn json_str(s: String) -> String {
-  concat("\"", concat(s, "\""))
+  concat("\"", concat(json_escape(s: s), "\""))
 }
 
 fn json_int_list(nums: List<Int>) -> String {
@@ -109,9 +113,13 @@ fn volume_str(v: Volume) -> String {
   }
 }
 
-fn acceptance_json(a: Acceptance) -> String {
+fn acceptance_json(a: Acceptance, line: RoadmapItem) -> String {
   match a {
-    PrsMerged { prs } => concat("{\"kind\": \"prs_merged\", \"prs\": ", concat(json_int_list(nums: prs), "}"))
+    PrsMerged => match line {
+      DerivableLine { prs, title: _, description: _ } =>
+        concat("{\"kind\": \"prs_merged\", \"prs\": ", concat(json_int_list(nums: prs), "}"))
+      _ => "{\"kind\": \"prs_merged\", \"prs\": []}"
+    }
     ManualAcceptance => "{\"kind\": \"manual\"}"
   }
 }
@@ -140,20 +148,16 @@ fn node_json(n: RoadmapNode, edges: List<RoadmapEdge>) -> String {
   }
   let plan_json = node_plan_doc_json(carriers: n.carriers)
   let intricacy_s = match n.intricacy {
-    null => "low"
     i => intricacy_str(i: i)
   }
   let volume_s = match n.volume {
-    null => "small"
     v => volume_str(v: v)
   }
   let repo_s = match n.repo {
-    null => ""
     r => r
   }
   let acceptance_s = match n.acceptance {
-    null => "{\"kind\": \"manual\"}"
-    a => acceptance_json(a: a)
+    a => acceptance_json(a: a, line: n.line)
   }
   let title = node_title(item: n.line)
   let f1 = concat("\"node_id\": ", concat(json_str(s: node_id_string(id: n.node)), concat(", \"title\": ", json_str(s: title))))
