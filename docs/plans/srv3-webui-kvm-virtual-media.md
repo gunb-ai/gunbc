@@ -116,10 +116,15 @@ browser standing between the model and the wire.
 
 ## 5. Witness (DESIGN §5 — green-by-execution)
 
-- **Model-level (lands first, no hardware):** the capability solver witness — already green 8/8 — pins
-  srv3 → `NbdProxyVirtualMediaInstall`, with discriminating REDs (a `CapabilityVirtualMedia`-true row
-  dispatches to `VirtualMediaInstall` instead; an update-only row → `FirmwareUpdateThenVirtualMedia`;
-  bare → `PxeHttpInstall`). This is the dispatch half and it is **done**.
+- **Model-level (lands first, no hardware):** the capability solver witness — green 8/8. srv3's
+  **cited** row carries only the read-only-probe-grounded capabilities (no `CapabilityNbdProxyVirtualMedia`
+  until the §6 dry-run confirms the surface), so srv3 **honestly solves to `PxeHttpInstall` today**
+  (`FirmwareUpdate` present but the catalog has no VM-capable firmware). The `NbdProxyVirtualMediaInstall`
+  dispatch arm is proven on a **grounded synthetic** row (`nbd_proxy_vm_capable_row_solves`), with the
+  discriminating REDs (a `CapabilityVirtualMedia`-true row → `VirtualMediaInstall`; an update-only row +
+  VM-capable catalog → `FirmwareUpdateThenVirtualMedia`; bare → `PxeHttpInstall`). Flipping srv3's row to
+  `CapabilityNbdProxyVirtualMedia` is deferred to the PR that lands the §6 dry-run confirmation receipt —
+  asserting it now would be a §5 fail-open (the witness would dispatch srv3 on an ungrounded fact).
 - **Protocol-level (seed, no hardware):** a loopback test — the seed client serves a tiny fixture
   "export" to a local NBD *client* (or a recorded `nbd.js` handshake fixture); assert the exact
   server-greeting bytes + a discriminating RED (a `NBD_CMD_WRITE` must get `EPERM`, not silent accept;
