@@ -2013,10 +2013,10 @@ pub fn generate_witness_timing_histogram(summary: &DiscoverySummary) -> String {
     let eval_percentiles = compute_percentiles(eval_times);
 
     let mut output = String::new();
-    output.push_str("╔════════════════════════════════════════════════════════════════════════════╗\n");
-    output.push_str("║                    WITNESS TIMING HISTOGRAM                                 ║\n");
-    output.push_str("║                Per-Witness Resolve+Eval Percentiles                         ║\n");
-    output.push_str("╚════════════════════════════════════════════════════════════════════════════╝\n\n");
+    output.push_str("╔═════════════════════════════════════════════════════════════════════════════╗\n");
+    output.push_str("║                    WITNESS TIMING HISTOGRAM                                  ║\n");
+    output.push_str("║                Per-Witness Resolve+Eval Percentiles                          ║\n");
+    output.push_str("╚═════════════════════════════════════════════════════════════════════════════╝\n\n");
 
     output.push_str(&format!(
         "Total witnesses: {} (included in histogram); {} skipped (no entry-resolve timing)\n",
