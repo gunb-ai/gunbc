@@ -324,6 +324,54 @@ mod compiler_tests {
     }
 
     #[test]
+    fn sole_constructor_violation_outside_module() {
+        let result = std::thread::Builder::new()
+            .stack_size(8 * 1024 * 1024)
+            .spawn(|| {
+                let module_a = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "module_a.dag".to_string(),
+                    content: "module module_a\ntype Sealed sole_constructor { x: String }\nfn make_sealed(v: String) -> Sealed { Sealed { x: v } }\n".to_string(),
+                });
+                let module_b = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "module_b.dag".to_string(),
+                    content: "module module_b\nimport module_a { Sealed }\nfn bad_ctor(v: String) -> Sealed { Sealed { x: v } }\n".to_string(),
+                });
+                let result = crate::v1_compiler_compile::compile_sources(
+                    std::rc::Rc::new(vec![module_a, module_b]),
+                    crate::v1_compiler_artifact::RenderTarget::Rust,
+                );
+                let sole_ctor_errors: Vec<_> = result.diagnostics.iter()
+                    .filter(|d| matches!(*d.diagnostic, crate::v1_std_core::CompilerDiagnostic::SoleConstructorViolation { .. }))
+                    .collect();
+                assert!(
+                    !sole_ctor_errors.is_empty(),
+                    "expected SoleConstructorViolation for cross-module construction, got diagnostics: {:?}",
+                    result.diagnostics
+                );
+                let in_module_b = sole_ctor_errors.iter().any(|e| e.module_name == "module_b");
+                assert!(
+                    in_module_b,
+                    "SoleConstructorViolation should be reported in module_b, got: {:?}",
+                    sole_ctor_errors
+                );
+                let all_errors_in_a: Vec<_> = result.diagnostics.iter()
+                    .filter(|d| {
+                        d.module_name == "module_a" &&
+                        matches!(*d.diagnostic, crate::v1_std_core::CompilerDiagnostic::SoleConstructorViolation { .. })
+                    })
+                    .collect();
+                assert!(
+                    all_errors_in_a.is_empty(),
+                    "module_a's own construction should be allowed, got violations: {:?}",
+                    all_errors_in_a
+                );
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result.expect("sole_constructor_violation_outside_module test panicked");
+    }
+
+    #[test]
     fn self_parse_all_modules() {
         let result = std::thread::Builder::new()
             .stack_size(64 * 1024 * 1024)
@@ -1350,9 +1398,7 @@ mod compiler_tests {
                 );
                 let t = Instant::now();
                 let emit_result = crate::v1_compiler_compile::emit_from_artifact_plan(
-                    std::rc::Rc::new(crate::v1_compiler_compile::EmittableGraph {
-                        graph: typed.clone(),
-                    }),
+                    crate::v1_compiler_compile::emittable_graph_from_graph(typed.clone()),
                     artifact_plan,
                 );
                 let emit_elapsed = t.elapsed();
