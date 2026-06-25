@@ -71,6 +71,7 @@ import v1.compiler.compiler_tests_rust { compiler_tests_source }
 import v1.compiler.coercion { coerce_primitive_type, is_copy, lookup_checkpoint }
 
 import std.types { is_container_type, is_kernel_type }
+import std.serialization { CoproductWireContract, VariantEncoding, VariantNaming }
 import v1.compiler.infer_env { TypeEnv, TypeBinding, authored_name, lookup_type_by_name, lookup_type_for }
 import v1.compiler.infer_types {
   resolved_type, normalize_access_type_node, for_each_element_type_node,
@@ -419,8 +420,38 @@ fn is_parametric_opaque_type_base(type_name: String, def_mod_filename: String, t
   }
 }
 
+fn is_value_variant_type_arg(generic_param_names: List<String>, variant_to_enum: Map<String, String>, name: String) -> Bool {
+  if generic_param_names |> any(g => g == name) {
+    false
+  } else {
+    map_contains_key(variant_to_enum, name)
+  }
+}
+
+fn type_leaf_name_for_collapse(n: Node, source_indices: Map<String, NewlineIndex>) -> String {
+  let a = authored_name_at(source_indices: source_indices, node: n)
+  if a == "" { n.name } else { a }
+}
+
+fn rust_type_arg_renders_as_unit(n: Node, generic_param_names: List<String>, variant_to_enum: Map<String, String>, source_indices: Map<String, NewlineIndex>) -> Bool {
+  is_width_nat_type_literal(n: n) || is_value_variant_type_arg(generic_param_names: generic_param_names, variant_to_enum: variant_to_enum, name: type_leaf_name_for_collapse(n: n, source_indices: source_indices))
+}
+
+fn type_node_has_value_variant_arg(n: Node, generic_param_names: List<String>, variant_to_enum: Map<String, String>, source_indices: Map<String, NewlineIndex>) -> Bool {
+  if is_value_variant_type_arg(generic_param_names: generic_param_names, variant_to_enum: variant_to_enum, name: type_leaf_name_for_collapse(n: n, source_indices: source_indices)) {
+    true
+  } else if n.children |> any(c => type_node_has_value_variant_arg(n: c, generic_param_names: generic_param_names, variant_to_enum: variant_to_enum, source_indices: source_indices)) {
+    true
+  } else {
+    match find_property(props: n.properties, prop_name: "__applied_type_args", source_indices: source_indices) {
+      Present { value: applied } => applied.children |> any(c => type_node_has_value_variant_arg(n: c, generic_param_names: generic_param_names, variant_to_enum: variant_to_enum, source_indices: source_indices))
+      Absent => false
+    }
+  }
+}
+
 fn render_rust_phantom_opaque_applied_type_arg(n: Node, generic_param_names: List<String>, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>, scope: InferScope, imports: List<Node>, registry: Map<String, ItemInfo>, module_name: String, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, module_index: ModuleIndex, variant_to_enum: Map<String, String>) -> String {
-  if is_width_nat_type_literal(n: n) {
+  if rust_type_arg_renders_as_unit(n: n, generic_param_names: generic_param_names, variant_to_enum: variant_to_enum, source_indices: source_indices) {
     "()"
   } else {
     render_rust_alias_rhs_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, scope: scope, imports: imports, registry: registry, module_name: module_name, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index, variant_to_enum: variant_to_enum)
@@ -428,7 +459,7 @@ fn render_rust_phantom_opaque_applied_type_arg(n: Node, generic_param_names: Lis
 }
 
 fn render_rust_phantom_opaque_applied_decl_arg(n: Node, generic_param_names: List<String>, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
-  if is_width_nat_type_literal(n: n) {
+  if rust_type_arg_renders_as_unit(n: n, generic_param_names: generic_param_names, variant_to_enum: variant_to_enum, source_indices: source_indices) {
     "()"
   } else {
     render_rust_decl_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
@@ -436,9 +467,13 @@ fn render_rust_phantom_opaque_applied_decl_arg(n: Node, generic_param_names: Lis
 }
 
 fn render_rust_applied_type_arg(n: Node, generic_param_names: List<String>, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
-  match n.inferred {
-    Present { value: TypeVariable { id: tv } } => tv
-    _ => render_rust_decl_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
+  if rust_type_arg_renders_as_unit(n: n, generic_param_names: generic_param_names, variant_to_enum: variant_to_enum, source_indices: source_indices) {
+    "()"
+  } else {
+    match n.inferred {
+      Present { value: TypeVariable { id: tv } } => tv
+      _ => render_rust_decl_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
+    }
   }
 }
 
@@ -499,7 +534,7 @@ fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_type
       } else if n.connective == NoConnective && n.children |> count == 0 && applied_prop == none && name == "String" && corpus_repr_is_faithful(corpus_repr: corpus_repr) {
         rust_carrier_optional_wrap(n: n, rendered: render_rust_text_carrier(shared_types: shared_types))
       } else if n.connective == NoConnective && n.children |> count == 0 && applied_prop == none && set_contains(shared_types, name) {
-        let rendered = rust_render_type_leaf_name(name: name, variant_to_enum: variant_to_enum, env: env)
+        let rendered = rust_render_type_leaf_name(name: name, variant_to_enum: variant_to_enum)
         render_rust_shared_type_if_needed(type_name: name, rendered: rendered, shared_types: shared_types)
       } else if n.connective == NoConnective && n.children |> count > 0 {
         if !is_container_type(name: name) && rust_fn_sig_peel_closed_alias(env: env, n: n) {
@@ -510,6 +545,8 @@ fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_type
         let args = n.children |> map(arg =>
           if peel {
             render_rust_phantom_opaque_applied_decl_arg(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
+          } else if rust_type_arg_renders_as_unit(n: arg, generic_param_names: generic_param_names, variant_to_enum: variant_to_enum, source_indices: source_indices) {
+            "()"
           } else {
             render_rust_decl_type(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
           }
@@ -551,6 +588,9 @@ fn rust_carrier_optional_wrap(n: Node, rendered: String) -> String {
 
 fn render_rust_fn_sig_type(n: Node, generic_param_names: List<String>, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
   if is_host_text_carrier_type(n: n, source_indices: source_indices, corpus_repr: corpus_repr) { return rust_carrier_optional_wrap(n: n, rendered: "String") }
+  if type_node_has_value_variant_arg(n: n, generic_param_names: generic_param_names, variant_to_enum: variant_to_enum, source_indices: source_indices) {
+    return render_rust_decl_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
+  }
   let name = authored_name_at(source_indices: source_indices, node: n)
   if n.connective == NoConnective && n.children |> count == 0 && name == "String" && corpus_repr_is_faithful(corpus_repr: corpus_repr) {
     rust_carrier_optional_wrap(n: n, rendered: render_rust_text_carrier(shared_types: shared_types))
@@ -603,7 +643,7 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
       match rust_opaque_kernel_alias_carrier(name: name) {
         Present { value: carrier } => carrier
         Absent => {
-          let rendered = rust_render_type_leaf_name(name: name, variant_to_enum: variant_to_enum, env: scope.type_env)
+          let rendered = rust_render_type_leaf_name(name: name, variant_to_enum: variant_to_enum)
           render_rust_shared_type_if_needed(type_name: name, rendered: rendered, shared_types: shared_types)
         }
       }
@@ -1371,9 +1411,9 @@ fn rust_qualify_type_leaf_name(name: String, variant_to_enum: Map<String, String
   }
 }
 
-fn rust_render_type_leaf_name(name: String, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
-  if is_phantom_unit_variant_type_arg(env: env, variant_name: name) {
-    name
+fn rust_render_type_leaf_name(name: String, variant_to_enum: Map<String, String>) -> String {
+  if is_value_variant_type_arg(generic_param_names: [], variant_to_enum: variant_to_enum, name: name) {
+    "()"
   } else {
     match rust_opaque_kernel_alias_carrier(name: name) {
       Present { value: carrier } => carrier
@@ -3283,7 +3323,11 @@ fn emit_struct_field_from_child(struct_name: String, child: Node, generic_param_
   let rt_child = resolved_type(n: child)
   let authored_child_type = field_node_type_expr(n: child)
   let ty = if generic_param_names |> count > 0 {
-    render_node_type(n: rt_child, target: Rust, shared_types: shared_types, source_indices: env.source_indices)
+    if type_node_has_value_variant_arg(n: rt_child, generic_param_names: generic_param_names, variant_to_enum: emit_info.variant_to_enum, source_indices: env.source_indices) {
+      render_rust_decl_type(n: rt_child, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: env.source_indices, variant_to_enum: emit_info.variant_to_enum, env: env)
+    } else {
+      render_node_type(n: rt_child, target: Rust, shared_types: shared_types, source_indices: env.source_indices)
+    }
   } else if find_property(props: child.properties, prop_name: "__applied_type_args", source_indices: env.source_indices) != none {
     render_rust_type_with_applied_binding(n: child, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: env.source_indices)
   } else if find_property(props: authored_child_type.properties, prop_name: "__applied_type_args", source_indices: env.source_indices) != none {

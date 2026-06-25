@@ -103,6 +103,8 @@ mod measure_grounded_deref_test;
 #[cfg(test)]
 mod measure_periphery_emit_test;
 #[cfg(test)]
+mod measure_value_arg_unit_collapse_test;
+#[cfg(test)]
 mod module_authority_resolution_test;
 #[cfg(test)]
 mod money_carrier_cost_witness_test;
