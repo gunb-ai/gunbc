@@ -815,6 +815,35 @@ pub fn eval_fn_arrow_decl_facts_live(
     Ok(crate::v1_interpreter::list_value(rows))
 }
 
+/// Raw-AST walk: true iff `param_name` appears as the authored name of any ExprVar or
+/// ExprCall node anywhere in `body`'s subtree. Used as a fallback when the strict skeleton
+/// check (which requires `binding_kind = Some(LocalValueBinding)`) misses a genuine use
+/// due to unresolved type inference in whole-tree context (binding_kind = None).
+fn ast_body_mentions_name(
+    node: &Rc<Node>,
+    param_name: &str,
+    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    let name = node_authored_name(node, si);
+    match node.expr_data.as_ref() {
+        ExprData::ExprVar { .. } | ExprData::ExprCall { .. } if name == param_name => {
+            return true;
+        }
+        _ => {}
+    }
+    for child in node.children.iter() {
+        if ast_body_mentions_name(child, param_name, si) {
+            return true;
+        }
+    }
+    if let Some(inner) = node.body.as_ref() {
+        if ast_body_mentions_name(inner, param_name, si) {
+            return true;
+        }
+    }
+    false
+}
+
 /// Streaming wiring-liveness check over all fn/func items in the context.
 ///
 /// Equivalent to iterating `eval_fn_arrow_decl_facts_live` and running the
@@ -867,6 +896,15 @@ pub fn check_wiring_liveness_streaming(
             let output = marshal_fn_body_skeleton(ctx, body, &param_names, &si);
             for param_name in &param_names {
                 if !value_skeleton_contains_atom(ctx, &output, param_name) {
+                    // Fallback: in a whole-tree context some ExprVar nodes may have
+                    // binding_kind=None (type inference did not fully resolve them).
+                    // node_references_param requires Some(LocalValueBinding), so they
+                    // don't emit Atom leaves. Do a raw-AST walk; if the param name
+                    // appears as an authored ExprVar or ExprCall callee name anywhere
+                    // in the body tree, treat the wire as ambiguously live (don't report).
+                    if ast_body_mentions_name(body, param_name, &si) {
+                        continue;
+                    }
                     dead_count += 1;
                     report_dead(&qualified_name, param_name);
                 }
