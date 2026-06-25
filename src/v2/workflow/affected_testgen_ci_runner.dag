@@ -41,9 +41,9 @@ import v2.test.lens_common.infer_fixture {
   claim_inferred_tree
 }
 
-data affected_testgen_path_witness_validity: RepoPath = "src/v2/compiler/generated/witness_validity.dag"
-data affected_testgen_path_source_dependency: RepoPath = "src/v2/compiler/manual/connective_anchors.dag"
-data affected_testgen_path_unrelated: RepoPath = "src/v2/compiler/generated/refinement_preservation.dag"
+data affected_testgen_path_witness_validity: RepoPath = "src/v2/test/claim/generated/witness_validity.dag"
+data affected_testgen_path_source_dependency: RepoPath = "src/v2/test/claim/manual/connective_anchors.dag"
+data affected_testgen_path_unrelated: RepoPath = "src/v2/test/claim/generated/refinement_preservation.dag"
 data affected_testgen_generated_claim_label: String = "witness-validity: constraint-satisfaction holds (positive)"
 
 data affected_testgen_generated_claim_input: Node = Node {

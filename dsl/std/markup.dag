@@ -78,23 +78,6 @@ type MarkupMedium {
   text_escape: EscapeMode
 }
 
-data canonical_markup_bracket: MarkupBracket = MarkupBracket {
-  tag_open: "<",
-  end_tag_open: "</",
-  tag_close: ">",
-  attr_sep: " ",
-  attr_assign: "=",
-  attr_quote: "\"",
-}
-
-fn html_markup_medium() -> MarkupMedium {
-  MarkupMedium {
-    tag_overrides: [],
-    bracket: canonical_markup_bracket,
-    text_escape: EscapeHtml,
-  }
-}
-
 fn escape_text_for(mode: EscapeMode, s: String) -> String {
   match mode {
     EscapeHtml => escape_text(s: s)
@@ -148,10 +131,6 @@ fn serialize_fragment_with(frag: Fragment, medium: MarkupMedium) -> String {
   }
 }
 
-fn serialize_fragment(frag: Fragment) -> String {
-  serialize_fragment_with(frag: frag, medium: html_markup_medium())
-}
-
 type MarkupAttr {
   name: String
   value: String
@@ -161,116 +140,8 @@ type MarkupNode
   = ElementNode { tag: String, attrs: List<MarkupAttr>, children: List<MarkupNode> }
   | TextNode { text: String }
 
-type RejectedUrlScheme
-  = DangerousScheme { scheme: DangerousUrlScheme }
-  | SchemeNotAllowlisted
-
-type DangerousUrlScheme
-  = JavascriptScheme
-  | DataScheme
-  | VbscriptScheme
-
-type HrefValidation
-  = SafeHref { url: String }
-  | RejectedHref { reason: RejectedUrlScheme }
-
-fn href_scheme_is_javascript(s: String) -> Bool {
-  starts_with(s, prefix: "javascript:") || starts_with(s, prefix: "JAVASCRIPT:")
-}
-
-fn href_scheme_is_data(s: String) -> Bool {
-  starts_with(s, prefix: "data:") || starts_with(s, prefix: "DATA:")
-}
-
-fn href_scheme_is_vbscript(s: String) -> Bool {
-  starts_with(s, prefix: "vbscript:") || starts_with(s, prefix: "VBSCRIPT:")
-}
-
-fn href_is_http(s: String) -> Bool {
-  starts_with(s, prefix: "http://") || starts_with(s, prefix: "HTTP://")
-    || starts_with(s, prefix: "https://") || starts_with(s, prefix: "HTTPS://")
-}
-
-fn href_is_mailto(s: String) -> Bool {
-  starts_with(s, prefix: "mailto:") || starts_with(s, prefix: "MAILTO:")
-}
-
-fn href_is_relative(s: String) -> Bool {
-  starts_with(s, prefix: "/")
-    || starts_with(s, prefix: "#")
-    || starts_with(s, prefix: "./")
-    || starts_with(s, prefix: "../")
-    || !(s |> contains(":"))
-}
-
-fn href_is_allowlisted(url: String) -> Bool {
-  let s = trim(url)
-  if starts_with(s, prefix: "//") {
-    false
-  } else if href_is_http(s: s) || href_is_mailto(s: s) || href_is_relative(s: s) {
-    true
-  } else {
-    false
-  }
-}
-
-fn validate_href(url: String) -> HrefValidation {
-  let normalized = trim(url)
-  if href_is_allowlisted(url: url) {
-    SafeHref { url: url }
-  } else if href_scheme_is_javascript(s: normalized) {
-    RejectedHref { reason: DangerousScheme { scheme: JavascriptScheme } }
-  } else if href_scheme_is_data(s: normalized) {
-    RejectedHref { reason: DangerousScheme { scheme: DataScheme } }
-  } else if href_scheme_is_vbscript(s: normalized) {
-    RejectedHref { reason: DangerousScheme { scheme: VbscriptScheme } }
-  } else {
-    RejectedHref { reason: SchemeNotAllowlisted }
-  }
-}
-
 fn attr_is_url_attr(name: String) -> Bool {
   name == "href" || name == "src"
-}
-
-type RejectedUrl {
-  url: String
-  reason: RejectedUrlScheme
-}
-
-fn find_first_rejected_url(node: MarkupNode) -> RejectedUrl? {
-  match node {
-    TextNode { text: _ } => Absent
-    ElementNode { tag: _, attrs, children } => {
-      let from_attr = fold(attrs,
-        init: Absent,
-        f: (acc, a) => match acc {
-          Present { value: r } => Present { value: r }
-          Absent =>
-            if attr_is_url_attr(name: a.name) {
-              match validate_href(url: a.value) {
-                SafeHref { url: _ } => Absent
-                RejectedHref { reason: rs } =>
-                  Present { value: RejectedUrl { url: a.value, reason: rs } }
-              }
-            } else {
-              Absent
-            }
-        }
-      )
-      match from_attr {
-        Present { value: r } => Present { value: r }
-        Absent =>
-          fold(children,
-            init: Absent,
-            f: (acc, c) => match acc {
-              Present { value: r } => Present { value: r }
-              Absent => find_first_rejected_url(node: c)
-            }
-          )
-      }
-    }
-  }
 }
 
 fn markup_attr_escape_context(name: String) -> EscapeContext {
@@ -302,10 +173,6 @@ fn markup_node_to_fragment(node: MarkupNode) -> Fragment {
   }
 }
 
-fn serialize_markup_node(node: MarkupNode) -> String {
-  serialize_fragment(frag: markup_node_to_fragment(node: node))
-}
-
 fn serialize_markup_node_with(node: MarkupNode, medium: MarkupMedium) -> String {
   serialize_fragment_with(frag: markup_node_to_fragment(node: node), medium: medium)
 }
@@ -313,12 +180,3 @@ fn serialize_markup_node_with(node: MarkupNode, medium: MarkupMedium) -> String 
 type MarkupSerializeResult
   = Serialized { html: String }
   | Rejected { reason: String }
-
-fn try_serialize_markup_node(node: MarkupNode) -> MarkupSerializeResult {
-  match find_first_rejected_url(node: node) {
-    Present { value: _ } =>
-      Rejected { reason: "URL scheme not allowlisted for href/src" }
-    Absent =>
-      Serialized { html: serialize_markup_node(node: node) }
-  }
-}
