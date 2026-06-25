@@ -1,6 +1,6 @@
 module gunbc.ci_runner_placement
 
-import product.compute_fabric { ComputeOffer }
+import product.compute_fabric { ComputeOffer, compute_host_ram_bytes_total, compute_host_primary_cpu }
 import product.placement_supply { HostIdentity }
 import std.realization_width { measure_max, int_min }
 import std.measure { ByteSize, byte_size, byte_size_count, measure_scale_fraction_floor, measure_fit_count_floor, measure_le, HardwareThreadCount, hardware_thread_count, hardware_thread_count_value }
@@ -19,7 +19,13 @@ import gunbc.fleet_host_budget {
   fleet_host_plan_for_offer,
   gunbc_fleet_headroom_policy,
   gunbc_fleet_oomd_evidence,
+  gunbc_runner_pool_budget,
+  gunbc_per_runner_memory_cap,
+  host_allocation_conserves,
+  declared_runner_count,
+  oomd_actuation_floor,
 }
+import extdeps.cpu { cpu_facts_threads }
 import gunbc.ci_floor_measurement {
   CiJobPeak,
   JobCgroupPeakMeasurement,
@@ -88,65 +94,11 @@ type RunnerDeploymentPlan
   | PlanUnsound { reason: String }
 
 
-type RunnerSlotEnforcement
-  = RunnerSlotEnforced
-  | RunnerSlotUnenforced { reason: String }
-
-data gunbc_ci_runner_slot_enforcement: RunnerSlotEnforcement = RunnerSlotUnenforced {
-  reason: "runner-slot conserving cap not enforced live: the runner-slice MemoryMax drop-in is inert (effective MemoryMax=INFINITY); refuse to derive a governing runner count that assumes a cap the host does not enforce (fail closed until ctrl runner_host_reconcile makes disk==live and the design authority flips it)"
-}
-
-type JobPeakResolution
-  = JobPeaksResolved { run_unit_peak: ByteSize }
-  | JobPeaksUnresolved { reason: String }
-
-type PeakFold {
-  max_peak: ByteSize
-  any_unmeasured: Bool
-  count: Int
-}
-
 type DeploymentAccumulator {
   deployments: List<RunnerHostDeployment>
   unsound_reason: String
   any_unfit: Bool
   total: Int
-}
-
-fn fold_job_peak(acc: PeakFold, job_peak: CiJobPeak) -> PeakFold {
-  match job_peak.peak {
-    JobCgroupPeakUnmeasured =>
-      PeakFold { max_peak: acc.max_peak, any_unmeasured: true, count: acc.count + 1 }
-    JobCgroupPeakMeasured { cgroup_peak: p } =>
-      PeakFold {
-        max_peak: measure_max(a: acc.max_peak, b: p),
-        any_unmeasured: acc.any_unmeasured,
-        count: acc.count + 1,
-      }
-  }
-}
-
-fn resolve_run_unit_peak(job_peaks: List<CiJobPeak>) -> JobPeakResolution {
-  let folded = fold(
-    job_peaks,
-    init: PeakFold { max_peak: byte_size(0), any_unmeasured: false, count: 0 },
-    f: (a, j) => fold_job_peak(acc: a, job_peak: j)
-  )
-  if folded.count == 0 {
-    JobPeaksUnresolved {
-      reason: "no CI jobs declared: cannot derive runner capacity without a per-job peak"
-    }
-  } else if folded.any_unmeasured {
-    JobPeaksUnresolved {
-      reason: "at least one CI job has an unmeasured cgroup whole-tree peak: refuse to derive runner capacity on a missing per-job measurement (self-RSS undercounts child rustc/sccache, an over-commit risk)"
-    }
-  } else if byte_size_count(b: folded.max_peak) == 0 {
-    JobPeaksUnresolved {
-      reason: "measured per-job peak is zero bytes: refuse to divide host RAM by a zero peak"
-    }
-  } else {
-    JobPeaksResolved { run_unit_peak: folded.max_peak }
-  }
 }
 
 type SessionSliceResolution
