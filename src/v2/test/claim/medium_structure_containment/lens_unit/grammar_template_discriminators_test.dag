@@ -1,0 +1,60 @@
+module v2.test.medium_structure_containment.lens_unit.grammar_template_discriminators
+
+import v2.lens.medium_structure_containment {
+  MediumLeakFace,
+  InlineSyntaxLiteral,
+  MediumStructureLeakFact,
+  medium_structure_leak_count,
+  medium_structure_leak_count_canonical
+}
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+data fresh_grammar_template_leak_facts: List<MediumStructureLeakFact> = [
+  MediumStructureLeakFact {
+    path: "dsl/std/_perturb_grammar_fork.dag",
+    face: InlineSyntaxLiteral,
+    detail: "{ret"
+  }
+]
+
+test fn fresh_grammar_template_in_std_is_flagged_holds() -> Bool {
+  medium_structure_leak_count_canonical(facts: fresh_grammar_template_leak_facts) == 1
+}
+
+data edge_grammar_template_facts: List<MediumStructureLeakFact> = [
+  MediumStructureLeakFact {
+    path: "dsl/extdeps/languages/rust/syntax.dag",
+    face: InlineSyntaxLiteral,
+    detail: "{ret"
+  }
+]
+
+test fn edge_grammar_template_is_not_leak_holds() -> Bool {
+  medium_structure_leak_count_canonical(facts: edge_grammar_template_facts) == 0
+}
+
+data languages_fork_facts: List<MediumStructureLeakFact> = [
+  MediumStructureLeakFact {
+    path: "dsl/std/languages.dag",
+    face: InlineSyntaxLiteral,
+    detail: "{params"
+  }
+]
+
+test fn languages_fork_is_rostered_frozen_debt_holds() -> Bool {
+  medium_structure_leak_count_canonical(facts: languages_fork_facts) == 0
+}
+
+data roster_without_languages: List<String> = [
+  "dsl/gunbc/ci_workflow.dag",
+  "dsl/extdeps/formats/yaml.dag"
+]
+
+test fn de_rostered_languages_fork_is_leak_holds() -> Bool {
+  medium_structure_leak_count(
+    facts: languages_fork_facts,
+    roster: roster_without_languages
+  ) == 1
+}

@@ -1,0 +1,14 @@
+module v2.test.fixture.grammar_template_scan.std_fork_plant
+import v2.std.text { String }
+
+fn planted_grammar_template_fn_def() -> String {
+  "fn \{name\}(\{params\}) -> \{ret\} { \{body\} }"
+}
+
+fn planted_grammar_template_list() -> String {
+  "Vec<\{0\}>"
+}
+
+fn clean_plain_literal() -> String {
+  "no grammar holes here"
+}

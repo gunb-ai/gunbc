@@ -1,0 +1,59 @@
+module v2.test.medium_structure_containment.scanner.grammar_template_live
+
+import v2.lens.medium_structure_containment {
+  grammar_template_containment_clean_live,
+  grammar_template_leak_count_live
+}
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+data grammar_plant_scan_roots: List<String> = [
+  "src/v2/test/fixture/grammar_template_scan/std_fork"
+]
+
+data empty_roster: List<String> = []
+
+data grammar_plant_roster: List<String> = [
+  "src/v2/test/fixture/grammar_template_scan/std_fork/plant.dag"
+]
+
+data std_scan_roots: List<String> = [
+  "dsl/std"
+]
+
+data languages_frozen_roster: List<String> = [
+  "dsl/std/languages.dag"
+]
+
+test fn planted_grammar_template_in_std_is_flagged_holds() -> Bool {
+  (grammar_template_leak_count_live(
+    emit_roots: grammar_plant_scan_roots,
+    roster: empty_roster
+  ) == 3)
+    && (grammar_template_containment_clean_live(
+      emit_roots: grammar_plant_scan_roots,
+      roster: empty_roster
+    ) == false)
+}
+
+test fn planted_grammar_template_rostered_is_clean_holds() -> Bool {
+  grammar_template_containment_clean_live(
+    emit_roots: grammar_plant_scan_roots,
+    roster: grammar_plant_roster
+  )
+}
+
+test fn languages_fork_discovered_unrostered_holds() -> Bool {
+  grammar_template_containment_clean_live(
+    emit_roots: std_scan_roots,
+    roster: empty_roster
+  ) == false
+}
+
+test fn languages_fork_frozen_rostered_is_clean_holds() -> Bool {
+  grammar_template_containment_clean_live(
+    emit_roots: std_scan_roots,
+    roster: languages_frozen_roster
+  )
+}
