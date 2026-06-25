@@ -6,13 +6,16 @@ import std.markup {
   MarkupNode,
   ElementNode,
   TextNode,
+}
+import extdeps.uri_validation {
+  validate_href,
   SafeHref,
   RejectedHref,
   DangerousScheme,
   SchemeNotAllowlisted,
   JavascriptScheme,
   DataScheme,
-  validate_href,
+
 }
 import extdeps.languages.html {
   try_serialize_html_source,

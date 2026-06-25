@@ -4,8 +4,7 @@ import std.types { HttpMethod, GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS, Str
 import std.realization_schedule { string_list_eq }
 import std.http_path {
   PathTemplate,
-  PathTemplateParseResult, ParsedPathTemplate, MalformedPathTemplate,
-  parse_path_template, has_path_params, last_path_param
+  has_path_params, last_path_param
 }
 
 type EffectShape
