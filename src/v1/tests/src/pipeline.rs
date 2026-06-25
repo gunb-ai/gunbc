@@ -11872,6 +11872,7 @@ fn whole_tree_advisory_typecheck_census() {
     let mut seen: BTreeSet<(String, i64, &'static str, String)> = BTreeSet::new();
     let mut advisory = 0usize;
     let mut total_logged = 0usize;
+    let mut done = 0usize;
     for entry in &entries {
         let mut diags: Vec<Rc<v1_compiler::v1_std_core::ErrorNode>> = Vec::new();
         let _ = resolve_entry_with_parse_cache_advisory(
@@ -11893,9 +11894,23 @@ fn whole_tree_advisory_typecheck_census() {
             *by_name.entry(format!("{} {}", kind, name)).or_insert(0) += 1;
             *by_module.entry(span.file.clone()).or_insert(0) += 1;
             *by_entry.entry(entry.clone()).or_insert(0) += 1;
+            eprintln!("ADV\t{}\t{}\t{}:{}", kind, name, span.file, span.start);
+        }
+        done += 1;
+        if done % 25 == 0 {
+            eprintln!(
+                "PROGRESS {}/{} distinct={} logged={}",
+                done,
+                entries.len(),
+                advisory,
+                total_logged
+            );
         }
     }
-    eprintln!("=== ADVISORY LOGGED (with dups across closures): {} ===", total_logged);
+    eprintln!(
+        "=== ADVISORY LOGGED (with dups across closures): {} ===",
+        total_logged
+    );
 
     eprintln!("=== ADVISORY TOTAL (distinct): {} ===", advisory);
     let mut kinds: Vec<_> = by_kind.into_iter().collect();
