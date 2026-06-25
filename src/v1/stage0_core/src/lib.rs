@@ -75,6 +75,8 @@ pub mod std_induction;
 pub mod std_iteration;
 #[path = "../../stage0/src/std_node.rs"]
 pub mod std_node;
+#[path = "../../stage0/src/std_realization_schedule.rs"]
+pub mod std_realization_schedule;
 #[path = "../../stage0/src/std_syntax.rs"]
 pub mod std_syntax;
 #[path = "../../stage0/src/std_termination.rs"]

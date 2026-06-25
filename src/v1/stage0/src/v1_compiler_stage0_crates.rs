@@ -296,6 +296,7 @@ pub fn stage0_crate_plan() -> Rc<Stage0CratePlan> {
                     "std_induction".to_string(),
                     "std_iteration".to_string(),
                     "std_node".to_string(),
+                    "std_realization_schedule".to_string(),
                     "std_syntax".to_string(),
                     "std_termination".to_string(),
                     "std_types".to_string(),
