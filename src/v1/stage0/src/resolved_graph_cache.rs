@@ -45,8 +45,10 @@ pub enum CacheWriteOutcome {
     AlreadyExists,
 }
 
-pub fn resolved_graph_cache_root_from_env() -> Option<PathBuf> {
-    std::env::var_os("GUNBC_RESOLVED_GRAPH_CACHE_DIR").map(PathBuf::from)
+pub fn resolved_graph_cache_root() -> PathBuf {
+    std::env::var_os("GUNBC_RESOLVED_GRAPH_CACHE_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| std::env::temp_dir().join("gunbc-rg-cache"))
 }
 
 fn extract_module_path(content: &str) -> Option<String> {
