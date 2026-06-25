@@ -32,18 +32,26 @@ Today this is violated: `gunbc_ci_floor_per_shard_peak_rss_bytes()` reads a stat
 
 ### Node A — Measurement plumbing (v1 seed Rust)
 
-**Scope:** make per-shard RSS observable as a structured output, collectable by `claim_executor`.
+**Scope:** make per-shard RSS observable as a structured output, collectable by `claim_executor`. The text lines are **transport** (a Lossless projection of `PerformanceReceipt.cost`, §4 one-grammar-both-directions), not the authority — `PerformanceReceipt` is.
 
 - `claim_batch` emits a machine-readable line at process exit:
   `[measurement] per-shard-peak-rss: N bytes`
-  (uses the existing `peak_rss_lines()` / `/proc/self/status` VmHWM — just adds a structured emit alongside the stderr prose)
-- `claim_executor` parses those lines from child stderr, tracks `max(per_shard_peak)` across all shards in a batch, and emits:
+  (uses `/proc/self/status` VmHWM — this is the Space axis of a per-shard measured `CostAccount<Nano>`)
+- `claim_executor` emits after the full walk:
   `[calibration] max-per-shard-peak-rss: N bytes at spawn_width=W`
-  This becomes the input for updating `gunbc_ci_floor_measured_peak` — replacing the `whole_run / concurrency` divide with a directly observed per-shard maximum.
+  Current implementation: derives `per_shard = floor_rss / width` (a sound approximation); Node D refinement: parse per-shard lines from child stderr and take `max`.
 
-**No substrate changes.** Dissolution trigger: when `Runnable` carries `CostEstimate.space` (Node B) and the scheduler derives width from it, the static data row `gunbc_ci_floor_measured_peak` and this calibration plumbing dissolve into Phase 1 (the scheduler reads cost from the plan, not a side-channel).
+**Authority chain (design-locked 2026-06-25 with sharp-stag-782):**
+- `PerformanceReceipt.cost: CostAccount<Nano>` is the single measured authority (`cost.time` = wall_duration, `cost.space` = per-shard VmHWM, `cost.power` = unmeasured Watt(0), `basis = Measured`). Lives in `dsl/product/compute_fabric.dag`.
+- `wall_duration` field removed from `PerformanceReceipt` — becomes a pure projection `fn performance_receipt_wall_duration(r) -> r.cost.time` (no stored state that can drift).
+- `cache_state_summary` stays top-level on `PerformanceReceipt` — it is a measurement-context tag, not a cost axis. A cache-hit peak and a cold peak are different facts (§5 cache-impurity).
+- `PerformanceReceiptSpaceContext { space: ByteSize, cache_state: NonEmptyStr? }` accessor gives sharp-stag-782's `ci_budget_tree` a paired (space, cache_state) without join risk.
+- The `[calibration]` / `[measurement]` text lines are the Lossless wire projection of this receipt crossing the Rust→.dag boundary.
+- **Shape PR:** nimble-tern-908 (work item `adhoc-e4d87b4e-49c`). Lands before any Rust emit format is finalized.
 
-**Dispatched:** `adhoc-97532cd3-dfe` (work item created 2026-06-25).
+**Dissolution trigger:** when `Runnable` carries `CostAccount.space` (Node B) and the scheduler derives width from it, the `[calibration]` emit and `gunbc_ci_floor_measured_peak` dissolve into Phase 1.
+
+**In-flight:** PR #5792 (gentle-newt-542), rust_tests=SUCCESS, ci=IN_PROGRESS (2026-06-25).
 
 ---
 
