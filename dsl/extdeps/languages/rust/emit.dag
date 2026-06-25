@@ -158,6 +158,8 @@ data rt_function_registry: List<RuntimeFunction> = [
   { name: "record_source_chars_index_lookup", bridge_name: "record_source_chars_index_lookup", passes_by_ref: false, wraps_result: false },
   { name: "append",             bridge_name: "append",           passes_by_ref: false, wraps_result: true },
   { name: "contains",           bridge_name: "contains",         passes_by_ref: false, wraps_result: false },
+  { name: "starts_with",        bridge_name: "starts_with",      passes_by_ref: false, wraps_result: false },
+  { name: "ends_with",          bridge_name: "ends_with",        passes_by_ref: false, wraps_result: false },
   { name: "count",              bridge_name: "count",            passes_by_ref: false, wraps_result: false },
   { name: "clamp",              bridge_name: "clamp",            passes_by_ref: false, wraps_result: false },
   { name: "atom_identity_hash", bridge_name: "atom_identity_hash", passes_by_ref: false, wraps_result: false },
