@@ -815,6 +815,135 @@ pub fn eval_fn_arrow_decl_facts_live(
     Ok(crate::v1_interpreter::list_value(rows))
 }
 
+/// Streaming wiring-liveness check over all fn/func items in the context.
+///
+/// Equivalent to iterating `eval_fn_arrow_decl_facts_live` and running the
+/// body-skeleton DFS per param, but processes one fn at a time so peak memory is
+/// O(max_skeleton_per_fn) rather than O(sum_of_all_skeletons). The callback
+/// `report_dead` is called with `(qualified_name, param_name)` for every dead wire.
+/// Returns `(fn_count, dead_wire_count)`.
+pub fn check_wiring_liveness_streaming(
+    ctx: &InterpContext,
+    mut report_dead: impl FnMut(&str, &str),
+) -> (usize, usize) {
+    let si = ctx.source_indices();
+    let mut fn_count = 0usize;
+    let mut dead_count = 0usize;
+
+    for module in ctx.modules.iter() {
+        for item in module.items.iter() {
+            let name = authored_name_at(si.clone(), item.clone());
+            if name.is_empty() {
+                continue;
+            }
+            let info = module
+                .item_registry
+                .get(&name)
+                .or_else(|| module.item_registry.get(&item.name));
+            let Some(info) = info else { continue };
+            if info.kind != ItemKind::FnItem && info.kind != ItemKind::FuncItem {
+                continue;
+            }
+            let Some(body) = item.body.as_ref() else {
+                continue;
+            };
+            let mut param_names: Vec<String> = Vec::new();
+            for p in item.params.iter() {
+                if param_is_type_param(p, &si) {
+                    continue;
+                }
+                let pn = param_node_name_at(p.clone(), si.clone());
+                if pn.is_empty() || pn.starts_with('_') || param_names.iter().any(|q| q == &pn) {
+                    continue;
+                }
+                param_names.push(pn);
+            }
+            if param_names.is_empty() {
+                continue;
+            }
+            fn_count += 1;
+            let qualified_name = logical_qualified_name(&info.module_name, &name);
+            // Build skeleton and check; skeleton is dropped at end of this block.
+            let output = marshal_fn_body_skeleton(ctx, body, &param_names, &si);
+            for param_name in &param_names {
+                if !value_skeleton_contains_atom(ctx, &output, param_name) {
+                    dead_count += 1;
+                    report_dead(&qualified_name, param_name);
+                }
+            }
+            // `output` drops here — peak memory is bounded by the largest single skeleton.
+        }
+    }
+    (fn_count, dead_count)
+}
+
+/// True iff the body skeleton rooted at `node` contains an Atom with the given
+/// identity anywhere in its subtree. Mirrors the `wiring_reach_saturate` reachability
+/// check the DAG lens performs, but in Rust without the interpreter fold.
+fn value_skeleton_contains_atom(ctx: &InterpContext, node: &Value, param_name: &str) -> bool {
+    match node {
+        Value::Record { type_name, fields } => {
+            if ctx.sym_eq(*type_name, "Node") {
+                if let Some(kind) = fields_get(fields, ctx.sym("kind")) {
+                    if is_atom_kind_with_identity(ctx, kind, param_name) {
+                        return true;
+                    }
+                }
+                if let Some(children) = fields_get(fields, ctx.sym("children")) {
+                    return value_skeleton_contains_atom(ctx, children, param_name);
+                }
+                return false;
+            }
+            if ctx.sym_eq(*type_name, "Edge") {
+                if let Some(target) = fields_get(fields, ctx.sym("target")) {
+                    return value_skeleton_contains_atom(ctx, target, param_name);
+                }
+                return false;
+            }
+            false
+        }
+        Value::List(items) => items
+            .iter()
+            .any(|v| value_skeleton_contains_atom(ctx, v, param_name)),
+        _ => false,
+    }
+}
+
+fn is_atom_kind_with_identity(ctx: &InterpContext, kind: &Value, target_identity: &str) -> bool {
+    let Value::Variant {
+        variant_name,
+        fields,
+        ..
+    } = kind
+    else {
+        return false;
+    };
+    if !ctx.sym_eq(*variant_name, "TypeNode") {
+        return false;
+    }
+    let Some(connective) = fields_get(fields, ctx.sym("connective")) else {
+        return false;
+    };
+    let Value::Variant {
+        variant_name: cn_name,
+        fields: cn_fields,
+        ..
+    } = connective
+    else {
+        return false;
+    };
+    if !ctx.sym_eq(*cn_name, "Atom") {
+        return false;
+    }
+    let Some(identity) = fields_get(cn_fields, ctx.sym("identity")) else {
+        return false;
+    };
+    match identity {
+        Value::Str(s) => s == target_identity,
+        _ => false,
+    }
+}
+
 pub fn eval_syntactic_coproduct_arm_keys(
     ctx: &InterpContext,
     args: &[(Option<String>, Value)],
