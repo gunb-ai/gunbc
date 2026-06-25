@@ -17,12 +17,9 @@
     unreachable_patterns,
     non_shorthand_field_patterns,
     suspicious_double_ref_op,
-    non_camel_case_types,
     clippy::all
 )]
 
-#[path = "../../stage0/src/extdeps_external_authority.rs"]
-pub mod extdeps_external_authority;
 #[path = "../../stage0/src/extdeps_languages_dag_emit.rs"]
 pub mod extdeps_languages_dag_emit;
 #[path = "../../stage0/src/extdeps_languages_dag_syntax.rs"]
@@ -47,18 +44,12 @@ pub mod extdeps_languages_rust_emit;
 pub mod extdeps_languages_rust_syntax;
 #[path = "../../stage0/src/extdeps_languages_rust_types.rs"]
 pub mod extdeps_languages_rust_types;
-#[path = "../../stage0/src/extdeps_uri.rs"]
-pub mod extdeps_uri;
-#[path = "../../stage0/src/extdeps_uri_path.rs"]
-pub mod extdeps_uri_path;
 #[path = "../../stage0/src/std_algebra.rs"]
 pub mod std_algebra;
 #[path = "../../stage0/src/std_coercion.rs"]
 pub mod std_coercion;
 #[path = "../../stage0/src/std_computation.rs"]
 pub mod std_computation;
-#[path = "../../stage0/src/std_constructors.rs"]
-pub mod std_constructors;
 #[path = "../../stage0/src/std_decl_ref.rs"]
 pub mod std_decl_ref;
 #[path = "../../stage0/src/std_effects.rs"]
@@ -73,32 +64,10 @@ pub mod std_graph;
 pub mod std_http_path;
 #[path = "../../stage0/src/std_induction.rs"]
 pub mod std_induction;
-#[path = "../../stage0/src/std_integer.rs"]
-pub mod std_integer;
 #[path = "../../stage0/src/std_iteration.rs"]
 pub mod std_iteration;
-#[path = "../../stage0/src/std_lens_verdict.rs"]
-pub mod std_lens_verdict;
-#[path = "../../stage0/src/std_list.rs"]
-pub mod std_list;
-#[path = "../../stage0/src/std_logic.rs"]
-pub mod std_logic;
-#[path = "../../stage0/src/std_machine_constraints.rs"]
-pub mod std_machine_constraints;
-#[path = "../../stage0/src/std_magnitude.rs"]
-pub mod std_magnitude;
-#[path = "../../stage0/src/std_measure.rs"]
-pub mod std_measure;
-#[path = "../../stage0/src/std_nat.rs"]
-pub mod std_nat;
 #[path = "../../stage0/src/std_node.rs"]
 pub mod std_node;
-#[path = "../../stage0/src/std_pareto.rs"]
-pub mod std_pareto;
-#[path = "../../stage0/src/std_realization_schedule.rs"]
-pub mod std_realization_schedule;
-#[path = "../../stage0/src/std_serialization.rs"]
-pub mod std_serialization;
 #[path = "../../stage0/src/std_syntax.rs"]
 pub mod std_syntax;
 #[path = "../../stage0/src/std_termination.rs"]

@@ -36,7 +36,7 @@ pub fn probe_emitted() -> String {
 }
 
 pub fn probe_emit_fold_runs() -> bool {
-    (v1_rt::string_length(&probe_emitted()) > 0)
+    (v1_rt::length(probe_emitted()) > 0)
 }
 
 pub fn probe_emits_fn_add() -> bool {

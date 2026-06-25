@@ -4,8 +4,7 @@
 use self::StringScanResult::*;
 pub use crate::extdeps_languages_dag_syntax::dag_keyword_set;
 pub use crate::std_types::SourceSpan;
-pub use crate::v1_compiler_languages::canonical_emoji_char_escape;
-pub use crate::v1_compiler_languages::EmojiCharEscape;
+use crate::v1_compiler_languages::canonical_emoji_char_escape;
 use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
@@ -945,87 +944,50 @@ pub fn all_hex_upper_in_range(mut text: String, mut pos: i64, mut end: i64) -> b
     }
 }
 
-pub fn sentinel_prefix_matches(
-    mut text: String,
-    mut prefix: String,
-    mut pos: i64,
-    mut len: i64,
-) -> bool {
-    loop {
-        if (pos.clone() >= len.clone()) {
-            break true;
-        } else {
-            if (v1_rt::code_point(v1_rt::char_at(&text, pos.clone()))
-                != v1_rt::code_point(v1_rt::char_at(&prefix, pos.clone())))
-            {
-                break false;
-            } else {
-                {
-                    let __tco_0 = (pos + 1);
-                    pos = __tco_0;
-                    continue;
-                }
-            }
-        }
+pub fn sentinel_prefix_matches(text: String, prefix: String, pos: i64, len: i64) -> bool {
+    if pos >= len {
+        true
+    } else if v1_rt::code_point(v1_rt::char_at(&text, pos))
+        != v1_rt::code_point(v1_rt::char_at(&prefix, pos))
+    {
+        false
+    } else {
+        sentinel_prefix_matches(text, prefix, pos + 1, len)
     }
 }
 
 pub fn sentinel_suffix_matches(
-    mut text: String,
-    mut suffix: String,
-    mut pos: i64,
-    mut sfx_len: i64,
-    mut text_start: i64,
+    text: String,
+    suffix: String,
+    pos: i64,
+    sfx_len: i64,
+    text_start: i64,
 ) -> bool {
-    loop {
-        if (pos.clone() >= sfx_len.clone()) {
-            break true;
-        } else {
-            if (v1_rt::code_point(v1_rt::char_at(&text, (text_start.clone() + pos.clone())))
-                != v1_rt::code_point(v1_rt::char_at(&suffix, pos.clone())))
-            {
-                break false;
-            } else {
-                {
-                    let __tco_0 = (pos + 1);
-                    pos = __tco_0;
-                    continue;
-                }
-            }
-        }
+    if pos >= sfx_len {
+        true
+    } else if v1_rt::code_point(v1_rt::char_at(&text, text_start + pos))
+        != v1_rt::code_point(v1_rt::char_at(&suffix, pos))
+    {
+        false
+    } else {
+        sentinel_suffix_matches(text, suffix, pos + 1, sfx_len, text_start)
     }
 }
 
 pub fn is_reserved_emit_sentinel(text: String) -> bool {
-    {
-        let rule = canonical_emoji_char_escape();
-        let pfx = rule.prefix.clone();
-        let sfx = rule.suffix.clone();
-        let pfx_len = v1_rt::string_length(&pfx);
-        let sfx_len = v1_rt::string_length(&sfx);
-        let n = v1_rt::string_length(&text);
-        if (n.clone() < ((pfx_len.clone() + sfx_len.clone()) + 1)) {
-            false
-        } else {
-            if !sentinel_prefix_matches(text.clone(), pfx.clone(), 0, pfx_len.clone()) {
-                false
-            } else {
-                if !sentinel_suffix_matches(
-                    text.clone(),
-                    sfx.clone(),
-                    0,
-                    sfx_len.clone(),
-                    (n.clone() - sfx_len.clone()),
-                ) {
-                    false
-                } else {
-                    all_hex_upper_in_range(
-                        text.clone(),
-                        pfx_len.clone(),
-                        (n.clone() - sfx_len.clone()),
-                    )
-                }
-            }
-        }
+    let rule = canonical_emoji_char_escape();
+    let pfx = rule.prefix;
+    let sfx = rule.suffix;
+    let pfx_len = v1_rt::string_length(&pfx);
+    let sfx_len = v1_rt::string_length(&sfx);
+    let n = v1_rt::string_length(&text);
+    if n < pfx_len + sfx_len + 1 {
+        false
+    } else if !sentinel_prefix_matches(text.clone(), pfx.clone(), 0, pfx_len) {
+        false
+    } else if !sentinel_suffix_matches(text.clone(), sfx.clone(), 0, sfx_len, n - sfx_len) {
+        false
+    } else {
+        all_hex_upper_in_range(text.clone(), pfx_len, n - sfx_len)
     }
 }
