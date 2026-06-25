@@ -13,6 +13,22 @@ import v2.extdeps.languages.bash {
   bash_stmt_subshell_target_model,
   bash_stmt_exit_emitted,
   bash_stmt_exit_target_model,
+  bash_stmt_assign_emitted,
+  bash_stmt_assign_target_model,
+  bash_stmt_andor_emitted,
+  bash_stmt_andor_target_model,
+  bash_stmt_pipe_emitted,
+  bash_stmt_pipe_target_model,
+  bash_stmt_with_redir_emitted,
+  bash_stmt_with_redir_target_model,
+  bash_stmt_env_prefixed_emitted,
+  bash_stmt_env_prefixed_target_model,
+  bash_stmt_if_emitted,
+  bash_stmt_if_target_model,
+  bash_stmt_heredoc_emitted,
+  bash_stmt_heredoc_target_model,
+  bash_program_set_e_emitted,
+  bash_program_set_e_target_model,
   bash_single_quote,
   bash_var_ref_spelling
 }
@@ -35,7 +51,15 @@ import extdeps.languages.bash.program {
   WithRedir,
   Heredoc,
   Exit,
-  RawLine
+  RawLine,
+  ShellProgram,
+  AndOrOp,
+  AndThen,
+  OrElse,
+  Redir,
+  StderrToNull,
+  StdoutAndStderrToNull,
+  StdoutToStderr
 }
 import v2.std.algebra { list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent }
 import v2.std.collection { List, Map }
@@ -142,6 +166,91 @@ fn emit_stmt_exit(code: String) -> Outcome<Medium<String>> {
   )
 }
 
+fn emit_stmt_assign(name: String, value: String) -> Outcome<Medium<String>> {
+  emit(
+    tree: InferredTree {
+      root: bash_stmt_assign_emitted,
+      facts: Map { lookup: shell_emit_facts_lookup }
+    },
+    target: bash_stmt_assign_target_model(name: name, value: value)
+  )
+}
+
+fn emit_stmt_andor(left: String, op: String, right: String) -> Outcome<Medium<String>> {
+  emit(
+    tree: InferredTree {
+      root: bash_stmt_andor_emitted,
+      facts: Map { lookup: shell_emit_facts_lookup }
+    },
+    target: bash_stmt_andor_target_model(left: left, op: op, right: right)
+  )
+}
+
+fn emit_stmt_pipe(left: String, right: String) -> Outcome<Medium<String>> {
+  emit(
+    tree: InferredTree {
+      root: bash_stmt_pipe_emitted,
+      facts: Map { lookup: shell_emit_facts_lookup }
+    },
+    target: bash_stmt_pipe_target_model(left: left, right: right)
+  )
+}
+
+fn emit_stmt_with_redir(stmt: String, redir: String) -> Outcome<Medium<String>> {
+  emit(
+    tree: InferredTree {
+      root: bash_stmt_with_redir_emitted,
+      facts: Map { lookup: shell_emit_facts_lookup }
+    },
+    target: bash_stmt_with_redir_target_model(stmt: stmt, redir: redir)
+  )
+}
+
+fn emit_stmt_env_prefixed(name: String, value: String, command: String) -> Outcome<Medium<String>> {
+  emit(
+    tree: InferredTree {
+      root: bash_stmt_env_prefixed_emitted,
+      facts: Map { lookup: shell_emit_facts_lookup }
+    },
+    target: bash_stmt_env_prefixed_target_model(name: name, value: value, command: command)
+  )
+}
+
+fn emit_stmt_if(cond: String, body: String) -> Outcome<Medium<String>> {
+  emit(
+    tree: InferredTree {
+      root: bash_stmt_if_emitted,
+      facts: Map { lookup: shell_emit_facts_lookup }
+    },
+    target: bash_stmt_if_target_model(cond: cond, body: body)
+  )
+}
+
+fn emit_stmt_heredoc(path: String, delimiter: String, body: String) -> Outcome<Medium<String>> {
+  emit(
+    tree: InferredTree {
+      root: bash_stmt_heredoc_emitted,
+      facts: Map { lookup: shell_emit_facts_lookup }
+    },
+    target: bash_stmt_heredoc_target_model(path: path, delimiter: delimiter, body: body)
+  )
+}
+
+fn emit_and_or_op_spelling(op: AndOrOp) -> String {
+  match op {
+    AndThen => "&&"
+    OrElse => "||"
+  }
+}
+
+fn emit_redir_spelling(r: Redir) -> String {
+  match r {
+    StderrToNull => "2>/dev/null"
+    StdoutAndStderrToNull => ">/dev/null 2>&1"
+    StdoutToStderr => ">&2"
+  }
+}
+
 fn emit_join_step(acc: String, first: Bool, part: String) -> String {
   if first { part } else { concat(acc, concat(" ", part)) }
 }
@@ -184,6 +293,43 @@ fn emit_join_stmts_semi_from(acc: String, first: Bool, rest: List<ShellStmt>) ->
   }
 }
 
+fn emit_program_set_e(body: String) -> Outcome<Medium<String>> {
+  emit(
+    tree: InferredTree {
+      root: bash_program_set_e_emitted,
+      facts: Map { lookup: shell_emit_facts_lookup }
+    },
+    target: bash_program_set_e_target_model(body: body)
+  )
+}
+
+fn emit_program_body_from(acc: String, rest: List<ShellStmt>) -> Outcome<Medium<String>> {
+  match list_head(xs: rest) {
+    HeadAbsent => outcome_accepted(lossless_source(text: acc))
+    HeadFound { value: s } =>
+      match emit_shell_stmt(s: s) {
+        Accepted { value: m, diagnostics: _ } =>
+          match list_tail(xs: rest) {
+            TailFound { tail: t } =>
+              emit_program_body_from(acc: concat(acc, concat(m.carried, "\n")), rest: t)
+            TailAbsent =>
+              outcome_accepted(lossless_source(text: concat(acc, concat(m.carried, "\n"))))
+          }
+        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+      }
+  }
+}
+
+fn emit_shell_program(p: ShellProgram) -> Outcome<Medium<String>> {
+  bind_outcome(o: emit_program_body_from(acc: "", rest: p.statements), f: fn(mb) {
+    if p.set_e {
+      emit_program_set_e(body: mb.carried)
+    } else {
+      emit_word_pass(spelling: mb.carried)
+    }
+  })
+}
+
 fn emit_shell_stmt(s: ShellStmt) -> Outcome<Medium<String>> {
   match s {
     Command { words: ws } =>
@@ -196,21 +342,43 @@ fn emit_shell_stmt(s: ShellStmt) -> Outcome<Medium<String>> {
       })
     Exit { code: c } => emit_stmt_exit(code: to_string(c))
     RawLine { text: t } => emit_word_pass(spelling: t)
-    Assign { name: _, value: _ } =>
-      outcome_rejected(shell_emit_unsupported(reason: ^emit_shell_stmt_assign_pending))
-    If { cond: _, then: _ } =>
-      outcome_rejected(shell_emit_unsupported(reason: ^emit_shell_stmt_if_pending))
+    Assign { name: n, value: v } =>
+      bind_outcome(o: emit_shell_word(w: v), f: fn(mv) {
+        emit_stmt_assign(name: n, value: mv.carried)
+      })
+    If { cond: c, then: body } =>
+      bind_outcome(o: emit_shell_stmt(s: c), f: fn(mc) {
+        bind_outcome(o: emit_join_stmts_semi_from(acc: "", first: true, rest: body), f: fn(mb) {
+          emit_stmt_if(cond: mc.carried, body: mb.carried)
+        })
+      })
     BraceGroup { body: _ } =>
       outcome_rejected(shell_emit_unsupported(reason: ^emit_shell_stmt_bracegroup_uninhabited))
-    AndOr { left: _, op: _, right: _ } =>
-      outcome_rejected(shell_emit_unsupported(reason: ^emit_shell_stmt_andor_pending))
-    Pipe { left: _, right: _ } =>
-      outcome_rejected(shell_emit_unsupported(reason: ^emit_shell_stmt_pipe_pending))
-    EnvPrefixed { name: _, value: _, command: _ } =>
-      outcome_rejected(shell_emit_unsupported(reason: ^emit_shell_stmt_envprefixed_pending))
-    WithRedir { stmt: _, redir: _ } =>
-      outcome_rejected(shell_emit_unsupported(reason: ^emit_shell_stmt_withredir_pending))
-    Heredoc { path: _, delimiter: _, body: _ } =>
-      outcome_rejected(shell_emit_unsupported(reason: ^emit_shell_stmt_heredoc_pending))
+    AndOr { left: l, op: o, right: r } =>
+      bind_outcome(o: emit_shell_stmt(s: l), f: fn(ml) {
+        bind_outcome(o: emit_shell_stmt(s: r), f: fn(mr) {
+          emit_stmt_andor(left: ml.carried, op: emit_and_or_op_spelling(op: o), right: mr.carried)
+        })
+      })
+    Pipe { left: l, right: r } =>
+      bind_outcome(o: emit_shell_stmt(s: l), f: fn(ml) {
+        bind_outcome(o: emit_shell_stmt(s: r), f: fn(mr) {
+          emit_stmt_pipe(left: ml.carried, right: mr.carried)
+        })
+      })
+    EnvPrefixed { name: n, value: v, command: c } =>
+      bind_outcome(o: emit_shell_word(w: v), f: fn(mv) {
+        bind_outcome(o: emit_shell_stmt(s: c), f: fn(mc) {
+          emit_stmt_env_prefixed(name: n, value: mv.carried, command: mc.carried)
+        })
+      })
+    WithRedir { stmt: st, redir: rd } =>
+      bind_outcome(o: emit_shell_stmt(s: st), f: fn(mst) {
+        emit_stmt_with_redir(stmt: mst.carried, redir: emit_redir_spelling(r: rd))
+      })
+    Heredoc { path: p, delimiter: d, body: b } =>
+      bind_outcome(o: emit_shell_word(w: p), f: fn(mp) {
+        emit_stmt_heredoc(path: mp.carried, delimiter: d, body: b)
+      })
   }
 }
