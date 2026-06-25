@@ -339,7 +339,8 @@ fn drop_leading_test_marker(tokens: List<Token>) -> List<Token> {
   }
 }
 fn type_body_tokens_after_modifiers(tokens: List<Token>) -> List<Token> {
-  drop_leading_type_modifier(tokens: tokens, modifier: "nominal_opaque")
+  let t = drop_leading_type_modifier(tokens: tokens, modifier: "nominal_opaque")
+  drop_leading_type_modifier(tokens: t, modifier: "sole_constructor")
 }
 fn tok_is_newline(tok: Token?) -> Bool {
   match tok { Present { value: t } => is_newline_shape(shape: t.shape)  Absent => false }
@@ -1139,6 +1140,7 @@ fn parse_type_after_kw(tokens: List<Token>, ctx: ParseContext, start_span: Sourc
   let type_params = type_params_result.params
   let tokens = skip_newlines(tokens: type_params_result.tokens)
   let ctx = type_params_result.ctx
+  let is_sole_constructor = tok_is_ident_text(tok: tokens |> first, text: "sole_constructor")
   let tokens = type_body_tokens_after_modifiers(tokens: tokens)
 
   match eat(tokens: tokens, expected: ExpectLBrace) {
@@ -1151,7 +1153,8 @@ fn parse_type_after_kw(tokens: List<Token>, ctx: ParseContext, start_span: Sourc
     let r2 = expect(tokens: tokens, expected: ExpectRBrace)
     if has_err(err: r2.err) { return ItemResult { item: named_dummy, tokens: r2.tokens, ctx: ctx, err: r2.err } }
     let type_children = r.fields |> map(f => field_to_child_node(field: f, source_indices: ctx.source_indices))
-    let item = Node { name: name, span: start_span, ident_span: Present { value: name_span }, children: type_children, connective: Conj, params: type_params, inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+    let sole_ctor_prop = if is_sole_constructor { [Node { name: "sole_constructor", span: start_span, ident_span: none, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }] } else { [] }
+    let item = Node { name: name, span: start_span, ident_span: Present { value: name_span }, children: type_children, connective: Conj, params: type_params, inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: sole_ctor_prop, type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
     ItemResult { item: item, tokens: skip_newlines(tokens: r2.tokens), ctx: ctx, err: none }
   EatUnchanged { tokens: __eu } =>
     match eat(tokens: tokens, expected: ExpectEq) {
@@ -1171,7 +1174,9 @@ fn parse_type_body_from_prefix(prefix: ItemPrefixResult, start_span: SourceSpan)
   let type_params = prefix.type_params
   let ctx = prefix.ctx
   let named_dummy = Node { name: name, span: start_span, ident_span: Present { value: name_span }, children: [], params: type_params, inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-  let tokens = type_body_tokens_after_modifiers(tokens: skip_newlines(tokens: prefix.tokens))
+  let raw_tokens = skip_newlines(tokens: prefix.tokens)
+  let is_sole_constructor = tok_is_ident_text(tok: raw_tokens |> first, text: "sole_constructor")
+  let tokens = type_body_tokens_after_modifiers(tokens: raw_tokens)
 
   match eat(tokens: tokens, expected: ExpectLBrace) {
   EatConsumed { token: _, tokens: __ec } =>
@@ -1182,7 +1187,8 @@ fn parse_type_body_from_prefix(prefix: ItemPrefixResult, start_span: SourceSpan)
     let r2 = expect(tokens: tokens, expected: ExpectRBrace)
     if has_err(err: r2.err) { return ItemResult { item: named_dummy, tokens: r2.tokens, ctx: ctx, err: r2.err } }
     let type_children = r.fields |> map(f => field_to_child_node(field: f, source_indices: ctx.source_indices))
-    let item = Node { name: name, span: start_span, ident_span: Present { value: name_span }, children: type_children, connective: Conj, params: type_params, inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+    let sole_ctor_prop = if is_sole_constructor { [Node { name: "sole_constructor", span: start_span, ident_span: none, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }] } else { [] }
+    let item = Node { name: name, span: start_span, ident_span: Present { value: name_span }, children: type_children, connective: Conj, params: type_params, inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: sole_ctor_prop, type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
     ItemResult { item: item, tokens: skip_newlines(tokens: r2.tokens), ctx: ctx, err: none }
   EatUnchanged { tokens: __eu } =>
     match eat(tokens: tokens, expected: ExpectEq) {
