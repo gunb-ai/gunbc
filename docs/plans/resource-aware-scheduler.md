@@ -11,6 +11,24 @@ Host gets more memory → width goes up automatically → throughput goes up. En
 
 Today this is violated: `gunbc_ci_floor_per_shard_peak_rss_bytes()` reads a static data row (`gunbc_ci_floor_measured_peak`) derived by dividing a whole-run cgroup peak by a concurrency count. The division is coarse; the value is stale; the width calculation is a side-channel in `ci_floor_plan.dag`, not a property of the plan itself.
 
+## Cost authority re-role (2026-06-25, operator design thread via sharp-stag-782)
+
+**Derivation is the authority; measurement is the falsifier.**
+
+Cost = `symbolic_cost(graph structure)` evaluated at a declared input envelope. Measuring where you can derive is the §5 fail-open smell — an unbounded input is the data-side of a non-terminating loop. So:
+
+- `CostBasis = Predicted` — the AUTHORITY. Derived from graph structure + declared input envelope. This is what `spawn_width` and `ci_budget_tree` read.
+- `CostBasis = Measured` — the FALSIFIER + calibration. `Measured.cost.space == Predicted.cost.space` must hold; a mismatch is a bug in the cost model. Also calibrates the host physical constants (allocator size-classes, `Value`-repr overhead) that the symbolic formula uses.
+
+**Implication for this plan's nodes:**
+- Node A (Rust plumbing, #5792): still lands as designed. `[measurement]` / `[calibration]` lines feed the **falsifier** role (§5 discriminating witness), not the scheduler directly.
+- Node B (Runnable.cost): `CostAccount.basis = Predicted`; cost value comes from symbolic derivation (P2 in sharp-stag-782's roadmap `docs/plans/derived-cost-input-envelope-roadmap.md`), not from measurement.
+- Node D (calibration loop): compares `Measured` to `Predicted`, flags mismatches. Physical-constant calibration updates the symbolic formula's input, not the cost row directly.
+
+**BestEffort lease mode** (P4, calm-carp-204 ownership): `width = floor(budget / Predicted.cost.space)` — throughput-maximizing packing, no guarantee. Uses static data row as Predicted cost until P2 symbolic fold replaces it.
+
+**Reserved lease mode** (P1/P2/P3/P6, sharp-stag-782 ownership): input-envelope-as-fact → symbolic-cost derivation → dissolve `min_bytes` → budget consumer.
+
 ---
 
 ## Current state (what exists vs. what's inert)
