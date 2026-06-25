@@ -1,4 +1,4 @@
-module v2.extdeps.languages.orchestration_bash_test
+module v2.workflow.orchestration_bash_test
 
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
