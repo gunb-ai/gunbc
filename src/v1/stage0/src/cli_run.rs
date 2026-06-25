@@ -3744,7 +3744,7 @@ mod inert_lens_hygiene_tests {
         ];
         let scan_dirs = vec![
             "dsl/test/claim".to_string(),
-            "src/v2/compiler/manual".to_string(),
+            "src/v2/test/claim/manual".to_string(),
         ];
         let result = discover_floor_corpus_rows(&roots, &scan_dirs);
         assert!(
@@ -3827,7 +3827,7 @@ mod construction_justification_hygiene_tests {
         ];
         let scan_dirs = vec![
             "dsl/test/claim".to_string(),
-            "src/v2/compiler/manual".to_string(),
+            "src/v2/test/claim/manual".to_string(),
         ];
         let result = discover_floor_corpus_rows(&roots, &scan_dirs);
         assert!(
