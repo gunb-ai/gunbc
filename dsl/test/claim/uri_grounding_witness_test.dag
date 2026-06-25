@@ -1,0 +1,34 @@
+module test.claim.uri_grounding_witness
+
+import extdeps.uri { Uri, Https, uri_is_url, uri_wire }
+import extdeps.transports.rest { RestTransportConfig }
+import std.serialization { WireFormat, Json }
+import std.types { NonEmptyStr }
+import std.logic { Bool }
+
+fn w_rest_transport_config_requires_typed_uri() -> Bool {
+  let cfg = RestTransportConfig {
+    base_url: Uri { scheme: Https, locator: "api.example.com" },
+    auth_token: none,
+    auth_header: none,
+    headers: {},
+    response_format: Json
+  }
+  uri_is_url(uri: cfg.base_url)
+}
+
+fn w_uri_wire_reconstructs_url() -> Bool {
+  let uri = Uri { scheme: Https, locator: "api.github.com" }
+  uri_wire(uri: uri) == "https://api.github.com"
+}
+
+fn w_nonempty_str_html_url_holds() -> Bool {
+  let url: NonEmptyStr = "https://github.com/gunb-ai/gunbc/pull/1"
+  string_contains(url, pattern: "github.com")
+}
+
+test fn uri_grounding_witnesses() -> Bool {
+  w_rest_transport_config_requires_typed_uri()
+    && w_uri_wire_reconstructs_url()
+    && w_nonempty_str_html_url_holds()
+}

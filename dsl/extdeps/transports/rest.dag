@@ -1,6 +1,6 @@
 module extdeps.transports.rest
 
-import std.types { HttpMethod, Url }
+import std.types { HttpMethod }
 import std.serialization { WireFormat }
 import std.fidelity { TransportFidelity }
 import extdeps.external_authority { ExternalAuthority }
@@ -16,7 +16,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 data rest_transport_fidelity: TransportFidelity = TransportFidelity { depth: L, hermetic: false }
 
 type RestTransportConfig {
-  base_url: Url
+  base_url: Uri
   auth_token: String?
   auth_header: String?
   headers: Map<String, String>
