@@ -9,6 +9,7 @@
     unreachable_patterns,
     non_shorthand_field_patterns,
     suspicious_double_ref_op,
+    non_camel_case_types,
     clippy::all
 )]
 #![recursion_limit = "256"]
