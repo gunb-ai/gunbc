@@ -50,7 +50,7 @@ fn derivable_wi(id: String, prs: List<Int>, title: String, description: String, 
     node: nid(s: id),
     line: DerivableLine { prs: prs, title: title, description: description },
     carriers: [],
-    sizing: Sized { intricacy: intricacy, volume: volume, repo: repo, acceptance: PrsMerged },
+    sizing: Sized { intricacy: intricacy, volume: volume, repo: repo, acceptance: PrsMerged { prs: prs } },
   }
 }
 

@@ -105,13 +105,9 @@ fn volume_str(v: Volume) -> String {
   }
 }
 
-fn acceptance_json(a: Acceptance, line: RoadmapItem) -> String {
+fn acceptance_json(a: Acceptance) -> String {
   match a {
-    PrsMerged => match line {
-      DerivableLine { prs, title: _, description: _ } =>
-        concat("{\"kind\": \"prs_merged\", \"prs\": ", concat(json_int_list(nums: prs), "}"))
-      _ => "{\"kind\": \"prs_merged\", \"prs\": []}"
-    }
+    PrsMerged { prs } => concat("{\"kind\": \"prs_merged\", \"prs\": ", concat(json_int_list(nums: prs), "}"))
     ManualAcceptance => "{\"kind\": \"manual\"}"
   }
 }
@@ -143,7 +139,7 @@ fn node_json(n: RoadmapNode, intricacy: Intricacy, volume: Volume, repo: String,
   let f1 = concat("\"node_id\": ", concat(json_str(s: node_id_string(id: n.node)), concat(", \"title\": ", json_str(s: title))))
   let f2 = concat(", \"repo\": ", concat(json_str(s: repo), concat(", \"intricacy\": ", json_str(s: intricacy_str(i: intricacy)))))
   let f3 = concat(", \"volume\": ", concat(json_str(s: volume_str(v: volume)), concat(", \"parent_node_id\": ", parent_id_json)))
-  let f4 = concat(", \"plan_doc\": ", concat(plan_json, concat(", \"acceptance\": ", acceptance_json(a: acceptance, line: n.line))))
+  let f4 = concat(", \"plan_doc\": ", concat(plan_json, concat(", \"acceptance\": ", acceptance_json(a: acceptance))))
   concat("{", concat(f1, concat(f2, concat(f3, concat(f4, "}")))))
 }
 

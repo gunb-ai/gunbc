@@ -16,7 +16,7 @@ type Volume
   | VolumeLarge
 
 type Acceptance
-  = PrsMerged
+  = PrsMerged { prs: List<Int> }
   | ManualAcceptance
 
 type NodeSizing
