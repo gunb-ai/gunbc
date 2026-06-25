@@ -23,9 +23,12 @@ import v2.std.orchestration {
   LogMatches,
   GrepAlternation,
   FailureClassifier,
-  FailFast
+  FailFast,
+  pipeline_first_step,
+  step_command_spelling,
+  classifier_log_pattern
 }
-import v2.std.collection { Map, Present, Absent }
+import v2.std.collection { Map, Optional, Present, Absent }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -105,39 +108,80 @@ fn retry_eagain_intent() -> Step {
   }
 }
 
-fn retry_eagain_bash_emit() -> Outcome<Medium<String>> {
+fn retry_eagain_command_opt() -> Optional<String> {
+  match retry_eagain_intent() {
+    Retry { attempts: _, body: b, classify: _, on_exhausted: _ } =>
+      match pipeline_first_step(p: b) {
+        Present { value: s } => step_command_spelling(step: s)
+        Absent => Absent
+      }
+    Do { run: _ } => Absent
+    If { cond: _, then_: _, else_: _ } => Absent
+    For { binder: _, over: _, body: _ } => Absent
+    While { cond: _, body: _, bound: _ } => Absent
+  }
+}
+
+fn retry_eagain_pattern_opt() -> Optional<String> {
+  match retry_eagain_intent() {
+    Retry { attempts: _, body: _, classify: c, on_exhausted: _ } =>
+      classifier_log_pattern(classifier: c)
+    Do { run: _ } => Absent
+    If { cond: _, then_: _, else_: _ } => Absent
+    For { binder: _, over: _, body: _ } => Absent
+    While { cond: _, body: _, bound: _ } => Absent
+  }
+}
+
+fn retry_eagain_bash_emit_for(command: String, pattern: String) -> Outcome<Medium<String>> {
   emit(
     tree: InferredTree {
       root: retry_eagain_bash_emitted_command,
       facts: Map { lookup: retry_eagain_facts_lookup }
     },
-    target: retry_eagain_bash_target_model(intent: retry_eagain_intent())
+    target: retry_eagain_bash_target_model(command: command, pattern: pattern)
   )
 }
 
-fn retry_eagain_bash_emit_no_exit_wrong() -> Outcome<Medium<String>> {
+fn retry_eagain_bash_emit_no_exit_wrong_for(command: String, pattern: String) -> Outcome<Medium<String>> {
   emit(
     tree: InferredTree {
       root: retry_eagain_bash_no_exit_wrong_emitted_command,
       facts: Map { lookup: retry_eagain_facts_lookup }
     },
-    target: retry_eagain_bash_no_exit_wrong_target_model(intent: retry_eagain_intent())
+    target: retry_eagain_bash_no_exit_wrong_target_model(command: command, pattern: pattern)
   )
 }
 
 test fn retry_eagain_bash_byte_identical_to_hand_authored_holds() -> Bool {
-  match retry_eagain_bash_emit() {
-    Accepted { value: source, diagnostics: dg } =>
-      (source.carried == ci_cargo_eagain_retry_core(command: retry_eagain_example_command))
-        && (dg == None)
-    Rejected { diagnostics: _ } => false
+  match retry_eagain_command_opt() {
+    Present { value: cmd } =>
+      match retry_eagain_pattern_opt() {
+        Present { value: pat } =>
+          match retry_eagain_bash_emit_for(command: cmd, pattern: pat) {
+            Accepted { value: source, diagnostics: dg } =>
+              (source.carried == ci_cargo_eagain_retry_core(command: cmd))
+                && (dg == None)
+            Rejected { diagnostics: _ } => false
+          }
+        Absent => false
+      }
+    Absent => false
   }
 }
 
 test fn retry_eagain_bash_no_exit_wrong_breaks_byte_equality_holds() -> Bool {
-  match retry_eagain_bash_emit_no_exit_wrong() {
-    Accepted { value: w, diagnostics: _ } =>
-      w.carried != ci_cargo_eagain_retry_core(command: retry_eagain_example_command)
-    Rejected { diagnostics: _ } => false
+  match retry_eagain_command_opt() {
+    Present { value: cmd } =>
+      match retry_eagain_pattern_opt() {
+        Present { value: pat } =>
+          match retry_eagain_bash_emit_no_exit_wrong_for(command: cmd, pattern: pat) {
+            Accepted { value: w, diagnostics: _ } =>
+              w.carried != ci_cargo_eagain_retry_core(command: cmd)
+            Rejected { diagnostics: _ } => false
+          }
+        Absent => false
+      }
+    Absent => false
   }
 }
