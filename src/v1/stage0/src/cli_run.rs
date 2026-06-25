@@ -824,8 +824,7 @@ pub fn whole_tree_resolved_ctx(
         return Err("whole-tree corpus is empty (no .dag modules under source roots)".to_string());
     }
     let modules_excluded = total - all_sources.len();
-    let (graph, source_indices) =
-        resolved_graph_from_sources(all_sources, typecheck_gate)?;
+    let (graph, source_indices) = resolved_graph_from_sources(all_sources, typecheck_gate)?;
     Ok(WholeTreeCtx {
         ctx: v1_interpreter::InterpContext::with_runtime_options(
             graph.as_ref(),
@@ -2004,7 +2003,11 @@ pub fn generate_witness_timing_histogram(summary: &DiscoverySummary) -> String {
 
     // performance_receipts and witness_outcomes are both generated in the same discovery pass
     // with matching cardinality and order, so positional matching is stable across discovery runs.
-    for (perf, outcome) in summary.performance_receipts.iter().zip(summary.witness_outcomes.iter()) {
+    for (perf, outcome) in summary
+        .performance_receipts
+        .iter()
+        .zip(summary.witness_outcomes.iter())
+    {
         let resolve_nanos = match entry_resolve_map.get(&outcome.entry).copied() {
             Some(nanos) => nanos,
             None => {
@@ -2026,19 +2029,31 @@ pub fn generate_witness_timing_histogram(summary: &DiscoverySummary) -> String {
     let eval_percentiles = compute_percentiles(eval_times);
 
     let mut output = String::new();
-    output.push_str("╔════════════════════════════════════════════════════════════════════════════╗\n");
-    output.push_str("║                    WITNESS TIMING HISTOGRAM                                 ║\n");
-    output.push_str("║                Per-Witness Resolve+Eval Percentiles                         ║\n");
-    output.push_str("╚════════════════════════════════════════════════════════════════════════════╝\n\n");
+    output.push_str(
+        "╔════════════════════════════════════════════════════════════════════════════╗\n",
+    );
+    output.push_str(
+        "║                    WITNESS TIMING HISTOGRAM                                 ║\n",
+    );
+    output.push_str(
+        "║                Per-Witness Resolve+Eval Percentiles                         ║\n",
+    );
+    output.push_str(
+        "╚════════════════════════════════════════════════════════════════════════════╝\n\n",
+    );
 
     output.push_str(&format!(
         "Total witnesses: {} (included in histogram); {} skipped (no entry-resolve timing)\n",
         included_witnesses, skipped_missing_entry_resolve
     ));
-    output.push_str("Note: Resolve times are per-entry-amortized (all witnesses in an entry share the\n");
+    output.push_str(
+        "Note: Resolve times are per-entry-amortized (all witnesses in an entry share the\n",
+    );
     output.push_str("entry's resolve cost). Eval times are per-witness measurements.\n\n");
 
-    output.push_str("┌─ TOTAL TIME (Resolve + Eval) ───────────────────────────────────────────────┐\n");
+    output.push_str(
+        "┌─ TOTAL TIME (Resolve + Eval) ───────────────────────────────────────────────┐\n",
+    );
     output.push_str(&format!(
         "│ p50: {:>12} | p90: {:>12} | p95: {:>12} | p99: {:>12} | max: {:>12} │\n",
         format_nanos(total_percentiles.p50),
@@ -2047,9 +2062,13 @@ pub fn generate_witness_timing_histogram(summary: &DiscoverySummary) -> String {
         format_nanos(total_percentiles.p99),
         format_nanos(total_percentiles.p100),
     ));
-    output.push_str("└─────────────────────────────────────────────────────────────────────────────┘\n\n");
+    output.push_str(
+        "└─────────────────────────────────────────────────────────────────────────────┘\n\n",
+    );
 
-    output.push_str("┌─ RESOLVE TIME ──────────────────────────────────────────────────────────────┐\n");
+    output.push_str(
+        "┌─ RESOLVE TIME ──────────────────────────────────────────────────────────────┐\n",
+    );
     output.push_str(&format!(
         "│ p50: {:>12} | p90: {:>12} | p95: {:>12} | p99: {:>12} | max: {:>12} │\n",
         format_nanos(resolve_percentiles.p50),
@@ -2058,9 +2077,13 @@ pub fn generate_witness_timing_histogram(summary: &DiscoverySummary) -> String {
         format_nanos(resolve_percentiles.p99),
         format_nanos(resolve_percentiles.p100),
     ));
-    output.push_str("└─────────────────────────────────────────────────────────────────────────────┘\n\n");
+    output.push_str(
+        "└─────────────────────────────────────────────────────────────────────────────┘\n\n",
+    );
 
-    output.push_str("┌─ EVAL TIME ─────────────────────────────────────────────────────────────────┐\n");
+    output.push_str(
+        "┌─ EVAL TIME ─────────────────────────────────────────────────────────────────┐\n",
+    );
     output.push_str(&format!(
         "│ p50: {:>12} | p90: {:>12} | p95: {:>12} | p99: {:>12} | max: {:>12} │\n",
         format_nanos(eval_percentiles.p50),
@@ -2069,7 +2092,9 @@ pub fn generate_witness_timing_histogram(summary: &DiscoverySummary) -> String {
         format_nanos(eval_percentiles.p99),
         format_nanos(eval_percentiles.p100),
     ));
-    output.push_str("└─────────────────────────────────────────────────────────────────────────────┘\n");
+    output.push_str(
+        "└─────────────────────────────────────────────────────────────────────────────┘\n",
+    );
 
     output
 }
