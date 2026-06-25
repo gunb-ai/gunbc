@@ -7,6 +7,7 @@ import std.measure {
   Memory, One, Time, Nano,
   time_measure, watt,
   measure_scale_fraction_floor,
+  measure_fit_count_floor,
   HardwareThreadCount, hardware_thread_count,
 }
 import std.realization_width { byte_size_saturating_sub, cpu_cores_available }
@@ -139,6 +140,60 @@ fn child_node(name: String, b: ByteSize) -> BudgetNode {
     claims: [],
     children: [],
   }
+}
+
+
+data gunbc_runner_pool_budget: ByteSize = byte_size(85899345920)
+
+data gunbc_per_runner_memory_cap: ByteSize = byte_size(8589934592)
+
+data gunbc_session_container_memory: ByteSize = byte_size(1073741824)
+
+fn session_pool_bytes(active_sessions: Nat) -> ByteSize {
+  measure_scale_fraction_floor(m: gunbc_session_container_memory, num: active_sessions, den: 1)
+}
+
+fn host_allocation_tree(
+  host: ByteSize,
+  overhead: ByteSize,
+  headroom: ByteSize,
+  runner_pool: ByteSize,
+  session_pool: ByteSize
+) -> BudgetNode {
+  BudgetNode {
+    name: "host_allocation",
+    appropriation: appropriation_of(b: host),
+    claims: [overhead_claim(overhead: overhead)],
+    children: [
+      child_node(name: "runner_pool", b: runner_pool),
+      child_node(name: "session_pool", b: session_pool),
+      child_node(name: "headroom", b: headroom),
+    ],
+  }
+}
+
+fn host_allocation_conserves(
+  host: ByteSize,
+  overhead: ByteSize,
+  headroom: ByteSize,
+  runner_pool: ByteSize,
+  session_pool: ByteSize
+) -> Bool {
+  node_conserves(node: host_allocation_tree(
+    host: host,
+    overhead: overhead,
+    headroom: headroom,
+    runner_pool: runner_pool,
+    session_pool: session_pool
+  ))
+}
+
+fn declared_runner_count() -> Int {
+  measure_fit_count_floor(capacity: gunbc_runner_pool_budget, each: gunbc_per_runner_memory_cap)
+}
+
+fn max_concurrent_sessions(session_pool: ByteSize) -> Int {
+  measure_fit_count_floor(capacity: session_pool, each: gunbc_session_container_memory)
 }
 
 

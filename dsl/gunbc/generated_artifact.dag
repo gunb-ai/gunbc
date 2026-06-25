@@ -31,6 +31,7 @@ type RepoConsumer
   = GitProtocol
   | GithubActionsWorkflow
   | ProjectDocumentation
+  | HostReconciler
 
 type CommitPolicy
   = CommitRequired { consumer: RepoConsumer }
@@ -58,7 +59,7 @@ fn artifact_commit_policy(a: GeneratedArtifact) -> CommitPolicy {
     DesignArtifact => CommitRequired { consumer: ProjectDocumentation }
     PlanArtifact { plan: _ } => CommitRequired { consumer: ProjectDocumentation }
     RunnerDeployArtifact => NotCommitted
-    FleetConvergeArtifact => NotCommitted
+    FleetConvergeArtifact => CommitRequired { consumer: HostReconciler }
     AutoinstallUserDataArtifact { spec: _ } => NotCommitted
     ProxyDhcpDnsmasqArtifact { spec: _ } => NotCommitted
   }
