@@ -3,6 +3,9 @@ module gunbc.roadmap_authority
 import gunbc.roadmap_document { RoadmapDocument, RoadmapSection, project_roadmap_to_markdown }
 import gunbc.roadmap_model {
   RoadmapNode, RoadmapEdge, Pointer,
+  Intricacy, IntricacyLow, IntricacyMedium, IntricacyHigh,
+  Volume, VolumeSmall, VolumeMedium, VolumeLarge,
+  Acceptance, PrsMerged, ManualAcceptance,
   SectionElement, section_prose, section_group,
 }
 import gunbc.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, PlainLine }
@@ -16,29 +19,53 @@ fn ptr(label: String, path: String) -> Pointer { Pointer { label: label, path: p
 fn plan_ptr(path: String) -> List<Pointer> { [Pointer { label: "plan", path: path }] }
 
 fn authored(id: String, done: Bool, content: String) -> RoadmapNode {
-  RoadmapNode { node: nid(s: id), line: AuthoredLine { done: done, content: content }, carriers: [] }
+  RoadmapNode { node: nid(s: id), line: AuthoredLine { done: done, content: content }, carriers: [], intricacy: null, volume: null, repo: null, acceptance: null }
 }
 
 fn authored_doc(id: String, done: Bool, content: String, path: String) -> RoadmapNode {
-  RoadmapNode { node: nid(s: id), line: AuthoredLine { done: done, content: content }, carriers: plan_ptr(path: path) }
+  RoadmapNode { node: nid(s: id), line: AuthoredLine { done: done, content: content }, carriers: plan_ptr(path: path), intricacy: null, volume: null, repo: null, acceptance: null }
 }
 
 fn authored_pp(id: String, done: Bool, content: String, carriers: List<Pointer>) -> RoadmapNode {
-  RoadmapNode { node: nid(s: id), line: AuthoredLine { done: done, content: content }, carriers: carriers }
+  RoadmapNode { node: nid(s: id), line: AuthoredLine { done: done, content: content }, carriers: carriers, intricacy: null, volume: null, repo: null, acceptance: null }
 }
 
 fn plain(id: String, content: String) -> RoadmapNode {
-  RoadmapNode { node: nid(s: id), line: PlainLine { content: content }, carriers: [] }
+  RoadmapNode { node: nid(s: id), line: PlainLine { content: content }, carriers: [], intricacy: null, volume: null, repo: null, acceptance: null }
 }
 
 fn derivable(id: String, prs: List<Int>, title: String, description: String) -> RoadmapNode {
-  RoadmapNode { node: nid(s: id), line: DerivableLine { prs: prs, title: title, description: description }, carriers: [] }
+  RoadmapNode { node: nid(s: id), line: DerivableLine { prs: prs, title: title, description: description }, carriers: [], intricacy: null, volume: null, repo: null, acceptance: null }
 }
 fn derivable_doc(id: String, prs: List<Int>, title: String, description: String, path: String) -> RoadmapNode {
-  RoadmapNode { node: nid(s: id), line: DerivableLine { prs: prs, title: title, description: description }, carriers: plan_ptr(path: path) }
+  RoadmapNode { node: nid(s: id), line: DerivableLine { prs: prs, title: title, description: description }, carriers: plan_ptr(path: path), intricacy: null, volume: null, repo: null, acceptance: null }
 }
 fn derivable_pp(id: String, prs: List<Int>, title: String, description: String, carriers: List<Pointer>) -> RoadmapNode {
-  RoadmapNode { node: nid(s: id), line: DerivableLine { prs: prs, title: title, description: description }, carriers: carriers }
+  RoadmapNode { node: nid(s: id), line: DerivableLine { prs: prs, title: title, description: description }, carriers: carriers, intricacy: null, volume: null, repo: null, acceptance: null }
+}
+
+fn derivable_wi(id: String, prs: List<Int>, title: String, description: String, intricacy: Intricacy, volume: Volume, repo: String) -> RoadmapNode {
+  RoadmapNode {
+    node: nid(s: id),
+    line: DerivableLine { prs: prs, title: title, description: description },
+    carriers: [],
+    intricacy: intricacy,
+    volume: volume,
+    repo: repo,
+    acceptance: PrsMerged { prs: prs },
+  }
+}
+
+fn authored_wi(id: String, done: Bool, content: String, intricacy: Intricacy, volume: Volume, repo: String) -> RoadmapNode {
+  RoadmapNode {
+    node: nid(s: id),
+    line: AuthoredLine { done: done, content: content },
+    carriers: [],
+    intricacy: intricacy,
+    volume: volume,
+    repo: repo,
+    acceptance: ManualAcceptance,
+  }
 }
 
 fn preamble() -> List<MarkdownBlock> {

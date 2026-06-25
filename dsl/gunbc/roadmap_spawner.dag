@@ -1,0 +1,197 @@
+module gunbc.roadmap_spawner
+
+import ctrl.process_algebra { ProcessNodeId }
+import gunbc.roadmap_model {
+  RoadmapNode, RoadmapEdge, Pointer,
+  Intricacy, IntricacyLow, IntricacyMedium, IntricacyHigh,
+  Volume, VolumeSmall, VolumeMedium, VolumeLarge,
+  Acceptance, PrsMerged, ManualAcceptance,
+  SectionElement, Prose, Group, SectionGroup,
+  RoadmapParent, TopLevel, UnderParent, roadmap_parent,
+  node_id_string,
+}
+import gunbc.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, PlainLine, item_is_done }
+import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
+
+fn element_nodes(e: SectionElement) -> List<RoadmapNode> {
+  match e {
+    Prose { prose: _ } => []
+    Group { group } => group.nodes
+  }
+}
+
+fn element_edges(e: SectionElement) -> List<RoadmapEdge> {
+  match e {
+    Prose { prose: _ } => []
+    Group { group } => group.edges
+  }
+}
+
+fn section_nodes(s: RoadmapSection) -> List<RoadmapNode> {
+  fold(s.elements, init: [], f: (acc, e) => concat(acc, element_nodes(e: e)))
+}
+
+fn section_edges(s: RoadmapSection) -> List<RoadmapEdge> {
+  fold(s.elements, init: [], f: (acc, e) => concat(acc, element_edges(e: e)))
+}
+
+fn doc_all_nodes(doc: RoadmapDocument) -> List<RoadmapNode> {
+  let lane_nodes = fold(doc.lead_lanes, init: [], f: (acc, s) => concat(acc, section_nodes(s: s)))
+  fold(doc.sections, init: lane_nodes, f: (acc, s) => concat(acc, section_nodes(s: s)))
+}
+
+fn doc_all_edges(doc: RoadmapDocument) -> List<RoadmapEdge> {
+  let lane_edges = fold(doc.lead_lanes, init: [], f: (acc, s) => concat(acc, section_edges(s: s)))
+  fold(doc.sections, init: lane_edges, f: (acc, s) => concat(acc, section_edges(s: s)))
+}
+
+fn node_dep_done(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, id: ProcessNodeId, merged: List<Int>) -> Bool {
+  match roadmap_parent(edges: edges, node: id) {
+    TopLevel => true
+    UnderParent { parent: pid } =>
+      any(nodes, n => n.node == pid && item_is_done(item: n.line, merged: merged))
+  }
+}
+
+fn node_is_spawnable(n: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>) -> Bool {
+  match n.intricacy {
+    Absent => false
+    Present { value: _ } => match n.volume {
+      Absent => false
+      Present { value: _ } => match n.repo {
+        Absent => false
+        Present { value: _ } => match n.acceptance {
+          Absent => false
+          Present { value: _ } =>
+            !item_is_done(item: n.line, merged: merged)
+              && node_dep_done(nodes: nodes, edges: edges, id: n.node, merged: merged)
+        }
+      }
+    }
+  }
+}
+
+fn next_spawnable(doc: RoadmapDocument, merged: List<Int>) -> List<RoadmapNode> {
+  let nodes = doc_all_nodes(doc: doc)
+  let edges = doc_all_edges(doc: doc)
+  nodes |> filter(n => node_is_spawnable(n: n, nodes: nodes, edges: edges, merged: merged))
+}
+
+fn json_str(s: String) -> String {
+  concat("\"", concat(s, "\""))
+}
+
+fn json_str_nullable(v: String?) -> String {
+  match v {
+    Present { value: s } => json_str(s: s)
+    Absent => "null"
+  }
+}
+
+fn json_int_list(nums: List<Int>) -> String {
+  concat("[",
+    concat(
+      fold(nums, init: { s: "", first: true }, f: (acc, n) => {
+        s: if acc.first { to_string(n) } else { concat(acc.s, concat(", ", to_string(n))) },
+        first: false
+      }).s,
+      "]"
+    )
+  )
+}
+
+fn intricacy_str(i: Intricacy) -> String {
+  match i {
+    IntricacyLow => "low"
+    IntricacyMedium => "medium"
+    IntricacyHigh => "high"
+  }
+}
+
+fn volume_str(v: Volume) -> String {
+  match v {
+    VolumeSmall => "small"
+    VolumeMedium => "medium"
+    VolumeLarge => "large"
+  }
+}
+
+fn acceptance_json(a: Acceptance) -> String {
+  match a {
+    PrsMerged { prs } => concat("{\"kind\": \"prs_merged\", \"prs\": ", concat(json_int_list(nums: prs), "}"))
+    ManualAcceptance => "{\"kind\": \"manual\"}"
+  }
+}
+
+fn node_title(item: RoadmapItem) -> String {
+  match item {
+    DerivableLine { prs: _, title, description: _ } => title
+    AuthoredLine { done: _, content } => content
+    PlainLine { content } => content
+  }
+}
+
+fn node_plan_doc(carriers: List<Pointer>) -> String? {
+  fold(carriers, init: Absent, f: (acc, p) =>
+    match acc {
+      Present { value: _ } => acc
+      Absent => if p.label == "plan" { Present { value: p.path } } else { Absent }
+    }
+  )
+}
+
+fn node_json(n: RoadmapNode, edges: List<RoadmapEdge>) -> String {
+  let parent_id = match roadmap_parent(edges: edges, node: n.node) {
+    TopLevel => Absent
+    UnderParent { parent: pid } => Present { value: node_id_string(id: pid) }
+  }
+  let plan = node_plan_doc(carriers: n.carriers)
+  let intricacy_s = match n.intricacy {
+    Present { value: i } => intricacy_str(i: i)
+    Absent => "low"
+  }
+  let volume_s = match n.volume {
+    Present { value: v } => volume_str(v: v)
+    Absent => "small"
+  }
+  let repo_s = match n.repo {
+    Present { value: r } => r
+    Absent => ""
+  }
+  let acceptance_s = match n.acceptance {
+    Present { value: a } => acceptance_json(a: a)
+    Absent => "{\"kind\": \"manual\"}"
+  }
+  let title = node_title(item: n.line)
+  concat("{",
+    concat("\"node_id\": ", concat(json_str(s: node_id_string(id: n.node)),
+    concat(", \"title\": ", concat(json_str(s: title),
+    concat(", \"repo\": ", concat(json_str(s: repo_s),
+    concat(", \"intricacy\": ", concat(json_str(s: intricacy_s),
+    concat(", \"volume\": ", concat(json_str(s: volume_s),
+    concat(", \"parent_node_id\": ", concat(json_str_nullable(v: parent_id),
+    concat(", \"plan_doc\": ", concat(json_str_nullable(v: plan),
+    concat(", \"acceptance\": ", concat(acceptance_s, "}")))))))))))))))
+}
+
+fn ready_array_json(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> String {
+  concat("[",
+    concat(
+      fold(nodes, init: { s: "", first: true }, f: (acc, n) => {
+        let item = node_json(n: n, edges: edges)
+        s: if acc.first { item } else { concat(acc.s, concat(", ", item)) },
+        first: false
+      }).s,
+      "]"
+    )
+  )
+}
+
+fn roadmap_spawn_request_json(doc: RoadmapDocument, merged: List<Int>, anchor_commit: String) -> String {
+  let nodes = next_spawnable(doc: doc, merged: merged)
+  let edges = doc_all_edges(doc: doc)
+  concat("{",
+    concat("\"schema\": \"roadmap-spawn-request/v1\"",
+    concat(", \"anchor_commit\": ", concat(json_str(s: anchor_commit),
+    concat(", \"ready\": ", concat(ready_array_json(nodes: nodes, edges: edges), "}"))))))
+}
