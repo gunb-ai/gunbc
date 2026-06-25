@@ -11,7 +11,7 @@ import std.markup {
   Serialized,
   Rejected,
 }
-import extdeps.languages.html { serialize_fragment }
+import extdeps.languages.html_fragment { serialize_fragment }
 import extdeps.languages.markdown {
   serialize_markdown_document,
   try_serialize_markdown_document,

@@ -5,8 +5,8 @@ import extdeps.uri { Uri, Https }
 import extdeps.communication.medium { Medium, Lossless }
 import extdeps.languages.html {
   canonical_html_spellings,
-  serialize_fragment,
 }
+import extdeps.languages.html_fragment { serialize_fragment }
 import std.render_repeat_string_bootstrap { repeat_string }
 import std.markup {
   Fragment,

@@ -4,10 +4,9 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.communication.medium { Medium, Lossless }
 import std.markup {
-  Fragment, MarkupNode, MarkupAttr, ElementNode, TextNode,
+  MarkupNode, MarkupAttr, ElementNode, TextNode,
   MarkupBracket, MarkupMedium, EscapeHtml,
-  serialize_fragment_with, serialize_markup_node_with,
-  MarkupSerializeResult, Serialized, Rejected,
+  serialize_markup_node_with,
   unescape_text, unescape_attribute, unescape_url,
   validate_href, SafeHref, RejectedHref,
   attr_is_url_attr,
@@ -293,19 +292,6 @@ fn html_markup_medium() -> MarkupMedium {
   html_medium_with(sp: canonical_html_spellings)
 }
 
-fn serialize_fragment(frag: Fragment) -> String {
-  serialize_fragment_with(frag: frag, medium: html_markup_medium())
-}
-
 fn serialize_markup_node(node: MarkupNode) -> String {
   serialize_markup_node_with(node: node, medium: html_markup_medium())
-}
-
-fn try_serialize_markup_node(node: MarkupNode) -> MarkupSerializeResult {
-  match find_first_rejected_url(node: node) {
-    Present { value: _ } =>
-      Rejected { reason: "URL scheme not allowlisted for href/src" }
-    Absent =>
-      Serialized { html: serialize_markup_node(node: node) }
-  }
 }

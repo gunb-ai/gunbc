@@ -1,0 +1,8 @@
+module extdeps.languages.html_fragment
+
+import std.markup { Fragment, serialize_fragment_with }
+import extdeps.languages.html { html_markup_medium }
+
+fn serialize_fragment(frag: Fragment) -> String {
+  serialize_fragment_with(frag: frag, medium: html_markup_medium())
+}
