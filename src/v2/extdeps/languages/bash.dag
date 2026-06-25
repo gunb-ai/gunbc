@@ -31,7 +31,7 @@ import v2.std.compilers.target_model {
 }
 import v2.std.collection { List, Map, empty_map, map_insert }
 import v2.std.diagnostic { EmitDirective }
-import v2.std.orchestration { EnvBinding, EnvSet, EnvUnset }
+import v2.std.orchestration { EnvBinding, EnvSet, EnvUnset, Run }
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
 import v2.std.node {
   Atom,
@@ -1638,5 +1638,54 @@ fn retry_eagain_bash_no_exit_wrong_target_model(
     warn2: warn2,
     env2: env2,
     env3: env3
+  )
+}
+
+fn orch_run_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_run_rendered }
+  ]
+}
+
+data orch_run_emitted_command: Node = bash_conj_emitted_from_tokens(
+  tokens: orch_run_tokens()
+)
+
+fn orch_run_rendered_spelling(r: Run) -> String {
+  concat(bash_env_prefix(env: r.env), r.command)
+}
+
+fn orch_run_source_text(r: Run) -> String {
+  orch_run_rendered_spelling(r: r)
+}
+
+fn orch_run_lex(r: Run) -> LexRules {
+  phrase_to_lex_rules(p: phrase([
+    span(text: orch_run_rendered_spelling(r: r), class: ^bash_token_orch_raw)
+  ]))
+}
+
+fn orch_run_translation_rules_node() -> Node {
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_orch_run,
+    lhs: ^bash_production_orch_run,
+    tokens: orch_run_tokens(),
+    emitted: orch_run_emitted_command
+  )
+}
+
+fn orch_run_binding_spellings(r: Run) -> Map<Symbol, String> {
+  map_insert(empty_map(), ^orch_run_rendered, orch_run_rendered_spelling(r: r))
+}
+
+fn orch_run_target_model(r: Run) -> TargetModel {
+  bash_make_bound_tokens_target_model(
+    rules: orch_run_translation_rules_node(),
+    source_literal: ^bash_orch_run_source_literal,
+    production_name: ^bash_production_orch_run,
+    tokens: orch_run_tokens(),
+    source_text: orch_run_source_text(r: r),
+    lex: orch_run_lex(r: r),
+    binding_spellings: orch_run_binding_spellings(r: r)
   )
 }

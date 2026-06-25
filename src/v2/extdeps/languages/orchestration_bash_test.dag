@@ -1,0 +1,101 @@
+module v2.extdeps.languages.orchestration_bash_test
+
+import v2.compiler.emit { emit }
+import v2.compiler.infer { InferredFacts, InferredTree }
+import extdeps.communication.medium { Medium }
+import v2.extdeps.languages.bash {
+  orch_run_emitted_command,
+  orch_run_target_model
+}
+import v2.std.orchestration {
+  Run,
+  EnvSet,
+  EnvUnset,
+  StdoutAndStderr,
+  TeeTo
+}
+import v2.std.collection { Map, Optional, Present, Absent }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  None,
+  Outcome,
+  Rejected,
+  Unavailable,
+  node_locus
+}
+import v2.std.node { Node }
+import v2.std.witness { Violates, Witness }
+
+fn orch_bash_facts_lookup(key: Node) -> Witness<InferredFacts> {
+  Violates {
+    diagnostic: Diagnostic {
+      reason: ^orch_bash_facts_unexpected_consultation,
+      at: node_locus(node: key),
+      correction: Unavailable { reason: ExternalContractUnknown }
+    }
+  }
+}
+
+fn orch_run_bare() -> Run {
+  Run {
+    command: "cargo build -p v1-compiler --release --bins",
+    env: [],
+    redirect: Absent,
+    capture: Absent
+  }
+}
+
+fn orch_run_env_prefixed() -> Run {
+  Run {
+    command: "cargo build -p v1-compiler --release --bins",
+    env: [EnvSet { name: "CARGO_BUILD_JOBS", value: "1" }],
+    redirect: Absent,
+    capture: Absent
+  }
+}
+
+fn orch_run_env_perturbed() -> Run {
+  Run {
+    command: "cargo build -p v1-compiler --release --bins",
+    env: [EnvSet { name: "CARGO_BUILD_JOBS", value: "2" }],
+    redirect: Absent,
+    capture: Absent
+  }
+}
+
+fn orch_run_emit(r: Run) -> Outcome<Medium<String>> {
+  emit(
+    tree: InferredTree {
+      root: orch_run_emitted_command,
+      facts: Map { lookup: orch_bash_facts_lookup }
+    },
+    target: orch_run_target_model(r: r)
+  )
+}
+
+test fn orch_run_bare_emits_command_holds() -> Bool {
+  match orch_run_emit(r: orch_run_bare()) {
+    Accepted { value: source, diagnostics: dg } =>
+      (source.carried == "cargo build -p v1-compiler --release --bins") && (dg == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn orch_run_env_prefix_derived_from_intent_holds() -> Bool {
+  match orch_run_emit(r: orch_run_env_prefixed()) {
+    Accepted { value: source, diagnostics: dg } =>
+      (source.carried == "CARGO_BUILD_JOBS=1 cargo build -p v1-compiler --release --bins")
+        && (dg == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn orch_run_env_value_has_teeth_holds() -> Bool {
+  match orch_run_emit(r: orch_run_env_perturbed()) {
+    Accepted { value: source, diagnostics: _ } =>
+      source.carried != "CARGO_BUILD_JOBS=1 cargo build -p v1-compiler --release --bins"
+    Rejected { diagnostics: _ } => false
+  }
+}
