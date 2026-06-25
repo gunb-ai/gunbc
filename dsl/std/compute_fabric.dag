@@ -1,0 +1,665 @@
+// std/compute_fabric.dag — Elastic compute fabric (Worksheet A / exploration §4.0f cases 1–8).
+//
+// Authority: docs/planning/v4-elastic-compute-fabric-worksheet-2026-05-30.md
+// Composition: cache via ExecutionReceipt.output only — MUST NOT import cache_interface.
+//
+// Ingress types (UpsertInputRef, ChangeSet, ArtifactRef) are v4.workflow.ci / v4.std.change
+// authority — forward-stubbed as Node until harness wires cross-module checks (P-CF-INGRESS).
+
+module std.compute_fabric
+
+import std.types { NonEmptyStr, ContentHash, Bool, Int, LogicalTime }
+import extdeps.cloud.hetzner { cax41_catalog }
+import std.float { Float }
+import std.measure { Measure, Time, DataRate, One, ByteSize, hertz }
+import std.cache_identity { CacheInterfaceId, ArtifactKindId }
+import std.cpu {
+  CpuDeploymentFacts,
+  CpuFacts,
+  CpuArchitecture,
+  cpu_facts_sustained_per_thread_hz,
+  cpu_facts_threads
+}
+import std.memory.types { HostRamSupplyFacts }
+import std.memory.operator_fleet { supply_srv1_ram, supply_srv2_ram, supply_srv1_observed_ram_bytes, supply_srv2_observed_ram_bytes }
+import std.placement_supply { HostIdentity, PlacementSupplyRow }
+
+// 🟡 forward — v4.std.witness / v4.std.diagnostic at harness (P-CF-WITNESS).
+// Kept intentionally distinct from the kernel `Witness<T>` container.
+type ComputeWitness<C> = Node
+type Outcome<T> = Node
+
+// 🟡 forward — v4 ingress / artifact carriers (P-CF-INGRESS).
+type UpsertInputRef = Node
+type ChangeSet = Node
+type ArtifactRef<T> = Node
+type ArtifactSpec<T> = Node
+type WorkAction = Node
+type WorkGraph = Node
+type Partitioner = Node
+type Reducer = Node
+type EffectBoundary = Node
+type SymbolicCost = Node
+type Associativity = Node
+type Commutativity = Node
+type Idempotency = Node
+type IdentityElement = Node
+type InstructionSet = Node
+
+// --- §1.7 supporting enums + measure carriers --------------------------------
+
+type KernelFamily = Linux | Darwin | WindowsNt | LinuxGuestOnWindows
+type FileSystemSemantics = Posix | Ntfs | Apfs | WslPathTranslation
+type ProcessSemantics = PosixProcess | WindowsProcess | HybridWslGuest
+type NetworkLocality = Loopback | Lan | Internet | WslNat | WslBridged
+type NetworkAddressability = Unicast | Multicast | Broadcast
+type NetworkEgressClass = None | CratesIo | InternalMirror | Unrestricted
+type IsolationBoundary = SharedHostHome | PerJobFilesystem | ContainerHermetic | Vm
+type PersistenceKind = Ephemeral | Persistent | CachedMirror
+type MemoryKind = Dram | Hbm | UnifiedShared
+type StorageMedium = Nvme | Ssd | Hdd | NetworkAttached | EphemeralFs
+type LatencyClass = UltraLow | Low | Medium | High
+type GpuRuntime = Cuda | Rocm | Metal | OpenCl
+type ContainerRuntime = Docker | Podman | Gvisor | Ubicloud | GcloudRun
+type CostClass = OwnedMarginalZero | PerSecondBilled | Metered | DeveloperAttention
+// Lens: tiered-access cost — owned marginal vs metered vs attention-priced axes.
+type OomSignalClass = KillProcess | Throttle | ReportOnly
+
+type Bandwidth = Measure<DataRate, One>
+type Duration = Measure<Time, One>
+type ProviderIdentity = NonEmptyStr where brand("ProviderIdentity")
+
+type ComputeArtifactLocality
+  = InProcess
+  | PerRunnerColocation
+  | PerHostColocation
+  | CrossHostFetch
+// Lens: memory-hierarchy distance — register/process → runner → host → remote fetch.
+
+// --- §1.4 supply records -----------------------------------------------------
+
+type StorageMount {
+  mount_path: NonEmptyStr
+  device: StorageDevice
+  lifecycle: PersistenceKind
+}
+
+// CpuFacts authority: std.cpu (identity + deployment); catalog invariants
+// project via cpu_facts_* helpers — not duplicated fields here.
+
+type MemoryFacts { capacity: ByteSize, memory_kind: MemoryKind }
+
+type GpuFacts {
+  vendor: NonEmptyStr
+  model: NonEmptyStr
+  compute_capability: NonEmptyStr?
+  memory: MemoryFacts
+  supported_runtimes: List<GpuRuntime>
+}
+
+type AcceleratorFacts { vendor: NonEmptyStr, model: NonEmptyStr }
+
+type MemoryDevice {
+  capacity: ByteSize
+  memory_kind: MemoryKind
+  bandwidth: Bandwidth?
+}
+
+type StorageDevice {
+  capacity: ByteSize
+  medium: StorageMedium
+  read_bandwidth: Bandwidth?
+  write_bandwidth: Bandwidth?
+  persistence: PersistenceKind
+}
+
+type NetworkInterface {
+  addressability: NetworkAddressability
+  bandwidth: Bandwidth?
+  latency_class: LatencyClass?
+  locality: NetworkLocality
+}
+
+type OperatingSystemSurface {
+  kernel: KernelFamily
+  // P-CF-OS: distro/version relaxed to Option. srv1/srv2 run Ubuntu 24.04; to be
+  // grounded via a forthcoming extdeps OS catalog + shared OS abstraction (next chunk)
+  // rather than inlined here — no dual representation. Hetzner OS is bound at provision
+  // time, so stays None on the offer surface.
+  distro_or_product: NonEmptyStr?
+  version: NonEmptyStr?
+  filesystem_semantics: FileSystemSemantics
+  process_semantics: ProcessSemantics
+}
+
+type ExecutionSurface {
+  os: OperatingSystemSurface
+  isolation: IsolationBoundary
+  container_runtime: ContainerRuntime?
+  toolchains: List<ToolchainCapability>
+  mounted_storage: List<StorageMount>
+  network: List<NetworkInterface>
+}
+
+type ProcessorKind
+  = CpuProcessor { cpu: CpuFacts }
+  | GpuProcessor { gpu: GpuFacts }
+  | AcceleratorProcessor { accelerator: AcceleratorFacts }
+
+type ComputeHost {
+  identity: HostIdentity
+  processors: List<ProcessorKind>
+  memory: List<MemoryDevice>
+  storage: List<StorageDevice>
+  network_interfaces: List<NetworkInterface>
+}
+
+// 🟡 P-CF-COST-MODEL — dissolve when per-provider `data` rows land (Worksheet A §1.4 / §7).
+type ProcessorCostModel { placeholder: Bool }
+type ProviderCostModel { placeholder: Bool }
+
+type CostModel {
+  cost_class: CostClass
+  rates: ProviderCostModel
+}
+
+type ComputeSupplyFacts {
+  physical: ComputeHost
+  execution: ExecutionSurface
+  cost: CostModel?
+  observed_performance: List<PerformanceReceipt>
+}
+
+type ProviderConstraint
+  = HostJobserverFifo { fifo_path: NonEmptyStr, token_cap: Int }
+  | SharedHomeRoot { path: NonEmptyStr }
+  | MaxConcurrentRunners { cap: Int }
+  | OomBehavior { signal: OomSignalClass }
+
+type AvailabilityWindow { open: LogicalTime, close: LogicalTime? }
+// Lens: RAII borrow window — open acquires scope; close is optional early release.
+type CostEstimate { model: CostModel, expected_units: Float, currency: NonEmptyStr }
+
+type ComputeOffer {
+  provider: ProviderIdentity
+  supply: ComputeSupplyFacts
+  available_window: AvailabilityWindow
+  cost_quote: CostEstimate?
+  constraints: List<ProviderConstraint>
+}
+
+type MachineView { label: NonEmptyStr, host: HostIdentity }
+
+fn machine_view(host: ComputeHost, surface: ExecutionSurface) -> MachineView {
+  MachineView {
+    label: machine_view_label(host: host, surface: surface),
+    host: host.identity,
+  }
+}
+
+fn machine_view_label(host: ComputeHost, surface: ExecutionSurface) -> NonEmptyStr {
+  // Label from execution surface when grounded; else host identity (Worksheet A §1.4).
+  match surface.os.distro_or_product {
+    Present { value: distro } => distro
+    Absent => host.identity
+  }
+}
+
+// --- §1.4b placement projection (derived — NOT a parallel authority) ----------
+//
+// PlacementSupplyRow authority: std.placement_supply. ram_bytes_total is a
+// value-typed ByteSize projection — Measure carriers now have inhabitants via
+// std.measure, so this consumer is migrated in step with the census (the
+// prior P-CF-BYTESIZE bare-Int stopgap here is dissolved).
+
+fn placement_supply_row(identity: HostIdentity, cpu: CpuFacts, ram_bytes_total: ByteSize) -> PlacementSupplyRow {
+  PlacementSupplyRow {
+    identity: identity,
+    hardware_threads: cpu_facts_threads(cpu),
+    clock_hz: cpu_facts_sustained_per_thread_hz(cpu),
+    ram_bytes: ram_bytes_total,
+  }
+}
+
+// --- §1.2 demand -------------------------------------------------------------
+
+type ResourceEnvelope {
+  cpu: CpuRequirement?
+  gpu: GpuRequirement?
+  memory: MemoryRequirement?
+  storage: StorageRequirement?
+  network: NetworkRequirement?
+}
+
+type CpuRequirement { min_cores: Int, architecture: CpuArchitecture? }
+type GpuRequirement { min_vram: ByteSize, runtimes: List<GpuRuntime> }
+type MemoryRequirement { min_bytes: ByteSize }
+type StorageRequirement { min_bytes: ByteSize, persistence: PersistenceKind }
+type NetworkRequirement { egress: NetworkEgressClass?, ambient_allowed: Bool }
+type OperatingSystemRequirement { surface: OperatingSystemSurface }
+type IsolationRequirement { boundary: IsolationBoundary }
+type ToolchainRequirement { name: NonEmptyStr, version: NonEmptyStr }
+
+type ArtifactLocalityRequirement {
+  artifact_kind: ArtifactKindId
+  locality: ComputeArtifactLocality
+}
+
+type ToolchainEnvIsolation
+  = SharedHomeAcrossJobs
+  | PerJobCargoHome { cargo_home_var: NonEmptyStr, rustup_home_var: NonEmptyStr }
+  | HermeticContainer
+
+type BuildWrapperKind = CtrlBuild | BakedInImage | NoBuildWrapper
+
+type ToolchainCapability {
+  name: NonEmptyStr
+  version: NonEmptyStr
+  env_isolation: ToolchainEnvIsolation
+  build_wrapper: BuildWrapperKind?
+  linked_cache_interface: CacheInterfaceId?
+}
+
+type WorkDemand {
+  resources: ResourceEnvelope
+  os: OperatingSystemRequirement?
+  isolation: IsolationRequirement
+  toolchains: List<ToolchainRequirement>
+  parallelism: ParallelismShape
+  data_locality: List<ArtifactLocalityRequirement>
+  effects: List<EffectBoundary>
+}
+
+// --- §1.3 parallelism + budget -----------------------------------------------
+
+type ParallelismShape
+  = SingleWorkItem
+  | IndependentShards { shard_count: Int }
+  | DependencyGraphParallel { graph: WorkGraph }
+  | PartitionedReduce {
+      partitioner: Partitioner
+      map: WorkAction
+      reduce: Reducer
+      laws: ReducerLaws
+    }
+
+type ReducerLaws {
+  associative: ComputeWitness<Associativity>
+  commutative: ComputeWitness<Commutativity>?
+  identity: IdentityElement?
+  idempotent: ComputeWitness<Idempotency>?
+}
+
+type ExecutionBudget {
+  expected_cost: SymbolicCost
+  provider_model: ProviderCostModel
+  watchdog: WatchdogLimit
+}
+
+type WatchdogLimit { max_wall: Duration }
+
+// --- §1.5 eligibility --------------------------------------------------------
+
+type DemandDimension
+  = DemandCpu
+  | DemandGpu
+  | DemandMemory
+  | DemandStorage
+  | DemandNetwork
+  | DemandOs
+  | DemandIsolation
+  | DemandToolchains
+  | DemandParallelism
+  | DemandDataLocality
+  | DemandEffects
+
+type MissingDemandFact { dimension: DemandDimension, required: NonEmptyStr }
+
+type ComputeLeaseWitness {
+  provider: ProviderIdentity
+  satisfied: List<DemandDimension>
+}
+
+type ComputeLeaseEligibility
+  = Eligible { witness: ComputeLeaseWitness }
+  | Rejected { reason: MissingDemandFact }
+
+type AllocationReceipt {
+  provider: ProviderIdentity
+  scope: NonEmptyStr
+  acquired_at: LogicalTime
+}
+
+type ComputeLease {
+  offer: ComputeOffer
+  demand: WorkDemand
+  allocation: AllocationReceipt
+  eligibility: ComputeWitness<ComputeLeaseEligibility>
+}
+// Lens: RAII borrow — offer + demand paired for lease lifetime; allocation receipt is acquire proof.
+
+// 🟢 P-CF-WITNESS dissolved: satisfies returns ComputeLeaseEligibility directly (ComputeWitness<C>
+// stays a forward Node for v4.std.witness). Isolation is an ordered lattice (chain below),
+// honored iff ordinal(supply) >= ordinal(demand) — rationale in PR #4805 / commit message.
+//   SharedHostHome < PerJobFilesystem < ContainerHermetic < Vm
+fn isolation_boundary_ordinal(boundary: IsolationBoundary) -> Int {
+  match boundary {
+    SharedHostHome   => 0
+    PerJobFilesystem => 1
+    ContainerHermetic => 2
+    Vm               => 3
+  }
+}
+
+fn isolation_boundary_label(boundary: IsolationBoundary) -> NonEmptyStr {
+  match boundary {
+    SharedHostHome   => "Vm/ContainerHermetic/PerJobFilesystem/SharedHostHome"
+    PerJobFilesystem => "Vm/ContainerHermetic/PerJobFilesystem"
+    ContainerHermetic => "Vm/ContainerHermetic"
+    Vm               => "Vm"
+  }
+}
+
+// supply isolation honors a demand iff it is at least as strong on the chain.
+fn isolation_satisfies(supply: IsolationBoundary, demand: IsolationBoundary) -> Bool {
+  isolation_boundary_ordinal(boundary: supply) >= isolation_boundary_ordinal(boundary: demand)
+}
+
+// Gates on the isolation dimension (load-bearing); other dimensions attach as their comparison
+// helpers land. Fail-closed: Vm demand on SharedHostHome supply is Rejected, witness enumerates
+// only the dimensions actually proven.
+// Lens: host selection over the offer free-list — first-fit allocator semantics (cf. placement_supply).
+fn satisfies(offer: ComputeOffer, demand: WorkDemand) -> ComputeLeaseEligibility {
+  if isolation_satisfies(supply: offer.supply.execution.isolation, demand: demand.isolation.boundary) {
+    Eligible {
+      witness: ComputeLeaseWitness {
+        provider: offer.provider,
+        satisfied: [DemandIsolation],
+      },
+    }
+  } else {
+    Rejected {
+      reason: MissingDemandFact {
+        dimension: DemandIsolation,
+        required: isolation_boundary_label(boundary: demand.isolation.boundary),
+      },
+    }
+  }
+}
+
+// --- §1.1 executable unit + ingress --------------------------------------------
+
+type WorkUnitId = NonEmptyStr where brand("WorkUnitId")
+
+type WorkUnit<T> {
+  id: WorkUnitId
+  inputs: List<ArtifactRef<T>>
+  action: WorkAction
+  output: ArtifactSpec<T>
+  requirements: WorkDemand
+}
+
+// --- §1.6 execution receipts -------------------------------------------------
+
+type MeasurementConfidence
+  = SingleSample
+  | Range { low: Float, high: Float }
+  | DistributionSummary { mean: Float, variance: Float }
+
+type PerformanceReceipt {
+  provider: ProviderIdentity
+  work_shape: WorkUnitId
+  wall_duration: Duration
+  cpu_seconds: Float?
+  sample_count: Int
+  measurement_context: ExecutionSurface
+  confidence: MeasurementConfidence
+  cache_state_summary: NonEmptyStr?
+}
+
+type PricingSource
+  = VendorDocument { citation: NonEmptyStr }
+  | ObservedBill { receipt_id: NonEmptyStr }
+  | NegotiatedRate { contract_ref: NonEmptyStr }
+
+type AmortizationScope
+  = PerLease
+  | PerCalendarMonth
+  | PerWorkShape
+
+type CostReceipt {
+  provider: ProviderIdentity
+  cost_class: CostClass
+  amount: Float?
+  pricing_source: PricingSource
+  amortization_scope: AmortizationScope?
+}
+
+type ExecutionReceipt<T> {
+  work: WorkUnit<T>
+  lease: ComputeLease
+  output: Outcome<ArtifactRef<T>>
+  performance: PerformanceReceipt
+  cost: CostReceipt
+  started_at: LogicalTime
+  finished_at: LogicalTime
+}
+
+// --- §7 falsification supply rows (cases 1–3 skeleton) -----------------------
+
+data supply_srv1_host_identity: HostIdentity = "srv1"
+data supply_srv2_host_identity: HostIdentity = "srv2"
+
+// Operator fleet CPUs: Ampere Altra Max M128-30 (LGA4926, 183W). Catalog:
+// std.cpu.ampere. DIMM populations: std.memory.operator_fleet.
+data supply_srv1_cpu: CpuFacts = CpuFacts {
+  identity: AmpereCpu { model: AltraMaxM12830 },
+  deployment: CpuDeploymentFacts { sustained_per_thread_hz: hertz(3000000000) },
+}
+
+data supply_srv2_cpu: CpuFacts = CpuFacts {
+  identity: AmpereCpu { model: AltraMaxM12830 },
+  deployment: CpuDeploymentFacts { sustained_per_thread_hz: hertz(3000000000) },
+}
+
+// RAM authority: supply_srv{1,2}_ram (population + nominal vs observed usable).
+data supply_srv1_placement_row: PlacementSupplyRow = placement_supply_row(
+  supply_srv1_host_identity,
+  supply_srv1_cpu,
+  supply_srv1_observed_ram_bytes
+)
+
+data supply_srv2_placement_row: PlacementSupplyRow = placement_supply_row(
+  supply_srv2_host_identity,
+  supply_srv2_cpu,
+  supply_srv2_observed_ram_bytes
+)
+
+// §7 cases 7–8: isolation-lattice witnesses on grounded fleet values (srv1/srv2 = SharedHostHome).
+// Typed+reviewed, not executed (no dsl/std interpreter yet) — zero-arg Bool for `--claim-run`.
+// Full ComputeOffer inhabitation: supply_srv{1,2}_offer + supply_hetzner_cax41_offer (PR #4805 follow-up).
+
+// --- §7 supply inhabitation (operator fleet + Hetzner CAX41) -------------------
+
+data operator_fleet_provider: ProviderIdentity = "operator-fleet"
+
+data operator_fleet_os_surface: OperatingSystemSurface = OperatingSystemSurface {
+  kernel: Linux,
+  distro_or_product: none,
+  version: none,
+  filesystem_semantics: Posix,
+  process_semantics: PosixProcess,
+}
+
+data operator_fleet_execution_surface: ExecutionSurface = ExecutionSurface {
+  os: operator_fleet_os_surface,
+  isolation: SharedHostHome,
+  container_runtime: none,
+  toolchains: [],
+  mounted_storage: [],
+  network: [],
+}
+
+// P-CF-BYTESIZE: `ram` is the explicit authority handle (also via placement_supply_row)
+// until ComputeHost.memory[] is populated by Measure value-typing.
+fn operator_fleet_compute_host(identity: HostIdentity, cpu: CpuFacts, ram: HostRamSupplyFacts) -> ComputeHost {
+  ComputeHost {
+    identity: identity,
+    processors: [CpuProcessor { cpu: cpu }],
+    // RAM authority via ram.observed_usable_bytes; memory [] until value-typing lands.
+    memory: [],
+    storage: [],
+    network_interfaces: [],
+  }
+}
+
+data operator_fleet_owned_cost: CostModel = CostModel {
+  cost_class: OwnedMarginalZero,
+  rates: ProviderCostModel { placeholder: true },
+}
+
+data operator_fleet_availability_open: LogicalTime = "operator-fleet:always-open"
+
+data supply_srv1_offer: ComputeOffer = ComputeOffer {
+  provider: operator_fleet_provider,
+  supply: ComputeSupplyFacts {
+    physical: operator_fleet_compute_host(supply_srv1_host_identity, supply_srv1_cpu, supply_srv1_ram),
+    execution: operator_fleet_execution_surface,
+    cost: Present { value: operator_fleet_owned_cost },
+    observed_performance: [],
+  },
+  available_window: AvailabilityWindow { open: operator_fleet_availability_open, close: none },
+  cost_quote: none,
+  constraints: [],
+}
+
+data supply_srv2_offer: ComputeOffer = ComputeOffer {
+  provider: operator_fleet_provider,
+  supply: ComputeSupplyFacts {
+    physical: operator_fleet_compute_host(supply_srv2_host_identity, supply_srv2_cpu, supply_srv2_ram),
+    execution: operator_fleet_execution_surface,
+    cost: Present { value: operator_fleet_owned_cost },
+    observed_performance: [],
+  },
+  available_window: AvailabilityWindow { open: operator_fleet_availability_open, close: none },
+  cost_quote: none,
+  constraints: [],
+}
+
+// Hetzner CAX41 — ephemeral VM, per-second billed (hourly rate + monthly cap per vendor docs).
+// Shared/fractional Ampere vCPUs: ground vcpu + RAM from cax41_catalog only — no AltraMax Hz claim.
+data hetzner_cax41_host_identity: HostIdentity = "hetzner:cax41"
+
+data hetzner_linux_os_surface: OperatingSystemSurface = OperatingSystemSurface {
+  kernel: Linux,
+  distro_or_product: none,
+  version: none,
+  filesystem_semantics: Posix,
+  process_semantics: PosixProcess,
+}
+
+data hetzner_cax41_execution_surface: ExecutionSurface = ExecutionSurface {
+  os: hetzner_linux_os_surface,
+  isolation: Vm,
+  container_runtime: none,
+  toolchains: [],
+  mounted_storage: [],
+  network: [],
+}
+
+data hetzner_cax41_compute_host: ComputeHost = ComputeHost {
+  identity: hetzner_cax41_host_identity,
+  // P-CF-BYTESIZE: cax41_catalog vcpus/memory_bytes/disk_bytes not yet in processors[]/memory[];
+  // physical facts deferred — cost_quote.expected_units is the only catalog field wired today.
+  processors: [],
+  memory: [],
+  storage: [],
+  network_interfaces: [],
+}
+
+data hetzner_per_second_cost: CostModel = CostModel {
+  cost_class: PerSecondBilled,
+  rates: ProviderCostModel { placeholder: true },
+}
+
+data hetzner_cax41_cost_quote: CostEstimate = CostEstimate {
+  model: hetzner_per_second_cost,
+  // P-CF-BYTESIZE: hourly_eur_micros raw Int → expected_units: Float (no typer yet);
+  // dissolves when Measure<Currency,_> value typing lands.
+  expected_units: cax41_catalog.hourly_eur_micros,
+  currency: "EUR",
+}
+
+data hetzner_api_availability_open: LogicalTime = "hetzner:cloud-api-available"
+
+data hetzner_provider: ProviderIdentity = "hetzner"
+
+data supply_hetzner_cax41_offer: ComputeOffer = ComputeOffer {
+  provider: hetzner_provider,
+  supply: ComputeSupplyFacts {
+    physical: hetzner_cax41_compute_host,
+    execution: hetzner_cax41_execution_surface,
+    cost: Present { value: hetzner_per_second_cost },
+    observed_performance: [],
+  },
+  available_window: AvailabilityWindow { open: hetzner_api_availability_open, close: none },
+  cost_quote: Present { value: hetzner_cax41_cost_quote },
+  constraints: [],
+}
+
+// Cross-provider Vm demand: operator fleet (SharedHostHome) rejects; Hetzner (Vm) admits.
+data vm_isolation_work_demand: WorkDemand = WorkDemand {
+  resources: ResourceEnvelope {
+    cpu: none,
+    gpu: none,
+    memory: none,
+    storage: none,
+    network: none,
+  },
+  os: none,
+  isolation: IsolationRequirement { boundary: Vm },
+  toolchains: [],
+  parallelism: SingleWorkItem,
+  data_locality: [],
+  effects: [],
+}
+
+// Case 7 — #1 rule: an untrusted Vm-requiring job is NOT honored by SharedHostHome supply.
+fn witness_shared_host_home_rejects_vm() -> Bool {
+  isolation_satisfies(supply: SharedHostHome, demand: Vm) == false
+}
+
+// Case 8 — a SharedHostHome-tolerant (trusted in-fleet) job IS honored by SharedHostHome supply.
+fn witness_shared_host_home_admits_shared_host_home() -> Bool {
+  isolation_satisfies(supply: SharedHostHome, demand: SharedHostHome)
+}
+
+// Monotonicity: stronger supply honors a weaker demand (Vm admits SharedHostHome), never reverse.
+fn witness_vm_admits_shared_host_home() -> Bool {
+  isolation_satisfies(supply: Vm, demand: SharedHostHome)
+}
+
+// Cross-provider: grounded srv1 offer rejects Vm demand (operator fleet SharedHostHome).
+fn witness_srv1_offer_rejects_vm_demand() -> Bool {
+  match satisfies(offer: supply_srv1_offer, demand: vm_isolation_work_demand) {
+    Rejected { reason: _ } => true
+    Eligible { witness: _ } => false
+  }
+}
+
+// Cross-provider: grounded srv2 offer rejects Vm demand (operator fleet SharedHostHome).
+fn witness_srv2_offer_rejects_vm_demand() -> Bool {
+  match satisfies(offer: supply_srv2_offer, demand: vm_isolation_work_demand) {
+    Rejected { reason: _ } => true
+    Eligible { witness: _ } => false
+  }
+}
+
+// Cross-provider: Hetzner Vm isolation admits Vm demand — isolation-lattice only until
+// hetzner_cax41_compute_host physical facts are plumbed from cax41_catalog (P-CF-BYTESIZE).
+fn witness_hetzner_cax41_admits_vm_demand() -> Bool {
+  match satisfies(offer: supply_hetzner_cax41_offer, demand: vm_isolation_work_demand) {
+    Eligible { witness: _ } => true
+    Rejected { reason: _ } => false
+  }
+}

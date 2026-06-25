@@ -127,7 +127,7 @@ fn gate_is_heavy_resolve(g: Gate) -> Bool {
   match g {
     SourceRootIngestGate => true
     DslCompileCleanGate => true
-    WiringLivenessWholeTreeGate => true
+    WiringLivenessWholeTreeGate => false
     RustMonolithGate => false
     EmitHostGate => false
     LayeringImportsGate => false
