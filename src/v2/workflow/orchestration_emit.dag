@@ -9,21 +9,7 @@ import v2.extdeps.languages.bash {
   orch_seq2_emitted_command,
   orch_seq2_target_model,
   orch_retry_emitted_command,
-  orch_retry_target_model,
-  bash_word_pass_emitted,
-  bash_word_pass_target_model,
-  bash_word_cmdsubst_emitted,
-  bash_word_cmdsubst_target_model,
-  bash_single_quote,
-  bash_var_ref_spelling
-}
-import extdeps.languages.bash.program {
-  ShellWord,
-  Lit,
-  VarRef,
-  Concat,
-  CmdSubst,
-  Raw
+  orch_retry_target_model
 }
 import v2.std.orchestration {
   Run,
@@ -233,53 +219,6 @@ fn orch_emit_steps_from(head_str: String, rest: List<Step>) -> Outcome<Medium<St
           )
         }
       )
-  }
-}
-
-fn emit_word_pass(spelling: String) -> Outcome<Medium<String>> {
-  emit(
-    tree: InferredTree {
-      root: bash_word_pass_emitted,
-      facts: Map { lookup: orch_emit_facts_lookup }
-    },
-    target: bash_word_pass_target_model(spelling: spelling)
-  )
-}
-
-fn emit_word_concat_from(acc: String, rest: List<ShellWord>) -> Outcome<Medium<String>> {
-  match list_head(xs: rest) {
-    HeadAbsent => outcome_accepted(lossless_source(text: acc))
-    HeadFound { value: p } =>
-      match emit_shell_word(w: p) {
-        Accepted { value: m, diagnostics: _ } =>
-          match list_tail(xs: rest) {
-            TailFound { tail: t } => emit_word_concat_from(acc: concat(acc, m.carried), rest: t)
-            TailAbsent => outcome_accepted(lossless_source(text: concat(acc, m.carried)))
-          }
-        Rejected { diagnostics: d } => Rejected { diagnostics: d }
-      }
-  }
-}
-
-fn emit_word_cmdsubst(body: String) -> Outcome<Medium<String>> {
-  emit(
-    tree: InferredTree {
-      root: bash_word_cmdsubst_emitted,
-      facts: Map { lookup: orch_emit_facts_lookup }
-    },
-    target: bash_word_cmdsubst_target_model(body: body)
-  )
-}
-
-fn emit_shell_word(w: ShellWord) -> Outcome<Medium<String>> {
-  match w {
-    Lit { text: t } => emit_word_pass(spelling: bash_single_quote(spelling: t))
-    VarRef { name: n } => emit_word_pass(spelling: bash_var_ref_spelling(spelling: n))
-    Concat { parts: ps } => emit_word_concat_from(acc: "", rest: ps)
-    CmdSubst { body: _ } =>
-      outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^emit_shell_word_cmdsubst_pending_stmt_layer))
-    Raw { text: _ } =>
-      outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^emit_shell_word_raw_uninhabited))
   }
 }
 

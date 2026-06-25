@@ -1,0 +1,216 @@
+module v2.workflow.shell_emit
+
+import v2.compiler.emit { emit }
+import v2.compiler.infer { InferredFacts, InferredTree }
+import extdeps.communication.medium { Medium }
+import v2.extdeps.languages.bash {
+  orch_run_emitted_command,
+  bash_word_pass_emitted,
+  bash_word_pass_target_model,
+  bash_word_cmdsubst_emitted,
+  bash_word_cmdsubst_target_model,
+  bash_stmt_subshell_emitted,
+  bash_stmt_subshell_target_model,
+  bash_stmt_exit_emitted,
+  bash_stmt_exit_target_model,
+  bash_single_quote,
+  bash_var_ref_spelling
+}
+import extdeps.languages.bash.program {
+  ShellWord,
+  Lit,
+  VarRef,
+  Concat,
+  CmdSubst,
+  Raw,
+  ShellStmt,
+  Command,
+  Assign,
+  If,
+  Subshell,
+  BraceGroup,
+  AndOr,
+  Pipe,
+  EnvPrefixed,
+  WithRedir,
+  Heredoc,
+  Exit,
+  RawLine
+}
+import v2.std.algebra { list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent }
+import v2.std.collection { List, Map }
+import v2.compiler.target_carriers { lossless_source }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  Outcome,
+  Rejected,
+  Unavailable,
+  bind_outcome,
+  node_locus,
+  outcome_accepted,
+  outcome_rejected
+}
+import v2.std.node { Node }
+import v2.std.witness { Violates, Witness }
+
+fn shell_emit_facts_lookup(key: Node) -> Witness<InferredFacts> {
+  Violates {
+    diagnostic: Diagnostic {
+      reason: ^shell_emit_facts_unexpected_consultation,
+      at: node_locus(node: key),
+      correction: Unavailable { reason: ExternalContractUnknown }
+    }
+  }
+}
+
+fn shell_emit_unsupported(reason: Symbol) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: node_locus(node: orch_run_emitted_command),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn emit_word_pass(spelling: String) -> Outcome<Medium<String>> {
+  emit(
+    tree: InferredTree {
+      root: bash_word_pass_emitted,
+      facts: Map { lookup: shell_emit_facts_lookup }
+    },
+    target: bash_word_pass_target_model(spelling: spelling)
+  )
+}
+
+fn emit_word_cmdsubst(body: String) -> Outcome<Medium<String>> {
+  emit(
+    tree: InferredTree {
+      root: bash_word_cmdsubst_emitted,
+      facts: Map { lookup: shell_emit_facts_lookup }
+    },
+    target: bash_word_cmdsubst_target_model(body: body)
+  )
+}
+
+fn emit_word_concat_from(acc: String, rest: List<ShellWord>) -> Outcome<Medium<String>> {
+  match list_head(xs: rest) {
+    HeadAbsent => outcome_accepted(lossless_source(text: acc))
+    HeadFound { value: p } =>
+      match emit_shell_word(w: p) {
+        Accepted { value: m, diagnostics: _ } =>
+          match list_tail(xs: rest) {
+            TailFound { tail: t } => emit_word_concat_from(acc: concat(acc, m.carried), rest: t)
+            TailAbsent => outcome_accepted(lossless_source(text: concat(acc, m.carried)))
+          }
+        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+      }
+  }
+}
+
+fn emit_shell_word(w: ShellWord) -> Outcome<Medium<String>> {
+  match w {
+    Lit { text: t } => emit_word_pass(spelling: bash_single_quote(spelling: t))
+    VarRef { name: n } => emit_word_pass(spelling: bash_var_ref_spelling(spelling: n))
+    Concat { parts: ps } => emit_word_concat_from(acc: "", rest: ps)
+    CmdSubst { body: b } =>
+      bind_outcome(o: emit_shell_stmt(s: b), f: fn(m) {
+        emit_word_cmdsubst(body: m.carried)
+      })
+    Raw { text: _ } =>
+      outcome_rejected(shell_emit_unsupported(reason: ^emit_shell_word_raw_uninhabited))
+  }
+}
+
+fn emit_stmt_subshell(body: String) -> Outcome<Medium<String>> {
+  emit(
+    tree: InferredTree {
+      root: bash_stmt_subshell_emitted,
+      facts: Map { lookup: shell_emit_facts_lookup }
+    },
+    target: bash_stmt_subshell_target_model(body: body)
+  )
+}
+
+fn emit_stmt_exit(code: String) -> Outcome<Medium<String>> {
+  emit(
+    tree: InferredTree {
+      root: bash_stmt_exit_emitted,
+      facts: Map { lookup: shell_emit_facts_lookup }
+    },
+    target: bash_stmt_exit_target_model(code: code)
+  )
+}
+
+fn emit_join_step(acc: String, first: Bool, part: String) -> String {
+  if first { part } else { concat(acc, concat(" ", part)) }
+}
+
+fn emit_join_words_from(acc: String, first: Bool, rest: List<ShellWord>) -> Outcome<Medium<String>> {
+  match list_head(xs: rest) {
+    HeadAbsent => outcome_accepted(lossless_source(text: acc))
+    HeadFound { value: w } =>
+      match emit_shell_word(w: w) {
+        Accepted { value: m, diagnostics: _ } =>
+          match list_tail(xs: rest) {
+            TailFound { tail: t } =>
+              emit_join_words_from(acc: emit_join_step(acc: acc, first: first, part: m.carried), first: false, rest: t)
+            TailAbsent =>
+              outcome_accepted(lossless_source(text: emit_join_step(acc: acc, first: first, part: m.carried)))
+          }
+        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+      }
+  }
+}
+
+fn emit_join_semi_step(acc: String, first: Bool, part: String) -> String {
+  if first { part } else { concat(acc, concat("; ", part)) }
+}
+
+fn emit_join_stmts_semi_from(acc: String, first: Bool, rest: List<ShellStmt>) -> Outcome<Medium<String>> {
+  match list_head(xs: rest) {
+    HeadAbsent => outcome_accepted(lossless_source(text: acc))
+    HeadFound { value: s } =>
+      match emit_shell_stmt(s: s) {
+        Accepted { value: m, diagnostics: _ } =>
+          match list_tail(xs: rest) {
+            TailFound { tail: t } =>
+              emit_join_stmts_semi_from(acc: emit_join_semi_step(acc: acc, first: first, part: m.carried), first: false, rest: t)
+            TailAbsent =>
+              outcome_accepted(lossless_source(text: emit_join_semi_step(acc: acc, first: first, part: m.carried)))
+          }
+        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+      }
+  }
+}
+
+fn emit_shell_stmt(s: ShellStmt) -> Outcome<Medium<String>> {
+  match s {
+    Command { words: ws } =>
+      bind_outcome(o: emit_join_words_from(acc: "", first: true, rest: ws), f: fn(m) {
+        emit_word_pass(spelling: m.carried)
+      })
+    Subshell { body: b } =>
+      bind_outcome(o: emit_join_stmts_semi_from(acc: "", first: true, rest: b), f: fn(m) {
+        emit_stmt_subshell(body: m.carried)
+      })
+    Exit { code: c } => emit_stmt_exit(code: to_string(c))
+    RawLine { text: t } => emit_word_pass(spelling: t)
+    Assign { name: _, value: _ } =>
+      outcome_rejected(shell_emit_unsupported(reason: ^emit_shell_stmt_assign_pending))
+    If { cond: _, then: _ } =>
+      outcome_rejected(shell_emit_unsupported(reason: ^emit_shell_stmt_if_pending))
+    BraceGroup { body: _ } =>
+      outcome_rejected(shell_emit_unsupported(reason: ^emit_shell_stmt_bracegroup_uninhabited))
+    AndOr { left: _, op: _, right: _ } =>
+      outcome_rejected(shell_emit_unsupported(reason: ^emit_shell_stmt_andor_pending))
+    Pipe { left: _, right: _ } =>
+      outcome_rejected(shell_emit_unsupported(reason: ^emit_shell_stmt_pipe_pending))
+    EnvPrefixed { name: _, value: _, command: _ } =>
+      outcome_rejected(shell_emit_unsupported(reason: ^emit_shell_stmt_envprefixed_pending))
+    WithRedir { stmt: _, redir: _ } =>
+      outcome_rejected(shell_emit_unsupported(reason: ^emit_shell_stmt_withredir_pending))
+    Heredoc { path: _, delimiter: _, body: _ } =>
+      outcome_rejected(shell_emit_unsupported(reason: ^emit_shell_stmt_heredoc_pending))
+  }
+}

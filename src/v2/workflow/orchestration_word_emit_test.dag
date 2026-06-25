@@ -1,11 +1,13 @@
 module v2.workflow.orchestration_word_emit_test
 
-import v2.workflow.orchestration_emit { emit_shell_word }
+import v2.workflow.shell_emit { emit_shell_word }
 import extdeps.languages.bash.program {
   ShellWord,
   Lit,
   VarRef,
   Concat,
+  CmdSubst,
+  Command,
   serialize_word
 }
 import v2.std.diagnostic { Accepted, None, Rejected }
@@ -61,5 +63,20 @@ test fn word_concat_has_teeth_holds() -> Bool {
   emit_word_differs_from_oracle_of(
     w: concat_root_slash(),
     other: Concat { parts: [VarRef { name: "ROOT" }, Lit { text: "/release" }] }
+  )
+}
+
+fn cmdsubst_mktemp() -> ShellWord {
+  CmdSubst { body: Command { words: [Lit { text: "mktemp" }, Lit { text: "-d" }] } }
+}
+
+test fn word_cmdsubst_byte_identical_to_serialize_word_holds() -> Bool {
+  word_emits_oracle(w: cmdsubst_mktemp())
+}
+
+test fn word_cmdsubst_has_teeth_holds() -> Bool {
+  emit_word_differs_from_oracle_of(
+    w: cmdsubst_mktemp(),
+    other: CmdSubst { body: Command { words: [Lit { text: "mktemp" }] } }
   )
 }

@@ -1,0 +1,69 @@
+module v2.workflow.orchestration_stmt_emit_test
+
+import v2.workflow.shell_emit { emit_shell_stmt }
+import extdeps.languages.bash.program {
+  ShellStmt,
+  Command,
+  Subshell,
+  Exit,
+  RawLine,
+  ShellWord,
+  Lit,
+  serialize_stmt
+}
+import v2.std.diagnostic { Accepted, None, Rejected }
+
+fn stmt_emits_oracle(s: ShellStmt) -> Bool {
+  match emit_shell_stmt(s: s) {
+    Accepted { value: src, diagnostics: dg } =>
+      (src.carried == serialize_stmt(s: s)) && (dg == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn stmt_differs_from_oracle_of(s: ShellStmt, other: ShellStmt) -> Bool {
+  match emit_shell_stmt(s: s) {
+    Accepted { value: src, diagnostics: _ } => src.carried != serialize_stmt(s: other)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn cmd_echo_hi() -> ShellStmt {
+  Command { words: [Lit { text: "echo" }, Lit { text: "hi" }] }
+}
+
+fn cmd_true() -> ShellStmt {
+  Command { words: [Lit { text: "true" }] }
+}
+
+test fn stmt_command_byte_identical_holds() -> Bool {
+  stmt_emits_oracle(s: cmd_echo_hi())
+}
+
+test fn stmt_command_has_teeth_holds() -> Bool {
+  stmt_differs_from_oracle_of(s: cmd_echo_hi(), other: Command { words: [Lit { text: "echo" }, Lit { text: "bye" }] })
+}
+
+test fn stmt_exit_byte_identical_holds() -> Bool {
+  stmt_emits_oracle(s: Exit { code: 0 })
+}
+
+test fn stmt_exit_has_teeth_holds() -> Bool {
+  stmt_differs_from_oracle_of(s: Exit { code: 0 }, other: Exit { code: 1 })
+}
+
+test fn stmt_rawline_byte_identical_holds() -> Bool {
+  stmt_emits_oracle(s: RawLine { text: "! ( foo )" })
+}
+
+test fn stmt_subshell_of_command_byte_identical_holds() -> Bool {
+  stmt_emits_oracle(s: Subshell { body: [cmd_true()] })
+}
+
+test fn stmt_subshell_of_command_has_teeth_holds() -> Bool {
+  stmt_differs_from_oracle_of(s: Subshell { body: [cmd_true()] }, other: Subshell { body: [cmd_echo_hi()] })
+}
+
+test fn stmt_subshell_of_subshell_byte_identical_holds() -> Bool {
+  stmt_emits_oracle(s: Subshell { body: [Subshell { body: [cmd_true()] }] })
+}

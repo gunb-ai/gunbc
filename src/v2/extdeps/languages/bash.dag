@@ -1758,3 +1758,97 @@ fn bash_word_cmdsubst_target_model(body: String) -> TargetModel {
     binding_spellings: bash_word_cmdsubst_binding_spellings(body: body)
   )
 }
+
+fn bash_stmt_subshell_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: ^bash_token_subshell_open },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_subshell_body },
+    FixedToken { token_class: ^bash_token_subshell_close }
+  ]
+}
+
+data bash_stmt_subshell_emitted: Node = bash_conj_emitted_from_tokens(
+  tokens: bash_stmt_subshell_tokens()
+)
+
+fn bash_stmt_subshell_source_text(body: String) -> String {
+  concat("(", concat(body, ")"))
+}
+
+fn bash_stmt_subshell_lex() -> LexRules {
+  phrase_to_lex_rules(p: phrase([
+    span(text: "(", class: ^bash_token_subshell_open),
+    span(text: ")", class: ^bash_token_subshell_close)
+  ]))
+}
+
+fn bash_stmt_subshell_translation_rules_node() -> Node {
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_stmt_subshell,
+    lhs: ^bash_production_stmt_subshell,
+    tokens: bash_stmt_subshell_tokens(),
+    emitted: bash_stmt_subshell_emitted
+  )
+}
+
+fn bash_stmt_subshell_binding_spellings(body: String) -> Map<Symbol, String> {
+  map_insert(empty_map(), ^bash_stmt_subshell_body, body)
+}
+
+fn bash_stmt_subshell_target_model(body: String) -> TargetModel {
+  bash_make_bound_tokens_target_model(
+    rules: bash_stmt_subshell_translation_rules_node(),
+    source_literal: ^bash_stmt_subshell_source_literal,
+    production_name: ^bash_production_stmt_subshell,
+    tokens: bash_stmt_subshell_tokens(),
+    source_text: bash_stmt_subshell_source_text(body: body),
+    lex: bash_stmt_subshell_lex(),
+    binding_spellings: bash_stmt_subshell_binding_spellings(body: body)
+  )
+}
+
+fn bash_stmt_exit_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: ^bash_token_stmt_exit_kw },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_exit_code }
+  ]
+}
+
+data bash_stmt_exit_emitted: Node = bash_conj_emitted_from_tokens(
+  tokens: bash_stmt_exit_tokens()
+)
+
+fn bash_stmt_exit_source_text(code: String) -> String {
+  concat("exit ", code)
+}
+
+fn bash_stmt_exit_lex() -> LexRules {
+  phrase_to_lex_rules(p: phrase([
+    span(text: "exit ", class: ^bash_token_stmt_exit_kw)
+  ]))
+}
+
+fn bash_stmt_exit_translation_rules_node() -> Node {
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_stmt_exit,
+    lhs: ^bash_production_stmt_exit,
+    tokens: bash_stmt_exit_tokens(),
+    emitted: bash_stmt_exit_emitted
+  )
+}
+
+fn bash_stmt_exit_binding_spellings(code: String) -> Map<Symbol, String> {
+  map_insert(empty_map(), ^bash_stmt_exit_code, code)
+}
+
+fn bash_stmt_exit_target_model(code: String) -> TargetModel {
+  bash_make_bound_tokens_target_model(
+    rules: bash_stmt_exit_translation_rules_node(),
+    source_literal: ^bash_stmt_exit_source_literal,
+    production_name: ^bash_production_stmt_exit,
+    tokens: bash_stmt_exit_tokens(),
+    source_text: bash_stmt_exit_source_text(code: code),
+    lex: bash_stmt_exit_lex(),
+    binding_spellings: bash_stmt_exit_binding_spellings(code: code)
+  )
+}
