@@ -735,18 +735,6 @@ fn cost_account_from_performance_receipts(receipts: List<PerformanceReceipt>) ->
   )
 }
 
-type PerformanceReceiptSpaceContext {
-  space: ByteSize
-  cache_state: NonEmptyStr?
-}
-
-fn performance_receipt_space_context(r: PerformanceReceipt) -> PerformanceReceiptSpaceContext {
-  PerformanceReceiptSpaceContext {
-    space: r.cost.space
-    cache_state: r.cache_state_summary
-  }
-}
-
 data host_v1_interpreter_provider: ProviderIdentity = "host:v1-interpreter"
 
 data host_v1_interpreter_execution_surface: ExecutionSurface = ExecutionSurface {
