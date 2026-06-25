@@ -6,12 +6,13 @@ import std.markup {
   MarkupNode,
   ElementNode,
   TextNode,
-  Serialized,
-  Rejected,
+  escape_text,
 }
-import std.html_markup {
-  try_serialize_html_node,
-  escape_text_content,
+import extdeps.languages.html {
+  try_serialize_html_source,
+  HtmlEmitResult,
+  EmitOk,
+  EmitRejected,
 }
 
 data tiny: MarkupNode = ElementNode {
@@ -45,16 +46,16 @@ data href_javascript: MarkupNode = ElementNode {
 }
 
 fn serialize_ok(node: MarkupNode, expected: String) -> Bool {
-  match try_serialize_html_node(node: node) {
-    Serialized { html: h } => h == expected
-    Rejected { reason: _ } => false
+  match try_serialize_html_source(node: node) {
+    EmitOk { html: h } => h == expected
+    EmitRejected { reason: _ } => false
   }
 }
 
 fn serialize_rejects(node: MarkupNode) -> Bool {
-  match try_serialize_html_node(node: node) {
-    Rejected { reason: _ } => true
-    Serialized { html: _ } => false
+  match try_serialize_html_source(node: node) {
+    EmitRejected { reason: _ } => true
+    EmitOk { html: _ } => false
   }
 }
 
@@ -67,7 +68,7 @@ func main() -> ProcessExit {
       expected: "<a href=\"x%22&amp;%3Cy%20onmouseover=z\"></a>"
     )
     && serialize_rejects(node: href_javascript)
-    && escape_text_content(s: "<b>") == "&lt;b&gt;" {
+    && escape_text(s: "<b>") == "&lt;b&gt;" {
     ExitSuccess
   } else {
     ExitFailure { code: exit_code_general_error, reason: "html_markup_smoke mismatch" }
