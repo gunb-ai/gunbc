@@ -842,7 +842,11 @@ pub fn check_wiring_liveness_streaming(
             .iter()
             .filter_map(|orig| {
                 let n = orig.name.as_str();
-                if n.is_empty() { None } else { Some((n, orig)) }
+                if n.is_empty() {
+                    None
+                } else {
+                    Some((n, orig))
+                }
             })
             .collect();
 
@@ -880,8 +884,7 @@ pub fn check_wiring_liveness_streaming(
             let qualified_name = logical_qualified_name(&info.module_name, &name);
             // Walk the inferred body for skeleton (strict LocalValueBinding atoms)
             // AND refs (permissive ExprVar/ExprCall names).
-            let (output, mut refs) =
-                marshal_fn_body_skeleton(ctx, body, &param_names, &si);
+            let (output, mut refs) = marshal_fn_body_skeleton(ctx, body, &param_names, &si);
             // Also walk the original body for refs: handles the case where the
             // inferred tree has ExprError standing in for a genuine param reference
             // (e.g. field-access-on-param fails in whole-tree cross-root context).
