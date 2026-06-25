@@ -3091,8 +3091,10 @@ pub fn parse_type_after_kw(
         let type_params = type_params_result.params.clone();
         let tokens = skip_newlines(type_params_result.tokens.clone());
         let ctx = type_params_result.ctx.clone();
-        let is_sole_constructor =
-            tok_is_ident_text(tokens.clone().first().cloned(), "sole_constructor".to_string());
+        let is_sole_constructor = tok_is_ident_text(
+            tokens.clone().first().cloned(),
+            "sole_constructor".to_string(),
+        );
         let tokens = type_body_tokens_after_modifiers(tokens.clone());
         match (*eat(tokens.clone(), Rc::new(ExpectedToken::ExpectLBrace))).clone() {
             EatResult::EatConsumed { tokens: __ec, .. } => {
@@ -3266,8 +3268,10 @@ pub fn parse_type_body_from_prefix(
             ident: None,
         });
         let raw_tokens = skip_newlines(prefix.tokens.clone());
-        let is_sole_constructor =
-            tok_is_ident_text(raw_tokens.clone().first().cloned(), "sole_constructor".to_string());
+        let is_sole_constructor = tok_is_ident_text(
+            raw_tokens.clone().first().cloned(),
+            "sole_constructor".to_string(),
+        );
         let tokens = type_body_tokens_after_modifiers(raw_tokens);
         match (*eat(tokens.clone(), Rc::new(ExpectedToken::ExpectLBrace))).clone() {
             EatResult::EatConsumed { tokens: __ec, .. } => {

@@ -647,10 +647,7 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
             " consumers".to_string(),
         ),
         CompilerDiagnostic::SoleConstructorViolation { type_name: t, .. } => v1_rt::concat(
-            v1_rt::concat(
-                "sole_constructor type '".to_string(),
-                t.clone(),
-            ),
+            v1_rt::concat("sole_constructor type '".to_string(), t.clone()),
             "' cannot be constructed outside its defining module".to_string(),
         ),
         CompilerDiagnostic::VariantCollision {
