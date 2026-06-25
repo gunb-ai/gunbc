@@ -2156,7 +2156,7 @@ pub fn validate_boundaries(plan: Rc<ArtifactPlan>) -> Rc<Vec<Rc<ErrorNode>>> {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct EmittableGraph {
-    pub graph: Rc<ResolvedGraph>,
+    graph: Rc<ResolvedGraph>,
 }
 
 pub fn emittable_graph(resolved: Rc<ResolvedPipelineResult>) -> Option<Rc<EmittableGraph>> {
@@ -2172,6 +2172,10 @@ pub fn emittable_graph(resolved: Rc<ResolvedPipelineResult>) -> Option<Rc<Emitta
             .clone()
             .map(|typed| Rc::new(EmittableGraph { graph: typed }))
     }
+}
+
+pub fn emittable_graph_from_graph(typed: Rc<ResolvedGraph>) -> Rc<EmittableGraph> {
+    Rc::new(EmittableGraph { graph: typed })
 }
 
 pub fn emit_from_artifact_plan(

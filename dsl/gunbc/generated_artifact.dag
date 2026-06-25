@@ -1,17 +1,8 @@
 
 module gunbc.generated_artifact
 
-import gunbc.ci_yaml_emit { expected_ci_yml }
-import gunbc.ci_yaml_validate { ci_yml_parses }
-import gunbc.gitignore_emit { expected_gitignore, path_is_ignored }
-import gunbc.roadmap_authority { expected_roadmap_md }
-import gunbc.design_document { expected_design_md }
-import gunbc.runner_deploy_emit { expected_runner_deploy_manifest }
-import gunbc.fleet_converge_emit { expected_fleet_converge_sh }
 import gunbc.os_install { HostAutoinstall, fleet_autoinstall_specs, InstallServerSpec, fleet_install_server_specs }
-import gunbc.os_install_emit { autoinstall_user_data }
-import gunbc.install_server_emit { install_server_dnsmasq_conf }
-import gunbc.plan { Plan, expected_plan_md, plan_path }
+import gunbc.plan { Plan, plan_path }
 import gunbc.plan_registry { all_plans }
 
 type GeneratedArtifact
@@ -36,6 +27,15 @@ data generated_artifact_registry: List<GeneratedArtifact> = concat(
   map(all_plans, pl => PlanArtifact { plan: pl })
 )
 
+type RepoConsumer
+  = GitProtocol
+  | GithubActionsWorkflow
+  | ProjectDocumentation
+
+type CommitPolicy
+  = CommitRequired { consumer: RepoConsumer }
+  | NotCommitted
+
 fn artifact_path(a: GeneratedArtifact) -> String {
   match a {
     CiYamlArtifact => ".github/workflows/ci.yml"
@@ -50,29 +50,25 @@ fn artifact_path(a: GeneratedArtifact) -> String {
   }
 }
 
-fn artifact_generate(a: GeneratedArtifact) -> String {
+fn artifact_commit_policy(a: GeneratedArtifact) -> CommitPolicy {
   match a {
-    CiYamlArtifact => expected_ci_yml()
-    GitignoreArtifact => expected_gitignore()
-    RoadmapArtifact => expected_roadmap_md()
-    DesignArtifact => expected_design_md()
-    RunnerDeployArtifact => expected_runner_deploy_manifest()
-    FleetConvergeArtifact => expected_fleet_converge_sh()
-    AutoinstallUserDataArtifact { spec } => autoinstall_user_data(payload: spec.payload)
-    ProxyDhcpDnsmasqArtifact { spec } => install_server_dnsmasq_conf(spec: spec)
-    PlanArtifact { plan } => expected_plan_md(p: plan)
-  }
-}
-
-fn artifact_extra_valid(a: GeneratedArtifact) -> Bool {
-  match a {
-    CiYamlArtifact => ci_yml_parses(path: artifact_path(a: a))
-    _ => true
+    GitignoreArtifact => CommitRequired { consumer: GitProtocol }
+    CiYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
+    RoadmapArtifact => CommitRequired { consumer: ProjectDocumentation }
+    DesignArtifact => CommitRequired { consumer: ProjectDocumentation }
+    PlanArtifact { plan: _ } => CommitRequired { consumer: ProjectDocumentation }
+    RunnerDeployArtifact => NotCommitted
+    FleetConvergeArtifact => NotCommitted
+    AutoinstallUserDataArtifact { spec: _ } => NotCommitted
+    ProxyDhcpDnsmasqArtifact { spec: _ } => NotCommitted
   }
 }
 
 fn artifact_is_committed(a: GeneratedArtifact) -> Bool {
-  !path_is_ignored(path: artifact_path(a: a))
+  match artifact_commit_policy(a: a) {
+    CommitRequired { consumer: _ } => true
+    NotCommitted => false
+  }
 }
 
 fn committed_generated_artifacts() -> List<GeneratedArtifact> {

@@ -4,7 +4,7 @@ use v1_compiler::v1_compiler_compile::{compile_to_resolved, SourceFile};
 
 use crate::helpers::{resolve_imports_transitively_with_source_roots, workspace_root};
 
-const ENTRY: &str = "src/v2/compiler/manual/pbp_body_producer_perf_repro.dag";
+const ENTRY: &str = "src/v2/test/claim/manual/pbp_body_producer_perf_repro.dag";
 
 const WRONG_TYPE_SRC: &str = r#"module v2.test.manual.pbp_body_producer_wrong_type_repro
 
@@ -57,7 +57,7 @@ fn body_producer_infer_perf_witness_resolves_clean() {
 #[test]
 fn body_producer_infer_perf_witness_wrong_type_still_rejects() {
     let sources = sources_for_inline(
-        "src/v2/compiler/manual/pbp_body_producer_wrong_type_repro.dag",
+        "src/v2/test/claim/manual/pbp_body_producer_wrong_type_repro.dag",
         WRONG_TYPE_SRC,
     );
     let resolved = compile_to_resolved(Rc::new(sources));

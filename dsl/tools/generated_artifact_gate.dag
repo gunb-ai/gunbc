@@ -6,7 +6,9 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.generated_artifact {
   GeneratedArtifact,
   committed_generated_artifacts,
-  artifact_path,
+  artifact_path
+}
+import gunbc.generated_artifact_emit {
   artifact_generate,
   artifact_extra_valid
 }

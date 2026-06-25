@@ -39,7 +39,7 @@ import std.measure {
 import std.currency { CurrencyCode }
 import std.verification { NanosecondDuration, nanosecond_duration, nanosecond_duration_count }
 import std.realization_schedule { CostAccount }
-import std.realization_measurement { cost_account_measured_from_time }
+import std.realization_measurement { cost_account_measured_from_time, cost_account_measured_from_time_and_space }
 import std.content_hash {
   content_hash_atom,
   content_hash_combine,
@@ -756,7 +756,7 @@ type MeasurementConfidence
 type PerformanceReceipt {
   provider: ProviderIdentity
   work_shape: WorkUnitId
-  wall_duration: NanosecondDuration
+  cost: CostAccount<Nano>
   cpu_seconds: Float?
   sample_count: Int
   measurement_context: ExecutionSurface
@@ -769,13 +769,20 @@ fn performance_receipts_total_time(receipts: List<PerformanceReceipt>) -> Nanose
     count: fold(
       receipts,
       init: 0,
-      f: (acc, receipt) => acc + nanosecond_duration_count(d: receipt.wall_duration)
+      f: (acc, receipt) => acc + measure_count(m: receipt.cost.time)
     )
   )
 }
 
 fn cost_account_from_performance_receipts(receipts: List<PerformanceReceipt>) -> CostAccount<Nano> {
-  cost_account_measured_from_time(time: performance_receipts_total_time(receipts: receipts))
+  cost_account_measured_from_time_and_space(
+    time: performance_receipts_total_time(receipts: receipts),
+    space: byte_size(count: fold(
+      receipts,
+      init: 0,
+      f: (acc, receipt) => acc + byte_size_count(receipt.cost.space)
+    ))
+  )
 }
 
 data host_v1_interpreter_provider: ProviderIdentity = "host:v1-interpreter"
@@ -798,11 +805,12 @@ data host_v1_interpreter_execution_surface: ExecutionSurface = ExecutionSurface 
 fn performance_receipt_host_single_sample(
   work_shape: WorkUnitId,
   wall_time: NanosecondDuration,
+  space: ByteSize,
 ) -> PerformanceReceipt {
   PerformanceReceipt {
     provider: host_v1_interpreter_provider,
     work_shape: work_shape,
-    wall_duration: wall_time,
+    cost: cost_account_measured_from_time_and_space(time: wall_time, space: space),
     cpu_seconds: none,
     sample_count: 1,
     measurement_context: host_v1_interpreter_execution_surface,

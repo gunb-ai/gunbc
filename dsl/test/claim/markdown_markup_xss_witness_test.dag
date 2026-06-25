@@ -2,14 +2,16 @@ module test.claim.markdown_markup_xss_witness
 
 import std.markup {
   escape_url,
+  Serialized,
+  Rejected,
+}
+import extdeps.uri_validation {
+  validate_href,
+  SafeHref,
+  RejectedHref,
   DangerousScheme,
   DataScheme,
   JavascriptScheme,
-  RejectedHref,
-  SafeHref,
-  validate_href,
-  Serialized,
-  Rejected,
 }
 import extdeps.languages.html_fragment { serialize_fragment }
 import extdeps.languages.markdown {
