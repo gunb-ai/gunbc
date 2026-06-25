@@ -156,13 +156,19 @@ fn retry_eagain_first_step_opt() -> Optional<Step> {
   }
 }
 
+fn retry_eagain_step_command(s: Step) -> Optional<String> {
+  match s {
+    Do { run: r } => Present { value: r.command }
+    If { cond: _, then_: _, else_: _ } => Absent
+    For { binder: _, over: _, body: _ } => Absent
+    While { cond: _, body: _, bound: _ } => Absent
+    Retry { body: _, escalations: _, on_exhausted: _ } => Absent
+  }
+}
+
 fn retry_eagain_command_opt() -> Optional<String> {
   match retry_eagain_first_step_opt() {
-    Present { value: s } =>
-      match s {
-        Do { run: r } => Present { value: r.command }
-        _ => Absent
-      }
+    Present { value: s } => retry_eagain_step_command(s: s)
     Absent => Absent
   }
 }
