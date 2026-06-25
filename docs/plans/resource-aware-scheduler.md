@@ -1,0 +1,118 @@
+# Resource-aware scheduler — larger allocations → larger throughput (always)
+
+> Companion to [`realization-measurement-loop.md`](realization-measurement-loop.md) (Phase 0 space arm + Phase 1). That doc covers the full realization arc; this one tracks the four-node implementation the operator scoped 2026-06-25. Dispatched from session `calm-carp-204`. DESIGN refs: §1 (time = cost), §2 (one concept every scale — width IS a resource fit count), §3 (single authority — cost lives on `Runnable`, width derives from it), §5 (fail-closed — wrong width is silent over/under-use; construction makes over-commit unwritable).
+
+---
+
+## The invariant
+
+`spawn_width = floor(available_memory / per_runnable_peak)` — derived, never hand-authored.
+Host gets more memory → width goes up automatically → throughput goes up. Enforced by construction, not convention.
+
+Today this is violated: `gunbc_ci_floor_per_shard_peak_rss_bytes()` reads a static data row (`gunbc_ci_floor_measured_peak`) derived by dividing a whole-run cgroup peak by a concurrency count. The division is coarse; the value is stale; the width calculation is a side-channel in `ci_floor_plan.dag`, not a property of the plan itself.
+
+---
+
+## Current state (what exists vs. what's inert)
+
+| Carrier | Status |
+| --- | --- |
+| `CostAccount<S> { time, space, power, basis }` in `std.realization_schedule` | **Always zero** — `cost_account_predicted_zero()` everywhere |
+| `CostBasis = Measured \| Predicted` | Types exist, `Measured` never used |
+| `shard_balance_slot_for_cost` in `std.realization_width` | Uses `CostAccount.time` to balance shards — cost is never populated |
+| `WidthBoundedRealization { plan, spawn_width }` | Right carrier, produced by a side-channel not the scheduler |
+| `memory_aware_spawn_width` | Formula correct; reads `per_shard_peak` from a static external data row |
+| `PerformanceReceipt { wall_duration, sample_count, confidence }` in `compute_fabric` | Exists, not wired to `CostAccount.space` |
+| `claim_batch.rs:74` `account_retained_memory()` | Emits interpreter heap bytes to stderr — never collected by `claim_executor` |
+| `claim_batch.rs:30` `peak_rss_lines()` | Emits process `VmHWM` to stderr — never collected by `claim_executor` |
+
+---
+
+## Four nodes
+
+### Node A — Measurement plumbing (v1 seed Rust)
+
+**Scope:** make per-shard RSS observable as a structured output, collectable by `claim_executor`.
+
+- `claim_batch` emits a machine-readable line at process exit:
+  `[measurement] per-shard-peak-rss: N bytes`
+  (uses the existing `peak_rss_lines()` / `/proc/self/status` VmHWM — just adds a structured emit alongside the stderr prose)
+- `claim_executor` parses those lines from child stderr, tracks `max(per_shard_peak)` across all shards in a batch, and emits:
+  `[calibration] max-per-shard-peak-rss: N bytes at spawn_width=W`
+  This becomes the input for updating `gunbc_ci_floor_measured_peak` — replacing the `whole_run / concurrency` divide with a directly observed per-shard maximum.
+
+**No substrate changes.** Dissolution trigger: when `Runnable` carries `CostEstimate.space` (Node B) and the scheduler derives width from it, the static data row `gunbc_ci_floor_measured_peak` and this calibration plumbing dissolve into Phase 1 (the scheduler reads cost from the plan, not a side-channel).
+
+**Dispatched:** `adhoc-97532cd3-dfe` (work item created 2026-06-25).
+
+---
+
+### Node B — Per-Runnable cost model (std substrate)
+
+**Scope:** make `CostEstimate.space` a first-class substrate fact on `Runnable`.
+
+- Add `cost: CostEstimate { space: ByteSize }` to `Runnable` in `std.realization_schedule`.
+  (Already: `CostAccount<S>.space: ByteSize` exists as the roll-up; `CostEstimate` is the per-action input that feeds it.)
+- Populate `cost` in `ci_floor_plan.dag`'s `gate_runnable()` from the measurement data rows (initially the values from Node A's calibration output; can be `predicted_zero` until Node D closes the feedback loop).
+- `RealizationPlan.total` becomes a derived rollup via `schedule_critical_path_time` instead of `cost_account_predicted_zero()`.
+
+**Depends on:** Node A (the measurements inform what value to put in the cost field).
+
+Note: `realization-measurement-loop.md` Phase 0 covers the `CostAccount.time` arm. Node B extends the same Phase 0 to the `space` arm (per-shard RSS, not just wall-clock time). Same carrier, same phase, second axis.
+
+---
+
+### Node C — Resource-aware scheduler (std + workflow)
+
+**Scope:** width derivation moves into the scheduler; the side-channel is deleted.
+
+- `v2.workflow.scheduler` (or `WidthBoundedRealization`) takes a `memory_budget: ByteSize` and reads `max(runnable.cost.space)` from the plan to derive:
+  `spawn_width = floor(memory_budget / max_runnable_space)`
+- This makes `spawn_width` an output of `WidthBoundedRealization`, not a separately-computed side-channel in `ci_floor_plan.dag`.
+- Delete `gunbc_ci_floor_spawn_width_for_budget` from `ci_floor_plan.dag`.
+- Delete the separate `eval_spawn_width` call in `claim_executor.rs` — width comes from evaluating the plan function, not a second eval pass.
+
+**Depends on:** Node B (scheduler reads cost from `Runnable`).
+
+This is Phase 1 in `realization-measurement-loop.md` ("make parallelism visible + hardware-bounded width") — converges the width side-channel onto the same `PlacementSupplyRow` / `HardwareThreadCount` derivation the plan already models.
+
+---
+
+### Node D — Calibration loop (data layer)
+
+**Scope:** measured per-shard data auto-updates per-Runnable cost estimates; static hand-authored data rows retire.
+
+- After a run, the `[calibration]` output from Node A becomes the authority for `Runnable.cost.space` in Node B.
+- Either: a CI step that reads the calibration line and rewrites `gunbc_ci_floor_measured_peak` (simple first form), or a `PerformanceReceipt`-typed store that the execution layer writes and the plan reads on next invocation (the proper long-term form — the resolved-graph cache from #5789 is the first building block of this pattern).
+- Once landed: a host provisioning change (more memory) is reflected in `memory_budget` → scheduler derives higher `spawn_width` → throughput increases automatically. No manual data row edits required.
+
+**Depends on:** Nodes A + B + C.
+
+**Dissolution trigger:** `gunbc_ci_floor_measured_peak` and `gunbc_ci_floor_conservative_fallback_width` have no consumers outside `gunbc_ci_floor_per_shard_peak_rss_bytes()` and `gunbc_ci_floor_spawn_width_for_budget()` — both functions delete in Node C. The entire `ci_floor_measurement.dag` data section for concurrency/width becomes redundant once the scheduler self-calibrates.
+
+---
+
+## Dependency order
+
+```
+A (Rust plumbing, 1 PR)
+  → informs B's cost values
+B (std model, per-Runnable cost)
+  → C depends on B
+C (scheduler, width from plan — replaces side-channel)
+  → D depends on A+B+C
+D (calibration loop — data rows retire)
+```
+
+A and B can proceed concurrently; B can use provisional values until D closes the loop. C should land with B (a model with no consumer is a scaffold; model + scheduler land together). D is its own PR after A+B+C.
+
+---
+
+## What this is NOT
+
+- Not a new caching mechanism — `realization-measurement-loop.md` owns the cache arc (Phase 0/P3 resolve-cache, Phase 2 cache kernel). This work is orthogonal: it's about *scheduling width*, not *whether to re-execute*.
+- Not a placement mechanism — `compute-envelope-model.md` owns the BUILD phase fan-out / host packing / G1–G3 arc. This work covers the RUN phase (corpus shard width). Per that doc: "width-up is pids-safe on its own" — the two invariants don't multiply.
+
+## Dissolution trigger (DESIGN §6)
+
+Delete this doc when: (a) `gunbc_ci_floor_measured_peak` is retired (no consumers), (b) `spawn_width` is derived from the plan via `WidthBoundedRealization` rather than a side-channel, and (c) a host memory increase is provably reflected in higher width without any `.dag` data row edits — at which point the invariant is a by-construction property and this tracker is redundant.
