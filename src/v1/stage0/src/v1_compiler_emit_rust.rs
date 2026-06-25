@@ -7413,7 +7413,8 @@ pub fn emit_typed_item(
                                             alias_rhs.clone(),
                                             env.source_indices.clone(),
                                         );
-                                        let rhs_str = if ((unused_params.clone().len() as i64) > 0) {
+                                        let rhs_str = if ((unused_params.clone().len() as i64) > 0)
+                                        {
                                             v1_rt::concat(
                                                 v1_rt::concat(
                                                     "std::marker::PhantomData<".to_string(),
