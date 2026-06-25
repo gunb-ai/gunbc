@@ -104,3 +104,40 @@ fn resolved_graph_cache_footprint_stays_under_modeled_cap() {
 
     let _ = fs::remove_dir_all(&dir);
 }
+
+/// Single-authority guard: the cap the realizer enforces must equal the modeled
+/// `SizeBounded` cap declared in the substrate. Reading the `.dag` here means an
+/// edit to the modeled cap that isn't mirrored into the Rust seed goes RED,
+/// rather than the two drifting silently (the §3 fork this whole fix closes).
+#[test]
+fn cap_matches_modeled_authority() {
+    let _lock = CAP_ENV_MUTEX.lock().expect("cap env mutex");
+    std::env::remove_var("GUNBC_RESOLVED_GRAPH_CACHE_CAP_BYTES");
+    let ws = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .find(|p| {
+            p.join("dsl/extdeps/realization/resolved_graph.dag")
+                .exists()
+        })
+        .expect("locate workspace root containing the resolved_graph .dag authority");
+    let dag = fs::read_to_string(ws.join("dsl/extdeps/realization/resolved_graph.dag"))
+        .expect("read resolved_graph.dag");
+
+    // data resolved_graph_cache_cap_bytes: ByteSize = byte_size(count: 10737418240)
+    let line = dag
+        .lines()
+        .find(|l| l.contains("resolved_graph_cache_cap_bytes") && l.contains("byte_size"))
+        .expect("modeled cap declaration present");
+    let count = line
+        .split("count:")
+        .nth(1)
+        .and_then(|rest| rest.trim().trim_end_matches(')').trim().parse::<u64>().ok())
+        .expect("parse modeled cap count");
+
+    assert_eq!(
+        count,
+        v1_compiler::resolved_graph_cache::resolved_graph_cache_cap_bytes(),
+        "Rust-enforced resolved-graph cache cap drifted from the modeled \
+         SizeBounded cap in extdeps.realization.resolved_graph"
+    );
+}
