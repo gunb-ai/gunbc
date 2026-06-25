@@ -824,12 +824,14 @@ fn ast_body_mentions_name(
     param_name: &str,
     si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
+    // Check this node's authored name first (catches ExprVar and ExprCall callee).
     let name = node_authored_name(node, si);
-    match node.expr_data.as_ref() {
-        ExprData::ExprVar { .. } | ExprData::ExprCall { .. } if name == param_name => {
-            return true;
-        }
-        _ => {}
+    if name == param_name {
+        return true;
+    }
+    // Also check node.name directly (the stored string, distinct from ident_span text).
+    if !node.name.is_empty() && node.name == param_name {
+        return true;
     }
     for child in node.children.iter() {
         if ast_body_mentions_name(child, param_name, si) {
