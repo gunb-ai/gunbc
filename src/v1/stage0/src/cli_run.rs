@@ -1980,9 +1980,16 @@ pub fn generate_witness_timing_histogram(summary: &DiscoverySummary) -> String {
     let mut total_times: Vec<u128> = Vec::new();
     let mut resolve_times: Vec<u128> = Vec::new();
     let mut eval_times: Vec<u128> = Vec::new();
+    let mut skipped_missing_entry_resolve = 0;
 
     for (perf, outcome) in summary.performance_receipts.iter().zip(summary.witness_outcomes.iter()) {
-        let resolve_nanos = entry_resolve_map.get(&outcome.entry).copied().unwrap_or(0);
+        let resolve_nanos = match entry_resolve_map.get(&outcome.entry).copied() {
+            Some(nanos) => nanos,
+            None => {
+                skipped_missing_entry_resolve += 1;
+                continue;
+            }
+        };
         let eval_nanos = perf.wall_nanos;
         let total_nanos = resolve_nanos + eval_nanos;
 
@@ -1991,6 +1998,7 @@ pub fn generate_witness_timing_histogram(summary: &DiscoverySummary) -> String {
         eval_times.push(eval_nanos);
     }
 
+    let included_witnesses = total_times.len();
     let total_percentiles = compute_percentiles(total_times);
     let resolve_percentiles = compute_percentiles(resolve_times);
     let eval_percentiles = compute_percentiles(eval_times);
@@ -2001,7 +2009,10 @@ pub fn generate_witness_timing_histogram(summary: &DiscoverySummary) -> String {
     output.push_str("║                Per-Witness Resolve+Eval Percentiles                         ║\n");
     output.push_str("╚════════════════════════════════════════════════════════════════════════════╝\n\n");
 
-    output.push_str(&format!("Total witnesses: {}\n\n", summary.performance_receipts.len()));
+    output.push_str(&format!(
+        "Total witnesses: {} (included in histogram); {} skipped (missing entry resolve time)\n\n",
+        included_witnesses, skipped_missing_entry_resolve
+    ));
 
     output.push_str("┌─ TOTAL TIME (Resolve + Eval) ───────────────────────────────────────────────┐\n");
     output.push_str(&format!(
