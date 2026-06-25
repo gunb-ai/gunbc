@@ -47,7 +47,7 @@ fn projection_test_read(root: Node) -> Outcome<Symbol> {
 
 data projection_test_lens: Lens<Symbol> = Lens { read: projection_test_read }
 
-fn projection_test_project(output: Symbol) -> Symbol {
+fn projection_test_project(_output: Symbol) -> Symbol {
   ^projection_projected_symbol
 }
 
