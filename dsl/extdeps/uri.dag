@@ -7,6 +7,10 @@ type UriScheme
   | Https
   | File
   | Ftp
+  | Javascript
+  | Data
+  | Vbscript
+  | Mailto
 
 type Uri {
   scheme: UriScheme
@@ -19,6 +23,10 @@ fn uri_scheme_is_http(s: UriScheme) -> Bool {
     Https => true
     File => false
     Ftp => false
+    Javascript => false
+    Data => false
+    Vbscript => false
+    Mailto => false
   }
 }
 
@@ -32,9 +40,49 @@ fn uri_scheme_wire(s: UriScheme) -> NonEmptyStr {
     Https => "https://"
     File => "file://"
     Ftp => "ftp://"
+    Javascript => "javascript:"
+    Data => "data:"
+    Vbscript => "vbscript:"
+    Mailto => "mailto:"
   }
 }
 
 fn uri_wire(uri: Uri) -> NonEmptyStr {
   concat(uri_scheme_wire(s: uri.scheme), uri.locator)
+}
+
+type ParsedHrefScheme
+  = HrefScheme { scheme: UriScheme }
+  | RelativeHref
+  | UnknownHref
+
+fn href_is_relative_reference(s: String) -> Bool {
+  starts_with(s, prefix: "/")
+    || starts_with(s, prefix: "#")
+    || starts_with(s, prefix: "./")
+    || starts_with(s, prefix: "../")
+    || !(s |> contains(":"))
+}
+
+fn parse_href_scheme(url: String) -> ParsedHrefScheme {
+  let s = trim(url)
+  if starts_with(s, prefix: "//") {
+    UnknownHref
+  } else if href_is_relative_reference(s: s) {
+    RelativeHref
+  } else if starts_with(s, prefix: "javascript:") || starts_with(s, prefix: "JAVASCRIPT:") {
+    HrefScheme { scheme: Javascript }
+  } else if starts_with(s, prefix: "data:") || starts_with(s, prefix: "DATA:") {
+    HrefScheme { scheme: Data }
+  } else if starts_with(s, prefix: "vbscript:") || starts_with(s, prefix: "VBSCRIPT:") {
+    HrefScheme { scheme: Vbscript }
+  } else if starts_with(s, prefix: "https://") || starts_with(s, prefix: "HTTPS://") {
+    HrefScheme { scheme: Https }
+  } else if starts_with(s, prefix: "http://") || starts_with(s, prefix: "HTTP://") {
+    HrefScheme { scheme: Http }
+  } else if starts_with(s, prefix: "mailto:") || starts_with(s, prefix: "MAILTO:") {
+    HrefScheme { scheme: Mailto }
+  } else {
+    UnknownHref
+  }
 }

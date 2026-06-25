@@ -446,6 +446,8 @@ fn run_discovery_batch_node(
                 summary.total_measured_nanos as f64 / 1.0e6,
                 summary.total_measured_nanos,
             );
+            let histogram = v1_compiler::cli_run::generate_witness_timing_histogram(&summary);
+            eprintln!("{}", histogram);
             ClaimResult {
                 function: format!("{label} ({} witnesses)", summary.total),
                 ok: true,
@@ -1246,9 +1248,16 @@ fn run() -> Result<ExitCode, ExitCode> {
 
     let outcome = run_walk(&source_roots, &batches, spawn_width);
     match peak_rss_bytes() {
-        Some(bytes) => eprintln!(
-            "[measurement] floor peak RSS: {bytes} bytes (VmHWM) at spawn_width={spawn_width}"
-        ),
+        Some(bytes) => {
+            eprintln!(
+                "[measurement] floor peak RSS: {bytes} bytes (VmHWM) at spawn_width={spawn_width}"
+            );
+            let width = spawn_width.max(1) as u64;
+            let per_shard = bytes.div_ceil(width);
+            eprintln!(
+                "[calibration] max-per-shard-peak-rss: {per_shard} bytes at spawn_width={spawn_width}"
+            );
+        }
         None => eprintln!(
             "[measurement] floor peak RSS: unavailable (no /proc/self/status) at spawn_width={spawn_width}"
         ),

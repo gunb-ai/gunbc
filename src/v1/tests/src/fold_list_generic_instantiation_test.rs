@@ -6,7 +6,7 @@ use v1_compiler::v1_interpreter::{self, Value};
 
 use crate::helpers::{resolve_imports_transitively_with_source_roots, workspace_root};
 
-const CERT_ENTRY: &str = "src/v2/compiler/manual/fold_list_generic_instantiation.dag";
+const CERT_ENTRY: &str = "src/v2/test/claim/fold_list_generic_instantiation.dag";
 const WITNESS_FN: &str = "fold_list_generic_instantiation_holds";
 
 fn v2_source_roots() -> Vec<std::path::PathBuf> {
