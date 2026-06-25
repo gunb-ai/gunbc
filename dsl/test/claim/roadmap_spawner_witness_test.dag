@@ -114,6 +114,21 @@ fn witness_json_title_escaping() -> Bool {
   string_contains(s: json, pattern: "Title \\\"quoted\\\" and \\\\back")
 }
 
+fn witness_multi_parent_partial_dep_excluded() -> Bool {
+  let node_p1 = sized_derivable(id: "multi-parent-1", prs: [100], title: "Parent 1")
+  let node_p2 = sized_derivable(id: "multi-parent-2", prs: [200], title: "Parent 2")
+  let node_child = sized_derivable(id: "multi-child", prs: [300], title: "Multi Child")
+  let edges = [
+    RoadmapEdge { child: nid(s: "multi-child"), parent: nid(s: "multi-parent-1") },
+    RoadmapEdge { child: nid(s: "multi-child"), parent: nid(s: "multi-parent-2") },
+  ]
+  let doc = fixture_doc(nodes: [node_p1, node_p2, node_child], edges: edges)
+  let spawnable_partial = next_spawnable(doc: doc, merged: [100])
+  let spawnable_both = next_spawnable(doc: doc, merged: [100, 200])
+  !any(spawnable_partial, n => n.node == nid(s: "multi-child"))
+    && any(spawnable_both, n => n.node == nid(s: "multi-child"))
+}
+
 test fn roadmap_spawner_witnesses() -> Bool {
   witness_satisfied_dep_is_spawnable()
     && witness_unsatisfied_dep_not_spawnable()
@@ -123,5 +138,6 @@ test fn roadmap_spawner_witnesses() -> Bool {
     && witness_json_schema_field_present()
     && witness_json_satisfied_dep_in_ready()
     && witness_json_title_escaping()
+    && witness_multi_parent_partial_dep_excluded()
 }
 
