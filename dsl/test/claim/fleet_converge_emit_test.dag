@@ -75,11 +75,14 @@ fn has(s: String, p: String) -> Bool {
   string_contains(s: s, pattern: p)
 }
 
-fn witness_live_unsound_fails_closed() -> Bool {
+fn witness_live_converge_is_conservation_sound() -> Bool {
   let sh = expected_fleet_converge_sh()
-  has(s: sh, p: "fleet-converge UNSOUND:")
-    && has(s: sh, p: "exit 1")
-    && !has(s: sh, p: "converge-receipt")
+  !has(s: sh, p: "fleet-converge UNSOUND:")
+    && has(s: sh, p: "converge-receipt")
+    && has(s: sh, p: "converge_slice_property \"srv1\" \"runner\" \"runner_slice_cap_bytes\" \"system-actions-runner.slice\" \"MemoryMax\" \"85899345920\" \"85899345920\" \"85899345920\"")
+    && has(s: sh, p: "converge_per_slot_cap \"srv1\" \"runner\" \"per_slot_memory_max_bytes\" \"/etc/systemd/system/actions-runner@.service.d/20-fleet-width.conf\" \"actions-runner@srv1-*.service\" \"MemoryMax\" \"8589934592\"")
+    && has(s: sh, p: "converge_per_slot_cap \"srv1\" \"runner\" \"per_slot_memory_swap_max_bytes\" \"/etc/systemd/system/actions-runner@.service.d/30-fleet-swap.conf\" \"actions-runner@srv1-*.service\" \"MemorySwapMax\" \"0\"")
+    && has(s: sh, p: "converge_runner_width \"srv1\" \"runner\" \"runner_count\" \"actions-runner@srv1-*.service\" \"10\"")
 }
 
 fn witness_drift_red_receipt() -> Bool {
@@ -102,6 +105,7 @@ fn witness_sound_emits_runner_knobs() -> Bool {
   let sh = fixture_sound_sh()
   has(s: sh, p: "converge_slice_property \"srv1\" \"runner\" \"runner_slice_cap_bytes\" \"system-actions-runner.slice\" \"MemoryMax\" \"70391285350\" \"70391285350\" \"70391285350\"")
     && has(s: sh, p: "converge_per_slot_cap \"srv1\" \"runner\" \"per_slot_memory_max_bytes\" \"/etc/systemd/system/actions-runner@.service.d/20-fleet-width.conf\" \"actions-runner@srv1-*.service\" \"MemoryMax\" \"30000000000\"")
+    && has(s: sh, p: "converge_per_slot_cap \"srv1\" \"runner\" \"per_slot_memory_swap_max_bytes\" \"/etc/systemd/system/actions-runner@.service.d/30-fleet-swap.conf\" \"actions-runner@srv1-*.service\" \"MemorySwapMax\" \"0\"")
     && has(s: sh, p: "converge_runner_width \"srv1\" \"runner\" \"runner_count\" \"actions-runner@srv1-*.service\" \"7\"")
 }
 
@@ -185,7 +189,7 @@ fn witness_sessions_membership_line_emitted() -> Bool {
 }
 
 test fn fleet_converge_emit_holds() -> Bool {
-  witness_live_unsound_fails_closed()
+  witness_live_converge_is_conservation_sound()
     && witness_drift_red_receipt()
     && witness_sound_emits_header_and_helpers()
     && witness_sound_emits_runner_knobs()
