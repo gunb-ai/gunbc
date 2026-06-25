@@ -550,6 +550,18 @@ type AdmissionVerdict
   | RefusedOverEnvelope { axis: InputSizeAxis }
   | RefusedUndeclared
 
+fn find_input_bound_for_axis(declared: List<InputBound>, axis: InputSizeAxis) -> InputBound? {
+  fold(
+    declared,
+    init: none,
+    f: (acc, b) =>
+      match acc {
+        Present { value: _ } => acc
+        Absent => if b.axis == axis { Present { value: b } } else { none }
+      }
+  )
+}
+
 fn input_admitted(envelope: InputEnvelope, actual: List<InputBound>) -> AdmissionVerdict {
   match envelope {
     EnvelopeUnknown => RefusedUndeclared
@@ -562,7 +574,7 @@ fn input_admitted(envelope: InputEnvelope, actual: List<InputBound>) -> Admissio
             RefusedOverEnvelope { axis: _ } => verdict
             RefusedUndeclared => verdict
             Admitted =>
-              match declared |> filter(b => b.axis == actual_bound.axis) |> first {
+              match find_input_bound_for_axis(declared: declared, axis: actual_bound.axis) {
                 Absent => RefusedOverEnvelope { axis: actual_bound.axis }
                 Present { value: decl_bound } =>
                   if actual_bound.max.count > decl_bound.max.count {
