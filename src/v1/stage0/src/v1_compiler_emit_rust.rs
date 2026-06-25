@@ -9508,7 +9508,20 @@ pub fn emit_fn_def(
                     .filter(|g| (*g).clone() == ret_name.clone())
                     .count() as i64)
                     > 0);
-                let type_params_str = if return_is_bare_generic {
+                let value_param_names = Rc::new({
+                    let mut __result = Vec::new();
+                    for p in value_params.clone().iter().cloned() {
+                        __result.push(p.name.clone());
+                    }
+                    __result
+                });
+                let body_is_param_ref = ((value_param_names
+                    .iter()
+                    .filter(|n| (*n).clone() == body.name.clone())
+                    .count() as i64)
+                    > 0);
+                let needs_clone_bound = return_is_bare_generic && !body_is_param_ref;
+                let type_params_str = if needs_clone_bound {
                     emit_type_params_with_clone_bound(type_params.clone(), ret_name, si.clone())
                 } else {
                     emit_type_params(type_params.clone(), si.clone())
