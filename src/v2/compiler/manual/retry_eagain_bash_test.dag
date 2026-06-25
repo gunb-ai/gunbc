@@ -216,13 +216,13 @@ fn retry_eagain_emit_no_exit_wrong_opt() -> Optional<Outcome<Medium<String>>> {
   match retry_eagain_command_opt() {
     Present { value: cmd } =>
       match retry_eagain_level1_opt() {
-        Present { value: l1 } =>
+        HeadFound { value: l1 } =>
           match retry_eagain_level2_opt() {
-            Present { value: l2 } =>
-              match predicate_log_pattern(pred: l1.detect) {
-                Present { value: p1 } =>
-                  match predicate_log_pattern(pred: l2.detect) {
-                    Present { value: p2 } =>
+            HeadFound { value: l2 } =>
+              match l1.detect {
+                LogMatches { source: _, pattern: p1 } =>
+                  match l2.detect {
+                    LogMatches { source: _, pattern: p2 } =>
                       Present {
                         value: emit(
                           tree: InferredTree {
@@ -240,13 +240,13 @@ fn retry_eagain_emit_no_exit_wrong_opt() -> Optional<Outcome<Medium<String>>> {
                           )
                         )
                       }
-                    Absent => Absent
+                    _ => Absent
                   }
-                Absent => Absent
+                _ => Absent
               }
-            Absent => Absent
+            HeadAbsent => Absent
           }
-        Absent => Absent
+        HeadAbsent => Absent
       }
     Absent => Absent
   }
