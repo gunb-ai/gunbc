@@ -122,9 +122,25 @@ fn wave_pass(entries: List<WaveEntry>, edges: List<RoadmapEdge>) -> List<WaveEnt
   entries |> map(e => update_one_wave(entry: e, snapshot: snapshot, edges: edges))
 }
 
+fn waves_stable(prev: List<WaveEntry>, next: List<WaveEntry>) -> Bool {
+  all(prev, pe => any(next, ne => ne.id == pe.id && ne.wave == pe.wave))
+}
+
+fn propagate_waves_loop(entries: List<WaveEntry>, edges: List<RoadmapEdge>, fuel: Int) -> List<WaveEntry> {
+  if fuel <= 0 {
+    entries
+  } else {
+    let next = wave_pass(entries: entries, edges: edges)
+    if waves_stable(prev: entries, next: next) {
+      entries
+    } else {
+      propagate_waves_loop(entries: next, edges: edges, fuel: fuel - 1)
+    }
+  }
+}
+
 fn propagate_waves(entries: List<WaveEntry>, edges: List<RoadmapEdge>) -> List<WaveEntry> {
-  let passes = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
-  fold(passes, init: entries, f: (acc, _) => wave_pass(entries: acc, edges: edges))
+  propagate_waves_loop(entries: entries, edges: edges, fuel: count(entries))
 }
 
 fn wave_json_val(status: GraphStatus, wave: Int) -> String {
