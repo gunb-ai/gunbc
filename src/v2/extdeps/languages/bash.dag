@@ -1669,3 +1669,140 @@ fn orch_retry_target_model(
     )
   )
 }
+
+fn bash_word_pass_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_word_pass_spelling }
+  ]
+}
+
+data bash_word_pass_emitted: Node = bash_conj_emitted_from_tokens(
+  tokens: bash_word_pass_tokens()
+)
+
+fn bash_word_pass_lex(spelling: String) -> LexRules {
+  phrase_to_lex_rules(p: phrase([
+    span(text: spelling, class: ^bash_token_orch_raw)
+  ]))
+}
+
+fn bash_word_pass_translation_rules_node() -> Node {
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_word_pass,
+    lhs: ^bash_production_word_pass,
+    tokens: bash_word_pass_tokens(),
+    emitted: bash_word_pass_emitted
+  )
+}
+
+fn bash_word_pass_binding_spellings(spelling: String) -> Map<Symbol, String> {
+  map_insert(empty_map(), ^bash_word_pass_spelling, spelling)
+}
+
+fn bash_word_pass_target_model(spelling: String) -> TargetModel {
+  bash_make_bound_tokens_target_model(
+    rules: bash_word_pass_translation_rules_node(),
+    source_literal: ^bash_word_pass_source_literal,
+    production_name: ^bash_production_word_pass,
+    tokens: bash_word_pass_tokens(),
+    source_text: spelling,
+    lex: bash_word_pass_lex(spelling: spelling),
+    binding_spellings: bash_word_pass_binding_spellings(spelling: spelling)
+  )
+}
+
+fn bash_word_varref_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: ^bash_token_varref_open },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_word_varref_name },
+    FixedToken { token_class: ^bash_token_varref_close }
+  ]
+}
+
+data bash_word_varref_emitted: Node = bash_conj_emitted_from_tokens(
+  tokens: bash_word_varref_tokens()
+)
+
+fn bash_word_varref_source_text(name: String) -> String {
+  concat("\"$", concat(name, "\""))
+}
+
+fn bash_word_varref_lex() -> LexRules {
+  phrase_to_lex_rules(p: phrase([
+    span(text: "\"$", class: ^bash_token_varref_open),
+    span(text: "\"", class: ^bash_token_varref_close)
+  ]))
+}
+
+fn bash_word_varref_translation_rules_node() -> Node {
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_word_varref,
+    lhs: ^bash_production_word_varref,
+    tokens: bash_word_varref_tokens(),
+    emitted: bash_word_varref_emitted
+  )
+}
+
+fn bash_word_varref_binding_spellings(name: String) -> Map<Symbol, String> {
+  map_insert(empty_map(), ^bash_word_varref_name, name)
+}
+
+fn bash_word_varref_target_model(name: String) -> TargetModel {
+  bash_make_bound_tokens_target_model(
+    rules: bash_word_varref_translation_rules_node(),
+    source_literal: ^bash_word_varref_source_literal,
+    production_name: ^bash_production_word_varref,
+    tokens: bash_word_varref_tokens(),
+    source_text: bash_word_varref_source_text(name: name),
+    lex: bash_word_varref_lex(),
+    binding_spellings: bash_word_varref_binding_spellings(name: name)
+  )
+}
+
+fn bash_word_cmdsubst_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: ^bash_token_cmdsubst_open },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_word_cmdsubst_body },
+    FixedToken { token_class: ^bash_token_cmdsubst_close }
+  ]
+}
+
+data bash_word_cmdsubst_emitted: Node = bash_conj_emitted_from_tokens(
+  tokens: bash_word_cmdsubst_tokens()
+)
+
+fn bash_word_cmdsubst_source_text(body: String) -> String {
+  concat("$(", concat(body, ")"))
+}
+
+fn bash_word_cmdsubst_lex() -> LexRules {
+  phrase_to_lex_rules(p: phrase([
+    span(text: "$(", class: ^bash_token_cmdsubst_open),
+    span(text: ")", class: ^bash_token_cmdsubst_close)
+  ]))
+}
+
+fn bash_word_cmdsubst_translation_rules_node() -> Node {
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_word_cmdsubst,
+    lhs: ^bash_production_word_cmdsubst,
+    tokens: bash_word_cmdsubst_tokens(),
+    emitted: bash_word_cmdsubst_emitted
+  )
+}
+
+fn bash_word_cmdsubst_binding_spellings(body: String) -> Map<Symbol, String> {
+  map_insert(empty_map(), ^bash_word_cmdsubst_body, body)
+}
+
+fn bash_word_cmdsubst_target_model(body: String) -> TargetModel {
+  bash_make_bound_tokens_target_model(
+    rules: bash_word_cmdsubst_translation_rules_node(),
+    source_literal: ^bash_word_cmdsubst_source_literal,
+    production_name: ^bash_production_word_cmdsubst,
+    tokens: bash_word_cmdsubst_tokens(),
+    source_text: bash_word_cmdsubst_source_text(body: body),
+    lex: bash_word_cmdsubst_lex(),
+    binding_spellings: bash_word_cmdsubst_binding_spellings(body: body)
+  )
+}
