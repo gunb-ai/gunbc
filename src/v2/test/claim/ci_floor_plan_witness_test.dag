@@ -12,6 +12,8 @@ import v2.workflow.ci_floor_plan {
   witness_floor_unreadable_budget_uses_conservative_envelope,
   witness_floor_width_governed_by_budget_tree,
   witness_floor_width_derived_from_tree_is_positive,
+  witness_floor_spawn_width_tight_budget_backs_off,
+  witness_floor_spawn_width_zero_budget_falls_back,
 }
 import gunbc.ci_layer_roots { witness_discovery_scan_dirs, witness_layer_roots }
 import v2.std.algebra { length, list_snoc_item }
@@ -124,4 +126,9 @@ test fn ci_floor_run_envelope_witnesses() -> Bool {
 test fn ci_floor_spawn_width_from_budget_tree_witnesses() -> Bool {
   witness_floor_width_governed_by_budget_tree() &&
     witness_floor_width_derived_from_tree_is_positive()
+}
+
+test fn ci_floor_spawn_width_live_budget_witnesses() -> Bool {
+  witness_floor_spawn_width_tight_budget_backs_off() &&
+    witness_floor_spawn_width_zero_budget_falls_back()
 }
