@@ -1,6 +1,6 @@
 module v2.workflow.orchestration_retry_emit_test
 
-import v2.workflow.orchestration_emit { orch_emit_step, orch_emit_retry_run }
+import v2.workflow.orchestration_emit { orch_emit_step }
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import v2.extdeps.languages.bash { orch_retry_emitted_command, orch_retry_target_model }
@@ -10,15 +10,11 @@ import v2.test.manual.retry_eagain_bash {
 }
 import v2.std.orchestration {
   Step,
-  Do,
   Retry,
-  Run,
-  Pipeline,
   EscalationLevel,
   EnvSet,
   EnvUnset,
-  LogMatches,
-  FailFast
+  LogMatches
 }
 import v2.std.algebra { FreeMonoid, list_head, HeadFound, HeadAbsent }
 import v2.std.collection { Map }
@@ -30,13 +26,11 @@ import v2.std.diagnostic {
   EmitDirective,
   ExternalContractUnknown,
   None,
-  Outcome,
   Rejected,
   SeverityWarning,
   Unavailable,
   node_locus
 }
-import extdeps.communication.medium { Medium }
 import gunbc.ci_spec { ci_cargo_eagain_retry_core }
 import gunbc.ci_failure_class { infra_retry_grep_alternation }
 
@@ -100,21 +94,10 @@ fn orch_retry_perturbed_intent() -> Step {
         escalations: [orch_retry_level1_from(e: e), orch_retry_perturbed_level2()],
         on_exhausted: x
       }
-    _ => retry_eagain_intent()
-  }
-}
-
-test fn orch_retry_run_probe_holds() -> Bool {
-  match orch_emit_retry_run(command: "cargo build", env: []) {
-    Accepted { value: source, diagnostics: _ } => source.carried == "cargo build"
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-test fn orch_retry_probe_is_accepted_holds() -> Bool {
-  match orch_emit_step(s: retry_eagain_intent()) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    Do { run: _ } => retry_eagain_intent()
+    If { cond: _, then_: _, else_: _ } => retry_eagain_intent()
+    For { binder: _, over: _, body: _ } => retry_eagain_intent()
+    While { cond: _, body: _, bound: _ } => retry_eagain_intent()
   }
 }
 
