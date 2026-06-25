@@ -5354,6 +5354,222 @@ fn target_import_to_concrete_tokens(
   }
 }
 
+fn import_qualified_name_symbols(qn: QualifiedName) -> List<Symbol> {
+  match qn {
+    QnEmpty => Empty
+    QnCons { head: h, tail: t } =>
+      Cons { head: h, tail: import_qualified_name_symbols(qn: t) }
+  }
+}
+
+fn import_name_symbols_from_block(block: Node) -> Outcome<List<Symbol>> {
+  fold(
+    node_positional_child_targets(node: block),
+    init: outcome_accepted(value: Empty),
+    f: fn(acc, nd) {
+      bind_outcome(
+        o: acc,
+        f: fn(syms) {
+          bind_outcome(
+            o: target_node_atom_identity(node: nd),
+            f: fn(sym) {
+              outcome_accepted(
+                value: list_append(left: syms, right: Cons { head: sym, tail: Empty })
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn import_value_from_carrier(carrier: Node) -> Outcome<TargetImport> {
+  bind_outcome(
+    o: find_named_child(root: carrier, name: ^dag_surface_import_decl_qualified_name),
+    f: fn(qn_node) {
+      bind_outcome(
+        o: qualified_name_from_node(root: qn_node),
+        f: fn(qn) {
+          bind_outcome(
+            o: find_named_child(root: carrier, name: ^dag_surface_import_decl_block),
+            f: fn(block) {
+              bind_outcome(
+                o: import_name_symbols_from_block(block: block),
+                f: fn(names) {
+                  outcome_accepted(
+                    value: TargetImport {
+                      path_segments: import_qualified_name_symbols(qn: qn),
+                      names: names
+                    }
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn module_import_projection_bundle_node(projection: TargetModuleProjection) -> Node {
+  match projection.import_form {
+    EsModuleImport {
+      import_token: import_token,
+      names_open: names_open,
+      names_separator: names_separator,
+      names_close: names_close,
+      from_token: from_token,
+      path_open: path_open,
+      path_segment_separator: path_segment_separator,
+      path_close: path_close,
+      terminator: terminator,
+      name_ident_token: name_ident_token,
+      path_segment_token: path_segment_token
+    } =>
+      target_model_type_conj_node(
+        children: [
+          target_model_named_edge(
+            name: ^target_module_import_field_import_token,
+            target: target_model_type_atom_node(identity: import_token)
+          ),
+          target_model_named_edge(
+            name: ^target_module_import_field_names_open,
+            target: target_model_type_atom_node(identity: names_open)
+          ),
+          target_model_named_edge(
+            name: ^target_module_import_field_names_separator,
+            target: target_model_type_atom_node(identity: names_separator)
+          ),
+          target_model_named_edge(
+            name: ^target_module_import_field_names_close,
+            target: target_model_type_atom_node(identity: names_close)
+          ),
+          target_model_named_edge(
+            name: ^target_module_import_field_from_token,
+            target: target_model_type_atom_node(identity: from_token)
+          ),
+          target_model_named_edge(
+            name: ^target_module_import_field_path_open,
+            target: target_model_type_atom_node(identity: path_open)
+          ),
+          target_model_named_edge(
+            name: ^target_module_import_field_path_segment_separator,
+            target: target_model_type_atom_node(identity: path_segment_separator)
+          ),
+          target_model_named_edge(
+            name: ^target_module_import_field_path_close,
+            target: target_model_type_atom_node(identity: path_close)
+          ),
+          target_model_named_edge(
+            name: ^target_module_import_field_terminator,
+            target: target_model_type_atom_node(identity: terminator)
+          ),
+          target_model_named_edge(
+            name: ^target_module_import_field_name_ident_token,
+            target: target_model_type_atom_node(identity: name_ident_token)
+          ),
+          target_model_named_edge(
+            name: ^target_module_import_field_path_segment_token,
+            target: target_model_type_atom_node(identity: path_segment_token)
+          )
+        ]
+      )
+  }
+}
+
+fn decode_module_import_projection_bundle(
+  bundle: Node
+) -> Outcome<TargetModuleProjection> {
+  bind_outcome(
+    o: projection_bundle_symbol_field(bundle: bundle, field: ^target_module_import_field_import_token),
+    f: fn(import_token) {
+      bind_outcome(
+        o: projection_bundle_symbol_field(bundle: bundle, field: ^target_module_import_field_names_open),
+        f: fn(names_open) {
+          bind_outcome(
+            o: projection_bundle_symbol_field(bundle: bundle, field: ^target_module_import_field_names_separator),
+            f: fn(names_separator) {
+              bind_outcome(
+                o: projection_bundle_symbol_field(bundle: bundle, field: ^target_module_import_field_names_close),
+                f: fn(names_close) {
+                  bind_outcome(
+                    o: projection_bundle_symbol_field(bundle: bundle, field: ^target_module_import_field_from_token),
+                    f: fn(from_token) {
+                      bind_outcome(
+                        o: projection_bundle_symbol_field(bundle: bundle, field: ^target_module_import_field_path_open),
+                        f: fn(path_open) {
+                          bind_outcome(
+                            o: projection_bundle_symbol_field(bundle: bundle, field: ^target_module_import_field_path_segment_separator),
+                            f: fn(path_segment_separator) {
+                              bind_outcome(
+                                o: projection_bundle_symbol_field(bundle: bundle, field: ^target_module_import_field_path_close),
+                                f: fn(path_close) {
+                                  bind_outcome(
+                                    o: projection_bundle_symbol_field(bundle: bundle, field: ^target_module_import_field_terminator),
+                                    f: fn(terminator) {
+                                      bind_outcome(
+                                        o: projection_bundle_symbol_field(bundle: bundle, field: ^target_module_import_field_name_ident_token),
+                                        f: fn(name_ident_token) {
+                                          bind_outcome(
+                                            o: projection_bundle_symbol_field(bundle: bundle, field: ^target_module_import_field_path_segment_token),
+                                            f: fn(path_segment_token) {
+                                              outcome_accepted(
+                                                value: TargetModuleProjection {
+                                                  import_form: EsModuleImport {
+                                                    import_token: import_token,
+                                                    names_open: names_open,
+                                                    names_separator: names_separator,
+                                                    names_close: names_close,
+                                                    from_token: from_token,
+                                                    path_open: path_open,
+                                                    path_segment_separator: path_segment_separator,
+                                                    path_close: path_close,
+                                                    terminator: terminator,
+                                                    name_ident_token: name_ident_token,
+                                                    path_segment_token: path_segment_token
+                                                  }
+                                                }
+                                              )
+                                            }
+                                          )
+                                        }
+                                      )
+                                    }
+                                  )
+                                }
+                              )
+                            }
+                          )
+                        }
+                      )
+                    }
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn module_import_projection_from_target(
+  target: TargetModel
+) -> Outcome<TargetModuleProjection> {
+  bind_outcome(
+    o: projection_bundle_child(
+      bundle: target.bundle,
+      name: ^target_model_edge_module_import_projection
+    ),
+    f: fn(bundle) {
+      decode_module_import_projection_bundle(bundle: bundle)
+    }
+  )
+}
+
 fn target_value_expr_field_access_wire_schema_valid(wire: Node) -> Outcome<Bool> {
   match wire.kind {
     TypeNode { connective: Atom { identity: id } } =>
