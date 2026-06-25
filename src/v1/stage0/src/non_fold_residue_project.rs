@@ -57,7 +57,6 @@ const NON_FOLD_RESIDUE_ROSTER: &[&str] = &[
     // coproduct. This is the honest baseline; the wall is that no NEW residue merges.
     "dsl/extdeps/languages/markdown.dag::md_nested",
     "dsl/gunbc/generated_artifact.dag::artifact_eq",
-    "dsl/gunbc/generated_artifact.dag::artifact_extra_valid",
     "dsl/std/computation.dag::constant_bound_value",
     "dsl/std/computation.dag::is_constant_bound",
     "dsl/std/effects.dag::create_double_init_collapsible",

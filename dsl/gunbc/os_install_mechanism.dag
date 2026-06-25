@@ -5,6 +5,7 @@ import extdeps.bmc.capability {
   BmcCapability,
   BmcFirmwareCapabilityRow,
   CapabilityVirtualMedia,
+  CapabilityNbdProxyVirtualMedia,
   CapabilityFirmwareUpdate,
   firmware_has_capability,
   catalog_has_vm_capable_firmware,
@@ -13,6 +14,7 @@ import extdeps.bmc.capability {
 
 type OsInstallMechanism
   = VirtualMediaInstall
+  | NbdProxyVirtualMediaInstall
   | PxeHttpInstall
   | FirmwareUpdateThenVirtualMedia
 
@@ -22,6 +24,8 @@ fn solve_install_mechanism(
 ) -> OsInstallMechanism {
   if firmware_has_capability(row: current, cap: CapabilityVirtualMedia) {
     VirtualMediaInstall
+  } else if firmware_has_capability(row: current, cap: CapabilityNbdProxyVirtualMedia) {
+    NbdProxyVirtualMediaInstall
   } else if firmware_has_capability(row: current, cap: CapabilityFirmwareUpdate)
          && catalog_has_vm_capable_firmware(catalog: catalog) {
     FirmwareUpdateThenVirtualMedia

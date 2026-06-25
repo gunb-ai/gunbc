@@ -1,0 +1,331 @@
+module v2.test.manual.retry_eagain_bash
+
+import v2.compiler.emit { emit }
+import v2.compiler.infer { InferredFacts, InferredTree }
+import extdeps.communication.medium { Medium }
+import v2.extdeps.languages.bash {
+  retry_eagain_bash_emitted_command,
+  retry_eagain_bash_target_model,
+  retry_eagain_bash_no_exit_wrong_target_model
+}
+import v2.std.orchestration {
+  Step,
+  Do,
+  Retry,
+  Run,
+  Pipeline,
+  EscalationLevel,
+  EnvSet,
+  EnvUnset,
+  StdoutAndStderr,
+  TeeTo,
+  LogMatches,
+  FailFast
+}
+import v2.std.algebra {
+  FreeMonoid,
+  list_head,
+  list_tail,
+  HeadFound,
+  HeadAbsent,
+  TailFound,
+  TailAbsent
+}
+import v2.std.collection { Map, Optional, Present, Absent }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  EmitDirective,
+  ExternalContractUnknown,
+  None,
+  Outcome,
+  Rejected,
+  SeverityWarning,
+  Unavailable,
+  node_locus
+}
+import v2.std.node { Node }
+import v2.std.witness { Violates, Witness }
+import gunbc.ci_spec { ci_cargo_eagain_retry_core }
+import gunbc.ci_failure_class { infra_retry_grep_alternation }
+
+fn retry_eagain_facts_lookup(key: Node) -> Witness<InferredFacts> {
+  Violates {
+    diagnostic: Diagnostic {
+      reason: ^retry_eagain_bash_facts_unexpected_consultation,
+      at: node_locus(node: key),
+      correction: Unavailable { reason: ExternalContractUnknown }
+    }
+  }
+}
+
+data retry_eagain_example_command: String = "cargo build -p v1-compiler --release --bins"
+
+fn retry_eagain_pattern() -> String {
+  infra_retry_grep_alternation()
+}
+
+fn retry_eagain_warn1() -> String {
+  "cargo/sccache EAGAIN under fleet pressure; cold retry CARGO_BUILD_JOBS=1 (keep sccache)"
+}
+
+fn retry_eagain_warn2() -> String {
+  "cargo/sccache still failing; retry without RUSTC_WRAPPER"
+}
+
+fn retry_eagain_example_run() -> Run {
+  Run {
+    command: retry_eagain_example_command,
+    env: [],
+    redirect: Present { value: StdoutAndStderr },
+    capture: Present { value: TeeTo { log: "BUILD_LOG" } }
+  }
+}
+
+fn retry_eagain_exhausted_run() -> Run {
+  Run {
+    command: "exit 1",
+    env: [],
+    redirect: Absent,
+    capture: Absent
+  }
+}
+
+fn retry_eagain_level1() -> EscalationLevel {
+  EscalationLevel {
+    detect: LogMatches { source: "BUILD_LOG", pattern: retry_eagain_pattern() },
+    warning: EmitDirective { severity: SeverityWarning, message: retry_eagain_warn1() },
+    env: [EnvSet { name: "CARGO_BUILD_JOBS", value: "1" }]
+  }
+}
+
+fn retry_eagain_level2() -> EscalationLevel {
+  EscalationLevel {
+    detect: LogMatches { source: "RETRY_LOG", pattern: retry_eagain_pattern() },
+    warning: EmitDirective { severity: SeverityWarning, message: retry_eagain_warn2() },
+    env: [
+      EnvUnset { name: "RUSTC_WRAPPER" },
+      EnvSet { name: "CARGO_BUILD_JOBS", value: "1" }
+    ]
+  }
+}
+
+fn retry_eagain_level2_perturbed() -> EscalationLevel {
+  EscalationLevel {
+    detect: LogMatches { source: "RETRY_LOG", pattern: retry_eagain_pattern() },
+    warning: EmitDirective { severity: SeverityWarning, message: retry_eagain_warn2() },
+    env: [
+      EnvUnset { name: "RUSTC_WRAPPER" },
+      EnvSet { name: "CARGO_BUILD_JOBS", value: "2" }
+    ]
+  }
+}
+
+fn retry_eagain_intent() -> Step {
+  Retry {
+    body: Pipeline {
+      steps: [Do { run: retry_eagain_example_run() }],
+      on_failure: FailFast
+    },
+    escalations: [retry_eagain_level1(), retry_eagain_level2()],
+    on_exhausted: Pipeline {
+      steps: [Do { run: retry_eagain_exhausted_run() }],
+      on_failure: FailFast
+    }
+  }
+}
+
+fn retry_eagain_intent_escalations() -> FreeMonoid<EscalationLevel> {
+  match retry_eagain_intent() {
+    Retry { body: _, escalations: e, on_exhausted: _ } => e
+    Do { run: _ } => []
+    If { cond: _, then_: _, else_: _ } => []
+    For { binder: _, over: _, body: _ } => []
+    While { cond: _, body: _, bound: _ } => []
+  }
+}
+
+fn retry_eagain_first_step_opt() -> Optional<Step> {
+  match retry_eagain_intent() {
+    Retry { body: b, escalations: _, on_exhausted: _ } =>
+      match list_head(xs: b.steps) {
+        HeadFound { value: s } => Present { value: s }
+        HeadAbsent => Absent
+      }
+    _ => Absent
+  }
+}
+
+fn retry_eagain_step_command(s: Step) -> Optional<String> {
+  match s {
+    Do { run: r } => Present { value: r.command }
+    If { cond: _, then_: _, else_: _ } => Absent
+    For { binder: _, over: _, body: _ } => Absent
+    While { cond: _, body: _, bound: _ } => Absent
+    Retry { body: _, escalations: _, on_exhausted: _ } => Absent
+  }
+}
+
+fn retry_eagain_command_opt() -> Optional<String> {
+  match retry_eagain_first_step_opt() {
+    Present { value: s } => retry_eagain_step_command(s: s)
+    Absent => Absent
+  }
+}
+
+fn retry_eagain_level1_opt() -> Optional<EscalationLevel> {
+  match list_head(xs: retry_eagain_intent_escalations()) {
+    HeadFound { value: l } => Present { value: l }
+    HeadAbsent => Absent
+  }
+}
+
+fn retry_eagain_level2_opt() -> Optional<EscalationLevel> {
+  match list_tail(xs: retry_eagain_intent_escalations()) {
+    TailFound { tail: t } =>
+      match list_head(xs: t) {
+        HeadFound { value: l } => Present { value: l }
+        HeadAbsent => Absent
+      }
+    TailAbsent => Absent
+  }
+}
+
+fn retry_eagain_emit_opt() -> Optional<Outcome<Medium<String>>> {
+  match retry_eagain_command_opt() {
+    Present { value: cmd } =>
+      match retry_eagain_level1_opt() {
+        Present { value: l1 } =>
+          match retry_eagain_level2_opt() {
+            Present { value: l2 } =>
+              match l1.detect {
+                LogMatches { source: _, pattern: p1 } =>
+                  match l2.detect {
+                    LogMatches { source: _, pattern: p2 } =>
+                      Present {
+                        value: emit(
+                          tree: InferredTree {
+                            root: retry_eagain_bash_emitted_command,
+                            facts: Map { lookup: retry_eagain_facts_lookup }
+                          },
+                          target: retry_eagain_bash_target_model(
+                            command: cmd,
+                            pattern1: p1,
+                            pattern2: p2,
+                            warn1: l1.warning.message,
+                            warn2: l2.warning.message,
+                            env2: l1.env,
+                            env3: l2.env
+                          )
+                        )
+                      }
+                    _ => Absent
+                  }
+                _ => Absent
+              }
+            Absent => Absent
+          }
+        Absent => Absent
+      }
+    Absent => Absent
+  }
+}
+
+fn retry_eagain_emit_no_exit_wrong_opt() -> Optional<Outcome<Medium<String>>> {
+  match retry_eagain_command_opt() {
+    Present { value: cmd } =>
+      match retry_eagain_level1_opt() {
+        Present { value: l1 } =>
+          match retry_eagain_level2_opt() {
+            Present { value: l2 } =>
+              match l1.detect {
+                LogMatches { source: _, pattern: p1 } =>
+                  match l2.detect {
+                    LogMatches { source: _, pattern: p2 } =>
+                      Present {
+                        value: emit(
+                          tree: InferredTree {
+                            root: retry_eagain_bash_emitted_command,
+                            facts: Map { lookup: retry_eagain_facts_lookup }
+                          },
+                          target: retry_eagain_bash_no_exit_wrong_target_model(
+                            command: cmd,
+                            pattern1: p1,
+                            pattern2: p2,
+                            warn1: l1.warning.message,
+                            warn2: l2.warning.message,
+                            env2: l1.env,
+                            env3: l2.env
+                          )
+                        )
+                      }
+                    _ => Absent
+                  }
+                _ => Absent
+              }
+            Absent => Absent
+          }
+        Absent => Absent
+      }
+    Absent => Absent
+  }
+}
+
+fn retry_eagain_emit_perturbed_env() -> Outcome<Medium<String>> {
+  emit(
+    tree: InferredTree {
+      root: retry_eagain_bash_emitted_command,
+      facts: Map { lookup: retry_eagain_facts_lookup }
+    },
+    target: retry_eagain_bash_target_model(
+      command: retry_eagain_example_command,
+      pattern1: retry_eagain_pattern(),
+      pattern2: retry_eagain_pattern(),
+      warn1: retry_eagain_warn1(),
+      warn2: retry_eagain_warn2(),
+      env2: retry_eagain_level1().env,
+      env3: retry_eagain_level2_perturbed().env
+    )
+  )
+}
+
+test fn retry_eagain_bash_byte_identical_to_hand_authored_holds() -> Bool {
+  match retry_eagain_command_opt() {
+    Present { value: cmd } =>
+      match retry_eagain_emit_opt() {
+        Present { value: outcome } =>
+          match outcome {
+            Accepted { value: source, diagnostics: dg } =>
+              (source.carried == ci_cargo_eagain_retry_core(command: cmd))
+                && (dg == None)
+            Rejected { diagnostics: _ } => false
+          }
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+test fn retry_eagain_bash_no_exit_wrong_breaks_byte_equality_holds() -> Bool {
+  match retry_eagain_command_opt() {
+    Present { value: cmd } =>
+      match retry_eagain_emit_no_exit_wrong_opt() {
+        Present { value: outcome } =>
+          match outcome {
+            Accepted { value: w, diagnostics: _ } =>
+              w.carried != ci_cargo_eagain_retry_core(command: cmd)
+            Rejected { diagnostics: _ } => false
+          }
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+test fn retry_eagain_bash_env_fact_has_teeth_holds() -> Bool {
+  match retry_eagain_emit_perturbed_env() {
+    Accepted { value: w, diagnostics: _ } =>
+      w.carried != ci_cargo_eagain_retry_core(command: retry_eagain_example_command)
+    Rejected { diagnostics: _ } => false
+  }
+}

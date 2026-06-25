@@ -5,7 +5,7 @@ import gunbc.gitignore_model {
   CargoArtifacts, CargoCacheLocal, CodegenSymlink, CoverageReport,
   GeneratorStamp, WorkflowRuntime, TestgenOutput, RegenTempDir,
   ClaudeCodeSession, ClaimMapOutput, OpenClawArtifact, GithubCLICache,
-  AuthSessionTranscript, PythonLocalDevScript,
+  AuthSessionTranscript, PythonLocalDevScript, SupersededPlanningDir,
   JetBrainsIDE, VSCodeIDE, VimEditor, EmacsEditor, GenericEditorBackup,
   MacOSFinder, WindowsExplorer, Tmux, NodeJS, SecretsConvention, CPythonInterpreter,
   Derivable, Cited,
@@ -22,7 +22,11 @@ import gunbc.gitignore_model {
   OpenClawSoulFile, OpenClawToolsFile, OpenClawUserFile, OpenClawWorkboardFile,
   OpenClawScriptsDir, V2InspectFile, V2InspectErrorsFile, GithubCLICacheDir,
   PythonLocalDevScriptFile, PythonBytecodeCacheDir, PythonCompiledBytecode,
-  ClaimMapDir, ScratchProbeFile
+  ClaimMapDir, ScratchProbeFile,
+  GunbcPlanningDir, ScriptsFixturesDir
+}
+import gunbc.generated_artifact {
+  GeneratedArtifact, generated_artifact_registry, artifact_is_committed, artifact_path
 }
 import gunbc.gitignore_authority { gitignore_authority }
 import std.layout {
@@ -82,6 +86,8 @@ fn artifact_pattern(a: IgnoreArtifact) -> String {
     PythonCompiledBytecode => "*.pyc"
     ClaimMapDir => ".claim-map/"
     ScratchProbeFile => "src/v2/test/claim/manual/sg2_scratch_probe.dag"
+    GunbcPlanningDir => "/gunbc-planning/"
+    ScriptsFixturesDir => "/scripts/fixtures/"
   }
 }
 
@@ -101,6 +107,7 @@ fn producer_display(p: Producer) -> String {
     Derivable { kind: GithubCLICache } => "GitHub CLI local cache (dashboard / gh API)"
     Derivable { kind: AuthSessionTranscript } => "Interactive auth/session transcripts"
     Derivable { kind: PythonLocalDevScript } => "Python local dev scripts"
+    Derivable { kind: SupersededPlanningDir } => "Superseded planning scratch directories (canonical home: docs/plans/ or DESIGN.md)"
     Cited { kind: JetBrainsIDE, upstream: u } => concat("JetBrains IDE project state [cited: ", concat(u, "]"))
     Cited { kind: VSCodeIDE, upstream: u } => concat("VS Code workspace state [cited: ", concat(u, "]"))
     Cited { kind: VimEditor, upstream: u } => concat("Vim editor state [cited: ", concat(u, "]"))
@@ -131,6 +138,7 @@ fn producer_rationale_line(p: Producer) -> String {
     Derivable { kind: GithubCLICache } => ""
     Derivable { kind: AuthSessionTranscript } => "# Should never be committed; may contain OAuth URLs or session state"
     Derivable { kind: PythonLocalDevScript } => "# Python is used only for local dev tooling; never committed to the .dag/.rs substrate"
+    Derivable { kind: SupersededPlanningDir } => "# Superseded by docs/plans/ (generated PlanArtifact) and DESIGN.md/ROADMAP.md as canonical authorities"
     Cited { kind: JetBrainsIDE, upstream: _ } => "# Per-developer configuration, not project state"
     Cited { kind: VSCodeIDE, upstream: _ } => "# Per-developer configuration, not project state"
     Cited { kind: VimEditor, upstream: _ } => "# Per-developer configuration, not project state"
@@ -172,7 +180,7 @@ fn groups_doc(groups: List<IgnoreGroup>) -> Doc {
 }
 
 fn project_gitignore_to_doc(groups: List<IgnoreGroup>) -> Doc {
-  doc_concat(parts: [gitignore_header_doc(), groups_doc(groups: groups)])
+  doc_concat(parts: [gitignore_header_doc(), groups_doc(groups: groups), doc_blank(), generated_artifacts_section_doc()])
 }
 
 fn expected_gitignore() -> String {
@@ -188,7 +196,23 @@ fn group_patterns(g: IgnoreGroup) -> List<String> {
 }
 
 fn ignore_patterns() -> List<String> {
-  fold(gitignore_authority, init: [], f: fn(acc, g) { concat(acc, group_patterns(g: g)) })
+  let tool_patterns = fold(gitignore_authority, init: [], f: fn(acc, g) { concat(acc, group_patterns(g: g)) })
+  concat(tool_patterns, map(non_committed_artifacts(), a => generated_artifact_ignore_pattern(a: a)))
+}
+
+fn generated_artifact_ignore_pattern(a: GeneratedArtifact) -> String {
+  concat("/", artifact_path(a: a))
+}
+
+fn non_committed_artifacts() -> List<GeneratedArtifact> {
+  filter(generated_artifact_registry, a => !artifact_is_committed(a: a))
+}
+
+fn generated_artifacts_section_doc() -> Doc {
+  let header = doc_line_of(text: "# --- Generated artifacts (gitignored-by-default, derived from generated_artifact_registry) ---")
+  let rationale = doc_line_of(text: "# Regenerable; not committed. Whitelist: ci.yml, .gitignore, .md docs (ROADMAP.md, DESIGN.md, docs/plans/).")
+  let pattern_docs = map(non_committed_artifacts(), a => doc_line_of(text: generated_artifact_ignore_pattern(a: a)))
+  doc_concat(parts: append([header, rationale], items: pattern_docs))
 }
 
 fn without_prefix(s: String, prefix: String) -> String {
