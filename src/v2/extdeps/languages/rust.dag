@@ -26,7 +26,10 @@ import v2.std.grammar {
   grammar_carries_symbol,
   grammar_empty_sync_tokens,
   grammar_production_to_node,
-  grammar_relation_tokens_node
+  grammar_relation_tokens_node,
+  grammar_formal_terminal_bound,
+  derive_grammar_relation_row_node,
+  formal_production_for_lhs_exact
 }
 import v2.std.compilers.lexing {
   CharClassPattern,
@@ -48,7 +51,7 @@ import v2.std.compilers.lexing {
   lex_rule_set_token_class_member
 }
 import v2.std.collection { Absent, List, Map, Present, Set, empty_map, map_insert, optional_absent, optional_present }
-import v2.std.diagnostic { Accepted, Outcome, Rejected, outcome_accepted }
+import v2.std.diagnostic { Accepted, EmitDirective, Outcome, Rejected, outcome_accepted }
 import v2.std.grounding {
   PerLanguageFactBundleEntry,
   PerLanguageFactBundleKey,
@@ -76,8 +79,8 @@ import v2.std.model_core {
   PrimitiveFactBundle,
   PrimitiveOperationRef
 }
-import v2.std.witness { Holds, Violates }
-import v2.std.compilers.target_model { ConcreteSyntaxToken, FixedToken, BoundToken, concrete_syntax_token_class, concrete_syntax_token_to_node, target_model_emit_transforms_empty}
+import v2.std.witness { Holds, Violates, Witness }
+import v2.std.compilers.target_model { ConcreteSyntaxToken, FixedToken, BoundToken, concrete_syntax_token_class, concrete_syntax_token_to_node, target_model_emit_transforms_empty, target_model_make_with_emit_transforms}
 import v2.std.compilers.target_model {
   TargetAtomRealization,
   TargetAtomTypeShape,
@@ -1600,6 +1603,218 @@ fn rust_mvp1_target_model() -> TargetModel {
     authority_source_text: rust_mvp1_source_text_authority(),
     runtime_row: rust_mvp1_runtime_row()
   }
+}
+
+fn rust_conj_emitted_from_tokens(tokens: List<ConcreteSyntaxToken>) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: fold_list(
+      xs: tokens,
+      empty: Empty,
+      cons: fn(acc, token) {
+        match token {
+          BoundToken { binding: binding, token_class: _ } =>
+            list_snoc_item(
+              xs: acc,
+              item: Edge { label: Positional, target: rust_inhabitant_atom(id: binding) }
+            )
+          FixedToken { token_class: _ } => acc
+        }
+      }
+    ),
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn rust_formal_symbol_from_token(token: ConcreteSyntaxToken) -> FormalGrammarSymbol {
+  match token {
+    FixedToken { token_class: c } => grammar_formal_terminal(identity: c)
+    BoundToken { token_class: c, binding: b } =>
+      grammar_formal_terminal_bound(identity: c, binding: b)
+  }
+}
+
+fn rust_formal_rhs_from_tokens_with_bindings(tokens: List<ConcreteSyntaxToken>) -> List<FormalGrammarSymbol> {
+  fold_list(
+    xs: tokens,
+    empty: Empty,
+    cons: fn(acc, token) {
+      list_snoc_item(xs: acc, item: rust_formal_symbol_from_token(token: token))
+    }
+  )
+}
+
+fn rust_formal_production_from_tokens(lhs: Symbol, tokens: List<ConcreteSyntaxToken>) -> FormalProduction {
+  grammar_formal_production(lhs: lhs, rhs: rust_formal_rhs_from_tokens_with_bindings(tokens: tokens))
+}
+
+fn rust_lhs_exact_relation_row_witness(
+  lhs: Symbol,
+  tokens: List<ConcreteSyntaxToken>,
+  emitted: Node
+) -> Witness<Node> {
+  let production = rust_formal_production_from_tokens(lhs: lhs, tokens: tokens)
+  let productions = [production]
+  match formal_production_for_lhs_exact(productions: productions, lhs: lhs, child: emitted) {
+    Holds { value: selected } =>
+      derive_grammar_relation_row_node(
+        production: selected,
+        productions: productions,
+        emitted: emitted
+      )
+    Violates { diagnostic: d } => Violates { diagnostic: d }
+  }
+}
+
+fn rust_empty_translation_rules_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn rust_relation_translation_rules_node(
+  rule_name: Symbol,
+  lhs: Symbol,
+  tokens: List<ConcreteSyntaxToken>,
+  emitted: Node
+) -> Node {
+  match rust_lhs_exact_relation_row_witness(lhs: lhs, tokens: tokens, emitted: emitted) {
+    Holds { value: row } =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          rust_named_edge(name: rule_name, target: row)
+        ],
+        occurrence_id: SyntheticOccurrence
+      }
+    Violates { diagnostic: _ } => rust_empty_translation_rules_node()
+  }
+}
+
+fn rust_serialize_source_prefix_edges(source_text_binding: Symbol, production_binding: Symbol) -> List<Edge> {
+  [
+    rust_named_edge(
+      name: ^serialize_source_field_source_text,
+      target: rust_inhabitant_atom(id: source_text_binding)
+    ),
+    rust_named_edge(
+      name: ^serialize_source_field_source_grammar,
+      target: rust_inhabitant_atom(id: production_binding)
+    )
+  ]
+}
+
+fn rust_serialize_source_node(
+  source_text_binding: Symbol,
+  production_binding: Symbol,
+  tokens: List<ConcreteSyntaxToken>
+) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: list_append(
+      left: rust_serialize_source_prefix_edges(
+        source_text_binding: source_text_binding,
+        production_binding: production_binding
+      ),
+      right: [
+        rust_named_edge(
+          name: ^grammar_relation_field_tokens,
+          target: grammar_relation_tokens_node(
+            tokens: tokens,
+            token_to_node: rust_concrete_token_node
+          )
+        )
+      ]
+    ),
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn rust_target_model_bundle(rules: Node, serialize_source: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      rust_named_edge(name: ^target_model_edge_translation_rules, target: rules),
+      rust_named_edge(name: ^target_model_edge_serialize_source, target: serialize_source)
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn rust_string_literal_escape(spelling: String) -> String {
+  replace(replace(spelling, "\\", "\\\\"), "\"", "\\\"")
+}
+
+fn rust_string_literal_spelling(spelling: String) -> String {
+  concat("\"", concat(rust_string_literal_escape(spelling: spelling), "\""))
+}
+
+fn rust_emit_directive_concrete_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: ^rust_token_macro_eprintln_open },
+    BoundToken { token_class: ^rust_token_str_lit, binding: ^emit_directive_message },
+    FixedToken { token_class: ^rust_token_rparen }
+  ]
+}
+
+data rust_emit_directive_emitted_call: Node = rust_conj_emitted_from_tokens(
+  tokens: rust_emit_directive_concrete_tokens()
+)
+
+fn rust_emit_directive_source_text(d: EmitDirective) -> String {
+  concat("eprintln!(", concat(rust_string_literal_spelling(spelling: d.message), ")"))
+}
+
+fn rust_emit_directive_lex() -> LexRules {
+  ModeledLexRules {
+    root: LexRuleSet {
+      rules: [
+        rust_lex_rule(token_class: ^rust_token_macro_eprintln_open, text: "eprintln!("),
+        rust_lex_rule(token_class: ^rust_token_rparen, text: ")")
+      ]
+    }
+  }
+}
+
+fn rust_emit_directive_translation_rules_node() -> Node {
+  rust_relation_translation_rules_node(
+    rule_name: ^rust_relation_rule_emit_directive_eprintln,
+    lhs: ^rust_production_emit_directive_eprintln,
+    tokens: rust_emit_directive_concrete_tokens(),
+    emitted: rust_emit_directive_emitted_call
+  )
+}
+
+fn rust_emit_directive_serialize_source_node() -> Node {
+  rust_serialize_source_node(
+    source_text_binding: ^rust_emit_directive_source_literal,
+    production_binding: ^rust_production_emit_directive_eprintln,
+    tokens: rust_emit_directive_concrete_tokens()
+  )
+}
+
+fn rust_emit_directive_message_spellings(d: EmitDirective) -> Map<Symbol, String> {
+  map_insert(empty_map(), ^emit_directive_message, d.message)
+}
+
+fn rust_emit_directive_token_class_emit_transforms() -> Map<Symbol, fn(String) -> String> {
+  map_insert(empty_map(), ^rust_token_str_lit, rust_string_literal_spelling)
+}
+
+fn rust_emit_directive_target_model(d: EmitDirective) -> TargetModel {
+  target_model_make_with_emit_transforms(
+    bundle: rust_target_model_bundle(
+      rules: rust_emit_directive_translation_rules_node(),
+      serialize_source: rust_emit_directive_serialize_source_node()
+    ),
+    lex: rust_emit_directive_lex(),
+    binding_spellings: rust_emit_directive_message_spellings(d: d),
+    token_class_emit_transforms: rust_emit_directive_token_class_emit_transforms(),
+    authority_source_text: rust_emit_directive_source_text(d: d),
+    runtime_row: target_emit_host_runtime_row_unconfigured
+  )
 }
 
 fn rust_lex_rule(token_class: Symbol, text: String) -> LexRule {

@@ -1,0 +1,133 @@
+module v2.test.manual.emit_directive_rust
+
+import v2.compiler.emit { emit }
+import v2.compiler.infer { InferredFacts, InferredTree }
+import extdeps.communication.medium { Medium }
+import v2.extdeps.languages.rust {
+  rust_emit_directive_emitted_call,
+  rust_emit_directive_target_model
+}
+import v2.extdeps.languages.bash {
+  emit_directive_bash_emitted_command,
+  emit_directive_bash_target_model
+}
+import v2.std.collection { Map }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  EmitDirective,
+  ExternalContractUnknown,
+  None,
+  Outcome,
+  Rejected,
+  SeverityError,
+  SeverityWarning,
+  Unavailable,
+  node_locus
+}
+import v2.std.node { Node }
+import v2.std.witness { Violates, Witness }
+
+fn emit_directive_facts_lookup(key: Node) -> Witness<InferredFacts> {
+  Violates {
+    diagnostic: Diagnostic {
+      reason: ^emit_directive_rust_facts_unexpected_consultation,
+      at: node_locus(node: key),
+      correction: Unavailable { reason: ExternalContractUnknown }
+    }
+  }
+}
+
+data emit_directive_rust_error_example: EmitDirective = EmitDirective {
+  severity: SeverityError,
+  message: "build verification failed"
+}
+
+data emit_directive_rust_warning_example: EmitDirective = EmitDirective {
+  severity: SeverityWarning,
+  message: "build verification failed"
+}
+
+data emit_directive_rust_other_example: EmitDirective = EmitDirective {
+  severity: SeverityError,
+  message: "cache corruption"
+}
+
+data emit_directive_rust_quoted_example: EmitDirective = EmitDirective {
+  severity: SeverityError,
+  message: "say \"hi\""
+}
+
+data emit_directive_rust_error_expected: String = "eprintln!(\"build verification failed\")"
+data emit_directive_rust_other_expected: String = "eprintln!(\"cache corruption\")"
+data emit_directive_rust_quoted_expected: String = "eprintln!(\"say \\\"hi\\\"\")"
+
+fn emit_directive_rust_emit(d: EmitDirective) -> Outcome<Medium<String>> {
+  emit(
+    tree: InferredTree {
+      root: rust_emit_directive_emitted_call,
+      facts: Map { lookup: emit_directive_facts_lookup }
+    },
+    target: rust_emit_directive_target_model(d: d)
+  )
+}
+
+fn emit_directive_bash_emit(d: EmitDirective) -> Outcome<Medium<String>> {
+  emit(
+    tree: InferredTree {
+      root: emit_directive_bash_emitted_command,
+      facts: Map { lookup: emit_directive_facts_lookup }
+    },
+    target: emit_directive_bash_target_model(d: d)
+  )
+}
+
+test fn emit_directive_rust_error_emits_eprintln_holds() -> Bool {
+  match emit_directive_rust_emit(d: emit_directive_rust_error_example) {
+    Accepted { value: source, diagnostics: dg } =>
+      (source.carried == emit_directive_rust_error_expected) && (dg == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn emit_directive_rust_message_flows_holds() -> Bool {
+  match emit_directive_rust_emit(d: emit_directive_rust_error_example) {
+    Accepted { value: s1, diagnostics: _ } =>
+      match emit_directive_rust_emit(d: emit_directive_rust_other_example) {
+        Accepted { value: s2, diagnostics: _ } =>
+          (s2.carried == emit_directive_rust_other_expected) && (s1.carried != s2.carried)
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn emit_directive_rust_escapes_string_literal_holds() -> Bool {
+  match emit_directive_rust_emit(d: emit_directive_rust_quoted_example) {
+    Accepted { value: source, diagnostics: _ } =>
+      source.carried == emit_directive_rust_quoted_expected
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn emit_directive_rust_severity_invariant_holds() -> Bool {
+  match emit_directive_rust_emit(d: emit_directive_rust_error_example) {
+    Accepted { value: se, diagnostics: _ } =>
+      match emit_directive_rust_emit(d: emit_directive_rust_warning_example) {
+        Accepted { value: sw, diagnostics: _ } => se.carried == sw.carried
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn emit_directive_rust_distinct_from_bash_holds() -> Bool {
+  match emit_directive_rust_emit(d: emit_directive_rust_error_example) {
+    Accepted { value: r, diagnostics: _ } =>
+      match emit_directive_bash_emit(d: emit_directive_rust_error_example) {
+        Accepted { value: b, diagnostics: _ } => r.carried != b.carried
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}

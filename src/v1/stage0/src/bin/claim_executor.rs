@@ -87,7 +87,7 @@ fn str_list_from_value(value: &Value, ctx: &InterpContext) -> Result<Vec<String>
 }
 
 fn str_field(
-    fields: &std::collections::HashMap<v1_compiler::v1_interpreter::Symbol, Value>,
+    fields: &[(v1_compiler::v1_interpreter::Symbol, Value)],
     name: &str,
     owner: &str,
     ctx: &InterpContext,
