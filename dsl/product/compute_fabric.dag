@@ -73,7 +73,7 @@ import extdeps.toolchain.types {
 }
 import product.placement_supply { HostIdentity, PlacementSupplyRow }
 import std.baseboard { ServerBaseboard }
-import std.realization_width { bounded_host_spawn_width, memory_aware_spawn_width, int_min }
+import std.realization_width { bounded_host_spawn_width, memory_aware_spawn_width, int_min, byte_size_saturating_sub }
 
 type ComputeWitness<C> = Node
 type Outcome<T> = Node
@@ -844,10 +844,11 @@ fn build_shard_list_loop(
 fn derive_exclusive_partition(
   supply: PlacementSupplyRow,
   shard_count: Int,
-  per_shard_memory: ByteSize
+  per_shard_memory: ByteSize,
+  oomd_headroom: ByteSize
 ) -> ExclusiveAdmission {
   let total_threads = hardware_thread_count_value(t: supply.hardware_threads)
-  let total_ram = byte_size_count(b: supply.ram_bytes)
+  let available_ram = byte_size_count(b: byte_size_saturating_sub(total: supply.ram_bytes, reserved: oomd_headroom))
   let requested_ram = byte_size_count(b: per_shard_memory) * shard_count
   if shard_count <= 0 {
     ExclusiveRefused { reason: "shard_count must be positive" }
@@ -855,8 +856,8 @@ fn derive_exclusive_partition(
     let threads_per_shard = total_threads / shard_count
     if threads_per_shard <= 0 {
       ExclusiveRefused { reason: "insufficient hardware threads for shard count" }
-    } else if requested_ram > total_ram {
-      ExclusiveRefused { reason: "reserved memory exceeds host capacity" }
+    } else if requested_ram > available_ram {
+      ExclusiveRefused { reason: "reserved memory exceeds host capacity minus oomd headroom" }
     } else {
       ExclusiveAdmitted {
         partition: ExclusivePartition {

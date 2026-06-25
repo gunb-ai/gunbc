@@ -43,7 +43,9 @@ import product.compute_fabric {
   example_owned_cost,
 }
 import product.placement_supply { PlacementSupplyRow, HostIdentity }
+import gunbc.fleet_host_budget { oomd_actuation_floor }
 import std.measure {
+  ByteSize,
   byte_size,
   byte_size_count,
   hardware_thread_count,
@@ -58,6 +60,10 @@ fn fixture_srv1_supply() -> PlacementSupplyRow {
     clock_hz: hertz(3000000000),
     ram_bytes: byte_size(137438953472),
   }
+}
+
+fn fixture_oomd_headroom() -> ByteSize {
+  oomd_actuation_floor(host: fixture_srv1_supply().ram_bytes)
 }
 
 fn fixture_shared_offer() -> ComputeOffer {
@@ -131,7 +137,7 @@ fn witness_exclusive_demand_exclusive_offer_admitted() -> Bool {
 
 fn witness_exclusive_leases_get_disjoint_cpusets() -> Bool {
   let per_shard_mem = byte_size(60000000000)
-  match derive_exclusive_partition(supply: fixture_srv1_supply(), shard_count: 2, per_shard_memory: per_shard_mem) {
+  match derive_exclusive_partition(supply: fixture_srv1_supply(), shard_count: 2, per_shard_memory: per_shard_mem, oomd_headroom: fixture_oomd_headroom()) {
     ExclusiveRefused { reason: _ } => false
     ExclusiveAdmitted { partition: p } =>
       p.shards.length() == 2
@@ -141,7 +147,7 @@ fn witness_exclusive_leases_get_disjoint_cpusets() -> Bool {
 
 fn witness_oversubscribed_memory_admission_refused() -> Bool {
   let per_shard_mem = byte_size(70000000000)
-  match derive_exclusive_partition(supply: fixture_srv1_supply(), shard_count: 2, per_shard_memory: per_shard_mem) {
+  match derive_exclusive_partition(supply: fixture_srv1_supply(), shard_count: 2, per_shard_memory: per_shard_mem, oomd_headroom: fixture_oomd_headroom()) {
     ExclusiveRefused { reason: _ } => true
     ExclusiveAdmitted { partition: _ } => false
   }
@@ -167,12 +173,20 @@ fn witness_reserved_demand_besteffort_offer_refused() -> Bool {
 }
 
 fn witness_srv1_seven_shard_partition_fits() -> Bool {
-  let per_shard_mem = byte_size(19327352832)
-  match derive_exclusive_partition(supply: fixture_srv1_supply(), shard_count: 7, per_shard_memory: per_shard_mem) {
+  let per_shard_mem = byte_size(18000000000)
+  match derive_exclusive_partition(supply: fixture_srv1_supply(), shard_count: 7, per_shard_memory: per_shard_mem, oomd_headroom: fixture_oomd_headroom()) {
     ExclusiveAdmitted { partition: p } =>
       p.shards.length() == 7
         && p.threads_per_shard == 18
     ExclusiveRefused { reason: _ } => false
+  }
+}
+
+fn witness_fullhost_reservation_refused() -> Bool {
+  let half_total = byte_size(68719476736)
+  match derive_exclusive_partition(supply: fixture_srv1_supply(), shard_count: 2, per_shard_memory: half_total, oomd_headroom: fixture_oomd_headroom()) {
+    ExclusiveRefused { reason: _ } => true
+    ExclusiveAdmitted { partition: _ } => false
   }
 }
 
@@ -184,4 +198,5 @@ test fn lease_mode_exclusive_isolation_holds() -> Bool {
     && witness_shard_dropin_content_has_cpuset_and_memory()
     && witness_reserved_demand_besteffort_offer_refused()
     && witness_srv1_seven_shard_partition_fits()
+    && witness_fullhost_reservation_refused()
 }
