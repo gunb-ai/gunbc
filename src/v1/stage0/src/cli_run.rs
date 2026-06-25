@@ -1983,12 +1983,28 @@ pub fn generate_witness_timing_histogram(summary: &DiscoverySummary) -> String {
         entry_resolve_map.insert(receipt.entry.clone(), receipt.resolve_nanos);
     }
 
+    let mut witness_outcome_map: HashMap<String, &DiscoveryWitnessOutcome> = HashMap::new();
+    for outcome in &summary.witness_outcomes {
+        let key = format!("{}/{}", outcome.entry, outcome.function);
+        witness_outcome_map.insert(key, outcome);
+    }
+
     let mut total_times: Vec<u128> = Vec::new();
     let mut resolve_times: Vec<u128> = Vec::new();
     let mut eval_times: Vec<u128> = Vec::new();
+    let mut skipped_missing_witness_outcome = 0;
     let mut skipped_missing_entry_resolve = 0;
 
-    for (perf, outcome) in summary.performance_receipts.iter().zip(summary.witness_outcomes.iter()) {
+    for perf in &summary.performance_receipts {
+        let witness_key = format!("{}/{}", "unknown", perf.work_shape);
+        let outcome = match witness_outcome_map.iter().find(|(_, o)| o.function == perf.work_shape) {
+            Some((_, o)) => *o,
+            None => {
+                skipped_missing_witness_outcome += 1;
+                continue;
+            }
+        };
+
         let resolve_nanos = match entry_resolve_map.get(&outcome.entry).copied() {
             Some(nanos) => nanos,
             None => {
