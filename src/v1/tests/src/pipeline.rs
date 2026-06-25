@@ -11755,4 +11755,3 @@ fn ownership_stage0_census() {
         TRY_UNWRAP_RATCHET
     );
 }
-

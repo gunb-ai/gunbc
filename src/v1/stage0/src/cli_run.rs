@@ -703,8 +703,7 @@ pub fn precompute_whole_tree_published_mock_keys(
     if all_sources.is_empty() {
         return Ok(std::collections::HashSet::new());
     }
-    let (graph, source_indices) =
-        resolved_graph_from_sources(all_sources)?;
+    let (graph, source_indices) = resolved_graph_from_sources(all_sources)?;
     let ctx = v1_interpreter::InterpContext::with_runtime_options(
         &graph,
         source_indices,
@@ -765,8 +764,7 @@ pub fn whole_tree_resolved_ctx(
         return Err("whole-tree corpus is empty (no .dag modules under source roots)".to_string());
     }
     let modules_excluded = total - all_sources.len();
-    let (graph, source_indices) =
-        resolved_graph_from_sources(all_sources)?;
+    let (graph, source_indices) = resolved_graph_from_sources(all_sources)?;
     Ok(WholeTreeCtx {
         ctx: v1_interpreter::InterpContext::with_runtime_options(
             graph.as_ref(),
@@ -1562,8 +1560,7 @@ pub fn discover_owned_data_decls(
         let mut sources: Vec<Rc<v1_compiler_compile::SourceFile>> =
             group.sources.into_values().collect();
         sources.sort_by(|a, b| a.path.cmp(&b.path));
-        let (graph, source_indices) =
-            resolved_graph_from_sources(sources)?;
+        let (graph, source_indices) = resolved_graph_from_sources(sources)?;
         let si: HashMap<String, Rc<NewlineIndex>> = source_indices
             .iter()
             .map(|(k, v)| (k.clone(), v.clone()))
