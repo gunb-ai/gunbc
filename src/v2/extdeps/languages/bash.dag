@@ -1739,3 +1739,125 @@ fn orch_seq2_target_model(left: String, right: String) -> TargetModel {
     binding_spellings: orch_seq2_binding_spellings(left: left, right: right)
   )
 }
+
+fn orch_retry_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: ^bash_token_retry_seg_a },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_retry_occ1 },
+    FixedToken { token_class: ^bash_token_retry_seg_b },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_retry_pattern1 },
+    FixedToken { token_class: ^bash_token_retry_seg_c },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_retry_warn1 },
+    FixedToken { token_class: ^bash_token_retry_seg_d },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_retry_occ2 },
+    FixedToken { token_class: ^bash_token_retry_seg_e },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_retry_pattern2 },
+    FixedToken { token_class: ^bash_token_retry_seg_f },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_retry_warn2 },
+    FixedToken { token_class: ^bash_token_retry_seg_g },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_retry_occ3 },
+    FixedToken { token_class: ^bash_token_retry_seg_h }
+  ]
+}
+
+data orch_retry_emitted_command: Node = bash_conj_emitted_from_tokens(
+  tokens: orch_retry_tokens()
+)
+
+fn orch_retry_source_text(
+  occ1: String,
+  occ2: String,
+  occ3: String,
+  pattern1: String,
+  pattern2: String,
+  warn1: String,
+  warn2: String
+) -> String {
+  concat(retry_eagain_seg_a(),
+  concat(occ1,
+  concat(retry_eagain_seg_b(),
+  concat(pattern1,
+  concat(retry_eagain_seg_c(),
+  concat(warn1,
+  concat(retry_eagain_seg_d(),
+  concat(occ2,
+  concat(retry_eagain_seg_e(),
+  concat(pattern2,
+  concat(retry_eagain_seg_f(),
+  concat(warn2,
+  concat(retry_eagain_seg_g(),
+  concat(occ3,
+         retry_eagain_seg_h())))))))))))))))
+}
+
+fn orch_retry_translation_rules_node() -> Node {
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_orch_retry,
+    lhs: ^bash_production_orch_retry,
+    tokens: orch_retry_tokens(),
+    emitted: orch_retry_emitted_command
+  )
+}
+
+fn orch_retry_binding_spellings(
+  occ1: String,
+  occ2: String,
+  occ3: String,
+  pattern1: String,
+  pattern2: String,
+  warn1: String,
+  warn2: String
+) -> Map<Symbol, String> {
+  map_insert(
+  map_insert(
+  map_insert(
+  map_insert(
+  map_insert(
+  map_insert(
+  map_insert(empty_map(), ^orch_retry_occ1, occ1),
+    ^orch_retry_occ2, occ2),
+    ^orch_retry_occ3, occ3),
+    ^orch_retry_pattern1, pattern1),
+    ^orch_retry_pattern2, pattern2),
+    ^orch_retry_warn1, warn1),
+    ^orch_retry_warn2, warn2)
+}
+
+fn orch_retry_target_model(
+  occ1: String,
+  occ2: String,
+  occ3: String,
+  pattern1: String,
+  pattern2: String,
+  warn1: String,
+  warn2: String
+) -> TargetModel {
+  bash_make_bound_tokens_target_model(
+    rules: orch_retry_translation_rules_node(),
+    source_literal: ^bash_orch_retry_source_literal,
+    production_name: ^bash_production_orch_retry,
+    tokens: orch_retry_tokens(),
+    source_text: orch_retry_source_text(
+      occ1: occ1,
+      occ2: occ2,
+      occ3: occ3,
+      pattern1: pattern1,
+      pattern2: pattern2,
+      warn1: warn1,
+      warn2: warn2
+    ),
+    lex: retry_eagain_bash_lex_for(
+      tail_text: retry_eagain_seg_h(),
+      tail_class: ^bash_token_retry_seg_h
+    ),
+    binding_spellings: orch_retry_binding_spellings(
+      occ1: occ1,
+      occ2: occ2,
+      occ3: occ3,
+      pattern1: pattern1,
+      pattern2: pattern2,
+      warn1: warn1,
+      warn2: warn2
+    )
+  )
+}
