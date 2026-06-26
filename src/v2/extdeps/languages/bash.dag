@@ -1869,9 +1869,11 @@ fn bash_stmt_assign_source_text(name: String, value: String) -> String {
   concat(name, concat("=", value))
 }
 
-fn bash_stmt_assign_lex() -> LexRules {
+fn bash_stmt_assign_lex(name: String, value: String) -> LexRules {
   phrase_to_lex_rules(p: phrase([
-    span(text: "=", class: ^bash_token_assign_eq)
+    span(text: name, class: ^bash_token_orch_raw),
+    span(text: "=", class: ^bash_token_assign_eq),
+    span(text: value, class: ^bash_token_orch_raw)
   ]))
 }
 
@@ -1898,7 +1900,7 @@ fn bash_stmt_assign_target_model(name: String, value: String) -> TargetModel {
     production_name: ^bash_production_stmt_assign,
     tokens: bash_stmt_assign_tokens(),
     source_text: bash_stmt_assign_source_text(name: name, value: value),
-    lex: bash_stmt_assign_lex(),
+    lex: bash_stmt_assign_lex(name: name, value: value),
     binding_spellings: bash_stmt_assign_binding_spellings(name: name, value: value)
   )
 }
