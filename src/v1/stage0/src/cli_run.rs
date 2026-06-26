@@ -568,10 +568,36 @@ fn reconcile_with_typed_cache(
         item_registry = v1_rt::rc_map_merge(item_registry, typed.item_registry.clone());
         diag_chunks.push(parent_result.diagnostics.clone());
         diag_chunks.push(tc_result.diagnostics.clone());
+        {
+            let hwm = std::fs::read_to_string("/proc/self/status")
+                .ok()
+                .and_then(|s| {
+                    s.lines()
+                        .find(|l| l.starts_with("VmHWM"))
+                        .map(|l| l.split_whitespace().nth(1).unwrap_or("0").to_string())
+                })
+                .unwrap_or_default();
+            eprintln!("[memdbg] typechecked {:<46} cum-peak VmHWM={} kB", mod_name, hwm);
+        }
     }
 
+    eprintln!(
+        "[memdbg] after typecheck loop ({} modules): peak VmHWM={} kB",
+        modules.len(),
+        std::fs::read_to_string("/proc/self/status")
+            .ok()
+            .and_then(|s| s.lines().find(|l| l.starts_with("VmHWM")).map(|l| l.to_string()))
+            .unwrap_or_default()
+    );
     let expanded_registry =
         v1_compiler_infer::expand_transitive_services(modules.clone(), item_registry, 5);
+    eprintln!(
+        "[memdbg] after expand_transitive_services: peak VmHWM={}",
+        std::fs::read_to_string("/proc/self/status")
+            .ok()
+            .and_then(|s| s.lines().find(|l| l.starts_with("VmHWM")).map(|l| l.to_string()))
+            .unwrap_or_default()
+    );
     let diagnostics: Rc<Vec<Rc<ErrorNode>>> = Rc::new({
         let mut acc = Vec::new();
         for chunk in &diag_chunks {
