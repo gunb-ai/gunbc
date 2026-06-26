@@ -18,13 +18,10 @@ type PerShardRssPeakMeasurement
   = PerShardRssPeakMeasured { per_shard_peak: ByteSize, sample_width: Int }
   | PerShardRssPeakUnmeasured
 
-data gunbc_ci_floor_per_shard_rss_measurement: PerShardRssPeakMeasurement = PerShardRssPeakMeasured {
-  per_shard_peak: byte_size(2100028416)
-  sample_width: 4
-}
+data gunbc_ci_floor_per_shard_rss_measurement: PerShardRssPeakMeasurement = PerShardRssPeakUnmeasured
 
 data gunbc_ci_floor_per_shard_rss_source: Disposition = Terminal {
-  reason: "Measured: CI run 27893441091, VmHWM=8.4GiB at spawn_width=4 => per-shard = VmHWM/width = 8.4GiB/4 = 2.1GiB; corroborated by run 28003119550 (self-RSS=8.7GiB at width=4, executor base approx 0.7GiB, shard approx 2.0GiB, model: total=base+width*per_shard). Finer measurement path: width-sweep slope (RSS(w1)-RSS(w0))/(w1-w0) or per-shard cgroup isolation once per-thread RSS is available."
+  reason: "Cgroup-derived (switched from VmHWM-based): per_shard = gunbc_ci_floor_measured_peak.peak / concurrency = 11592347648/4 = 2898086912 (~2.75GiB). Prior VmHWM-based value (2100028416, run 27893441091) was stale and uniform-avg: VmHWM/width is a process self-RSS average across all 4 concurrent shards, which (a) under-counts child processes (rustc, sccache captured by cgroup but not VmHWM) and (b) under-estimates worst-shard peak by averaging. Cgroup-based concurrent_memory_peak_per_share over-estimates the marginal per-shard cost (it includes base/concurrency from the non-parallelizable executor overhead), implicitly compensating for the reserved=0 limitation in memory_bounded_shard_count without requiring a separate base reservation term — fixing all three causes (stale + uniform-avg + reserved=0-compensation) in one authority. Dissolution paths: per-shard cgroup isolation (cgroup.subtree_control + per-thread memory.peak) gives the true marginal per-shard cost and decouples base accounting from per-shard; width-sweep slope (RSS(w+1)-RSS(w))/1 is a lighter alternative."
 }
 
 fn gunbc_ci_floor_per_shard_peak_rss_bytes() -> ByteSize {

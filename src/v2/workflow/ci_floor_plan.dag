@@ -27,6 +27,7 @@ import gunbc.ci_floor_measurement {
   gunbc_ci_floor_conservative_fallback_width
 }
 import gunbc.ci_budget_tree { srv1_floor_memory_budget }
+import gunbc.fleet_host_budget { gunbc_per_runner_memory_cap }
 import extdeps.cpu.ampere { altra_max_m12830_catalog }
 import std.realization_schedule {
   RealizationPlan,
@@ -255,7 +256,11 @@ fn gunbc_ci_floor_spawn_width_from_tree() -> HardwareThreadCount {
 }
 
 fn gunbc_ci_floor_spawn_width(memory_budget_bytes: Int) -> HardwareThreadCount {
-  gunbc_ci_floor_spawn_width_for_budget(memory_budget: byte_size(memory_budget_bytes))
+  let cap_bytes = byte_size_count(b: gunbc_per_runner_memory_cap)
+  let effective =
+    if memory_budget_bytes <= 0 || memory_budget_bytes > cap_bytes { cap_bytes }
+    else { memory_budget_bytes }
+  gunbc_ci_floor_spawn_width_for_budget(memory_budget: byte_size(effective))
 }
 
 fn gunbc_ci_floor_run_envelope(memory_budget_bytes: Int) -> ResourceEnvelope {
@@ -305,14 +310,22 @@ fn witness_floor_width_derived_from_tree_is_positive() -> Bool {
 }
 
 fn witness_floor_spawn_width_tight_budget_backs_off() -> Bool {
-  let tight = 10000000000
+  let tight = 4294967296
   let width = hardware_thread_count_value(t: gunbc_ci_floor_spawn_width(memory_budget_bytes: tight))
   width < gunbc_ci_floor_breadth()
 }
 
 fn witness_floor_spawn_width_zero_budget_falls_back() -> Bool {
-  let width = hardware_thread_count_value(t: gunbc_ci_floor_spawn_width(memory_budget_bytes: 0))
-  width == gunbc_ci_floor_conservative_fallback_width
+  let width_at_zero = hardware_thread_count_value(t: gunbc_ci_floor_spawn_width(memory_budget_bytes: 0))
+  let width_at_cap = hardware_thread_count_value(t: gunbc_ci_floor_spawn_width_for_budget(memory_budget: gunbc_per_runner_memory_cap))
+  width_at_zero == width_at_cap && width_at_zero > 0 && width_at_zero < gunbc_ci_floor_breadth()
+}
+
+fn witness_floor_spawn_width_large_budget_clamped() -> Bool {
+  let large = 137438953472
+  let width_large = hardware_thread_count_value(t: gunbc_ci_floor_spawn_width(memory_budget_bytes: large))
+  let width_cap = hardware_thread_count_value(t: gunbc_ci_floor_spawn_width_for_budget(memory_budget: gunbc_per_runner_memory_cap))
+  width_large == width_cap && width_large < gunbc_ci_floor_breadth()
 }
 
 fn floor_layer_heavy_resolve_count(batch: ExecutorBatch, spec: CiSpec) -> Int {

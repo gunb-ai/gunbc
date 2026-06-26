@@ -19,14 +19,13 @@ fn per_shard_peak_bytes_for(m: PerShardRssPeakMeasurement) -> Int {
   }
 }
 
-fn witness_per_shard_uses_direct_measurement() -> Bool {
-  byte_size_count(b: gunbc_ci_floor_per_shard_peak_rss_bytes()) == 2100028416
+fn witness_per_shard_uses_cgroup_derived() -> Bool {
+  byte_size_count(b: gunbc_ci_floor_per_shard_peak_rss_bytes()) ==
+    byte_size_count(b: concurrent_memory_peak_per_share(sample: gunbc_ci_floor_measured_peak))
 }
 
-fn witness_direct_is_less_than_derived() -> Bool {
-  let direct = byte_size_count(b: gunbc_ci_floor_per_shard_peak_rss_bytes())
-  let derived = byte_size_count(b: concurrent_memory_peak_per_share(sample: gunbc_ci_floor_measured_peak))
-  direct < derived
+fn witness_cgroup_derived_exceeds_vmhwm_based() -> Bool {
+  byte_size_count(b: concurrent_memory_peak_per_share(sample: gunbc_ci_floor_measured_peak)) > 2100028416
 }
 
 fn witness_unmeasured_arm_falls_back_to_derived() -> Bool {
@@ -35,16 +34,16 @@ fn witness_unmeasured_arm_falls_back_to_derived() -> Bool {
   fallback == derived
 }
 
-fn witness_measured_arm_sample_width_is_four() -> Bool {
+fn witness_measurement_mode_is_unmeasured() -> Bool {
   match gunbc_ci_floor_per_shard_rss_measurement {
-    PerShardRssPeakMeasured { per_shard_peak: _, sample_width: w } => w == 4
-    PerShardRssPeakUnmeasured => false
+    PerShardRssPeakMeasured { per_shard_peak: _, sample_width: _ } => false
+    PerShardRssPeakUnmeasured => true
   }
 }
 
 test fn ci_floor_measurement_per_shard_rss_witnesses() -> Bool {
-  witness_per_shard_uses_direct_measurement()
-    && witness_direct_is_less_than_derived()
+  witness_per_shard_uses_cgroup_derived()
+    && witness_cgroup_derived_exceeds_vmhwm_based()
     && witness_unmeasured_arm_falls_back_to_derived()
-    && witness_measured_arm_sample_width_is_four()
+    && witness_measurement_mode_is_unmeasured()
 }
