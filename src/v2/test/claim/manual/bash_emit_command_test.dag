@@ -435,5 +435,9 @@ test fn bash_emit_env_prefixed_cargo_holds() -> Bool {
 }
 
 test fn bash_held_welds_dissolution_trigger_recorded_holds() -> Bool {
-  bash_multi_orch_raw_welds_dissolution_trigger != ""
+  string_contains(s: bash_multi_orch_raw_welds_dissolution_trigger, pattern: "bash_assign_cmdsubst_mktemp")
+    && string_contains(s: bash_multi_orch_raw_welds_dissolution_trigger, pattern: "bash_assign_concat_gunbc")
+    && string_contains(s: bash_multi_orch_raw_welds_dissolution_trigger, pattern: "bash_env_prefixed_cargo")
+    && string_contains(s: bash_multi_orch_raw_welds_dissolution_trigger, pattern: "straddle")
+    && string_contains(s: bash_multi_orch_raw_welds_dissolution_trigger, pattern: "DISSOLVES WHEN")
 }
