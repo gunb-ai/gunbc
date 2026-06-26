@@ -162,6 +162,15 @@ fn witness_schema_field_present() -> Bool {
     && string_contains(s: json, pattern: "\"edges\"")
 }
 
+fn witness_acceptance_emitted_in_json() -> Bool {
+  let node_a = sized_derivable(id: "acc-a", prs: [42], title: "Acc A")
+  let doc = fixture_doc(nodes: [node_a], edges: [])
+  let json = roadmap_graph_json(doc: doc, merged: [], anchor_commit: "acc")
+  string_contains(s: json, pattern: "\"acceptance\":")
+    && string_contains(s: json, pattern: "prs_merged")
+    && string_contains(s: json, pattern: "42")
+}
+
 fn witness_fixpoint_deep_chain() -> Bool {
   let n0  = sized_derivable(id: "deep-n0",  prs: [1],  title: "N0")
   let n1  = sized_derivable(id: "deep-n1",  prs: [2],  title: "N1")
@@ -227,5 +236,6 @@ test fn roadmap_graph_witnesses() -> Bool {
     && witness_wave_recomputes_after_shift()
     && witness_shelved_section_excluded_from_wave()
     && witness_schema_field_present()
+    && witness_acceptance_emitted_in_json()
     && witness_fixpoint_deep_chain()
 }
