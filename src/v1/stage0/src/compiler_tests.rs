@@ -1972,7 +1972,10 @@ mod compiler_tests {
                 let index = crate::cli_run::build_multi_entry_index(&source_roots_str);
                 eprintln!("  Index built in {:?}", t0.elapsed());
 
-                let scan_dirs = vec!["dsl/test/claim".to_string()];
+                let scan_dirs = vec![root
+                    .join("dsl/test/claim")
+                    .to_string_lossy()
+                    .into_owned()];
                 let rows =
                     crate::cli_run::discover_floor_corpus_rows(&source_roots_str, &scan_dirs)
                         .expect("discover_floor_corpus_rows failed");
