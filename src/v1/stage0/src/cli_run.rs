@@ -747,7 +747,31 @@ pub fn precompute_whole_tree_published_mock_keys(
         return Ok(std::collections::HashSet::new());
     }
     let index = build_module_index(&dsl_roots);
-    let all_sources: Vec<Rc<v1_compiler_compile::SourceFile>> = index.values().cloned().collect();
+    // Only modules that DECLARE a `PublishedMockCase` corpus can contribute keys —
+    // `resolve_published_mock_keys` reads them by exact type annotation. Strict-
+    // resolving the whole 600+ module tree to find the ~13 declarers is §2
+    // irrelevant work, and that transient whole-tree `ResolvedGraph` is the floor's
+    // dominant RSS (measured ~1.46 GiB to produce ~58 strings). Select the
+    // declarers and resolve only their transitive import closures. The `.contains`
+    // prefilter is a safe over-inclusive candidate set: `.dag` has no comment
+    // syntax (a string match is structural), and the downstream
+    // `type_annotation_names(.., "PublishedMockCase")` check is exact, so a
+    // false-positive file only widens the closure slightly — it cannot fabricate a key.
+    let declarers: Vec<Rc<v1_compiler_compile::SourceFile>> = index
+        .values()
+        .filter(|sf| sf.content.contains("PublishedMockCase"))
+        .cloned()
+        .collect();
+    if declarers.is_empty() {
+        return Ok(std::collections::HashSet::new());
+    }
+    let mut seen: HashMap<String, Rc<v1_compiler_compile::SourceFile>> = HashMap::new();
+    for d in &declarers {
+        if let Some(mp) = extract_module_path(&d.content) {
+            seen.insert(mp, d.clone());
+        }
+    }
+    let all_sources = resolve_transitively(declarers, &index, seen);
     if all_sources.is_empty() {
         return Ok(std::collections::HashSet::new());
     }
