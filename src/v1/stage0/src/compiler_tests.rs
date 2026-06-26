@@ -1799,4 +1799,451 @@ mod compiler_tests {
             .join();
         result.expect("contracts_sidecar_wired_into_emit_scope panicked");
     }
+
+    fn probe_rss_bytes() -> u64 {
+        use std::io::Read;
+        let mut f = match std::fs::File::open("/proc/self/status") {
+            Ok(f) => f,
+            Err(_) => return 0,
+        };
+        let mut s = String::new();
+        let _ = f.read_to_string(&mut s);
+        for line in s.lines() {
+            if line.starts_with("VmRSS:") {
+                let parts: Vec<&str> = line.split_whitespace().collect();
+                if parts.len() >= 2 {
+                    if let Ok(kb) = parts[1].parse::<u64>() {
+                        return kb * 1024;
+                    }
+                }
+            }
+        }
+        0
+    }
+
+    fn probe_fmt_bytes(b: u64) -> String {
+        if b >= 1_073_741_824 {
+            format!("{:.1} GiB", b as f64 / 1_073_741_824.0)
+        } else if b >= 1_048_576 {
+            format!("{:.1} MiB", b as f64 / 1_048_576.0)
+        } else if b >= 1024 {
+            format!("{:.1} KiB", b as f64 / 1024.0)
+        } else {
+            format!("{} B", b)
+        }
+    }
+
+    fn connective_discriminant(c: &crate::v1_std_core::Connective) -> u8 {
+        match c {
+            crate::v1_std_core::Connective::Conj => 0,
+            crate::v1_std_core::Connective::Disj => 1,
+            crate::v1_std_core::Connective::NoConnective => 2,
+            crate::v1_std_core::Connective::Arrow => 3,
+        }
+    }
+
+    fn node_content_fp(n: &crate::v1_std_core::Node) -> u64 {
+        use std::hash::{Hash, Hasher};
+        use std::collections::hash_map::DefaultHasher;
+        let mut h = DefaultHasher::new();
+        n.name.hash(&mut h);
+        connective_discriminant(&n.connective).hash(&mut h);
+        n.children.len().hash(&mut h);
+        n.params.len().hash(&mut h);
+        n.uses.len().hash(&mut h);
+        n.properties.len().hash(&mut h);
+        n.body.is_some().hash(&mut h);
+        n.transport.is_some().hash(&mut h);
+        n.type_annotation.is_some().hash(&mut h);
+        n.inferred.is_some().hash(&mut h);
+        n.ident.hash(&mut h);
+        h.finish()
+    }
+
+    struct AstWalkState {
+        all_ptrs: std::collections::HashSet<usize>,
+        source_ptrs: std::collections::HashSet<usize>,
+        inferred_ptrs: std::collections::HashSet<usize>,
+        content_fps: std::collections::HashSet<u64>,
+        name_total_bytes: usize,
+        name_zero_count: usize,
+        nodes_with_ident: usize,
+        nodes_with_ident_span: usize,
+        nodes_with_inferred: usize,
+        nodes_with_inferred_resolved: usize,
+        nodes_with_body: usize,
+        nodes_with_transport: usize,
+        nodes_with_type_annotation: usize,
+        nodes_with_match_pattern: usize,
+        children_total: usize,
+        children_zero: usize,
+        params_total: usize,
+        params_zero: usize,
+        uses_total: usize,
+        uses_zero: usize,
+        properties_total: usize,
+        properties_zero: usize,
+    }
+
+    impl AstWalkState {
+        fn new() -> Self {
+            AstWalkState {
+                all_ptrs: std::collections::HashSet::new(),
+                source_ptrs: std::collections::HashSet::new(),
+                inferred_ptrs: std::collections::HashSet::new(),
+                content_fps: std::collections::HashSet::new(),
+                name_total_bytes: 0,
+                name_zero_count: 0,
+                nodes_with_ident: 0,
+                nodes_with_ident_span: 0,
+                nodes_with_inferred: 0,
+                nodes_with_inferred_resolved: 0,
+                nodes_with_body: 0,
+                nodes_with_transport: 0,
+                nodes_with_type_annotation: 0,
+                nodes_with_match_pattern: 0,
+                children_total: 0,
+                children_zero: 0,
+                params_total: 0,
+                params_zero: 0,
+                uses_total: 0,
+                uses_zero: 0,
+                properties_total: 0,
+                properties_zero: 0,
+            }
+        }
+
+        fn record(&mut self, node: &crate::v1_std_core::Node, is_inf: bool) {
+            self.content_fps.insert(node_content_fp(node));
+            self.name_total_bytes += node.name.len();
+            if node.name.is_empty() { self.name_zero_count += 1; }
+            if node.ident.is_some() { self.nodes_with_ident += 1; }
+            if node.ident_span.is_some() { self.nodes_with_ident_span += 1; }
+            if node.inferred.is_some() { self.nodes_with_inferred += 1; }
+            if node.body.is_some() { self.nodes_with_body += 1; }
+            if node.transport.is_some() { self.nodes_with_transport += 1; }
+            if node.type_annotation.is_some() { self.nodes_with_type_annotation += 1; }
+            if node.match_pattern.is_some() { self.nodes_with_match_pattern += 1; }
+            let cl = node.children.len();
+            let pl = node.params.len();
+            let ul = node.uses.len();
+            let prl = node.properties.len();
+            self.children_total += cl;
+            self.params_total += pl;
+            self.uses_total += ul;
+            self.properties_total += prl;
+            if cl == 0 { self.children_zero += 1; }
+            if pl == 0 { self.params_zero += 1; }
+            if ul == 0 { self.uses_zero += 1; }
+            if prl == 0 { self.properties_zero += 1; }
+            let _ = is_inf;
+        }
+    }
+
+    #[test]
+    #[ignore]
+    fn profile_typed_ast_byte_breakdown() {
+        let result = std::thread::Builder::new()
+            .stack_size(512 * 1024 * 1024)
+            .spawn(|| {
+                use std::time::Instant;
+                use std::rc::Rc;
+
+                let node_size = std::mem::size_of::<crate::v1_std_core::Node>();
+                let infnode_size = std::mem::size_of::<crate::v1_std_core::InferredNode>();
+
+                eprintln!("\n=== TYPED-AST BYTE BREAKDOWN PROBE ===");
+                eprintln!("  sizeof(Node) = {} bytes", node_size);
+                eprintln!("  sizeof(InferredNode) = {} bytes", infnode_size);
+                eprintln!("  sizeof(Option<i64>) = {} bytes", std::mem::size_of::<Option<i64>>());
+                eprintln!("  sizeof(Option<Rc<crate::v1_std_core::Node>>) = {} bytes",
+                    std::mem::size_of::<Option<Rc<crate::v1_std_core::Node>>>());
+                eprintln!("  sizeof(String) = {} bytes", std::mem::size_of::<String>());
+
+                let root = workspace_root();
+                let src_v2 = root.join("src/v2").to_string_lossy().into_owned();
+                let dsl_dir = root.join("dsl").to_string_lossy().into_owned();
+                let source_roots_str = vec![src_v2.clone(), dsl_dir.clone()];
+                let rss0 = probe_rss_bytes();
+                eprintln!("  RSS at start: {}", probe_fmt_bytes(rss0));
+
+                let t0 = Instant::now();
+                eprintln!("  Building multi-entry index...");
+                let index = crate::cli_run::build_multi_entry_index(&source_roots_str);
+                eprintln!("  Index built in {:?}", t0.elapsed());
+
+                let scan_dirs = vec!["dsl/test/claim".to_string()];
+                let rows =
+                    crate::cli_run::discover_floor_corpus_rows(&source_roots_str, &scan_dirs)
+                        .expect("discover_floor_corpus_rows failed");
+                eprintln!("  Floor rows discovered: {}", rows.len());
+
+                let mut all_modules: std::collections::HashMap<
+                    String,
+                    Rc<crate::v1_compiler_infer_items::TypedModule>,
+                > = std::collections::HashMap::new();
+                let t1 = Instant::now();
+                let mut resolved_ok = 0usize;
+                let mut resolved_err = 0usize;
+                for (i, row) in rows.iter().enumerate() {
+                    if i > 0 && i % 20 == 0 {
+                        eprintln!(
+                            "    ... {}/{} entries resolved, {} unique modules so far",
+                            i,
+                            rows.len(),
+                            all_modules.len()
+                        );
+                    }
+                    match crate::cli_run::resolve_entry_with_index_for_discovery_corpus(
+                        &index,
+                        &row.entry,
+                    ) {
+                        Ok((graph, _)) => {
+                            for m in graph.modules.iter() {
+                                let nm = m.module.name.clone();
+                                all_modules.entry(nm).or_insert_with(|| m.clone());
+                            }
+                            resolved_ok += 1;
+                        }
+                        Err(_) => {
+                            resolved_err += 1;
+                        }
+                    }
+                }
+                let rss_after_resolve = probe_rss_bytes();
+                eprintln!(
+                    "  Resolved {}/{} entries in {:?} ({} errors)",
+                    resolved_ok,
+                    rows.len(),
+                    t1.elapsed(),
+                    resolved_err
+                );
+                eprintln!("  Unique modules collected: {}", all_modules.len());
+                eprintln!("  RSS after resolve: {}", probe_fmt_bytes(rss_after_resolve));
+
+                // Walk typed AST iteratively with ptr-dedup
+                let mut state = AstWalkState::new();
+                let mut stack: Vec<(Rc<crate::v1_std_core::Node>, bool)> = Vec::new();
+                for m in all_modules.values() {
+                    stack.push((m.module.clone(), false));
+                    for item in m.items.iter() {
+                        stack.push((item.clone(), false));
+                    }
+                }
+
+                let t2 = Instant::now();
+                while let Some((node, is_inf)) = stack.pop() {
+                    let ptr = Rc::as_ptr(&node) as usize;
+                    if !state.all_ptrs.insert(ptr) {
+                        continue;
+                    }
+                    if is_inf {
+                        state.inferred_ptrs.insert(ptr);
+                    } else {
+                        state.source_ptrs.insert(ptr);
+                    }
+                    state.record(&*node, is_inf);
+
+                    // Push inferred type subtree
+                    if let Some(ref inf) = node.inferred {
+                        match &**inf {
+                            crate::v1_std_core::InferredNode::Resolved { node: tn } => {
+                                state.nodes_with_inferred_resolved += 1;
+                                stack.push((tn.clone(), true));
+                            }
+                            _ => {}
+                        }
+                    }
+
+                    // Push structural subtree
+                    for child in node.children.iter() {
+                        stack.push((child.clone(), is_inf));
+                    }
+                    for p in node.params.iter() {
+                        stack.push((p.clone(), is_inf));
+                    }
+                    for u in node.uses.iter() {
+                        stack.push((u.clone(), is_inf));
+                    }
+                    for prop in node.properties.iter() {
+                        stack.push((prop.clone(), is_inf));
+                    }
+                    if let Some(ref b) = node.body {
+                        stack.push((b.clone(), is_inf));
+                    }
+                    if let Some(ref t) = node.transport {
+                        stack.push((t.clone(), is_inf));
+                    }
+                    if let Some(ref ta) = node.type_annotation {
+                        stack.push((ta.clone(), is_inf));
+                    }
+                }
+                let walk_elapsed = t2.elapsed();
+                let rss_after_walk = probe_rss_bytes();
+
+                let total = state.all_ptrs.len();
+                let source_n = state.source_ptrs.len();
+                let inferred_n = state.inferred_ptrs.len();
+                let inferred_only_n = state
+                    .inferred_ptrs
+                    .difference(&state.source_ptrs)
+                    .count();
+                let content_distinct = state.content_fps.len();
+                let content_dedup_pct = if total > 0 {
+                    (1.0 - content_distinct as f64 / total as f64) * 100.0
+                } else {
+                    0.0
+                };
+
+                // Byte estimates
+                let struct_bytes = total * node_size;
+                let name_heap = state.name_total_bytes;
+                let vec_elements = state.children_total
+                    + state.params_total
+                    + state.uses_total
+                    + state.properties_total;
+                let vec_backing = vec_elements * 8; // each Rc<Node> in vec = 8 bytes
+                let combined_est = struct_bytes + name_heap + vec_backing;
+                let reducible = struct_bytes as f64 * content_dedup_pct / 100.0;
+
+                // Per-field struct byte contributions
+                let name_struct = total * 24; // String = ptr(8)+len(8)+cap(8)
+                let ident_struct = total * 16; // Option<i64> = 16 (no niche)
+                let span_struct = total * 8; // Rc<SourceSpan> = 8
+                let ident_span_struct = total * 8; // Option<Rc<..>> = 8 (niche opt)
+                let four_rc_vecs = total * 32; // 4 × Rc<Vec<..>> = 4 × 8
+                let five_option_rcs = total * 40; // inferred+body+transport+type_ann+match_pattern = 5 × 8
+                let expr_data_struct = total * 8; // Rc<ExprData> = 8
+                let small_fields = total * 8; // Connective(1)+Cardinality(1)+bool(1)+bool(1)+pad(4) = 8
+
+                eprintln!("\n=== WALK RESULTS ===");
+                eprintln!("  Walk time: {:?}", walk_elapsed);
+                eprintln!("  Total unique nodes (by ptr):     {:>10}", total);
+                eprintln!("  Source-tree nodes:               {:>10}", source_n);
+                eprintln!(
+                    "  Inferred-type-chain nodes:       {:>10}  (inferred-only: {})",
+                    inferred_n, inferred_only_n
+                );
+                eprintln!(
+                    "  Nodes with inferred field set:   {:>10}  ({:.0}%)",
+                    state.nodes_with_inferred,
+                    state.nodes_with_inferred * 100 / total.max(1)
+                );
+                eprintln!(
+                    "  Nodes with inferred=Resolved:    {:>10}",
+                    state.nodes_with_inferred_resolved
+                );
+                eprintln!(
+                    "  Content-distinct (by hash):      {:>10}  ({:.1}% duplicates collapsible)",
+                    content_distinct, content_dedup_pct
+                );
+
+                eprintln!("\n=== PER-FIELD BREAKDOWN (struct bytes only, across {} unique nodes) ===", total);
+                eprintln!(
+                    "  name: String           24B each = {:>6.1} MiB  (heap content: {:.1} MiB, empty-name: {:.0}%)",
+                    name_struct as f64 / 1048576.0,
+                    name_heap as f64 / 1048576.0,
+                    state.name_zero_count * 100 / total.max(1)
+                );
+                eprintln!(
+                    "  ident: Option<i64>     16B each = {:>6.1} MiB  (Some: {:.0}%)",
+                    ident_struct as f64 / 1048576.0,
+                    state.nodes_with_ident * 100 / total.max(1)
+                );
+                eprintln!(
+                    "  span: Rc<SourceSpan>    8B each = {:>6.1} MiB",
+                    span_struct as f64 / 1048576.0
+                );
+                eprintln!(
+                    "  ident_span: Opt<Rc<>>   8B each = {:>6.1} MiB  (Some: {:.0}%)",
+                    ident_span_struct as f64 / 1048576.0,
+                    state.nodes_with_ident_span * 100 / total.max(1)
+                );
+                eprintln!(
+                    "  4x Rc<Vec<Rc<Node>>>   32B each = {:>6.1} MiB  + vec backing {:.1} MiB ({} elements; child:{:.0}%/param:{:.0}%/uses:{:.0}%/prop:{:.0}% zero)",
+                    four_rc_vecs as f64 / 1048576.0,
+                    vec_backing as f64 / 1048576.0,
+                    vec_elements,
+                    state.children_zero * 100 / total.max(1),
+                    state.params_zero * 100 / total.max(1),
+                    state.uses_zero * 100 / total.max(1),
+                    state.properties_zero * 100 / total.max(1)
+                );
+                eprintln!(
+                    "  5x Option<Rc<..>>      40B each = {:>6.1} MiB  (inf:{:.0}%/body:{:.0}%/transport:{:.0}%/type_ann:{:.0}%/match:{:.0}% Some)",
+                    five_option_rcs as f64 / 1048576.0,
+                    state.nodes_with_inferred * 100 / total.max(1),
+                    state.nodes_with_body * 100 / total.max(1),
+                    state.nodes_with_transport * 100 / total.max(1),
+                    state.nodes_with_type_annotation * 100 / total.max(1),
+                    state.nodes_with_match_pattern * 100 / total.max(1)
+                );
+                eprintln!(
+                    "  Connective+Cardinality+bool+bool+pad  8B each = {:>6.1} MiB",
+                    small_fields as f64 / 1048576.0
+                );
+                eprintln!(
+                    "  expr_data: Rc<ExprData> 8B each = {:>6.1} MiB",
+                    expr_data_struct as f64 / 1048576.0
+                );
+                let field_total = name_struct
+                    + ident_struct
+                    + span_struct
+                    + ident_span_struct
+                    + four_rc_vecs
+                    + five_option_rcs
+                    + small_fields
+                    + expr_data_struct;
+                eprintln!(
+                    "  --- field sum: {} bytes × {} nodes = {:.1} MiB (vs sizeof check: {:.1} MiB)",
+                    field_total / total.max(1),
+                    total,
+                    field_total as f64 / 1048576.0,
+                    struct_bytes as f64 / 1048576.0
+                );
+
+                eprintln!("\n=== BYTE SUMMARY ===");
+                eprintln!(
+                    "  Node structs:          {:.1} MiB  ({} nodes × {} bytes)",
+                    struct_bytes as f64 / 1048576.0,
+                    total,
+                    node_size
+                );
+                eprintln!(
+                    "  Name string heap:      {:.1} MiB",
+                    name_heap as f64 / 1048576.0
+                );
+                eprintln!(
+                    "  Vec backing (4 fields):{:.1} MiB  ({} elements × 8 bytes)",
+                    vec_backing as f64 / 1048576.0,
+                    vec_elements
+                );
+                eprintln!(
+                    "  Combined estimate:     {:.1} MiB",
+                    combined_est as f64 / 1048576.0
+                );
+                eprintln!(
+                    "  Content-dedup headroom:{:.1} MiB  ({:.1}% of struct bytes)",
+                    reducible / 1048576.0,
+                    content_dedup_pct
+                );
+                eprintln!(
+                    "  Post-dedup floor est.: {:.1} MiB",
+                    (combined_est as f64 * (1.0 - content_dedup_pct / 100.0)) / 1048576.0
+                );
+
+                eprintln!("\n=== RSS CHECKPOINTS ===");
+                eprintln!("  Start:              {}", probe_fmt_bytes(rss0));
+                eprintln!("  After resolve:      {}", probe_fmt_bytes(rss_after_resolve));
+                eprintln!("  After walk:         {}", probe_fmt_bytes(rss_after_walk));
+                eprintln!("  Resolve delta:      {}",
+                    probe_fmt_bytes(rss_after_resolve.saturating_sub(rss0)));
+                eprintln!("  Walk delta:         {}",
+                    probe_fmt_bytes(rss_after_walk.saturating_sub(rss_after_resolve)));
+                eprintln!("=== END ===");
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result.expect("profile_typed_ast_byte_breakdown panicked");
+    }
 }
