@@ -347,6 +347,17 @@ pub fn build_multi_entry_index(source_roots: &[String]) -> MultiEntryIndex {
     }
 }
 
+impl MultiEntryIndex {
+    /// Drop parse_cache and typed_module_cache to bound RSS to the largest
+    /// single-entry import closure. Must be called AFTER dropping the old ctx
+    /// (so its Rcs reach zero when the cache releases its own references).
+    /// intern_table is NOT cleared — interned IDs must stay stable.
+    pub fn clear_per_entry_caches(&self) {
+        self.parse_cache.borrow_mut().clear();
+        self.typed_module_cache.borrow_mut().clear();
+    }
+}
+
 pub fn resolve_entry_with_index(
     index: &MultiEntryIndex,
     entry_file: &str,
@@ -3137,16 +3148,14 @@ fn merge_discovery_summaries(summaries: Vec<DiscoverySummary>) -> DiscoverySumma
     merged
 }
 
-/// Chunks discovery rows so each chunk gets a fresh MultiEntryIndex. Dropping the full
-/// index (intern_table + parse_cache + typed_module_cache + source_files) after each
-/// chunk returns pages to the OS (jemalloc madvise MADV_DONTNEED, sawtooth not staircase).
-/// With spawn_width=2 both shards run in parallel; the combined cgroup RSS at any moment
-/// is both shards' allocations summed. Later entry groups (alphabetically later test files,
-/// e.g. src/v2/workflow/) import much larger module closures, making per-shard per-chunk
-/// peak grow non-linearly across chunks. Factor=16 (12-13 groups/chunk) targets keeping
-/// the worst-case single-shard chunk peak under ~2 GiB (combined < 4 GiB, well under
-/// the 8 GiB runner cgroup cap).
-const DISCOVERY_CHUNK_FACTOR: usize = 16;
+/// Chunks discovery rows so each chunk gets a fresh MultiEntryIndex. Within each
+/// chunk, clear_per_entry_caches() is called between entries (dropping parse_cache +
+/// typed_module_cache before resolving the next entry), so peak RSS is bounded by
+/// the largest SINGLE-ENTRY import closure rather than the accumulated multi-entry
+/// staircase. Chunking is belt-and-suspenders: the full index (including intern_table
+/// and source_files) is rebuilt fresh per chunk, and the chunk boundary provides RSS
+/// checkpoints via the eprintln! below.
+const DISCOVERY_CHUNK_FACTOR: usize = 4;
 
 fn count_entry_groups(rows: &[DiscoveryRow]) -> usize {
     let mut count = 0usize;
@@ -3283,6 +3292,11 @@ fn run_discovery_rows(
     let whole_tree_published_keys = whole_tree_published_keys.map(Rc::new);
     for row in rows {
         if current_entry.as_deref() != Some(row.entry.as_str()) {
+            // Drop the old ctx before clearing so its Rc<TypecheckModuleResult>
+            // references reach zero when the cache is cleared, letting jemalloc
+            // return those pages immediately (dirty_decay_ms:0).
+            ctx = None;
+            index.clear_per_entry_caches();
             let sources = load_sources_for_entry_with_index(&index.source_files, &row.entry)
                 .map_err(|msg| format!("load sources failed for {}: {}", row.entry, msg))?;
             let closure_subject = subject_digest_for_closure(&sources);
