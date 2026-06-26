@@ -5,6 +5,7 @@ import std.realization {
 }
 import v2.workflow.ci_floor_plan {
   gunbc_ci_floor_batches, corpus_runnable,
+  gunbc_ci_floor_schedule_without_serialization,
   gunbc_ci_floor_plan_serializes_heavy_resolves,
   gunbc_ci_floor_plan_co_runs_heavy_without_serialization,
   witness_floor_tight_budget_backs_off_envelope,
@@ -104,6 +105,24 @@ fn witness_plan_serializes_heavy_resolves() -> Bool {
     gunbc_ci_floor_plan_co_runs_heavy_without_serialization()
 }
 
+fn batch_has_both_emit_and_corpus(b: List<Runnable>) -> Bool {
+  let fns = batch_functions(b: b)
+  list_contains_str(xs: fns, target: "emit_host_gate_passes") &&
+    list_contains_str(xs: fns, target: corpus_sentinel)
+}
+
+fn witness_emit_host_isolated_from_corpus() -> Bool {
+  fold(gunbc_ci_floor_batches(), init: true, f: fn(ok, b) {
+    ok && !batch_has_both_emit_and_corpus(b: b)
+  })
+}
+
+fn witness_emit_host_co_runs_corpus_without_serialization() -> Bool {
+  fold(gunbc_ci_floor_schedule_without_serialization(), init: false, f: fn(found, b) {
+    found || batch_has_both_emit_and_corpus(b: b)
+  })
+}
+
 test fn ci_floor_plan_witnesses() -> Bool {
   witness_three_readiness_layers() &&
     witness_compile_root_runs_first() &&
@@ -114,7 +133,9 @@ test fn ci_floor_plan_witnesses() -> Bool {
     witness_corpus_has_no_explicit_entries() &&
     witness_corpus_skip_node_frontier_enabled() &&
     witness_source_ingest_serialized_after_corpus() &&
-    witness_plan_serializes_heavy_resolves()
+    witness_plan_serializes_heavy_resolves() &&
+    witness_emit_host_isolated_from_corpus() &&
+    witness_emit_host_co_runs_corpus_without_serialization()
 }
 
 test fn ci_floor_run_envelope_witnesses() -> Bool {
