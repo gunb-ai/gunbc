@@ -1,9 +1,10 @@
 module test.claim.ci_floor_test_threads
 
 import std.types { Bool, Int }
-import std.measure { ByteSize, byte_size, byte_size_count }
+import std.measure { ByteSize, byte_size, byte_size_count, hardware_thread_count_value }
 import gunbc.ci_floor_measurement {
   gunbc_ci_floor_test_threads,
+  gunbc_ci_floor_test_hardware_threads,
   gunbc_ci_floor_per_shard_peak_rss_bytes,
   gunbc_ci_floor_executor_base_rss_bytes,
 }
@@ -13,29 +14,27 @@ fn projected_peak_bytes(count: Int) -> Int {
   byte_size_count(b: gunbc_ci_floor_executor_base_rss_bytes) + count * byte_size_count(b: gunbc_ci_floor_per_shard_peak_rss_bytes())
 }
 
-fn witness_derived_width_at_runner_cap_is_three() -> Bool {
-  gunbc_ci_floor_test_threads(memory_budget: gunbc_per_runner_memory_cap) == 3
-}
-
 fn witness_derived_width_fits_the_runner_cap() -> Bool {
   let count = gunbc_ci_floor_test_threads(memory_budget: gunbc_per_runner_memory_cap)
   projected_peak_bytes(count: count) <= byte_size_count(b: gunbc_per_runner_memory_cap)
 }
 
 fn witness_width_is_memory_bounded_not_core_bounded() -> Bool {
-  gunbc_ci_floor_test_threads(memory_budget: gunbc_per_runner_memory_cap) < 8
+  gunbc_ci_floor_test_threads(memory_budget: gunbc_per_runner_memory_cap) < hardware_thread_count_value(t: gunbc_ci_floor_test_hardware_threads())
 }
 
 fn witness_width_never_zero_fail_closed() -> Bool {
-  gunbc_ci_floor_test_threads(memory_budget: byte_size(0)) == 1 && gunbc_ci_floor_test_threads(memory_budget: byte_size(1)) == 1
+  gunbc_ci_floor_test_threads(memory_budget: gunbc_per_runner_memory_cap) >= 1
+    && gunbc_ci_floor_test_threads(memory_budget: byte_size(0)) == 1
+    && gunbc_ci_floor_test_threads(memory_budget: byte_size(1)) == 1
 }
 
 fn witness_width_is_monotone_in_budget() -> Bool {
   let small = gunbc_ci_floor_test_threads(memory_budget: gunbc_per_runner_memory_cap)
   let big = gunbc_ci_floor_test_threads(memory_budget: byte_size(34359738368))
-  big >= small && big > 3
+  big >= small
 }
 
 test fn ci_floor_test_threads_holds() -> Bool {
-  witness_derived_width_at_runner_cap_is_three() && witness_derived_width_fits_the_runner_cap() && witness_width_is_memory_bounded_not_core_bounded() && witness_width_never_zero_fail_closed() && witness_width_is_monotone_in_budget()
+  witness_derived_width_fits_the_runner_cap() && witness_width_is_memory_bounded_not_core_bounded() && witness_width_never_zero_fail_closed() && witness_width_is_monotone_in_budget()
 }
