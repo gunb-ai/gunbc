@@ -2972,8 +2972,6 @@ pub fn run_discovery_corpus_with_options(
             ));
         }
     };
-    let index = build_multi_entry_index(source_roots);
-
     let diff_outcome = if options.skip_unaffected_node_frontier {
         match floor_git_diff_range() {
             Ok(text) => FloorGitDiffOutcome::UnifiedProduced(text),
@@ -3010,9 +3008,9 @@ pub fn run_discovery_corpus_with_options(
 
     let width = parallel_width.max(1);
     if width == 1 {
-        return run_discovery_rows(
+        return run_discovery_rows_chunked(
             &rows,
-            &index,
+            source_roots,
             execution_mode,
             skip_enabled,
             &frontier_seeds,
@@ -3036,10 +3034,9 @@ pub fn run_discovery_corpus_with_options(
         let seeds = frontier_seeds.clone();
         let keys = whole_tree_published_keys.clone();
         handles.push(std::thread::spawn(move || {
-            let index = build_multi_entry_index(&roots);
-            run_discovery_rows(
+            run_discovery_rows_chunked(
                 &shard_rows,
-                &index,
+                &roots,
                 execution_mode,
                 skip_enabled,
                 &seeds,
@@ -3112,6 +3109,80 @@ fn merge_discovery_summaries(summaries: Vec<DiscoverySummary>) -> DiscoverySumma
         merged.total_measured_nanos += summary.total_measured_nanos;
     }
     merged
+}
+
+/// Each shard builds a fresh MultiEntryIndex for ~1/DISCOVERY_CHUNK_FACTOR of the corpus.
+/// Keeping chunk_size at 1/4 of total entry groups bounds per-chunk peak to the old
+/// per-shard-at-width-4 measurement (~2.9 GiB), preventing unbounded accumulation.
+const DISCOVERY_CHUNK_FACTOR: usize = 4;
+
+fn count_entry_groups(rows: &[DiscoveryRow]) -> usize {
+    let mut count = 0usize;
+    let mut current: Option<&str> = None;
+    for row in rows {
+        if current != Some(row.entry.as_str()) {
+            count += 1;
+            current = Some(row.entry.as_str());
+        }
+    }
+    count
+}
+
+fn chunk_rows_by_entry_groups(rows: &[DiscoveryRow], max_groups: usize) -> Vec<Vec<DiscoveryRow>> {
+    let mut chunks: Vec<Vec<DiscoveryRow>> = Vec::new();
+    let mut current_chunk: Vec<DiscoveryRow> = Vec::new();
+    let mut groups_in_chunk = 0usize;
+    let mut current_entry: Option<String> = None;
+    for row in rows {
+        let new_entry = current_entry.as_deref() != Some(row.entry.as_str());
+        if new_entry && groups_in_chunk >= max_groups && !current_chunk.is_empty() {
+            chunks.push(std::mem::take(&mut current_chunk));
+            groups_in_chunk = 0;
+        }
+        if new_entry {
+            groups_in_chunk += 1;
+            current_entry = Some(row.entry.clone());
+        }
+        current_chunk.push(row.clone());
+    }
+    if !current_chunk.is_empty() {
+        chunks.push(current_chunk);
+    }
+    chunks
+}
+
+fn run_discovery_rows_chunked(
+    rows: &[DiscoveryRow],
+    source_roots: &[String],
+    execution_mode: v1_interpreter::ExecutionMode,
+    skip_enabled: bool,
+    frontier_seeds: &NodeFrontierSeeds,
+    whole_tree_published_keys: Option<std::collections::HashSet<String>>,
+) -> Result<DiscoverySummary, String> {
+    let total_groups = count_entry_groups(rows);
+    let max_groups_per_chunk =
+        ((total_groups + DISCOVERY_CHUNK_FACTOR - 1) / DISCOVERY_CHUNK_FACTOR).max(1);
+    let chunks = chunk_rows_by_entry_groups(rows, max_groups_per_chunk);
+    eprintln!(
+        "run_discovery_rows_chunked: {} entry groups, {} chunks (max {}/chunk)",
+        total_groups,
+        chunks.len(),
+        max_groups_per_chunk
+    );
+    let mut summaries = Vec::with_capacity(chunks.len());
+    for chunk in &chunks {
+        let index = build_multi_entry_index(source_roots);
+        summaries.push(run_discovery_rows(
+            chunk,
+            &index,
+            execution_mode,
+            skip_enabled,
+            frontier_seeds,
+            whole_tree_published_keys.clone(),
+        )?);
+        // index drops here, freeing parse_cache and typed_module_cache
+    }
+    Ok(merge_discovery_summaries(summaries))
 }
 
 fn run_discovery_rows(
