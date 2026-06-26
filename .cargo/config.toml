@@ -9,3 +9,10 @@ jobs = 2                          # max parallel rustc/linker invocations per ca
 # Committed here so local + CI runners stay aligned (CI inherits this config; ci.yml does not re-set it).
 RUST_MIN_STACK = { value = "16777216", force = false }
 RUST_TEST_THREADS = { value = "1", force = false }  # max parallel test threads per binary
+# Return jemalloc dirty pages immediately (madvise MADV_DONTNEED) instead of the
+# default 10-second decay. Without this, post-chunk RSS stays elevated (1.2 GiB
+# after chunk 1 vs ~120 MiB with glibc+malloc_trim), preventing the sawtooth the
+# OOM fix requires. muzzy_decay_ms:0 extends this to muzzy pages (those already
+# advised MADV_FREE but not yet truly freed). Dissolves when a direct per-chunk
+# isolation measurement replaces the PerShardRssPeakUnmeasured fallback.
+JEMALLOC_SYS_WITH_MALLOC_CONF = { value = "dirty_decay_ms:0,muzzy_decay_ms:0", force = false }
