@@ -19,12 +19,16 @@ type PerShardRssPeakMeasurement
   | PerShardRssPeakUnmeasured
 
 data gunbc_ci_floor_per_shard_rss_measurement: PerShardRssPeakMeasurement = PerShardRssPeakMeasured {
-  per_shard_peak: byte_size(2100028416)
+  per_shard_peak: byte_size(3758096384)
   sample_width: 4
 }
 
 data gunbc_ci_floor_per_shard_rss_source: Disposition = Terminal {
-  reason: "Measured: CI run 27893441091, VmHWM=8.4GiB at spawn_width=4 => per-shard = VmHWM/width = 8.4GiB/4 = 2.1GiB; corroborated by run 28003119550 (self-RSS=8.7GiB at width=4, executor base approx 0.7GiB, shard approx 2.0GiB, model: total=base+width*per_shard). Finer measurement path: width-sweep slope (RSS(w1)-RSS(w0))/(w1-w0) or per-shard cgroup isolation once per-thread RSS is available."
+  reason: "Interim reground: prior value 2.1GiB (CI run 27893441091, VmHWM=8.4GiB/4) caused exit-137 at width=3 (CI run 28215122136); reground to 2.5GiB, then 2.5GiB also caused exit-137 at width=2 (CI run 28215640088). Root: VmHWM measures claim_executor self-RSS only; the 8GiB cgroup cap enforces ALL RSS including child cargo/rustc processes spawned by emit_host_gate. Proven lower bound: per_shard (cgroup footprint) > (8GiB x 4/5) / 2 = 3.2GiB. Set to 3758096384 (3.5GiB = 3.5x2^30); forces width=1 (floor(8GiB x 4/5 / 3.5GiB) = floor(1.83) = 1). Fresh measurement path: cgroup-side per-shard slope once emit_host_gate is serialized in its own batch (so child rustc peak does not overlap discovery shards)."
+}
+
+data gunbc_ci_per_shard_unmeasured_arm_disposition: Disposition = Terminal {
+  reason: "FAIL-OPEN: PerShardRssPeakUnmeasured falls back to concurrent_memory_peak_per_share(gunbc_ci_floor_measured_peak) = ~2.7GiB, which NOW UNDER-ESTIMATES the real cgroup footprint (proven >3.2GiB by OOM at width=2, CI run 28215640088). If this arm were taken it would yield spawn_width=2 -> OOM. Currently dead (measured arm is always taken via gunbc_ci_floor_per_shard_rss_measurement = PerShardRssPeakMeasured); the arm becomes live only if the data is reset to PerShardRssPeakUnmeasured. Fix = re-measure per_shard cgroup-side and update gunbc_ci_floor_per_shard_rss_measurement, or update gunbc_ci_floor_measured_peak from a fresh cgroup-peak measurement at a known width."
 }
 
 fn gunbc_ci_floor_per_shard_peak_rss_bytes() -> ByteSize {
@@ -35,6 +39,9 @@ fn gunbc_ci_floor_per_shard_peak_rss_bytes() -> ByteSize {
 }
 
 data gunbc_ci_host_container_memory_cap: ByteSize = byte_size(33578549248)
+
+data gunbc_ci_host_container_memory_cap_disposition: Disposition = Terminal { reason: "STALE heuristic: totalMem/4 ~= 31.27 GiB. This constant is overloaded across two distinct caps: (1) the floor runner cgroup cap (real measured cap is gunbc_per_runner_memory_cap = 8 GiB in fleet_host_budget.dag, which srv1_floor_memory_budget() now uses directly); (2) the dashboard session-pool admission ceiling (deep-otter-528 / keen-dove-772's 3 GiB per-container cap). Leave value untouched until the dashboard-pool reconciliation with deep-otter-528 + keen-dove-772 retires this constant and splits it into its two real grounded authorities. Dissolution trigger: keen-dove-772 JS defaultContainerResourceCaps deletion + deep-otter-528 dashboard admission rework." }
+
 
 data gunbc_ci_floor_conservative_fallback_width: Int = 4
 
@@ -117,7 +124,7 @@ data gunbc_ci_regime2_aggregate_dissolution_marker: Disposition = Scaffold {
 
 
 
-data gunbc_ci_footprint_granularity_disposition: Disposition = Terminal { reason: "DESIGN §3 deliberate two-concerns split: INTER-run whole-run cgroup peak (gunbc_ci_job_peaks, ~24GiB) governs co-residence - how many runs share a host, feeding the conserving budget tree; WITHIN-run per-shard peak (gunbc_ci_floor_per_shard_peak_rss_bytes, ~2.0GiB directly measured) governs parallelism inside one run against its container cap, feeding memory_aware_spawn_width. Different granularity, different scheduling decision, different consumer. Do not consolidate them into one authority." }
+data gunbc_ci_footprint_granularity_disposition: Disposition = Terminal { reason: "DESIGN §3 deliberate two-concerns split: INTER-run whole-run cgroup peak (gunbc_ci_job_peaks, ~24GiB) governs co-residence - how many runs share a host, feeding the conserving budget tree; WITHIN-run per-shard peak (gunbc_ci_floor_per_shard_peak_rss_bytes, 3.5GiB interim lower bound, see gunbc_ci_floor_per_shard_rss_source) governs parallelism inside one run against its container cap, feeding memory_aware_spawn_width. Different granularity, different scheduling decision, different consumer. Do not consolidate them into one authority." }
 
 data gunbc_ci_footprint_bridge_disposition: Disposition = Terminal { reason: "Deferred unification path (acknowledged, not attempted): INTER-run whole-run peak is plausibly within-run-width x per-shard-peak + base, so the INTER-run footprint could eventually derive from the WITHIN-run model once both are measured - the real single authority. Held back deliberately: re-coupling the two carriers risks zeroing the live floor width before per-type baseline measurement data exists." }
 
