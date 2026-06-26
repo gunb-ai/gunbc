@@ -45,7 +45,7 @@ fn witness_unmeasured_arm_falls_back_to_derived() -> Bool {
 }
 
 test fn ci_floor_measurement_per_shard_rss_witnesses() -> Bool {
-  witness_per_shard_is_chunk_derived_per_share()
+  witness_measurement_mode_is_measured()
     && witness_per_shard_exceeds_vmhwm_based()
     && witness_cgroup_derived_exceeds_vmhwm_based()
     && witness_unmeasured_arm_falls_back_to_derived()
