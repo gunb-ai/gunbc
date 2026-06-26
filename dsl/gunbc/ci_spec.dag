@@ -4,8 +4,7 @@ import gunbc.ci_layer_roots {
   witness_layer_roots,
   witness_layer_source_flags
 }
-import tools.build_step { BuildArtifact, verifications_script }
-import extdeps.languages.bash.program { Concat, lit, var_ref }
+import tools.build_step { BuildArtifact, VarPlusLitPath, verifications_script }
 import gunbc.ci_failure_class { infra_retry_grep_alternation }
 
 type Gate
@@ -126,7 +125,7 @@ fn ci_cargo_eagain_retry_shell_exec(command: String) -> String {
 
 fn ci_release_artifact(name: String) -> BuildArtifact {
   BuildArtifact {
-    path: Concat { parts: [var_ref(name: "ROOT"), lit(text: concat("/target/release/", name))] },
+    path: VarPlusLitPath { var_name: "ROOT", suffix: concat("/target/release/", name) },
     name: name
   }
 }

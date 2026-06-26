@@ -2,11 +2,11 @@ module test.claim.build_artifact_verification_witness
 
 import std.logic { Bool }
 import extdeps.languages.bash.program {
-  ShellStmt, ShellWord, ShellProgram,
-  If, Command, Concat, VarRef, Lit,
-  lit, var_ref, serialize_bash
+  ShellStmt, ShellProgram,
+  If, Command,
+  serialize_bash
 }
-import tools.build_step { BuildArtifact, emit_verifications, verifications_script }
+import tools.build_step { BuildArtifact, VarPlusLitPath, emit_verifications, verifications_script }
 import tools.build_step_transport {
   witness_zero_byte_artifact_rejected_by_execution,
   witness_nonempty_executable_accepted_by_execution
@@ -17,7 +17,7 @@ import gunbc.ci_spec {
 
 fn probe_artifact() -> BuildArtifact {
   BuildArtifact {
-    path: Concat { parts: [var_ref(name: "ROOT"), lit(text: "/target/release/probe_bin")] },
+    path: VarPlusLitPath { var_name: "ROOT", suffix: "/target/release/probe_bin" },
     name: "probe_bin"
   }
 }
