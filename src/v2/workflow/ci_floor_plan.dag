@@ -13,6 +13,8 @@ import v2.std.dependency { DataDependsOn, ResourceDependsOn, DependencyView }
 import v2.std.node { Atom, Node, TypeNode }
 import v2.std.text { String }
 import std.types { ContentHash, Int }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.measure { HardwareThreadCount, hardware_thread_count, hardware_thread_count_value, byte_size, ByteSize, byte_size_count }
 import std.realization_width { width_fold_objective_goals, memory_aware_spawn_width, bounded_host_spawn_width }
 import product.compute_fabric {
@@ -130,6 +132,31 @@ fn gate_is_heavy_resolve(g: Gate) -> Bool {
   }
 }
 
+fn gate_spawns_host_compiler(g: Gate) -> Bool {
+  match g {
+    EmitHostGate => true
+    RustMonolithGate => false
+    SourceRootIngestGate => false
+    DslCompileCleanGate => false
+    LayeringImportsGate => false
+    ExtdepsExternalAuthorityGate => false
+    GeneratedArtifactDriftGate => false
+  }
+}
+
+fn gate_serializes_against_corpus(g: Gate) -> Bool {
+  gate_is_heavy_resolve(g: g) || gate_spawns_host_compiler(g: g)
+}
+
+data gate_serializes_against_corpus_disposition: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "std.realization_schedule",
+    decl_name: "Runnable",
+    field: WholeDeclaration
+  }
+}
+
 fn floor_node_is_heavy_resolve(node: Node, spec: CiSpec) -> Bool {
   if node == floor_corpus_node {
     true
@@ -158,7 +185,7 @@ fn floor_dependencies_with(spec: CiSpec, serialize_heavy: Bool) -> List<Dependen
           xs: acc,
           item: floor_depends_on_compile(dependent: gate_node(g: g))
         )
-        if serialize_heavy && gate_is_heavy_resolve(g: g) {
+        if serialize_heavy && gate_serializes_against_corpus(g: g) {
           list_snoc_item(xs: after_compile, item: floor_corpus_serializes(dependent: gate_node(g: g)))
         } else {
           after_compile
@@ -192,10 +219,10 @@ fn runnables_for_batch(batch: ExecutorBatch, spec: CiSpec) -> List<Runnable> {
   })
 }
 
-fn gunbc_ci_floor_schedule_inner() -> List<List<Runnable>> {
+fn floor_schedule_for_dependencies(dependencies: List<DependencyView>) -> List<List<Runnable>> {
   match parallel_executor_plan_from_dependencies(
     nodes: floor_nodes(spec: gunbc_ci_spec),
-    dependencies: floor_dependencies(spec: gunbc_ci_spec),
+    dependencies: dependencies,
     scheduled: []
   ) {
     ExecutorRunComplete { batches: batches, scheduled: _ } =>
@@ -205,6 +232,16 @@ fn gunbc_ci_floor_schedule_inner() -> List<List<Runnable>> {
     ExecutorRunRunnable { batch: _, scheduled: _, remaining: _ } => [[floor_unrunnable_sentinel()]]
     ExecutorRunBlocked { evidence: _, batches: _, scheduled: _, remaining: _ } => [[floor_unrunnable_sentinel()]]
   }
+}
+
+fn gunbc_ci_floor_schedule_inner() -> List<List<Runnable>> {
+  floor_schedule_for_dependencies(dependencies: floor_dependencies(spec: gunbc_ci_spec))
+}
+
+fn gunbc_ci_floor_schedule_without_serialization() -> List<List<Runnable>> {
+  floor_schedule_for_dependencies(
+    dependencies: floor_dependencies_with(spec: gunbc_ci_spec, serialize_heavy: false)
+  )
 }
 
 fn gunbc_ci_floor_realization_plan() -> RealizationPlan {
