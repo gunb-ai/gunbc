@@ -3240,12 +3240,12 @@ fn run_discovery_rows_chunked(
     Ok(merge_discovery_summaries(summaries))
 }
 
-/// Ask glibc to return free heap pages to the OS (Linux only). On non-Linux
-/// targets this is a no-op. Calling this after clear_entry_caches() lets the
-/// cgroup RSS actually drop between chunks rather than accumulating via retained
-/// brk pages.
+/// Ask glibc to return free heap pages to the OS. No-op on non-glibc targets
+/// (musl exposes no malloc_trim; the cfg guard keeps the link clean). Calling
+/// this after clear_entry_caches() lets the cgroup RSS actually drop between
+/// chunks rather than accumulating via retained brk pages.
 fn heap_trim() {
-    #[cfg(target_os = "linux")]
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
     {
         extern "C" {
             fn malloc_trim(pad: usize) -> i32;

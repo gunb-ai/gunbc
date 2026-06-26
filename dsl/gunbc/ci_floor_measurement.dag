@@ -23,8 +23,13 @@ data gunbc_ci_floor_per_shard_rss_measurement: PerShardRssPeakMeasurement = PerS
   sample_width: 4
 }
 
-data gunbc_ci_floor_per_shard_rss_source: Disposition = Terminal {
-  reason: "PER-CHUNK peak DERIVED from whole-run cgroup measurement at width=4 (gunbc_ci_floor_measured_peak: 11592347648 bytes total / 4 = 2898086912 bytes per concurrent shard). Root-cause finding (2026-06-26): MultiEntryIndex.\{intern_table,parse_cache,typed_module_cache\} accumulate unboundedly across all entry files in a single run_discovery_rows call (same unbounded-cache class as PR-5815, which fixed the disk-cache sibling). Fix: DISCOVERY_CHUNK_FACTOR=4 in cli_run.rs splits each shard into sequential sub-chunks of ceil(N/4) entry groups, each with a FRESH MultiEntryIndex that drops after the chunk completes. Per-chunk peak = per-old-shard-at-width-4 because each chunk processes ~1/4 of the corpus entry files with a fresh index. At budget=8GiB: floor(8GiB*4/5 / 2.898GiB) = floor(6.87GiB/2.898GiB) = floor(2.37) = 2 -> width=2, recovering from the width=1 forced by the 4GiB inferred bound. sample_width=4 records the parallel concurrency of the source measurement (NOT the current per-chunk concurrency). Named dissolution trigger: run CI with --measure-cgroup-peak after chunking fix lands, capture actual single-chunk peak in isolation, update with measured value and document chunk size."
+data gunbc_ci_floor_per_shard_rss_source: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.ci_floor_measurement",
+    decl_name: "gunbc_ci_floor_per_shard_rss_measurement",
+    field: WholeDeclaration
+  }
 }
 
 fn gunbc_ci_floor_per_shard_peak_rss_bytes() -> ByteSize {
