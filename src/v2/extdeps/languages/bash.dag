@@ -2279,3 +2279,49 @@ fn bash_program_set_e_target_model(body: String) -> TargetModel {
     binding_spellings: bash_program_set_e_binding_spellings(body: body)
   )
 }
+
+fn bash_stmt_negation_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: ^bash_token_negation_kw },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_negation_inner }
+  ]
+}
+
+data bash_stmt_negation_emitted: Node = bash_conj_emitted_from_tokens(
+  tokens: bash_stmt_negation_tokens()
+)
+
+fn bash_stmt_negation_source_text(inner: String) -> String {
+  concat("! ", inner)
+}
+
+fn bash_stmt_negation_lex() -> LexRules {
+  phrase_to_lex_rules(p: phrase([
+    span(text: "! ", class: ^bash_token_negation_kw)
+  ]))
+}
+
+fn bash_stmt_negation_translation_rules_node() -> Node {
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_stmt_negation,
+    lhs: ^bash_production_stmt_negation,
+    tokens: bash_stmt_negation_tokens(),
+    emitted: bash_stmt_negation_emitted
+  )
+}
+
+fn bash_stmt_negation_binding_spellings(inner: String) -> Map<Symbol, String> {
+  map_insert(empty_map(), ^bash_stmt_negation_inner, inner)
+}
+
+fn bash_stmt_negation_target_model(inner: String) -> TargetModel {
+  bash_make_bound_tokens_target_model(
+    rules: bash_stmt_negation_translation_rules_node(),
+    source_literal: ^bash_stmt_negation_source_literal,
+    production_name: ^bash_production_stmt_negation,
+    tokens: bash_stmt_negation_tokens(),
+    source_text: bash_stmt_negation_source_text(inner: inner),
+    lex: bash_stmt_negation_lex(),
+    binding_spellings: bash_stmt_negation_binding_spellings(inner: inner)
+  )
+}

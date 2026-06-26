@@ -29,6 +29,8 @@ import v2.extdeps.languages.bash {
   bash_stmt_heredoc_target_model,
   bash_program_set_e_emitted,
   bash_program_set_e_target_model,
+  bash_stmt_negation_emitted,
+  bash_stmt_negation_target_model,
   bash_single_quote,
   bash_var_ref_spelling
 }
@@ -51,6 +53,7 @@ import extdeps.languages.bash.program {
   WithRedir,
   Heredoc,
   Exit,
+  Negation,
   RawLine,
   ShellProgram,
   AndOrOp,
@@ -59,7 +62,8 @@ import extdeps.languages.bash.program {
   Redir,
   StderrToNull,
   StdoutAndStderrToNull,
-  StdoutToStderr
+  StdoutToStderr,
+  RedirToFile
 }
 import v2.std.algebra { list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent }
 import v2.std.collection { List, Map }
@@ -236,6 +240,16 @@ fn emit_stmt_heredoc(path: String, delimiter: String, body: String) -> Outcome<M
   )
 }
 
+fn emit_stmt_negation(inner: String) -> Outcome<Medium<String>> {
+  emit(
+    tree: InferredTree {
+      root: bash_stmt_negation_emitted,
+      facts: Map { lookup: shell_emit_facts_lookup }
+    },
+    target: bash_stmt_negation_target_model(inner: inner)
+  )
+}
+
 fn emit_and_or_op_spelling(op: AndOrOp) -> String {
   match op {
     AndThen => "&&"
@@ -243,11 +257,15 @@ fn emit_and_or_op_spelling(op: AndOrOp) -> String {
   }
 }
 
-fn emit_redir_spelling(r: Redir) -> String {
+fn emit_redir(r: Redir) -> Outcome<Medium<String>> {
   match r {
-    StderrToNull => "2>/dev/null"
-    StdoutAndStderrToNull => ">/dev/null 2>&1"
-    StdoutToStderr => ">&2"
+    StderrToNull => outcome_accepted(lossless_source(text: "2>/dev/null"))
+    StdoutAndStderrToNull => outcome_accepted(lossless_source(text: ">/dev/null 2>&1"))
+    StdoutToStderr => outcome_accepted(lossless_source(text: ">&2"))
+    RedirToFile { path: p } =>
+      bind_outcome(o: emit_shell_word(w: p), f: fn(mp) {
+        outcome_accepted(lossless_source(text: concat("> ", mp.carried)))
+      })
   }
 }
 
@@ -374,7 +392,13 @@ fn emit_shell_stmt(s: ShellStmt) -> Outcome<Medium<String>> {
       })
     WithRedir { stmt: st, redir: rd } =>
       bind_outcome(o: emit_shell_stmt(s: st), f: fn(mst) {
-        emit_stmt_with_redir(stmt: mst.carried, redir: emit_redir_spelling(r: rd))
+        bind_outcome(o: emit_redir(r: rd), f: fn(mr) {
+          emit_stmt_with_redir(stmt: mst.carried, redir: mr.carried)
+        })
+      })
+    Negation { stmt: inner } =>
+      bind_outcome(o: emit_shell_stmt(s: inner), f: fn(mi) {
+        emit_stmt_negation(inner: mi.carried)
       })
     Heredoc { path: p, delimiter: d, body: b } =>
       bind_outcome(o: emit_shell_word(w: p), f: fn(mp) {

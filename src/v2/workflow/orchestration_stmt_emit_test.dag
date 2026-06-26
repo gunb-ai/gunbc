@@ -17,6 +17,8 @@ import extdeps.languages.bash.program {
   AndThen,
   OrElse,
   StderrToNull,
+  RedirToFile,
+  Negation,
   ShellProgram,
   ShellWord,
   Lit,
@@ -198,4 +200,44 @@ test fn program_set_e_byte_identical_holds() -> Bool {
 
 test fn program_set_e_has_teeth_holds() -> Bool {
   program_differs_from_oracle_of(p: prog_set_e(), other: prog_plain())
+}
+
+fn stmt_emits_literal(s: ShellStmt, expected: String) -> Bool {
+  match emit_shell_stmt(s: s) {
+    Accepted { value: src, diagnostics: dg } => (src.carried == expected) && (dg == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn stmt_emit_carried(s: ShellStmt) -> String {
+  match emit_shell_stmt(s: s) {
+    Accepted { value: src, diagnostics: _ } => src.carried
+    Rejected { diagnostics: _ } => ""
+  }
+}
+
+fn redir_to_probe() -> ShellStmt {
+  WithRedir { stmt: Command { words: [Lit { text: "true" }] }, redir: RedirToFile { path: VarRef { name: "PROBE_BIN" } } }
+}
+
+test fn stmt_redir_to_file_matches_real_fragment_holds() -> Bool {
+  stmt_emits_literal(s: redir_to_probe(), expected: "'true' > \"$PROBE_BIN\"")
+}
+
+test fn stmt_redir_to_file_has_teeth_holds() -> Bool {
+  stmt_emit_carried(s: redir_to_probe()) !=
+    stmt_emit_carried(s: WithRedir { stmt: Command { words: [Lit { text: "true" }] }, redir: RedirToFile { path: VarRef { name: "OTHER" } } })
+}
+
+fn negation_of_subshell() -> ShellStmt {
+  Negation { stmt: Subshell { body: [Command { words: [Lit { text: "false" }] }] } }
+}
+
+test fn stmt_negation_matches_real_prefix_holds() -> Bool {
+  stmt_emits_literal(s: negation_of_subshell(), expected: "! ('false')")
+}
+
+test fn stmt_negation_has_teeth_holds() -> Bool {
+  stmt_emit_carried(s: negation_of_subshell()) !=
+    stmt_emit_carried(s: Subshell { body: [Command { words: [Lit { text: "false" }] }] })
 }
