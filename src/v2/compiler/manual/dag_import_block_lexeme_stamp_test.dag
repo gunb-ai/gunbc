@@ -1,0 +1,92 @@
+module v2.test.manual.dag_import_block_lexeme_stamp
+
+import v2.compiler.parse { parse }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag {
+  dag_language_model_wave1,
+  parse_import_block_idents,
+  parse_production_emitted_identity_optional
+}
+import v2.std.collection { Absent, List, Optional, Present, optional_present }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  Outcome,
+  Rejected,
+  Unavailable,
+  bind_outcome,
+  outcome_rejected,
+  port_locus
+}
+import v2.std.logic { Bool }
+import v2.std.node { Node, Symbol }
+import v2.std.verification { BoolWitness, BoolWitnessClaim, UnifiedTestClaim }
+
+data dag_lex_stamp_source: String = "module v2.test.lexeme_probe\nimport v2.std.algebra { Cons, Empty }\n"
+
+fn dag_lex_stamp_parse_tree() -> Outcome<Node> {
+  let lm = dag_language_model_wave1()
+  bind_outcome(
+    o: tokenize(
+      text: dag_lex_stamp_source,
+      file: ^dag_import_block_lexeme_stamp_probe,
+      rules: lm.lex
+    ),
+    f: fn(token_stream) {
+      parse(tokens: token_stream, grammar: lm.grammar)
+    }
+  )
+}
+
+fn dag_lex_stamp_find_import_node_in_children(tree: Node) -> Optional<Node> {
+  fold(
+    tree.children,
+    init: Absent,
+    f: fn(acc, edge) {
+      match acc {
+        Present { value: _ } => acc
+        Absent => dag_lex_stamp_find_import_node(tree: edge.target)
+      }
+    }
+  )
+}
+
+fn dag_lex_stamp_find_import_node(tree: Node) -> Optional<Node> {
+  match parse_production_emitted_identity_optional(node: tree) {
+    Present { value: id } =>
+      if id == ^dag_surface_import_decl {
+        optional_present(value: tree)
+      } else {
+        dag_lex_stamp_find_import_node_in_children(tree: tree)
+      }
+    Absent => dag_lex_stamp_find_import_node_in_children(tree: tree)
+  }
+}
+
+fn dag_lex_stamp_block_idents() -> Outcome<List<Symbol>> {
+  bind_outcome(
+    o: dag_lex_stamp_parse_tree(),
+    f: fn(tree) {
+      match dag_lex_stamp_find_import_node(tree: tree) {
+        Absent =>
+          outcome_rejected(Diagnostic {
+            reason: ^dag_import_block_lexeme_stamp_no_import,
+            at: port_locus(port: ^dag_import_block_lexeme_stamp_probe),
+            correction: Unavailable { reason: ExternalContractUnknown }
+          })
+        Present { value: import_node } =>
+          parse_import_block_idents(import_decl_node: import_node, root: import_node)
+      }
+    }
+  )
+}
+
+test fn dag_import_block_lexeme_stamp_holds() -> Bool {
+  match dag_lex_stamp_block_idents() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: idents, diagnostics: _ } =>
+      (idents == [^Cons, ^Empty])
+        && (idents != [^dag_token_ident, ^dag_token_ident])
+  }
+}
