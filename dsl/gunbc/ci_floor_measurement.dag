@@ -119,7 +119,7 @@ data gunbc_ci_regime2_aggregate_dissolution_marker: Disposition = Scaffold {
 
 
 
-data gunbc_ci_footprint_granularity_disposition: Disposition = Terminal { reason: "DESIGN §3 deliberate two-concerns split: INTER-run whole-run cgroup peak (gunbc_ci_job_peaks, ~24GiB) governs co-residence - how many runs share a host, feeding the conserving budget tree; WITHIN-run per-shard peak (gunbc_ci_floor_per_shard_peak_rss_bytes, ~2.0GiB directly measured) governs parallelism inside one run against its container cap, feeding memory_aware_spawn_width. Different granularity, different scheduling decision, different consumer. Do not consolidate them into one authority." }
+data gunbc_ci_footprint_granularity_disposition: Disposition = Terminal { reason: "DESIGN §3 deliberate two-concerns split: INTER-run whole-run cgroup peak (gunbc_ci_job_peaks, ~24GiB) governs co-residence - how many runs share a host, feeding the conserving budget tree; WITHIN-run per-shard peak (gunbc_ci_floor_per_shard_peak_rss_bytes, 2.5GiB interim, see gunbc_ci_floor_per_shard_rss_source) governs parallelism inside one run against its container cap, feeding memory_aware_spawn_width. Different granularity, different scheduling decision, different consumer. Do not consolidate them into one authority." }
 
 data gunbc_ci_footprint_bridge_disposition: Disposition = Terminal { reason: "Deferred unification path (acknowledged, not attempted): INTER-run whole-run peak is plausibly within-run-width x per-shard-peak + base, so the INTER-run footprint could eventually derive from the WITHIN-run model once both are measured - the real single authority. Held back deliberately: re-coupling the two carriers risks zeroing the live floor width before per-type baseline measurement data exists." }
 
