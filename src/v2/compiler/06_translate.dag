@@ -1,6 +1,15 @@
 module v2.compiler.translate
 
-import v2.extdeps.languages.dag { dag_surface_operator_canonicalization_member }
+import v2.extdeps.languages.dag {
+  dag_surface_operator_canonicalization_member,
+  emit_import_decl_emitted_node,
+  parse_import_block_idents,
+  parse_production_emitted_identity_optional,
+  parse_qualified_name_segments_from_capture,
+  parse_subtree_find_production_captured,
+  ParseSubtreeAbsent,
+  ParseSubtreeFound
+}
 import extdeps.communication.medium { Lossless, Medium }
 import v2.compiler.target_carriers { lossless_source }
 import v2.std.compilers.target_model {
@@ -152,7 +161,12 @@ import v2.std.compilers.target_model {
   target_use_site_ownership_lookup_miss_diagnostic,
   target_reference_layer_tokens_from_node,
   target_reference_layer_apply_type_emitted,
-  target_reference_layer_apply_value_expression
+  target_reference_layer_apply_value_expression,
+  import_value_from_carrier,
+  module_import_projection_from_target,
+  TargetImport,
+  TargetModuleProjection,
+  target_import_to_concrete_tokens
 }
 import v2.std.collection {
   Absent,
@@ -170,6 +184,7 @@ import v2.std.algebra {
   TailAbsent,
   TailFound,
   fold_list,
+  fold_list_node,
   is_empty,
   length,
   list_append,
@@ -1105,6 +1120,29 @@ fn target_serialize_source_from_model_bounded(
     )
   } else if target_value_expr_arrow_has_value_expression_body(arrow: emitted) {
     target_serialize_bodied_arrow_from_model(target: target, emitted: emitted)
+  } else if is_dag_import_carrier(emitted: emitted) {
+    bind_outcome(
+      o: module_import_projection_from_target(target: target),
+      f: fn(projection) {
+        bind_outcome(
+          o: import_value_from_carrier(carrier: emitted),
+          f: fn(import_value) {
+            bind_outcome(
+              o: target_import_to_concrete_tokens(
+                import_value: import_value,
+                projection: projection
+              ),
+              f: fn(tokens) {
+                serialize_concrete_syntax_tokens_to_source_string(
+                  target: target,
+                  tokens: tokens
+                )
+              }
+            )
+          }
+        )
+      }
+    )
   } else {
     match target_type_expr_emitted_kind(node: emitted) {
       TypeExprKindAuthority { value: _ } =>
@@ -3696,6 +3734,102 @@ fn translate_node_mvp1_fold(
     }
   )
 }
+fn is_dag_import_production_node(node: Node) -> Bool {
+  match parse_production_emitted_identity_optional(node: node) {
+    Present { value: id } => id == ^dag_surface_import_decl
+    Absent => false
+  }
+}
+
+fn translate_import_production_qn_node(import_node: Node) -> Outcome<Node> {
+  match parse_subtree_find_production_captured(
+    root: import_node,
+    emitted: ^dag_surface_qualified_name
+  ) {
+    ParseSubtreeAbsent =>
+      outcome_rejected(
+        translate_grammar_relation_row_not_found_diagnostic(emitted: import_node)
+      )
+    ParseSubtreeFound { captured: qn_capture } =>
+      bind_outcome(
+        o: parse_qualified_name_segments_from_capture(qn_capture: qn_capture, root: import_node),
+        f: fn(segments) {
+          outcome_accepted(
+            value: fold_list_node(
+              xs: segments,
+              item_node: fn(sym) {
+                Node {
+                  kind: TypeNode { connective: Atom { identity: sym } },
+                  children: [],
+                  occurrence_id: SyntheticOccurrence
+                }
+              }
+            )
+          )
+        }
+      )
+  }
+}
+
+fn translate_import_production_block_node(import_node: Node) -> Outcome<Node> {
+  bind_outcome(
+    o: parse_import_block_idents(import_decl_node: import_node, root: import_node),
+    f: fn(idents) {
+      outcome_accepted(
+        value: Node {
+          kind: TypeNode { connective: Conj },
+          children: fold_list(
+            xs: idents,
+            empty: Empty,
+            cons: fn(acc, sym) {
+              list_append(
+                left: acc,
+                right: [
+                  Edge {
+                    label: Positional,
+                    target: Node {
+                      kind: TypeNode { connective: Atom { identity: sym } },
+                      children: [],
+                      occurrence_id: SyntheticOccurrence
+                    }
+                  }
+                ]
+              )
+            }
+          ),
+          occurrence_id: SyntheticOccurrence
+        }
+      )
+    }
+  )
+}
+
+fn translate_import_production_to_carrier(import_node: Node) -> Outcome<Node> {
+  bind_outcome(
+    o: translate_import_production_qn_node(import_node: import_node),
+    f: fn(qn_node) {
+      bind_outcome(
+        o: translate_import_production_block_node(import_node: import_node),
+        f: fn(block_node) {
+          outcome_accepted(
+            value: emit_import_decl_emitted_node(
+              qualified_name: qn_node,
+              import_block: Present { value: block_node }
+            )
+          )
+        }
+      )
+    }
+  )
+}
+
+fn is_dag_import_carrier(emitted: Node) -> Bool {
+  match find_named_child(root: emitted, name: ^dag_surface_import_decl) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 fn translate_node_mvp1(
   node: Node,
   tree: InferredTree,
@@ -3703,6 +3837,8 @@ fn translate_node_mvp1(
 ) -> Outcome<Node> {
   if target_value_expr_arrow_has_value_expression_body(arrow: node) {
     translate_bodied_arrow_preserve_producer_ir(arrow: node)
+  } else if is_dag_import_production_node(node: node) {
+    translate_import_production_to_carrier(import_node: node)
   } else {
     bind_outcome(
       o: fold_node(
