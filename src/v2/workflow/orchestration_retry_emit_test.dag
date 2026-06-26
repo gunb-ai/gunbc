@@ -1,0 +1,119 @@
+module v2.workflow.orchestration_retry_emit_test
+
+import v2.workflow.orchestration_emit { orch_emit_step }
+import v2.compiler.emit { emit }
+import v2.compiler.infer { InferredFacts, InferredTree }
+import v2.extdeps.languages.bash { orch_retry_emitted_command, orch_retry_target_model }
+import v2.test.manual.retry_eagain_bash {
+  retry_eagain_intent,
+  retry_eagain_example_command
+}
+import v2.std.orchestration {
+  Step,
+  Retry,
+  EscalationLevel,
+  EnvSet,
+  EnvUnset,
+  LogMatches
+}
+import v2.std.algebra { FreeMonoid, list_head, HeadFound, HeadAbsent }
+import v2.std.collection { Map }
+import v2.std.node { Node }
+import v2.std.witness { Violates, Witness }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  EmitDirective,
+  ExternalContractUnknown,
+  None,
+  Rejected,
+  SeverityWarning,
+  Unavailable,
+  node_locus
+}
+import gunbc.ci_spec { ci_cargo_eagain_retry_core }
+import gunbc.ci_failure_class { infra_retry_grep_alternation }
+
+fn orch_retry_probe_facts(key: Node) -> Witness<InferredFacts> {
+  Violates {
+    diagnostic: Diagnostic {
+      reason: ^orch_retry_probe_facts,
+      at: node_locus(node: key),
+      correction: Unavailable { reason: ExternalContractUnknown }
+    }
+  }
+}
+
+test fn orch_retry_row_direct_emit_accepted_holds() -> Bool {
+  match emit(
+    tree: InferredTree {
+      root: orch_retry_emitted_command,
+      facts: Map { lookup: orch_retry_probe_facts }
+    },
+    target: orch_retry_target_model(
+      occ1: "cmd",
+      occ2: "E=1 cmd",
+      occ3: "env -u W E=1 cmd",
+      pattern1: "pat",
+      pattern2: "pat",
+      warn1: "w1",
+      warn2: "w2"
+    )
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn orch_retry_perturbed_level2() -> EscalationLevel {
+  EscalationLevel {
+    detect: LogMatches { source: "RETRY_LOG", pattern: infra_retry_grep_alternation() },
+    warning: EmitDirective {
+      severity: SeverityWarning,
+      message: "cargo/sccache still failing; retry without RUSTC_WRAPPER"
+    },
+    env: [
+      EnvUnset { name: "RUSTC_WRAPPER" },
+      EnvSet { name: "CARGO_BUILD_JOBS", value: "2" }
+    ]
+  }
+}
+
+fn orch_retry_level1_from(e: FreeMonoid<EscalationLevel>) -> EscalationLevel {
+  match list_head(xs: e) {
+    HeadFound { value: l } => l
+    HeadAbsent => orch_retry_perturbed_level2()
+  }
+}
+
+fn orch_retry_perturbed_intent() -> Step {
+  match retry_eagain_intent() {
+    Retry { body: b, escalations: e, on_exhausted: x } =>
+      Retry {
+        body: b,
+        escalations: [orch_retry_level1_from(e: e), orch_retry_perturbed_level2()],
+        on_exhausted: x
+      }
+    Do { run: _ } => retry_eagain_intent()
+    If { cond: _, then_: _, else_: _ } => retry_eagain_intent()
+    For { binder: _, over: _, body: _ } => retry_eagain_intent()
+    While { cond: _, body: _, bound: _ } => retry_eagain_intent()
+  }
+}
+
+test fn orch_retry_byte_identical_to_hand_authored_holds() -> Bool {
+  match orch_emit_step(s: retry_eagain_intent()) {
+    Accepted { value: source, diagnostics: dg } =>
+      (source.carried == ci_cargo_eagain_retry_core(command: retry_eagain_example_command))
+        && (dg == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn orch_retry_env_value_has_teeth_holds() -> Bool {
+  match orch_emit_step(s: orch_retry_perturbed_intent()) {
+    Accepted { value: source, diagnostics: _ } =>
+      source.carried != ci_cargo_eagain_retry_core(command: retry_eagain_example_command)
+    Rejected { diagnostics: _ } => false
+  }
+}
