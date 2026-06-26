@@ -585,6 +585,7 @@ pub enum InterpError {
     NoSuchField { type_name: String, field: String },
     TypeError { msg: String },
     CrossRepresentationEquality { detail: String },
+    StringRealizationStraddle { detail: String },
     PatternMatchFailure { value: String },
     DivisionByZero,
     Unimplemented { what: String },
@@ -604,6 +605,9 @@ impl fmt::Display for InterpError {
             InterpError::TypeError { msg } => write!(f, "type error: {}", msg),
             InterpError::CrossRepresentationEquality { detail } => {
                 write!(f, "cross-representation equality: {}", detail)
+            }
+            InterpError::StringRealizationStraddle { detail } => {
+                write!(f, "string realization straddle: {}", detail)
             }
             InterpError::PatternMatchFailure { value } => {
                 write!(f, "non-exhaustive pattern match on: {}", value)
@@ -1557,6 +1561,9 @@ fn eval_binop(op: &BinOp, left: Value, right: Value, ctx: &InterpContext) -> Int
                     return Ok(Value::Str(format!("{}{}", ls, s)));
                 }
                 if let Some(mut result) = free_monoid_to_vec(l) {
+                    if let Some(detail) = string_realization_straddle_detail(&result) {
+                        return Err(InterpError::StringRealizationStraddle { detail });
+                    }
                     record_push(result.len());
                     result.push(Value::Str(s.clone()));
                     return Ok(list_value((result)));
@@ -1567,6 +1574,9 @@ fn eval_binop(op: &BinOp, left: Value, right: Value, ctx: &InterpContext) -> Int
                     return Ok(Value::Str(format!("{}{}", s, rs)));
                 }
                 if let Some(result) = free_monoid_to_vec(r) {
+                    if let Some(detail) = string_realization_straddle_detail(&result) {
+                        return Err(InterpError::StringRealizationStraddle { detail });
+                    }
                     record_push(result.len());
                     let mut out = vec![Value::Str(s.clone())];
                     out.extend(result);
@@ -5792,6 +5802,31 @@ pub(crate) fn free_monoid_to_vec(val: &Value) -> Option<Vec<Value>> {
             }
             _ => return None,
         }
+    }
+}
+
+/// Fail-closed backstop for the model↔realization String straddle (DESIGN §5).
+/// At a String-meeting point (a free monoid concatenated with a native
+/// `Value::Str`), grounding (`free_monoid_to_string`) has already consumed every
+/// well-typed String (all-codepoint, rendered to a native `Value::Str`).
+/// Reaching the list path therefore means the operand is *not* a pure codepoint
+/// list — and if it nonetheless contains a `Char` codepoint (`Value::Int`), it
+/// is a *mixed* `[codepoint.., non-codepoint]` value: the straddle this
+/// grounding exists to dissolve. We refuse LOUDLY (turning the prior §5
+/// fail-open — `Accepted` carrying a wrong-type mixed list — into a typed error)
+/// rather than fabricate it. A homogeneous `List<String>` (all `Value::Str`)
+/// carries no codepoint and is legitimate, so it passes. This is the
+/// completeness insurance for grounding the known sites: any future un-grounded
+/// `FreeMonoid<Char>` × `Str` meeting point surfaces here as a loud error
+/// instead of silently straddling again.
+fn string_realization_straddle_detail(items: &[Value]) -> Option<String> {
+    if items.iter().any(|x| matches!(x, Value::Int(_))) {
+        Some(format!(
+            "free monoid mixing Char codepoints with a native String at a concat/`+` meeting point ({} elements); a String must realize as a single native Value::Str, never a mixed [codepoint.., Str] list",
+            items.len()
+        ))
+    } else {
+        None
     }
 }
 
