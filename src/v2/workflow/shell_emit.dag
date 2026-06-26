@@ -52,7 +52,7 @@ import extdeps.languages.bash.program {
   AndOr,
   Pipe,
   EnvPrefixed,
-  EnvUnset,
+  EnvUnsetCmd,
   WithRedir,
   Heredoc,
   Exit,
@@ -403,7 +403,7 @@ fn emit_shell_stmt(s: ShellStmt) -> Outcome<Medium<String>> {
           emit_stmt_env_prefixed(name: n, value: mv.carried, command: mc.carried)
         })
       })
-    EnvUnset { name: n, command: c } =>
+    EnvUnsetCmd { name: n, command: c } =>
       bind_outcome(o: emit_shell_stmt(s: c), f: fn(mc) {
         emit_stmt_env_unset(name: n, command: mc.carried)
       })

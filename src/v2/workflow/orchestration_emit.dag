@@ -3,7 +3,7 @@ module v2.workflow.orchestration_emit
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import v2.workflow.shell_emit { emit_shell_stmt }
-import extdeps.languages.bash.program { RawLine, ShellStmt, EnvPrefixed, EnvUnset, Lit }
+import extdeps.languages.bash.program { RawLine, ShellStmt, EnvPrefixed, EnvUnsetCmd, Lit }
 import extdeps.communication.medium { Medium }
 import v2.extdeps.languages.bash {
   orch_run_emitted_command,
@@ -53,20 +53,21 @@ fn orch_emit_facts_lookup(key: Node) -> Witness<InferredFacts> {
 
 data orch_run_env_reduction_dissolution_trigger: String = "orchestration_emit Run/Step/Retry path reduces onto emit_shell_stmt: an env-FREE Run lowers to a RawLine carrying the command and is delegated to emit_shell_stmt now (single orch_raw, green path, proven byte-identical by orch_run_empty_env_delegates_to_shell_emit). An env-BEARING Run lowers via lower_env_bindings to a nested EnvPrefixed/EnvUnset tree over the Run.env FreeMonoid with a RawLine command at the leaf, then delegates to emit_shell_stmt. The bash AST now models EnvUnset (env -u NAME) and multi-binding via nesting, proven byte-identical by stmt_env_unset_byte_identical_holds and stmt_env_multi_binding_byte_identical_holds. orch_emit_run_env_welded DISSOLVES WHEN #5841 (String-grounding, emit-kernel straddle fix) lands and the orch_emit_run integration is wired: replace orch_emit_run_env_welded call with emit_shell_stmt(lower_env_bindings(env: r.env, command: RawLine { text: r.command })) and delete the weld scaffold (deletion-is-receipt). Verify by orch_run_multi_binding_env_emits_correctly (multi EnvSet + EnvUnset oracle) going green-by-execution post-#5841."
 
+fn lower_env_binding(b: EnvBinding, inner: ShellStmt) -> ShellStmt {
+  match b {
+    EnvSet { name: n, value: v } => EnvPrefixed { name: n, value: Lit { text: v }, command: inner }
+    EnvUnset { name: n } => EnvUnsetCmd { name: n, command: inner }
+  }
+}
+
 fn lower_env_bindings(env: FreeMonoid<EnvBinding>, command: ShellStmt) -> ShellStmt {
   match list_head(xs: env) {
     HeadAbsent => command
     HeadFound { value: b } =>
       match list_tail(xs: env) {
-        TailAbsent => match b {
-          EnvSet { name: n, value: v } => EnvPrefixed { name: n, value: Lit { text: v }, command: command }
-          EnvUnset { name: n } => EnvUnset { name: n, command: command }
-        }
-        TailFound { rest: rest } =>
-          match b {
-            EnvSet { name: n, value: v } => EnvPrefixed { name: n, value: Lit { text: v }, command: lower_env_bindings(env: rest, command: command) }
-            EnvUnset { name: n } => EnvUnset { name: n, command: lower_env_bindings(env: rest, command: command) }
-          }
+        TailAbsent => lower_env_binding(b: b, inner: command)
+        TailFound { tail: rest } =>
+          lower_env_binding(b: b, inner: lower_env_bindings(env: rest, command: command))
       }
   }
 }

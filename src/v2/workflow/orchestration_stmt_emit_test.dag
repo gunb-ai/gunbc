@@ -12,7 +12,7 @@ import extdeps.languages.bash.program {
   AndOr,
   Pipe,
   EnvPrefixed,
-  EnvUnset,
+  EnvUnsetCmd,
   WithRedir,
   Heredoc,
   AndThen,
@@ -159,7 +159,7 @@ test fn stmt_env_prefixed_has_teeth_holds() -> Bool {
 }
 
 fn env_unset_t() -> ShellStmt {
-  EnvUnset { name: "TMPDIR", command: cmd_true() }
+  EnvUnsetCmd { name: "TMPDIR", command: cmd_true() }
 }
 
 test fn stmt_env_unset_byte_identical_holds() -> Bool {
@@ -167,14 +167,14 @@ test fn stmt_env_unset_byte_identical_holds() -> Bool {
 }
 
 test fn stmt_env_unset_has_teeth_holds() -> Bool {
-  stmt_differs_from_oracle_of(s: env_unset_t(), other: EnvUnset { name: "OTHER", command: cmd_true() })
+  stmt_differs_from_oracle_of(s: env_unset_t(), other: EnvUnsetCmd { name: "OTHER", command: cmd_true() })
 }
 
 fn env_multi_binding_t() -> ShellStmt {
   EnvPrefixed {
     name: "KEY",
     value: Lit { text: "val" },
-    command: EnvUnset { name: "TMPDIR", command: cmd_true() }
+    command: EnvUnsetCmd { name: "TMPDIR", command: cmd_true() }
   }
 }
 
