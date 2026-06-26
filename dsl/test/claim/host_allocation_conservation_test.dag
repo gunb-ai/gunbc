@@ -1,0 +1,49 @@
+module test.claim.host_allocation_conservation
+
+import std.logic { Bool }
+import std.measure { byte_size }
+import gunbc.fleet_host_budget {
+  host_allocation_conserves,
+  declared_runner_count,
+  max_concurrent_sessions,
+  session_pool_bytes,
+  gunbc_runner_pool_budget,
+}
+
+test fn declared_runner_count_is_ten() -> Bool {
+  declared_runner_count() == 10
+}
+
+test fn allocation_conserves_when_pools_fit() -> Bool {
+  host_allocation_conserves(
+    host: byte_size(134217728000),
+    overhead: byte_size(17179869184),
+    headroom: byte_size(8589934592),
+    runner_pool: gunbc_runner_pool_budget,
+    session_pool: byte_size(0)
+  )
+}
+
+test fn allocation_unsound_when_runner_pool_overcommits() -> Bool {
+  !host_allocation_conserves(
+    host: byte_size(134217728000),
+    overhead: byte_size(17179869184),
+    headroom: byte_size(8589934592),
+    runner_pool: byte_size(128849018880),
+    session_pool: byte_size(0)
+  )
+}
+
+test fn sessions_subtract_from_the_same_budget() -> Bool {
+  !host_allocation_conserves(
+    host: byte_size(134217728000),
+    overhead: byte_size(17179869184),
+    headroom: byte_size(8589934592),
+    runner_pool: gunbc_runner_pool_budget,
+    session_pool: session_pool_bytes(active_sessions: 40)
+  )
+}
+
+test fn max_concurrent_sessions_falls_out_of_pool() -> Bool {
+  max_concurrent_sessions(session_pool: session_pool_bytes(active_sessions: 12)) == 12
+}
