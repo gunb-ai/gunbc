@@ -32,11 +32,11 @@ use std::rc::Rc;
 use serde::{Deserialize, Serialize};
 
 use crate::v1_compiler_infer_emit_info::EmitGraphInfo;
-use crate::v1_compiler_infer_env::{TypeBinding, TypeEnv};
+use crate::v1_compiler_infer_env::{InductiveField, TypeBinding, TypeEnv};
 use crate::v1_compiler_infer_items::{ItemInfo, ResolvedGraph, TypedModule};
 use crate::v1_compiler_infer_sigs::{ResolvedFuncEnv, ResolvedFuncSig};
 use crate::v1_rt;
-use crate::v1_std_core::{ErrorNode, InductiveField, InternTable, NewlineIndex, Node};
+use crate::v1_std_core::{ErrorNode, InternTable, NewlineIndex, Node};
 
 type SourceIndices = HashMap<String, Rc<NewlineIndex>>;
 type InductiveFields = HashMap<String, Rc<Vec<Rc<InductiveField>>>>;
@@ -148,8 +148,10 @@ impl Encoder {
     }
 
     fn intern_inductive_fields(&mut self, fields: &InductiveFields) -> u32 {
-        let mut entries: Vec<(String, Rc<Vec<Rc<InductiveField>>>)> =
-            fields.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+        let mut entries: Vec<(String, Rc<Vec<Rc<InductiveField>>>)> = fields
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect::<Vec<_>>();
         entries.sort_by(|a, b| a.0.cmp(&b.0));
         self.indfields.intern(&entries)
     }
@@ -255,7 +257,7 @@ fn rebuild_source_indices(entries: &[(String, u32)], nl_pool: &[Rc<NewlineIndex>
         .collect()
 }
 
-pub fn decode(payload: &InternedPayload) -> (ResolvedGraph, SourceIndices) {
+pub fn decode(payload: &InternedPayload) -> (ResolvedGraph, Rc<SourceIndices>) {
     // One `Rc` per pool entry — this is where structural sharing is restored.
     let nl_pool: Vec<Rc<NewlineIndex>> =
         payload.nl_pool.iter().map(|v| Rc::new(v.clone())).collect();
@@ -326,6 +328,8 @@ pub fn decode(payload: &InternedPayload) -> (ResolvedGraph, SourceIndices) {
         diagnostics: payload.diagnostics.clone(),
         emit_graph_info: payload.emit_graph_info.clone(),
     };
-    let top_si = (*si_pool[payload.top_source_indices as usize]).clone();
+    // Return the pooled `Rc` directly so the top-level source-indices share with
+    // the per-module type-envs that reference the same pool entry.
+    let top_si = si_pool[payload.top_source_indices as usize].clone();
     (graph, top_si)
 }

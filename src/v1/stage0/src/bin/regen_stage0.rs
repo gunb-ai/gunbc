@@ -129,6 +129,7 @@ const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
     "non_fold_residue_project.rs",
     "recorded_fixture.rs",
     "resolved_graph_cache.rs",
+    "resolved_graph_intern.rs",
     "rest_transport_facts.rs",
     "transport_script_position_project.rs",
     "wire_value_serialize.rs",

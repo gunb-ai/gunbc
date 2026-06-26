@@ -11,8 +11,35 @@ use crate::v1_compiler_infer_items::ResolvedGraph;
 use crate::v1_rt::{self, Hash};
 use crate::v1_std_core::NewlineIndex;
 
-const FORMAT_VERSION: u32 = 1;
+// Bumped to 2 with the content-addressed interned on-disk encoding
+// (`resolved_graph_intern`): the payload is now an `InternedPayload`, so stale
+// v1 (plain-`CachePayload`) artifacts simply miss and re-resolve.
+const FORMAT_VERSION: u32 = 2;
 const MAGIC: &[u8; 8] = b"gunbgrpc";
+
+/// Encode the resolved-graph payload to its on-disk bytes via the
+/// content-addressed interned representation (Layer B). Decode is the faithful
+/// inverse, so this is transparent to every consumer and to the DESIGN §5
+/// `warm==cold` purity oracle (which compares graph *values*, not disk bytes).
+fn encode_payload_bytes(
+    graph: &ResolvedGraph,
+    source_indices: &HashMap<String, Rc<NewlineIndex>>,
+) -> Result<Vec<u8>, String> {
+    let interned = crate::resolved_graph_intern::encode(graph, source_indices);
+    serde_json::to_vec(&interned).map_err(|e| format!("cache payload encode failed: {e}"))
+}
+
+/// Decode on-disk bytes back into a value-faithful `CachedResolvedGraph`, with
+/// structural `Rc`-sharing rebuilt one-per-pool-entry (the cache-hit RSS win).
+fn decode_payload_bytes(payload_bytes: &[u8]) -> Result<CachedResolvedGraph, String> {
+    let interned: crate::resolved_graph_intern::InternedPayload =
+        serde_json::from_slice(payload_bytes).map_err(|e| format!("cache payload decode: {e}"))?;
+    let (graph, source_indices) = crate::resolved_graph_intern::decode(&interned);
+    Ok(CachedResolvedGraph {
+        graph: Rc::new(graph),
+        source_indices,
+    })
+}
 
 /// Single-authority mirror of the modeled `SizeBounded` cap:
 /// `extdeps.realization.resolved_graph.resolved_graph_cache_cap_bytes`
@@ -252,21 +279,10 @@ fn read_cached_file(path: &Path, expected_subject: &str) -> CacheLookupResult {
     if computed != stored_content_digest {
         return CacheLookupResult::RejectedHit(CacheRejectReason::ContentDigestMismatch);
     }
-    let payload: CachePayload = match serde_json::from_slice(payload_bytes) {
-        Ok(p) => p,
-        Err(_) => return CacheLookupResult::Miss,
-    };
-    let source_indices = Rc::new(
-        payload
-            .source_indices
-            .into_iter()
-            .map(|(k, v)| (k, Rc::new(v)))
-            .collect(),
-    );
-    CacheLookupResult::Hit(CachedResolvedGraph {
-        graph: Rc::new(payload.graph),
-        source_indices,
-    })
+    match decode_payload_bytes(payload_bytes) {
+        Ok(cached) => CacheLookupResult::Hit(cached),
+        Err(_) => CacheLookupResult::Miss,
+    }
 }
 
 pub fn lookup(cache_root: &Path, subject_digest: &str) -> CacheLookupResult {
@@ -336,16 +352,7 @@ pub fn write(
         fs::create_dir_all(parent)
             .map_err(|e| format!("failed to create cache dir {:?}: {}", parent, e))?;
     }
-    let si_plain: HashMap<String, NewlineIndex> = source_indices
-        .iter()
-        .map(|(k, v)| (k.clone(), (**v).clone()))
-        .collect();
-    let payload = CachePayload {
-        graph: graph.clone(),
-        source_indices: si_plain,
-    };
-    let payload_bytes =
-        serde_json::to_vec(&payload).map_err(|e| format!("cache payload encode failed: {e}"))?;
+    let payload_bytes = encode_payload_bytes(graph, source_indices)?;
     let content_digest = payload_content_digest(&payload_bytes);
 
     reclaim_stale_temp(&final_path);
@@ -405,16 +412,7 @@ pub fn build_valid_artifact_bytes(
     graph: &ResolvedGraph,
     source_indices: &HashMap<String, Rc<NewlineIndex>>,
 ) -> Result<Vec<u8>, String> {
-    let si_plain: HashMap<String, NewlineIndex> = source_indices
-        .iter()
-        .map(|(k, v)| (k.clone(), (**v).clone()))
-        .collect();
-    let payload = CachePayload {
-        graph: graph.clone(),
-        source_indices: si_plain,
-    };
-    let payload_bytes =
-        serde_json::to_vec(&payload).map_err(|e| format!("cache payload encode failed: {e}"))?;
+    let payload_bytes = encode_payload_bytes(graph, source_indices)?;
     let content_digest = payload_content_digest(&payload_bytes);
     let mut bytes = Vec::new();
     bytes.extend_from_slice(MAGIC);
