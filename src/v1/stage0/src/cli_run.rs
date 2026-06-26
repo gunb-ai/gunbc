@@ -3295,7 +3295,7 @@ fn run_discovery_rows(
             // Drop the old ctx before clearing so its Rc<TypecheckModuleResult>
             // references reach zero when the cache is cleared, letting jemalloc
             // return those pages immediately (dirty_decay_ms:0).
-            ctx = None;
+            ctx.take();
             index.clear_per_entry_caches();
             let sources = load_sources_for_entry_with_index(&index.source_files, &row.entry)
                 .map_err(|msg| format!("load sources failed for {}: {}", row.entry, msg))?;
