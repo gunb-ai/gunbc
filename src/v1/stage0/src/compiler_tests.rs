@@ -1765,6 +1765,200 @@ mod compiler_tests {
         result.expect("profile_reconcile_per_module panicked");
     }
 
+    // THROWAWAY PROBE (do not commit): characterizes the per-shard "pig" — the
+    // parsed-AST footprint of the floor corpus that accumulates monotonically in
+    // MultiEntryIndex.parse_cache. Measures (1) total distinct parsed nodes and the
+    // Node-struct footprint (compact-repr target), (2) the Node.name global-interner
+    // ceiling (total name bytes vs distinct — Node.name is an owned String, so every
+    // node carries its own copy), (3) backbone (std/extdeps/compiler) vs entry-specific
+    // (test) node split. Parse-side only; the typed cache adds a similar split on top.
+    #[test]
+    #[ignore]
+    fn profile_floor_corpus_ast_pig() {
+        let result = std::thread::Builder::new()
+            .stack_size(256 * 1024 * 1024)
+            .spawn(|| {
+                use std::collections::{HashMap, HashSet};
+
+                let mut files = discover_dag_files("src/v2");
+                files.extend(discover_dag_files("dsl"));
+                let mut seen_paths = HashSet::new();
+                files.retain(|(p, _)| seen_paths.insert(p.clone()));
+                eprintln!("\n=== FLOOR CORPUS AST PIG PROBE ({} modules) ===", files.len());
+
+                fn walk(
+                    n: &std::rc::Rc<crate::v1_std_core::Node>,
+                    seen: &mut HashSet<usize>,
+                    cnt: &mut usize,
+                    name_occ: &mut usize,
+                    total_name_bytes: &mut usize,
+                    distinct_names: &mut HashSet<String>,
+                    distinct_name_bytes: &mut usize,
+                ) {
+                    if !seen.insert(std::rc::Rc::as_ptr(n) as usize) {
+                        return;
+                    }
+                    *cnt += 1;
+                    *name_occ += 1;
+                    *total_name_bytes += n.name.len();
+                    if distinct_names.insert(n.name.clone()) {
+                        *distinct_name_bytes += n.name.len();
+                    }
+                    for c in n.children.iter() {
+                        walk(c, seen, cnt, name_occ, total_name_bytes, distinct_names, distinct_name_bytes);
+                    }
+                    for c in n.params.iter() {
+                        walk(c, seen, cnt, name_occ, total_name_bytes, distinct_names, distinct_name_bytes);
+                    }
+                    for c in n.uses.iter() {
+                        walk(c, seen, cnt, name_occ, total_name_bytes, distinct_names, distinct_name_bytes);
+                    }
+                    for c in n.properties.iter() {
+                        walk(c, seen, cnt, name_occ, total_name_bytes, distinct_names, distinct_name_bytes);
+                    }
+                    if let Some(b) = &n.body {
+                        walk(b, seen, cnt, name_occ, total_name_bytes, distinct_names, distinct_name_bytes);
+                    }
+                    if let Some(t) = &n.transport {
+                        walk(t, seen, cnt, name_occ, total_name_bytes, distinct_names, distinct_name_bytes);
+                    }
+                    if let Some(ta) = &n.type_annotation {
+                        walk(ta, seen, cnt, name_occ, total_name_bytes, distinct_names, distinct_name_bytes);
+                    }
+                }
+
+                let mut total_nodes = 0usize;
+                let mut name_occ = 0usize;
+                let mut total_name_bytes = 0usize;
+                let mut distinct_names: HashSet<String> = HashSet::new();
+                let mut distinct_name_bytes = 0usize;
+                let mut total_src_bytes = 0usize;
+                let mut prefix_nodes: HashMap<&'static str, usize> = HashMap::new();
+                let mut per_module: Vec<(String, usize)> = Vec::new();
+                let mut parsed_ok = 0usize;
+
+                for (path, content) in &files {
+                    total_src_bytes += content.len();
+                    let tokens =
+                        crate::v1_compiler_tokenize::tokenize(content.clone(), path.clone());
+                    let si = crate::v1_std_core::build_newline_index(path.clone(), content.clone());
+                    let parsed = crate::v1_compiler_parse::parse_with_table(
+                        tokens,
+                        crate::v1_rt::rc_map_insert(
+                            crate::v1_rt::rc_empty_map::<
+                                String,
+                                std::rc::Rc<crate::v1_std_core::NewlineIndex>,
+                            >(),
+                            si.file.clone(),
+                            si.clone(),
+                        ),
+                        crate::v1_std_core::empty_intern_table(),
+                    );
+                    let module = match parsed.result.module.clone() {
+                        Some(m) => m,
+                        None => continue,
+                    };
+                    parsed_ok += 1;
+                    let mut seen = HashSet::new();
+                    let mut cnt = 0usize;
+                    walk(
+                        &module,
+                        &mut seen,
+                        &mut cnt,
+                        &mut name_occ,
+                        &mut total_name_bytes,
+                        &mut distinct_names,
+                        &mut distinct_name_bytes,
+                    );
+                    total_nodes += cnt;
+                    per_module.push((path.clone(), cnt));
+                    let bucket = if path.starts_with("dsl/std") {
+                        "backbone:std"
+                    } else if path.starts_with("dsl/extdeps") {
+                        "backbone:extdeps"
+                    } else if path.starts_with("dsl/product") {
+                        "backbone:product"
+                    } else if path.contains("/compiler/") {
+                        "backbone:compiler"
+                    } else if path.contains("test") || path.contains("/claim/") {
+                        "specific:test"
+                    } else {
+                        "other"
+                    };
+                    *prefix_nodes.entry(bucket).or_insert(0) += cnt;
+                }
+
+                let node_struct_bytes = std::mem::size_of::<crate::v1_std_core::Node>();
+                let mib = |b: usize| format!("{:.1} MiB", b as f64 / 1_048_576.0);
+
+                eprintln!("  modules parsed ok           : {}/{}", parsed_ok, files.len());
+                eprintln!("  total source bytes          : {}", mib(total_src_bytes));
+                eprintln!("  total distinct parsed nodes : {}", total_nodes);
+                eprintln!("  sizeof(Node)                : {} bytes", node_struct_bytes);
+                eprintln!(
+                    "  node-struct footprint        : {}  (= nodes x sizeof(Node), parse-side; compact-repr target)",
+                    mib(total_nodes * node_struct_bytes)
+                );
+                eprintln!(
+                    "  nodes per source byte (blowup): {:.1}x",
+                    total_nodes as f64 / (total_src_bytes.max(1)) as f64
+                );
+
+                eprintln!("\n  -- Node.name global-interner ceiling (Lever B1) --");
+                eprintln!("    name occurrences           : {}", name_occ);
+                eprintln!("    distinct names             : {}", distinct_names.len());
+                eprintln!("    total name bytes (owned)   : {}", mib(total_name_bytes));
+                eprintln!("    distinct name bytes        : {}", mib(distinct_name_bytes));
+                let cur = total_name_bytes + name_occ * 24;
+                let interned = distinct_name_bytes + name_occ * 4 + distinct_names.len() * 24;
+                eprintln!("    name cost now (str+hdr)    : {}", mib(cur));
+                eprintln!("    name cost interned (u32)   : {}", mib(interned));
+                eprintln!(
+                    "    >>> interner reclaim ceiling : {} ({:.0}% of name cost) <<<",
+                    mib(cur.saturating_sub(interned)),
+                    100.0 * (cur.saturating_sub(interned)) as f64 / (cur.max(1)) as f64
+                );
+
+                eprintln!("\n  -- backbone vs entry-specific node split (Lever A context) --");
+                let mut buckets: Vec<(&&'static str, &usize)> = prefix_nodes.iter().collect();
+                buckets.sort_by(|a, b| b.1.cmp(a.1));
+                let backbone: usize = prefix_nodes
+                    .iter()
+                    .filter(|(k, _)| k.starts_with("backbone"))
+                    .map(|(_, v)| *v)
+                    .sum();
+                let specific: usize = prefix_nodes
+                    .iter()
+                    .filter(|(k, _)| k.starts_with("specific"))
+                    .map(|(_, v)| *v)
+                    .sum();
+                for (k, v) in &buckets {
+                    eprintln!(
+                        "    {:<20} {:>10} nodes  ({})",
+                        k,
+                        v,
+                        mib(*v * node_struct_bytes)
+                    );
+                }
+                eprintln!(
+                    "    => backbone {} nodes / specific {} nodes  (backbone = {:.0}% of classified)",
+                    backbone,
+                    specific,
+                    100.0 * backbone as f64 / ((backbone + specific).max(1)) as f64
+                );
+
+                per_module.sort_by(|a, b| b.1.cmp(&a.1));
+                eprintln!("\n  -- top 8 modules by node count --");
+                for (p, c) in per_module.iter().take(8) {
+                    eprintln!("    {:>9} nodes  {}", c, p);
+                }
+                eprintln!("=== DONE ===\n");
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result.expect("profile_floor_corpus_ast_pig panicked");
+    }
+
     #[test]
     fn contracts_sidecar_wired_into_emit_scope() {
         let result = std::thread::Builder::new()
