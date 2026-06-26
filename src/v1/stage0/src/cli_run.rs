@@ -3111,9 +3111,10 @@ fn merge_discovery_summaries(summaries: Vec<DiscoverySummary>) -> DiscoverySumma
     merged
 }
 
-/// Each shard builds a fresh MultiEntryIndex for ~1/DISCOVERY_CHUNK_FACTOR of the corpus.
-/// Keeping chunk_size at 1/4 of total entry groups bounds per-chunk peak to the old
-/// per-shard-at-width-4 measurement (~2.9 GiB), preventing unbounded accumulation.
+/// Chunks discovery rows so each chunk's parse_cache/typed_module_cache (in MultiEntryIndex)
+/// accumulates at most ~1/DISCOVERY_CHUNK_FACTOR of the corpus before dropping. The index
+/// itself always scans the full source roots; peak reduction comes from dropping the in-process
+/// caches between chunks, not from partitioning the on-disk source index.
 const DISCOVERY_CHUNK_FACTOR: usize = 4;
 
 fn count_entry_groups(rows: &[DiscoveryRow]) -> usize {
