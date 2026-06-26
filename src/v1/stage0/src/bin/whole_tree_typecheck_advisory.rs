@@ -20,7 +20,9 @@
 
 use std::process::ExitCode;
 
-use v1_compiler::cli_run::{whole_tree_resolved_ctx, ResolveTypecheckGate, WholeTreeCtx};
+use v1_compiler::cli_run::{
+    default_advisory_fixture_excludes, whole_tree_resolved_ctx, ResolveTypecheckGate, WholeTreeCtx,
+};
 use v1_compiler::v1_interpreter::ExecutionMode;
 use v1_compiler::v1_std_core::{diagnostic_to_message, diagnostic_to_span};
 
@@ -37,10 +39,11 @@ fn require_value(args: &[String], idx: usize, flag: &str) -> Result<String, Exit
 fn run() -> Result<ExitCode, ExitCode> {
     let args: Vec<String> = std::env::args().collect();
     let mut source_roots: Vec<String> = Vec::new();
-    // Intentionally-malformed scanner fixture inputs declare imports of nonexistent
-    // modules and cannot be part of a whole-tree resolve. Excluded by default
-    // (mirrors the wiring-liveness whole-tree gate); extendable via flag.
-    let mut exclude_subpaths: Vec<String> = vec!["test/fixture/".to_string()];
+    // Scanner / lens fixture INPUTS (read by path, not importable) are excluded by
+    // default; the shared fixtures that real test modules `import` are NOT — see
+    // `default_advisory_fixture_excludes` for the principle (excluding an imported
+    // fixture fabricates phantom unresolved-import diagnostics). Extendable via flag.
+    let mut exclude_subpaths: Vec<String> = default_advisory_fixture_excludes();
 
     let mut i = 1;
     while i < args.len() {

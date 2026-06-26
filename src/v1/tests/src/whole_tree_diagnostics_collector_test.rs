@@ -15,7 +15,9 @@
 //! the discriminating input: flip it to a real call and BOTH gates go green, which
 //! is the red-witness control this test pins by execution.
 
-use v1_compiler::cli_run::{whole_tree_resolved_ctx, ResolveTypecheckGate, WholeTreeCtx};
+use v1_compiler::cli_run::{
+    default_advisory_fixture_excludes, whole_tree_resolved_ctx, ResolveTypecheckGate, WholeTreeCtx,
+};
 use v1_compiler::v1_interpreter::ExecutionMode;
 use v1_compiler::v1_std_core::diagnostic_to_message;
 
@@ -91,6 +93,70 @@ fn strict_blocks_what_diagnostics_collector_collects() {
             .map(|d| diagnostic_to_message(d.diagnostic.clone()))
             .collect::<Vec<_>>()
     );
+}
+
+/// Pins the PRINCIPLE behind the advisory bin's default exclude (DESIGN §5): the
+/// reporter must drop only scanner/lens fixture INPUT subdirectories (read by path,
+/// not importable), NEVER the top-level shared fixtures that real test modules
+/// `import`. A blanket `test/fixture/` exclude FABRICATES ~171 phantom unresolved-
+/// import diagnostics by dropping imported fixtures; this test fails if anyone
+/// re-broadens it, so the default cannot silently regress to a fabricating list.
+///
+/// The exclude is matched by `str::contains` against both the source path and the
+/// module path (see `whole_tree_resolved_ctx`), so this test mirrors that semantics.
+#[test]
+fn default_advisory_fixture_excludes_are_scanner_only() {
+    let excludes = default_advisory_fixture_excludes();
+    assert!(!excludes.is_empty(), "default excludes must not be empty");
+
+    // No entry may be the blanket fixture root — that is the fabricating regression.
+    for e in &excludes {
+        assert_ne!(
+            e.trim_end_matches('/'),
+            "test/fixture",
+            "blanket `test/fixture/` exclude fabricates phantom unresolved-import \
+             diagnostics by dropping imported shared fixtures; exclude scanner \
+             SUBDIRECTORIES only"
+        );
+        // Every entry must name a subdirectory UNDER test/fixture/, not the root.
+        assert!(
+            e.starts_with("test/fixture/") && e.trim_end_matches('/').contains("test/fixture/"),
+            "exclude entry {e:?} must be a `test/fixture/<scanner-dir>/` subdirectory"
+        );
+        let tail = e.trim_start_matches("test/fixture/").trim_end_matches('/');
+        assert!(
+            !tail.is_empty(),
+            "exclude entry {e:?} must name a directory below test/fixture/, not the root"
+        );
+    }
+
+    let excluded = |path: &str| excludes.iter().any(|sub| path.contains(sub.as_str()));
+
+    // Shared fixtures that real test modules import MUST survive (not be excluded).
+    for imported in [
+        "src/v2/test/fixture/derivable_coercion_task_id.dag",
+        "src/v2/test/fixture/rung_3_4_common.dag",
+        "src/v2/test/fixture/rung_5_6_common.dag",
+        "src/v2/test/fixture/task_manager_demo.dag",
+    ] {
+        assert!(
+            !excluded(imported),
+            "imported shared fixture {imported:?} must NOT be excluded (excluding it \
+             fabricates a phantom unresolved-import in every module that imports it)"
+        );
+    }
+
+    // Scanner / lens fixture inputs (read by path, not importable) MUST be excluded.
+    for scanner in [
+        "src/v2/test/fixture/layering_scan/std_imports_extdeps/std/x.dag",
+        "src/v2/test/fixture/transport_script_scan/bare_string_literal/x.dag",
+        "src/v2/test/fixture/extdeps_external_authority/missing_anchor/x.dag",
+    ] {
+        assert!(
+            excluded(scanner),
+            "scanner fixture input {scanner:?} must be excluded from whole-tree resolve"
+        );
+    }
 }
 
 /// Control: the clean module ALONE collects ZERO diagnostics under

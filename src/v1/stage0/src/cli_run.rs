@@ -819,6 +819,40 @@ pub struct WholeTreeCtx {
     pub resolve_diagnostics: Vec<Rc<ErrorNode>>,
 }
 
+/// The default whole-tree-resolve excludes for the advisory typecheck reporter.
+///
+/// PRINCIPLE: exclude ONLY fixture *subdirectories* that hold scanner / lens INPUT
+/// data — modules that exist to be read by path (by a scanner or layering/transport
+/// lens) and are deliberately not importable as live code (they declare imports of
+/// nonexistent modules, or carry intentionally-malformed content). NEVER exclude the
+/// top-level shared fixtures under `test/fixture/` that real test modules `import`
+/// (e.g. `v2.test.fixture.derivable_coercion_task_id`, `v2.test.rung_3_4_common`):
+/// dropping an imported fixture does not remove signal, it FABRICATES it — the
+/// importer then reports a phantom `unresolved import` plus a cascade of not-found
+/// references for every symbol that fixture exported. A blanket `test/fixture/`
+/// exclude fabricates ~171 such phantom diagnostics (179 -> 8 real once narrowed);
+/// the bin would then promote to a blocking gate that blocks on its own fabrication
+/// (DESIGN §5 — a check must not manufacture the failures it reports).
+///
+/// Each entry names a scanner-fixture directory, not a tuned-to-a-number list. The
+/// `default_advisory_fixture_excludes_are_scanner_only` test pins this: no entry may
+/// be the blanket `test/fixture/`, every imported shared fixture must survive, and
+/// every scanner dir must be dropped.
+pub fn default_advisory_fixture_excludes() -> Vec<String> {
+    [
+        "test/fixture/extdeps_external_authority/",
+        "test/fixture/floor_skip/",
+        "test/fixture/layering_scan/",
+        "test/fixture/medium_structure_scan/",
+        "test/fixture/program_assembly/",
+        "test/fixture/realization_vocab_scan/",
+        "test/fixture/transport_script_scan/",
+    ]
+    .iter()
+    .map(|s| s.to_string())
+    .collect()
+}
+
 pub fn whole_tree_resolved_ctx(
     source_roots: &[String],
     exclude_substrings: &[String],
