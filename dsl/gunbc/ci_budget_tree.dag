@@ -1,6 +1,6 @@
 module gunbc.ci_budget_tree
 
-import std.measure { ByteSize, byte_size, measure_scale_fraction_floor, Memory, One }
+import std.measure { ByteSize, byte_size, Memory, One }
 import std.types { Int, List, String, Bool }
 import std.disposition { Disposition, Terminal }
 import std.realization_width { byte_size_saturating_sub }
@@ -16,18 +16,15 @@ import gunbc.ci_floor_measurement {
   HostFixedOverhead, HostFixedOverheadMeasured, HostFixedOverheadUnmeasured,
   gunbc_ci_host_fixed_overhead,
   gunbc_ci_host_container_memory_cap,
-  gunbc_ci_floor_whole_run_peak_rss_bytes,
-  gunbc_ci_floor_runner_margin_num,
-  gunbc_ci_floor_runner_margin_den,
   gunbc_ci_session_reservation_mode
 }
 import gunbc.ci_runner_placement {
   SessionSliceResolution, SessionSliceResolved, SessionSliceUnresolved,
   resolve_session_slice
 }
-import gunbc.fleet_host_budget { gunbc_fleet_oomd_evidence }
+import gunbc.fleet_host_budget { gunbc_fleet_oomd_evidence, gunbc_per_runner_memory_cap }
 
-data gunbc_ci_budget_tree_deconfliction_disposition: Disposition = Terminal { reason: "DESIGN §3 deliberate carrier split: this BudgetNode governs INTER-run co-residence (host_ram partitioned as overhead + sessions_slice + runner_slice, conserving by construction via byte_size_saturating_sub). Intentionally NOT the within-run spawn-width budget: within_run_spawn_budget feeds memory_aware_spawn_width for parallelism INSIDE one run and must stay non-fail-closed so the live floor keeps running when the inter-run operating point is unset. Do not fold the two back together - see gunbc_ci_footprint_granularity_disposition." }
+data gunbc_ci_budget_tree_deconfliction_disposition: Disposition = Terminal { reason: "DESIGN §3 deliberate carrier split: this BudgetNode governs INTER-run co-residence (host_ram partitioned as overhead + sessions_slice + runner_slice, conserving by construction via byte_size_saturating_sub). srv1_floor_memory_budget returns the measured per-runner cgroup cap (gunbc_per_runner_memory_cap = 8 GiB) -- the real binding constraint for within-run parallelism. Do NOT conflate with inter-run budget accounting; do NOT reintroduce within_run_spawn_budget (retired -- it used whole-run-peak x margin as the budget, which exceeded the real runner cgroup cap and caused OOM). See gunbc_ci_footprint_granularity_disposition." }
 
 fn host_overhead_bytes() -> ByteSize {
   match gunbc_ci_host_fixed_overhead {
@@ -129,16 +126,8 @@ fn srv1_fixed_overhead_bytes() -> ByteSize {
   host_overhead_bytes()
 }
 
-fn within_run_spawn_budget() -> ByteSize {
-  measure_scale_fraction_floor(
-    m: gunbc_ci_floor_whole_run_peak_rss_bytes(),
-    num: gunbc_ci_floor_runner_margin_num,
-    den: gunbc_ci_floor_runner_margin_den
-  )
-}
-
 fn srv1_floor_memory_budget() -> ByteSize {
-  within_run_spawn_budget()
+  gunbc_per_runner_memory_cap
 }
 
 fn srv1_ci_run_container_hard_cap() -> ByteSize {
