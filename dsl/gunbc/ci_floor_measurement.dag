@@ -40,7 +40,14 @@ fn gunbc_ci_floor_per_shard_peak_rss_bytes() -> ByteSize {
 
 data gunbc_ci_host_container_memory_cap: ByteSize = byte_size(33578549248)
 
-data gunbc_ci_host_container_memory_cap_disposition: Disposition = Terminal { reason: "STALE heuristic: totalMem/4 ~= 31.27 GiB. This constant is overloaded across two distinct caps: (1) the floor runner cgroup cap (real measured cap is gunbc_per_runner_memory_cap = 8 GiB in fleet_host_budget.dag, which srv1_floor_memory_budget() now uses directly); (2) the dashboard session-pool admission ceiling (deep-otter-528 / keen-dove-772's 3 GiB per-container cap). Leave value untouched until the dashboard-pool reconciliation with deep-otter-528 + keen-dove-772 retires this constant and splits it into its two real grounded authorities. Dissolution trigger: keen-dove-772 JS defaultContainerResourceCaps deletion + deep-otter-528 dashboard admission rework." }
+data gunbc_ci_host_container_memory_cap_disposition: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.fleet_host_budget",
+    decl_name: "gunbc_per_runner_memory_cap",
+    field: WholeDeclaration
+  }
+}
 
 
 data gunbc_ci_floor_conservative_fallback_width: Int = 4
