@@ -201,6 +201,29 @@ fn host_converge_doc(h: HostConverge) -> Doc {
   ))
 }
 
+fn host_dispatch_pattern(hosts: List<HostConverge>) -> String {
+  fold(hosts, init: "", f: (acc, h) => if acc == "" { h.identity } else { concat(acc, concat("|", h.identity)) })
+}
+
+fn converge_dispatch_preamble(hosts: List<HostConverge>) -> Doc {
+  doc_concat(parts: [
+    doc_line_of(text: "# Per-host scope: runs only the section matching arg 1, else $(hostname -s), else ALL sections if unmatched."),
+    doc_line_of(text: "target_host=\"${1:-$(hostname -s 2>/dev/null || echo unknown)}\""),
+    doc_line_of(text: concat(concat("case \"$target_host\" in ", host_dispatch_pattern(hosts: hosts)), ") run_all=0;; *) run_all=1;; esac")),
+    doc_line_of(text: "if [ \"$run_all\" = \"1\" ]; then echo \"fleet-converge: host '$target_host' not in fleet; running ALL host sections (pass a host name as arg 1 to scope to one)\" >&2; fi"),
+  ])
+}
+
+fn guarded_host_doc(h: HostConverge) -> Doc {
+  doc_concat(parts: concat(
+    concat(
+      [doc_line_of(text: concat(concat("if [ \"$run_all\" = \"1\" ] || [ \"$target_host\" = \"", h.identity), "\" ]; then"))],
+      [host_converge_doc(h: h)]
+    ),
+    [doc_line_of(text: "fi")]
+  ))
+}
+
 fn converge_unsound_doc(reason: String) -> Doc {
   doc_concat(parts: map([
     "#!/usr/bin/env bash",
@@ -216,9 +239,9 @@ fn project_fleet_converge_to_doc(policy: ConvergePolicy) -> Doc {
     ConvergePolicyUnsound { reason: reason } => converge_unsound_doc(reason: reason)
     ConvergePolicyDerived { hosts: hosts } =>
       doc_concat(parts: append(
-        [converge_script_header()],
+        [converge_script_header(), converge_dispatch_preamble(hosts: hosts)],
         items: append(
-          map(hosts, h => host_converge_doc(h: h)),
+          map(hosts, h => guarded_host_doc(h: h)),
           items: [doc_line_of(text: "exit \"$host_failed\"")]
         )
       ))
