@@ -61,10 +61,7 @@ const ALIAS_UNUSED_FIXTURE: &str = concat!(
 #[test]
 #[ignore = "requires stage0 regen — passes after v1_compiler_emit_rust.rs is rebuilt with the to_pascal fix"]
 fn alias_unused_param_phantom_emits_upper_camel() {
-    let emitted = emit(
-        "src/v1/type_param_casing_alias.dag",
-        ALIAS_UNUSED_FIXTURE,
-    );
+    let emitted = emit("src/v1/type_param_casing_alias.dag", ALIAS_UNUSED_FIXTURE);
     assert!(
         emitted.contains("PhantomData<Bits>"),
         "unused alias param `bits` must emit as `Bits` inside PhantomData:\n{emitted}"
