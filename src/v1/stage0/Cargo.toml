@@ -7,6 +7,12 @@ edition = "2021"
 default = []
 text_lookup_work_counter = []
 
+[target.'cfg(target_os = "linux")'.dependencies]
+# jemalloc returns dirty pages via madvise(MADV_DONTNEED) per freed region,
+# avoiding the brk fragmentation that prevents malloc_trim from recovering pages
+# between discovery chunks (see run_discovery_rows_chunked in cli_run.rs).
+tikv-jemallocator = "0.5"
+
 [dependencies]
 # Persistent value carriers (ctrl#1533 phase 2). im-rc is the Rc-backed
 # (thread-confined, matching the Value Rc-discipline) crate providing BOTH

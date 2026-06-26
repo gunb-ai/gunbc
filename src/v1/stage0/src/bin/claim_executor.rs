@@ -1,5 +1,13 @@
 #![allow(clippy::disallowed_macros)]
 
+// jemalloc returns dirty pages to the OS via madvise(MADV_DONTNEED) per freed
+// region rather than accumulating them in glibc's brk pool. This prevents the
+// post-chunk RSS staircase that malloc_trim cannot fix (small AST node allocs
+// scatter through brk, trapping pages above every live allocation).
+#[cfg(target_os = "linux")]
+#[global_allocator]
+static ALLOC: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
+
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
