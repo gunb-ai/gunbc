@@ -3139,13 +3139,13 @@ fn merge_discovery_summaries(summaries: Vec<DiscoverySummary>) -> DiscoverySumma
 
 /// Chunks discovery rows so each chunk gets a fresh MultiEntryIndex. Dropping the full
 /// index (intern_table + parse_cache + typed_module_cache + source_files) after each
-/// chunk, followed by malloc_trim, returns pages to the OS so cgroup RSS falls back to
-/// the base process footprint (sawtooth, not staircase). A prior approach that shared
-/// the intern_table across chunks produced a staircase: the monotonically-growing
-/// intern_table raised glibc's brk watermark each chunk, blocking malloc_trim from
-/// recovering pages. Rebuilding fresh per chunk costs 4x source-root scans (fast) and
-/// 4x intern_table seeding (fast) in exchange for a flat inter-chunk baseline RSS.
-const DISCOVERY_CHUNK_FACTOR: usize = 4;
+/// chunk returns pages to the OS (jemalloc madvise MADV_DONTNEED, sawtooth not staircase).
+/// With spawn_width=2 both shards run in parallel; the combined cgroup RSS at any moment
+/// is both shards' allocations summed. Later entry groups import much larger module
+/// closures, making per-shard per-chunk peak grow non-linearly. Factor=8 (25 groups/chunk)
+/// halves the unique-module accumulation per chunk vs factor=4, keeping the worst-case
+/// combined peak under the 8 GiB runner cgroup cap.
+const DISCOVERY_CHUNK_FACTOR: usize = 8;
 
 fn count_entry_groups(rows: &[DiscoveryRow]) -> usize {
     let mut count = 0usize;
