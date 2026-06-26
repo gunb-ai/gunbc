@@ -347,17 +347,6 @@ pub fn build_multi_entry_index(source_roots: &[String]) -> MultiEntryIndex {
     }
 }
 
-impl MultiEntryIndex {
-    /// Drops the accumulated parse results and typed-module results, releasing
-    /// the heavy per-entry heap data between discovery chunks. The intern_table
-    /// and source_files are kept: intern_table is monotonic (content-addressed
-    /// names only accumulate; no names are ever removed) and source_files is
-    /// the static file-path index for the source roots.
-    pub fn clear_entry_caches(&self) {
-        *self.parse_cache.borrow_mut() = HashMap::new();
-        *self.typed_module_cache.borrow_mut() = HashMap::new();
-    }
-}
 
 pub fn resolve_entry_with_index(
     index: &MultiEntryIndex,
@@ -3149,12 +3138,14 @@ fn merge_discovery_summaries(summaries: Vec<DiscoverySummary>) -> DiscoverySumma
     merged
 }
 
-/// Chunks discovery rows so each chunk's parse_cache/typed_module_cache (in MultiEntryIndex)
-/// accumulates at most ~1/DISCOVERY_CHUNK_FACTOR of the corpus before being cleared. The
-/// intern_table and source_files are shared across all chunks: intern_table is monotonic
-/// (content-addressed names only accumulate) and source_files is the static file-path scan.
-/// Peak reduction comes from clearing the heavy per-entry caches (parsed ASTs, typed-module
-/// results) between chunks; the index itself is built once for the whole shard.
+/// Chunks discovery rows so each chunk gets a fresh MultiEntryIndex. Dropping the full
+/// index (intern_table + parse_cache + typed_module_cache + source_files) after each
+/// chunk, followed by malloc_trim, returns pages to the OS so cgroup RSS falls back to
+/// the base process footprint (sawtooth, not staircase). A prior approach that shared
+/// the intern_table across chunks produced a staircase: the monotonically-growing
+/// intern_table raised glibc's brk watermark each chunk, blocking malloc_trim from
+/// recovering pages. Rebuilding fresh per chunk costs 4x source-root scans (fast) and
+/// 4x intern_table seeding (fast) in exchange for a flat inter-chunk baseline RSS.
 const DISCOVERY_CHUNK_FACTOR: usize = 4;
 
 fn count_entry_groups(rows: &[DiscoveryRow]) -> usize {
@@ -3210,11 +3201,9 @@ fn run_discovery_rows_chunked(
         chunks.len(),
         max_groups_per_chunk
     );
-    // Build the index once for the whole shard: source_files and intern_table
-    // are shared. Only parse_cache and typed_module_cache are cleared between chunks.
-    let index = build_multi_entry_index(source_roots);
     let mut summaries = Vec::with_capacity(chunks.len());
     for (chunk_idx, chunk) in chunks.iter().enumerate() {
+        let index = build_multi_entry_index(source_roots);
         summaries.push(run_discovery_rows(
             chunk,
             &index,
@@ -3223,10 +3212,8 @@ fn run_discovery_rows_chunked(
             frontier_seeds,
             whole_tree_published_keys.clone(),
         )?);
-        // Drop parsed ASTs and typed-module results. The intern_table stays alive
-        // (monotonic, content-addressed); source_files is the static path index.
-        index.clear_entry_caches();
-        // Ask glibc to return free pages to the OS so the cgroup RSS actually drops.
+        // Drop the full index before malloc_trim so glibc can return all pages.
+        drop(index);
         heap_trim();
         if let Ok(rss_kb) = proc_self_rss_kb() {
             eprintln!(
@@ -3242,8 +3229,8 @@ fn run_discovery_rows_chunked(
 
 /// Ask glibc to return free heap pages to the OS. No-op on non-glibc targets
 /// (musl exposes no malloc_trim; the cfg guard keeps the link clean). Calling
-/// this after clear_entry_caches() lets the cgroup RSS actually drop between
-/// chunks rather than accumulating via retained brk pages.
+/// this after drop(index) lets the cgroup RSS fall back to the base process
+/// footprint between chunks rather than accumulating via retained brk pages.
 fn heap_trim() {
     #[cfg(all(target_os = "linux", target_env = "gnu"))]
     {
