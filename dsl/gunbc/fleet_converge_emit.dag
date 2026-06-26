@@ -202,7 +202,7 @@ fn host_converge_doc(h: HostConverge) -> Doc {
 }
 
 fn host_dispatch_pattern(hosts: List<HostConverge>) -> String {
-  fold(hosts, init: "", f: (acc, h) => if acc == "" { h.identity } else { concat(acc, concat("|", h.identity)) })
+  fold(hosts, init: "", f: (acc, h) => if acc == "" { concat(acc, h.identity) } else { concat(acc, concat("|", h.identity)) })
 }
 
 fn converge_dispatch_preamble(hosts: List<HostConverge>) -> Doc {

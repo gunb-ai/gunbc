@@ -122,6 +122,11 @@ emit_sessions_membership() {
   record "$verdict"
 }
 
+# Per-host scope: runs only the section matching arg 1, else $(hostname -s), else ALL sections if unmatched.
+target_host="${1:-$(hostname -s 2>/dev/null || echo unknown)}"
+case "$target_host" in srv1|srv2) run_all=0;; *) run_all=1;; esac
+if [ "$run_all" = "1" ]; then echo "fleet-converge: host '$target_host' not in fleet; running ALL host sections (pass a host name as arg 1 to scope to one)" >&2; fi
+if [ "$run_all" = "1" ] || [ "$target_host" = "srv1" ]; then
 host_begin "srv1"
 converge_slice_property "srv1" "runner" "runner_slice_cap_bytes" "system-actions-runner.slice" "MemoryMax" "85899345920" "85899345920" "85899345920"
 converge_per_slot_cap "srv1" "runner" "per_slot_memory_max_bytes" "/etc/systemd/system/actions-runner@.service.d/20-fleet-width.conf" "actions-runner@srv1-*.service" "MemoryMax" "8589934592"
@@ -136,6 +141,8 @@ converge_slice_property "srv1" "sessions" "oom_pressure_limit_pct" "sessions.sli
 converge_slice_property "srv1" "sessions" "cpu_weight" "sessions.slice" "CPUWeight" "1000" "1000" "1000"
 emit_sessions_membership "srv1" "/sys/fs/cgroup/sessions.slice" "/sys/fs/cgroup/system.slice"
 host_summary "srv1"
+fi
+if [ "$run_all" = "1" ] || [ "$target_host" = "srv2" ]; then
 host_begin "srv2"
 converge_slice_property "srv2" "runner" "runner_slice_cap_bytes" "system-actions-runner.slice" "MemoryMax" "85899345920" "85899345920" "85899345920"
 converge_per_slot_cap "srv2" "runner" "per_slot_memory_max_bytes" "/etc/systemd/system/actions-runner@.service.d/20-fleet-width.conf" "actions-runner@srv2-*.service" "MemoryMax" "8589934592"
@@ -150,4 +157,5 @@ converge_slice_property "srv2" "sessions" "oom_pressure_limit_pct" "sessions.sli
 converge_slice_property "srv2" "sessions" "cpu_weight" "sessions.slice" "CPUWeight" "1000" "1000" "1000"
 emit_sessions_membership "srv2" "/sys/fs/cgroup/sessions.slice" "/sys/fs/cgroup/system.slice"
 host_summary "srv2"
+fi
 exit "$host_failed"

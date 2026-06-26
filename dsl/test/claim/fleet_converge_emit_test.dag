@@ -181,6 +181,13 @@ fn witness_drift_perturbed_desired_flips_emit() -> Bool {
     && has(s: perturbed_sh, p: "converge_runner_width \"srv1\" \"runner\" \"runner_count\" \"actions-runner@srv1-*.service\" \"99\"")
 }
 
+fn witness_per_host_dispatch_scoping() -> Bool {
+  let sh = fixture_sound_sh()
+  has(s: sh, p: "target_host=\"${1:-$(hostname -s 2>/dev/null || echo unknown)}\"")
+    && has(s: sh, p: "case \"$target_host\" in srv1) run_all=0;; *) run_all=1;; esac")
+    && has(s: sh, p: "if [ \"$run_all\" = \"1\" ] || [ \"$target_host\" = \"srv1\" ]; then")
+}
+
 fn witness_sessions_membership_line_emitted() -> Bool {
   let sh = fixture_sound_sh()
   has(s: sh, p: "emit_sessions_membership \"srv1\" \"/sys/fs/cgroup/sessions.slice\" \"/sys/fs/cgroup/system.slice\"")
@@ -202,4 +209,5 @@ test fn fleet_converge_emit_holds() -> Bool {
     && witness_emitted_bash_realizes_verdict()
     && witness_drift_perturbed_desired_flips_emit()
     && witness_sessions_membership_line_emitted()
+    && witness_per_host_dispatch_scoping()
 }
