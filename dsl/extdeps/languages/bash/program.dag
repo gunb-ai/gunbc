@@ -10,6 +10,11 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
+type EnvBinding {
+  name: String
+  value: ShellWord
+}
+
 type ShellWord
   = Lit { text: String }
   | VarRef { name: String }
@@ -38,7 +43,8 @@ type ShellStmt
   | AndOr { left: ShellStmt, op: AndOrOp, right: ShellStmt }
   | Pipe { left: ShellStmt, right: ShellStmt }
 
-  | EnvPrefixed { name: String, value: ShellWord, command: ShellStmt }
+  | EnvPrefixed { bindings: List<EnvBinding>, command: ShellStmt }
+  | EnvUnset { names: List<String> }
   | WithRedir { stmt: ShellStmt, redir: Redir }
 
   | Heredoc { path: ShellWord, delimiter: String, body: String }
@@ -117,6 +123,21 @@ fn join_stmts_semi(stmts: List<ShellStmt>) -> String {
   })
 }
 
+fn join_env_bindings(bs: List<EnvBinding>) -> String {
+  fold(bs, init: "", f: (acc, b) => {
+    let part = concat(b.name, concat("=", serialize_word(w: b.value)))
+    if acc == "" { part } else { concat(acc, concat(" ", part)) }
+  })
+}
+
+fn env_binding(name: String, value: ShellWord) -> EnvBinding {
+  EnvBinding { name: name, value: value }
+}
+
+fn env_unset(names: List<String>) -> ShellStmt {
+  EnvUnset { names: names }
+}
+
 fn serialize_stmt(s: ShellStmt) -> String {
   match s {
     Command { words: ws } => join_words(words: ws)
@@ -134,8 +155,10 @@ fn serialize_stmt(s: ShellStmt) -> String {
         concat(" ", concat(serialize_and_or_op(op: o), concat(" ", serialize_stmt(s: r)))))
     Pipe { left: l, right: r } =>
       concat(serialize_stmt(s: l), concat(" | ", serialize_stmt(s: r)))
-    EnvPrefixed { name: n, value: v, command: c } =>
-      concat(n, concat("=", concat(serialize_word(w: v), concat(" ", serialize_stmt(s: c)))))
+    EnvPrefixed { bindings: bs, command: c } =>
+      concat(join_env_bindings(bs: bs), concat(" ", serialize_stmt(s: c)))
+    EnvUnset { names: ns } =>
+      fold(ns, init: "unset", f: (acc, n) => concat(acc, concat(" ", n)))
     WithRedir { stmt: st, redir: rd } =>
       concat(serialize_stmt(s: st), concat(" ", serialize_redir(r: rd)))
     Exit { code: c } => concat("exit ", to_string(c))

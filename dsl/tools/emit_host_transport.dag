@@ -5,8 +5,9 @@ import std.measure { byte_size_count }
 import extdeps.languages.bash.program {
   ShellProgram, ShellStmt, ShellWord,
   Command, Assign, Heredoc, EnvPrefixed, Pipe,
+  EnvBinding,
   Lit, VarRef, Concat, CmdSubst,
-  lit, var_ref, command, assign, serialize_bash
+  lit, var_ref, command, assign, env_binding, serialize_bash
 }
 import tools.emit_host_fixtures {
   rust_mvp2_stdout_fixture_source,
