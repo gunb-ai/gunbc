@@ -1574,7 +1574,7 @@ fn eval_binop(op: &BinOp, left: Value, right: Value, ctx: &InterpContext) -> Int
                     return Ok(Value::Str(format!("{}{}", s, rs)));
                 }
                 if let Some(result) = free_monoid_to_vec(r) {
-                    if let Some(detail) = string_realization_straddle_detail(&result) {
+                    if let Some(detail) = string_realization_straddle_detail(r, &result) {
                         return Err(InterpError::StringRealizationStraddle { detail });
                     }
                     record_push(result.len());
@@ -3032,14 +3032,16 @@ fn eval_algebra_method(
             }
             if let Ok(items) = expect_list(&receiver, "concat") {
                 // Fail-closed backstop (DESIGN §5): a native String arg meeting a
-                // codepoint-bearing receiver here is the model↔realization
-                // straddle that grounding above did not dissolve — refuse loudly
-                // rather than push the `Str` into a mixed `[codepoint.., Str]`
-                // list. A homogeneous `List<String>` receiver carries no
-                // codepoint and passes.
+                // codepoint-bearing `Cons`-chain receiver here is the
+                // model↔realization straddle that grounding above did not
+                // dissolve — refuse loudly rather than push the `Str` into a
+                // mixed `[codepoint.., Str]` list. A `Value::List` receiver is a
+                // generic collection (`[1].append("ab")` is a legitimate
+                // two-element list), and a homogeneous `List<String>` carries no
+                // codepoint — both pass (the `orig` representation guard).
                 if args.iter().any(|a| matches!(a, Value::Str(_))) {
                     let snapshot: Vec<Value> = items.iter().cloned().collect();
-                    if let Some(detail) = string_realization_straddle_detail(&snapshot) {
+                    if let Some(detail) = string_realization_straddle_detail(&receiver, &snapshot) {
                         return Err(InterpError::StringRealizationStraddle { detail });
                     }
                 }
