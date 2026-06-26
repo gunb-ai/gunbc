@@ -10,8 +10,10 @@ use std::time::Instant;
 /// cgroup RSS reflects only live data rather than the allocator's retained free pool.
 /// Root: this one-process floor accumulates RSS monotonically across batches because glibc's
 /// arena allocator holds freed blocks without calling MADV_DONTNEED; the durable fix is
-/// per-batch process isolation so RSS is bounded structurally, but that is a bigger change
-/// (tracked as a follow-on to the resource-aware-scheduler lane).
+/// per-batch process isolation (each batch in its own process → heap bounded by construction,
+/// RSS resets on fork, no cross-batch accumulation possible). Dissolution trigger: the
+/// resource-aware-scheduler lane (ROADMAP.md line ~109, nodes A-D) moves toward per-Runnable
+/// cost tracking; per-batch process isolation is the natural boundary once that lands.
 /// `malloc_trim(0)` is a standard glibc extension; no-op on non-Linux.
 #[cfg(target_os = "linux")]
 fn release_heap() {
