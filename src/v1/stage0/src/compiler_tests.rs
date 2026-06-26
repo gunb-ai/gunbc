@@ -1975,6 +1975,10 @@ mod compiler_tests {
                 use std::rc::Rc;
                 type N = crate::v1_std_core::Node;
 
+                // floor binaries run from workspace root; discover_floor_corpus_rows
+                // resolves source-roots/scan-dirs relative to CWD.
+                std::env::set_current_dir(workspace_root()).expect("chdir to workspace root");
+
                 let source_roots = vec!["src/v2".to_string(), "dsl".to_string()];
                 let scan_dirs = vec!["dsl/test/claim".to_string()];
                 let rows = crate::cli_run::discover_floor_corpus_rows(&source_roots, &scan_dirs)
