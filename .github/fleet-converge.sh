@@ -79,7 +79,14 @@ converge_runner_width() {
       systemctl disable "$unit" >/dev/null 2>&1 || true
     done
   elif [ "$current" -lt "$5" ]; then
-    echo "width INCREASE $current->$5 needs slot provisioning (rsync from -01); run the install path -- converge only drains for DECREASE" >&2
+    # INCREASE: enable+start already-provisioned (registered) instances up to desired; idempotent, symmetric with the DECREASE drain.
+    # Unprovisioned slots fail to start (non-fatal) and surface as a drifted/absent width verdict below -> run the install path (Part B: secret-bearing config.sh register).
+    i=1
+    while [ "$i" -le "$5" ]; do
+      inst="actions-runner@$1-$(printf '%02d' "$i").service"
+      systemctl is-active --quiet "$inst" || systemctl enable --now "$inst" >/dev/null 2>&1 || true
+      i=$((i + 1))
+    done
   fi
   effective=$(systemctl list-units --type=service --state=active --no-legend "$4" 2>/dev/null | awk 'END{print NR}')
   effective=${effective:-0}

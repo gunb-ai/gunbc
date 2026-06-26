@@ -181,6 +181,13 @@ fn witness_drift_perturbed_desired_flips_emit() -> Bool {
     && has(s: perturbed_sh, p: "converge_runner_width \"srv1\" \"runner\" \"runner_count\" \"actions-runner@srv1-*.service\" \"99\"")
 }
 
+fn witness_runner_width_increase_enables_provisioned() -> Bool {
+  let sh = fixture_sound_sh()
+  has(s: sh, p: "inst=\"actions-runner@$1-$(printf '%02d' \"$i\").service\"")
+    && has(s: sh, p: "systemctl is-active --quiet \"$inst\" || systemctl enable --now \"$inst\" >/dev/null 2>&1 || true")
+    && !has(s: sh, p: "run the install path -- converge only drains for DECREASE")
+}
+
 fn witness_per_host_dispatch_scoping() -> Bool {
   let sh = fixture_sound_sh()
   has(s: sh, p: "target_host=\"${1:-$(hostname -s 2>/dev/null || echo unknown)}\"")
@@ -210,4 +217,5 @@ test fn fleet_converge_emit_holds() -> Bool {
     && witness_drift_perturbed_desired_flips_emit()
     && witness_sessions_membership_line_emitted()
     && witness_per_host_dispatch_scoping()
+    && witness_runner_width_increase_enables_provisioned()
 }
