@@ -250,7 +250,10 @@ pub fn encode(graph: &ResolvedGraph, source_indices: &SourceIndices) -> Interned
     }
 }
 
-fn rebuild_source_indices(entries: &[(String, u32)], nl_pool: &[Rc<NewlineIndex>]) -> SourceIndices {
+fn rebuild_source_indices(
+    entries: &[(String, u32)],
+    nl_pool: &[Rc<NewlineIndex>],
+) -> SourceIndices {
     entries
         .iter()
         .map(|(k, idx)| (k.clone(), nl_pool[*idx as usize].clone()))
