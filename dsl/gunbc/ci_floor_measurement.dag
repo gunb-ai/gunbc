@@ -18,10 +18,13 @@ type PerShardRssPeakMeasurement
   = PerShardRssPeakMeasured { per_shard_peak: ByteSize, sample_width: Int }
   | PerShardRssPeakUnmeasured
 
-data gunbc_ci_floor_per_shard_rss_measurement: PerShardRssPeakMeasurement = PerShardRssPeakUnmeasured
+data gunbc_ci_floor_per_shard_rss_measurement: PerShardRssPeakMeasurement = PerShardRssPeakMeasured {
+  per_shard_peak: byte_size(4294967296)
+  sample_width: 2
+}
 
 data gunbc_ci_floor_per_shard_rss_source: Disposition = Terminal {
-  reason: "ABSENT: no direct per-chunk isolation measurement exists yet. gunbc_ci_floor_per_shard_peak_rss_bytes() falls back to concurrent_memory_peak_per_share(gunbc_ci_floor_measured_peak), deriving the per-shard estimate from the pre-chunking whole-run cgroup peak. Update path: after the chunking fix lands and a full CI run completes, re-run with --measure-cgroup-peak to capture the actual single-shard peak in isolation; replace PerShardRssPeakUnmeasured with PerShardRssPeakMeasured { per_shard_peak: MEASURED, sample_width: 1 }."
+  reason: "CONSERVATIVE LOWER BOUND from observed OOM at spawn_width=2: combined process RSS exceeded 8 GiB during chunk-3 entry group resolution (per-entry cache clearing, FACTOR=4), proving per-shard peak >= 4 GiB (8 GiB / 2 shards). Setting per_shard_peak=4 GiB forces memory_aware_spawn_width=1 (floor(8*0.8/4)=1), preventing cross-shard RSS collision. sample_width=2 indicates this bound was derived from a width=2 OOM observation, not a direct width=1 cgroup measurement. Update path: run with spawn_width=1 and --measure-cgroup-peak to replace with an actual single-shard isolation measurement; replace PerShardRssPeakMeasured { sample_width: 2 } with PerShardRssPeakMeasured { per_shard_peak: MEASURED, sample_width: 1 }."
 }
 
 fn gunbc_ci_floor_per_shard_peak_rss_bytes() -> ByteSize {
