@@ -55,13 +55,13 @@ service cargo.Build {
   }
 
   operation Nextest {
-    input { extra_args: List<String> = [], build_jobs_args: List<String> = [] }
+    input { extra_args: List<String> = [], build_jobs_args: List<String> = [], test_threads_args: List<String> = [] }
     output {
       success: Bool from "exit_success"
       stdout: String from "stdout"
       stderr: String from "stderr"
     }
-    transport shell { argv: ["cargo", "nextest", "run", build_jobs_args, extra_args] }
+    transport shell { argv: ["cargo", "nextest", "run", build_jobs_args, test_threads_args, extra_args] }
     exit {
       0 => Unit
       100 => String "Tests failed"

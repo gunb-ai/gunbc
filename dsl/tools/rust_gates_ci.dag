@@ -3,7 +3,7 @@ module tools.rust_gates_ci
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.git
 import extdeps.cargo_build
-import extdeps.cargo_build { cargo_nextest_build_jobs_flag }
+import extdeps.cargo_build { cargo_nextest_build_jobs_flag, cargo_nextest_test_threads_flag }
 import tools.rust_stage0_gates { should_run_gates }
 import gunbc.ci_spec {
   gunbc_ci_spec,
@@ -11,7 +11,9 @@ import gunbc.ci_spec {
   DiffTwoDot,
 }
 import gunbc.ci_compile_jobs { ci_compile_jobs, compile_jobs_count_or_serial }
+import gunbc.ci_floor_measurement { gunbc_ci_floor_test_threads }
 import gunbc.fleet_intent { srv1_host }
+import gunbc.fleet_host_budget { gunbc_per_runner_memory_cap }
 import product.compute_fabric { compute_host_ram_bytes_total }
 
 fn rust_gate_build_jobs_args() -> List<String> {
@@ -20,6 +22,12 @@ fn rust_gate_build_jobs_args() -> List<String> {
     force_serial: false
   )
   cargo_nextest_build_jobs_flag(count: compile_jobs_count_or_serial(jobs: jobs))
+}
+
+fn rust_gate_test_threads_args() -> List<String> {
+  cargo_nextest_test_threads_flag(
+    count: gunbc_ci_floor_test_threads(memory_budget: gunbc_per_runner_memory_cap)
+  )
 }
 
 fn gate_diag(check: String, stdout: String, stderr: String) -> String {
@@ -43,7 +51,7 @@ fn rust_gate_reason(
 func run_gates() -> ProcessExit {
   fmt = cargo.Build.Fmt(extra_args: ["--all", "--check"])
   clippy = cargo.Build.Clippy(extra_args: ["--all-targets"], lint_args: ["-D", "warnings"])
-  test = cargo.Build.Nextest(extra_args: ["-p", "v1-compiler-tests"], build_jobs_args: rust_gate_build_jobs_args())
+  test = cargo.Build.Nextest(extra_args: ["-p", "v1-compiler-tests"], build_jobs_args: rust_gate_build_jobs_args(), test_threads_args: rust_gate_test_threads_args())
   return if fmt.success && clippy.success && test.success {
     ExitSuccess
   } else {
