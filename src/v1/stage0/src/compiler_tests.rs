@@ -2179,6 +2179,133 @@ mod compiler_tests {
         result.expect("profile_floor_typed_pig panicked");
     }
 
+    // THROWAWAY PROBE (do not commit): locates the per-shard pig by PHASE. Reproduces
+    // run_discovery_rows (resolve -> make_eval_context -> run_claim) over a sample of
+    // floor entries through one index, attributing process RSS (Linux /proc VmRSS/VmHWM)
+    // across the three phases. The phase with the dominant delta is the OOM lever's home;
+    // distinguishes resolver (AST, measured <1 GiB) from interpreter eval state.
+    #[test]
+    #[ignore]
+    fn profile_floor_eval_phase_rss() {
+        let result = std::thread::Builder::new()
+            .stack_size(512 * 1024 * 1024)
+            .spawn(|| {
+                use std::collections::HashMap;
+
+                fn rss_kb(field: &str) -> u64 {
+                    let s = std::fs::read_to_string("/proc/self/status").unwrap_or_default();
+                    for line in s.lines() {
+                        if let Some(rest) = line.strip_prefix(field) {
+                            return rest
+                                .split_whitespace()
+                                .next()
+                                .and_then(|v| v.parse().ok())
+                                .unwrap_or(0);
+                        }
+                    }
+                    0
+                }
+                let mb = |kb: u64| format!("{:.0} MiB", kb as f64 / 1024.0);
+
+                std::env::set_current_dir(workspace_root()).expect("chdir");
+                let source_roots = vec!["src/v2".to_string(), "dsl".to_string()];
+                let scan_dirs = vec!["dsl/test/claim".to_string()];
+                let rows = crate::cli_run::discover_floor_corpus_rows(&source_roots, &scan_dirs)
+                    .expect("discover");
+                // group functions by entry, preserve first-seen order
+                let mut order: Vec<String> = Vec::new();
+                let mut by_entry: HashMap<String, Vec<String>> = HashMap::new();
+                for r in &rows {
+                    by_entry
+                        .entry(r.entry.clone())
+                        .or_insert_with(|| {
+                            order.push(r.entry.clone());
+                            Vec::new()
+                        })
+                        .push(r.function.clone());
+                }
+                let step = (order.len() / 30).max(1);
+                let sample: Vec<String> = order.iter().step_by(step).cloned().collect();
+                eprintln!(
+                    "\n=== FLOOR EVAL-PHASE RSS PROBE (entries={}, sampling {}) ===",
+                    order.len(),
+                    sample.len()
+                );
+                eprintln!("  baseline VmRSS: {}", mb(rss_kb("VmRSS:")));
+
+                let index = crate::cli_run::build_multi_entry_index(&source_roots);
+                let (mut max_res, mut max_ctx, mut max_eval) = (0i64, 0i64, 0i64);
+                let (mut sum_res, mut sum_ctx, mut sum_eval) = (0i64, 0i64, 0i64);
+                let mut heaviest = (String::new(), 0i64, String::new());
+
+                for entry in &sample {
+                    let fns = by_entry.get(entry).cloned().unwrap_or_default();
+                    let r0 = rss_kb("VmRSS:") as i64;
+                    let resolved = crate::cli_run::resolve_entry_with_index_for_discovery_corpus(
+                        &index,
+                        entry.as_str(),
+                    );
+                    let (graph, si) = match resolved {
+                        Ok(g) => g,
+                        Err(_) => continue,
+                    };
+                    let r1 = rss_kb("VmRSS:") as i64;
+                    let ctx = crate::cli_run::make_eval_context(
+                        graph.as_ref(),
+                        si,
+                        crate::v1_interpreter::ExecutionMode::Hermetic,
+                    );
+                    let r2 = rss_kb("VmRSS:") as i64;
+                    for f in &fns {
+                        let _ = crate::cli_run::run_claim(&ctx, f.as_str());
+                    }
+                    let r3 = rss_kb("VmRSS:") as i64;
+                    drop(ctx);
+                    drop(graph);
+
+                    let (dr, dc, de) = (r1 - r0, r2 - r1, r3 - r2);
+                    sum_res += dr;
+                    sum_ctx += dc;
+                    sum_eval += de;
+                    max_res = max_res.max(dr);
+                    max_ctx = max_ctx.max(dc);
+                    max_eval = max_eval.max(de);
+                    let entry_total = dr + dc + de;
+                    if entry_total > heaviest.1 {
+                        heaviest = (entry.clone(), entry_total, format!("res={} ctx={} eval={}", dr, dc, de));
+                    }
+                    if dr.abs() > 200_000 || dc.abs() > 200_000 || de.abs() > 200_000 {
+                        eprintln!(
+                            "  [{:>4} fns] res {:+>6} | ctx {:+>6} | eval {:+>6} (MiB/1024kB)  {}",
+                            fns.len(),
+                            dr / 1024,
+                            dc / 1024,
+                            de / 1024,
+                            entry
+                        );
+                    }
+                }
+
+                let kb_mib = |kb: i64| format!("{:.0} MiB", kb as f64 / 1024.0);
+                eprintln!("\n  PHASE ATTRIBUTION (RSS delta, summed over sample):");
+                eprintln!("    resolve : sum {}  max {}", kb_mib(sum_res), kb_mib(max_res));
+                eprintln!("    ctx-build: sum {}  max {}", kb_mib(sum_ctx), kb_mib(max_ctx));
+                eprintln!("    eval    : sum {}  max {}", kb_mib(sum_eval), kb_mib(max_eval));
+                eprintln!("    heaviest entry: {} (total {}, {})", heaviest.0, kb_mib(heaviest.1), heaviest.2);
+                eprintln!(
+                    "\n  final VmRSS: {}   peak VmHWM: {}",
+                    mb(rss_kb("VmRSS:")),
+                    mb(rss_kb("VmHWM:"))
+                );
+                eprintln!("  (monotonic VmRSS growth across entries => accumulating resolver caches;");
+                eprintln!("   eval-delta dominates => interpreter eval state is the pig.)");
+                eprintln!("=== DONE ===\n");
+            })
+            .expect("spawn")
+            .join();
+        result.expect("profile_floor_eval_phase_rss panicked");
+    }
+
     #[test]
     fn contracts_sidecar_wired_into_emit_scope() {
         let result = std::thread::Builder::new()
