@@ -27,6 +27,10 @@ data gunbc_ci_floor_per_shard_rss_source: Disposition = Terminal {
   reason: "Interim reground: prior value 2.1GiB (CI run 27893441091, VmHWM=8.4GiB/4) caused exit-137 at width=3 (CI run 28215122136); reground to 2.5GiB, then 2.5GiB also caused exit-137 at width=2 (CI run 28215640088). Root: VmHWM measures claim_executor self-RSS only; the 8GiB cgroup cap enforces ALL RSS including child cargo/rustc processes spawned by emit_host_gate. Proven lower bound: per_shard (cgroup footprint) > (8GiB x 4/5) / 2 = 3.2GiB. Set to 3758096384 (3.5GiB = 3.5x2^30); forces width=1 (floor(8GiB x 4/5 / 3.5GiB) = floor(1.83) = 1). Fresh measurement path: cgroup-side per-shard slope once emit_host_gate is serialized in its own batch (so child rustc peak does not overlap discovery shards)."
 }
 
+data gunbc_ci_per_shard_unmeasured_arm_disposition: Disposition = Terminal {
+  reason: "FAIL-OPEN: PerShardRssPeakUnmeasured falls back to concurrent_memory_peak_per_share(gunbc_ci_floor_measured_peak) = ~2.7GiB, which NOW UNDER-ESTIMATES the real cgroup footprint (proven >3.2GiB by OOM at width=2, CI run 28215640088). If this arm were taken it would yield spawn_width=2 -> OOM. Currently dead (measured arm is always taken via gunbc_ci_floor_per_shard_rss_measurement = PerShardRssPeakMeasured); the arm becomes live only if the data is reset to PerShardRssPeakUnmeasured. Fix = re-measure per_shard cgroup-side and update gunbc_ci_floor_per_shard_rss_measurement, or update gunbc_ci_floor_measured_peak from a fresh cgroup-peak measurement at a known width."
+}
+
 fn gunbc_ci_floor_per_shard_peak_rss_bytes() -> ByteSize {
   match gunbc_ci_floor_per_shard_rss_measurement {
     PerShardRssPeakMeasured { per_shard_peak: p, sample_width: _ } => p
