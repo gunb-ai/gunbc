@@ -28,8 +28,8 @@ use crate::v1_std_core::{
 use serde::Serialize;
 
 use crate::resolved_graph_cache::{
-    lookup as cross_process_lookup, resolved_graph_cache_root_from_env,
-    subject_digest_for_closure, write as cross_process_write, CacheLookupResult,
+    lookup as cross_process_lookup, resolved_graph_cache_root_from_env, subject_digest_for_closure,
+    write as cross_process_write, CacheLookupResult,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
