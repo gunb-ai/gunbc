@@ -3031,6 +3031,18 @@ fn eval_algebra_method(
                 }
             }
             if let Ok(items) = expect_list(&receiver, "concat") {
+                // Fail-closed backstop (DESIGN §5): a native String arg meeting a
+                // codepoint-bearing receiver here is the model↔realization
+                // straddle that grounding above did not dissolve — refuse loudly
+                // rather than push the `Str` into a mixed `[codepoint.., Str]`
+                // list. A homogeneous `List<String>` receiver carries no
+                // codepoint and passes.
+                if args.iter().any(|a| matches!(a, Value::Str(_))) {
+                    let snapshot: Vec<Value> = items.iter().cloned().collect();
+                    if let Some(detail) = string_realization_straddle_detail(&snapshot) {
+                        return Err(InterpError::StringRealizationStraddle { detail });
+                    }
+                }
                 let mut result = (*items).clone();
                 let mut merged_items = 0usize;
                 let mut copied_items = 0usize;
