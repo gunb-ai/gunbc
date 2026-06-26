@@ -1765,6 +1765,97 @@ mod compiler_tests {
         result.expect("profile_reconcile_per_module panicked");
     }
 
+    // Denominate the cache BENEFIT (DESIGN §6): with a FRESH cache dir, measure per heavy entry
+    // the MISS resolve (parse+infer+serialize-to_vec+write = the write-side transient + cold time)
+    // vs the HIT resolve (read_to_end+from_slice = the read-side transient + load time), and the
+    // resolve-time SAVED per hit. Confirms write-side OOM symmetry + sizes the warm-dev benefit.
+    #[test]
+    #[ignore]
+    fn profile_cache_benefit() {
+        let result = std::thread::Builder::new()
+            .stack_size(512 * 1024 * 1024)
+            .spawn(|| {
+                use std::time::Instant;
+                fn rss_kb(field: &str) -> u64 {
+                    let s = std::fs::read_to_string("/proc/self/status").unwrap_or_default();
+                    for line in s.lines() {
+                        if let Some(rest) = line.strip_prefix(field) {
+                            return rest
+                                .split_whitespace()
+                                .next()
+                                .and_then(|v| v.parse().ok())
+                                .unwrap_or(0);
+                        }
+                    }
+                    0
+                }
+                fn reset_peak() {
+                    let _ = std::fs::write("/proc/self/clear_refs", "5\n");
+                }
+                let m = |kb: i64| format!("{:>6} MiB", kb / 1024);
+
+                std::env::set_current_dir(workspace_root()).expect("chdir");
+                // fresh, isolated cache dir so we control MISS (1st resolve) then HIT (2nd resolve)
+                let tmp = format!("/tmp/gunbc-rg-cache-probe-{}", std::process::id());
+                let _ = std::fs::remove_dir_all(&tmp);
+                std::env::set_var("GUNBC_RESOLVED_GRAPH_CACHE_DIR", &tmp);
+
+                let source_roots = vec!["src/v2".to_string(), "dsl".to_string()];
+                let index = crate::cli_run::build_multi_entry_index(&source_roots);
+                let heavy = [
+                    "src/v2/lens/affected_set/sg_claims_test.dag",
+                    "dsl/test/claim/generated_artifact_drift_test.dag",
+                    "src/v2/lens/affected_set/edit_locus_resolver_test.dag",
+                    "src/v2/compiler/manual/typescript_import_pipeline_test.dag",
+                    "src/v2/lens/complexity/nested_test.dag",
+                ];
+                eprintln!("\n=== CACHE BENEFIT (fresh dir, MISS=write vs HIT=read) ===");
+                eprintln!(
+                    "  {:<48} {:>10} {:>10} {:>9} {:>9} {:>9}",
+                    "entry", "miss-peak", "hit-peak", "miss-ms", "hit-ms", "saved-ms"
+                );
+                for entry in heavy {
+                    reset_peak();
+                    let r0 = rss_kb("VmRSS:") as i64;
+                    let t = Instant::now();
+                    let miss =
+                        crate::cli_run::resolve_entry_with_index_for_discovery_corpus(&index, entry);
+                    let miss_ms = t.elapsed().as_millis();
+                    let miss_peak = rss_kb("VmHWM:") as i64 - r0;
+                    if miss.is_err() {
+                        eprintln!("  {entry}: MISS ERR");
+                        continue;
+                    }
+                    drop(miss);
+
+                    reset_peak();
+                    let r1 = rss_kb("VmRSS:") as i64;
+                    let t2 = Instant::now();
+                    let hit =
+                        crate::cli_run::resolve_entry_with_index_for_discovery_corpus(&index, entry);
+                    let hit_ms = t2.elapsed().as_millis();
+                    let hit_peak = rss_kb("VmHWM:") as i64 - r1;
+                    drop(hit);
+
+                    let short = entry.rsplit('/').next().unwrap_or(entry);
+                    eprintln!(
+                        "  {:<48} {:>10} {:>10} {:>7}ms {:>7}ms {:>7}ms",
+                        short,
+                        m(miss_peak),
+                        m(hit_peak),
+                        miss_ms,
+                        hit_ms,
+                        miss_ms as i128 - hit_ms as i128
+                    );
+                }
+                let _ = std::fs::remove_dir_all(&tmp);
+                eprintln!("=== DONE ===\n");
+            })
+            .expect("spawn")
+            .join();
+        result.expect("profile_cache_benefit panicked");
+    }
+
     #[test]
     fn contracts_sidecar_wired_into_emit_scope() {
         let result = std::thread::Builder::new()
