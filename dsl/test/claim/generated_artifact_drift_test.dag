@@ -3,7 +3,7 @@ module test.claim.generated_artifact_drift
 
 import gunbc.generated_artifact {
   GeneratedArtifact, CiYamlArtifact, GitignoreArtifact, RoadmapArtifact, DesignArtifact, RunnerDeployArtifact, FleetConvergeArtifact, AutoinstallUserDataArtifact, ProxyDhcpDnsmasqArtifact, PlanArtifact,
-  RepoConsumer, GitProtocol, GithubActionsWorkflow, ProjectDocumentation,
+  RepoConsumer, GitProtocol, GithubActionsWorkflow, ProjectDocumentation, HostReconciler,
   CommitPolicy, CommitRequired, NotCommitted,
   generated_artifact_registry,
   committed_generated_artifacts, artifact_path, artifact_commit_policy, artifact_is_committed, registry_contains
@@ -33,14 +33,15 @@ fn witness_all_known_committed() -> Bool {
     && artifact_is_committed(a: RoadmapArtifact)
     && artifact_is_committed(a: DesignArtifact)
     && artifact_is_committed(a: PlanArtifact { plan: idea_machine_plan })
+    && artifact_is_committed(a: FleetConvergeArtifact)
     && !artifact_is_committed(a: RunnerDeployArtifact)
-    && !artifact_is_committed(a: FleetConvergeArtifact)
     && !artifact_is_committed(a: AutoinstallUserDataArtifact { spec: srv3_autoinstall_spec })
     && !artifact_is_committed(a: ProxyDhcpDnsmasqArtifact { spec: srv3_install_server_spec })
     && !path_is_ignored(path: ".github/workflows/ci.yml")
     && !path_is_ignored(path: ".gitignore")
     && !path_is_ignored(path: "ROADMAP.md")
     && !path_is_ignored(path: "DESIGN.md")
+    && !path_is_ignored(path: ".github/fleet-converge.sh")
     && !path_is_ignored(path: "docs/plans/idea-machine.md")
 }
 
@@ -50,7 +51,6 @@ fn witness_ignored_paths_excluded() -> Bool {
     && path_is_ignored(path: "src/scratch.swp")
     && path_is_ignored(path: "node_modules/pkg/index.js")
     && path_is_ignored(path: ".github/fleet-runner-deploy.manifest")
-    && path_is_ignored(path: ".github/fleet-converge.sh")
     && path_is_ignored(path: "provisioning/srv3/user-data")
     && path_is_ignored(path: "provisioning/srv3/dnsmasq.conf")
 }
@@ -71,8 +71,8 @@ fn witness_registry_complete() -> Bool {
     && artifact_is_committed(a: RoadmapArtifact)
     && artifact_is_committed(a: DesignArtifact)
     && artifact_is_committed(a: PlanArtifact { plan: idea_machine_plan })
+    && artifact_is_committed(a: FleetConvergeArtifact)
     && !artifact_is_committed(a: RunnerDeployArtifact)
-    && !artifact_is_committed(a: FleetConvergeArtifact)
     && !artifact_is_committed(a: AutoinstallUserDataArtifact { spec: srv3_autoinstall_spec })
     && !artifact_is_committed(a: ProxyDhcpDnsmasqArtifact { spec: srv3_install_server_spec })
 }
@@ -83,6 +83,7 @@ fn consumer_is(a: GeneratedArtifact, expected: RepoConsumer) -> Bool {
       GitProtocol => match expected { GitProtocol => true  _ => false }
       GithubActionsWorkflow => match expected { GithubActionsWorkflow => true  _ => false }
       ProjectDocumentation => match expected { ProjectDocumentation => true  _ => false }
+      HostReconciler => match expected { HostReconciler => true  _ => false }
     }
     NotCommitted => false
   }
@@ -94,8 +95,8 @@ fn witness_commit_policy_reasons() -> Bool {
     && consumer_is(a: RoadmapArtifact, expected: ProjectDocumentation)
     && consumer_is(a: DesignArtifact, expected: ProjectDocumentation)
     && consumer_is(a: PlanArtifact { plan: idea_machine_plan }, expected: ProjectDocumentation)
+    && consumer_is(a: FleetConvergeArtifact, expected: HostReconciler)
     && match artifact_commit_policy(a: RunnerDeployArtifact) { NotCommitted => true  _ => false }
-    && match artifact_commit_policy(a: FleetConvergeArtifact) { NotCommitted => true  _ => false }
     && match artifact_commit_policy(a: AutoinstallUserDataArtifact { spec: srv3_autoinstall_spec }) { NotCommitted => true  _ => false }
     && match artifact_commit_policy(a: ProxyDhcpDnsmasqArtifact { spec: srv3_install_server_spec }) { NotCommitted => true  _ => false }
 }
