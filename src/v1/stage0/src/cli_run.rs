@@ -3227,14 +3227,7 @@ fn run_discovery_rows_chunked(
         // (monotonic, content-addressed); source_files is the static path index.
         index.clear_entry_caches();
         // Ask glibc to return free pages to the OS so the cgroup RSS actually drops.
-        #[cfg(target_os = "linux")]
-        extern "C" {
-            fn malloc_trim(pad: usize) -> i32;
-        }
-        #[cfg(target_os = "linux")]
-        unsafe {
-            malloc_trim(0);
-        }
+        heap_trim();
         if let Ok(rss_kb) = proc_self_rss_kb() {
             eprintln!(
                 "run_discovery_rows_chunked: after chunk {}/{} rss={}MiB",
@@ -3245,6 +3238,22 @@ fn run_discovery_rows_chunked(
         }
     }
     Ok(merge_discovery_summaries(summaries))
+}
+
+/// Ask glibc to return free heap pages to the OS (Linux only). On non-Linux
+/// targets this is a no-op. Calling this after clear_entry_caches() lets the
+/// cgroup RSS actually drop between chunks rather than accumulating via retained
+/// brk pages.
+fn heap_trim() {
+    #[cfg(target_os = "linux")]
+    {
+        extern "C" {
+            fn malloc_trim(pad: usize) -> i32;
+        }
+        unsafe {
+            malloc_trim(0);
+        }
+    }
 }
 
 fn proc_self_rss_kb() -> Result<u64, ()> {
