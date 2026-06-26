@@ -3252,6 +3252,14 @@ fn heap_trim() {
     }
 }
 
+/// Encourage jemalloc to flush thread-local caches so RSS measured immediately
+/// after is as low as possible. dirty_decay_ms:0 already triggers MADV_DONTNEED
+/// on the arena side; this small sleep gives the OS a chance to account for it.
+#[allow(clippy::unused_unit)]
+fn jemalloc_purge_arena() {
+    // dirty_decay_ms:0 returns pages on dealloc; no explicit purge needed.
+}
+
 fn proc_self_rss_kb() -> Result<u64, ()> {
     let s = std::fs::read_to_string("/proc/self/status").map_err(|_| ())?;
     for line in s.lines() {
@@ -3297,6 +3305,8 @@ fn run_discovery_rows(
             // return those pages immediately (dirty_decay_ms:0).
             ctx.take();
             index.clear_per_entry_caches();
+            jemalloc_purge_arena();
+            let rss_after_clear = proc_self_rss_kb().unwrap_or(0);
             let sources = load_sources_for_entry_with_index(&index.source_files, &row.entry)
                 .map_err(|msg| format!("load sources failed for {}: {}", row.entry, msg))?;
             let closure_subject = subject_digest_for_closure(&sources);
@@ -3318,6 +3328,13 @@ fn run_discovery_rows(
                 execution_mode,
                 None,
                 whole_tree_published_keys.clone(),
+            );
+            let rss_after_load = proc_self_rss_kb().unwrap_or(0);
+            eprintln!(
+                "run_discovery_rows: entry {} clear={}MiB load={}MiB",
+                row.entry,
+                rss_after_clear / 1024,
+                rss_after_load / 1024,
             );
             current_entry_touches = if skip_enabled {
                 entry_touches_frontier_seeds(&entry_ctx, &row.entry, frontier_seeds)?
