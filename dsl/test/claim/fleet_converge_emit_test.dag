@@ -140,7 +140,7 @@ fn witness_per_session_is_verify_only() -> Bool {
 fn witness_oom_pressure_kill_desired_true() -> Bool {
   let sh = fixture_sound_sh()
   has(s: sh, p: "converge_slice_property \"srv1\" \"sessions\" \"oom_pressure_kill\" \"sessions.slice\" \"ManagedOOMMemoryPressure\" \"kill\" \"kill\" \"true\"")
-    && has(s: sh, p: "converge_slice_property \"srv1\" \"sessions\" \"oom_pressure_limit_pct\" \"sessions.slice\" \"ManagedOOMMemoryPressureLimit\" \"60%\" \"60%\" \"60\"")
+    && has(s: sh, p: "converge_slice_property \"srv1\" \"sessions\" \"oom_pressure_limit_pct\" \"sessions.slice\" \"ManagedOOMMemoryPressureLimit\" \"60%\" \"2576980377\" \"60\"")
     && has(s: sh, p: "converge_slice_property \"srv1\" \"sessions\" \"slice_max_bytes\" \"sessions.slice\" \"MemoryMax\" \"21474836480\" \"21474836480\" \"21474836480\"")
 }
 
@@ -186,6 +186,7 @@ fn witness_sessions_membership_line_emitted() -> Bool {
   has(s: sh, p: "emit_sessions_membership \"srv1\" \"/sys/fs/cgroup/sessions.slice\" \"/sys/fs/cgroup/system.slice\"")
     && has(s: sh, p: "printf 'converge-receipt host=%s slice=sessions sessions_in_slice=%s sessions_legacy_flat=%s verdict=%s")
     && has(s: sh, p: "if [ \"$in_slice\" -gt 0 ]; then verdict=converged; else verdict=absent; fi")
+    && has(s: sh, p: "ls -d \"$2\"/docker-*.scope 2>/dev/null | wc -l | tr -d ' ' || true")
 }
 
 test fn fleet_converge_emit_holds() -> Bool {
