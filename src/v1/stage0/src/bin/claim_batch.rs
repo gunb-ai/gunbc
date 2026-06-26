@@ -476,10 +476,6 @@ fn run() -> Result<ExitCode, ExitCode> {
     );
 
     let index = build_multi_entry_index(&source_roots);
-    eprintln!(
-        "[phase-peak] after build_multi_entry_index: {:?} kB",
-        peak_rss_bytes().map(|b| b / 1024)
-    );
 
     let whole_tree_published_keys = match precompute_whole_tree_published_mock_keys(&source_roots) {
         Ok(keys) => {
@@ -516,15 +512,7 @@ fn run() -> Result<ExitCode, ExitCode> {
             group.entry,
             group.functions.len()
         );
-        eprintln!(
-            "[phase-peak] before resolve: {:?} kB",
-            peak_rss_bytes().map(|b| b / 1024)
-        );
         let (graph, source_indices) = resolve_timed(&index, &group.entry, &mut timings)?;
-        eprintln!(
-            "[phase-peak] after resolve: {:?} kB",
-            peak_rss_bytes().map(|b| b / 1024)
-        );
         let closure_subject = closure_subject_for_entry(&index, &group.entry).map_err(|e| {
             eprintln!("claim_batch: closure subject for {}: {e}", group.entry);
             ExitCode::from(1)
