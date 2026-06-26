@@ -142,3 +142,4 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
 
 #[cfg(test)]
 mod compiler_tests;
+
