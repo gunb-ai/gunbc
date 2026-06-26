@@ -1,34 +1,53 @@
 module tools.build_step_transport
 
 import extdeps.shell
-import extdeps.languages.bash.program { var_ref }
-import tools.build_step { BuildArtifact, verifications_script }
+import extdeps.languages.bash.program {
+  ShellProgram,
+  If, Subshell, AndOr, AndThen, Exit, Heredoc,
+  Concat, CmdSubst,
+  assign, command, lit, var_ref, serialize_bash
+}
+import tools.build_step { BuildArtifact, VarPath, emit_verifications }
 
 fn probe_var_artifact() -> BuildArtifact {
   BuildArtifact {
-    path: var_ref(name: "PROBE_BIN"),
+    path: VarPath { var_name: "PROBE_BIN" },
     name: "probe_bin"
   }
 }
 
-fn probe_verification_script() -> String {
-  verifications_script(produces: [probe_var_artifact()])
-}
-
 fn corruption_probe_zero_byte_harness() -> String {
-  let verify = probe_verification_script()
-  concat(
-    concat("TMPDIR=$(mktemp -d)\n", concat("PROBE_BIN=\"$TMPDIR/probe_bin\"\n", "touch \"$PROBE_BIN\" && chmod +x \"$PROBE_BIN\"\n")),
-    concat("! (\n", concat(verify, "\n)\n"))
-  )
+  serialize_bash(p: ShellProgram {
+    set_e: false,
+    statements: [
+      assign(name: "TMPDIR", value: CmdSubst { body: command(words: [lit(text: "mktemp"), lit(text: "-d")]) }),
+      assign(name: "PROBE_BIN", value: Concat { parts: [var_ref(name: "TMPDIR"), lit(text: "/probe_bin")] }),
+      AndOr {
+        left: command(words: [lit(text: "touch"), var_ref(name: "PROBE_BIN")]),
+        op: AndThen,
+        right: command(words: [lit(text: "chmod"), lit(text: "+x"), var_ref(name: "PROBE_BIN")])
+      },
+      If {
+        cond: Subshell { body: emit_verifications(produces: [probe_var_artifact()]) },
+        then: [Exit { code: 1 }]
+      }
+    ]
+  })
 }
 
 fn corruption_probe_nonempty_harness() -> String {
-  let verify = probe_verification_script()
-  concat(
-    concat("set -e\n", concat("TMPDIR=$(mktemp -d)\n", concat("PROBE_BIN=\"$TMPDIR/probe_bin\"\n", "printf 'x' > \"$PROBE_BIN\" && chmod +x \"$PROBE_BIN\"\n"))),
-    verify
-  )
+  serialize_bash(p: ShellProgram {
+    set_e: true,
+    statements: concat(
+      [
+        assign(name: "TMPDIR", value: CmdSubst { body: command(words: [lit(text: "mktemp"), lit(text: "-d")]) }),
+        assign(name: "PROBE_BIN", value: Concat { parts: [var_ref(name: "TMPDIR"), lit(text: "/probe_bin")] }),
+        Heredoc { path: var_ref(name: "PROBE_BIN"), delimiter: "PROBE_CONTENT", body: "x" },
+        command(words: [lit(text: "chmod"), lit(text: "+x"), var_ref(name: "PROBE_BIN")])
+      ],
+      emit_verifications(produces: [probe_var_artifact()])
+    )
+  })
 }
 
 fn witness_zero_byte_artifact_rejected_by_execution() -> Bool {

@@ -4,11 +4,22 @@ import extdeps.languages.bash.program {
   ShellStmt, ShellWord, ShellProgram,
   Command, If, Exit, WithRedir,
   Lit, Concat, StdoutToStderr,
-  lit, command, serialize_bash
+  lit, var_ref, command, serialize_bash
+}
+
+type PathSpec
+  = VarPath { var_name: String }
+  | VarPlusLitPath { var_name: String, suffix: String }
+
+fn path_spec_to_word(ps: PathSpec) -> ShellWord {
+  match ps {
+    VarPath { var_name: n } => var_ref(name: n)
+    VarPlusLitPath { var_name: v, suffix: s } => Concat { parts: [var_ref(name: v), lit(text: s)] }
+  }
 }
 
 type BuildArtifact {
-  path: ShellWord
+  path: PathSpec
 
   name: String
 }
@@ -21,12 +32,13 @@ fn build_verify_echo(msg: ShellWord) -> ShellStmt {
 }
 
 fn verify_artifact_exists(art: BuildArtifact) -> ShellStmt {
+  let w = path_spec_to_word(ps: art.path)
   If {
-    cond: command(words: [lit(text: "["), lit(text: "!"), lit(text: "-x"), art.path, lit(text: "]")]),
+    cond: command(words: [lit(text: "["), lit(text: "!"), lit(text: "-x"), w, lit(text: "]")]),
     then: [
       build_verify_echo(msg: Concat { parts: [
         lit(text: concat("::error::build verification: declared artifact '", concat(art.name, "' absent or not executable after a 'successful' build (sccache/cache corruption — DESIGN §5 fail-open); failing closed: "))),
-        art.path
+        w
       ] }),
       Exit { code: 1 }
     ]
@@ -34,12 +46,13 @@ fn verify_artifact_exists(art: BuildArtifact) -> ShellStmt {
 }
 
 fn verify_artifact_nonempty(art: BuildArtifact) -> ShellStmt {
+  let w = path_spec_to_word(ps: art.path)
   If {
-    cond: command(words: [lit(text: "["), lit(text: "!"), lit(text: "-s"), art.path, lit(text: "]")]),
+    cond: command(words: [lit(text: "["), lit(text: "!"), lit(text: "-s"), w, lit(text: "]")]),
     then: [
       build_verify_echo(msg: Concat { parts: [
         lit(text: concat("::error::build verification: declared artifact '", concat(art.name, "' is zero-byte after a 'successful' build (sccache served a truncated/empty cached artifact — DESIGN §5 fail-open); failing closed: "))),
-        art.path
+        w
       ] }),
       Exit { code: 1 }
     ]

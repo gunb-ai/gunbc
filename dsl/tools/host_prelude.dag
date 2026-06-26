@@ -9,7 +9,7 @@ import extdeps.languages.bash.program {
   AndThen, OrElse, StderrToNull,
   lit, var_ref, command, assign, test_not_executable
 }
-import tools.build_step { BuildArtifact, emit_verifications }
+import tools.build_step { BuildArtifact, VarPath, emit_verifications }
 
 fn assign_root_stmt() -> ShellStmt {
   assign(name: "ROOT", value: CmdSubst { body: AndOr {
@@ -54,7 +54,7 @@ fn ensure_bin_built_and_verified(var_name: String, bin_name: String) -> List<She
       build_bin_if_absent_stmt(bin_path: bin, root: root, bin_name: bin_name)
     ],
     emit_verifications(
-      produces: [BuildArtifact { path: bin, name: bin_name }]
+      produces: [BuildArtifact { path: VarPath { var_name: var_name }, name: bin_name }]
     )
   )
 }
