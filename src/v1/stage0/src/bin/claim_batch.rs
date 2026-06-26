@@ -19,48 +19,6 @@ use v1_compiler::v1_std_core::NewlineIndex;
 
 type ResolvedEntry = (Rc<ResolvedGraph>, Rc<HashMap<String, Rc<NewlineIndex>>>);
 
-mod allocdbg {
-    use std::alloc::{GlobalAlloc, Layout, System};
-    use std::sync::atomic::{AtomicUsize, Ordering};
-    static MAX_SEEN: AtomicUsize = AtomicUsize::new(64 * 1024 * 1024);
-    thread_local! { static IN_HOOK: std::cell::Cell<bool> = const { std::cell::Cell::new(false) }; }
-    pub struct TrackingAlloc;
-    fn report(size: usize, kind: &str) {
-        let prev = MAX_SEEN.fetch_max(size, Ordering::Relaxed);
-        if size > prev {
-            let already = IN_HOOK.with(|f| {
-                let v = f.get();
-                f.set(true);
-                v
-            });
-            if !already {
-                let bt = std::backtrace::Backtrace::force_capture();
-                eprintln!("[allocdbg] {} of {} MB\n{}", kind, size / 1048576, bt);
-                IN_HOOK.with(|f| f.set(false));
-            }
-        }
-    }
-    unsafe impl GlobalAlloc for TrackingAlloc {
-        unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-            if layout.size() >= 64 * 1024 * 1024 {
-                report(layout.size(), "alloc");
-            }
-            System.alloc(layout)
-        }
-        unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-            System.dealloc(ptr, layout)
-        }
-        unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
-            if new_size >= 64 * 1024 * 1024 {
-                report(new_size, "realloc");
-            }
-            System.realloc(ptr, layout, new_size)
-        }
-    }
-}
-#[global_allocator]
-static GLOBAL_ALLOC: allocdbg::TrackingAlloc = allocdbg::TrackingAlloc;
-
 #[derive(Default)]
 struct ResolveTimings {
     resolves: u64,
