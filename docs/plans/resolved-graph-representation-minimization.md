@@ -66,27 +66,42 @@ deserialize.
 
 Two layers, both deferred:
 
-- **Cache-boundary intern (B).** Content-addressed pool of unique
-  bindings/indices/funcs, modules reference by index; rebuild one `Rc` per pool
-  entry on load (sharing restored). Shrinks the artifact ~211 → ~75 MB. **Attempted
-  and reverted in this window**: a working interned encoder/decoder shrank the
-  artifact to 124 MB and round-tripped value-faithfully, but the on-disk pool
-  order is sensitive to in-RAM HashMap iteration order; even sorting pools by
-  content hash, the DESIGN §5 `warm==cold` byte-identity purity oracle
-  (`cache_purity_oracle_test`) is not yet satisfied because the per-value hash is
-  taken over `serde_json::to_vec` of values that themselves contain HashMaps. A
-  clean landing needs a canonical (key-sorted) value serialization for the pool
-  hash. Deferred to its own change with the purity oracle as the guard. It buys
-  disk size, not the floor RSS (that was the precompute), so it is not urgent.
-- **Source-side de-merge (A).** Stop materializing the closure in
-  `build_type_env` (`04_infer.dag`): env = local bindings + references to imports'
-  envs (scope chain); `lookup_*` walk the chain. Removes duplication on every
-  path and subsumes B. Touches a **load-bearing pipeline file** → model-first,
-  escalate if the brief predates the relevant model PR.
+- **Cache-boundary intern (B). LANDED — PR #5834** (`tidy-wren-707`, off main).
+  Content-addressed pool of unique bindings/indices/inductive-fields/intern-tables/
+  func-sigs, modules reference by `u32` index; `decode()` rebuilds one `Rc` per pool
+  entry so the cache-HIT structural sharing (which `serde`'s `rc` shatters) is
+  restored — verified by `Rc::ptr_eq` holding across modules. Measured **147.1 → 63.7
+  MB** (0.433 ratio, 57% cut) on the 28-module `cache_layer_planner_test` witness, by
+  execution (`resolved_graph_intern_test`). The earlier revert (a value-faithful encoder
+  that still failed the DESIGN §5 `warm==cold` oracle because its per-value hash was over
+  `serde_json::to_vec` of HashMap-containing values) was unblocked by making the pool
+  dedup **key** canonical: `serde_json::to_value` → sorted `BTreeMap` → bytes-identity
+  hash. The oracle compares graph *values*, not on-disk bytes, so a value-faithful decode
+  round-trips byte-identical and the disk format is free to change underneath — all 4
+  `cache_purity_oracle_test` pass single-threaded. Mechanism: hand-written
+  `src/v1/stage0/src/resolved_graph_intern.rs` (HAND_MAINTAINED, not emitted),
+  `resolved_graph_cache.rs` `FORMAT_VERSION` 1→2. It buys disk size and lighter
+  cache-HIT reads (helps sccache memory pressure), not the floor RSS (that was the
+  precompute), so it was never the urgent part — but it is now done.
+- **Source-side de-merge (A). DESIGNED, awaiting operator sign-off** (`tidy-wren-707`).
+  Stop materializing the closure in `build_type_env` (`04_infer.dag` ~line 5388):
+  replace the merged flat env with a scope-chain env
+  `TypeEnv { local_bindings, parents: Vec<Rc<TypeEnv>>, .. }` where `parents` are the
+  directly-imported modules' already-`Rc`-shared envs; `lookup_binding`/`lookup_func`/
+  `lookup_source_index` walk local-first then DFS parents (first-match, import-order,
+  memoizable per `(env, key)`). A binding then lives in exactly one module's env and
+  every consumer reaches it by chain-walk, never a copy — so there is nothing left to
+  intern and this **subsumes B**. Sign-off asks: (1) a by-execution equivalence witness
+  asserting the chain-walk preserves current shadowing / first-match order exactly
+  (resolve a multi-import witness both ways → identical typed graph); (2) the chain is
+  the acyclic import DAG, guarded by the existing import-cycle check (DESIGN §4, no value
+  cycles). Touches a **load-bearing pipeline file** → model-first; not started, needs
+  operator/design sign-off before edit.
 
 ## sccache reliability connection
 
 `resolved_graph_cache.rs` is the `.dag`-cited content-addressed cache the operator
-wants to lean on instead of flaky sccache. Layer B (when landed with a canonical
-pool hash) makes its artifacts ~3× smaller and its reads/writes lighter, directly
-reducing the cache-server memory pressure that triggers the sccache flakiness.
+wants to lean on instead of flaky sccache. Layer B (landed, #5834, canonical
+key-sorted pool hash) makes its artifacts ~2.3× smaller and its reads/writes
+lighter, directly reducing the cache-server memory pressure that triggers the
+sccache flakiness.
