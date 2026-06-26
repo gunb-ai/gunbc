@@ -128,6 +128,5 @@ src/v2/test/claim/manual/sg2_scratch_probe.dag
 # --- Generated artifacts (gitignored-by-default, derived from generated_artifact_registry) ---
 # Regenerable; not committed. Whitelist: ci.yml, .gitignore, .md docs (ROADMAP.md, DESIGN.md, docs/plans/).
 /.github/fleet-runner-deploy.manifest
-/.github/fleet-converge.sh
 /provisioning/srv3/user-data
 /provisioning/srv3/dnsmasq.conf
