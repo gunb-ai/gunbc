@@ -256,11 +256,11 @@ fn gunbc_ci_floor_spawn_width_from_tree() -> HardwareThreadCount {
 }
 
 fn gunbc_ci_floor_spawn_width(memory_budget_bytes: Int) -> HardwareThreadCount {
-  let cap_bytes = byte_size_count(b: gunbc_per_runner_memory_cap)
-  let effective =
-    if memory_budget_bytes <= 0 || memory_budget_bytes > cap_bytes { cap_bytes }
-    else { memory_budget_bytes }
-  gunbc_ci_floor_spawn_width_for_budget(memory_budget: byte_size(effective))
+  if memory_budget_bytes <= 0 || memory_budget_bytes > byte_size_count(b: gunbc_per_runner_memory_cap) {
+    gunbc_ci_floor_spawn_width_for_budget(memory_budget: gunbc_per_runner_memory_cap)
+  } else {
+    gunbc_ci_floor_spawn_width_for_budget(memory_budget: byte_size(memory_budget_bytes))
+  }
 }
 
 fn gunbc_ci_floor_run_envelope(memory_budget_bytes: Int) -> ResourceEnvelope {
