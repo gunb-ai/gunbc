@@ -19,12 +19,12 @@ type PerShardRssPeakMeasurement
   | PerShardRssPeakUnmeasured
 
 data gunbc_ci_floor_per_shard_rss_measurement: PerShardRssPeakMeasurement = PerShardRssPeakMeasured {
-  per_shard_peak: byte_size(2684354560)
+  per_shard_peak: byte_size(3758096384)
   sample_width: 4
 }
 
 data gunbc_ci_floor_per_shard_rss_source: Disposition = Terminal {
-  reason: "Interim reground after corpus growth: prior value 2.1GiB (CI run 27893441091, VmHWM=8.4GiB/4) caused exit-137 OOM at width=3 on the 8GiB runner cgroup (CI run 28215122136), proving actual per_shard > (8GiB x 4/5) / 3 = 2.15GiB. Set to 2684354560 (2.5GiB, exactly 2.5x2^30) as a conservative interim lower bound; forces width=2 (floor(8GiB x 4/5 / 2.5GiB) = floor(2.56) = 2), actual at width=2 approx 5.5GiB well within cap. Finer measurement path: fresh width-sweep slope (RSS(w2)-RSS(w1)) or per-shard cgroup isolation."
+  reason: "Interim reground: prior value 2.1GiB (CI run 27893441091, VmHWM=8.4GiB/4) caused exit-137 at width=3 (CI run 28215122136); reground to 2.5GiB, then 2.5GiB also caused exit-137 at width=2 (CI run 28215640088). Root: VmHWM measures claim_executor self-RSS only; the 8GiB cgroup cap enforces ALL RSS including child cargo/rustc processes spawned by emit_host_gate. Proven lower bound: per_shard (cgroup footprint) > (8GiB x 4/5) / 2 = 3.2GiB. Set to 3758096384 (3.5GiB = 3.5x2^30); forces width=1 (floor(8GiB x 4/5 / 3.5GiB) = floor(1.83) = 1). Fresh measurement path: cgroup-side per-shard slope once emit_host_gate is serialized in its own batch (so child rustc peak does not overlap discovery shards)."
 }
 
 fn gunbc_ci_floor_per_shard_peak_rss_bytes() -> ByteSize {
