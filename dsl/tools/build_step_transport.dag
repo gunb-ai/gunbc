@@ -1,7 +1,26 @@
 module tools.build_step_transport
 
 import extdeps.shell
-import extdeps.languages.bash.program { var_ref }
+import extdeps.languages.bash.program {
+  ShellWord,
+  Lit,
+  VarRef,
+  Concat,
+  CmdSubst,
+  ShellStmt,
+  Command,
+  Assign,
+  Subshell,
+  AndOr,
+  AndThen,
+  WithRedir,
+  RedirToFile,
+  Negation,
+  RawLine,
+  ShellProgram,
+  var_ref,
+  serialize_bash
+}
 import tools.build_step { BuildArtifact, verifications_script }
 
 fn probe_var_artifact() -> BuildArtifact {
@@ -15,20 +34,65 @@ fn probe_verification_script() -> String {
   verifications_script(produces: [probe_var_artifact()])
 }
 
-fn corruption_probe_zero_byte_harness() -> String {
+fn assign_tmpdir() -> ShellStmt {
+  Assign { name: "TMPDIR", value: CmdSubst { body: Command { words: [Lit { text: "mktemp" }, Lit { text: "-d" }] } } }
+}
+
+fn assign_probe_bin() -> ShellStmt {
+  Assign { name: "PROBE_BIN", value: Concat { parts: [VarRef { name: "TMPDIR" }, Lit { text: "/probe_bin" }] } }
+}
+
+fn chmod_probe_executable() -> ShellStmt {
+  Command { words: [Lit { text: "chmod" }, Lit { text: "+x" }, VarRef { name: "PROBE_BIN" }] }
+}
+
+fn touch_and_chmod_probe() -> ShellStmt {
+  AndOr {
+    left: Command { words: [Lit { text: "touch" }, VarRef { name: "PROBE_BIN" }] },
+    op: AndThen,
+    right: chmod_probe_executable()
+  }
+}
+
+fn corruption_probe_zero_byte_program() -> ShellProgram {
   let verify = probe_verification_script()
-  concat(
-    concat("TMPDIR=$(mktemp -d)\n", concat("PROBE_BIN=\"$TMPDIR/probe_bin\"\n", "touch \"$PROBE_BIN\" && chmod +x \"$PROBE_BIN\"\n")),
-    concat("! (\n", concat(verify, "\n)\n"))
-  )
+  ShellProgram {
+    set_e: false,
+    statements: [
+      assign_tmpdir(),
+      assign_probe_bin(),
+      touch_and_chmod_probe(),
+      Negation { stmt: Subshell { body: [RawLine { text: verify }] } }
+    ]
+  }
+}
+
+fn corruption_probe_nonempty_program() -> ShellProgram {
+  let verify = probe_verification_script()
+  ShellProgram {
+    set_e: true,
+    statements: [
+      assign_tmpdir(),
+      assign_probe_bin(),
+      AndOr {
+        left: WithRedir {
+          stmt: Command { words: [Lit { text: "printf" }, Lit { text: "x" }] },
+          redir: RedirToFile { path: VarRef { name: "PROBE_BIN" } }
+        },
+        op: AndThen,
+        right: chmod_probe_executable()
+      },
+      RawLine { text: verify }
+    ]
+  }
+}
+
+fn corruption_probe_zero_byte_harness() -> String {
+  serialize_bash(p: corruption_probe_zero_byte_program())
 }
 
 fn corruption_probe_nonempty_harness() -> String {
-  let verify = probe_verification_script()
-  concat(
-    concat("set -e\n", concat("TMPDIR=$(mktemp -d)\n", concat("PROBE_BIN=\"$TMPDIR/probe_bin\"\n", "printf 'x' > \"$PROBE_BIN\" && chmod +x \"$PROBE_BIN\"\n"))),
-    verify
-  )
+  serialize_bash(p: corruption_probe_nonempty_program())
 }
 
 fn witness_zero_byte_artifact_rejected_by_execution() -> Bool {
