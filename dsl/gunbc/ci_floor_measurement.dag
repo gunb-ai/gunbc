@@ -18,10 +18,7 @@ type PerShardRssPeakMeasurement
   = PerShardRssPeakMeasured { per_shard_peak: ByteSize, sample_width: Int }
   | PerShardRssPeakUnmeasured
 
-data gunbc_ci_floor_per_shard_rss_measurement: PerShardRssPeakMeasurement = PerShardRssPeakMeasured {
-  per_shard_peak: byte_size(2898086912)
-  sample_width: 4
-}
+data gunbc_ci_floor_per_shard_rss_measurement: PerShardRssPeakMeasurement = PerShardRssPeakUnmeasured
 
 data gunbc_ci_floor_per_shard_rss_source: Disposition = Terminal {
   reason: "DERIVED: whole-run cgroup peak (11592347648 bytes at sample_width=4) / 4 concurrent shards. Not a direct per-chunk measurement. Update path: re-run CI with --measure-cgroup-peak after chunking fix lands, capture the actual single-chunk peak in isolation, replace per_shard_peak with the measured value and set sample_width=1."

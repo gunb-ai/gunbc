@@ -347,7 +347,6 @@ pub fn build_multi_entry_index(source_roots: &[String]) -> MultiEntryIndex {
     }
 }
 
-
 pub fn resolve_entry_with_index(
     index: &MultiEntryIndex,
     entry_file: &str,
