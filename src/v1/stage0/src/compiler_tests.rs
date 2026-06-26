@@ -2224,23 +2224,35 @@ mod compiler_tests {
                         })
                         .push(r.function.clone());
                 }
-                let step = (order.len() / 30).max(1);
-                let sample: Vec<String> = order.iter().step_by(step).cloned().collect();
+                let sample: Vec<String> = order.clone();
                 eprintln!(
-                    "\n=== FLOOR EVAL-PHASE RSS PROBE (entries={}, sampling {}) ===",
-                    order.len(),
-                    sample.len()
+                    "\n=== FLOOR EVAL-PHASE TRANSIENT PROBE (entries={}, ALL, width=1) ===",
+                    order.len()
                 );
                 eprintln!("  baseline VmRSS: {}", mb(rss_kb("VmRSS:")));
 
-                let index = crate::cli_run::build_multi_entry_index(&source_roots);
-                let (mut max_res, mut max_ctx, mut max_eval) = (0i64, 0i64, 0i64);
-                let (mut sum_res, mut sum_ctx, mut sum_eval) = (0i64, 0i64, 0i64);
-                let mut heaviest = (String::new(), 0i64, String::new());
+                // Reset VmHWM (peak RSS) to current VmRSS (clear_refs value 5, Linux >=4.0) so each
+                // phase's VmHWM delta measures THAT phase's transient working-set peak, not the
+                // global running max. Lets us localize a freed-after transient spike per entry+phase.
+                fn reset_peak() {
+                    let _ = std::fs::write("/proc/self/clear_refs", "5\n");
+                }
+                let kb_mib = |kb: i64| format!("{:.0} MiB", kb as f64 / 1024.0);
 
-                for entry in &sample {
+                let index = crate::cli_run::build_multi_entry_index(&source_roots);
+                let mut spikes: Vec<(i64, &'static str, String, usize)> = Vec::new();
+                let (mut sum_res_net, mut sum_eval_net) = (0i64, 0i64);
+                let mut global_peak = rss_kb("VmRSS:") as i64;
+                let mut peak_entry = (String::new(), String::new(), 0i64);
+
+                for (idx, entry) in sample.iter().enumerate() {
                     let fns = by_entry.get(entry).cloned().unwrap_or_default();
-                    let r0 = rss_kb("VmRSS:") as i64;
+
+                    reset_peak();
+                    let rss0 = rss_kb("VmRSS:") as i64;
+                    // Name the entry BEFORE resolving so an OOM-kill (cap) leaves the
+                    // offender as the last line on stderr. Flushed by eprintln.
+                    eprintln!("  -> [{:>3}/{}] resolve {}", idx, sample.len(), entry);
                     let resolved = crate::cli_run::resolve_entry_with_index_for_discovery_corpus(
                         &index,
                         entry.as_str(),
@@ -2249,56 +2261,85 @@ mod compiler_tests {
                         Ok(g) => g,
                         Err(_) => continue,
                     };
-                    let r1 = rss_kb("VmRSS:") as i64;
+                    let res_peak = rss_kb("VmHWM:") as i64; // transient peak during resolve
+                    let rss1 = rss_kb("VmRSS:") as i64;
+                    if res_peak - rss0 > 500_000 {
+                        eprintln!(
+                            "     !! RESOLVE TRANSIENT {} on {}",
+                            kb_mib(res_peak - rss0),
+                            entry
+                        );
+                    }
+
+                    reset_peak();
                     let ctx = crate::cli_run::make_eval_context(
                         graph.as_ref(),
                         si,
                         crate::v1_interpreter::ExecutionMode::Hermetic,
                     );
-                    let r2 = rss_kb("VmRSS:") as i64;
                     for f in &fns {
                         let _ = crate::cli_run::run_claim(&ctx, f.as_str());
                     }
-                    let r3 = rss_kb("VmRSS:") as i64;
+                    let eval_peak = rss_kb("VmHWM:") as i64; // transient peak during ctx+eval
+                    let rss3 = rss_kb("VmRSS:") as i64;
+                    if eval_peak - rss1 > 500_000 {
+                        eprintln!(
+                            "     !! EVAL TRANSIENT {} on {} ({} fns)",
+                            kb_mib(eval_peak - rss1),
+                            entry,
+                            fns.len()
+                        );
+                    }
                     drop(ctx);
                     drop(graph);
 
-                    let (dr, dc, de) = (r1 - r0, r2 - r1, r3 - r2);
-                    sum_res += dr;
-                    sum_ctx += dc;
-                    sum_eval += de;
-                    max_res = max_res.max(dr);
-                    max_ctx = max_ctx.max(dc);
-                    max_eval = max_eval.max(de);
-                    let entry_total = dr + dc + de;
-                    if entry_total > heaviest.1 {
-                        heaviest = (entry.clone(), entry_total, format!("res={} ctx={} eval={}", dr, dc, de));
+                    let res_transient = res_peak - rss0;
+                    let eval_transient = eval_peak - rss1;
+                    sum_res_net += rss1 - rss0;
+                    sum_eval_net += rss3 - rss1;
+                    if rss0 + res_transient > global_peak {
+                        global_peak = rss0 + res_transient;
+                        peak_entry = (entry.clone(), "resolve".to_string(), res_transient);
                     }
-                    if dr.abs() > 200_000 || dc.abs() > 200_000 || de.abs() > 200_000 {
-                        eprintln!(
-                            "  [{:>4} fns] res {:+>6} | ctx {:+>6} | eval {:+>6} (MiB/1024kB)  {}",
-                            fns.len(),
-                            dr / 1024,
-                            dc / 1024,
-                            de / 1024,
-                            entry
-                        );
+                    if rss1 + eval_transient > global_peak {
+                        global_peak = rss1 + eval_transient;
+                        peak_entry = (entry.clone(), "eval".to_string(), eval_transient);
+                    }
+                    if res_transient > 300_000 {
+                        spikes.push((res_transient, "resolve", entry.clone(), fns.len()));
+                    }
+                    if eval_transient > 300_000 {
+                        spikes.push((eval_transient, "eval", entry.clone(), fns.len()));
                     }
                 }
 
-                let kb_mib = |kb: i64| format!("{:.0} MiB", kb as f64 / 1024.0);
-                eprintln!("\n  PHASE ATTRIBUTION (RSS delta, summed over sample):");
-                eprintln!("    resolve : sum {}  max {}", kb_mib(sum_res), kb_mib(max_res));
-                eprintln!("    ctx-build: sum {}  max {}", kb_mib(sum_ctx), kb_mib(max_ctx));
-                eprintln!("    eval    : sum {}  max {}", kb_mib(sum_eval), kb_mib(max_eval));
-                eprintln!("    heaviest entry: {} (total {}, {})", heaviest.0, kb_mib(heaviest.1), heaviest.2);
+                spikes.sort_by(|a, b| b.0.cmp(&a.0));
+                let final_rss = rss_kb("VmRSS:") as i64;
                 eprintln!(
-                    "\n  final VmRSS: {}   peak VmHWM: {}",
-                    mb(rss_kb("VmRSS:")),
-                    mb(rss_kb("VmHWM:"))
+                    "\n  PERSISTENT (net VmRSS): resolve {}  eval {}  final-resident {}",
+                    kb_mib(sum_res_net),
+                    kb_mib(sum_eval_net),
+                    kb_mib(final_rss)
                 );
-                eprintln!("  (monotonic VmRSS growth across entries => accumulating resolver caches;");
-                eprintln!("   eval-delta dominates => interpreter eval state is the pig.)");
+                eprintln!("\n  TRANSIENT PEAKS (per-entry VmHWM above entry-start RSS, top 18):");
+                for (sp, ph, e, n) in spikes.iter().take(18) {
+                    eprintln!("    {:>9} | {:<7} | [{:>4} fns] {}", kb_mib(*sp), ph, n, e);
+                }
+                let max_res_tr = spikes.iter().filter(|s| s.1 == "resolve").map(|s| s.0).max().unwrap_or(0);
+                let max_eval_tr = spikes.iter().filter(|s| s.1 == "eval").map(|s| s.0).max().unwrap_or(0);
+                let res_cnt = spikes.iter().filter(|s| s.1 == "resolve").count();
+                let eval_cnt = spikes.iter().filter(|s| s.1 == "eval").count();
+                eprintln!("\n  BUDGET (residual check, width=1):");
+                eprintln!("    persistent resident at end                 : {}", kb_mib(final_rss));
+                eprintln!("    max single TRANSIENT resolve ({:>3} >300MiB)   : {}", res_cnt, kb_mib(max_res_tr));
+                eprintln!("    max single TRANSIENT eval    ({:>3} >300MiB)   : {}", eval_cnt, kb_mib(max_eval_tr));
+                eprintln!(
+                    "    reconstructed GLOBAL PEAK                   : {}  (caches + {} {} transient on {})",
+                    kb_mib(global_peak),
+                    kb_mib(peak_entry.2),
+                    peak_entry.1,
+                    peak_entry.0
+                );
                 eprintln!("=== DONE ===\n");
             })
             .expect("spawn")
