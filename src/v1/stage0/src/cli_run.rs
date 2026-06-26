@@ -3141,11 +3141,12 @@ fn merge_discovery_summaries(summaries: Vec<DiscoverySummary>) -> DiscoverySumma
 /// index (intern_table + parse_cache + typed_module_cache + source_files) after each
 /// chunk returns pages to the OS (jemalloc madvise MADV_DONTNEED, sawtooth not staircase).
 /// With spawn_width=2 both shards run in parallel; the combined cgroup RSS at any moment
-/// is both shards' allocations summed. Later entry groups import much larger module
-/// closures, making per-shard per-chunk peak grow non-linearly. Factor=8 (25 groups/chunk)
-/// halves the unique-module accumulation per chunk vs factor=4, keeping the worst-case
-/// combined peak under the 8 GiB runner cgroup cap.
-const DISCOVERY_CHUNK_FACTOR: usize = 8;
+/// is both shards' allocations summed. Later entry groups (alphabetically later test files,
+/// e.g. src/v2/workflow/) import much larger module closures, making per-shard per-chunk
+/// peak grow non-linearly across chunks. Factor=16 (12-13 groups/chunk) targets keeping
+/// the worst-case single-shard chunk peak under ~2 GiB (combined < 4 GiB, well under
+/// the 8 GiB runner cgroup cap).
+const DISCOVERY_CHUNK_FACTOR: usize = 16;
 
 fn count_entry_groups(rows: &[DiscoveryRow]) -> usize {
     let mut count = 0usize;
