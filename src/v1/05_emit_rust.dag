@@ -471,7 +471,7 @@ fn render_rust_applied_type_arg(n: Node, generic_param_names: List<String>, shar
     "()"
   } else {
     match n.inferred {
-      Present { value: TypeVariable { id: tv } } => tv
+      Present { value: TypeVariable { id: tv } } => to_pascal(name: tv)
       _ => render_rust_decl_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
     }
   }
@@ -530,7 +530,7 @@ fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_type
     Absent =>
       let name = authored_name_at(source_indices: source_indices, node: n)
       if n.connective == NoConnective && n.children |> count == 0 && (generic_param_names |> any(g => g == name)) {
-        name
+        to_pascal(name: name)
       } else if n.connective == NoConnective && n.children |> count == 0 && applied_prop == none && name == "String" && corpus_repr_is_faithful(corpus_repr: corpus_repr) {
         rust_carrier_optional_wrap(n: n, rendered: render_rust_text_carrier(shared_types: shared_types))
       } else if n.connective == NoConnective && n.children |> count == 0 && applied_prop == none && set_contains(shared_types, name) {
@@ -632,7 +632,7 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
   if is_host_text_carrier_type(n: n, source_indices: source_indices, corpus_repr: corpus_repr) { return rust_carrier_optional_wrap(n: n, rendered: "String") }
   let name = authored_name_at(source_indices: source_indices, node: n)
   if n.connective == NoConnective && n.children |> count == 0 && (generic_param_names |> any(g => g == name)) {
-    name
+    to_pascal(name: name)
   } else if n.connective == NoConnective && n.children |> count == 0 {
     match rust_seed_host_numeric_alias(name: name, corpus_repr: corpus_repr) {
       Present { value: host } => host
@@ -2497,7 +2497,7 @@ fn emit_parametric_phantom_opaque_struct(item: Node, source_indices: Map<String,
   let type_params = emit_type_params(params: item.params, source_indices: source_indices)
   let generic_names = item_generic_param_names(item: item, source_indices: source_indices)
   let marker_ty = match generic_names |> first {
-    Present { value: g } => concat("std::marker::PhantomData<", g, ">")
+    Present { value: g } => concat("std::marker::PhantomData<", to_pascal(name: g), ">")
     Absent => "std::marker::PhantomData<()>"
   }
   concat(
@@ -3050,7 +3050,7 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
             " = ",
             host,
             "<",
-            generic_names |> join(separator: ", "),
+            generic_names |> map(n => to_pascal(name: n)) |> join(separator: ", "),
             ">;"
           )
         Absent =>
@@ -3160,7 +3160,7 @@ fn needs_box_wrapping(n: Node, recursive_types: Set<String>, shared_types: Set<S
 fn emit_type_params(params: List<Node>, source_indices: Map<String, NewlineIndex>) -> String {
   if params |> count == 0 { "" }
   else {
-    let names = params |> map(p => generic_param_name_at(n: p, source_indices: source_indices))
+    let names = params |> map(p => to_pascal(name: generic_param_name_at(n: p, source_indices: source_indices)))
     concat("<", names |> join(separator: ", "), ">")
   }
 }
@@ -3170,7 +3170,8 @@ fn emit_type_params_with_clone_bound(params: List<Node>, clone_param: String, so
   else {
     let names = params |> map(p =>
       let pname = generic_param_name_at(n: p, source_indices: source_indices)
-      if pname == clone_param { concat(pname, ": Clone") } else { pname }
+      let pascal = to_pascal(name: pname)
+      if pname == clone_param { concat(pascal, ": Clone") } else { pascal }
     )
     concat("<", names |> join(separator: ", "), ">")
   }
@@ -3208,7 +3209,7 @@ fn emit_type_def_from_connective(item: Node, recursive_types: Set<String>, share
     let generic_param_names = item.params |> map(p => generic_param_name_at(n: p, source_indices: env.source_indices))
     emit_struct_from_children(name: item_text, type_params: type_params, generic_param_names: generic_param_names, children: item.children, recursive_types: recursive_types, shared_types: shared_types, env: env, emit_info: emit_info)
   } else if is_host_freemonoid_vec_alias(name: item_text, corpus_repr: emit_info.corpus_repr) {
-    let elem_csv = item.params |> map(p => generic_param_name_at(n: p, source_indices: env.source_indices)) |> join(separator: ", ")
+    let elem_csv = item.params |> map(p => to_pascal(name: generic_param_name_at(n: p, source_indices: env.source_indices))) |> join(separator: ", ")
     concat(rust_visibility_prefix(), "type ", item_text, type_params, " = Vec<", elem_csv, ">;")
   } else {
     let all_unit_variants = item.children |> all(child => child.children |> count == 0)
@@ -3267,11 +3268,11 @@ fn alias_unused_param_names(generic_param_names: List<String>, rhs: Node, source
 }
 
 fn rust_phantom_marker_inner(unused: List<String>) -> String {
-
-  if unused |> count == 1 {
-    unused |> join(separator: ", ")
+  let pascal_unused = unused |> map(n => to_pascal(name: n))
+  if pascal_unused |> count == 1 {
+    pascal_unused |> join(separator: ", ")
   } else {
-    concat("(", unused |> join(separator: ", "), ")")
+    concat("(", pascal_unused |> join(separator: ", "), ")")
   }
 }
 
@@ -3364,7 +3365,7 @@ fn emit_struct_field_from_child(struct_name: String, child: Node, generic_param_
       Present { value: resolved } =>
         if resolved.params |> count > 0 {
           let base = coerce_primitive_type(target: Rust, dag_name: rt_child_name)
-          let param_names = resolved.params |> map(p => generic_param_name_at(n: p, source_indices: env.source_indices))
+          let param_names = resolved.params |> map(p => to_pascal(name: generic_param_name_at(n: p, source_indices: env.source_indices)))
           let with_params = concat(base, "<", param_names |> join(separator: ", "), ">")
           render_rust_shared_type_if_needed(type_name: rt_child_name, rendered: with_params, shared_types: shared_types)
         } else {
