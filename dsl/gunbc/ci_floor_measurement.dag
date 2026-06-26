@@ -1,11 +1,13 @@
 module gunbc.ci_floor_measurement
 
-import std.measure { ByteSize, byte_size }
+import std.measure { ByteSize, byte_size, byte_size_count, HardwareThreadCount, hardware_thread_count_value }
 import std.types { Int, List, String, Bool }
 import std.realization_measurement {
   ConcurrentMemoryPeakSample,
   concurrent_memory_peak_per_share,
 }
+import std.realization_width { memory_aware_spawn_width, byte_size_saturating_sub }
+import extdeps.cpu.ampere { altra_max_m12830_catalog }
 import std.disposition { Disposition, Scaffold, SingleAuthority, Terminal }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
@@ -36,6 +38,29 @@ fn gunbc_ci_floor_per_shard_peak_rss_bytes() -> ByteSize {
 
 fn gunbc_ci_floor_whole_run_peak_rss_bytes() -> ByteSize {
   gunbc_ci_floor_measured_peak.peak
+}
+
+data gunbc_ci_floor_executor_base_rss_source: Disposition = Terminal {
+  reason: "Measured run-fixed executor base RSS (the within-run footprint independent of shard width, the 'base' in total = base + width*per_shard): corroborating run 28003119550 self-RSS=8.7GiB at width=4 with shard~2.0GiB => base = 8.7 - 4*2.0 = 0.7GiB. Rounded UP to 0.75GiB so the derived test-thread width stays under the per-runner cgroup cap with margin -- fail-closed: a too-LOW base over-estimates the fittable width and re-OOMs the runner (exit 137), so the base is biased high. dissolve-on a direct base-only cgroup read at width 0/1."
+}
+
+data gunbc_ci_floor_executor_base_rss_bytes: ByteSize = byte_size(805306368)
+
+fn gunbc_ci_floor_test_hardware_threads() -> HardwareThreadCount {
+  altra_max_m12830_catalog.threads
+}
+
+fn gunbc_ci_floor_test_threads(memory_budget: ByteSize) -> Int {
+  let fittable = byte_size_saturating_sub(total: memory_budget, reserved: gunbc_ci_floor_executor_base_rss_bytes)
+  hardware_thread_count_value(
+    t: memory_aware_spawn_width(
+      shard_count: hardware_thread_count_value(t: gunbc_ci_floor_test_hardware_threads()),
+      hardware_threads: gunbc_ci_floor_test_hardware_threads(),
+      memory_budget: fittable,
+      per_shard_peak: gunbc_ci_floor_per_shard_peak_rss_bytes(),
+      conservative_fallback_width: 1
+    )
+  )
 }
 
 data gunbc_ci_host_container_memory_cap: ByteSize = byte_size(33578549248)

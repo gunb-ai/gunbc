@@ -20,6 +20,10 @@ fn cargo_nextest_build_jobs_flag(count: Int) -> List<String> {
   ["--build-jobs", "{count}"]
 }
 
+fn cargo_nextest_test_threads_flag(count: Int) -> List<String> {
+  ["--test-threads", "{count}"]
+}
+
 service cargo.Build {
   operation Build {
     input { extra_args: List<String> = [], env: Map<String, String> = cargo_compile_env, build_jobs_args: List<String> = [] }
