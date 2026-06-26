@@ -1,13 +1,18 @@
 module test.claim.host_allocation_conservation
 
 import std.logic { Bool }
-import std.measure { byte_size }
+import std.measure { byte_size, byte_size_count, hardware_thread_count }
 import gunbc.fleet_host_budget {
   host_allocation_conserves,
   declared_runner_count,
   max_concurrent_sessions,
   session_pool_bytes,
   gunbc_runner_pool_budget,
+  gunbc_host_headroom_per_core,
+  core_grounded_headroom,
+  fleet_host_headroom,
+  oomd_actuation_floor,
+  runner_slice_cap,
 }
 
 test fn declared_runner_count_is_ten() -> Bool {
@@ -46,4 +51,27 @@ test fn sessions_subtract_from_the_same_budget() -> Bool {
 
 test fn max_concurrent_sessions_falls_out_of_pool() -> Bool {
   max_concurrent_sessions(session_pool: session_pool_bytes(active_sessions: 12)) == 12
+}
+
+test fn headroom_scales_per_core() -> Bool {
+  let host = byte_size(137438953472)
+  let big = hardware_thread_count(count: 128)
+  byte_size_count(b: core_grounded_headroom(nproc: big)) == byte_size_count(b: gunbc_host_headroom_per_core) * 128
+    && byte_size_count(b: fleet_host_headroom(host: host, nproc: big)) == 34359738368
+}
+
+test fn headroom_floors_at_oomd_actuation() -> Bool {
+  let host = byte_size(137438953472)
+  let tiny = hardware_thread_count(count: 4)
+  byte_size_count(b: core_grounded_headroom(nproc: tiny)) < byte_size_count(b: oomd_actuation_floor(host: host))
+    && byte_size_count(b: fleet_host_headroom(host: host, nproc: tiny)) == byte_size_count(b: oomd_actuation_floor(host: host))
+}
+
+test fn runner_pool_is_residual_after_host_reserved() -> Bool {
+  let host = byte_size(137438953472)
+  let overhead = byte_size(17179869184)
+  let headroom = fleet_host_headroom(host: host, nproc: hardware_thread_count(count: 128))
+  let pool = runner_slice_cap(host: host, overhead: overhead, session_slice: byte_size(0), headroom: headroom)
+  byte_size_count(b: pool) == byte_size_count(b: gunbc_runner_pool_budget)
+    && byte_size_count(b: pool) < byte_size_count(b: host)
 }

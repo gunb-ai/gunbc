@@ -8,7 +8,7 @@ import std.measure {
   time_measure, watt,
   measure_scale_fraction_floor,
   measure_fit_count_floor,
-  HardwareThreadCount, hardware_thread_count,
+  HardwareThreadCount, hardware_thread_count, hardware_thread_count_value,
 }
 import std.realization_width { byte_size_saturating_sub, cpu_cores_available }
 import std.realization { RealizedStep, Placement, LocalFilesystem, Materialization, Share }
@@ -82,6 +82,20 @@ data gunbc_fleet_oomd_floor_basis: String = "oomd_actuation_floor is a DERIVED l
 
 fn oomd_actuation_floor(host: ByteSize) -> ByteSize {
   measure_scale_fraction_floor(m: host, num: 1, den: 16)
+}
+
+data gunbc_host_headroom_per_core_basis: String = "host headroom is reserved FIRST and scales with the core count: each hardware thread can host a concurrent allocator whose burst lands above its steady cap, so the elastic free-memory buffer the OS scheduler/oomd needs grows with how many things run at once. Grounded per-core (gunbc_host_headroom_per_core x nproc), NOT a flat literal. A strict 1-2 GiB/core would exceed the host on a 128-core Ampere Altra Max (128 x 1 GiB = 128 GiB > 125 GiB RAM), so the per-core coefficient is fair-fitted below that ceiling; raise gunbc_host_headroom_per_core to widen the host's margin. Floored at oomd_actuation_floor so the host is never packed below the swing systemd-oomd needs to evict before the kernel OOM-killer/host-reboot fires (the srv2-reboot vector)."
+
+data gunbc_host_headroom_per_core: ByteSize = byte_size(268435456)
+
+fn core_grounded_headroom(nproc: HardwareThreadCount) -> ByteSize {
+  measure_scale_fraction_floor(m: gunbc_host_headroom_per_core, num: hardware_thread_count_value(t: nproc), den: 1)
+}
+
+fn fleet_host_headroom(host: ByteSize, nproc: HardwareThreadCount) -> ByteSize {
+  let core_based = core_grounded_headroom(nproc: nproc)
+  let floor = oomd_actuation_floor(host: host)
+  if byte_size_count(b: core_based) >= byte_size_count(b: floor) { core_based } else { floor }
 }
 
 type HeadroomResolution

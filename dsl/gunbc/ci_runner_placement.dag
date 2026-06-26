@@ -2,7 +2,7 @@ module gunbc.ci_runner_placement
 
 import product.compute_fabric { ComputeOffer, compute_host_ram_bytes_total, compute_host_primary_cpu }
 import product.placement_supply { HostIdentity }
-import std.measure { ByteSize, byte_size, byte_size_count, measure_scale_fraction_floor, measure_le, HardwareThreadCount }
+import std.measure { ByteSize, byte_size, byte_size_count, measure_scale_fraction_floor, measure_fit_count_floor, measure_le, HardwareThreadCount }
 import std.types { Int, List, String, Bool }
 import std.disposition { Disposition, Terminal }
 import extdeps.github.actions { RunnerSpec }
@@ -11,11 +11,10 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.runner_spec_from_offer { runner_spec_from_offer }
 import gunbc.fleet_host_budget {
   gunbc_fleet_oomd_evidence,
-  gunbc_runner_pool_budget,
   gunbc_per_runner_memory_cap,
   host_allocation_conserves,
-  declared_runner_count,
-  oomd_actuation_floor,
+  runner_slice_cap,
+  fleet_host_headroom,
 }
 import extdeps.cpu { cpu_facts_threads }
 import gunbc.ci_floor_measurement {
@@ -142,7 +141,7 @@ fn resolve_session_slice(mode: SessionReservationMode, oomd: OomdEnforcementEvid
   }
 }
 
-data gunbc_ci_runner_count_from_budget_disposition: Disposition = Terminal { reason: "DESIGN conservation model: the runner count divides the DECLARED runner_pool_budget by the DECLARED per_runner_memory_cap (gunbc.fleet_host_budget). Soundness is host_allocation_conserves (node_conserves over runner_pool + session_pool + fixed_overhead + headroom <= host RAM); it replaces the old chicken-and-egg RunnerSlotUnenforced gate (which refused to derive a count premised on a cap not yet enforced live). 'Is the cap live on the host' is no longer a plan-soundness question - it is a converge-receipt question. Session pool is the uniform 1 GiB demand class shared with the ctrl session dashboard." }
+data gunbc_ci_runner_count_from_budget_disposition: Disposition = Terminal { reason: "DESIGN conservation model, host-reserved-first: the runner pool is the RESIDUAL after the host's own reservation (fixed_overhead + per-core headroom) is taken off the top of host RAM - runner_pool = runner_slice_cap(host - overhead - session - headroom), NOT a declared literal that must be hand-kept consistent (that was the prior fork: an independent runner_pool_budget restating host - reserves). The per-runner count then divides that residual by the per_runner_memory_cap. Soundness is host_allocation_conserves (node_conserves over runner_pool + session_pool + fixed_overhead + headroom <= host RAM), now satisfied by construction since the pool IS the residual; the fail-closed branch fires only when overhead + headroom saturates the host (zero-runner residual). 'Is the cap live on the host' stays a converge-receipt question, not a plan-soundness one. Session pool is the uniform demand class shared with the ctrl session dashboard." }
 
 fn host_fixed_overhead_bytes(o: HostFixedOverhead) -> ByteSize {
   match o {
@@ -151,11 +150,11 @@ fn host_fixed_overhead_bytes(o: HostFixedOverhead) -> ByteSize {
   }
 }
 
-fn conservation_host_deployment(offer: ComputeOffer, nproc: HardwareThreadCount) -> RunnerHostDeployment {
+fn conservation_host_deployment(offer: ComputeOffer, nproc: HardwareThreadCount, runner_pool: ByteSize) -> RunnerHostDeployment {
   RunnerHostDeployment {
     identity: offer.supply.physical.identity,
-    runner_count: declared_runner_count(),
-    runner_slice_cap: gunbc_runner_pool_budget,
+    runner_count: measure_fit_count_floor(capacity: runner_pool, each: gunbc_per_runner_memory_cap),
+    runner_slice_cap: runner_pool,
     per_runner_memory_cap: gunbc_per_runner_memory_cap,
     build_tokens: nproc,
     runner: runner_spec_from_offer(offer: offer),
@@ -175,15 +174,16 @@ fn accumulate_conservation_deployment(acc: DeploymentAccumulator, offer: Compute
     Present { value: cpu } => {
       let host_ram = compute_host_ram_bytes_total(host: offer.supply.physical)
       let overhead = host_fixed_overhead_bytes(o: gunbc_ci_host_fixed_overhead)
-      let headroom = oomd_actuation_floor(host: host_ram)
+      let headroom = fleet_host_headroom(host: host_ram, nproc: cpu_facts_threads(cpu: cpu))
+      let runner_pool = runner_slice_cap(host: host_ram, overhead: overhead, session_slice: byte_size(0), headroom: headroom)
       if host_allocation_conserves(
         host: host_ram,
         overhead: overhead,
         headroom: headroom,
-        runner_pool: gunbc_runner_pool_budget,
+        runner_pool: runner_pool,
         session_pool: byte_size(0)
       ) {
-        let dep = conservation_host_deployment(offer: offer, nproc: cpu_facts_threads(cpu: cpu))
+        let dep = conservation_host_deployment(offer: offer, nproc: cpu_facts_threads(cpu: cpu), runner_pool: runner_pool)
         DeploymentAccumulator {
           deployments: concat(acc.deployments, [dep]),
           unsound_reason: acc.unsound_reason,
