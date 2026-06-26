@@ -3513,14 +3513,27 @@ pub fn intern(table: Rc<InternTable>, s: String) -> Rc<InternResult> {
             id: id.clone(),
         }),
         None => {
-            let id = table.next_id.clone();
+            let id = table.next_id;
+            // Amortized-O(1) intern: take ownership of the table's inner Rcs
+            // instead of cloning them while `table` still aliases them. Cloning
+            // (`table.strings.clone()`) pinned each Rc at refcount>=2, forcing
+            // `rc_list_push`/`rc_map_insert`'s `Rc::make_mut` to deep-copy the
+            // whole strings Vec + index map on every new string — O(T^2) over T
+            // distinct strings, the dominant parse cost. Unwrapping the uniquely
+            // held table hands its inner Rcs to the push/insert at refcount==1 so
+            // `make_mut` grows them in place. Purity is invariant to ownership:
+            // `next_id` increments identically and insertion order is unchanged,
+            // so intern IDs are byte-preserved; if the table is shared we fall
+            // back to a clone (today's deep-copy behavior — no speedup on that
+            // path, never wrong IDs).
+            let mut new_table =
+                Rc::try_unwrap(table).unwrap_or_else(|shared| (*shared).clone());
+            new_table.strings = v1_rt::rc_list_push(new_table.strings, s.clone());
+            new_table.index = v1_rt::rc_map_insert(new_table.index, s, id);
+            new_table.next_id = id + 1;
             Rc::new(InternResult {
-                table: Rc::new(InternTable {
-                    strings: v1_rt::rc_list_push(table.strings.clone(), s.clone()),
-                    index: v1_rt::rc_map_insert(table.index.clone(), s.clone(), id.clone()),
-                    next_id: (id.clone() + 1),
-                }),
-                id: id.clone(),
+                table: Rc::new(new_table),
+                id,
             })
         }
     }
