@@ -1765,6 +1765,249 @@ mod compiler_tests {
         result.expect("profile_reconcile_per_module panicked");
     }
 
+    // THROWAWAY PROBE (do not commit): measures the de-merge RAM ceiling by
+    // execution. Resolves the self-compile corpus, retains each module's merged
+    // Rc<TypeEnv>, and attributes live bytes between the merge-skeleton (keys +
+    // value-pointer cells + hashbrown overhead + duplicated String keys) and the
+    // Rc-shared payloads (counted once by Rc::as_ptr at BOTH Rc levels). The
+    // skeleton total is the upper bound on what the build_type_env scope-chain
+    // de-merge (Layer A) could reclaim from RSS.
+    #[test]
+    #[ignore]
+    fn profile_env_merge_ram_ceiling() {
+        let result = std::thread::Builder::new()
+            .stack_size(64 * 1024 * 1024)
+            .spawn(|| {
+                use std::collections::{HashMap, HashSet};
+
+                let sources = self_compile_sources();
+                eprintln!(
+                    "\n=== ENV-MERGE RAM CEILING PROBE ({} sources) ===",
+                    sources.len()
+                );
+
+                let mut modules = Vec::new();
+                let mut intern_table = crate::v1_std_core::empty_intern_table();
+                for source in &sources {
+                    let tokens = crate::v1_compiler_tokenize::tokenize(
+                        source.content.clone(),
+                        source.path.clone(),
+                    );
+                    let si = crate::v1_std_core::build_newline_index(
+                        source.path.clone(),
+                        source.content.clone(),
+                    );
+                    let parsed = crate::v1_compiler_parse::parse_with_table(
+                        tokens.clone(),
+                        crate::v1_rt::rc_map_insert(
+                            crate::v1_rt::rc_empty_map::<
+                                String,
+                                std::rc::Rc<crate::v1_std_core::NewlineIndex>,
+                            >(),
+                            si.file.clone(),
+                            si.clone(),
+                        ),
+                        intern_table.clone(),
+                    );
+                    let result = parsed.result.clone();
+                    intern_table = parsed.intern_table.clone();
+                    let m = result
+                        .module
+                        .clone()
+                        .unwrap_or_else(|| panic!("parse failed for source {}", source.path));
+                    modules.push(m);
+                }
+                let resolve_si = sources.iter().fold(
+                    crate::v1_rt::rc_empty_map::<
+                        String,
+                        std::rc::Rc<crate::v1_std_core::NewlineIndex>,
+                    >(),
+                    |acc, s| {
+                        crate::v1_rt::rc_map_insert(
+                            acc,
+                            s.path.clone(),
+                            crate::v1_std_core::build_newline_index(
+                                s.path.clone(),
+                                s.content.clone(),
+                            ),
+                        )
+                    },
+                );
+                let graph = crate::v1_compiler_resolve::resolve_modules(
+                    std::rc::Rc::new(modules),
+                    resolve_si,
+                );
+                eprintln!("  Modules to resolve: {}", graph.modules.len());
+
+                let mut mi_raw = HashMap::<
+                    String,
+                    std::rc::Rc<crate::v1_compiler_infer_items::TypedModule>,
+                >::new();
+                let source_indices = std::rc::Rc::new(sources.iter().fold(
+                    HashMap::<String, std::rc::Rc<crate::v1_std_core::NewlineIndex>>::new(),
+                    |mut acc, source| {
+                        acc.insert(
+                            source.path.clone(),
+                            crate::v1_std_core::build_newline_index(
+                                source.path.clone(),
+                                source.content.clone(),
+                            ),
+                        );
+                        acc
+                    },
+                ));
+
+                for resolved in graph.modules.iter() {
+                    let name = resolved.module.name.to_string();
+                    let module_index = std::rc::Rc::new(mi_raw.clone());
+                    let tc_result = crate::v1_compiler_infer::typecheck_module(
+                        resolved.clone(),
+                        module_index.clone(),
+                        source_indices.clone(),
+                        intern_table.clone(),
+                    );
+                    mi_raw.insert(name, tc_result.typed.clone());
+                }
+
+                // ---- Attribution over the retained per-module merged TypeEnvs ----
+                let pw = std::mem::size_of::<usize>(); // thin Rc / pointer width
+
+                // hashbrown allocation model: bucket_count = next_pow2(ceil(len/0.875)),
+                // bytes ≈ bucket_count * (entry_size + 1 control byte). cap() is the
+                // post-resize live capacity, a tight proxy for the real allocation.
+                fn map_alloc_bytes(len: usize, cap: usize, entry: usize) -> usize {
+                    let need = ((cap.max(len) as f64) / 0.875).ceil() as usize;
+                    let buckets = need.max(8).next_power_of_two();
+                    buckets * (entry + 1)
+                }
+                let mib = |b: usize| format!("{:.2} MiB", b as f64 / 1_048_576.0);
+
+                let mut envs_seen: HashSet<usize> = HashSet::new();
+
+                // bindings: HashMap<i64, Rc<TypeBinding>>  entry = 8 + pw
+                let mut b_maps: HashSet<usize> = HashSet::new();
+                let (mut b_total_slots, mut b_live_slots, mut b_skeleton) = (0usize, 0usize, 0usize);
+                let mut b_payloads: HashSet<usize> = HashSet::new();
+
+                // source_indices: HashMap<String, Rc<NewlineIndex>>  entry = 24 + pw (String keys dup)
+                let mut si_maps: HashSet<usize> = HashSet::new();
+                let (mut si_total_slots, mut si_skeleton, mut si_key_heap) = (0usize, 0usize, 0usize);
+                let mut si_payloads: HashSet<usize> = HashSet::new();
+
+                // inductive_fields: HashMap<String, Rc<Vec<Rc<InductiveField>>>>  entry = 24 + pw
+                let mut if_maps: HashSet<usize> = HashSet::new();
+                let (mut if_total_slots, mut if_skeleton, mut if_key_heap) = (0usize, 0usize, 0usize);
+                let mut if_payloads: HashSet<usize> = HashSet::new();
+
+                // recursive_type_set: HashMap<i64, bool>  entry = 8 + 1
+                let mut rts_maps: HashSet<usize> = HashSet::new();
+                let (mut rts_total_slots, mut rts_skeleton) = (0usize, 0usize);
+
+                // intern_table: Rc<InternTable>
+                let mut intern_tables: HashSet<usize> = HashSet::new();
+
+                for tm in mi_raw.values() {
+                    let env = &tm.type_env;
+                    envs_seen.insert(std::rc::Rc::as_ptr(env) as usize);
+
+                    let bm = &env.bindings;
+                    b_total_slots += bm.len();
+                    if b_maps.insert(std::rc::Rc::as_ptr(bm) as usize) {
+                        b_live_slots += bm.len();
+                        b_skeleton += map_alloc_bytes(bm.len(), bm.capacity(), 8 + pw);
+                    }
+                    for v in bm.values() {
+                        b_payloads.insert(std::rc::Rc::as_ptr(v) as usize);
+                    }
+
+                    let sm = &env.source_indices;
+                    si_total_slots += sm.len();
+                    if si_maps.insert(std::rc::Rc::as_ptr(sm) as usize) {
+                        si_skeleton += map_alloc_bytes(sm.len(), sm.capacity(), 24 + pw);
+                        for (k, v) in sm.iter() {
+                            si_key_heap += k.capacity();
+                            si_payloads.insert(std::rc::Rc::as_ptr(v) as usize);
+                        }
+                    }
+
+                    let im = &env.inductive_fields;
+                    if_total_slots += im.len();
+                    if if_maps.insert(std::rc::Rc::as_ptr(im) as usize) {
+                        if_skeleton += map_alloc_bytes(im.len(), im.capacity(), 24 + pw);
+                        for (k, v) in im.iter() {
+                            if_key_heap += k.capacity();
+                            if_payloads.insert(std::rc::Rc::as_ptr(v) as usize);
+                        }
+                    }
+
+                    let rm = &env.recursive_type_set;
+                    rts_total_slots += rm.len();
+                    if rts_maps.insert(std::rc::Rc::as_ptr(rm) as usize) {
+                        rts_skeleton += map_alloc_bytes(rm.len(), rm.capacity(), 8 + 1);
+                    }
+
+                    intern_tables.insert(std::rc::Rc::as_ptr(&env.intern_table) as usize);
+                }
+
+                eprintln!("\n  retained modules (distinct envs): {}", envs_seen.len());
+                eprintln!("\n  -- bindings  HashMap<i64, Rc<TypeBinding>> --");
+                eprintln!("    total slots (Σ len)           : {}", b_total_slots);
+                eprintln!(
+                    "    live slots (distinct maps)    : {}  ({} distinct maps)",
+                    b_live_slots,
+                    b_maps.len()
+                );
+                eprintln!("    distinct payloads (Rc::as_ptr): {}", b_payloads.len());
+                eprintln!(
+                    "    dup factor (slots / payloads) : {:.1}x",
+                    b_total_slots as f64 / (b_payloads.len().max(1)) as f64
+                );
+                eprintln!("    skeleton bytes                : {}", mib(b_skeleton));
+
+                eprintln!("\n  -- source_indices  HashMap<String, Rc<NewlineIndex>> --");
+                eprintln!("    total slots                   : {}", si_total_slots);
+                eprintln!("    distinct payloads             : {}", si_payloads.len());
+                eprintln!("    skeleton bytes                : {}", mib(si_skeleton));
+                eprintln!("    dup String-key heap bytes     : {}", mib(si_key_heap));
+
+                eprintln!("\n  -- inductive_fields  HashMap<String, Rc<Vec<..>>> --");
+                eprintln!("    total slots                   : {}", if_total_slots);
+                eprintln!("    distinct payloads             : {}", if_payloads.len());
+                eprintln!("    skeleton bytes                : {}", mib(if_skeleton));
+                eprintln!("    dup String-key heap bytes     : {}", mib(if_key_heap));
+
+                eprintln!("\n  -- recursive_type_set  HashMap<i64, bool> --");
+                eprintln!("    total slots                   : {}", rts_total_slots);
+                eprintln!("    skeleton bytes                : {}", mib(rts_skeleton));
+
+                eprintln!(
+                    "\n  intern_table distinct allocations: {}",
+                    intern_tables.len()
+                );
+
+                let ceiling = b_skeleton
+                    + si_skeleton
+                    + si_key_heap
+                    + if_skeleton
+                    + if_key_heap
+                    + rts_skeleton;
+                eprintln!(
+                    "\n  >>> DE-MERGE RAM CEILING (merge-skeleton + dup String keys): {} <<<",
+                    mib(ceiling)
+                );
+                eprintln!(
+                    "      (UPPER bound the build_type_env scope-chain de-merge can reclaim from RSS;"
+                );
+                eprintln!(
+                    "       Rc-shared payloads are already shared in RAM and are NOT reclaimable.)"
+                );
+                eprintln!("=== DONE ===\n");
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result.expect("profile_env_merge_ram_ceiling panicked");
+    }
+
     #[test]
     fn contracts_sidecar_wired_into_emit_scope() {
         let result = std::thread::Builder::new()
