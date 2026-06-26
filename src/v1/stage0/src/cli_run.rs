@@ -415,6 +415,16 @@ fn resolve_entry_with_parse_cache(
         }
     }
 
+    let _prof = std::env::var_os("GUNBC_PROF").is_some();
+    let mut _pt = std::time::Instant::now();
+    macro_rules! _lap {
+        ($n:expr) => {
+            if _prof {
+                eprintln!("[prof] {}: {} ms", $n, _pt.elapsed().as_millis());
+                _pt = std::time::Instant::now();
+            }
+        };
+    }
     let mut modules: Vec<Rc<Node>> = Vec::new();
     let mut si_map: HashMap<String, Rc<NewlineIndex>> = HashMap::new();
 
@@ -459,10 +469,12 @@ fn resolve_entry_with_parse_cache(
         }
     }
 
+    _lap!("parse");
     let source_indices = Rc::new(si_map);
     let global_table = index.intern_table.borrow().clone();
 
     let graph = v1_compiler_resolve::resolve_modules(Rc::new(modules), source_indices.clone());
+    _lap!("resolve_modules");
 
     if graph
         .diagnostics
