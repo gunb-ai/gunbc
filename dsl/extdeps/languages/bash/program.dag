@@ -26,6 +26,7 @@ type Redir
   = StderrToNull
   | StdoutAndStderrToNull
   | StdoutToStderr
+  | RedirToFile { path: ShellWord }
 
 type ShellStmt
   = Command { words: List<ShellWord> }
@@ -42,6 +43,8 @@ type ShellStmt
 
   | Heredoc { path: ShellWord, delimiter: String, body: String }
   | Exit { code: Int }
+
+  | Negation { stmt: ShellStmt }
 
   | RawLine { text: String }
 
@@ -96,6 +99,7 @@ fn serialize_redir(r: Redir) -> String {
     StderrToNull => "2>/dev/null"
     StdoutAndStderrToNull => ">/dev/null 2>&1"
     StdoutToStderr => ">&2"
+    RedirToFile { path: p } => concat("> ", serialize_word(w: p))
   }
 }
 
@@ -135,6 +139,7 @@ fn serialize_stmt(s: ShellStmt) -> String {
     WithRedir { stmt: st, redir: rd } =>
       concat(serialize_stmt(s: st), concat(" ", serialize_redir(r: rd)))
     Exit { code: c } => concat("exit ", to_string(c))
+    Negation { stmt: st } => concat("! ", serialize_stmt(s: st))
     RawLine { text: t } => t
   }
 }
