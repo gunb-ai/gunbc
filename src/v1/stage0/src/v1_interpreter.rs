@@ -98,6 +98,35 @@ thread_local! {
         const { std::cell::Cell::new(None) };
 }
 
+// Script-capture mode: when enabled, `dispatch_shell` records "sh -c <script>" argv
+// strings instead of executing them so the caller can drop the corpus graph before
+// spawning the subprocess.  Only "sh -c" argv triplets are captured; other shell
+// transports (e.g. shell.Find.ListDirs) execute normally so service operations whose
+// outputs are used by subsequent .dag evaluation remain correctly realized.
+thread_local! {
+    static SHELL_EXEC_CAPTURE: std::cell::RefCell<Option<Vec<String>>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+pub fn shell_exec_capture_enable() {
+    SHELL_EXEC_CAPTURE.with(|c| *c.borrow_mut() = Some(Vec::new()));
+}
+
+pub fn shell_exec_capture_disable() {
+    SHELL_EXEC_CAPTURE.with(|c| *c.borrow_mut() = None);
+}
+
+/// Takes and clears the captured script list.  Returns an empty Vec when capture
+/// is not enabled or no scripts have been collected since the last take.
+pub fn shell_exec_capture_take() -> Vec<String> {
+    SHELL_EXEC_CAPTURE.with(|c| {
+        c.borrow_mut()
+            .as_mut()
+            .map(std::mem::take)
+            .unwrap_or_default()
+    })
+}
+
 fn with_active_ctx<R>(ctx: &InterpContext, f: impl FnOnce() -> R) -> R {
     ACTIVE_CTX.with(|cell| {
         let prev = cell.replace(Some(ctx as *const InterpContext));
@@ -3678,6 +3707,26 @@ fn dispatch_shell(
     }
 
     eprintln!("[shell] {}", argv.join(" "));
+
+    // If capture mode is active and this is a "sh -c <script>" invocation, record
+    // the script for deferred execution after the corpus graph is released.
+    if argv.len() == 3 && argv[0] == "sh" && argv[1] == "-c" {
+        let captured = SHELL_EXEC_CAPTURE.with(|c| {
+            if let Some(v) = c.borrow_mut().as_mut() {
+                v.push(argv[2].clone());
+                true
+            } else {
+                false
+            }
+        });
+        if captured {
+            return Ok(ShellResult {
+                exit_code: 0,
+                stdout: String::new(),
+                stderr: String::new(),
+            });
+        }
+    }
 
     let output = std::process::Command::new(&argv[0])
         .args(&argv[1..])
