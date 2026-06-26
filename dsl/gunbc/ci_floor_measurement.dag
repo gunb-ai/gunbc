@@ -19,12 +19,12 @@ type PerShardRssPeakMeasurement
   | PerShardRssPeakUnmeasured
 
 data gunbc_ci_floor_per_shard_rss_measurement: PerShardRssPeakMeasurement = PerShardRssPeakMeasured {
-  per_shard_peak: byte_size(4294967296)
-  sample_width: 2
+  per_shard_peak: byte_size(2898086912)
+  sample_width: 4
 }
 
 data gunbc_ci_floor_per_shard_rss_source: Disposition = Terminal {
-  reason: "INFERRED conservative lower-bound (NOT directly sampled) from width=2 OOM (CI run 28215907472, 2026-06-26, memory.max=8GiB): the executor was OOM-killed at spawn_width=2, proving total > 8GiB at concurrency=2. Lower bound on per-share: (8GiB - base~0.7GiB) / 2 ~= 3.65GiB; set conservatively to 4GiB (4294967296) so floor(8GiB*4/5 / 4GiB) = floor(1.6) = 1 -> width=1. sample_width=2 records the concurrency at which the OOM was observed, NOT a direct per-shard measurement. Prior VmHWM-based value (2100028416) was stale and under-counted: VmHWM misses child-process RSS (rustc, sccache under cgroup), and 8.4GiB/4 averages across heterogeneous shards (corpus-discovery is far heavier than the gate witnesses). Named dissolution trigger: run at width=1, capture cgroup peak via --measure-cgroup-peak to bound the single-shard peak, then width-sweep (RSS(w2)-RSS(w1))/(w2-w1) to get the true marginal per-shard and replace this inferred bound. Follow-up: per-shard-aware scheduling (run heavy corpus-discovery shard alone, parallelize light gate-witness shards) recovers the 3x floor throughput penalty from uniform width=1."
+  reason: "PER-CHUNK peak DERIVED from whole-run cgroup measurement at width=4 (gunbc_ci_floor_measured_peak: 11592347648 bytes total / 4 = 2898086912 bytes per concurrent shard). Root-cause finding (2026-06-26): MultiEntryIndex.\{intern_table,parse_cache,typed_module_cache\} accumulate unboundedly across all entry files in a single run_discovery_rows call (same unbounded-cache class as PR-5815, which fixed the disk-cache sibling). Fix: DISCOVERY_CHUNK_FACTOR=4 in cli_run.rs splits each shard into sequential sub-chunks of ceil(N/4) entry groups, each with a FRESH MultiEntryIndex that drops after the chunk completes. Per-chunk peak = per-old-shard-at-width-4 because each chunk processes ~1/4 of the corpus entry files with a fresh index. At budget=8GiB: floor(8GiB*4/5 / 2.898GiB) = floor(6.87GiB/2.898GiB) = floor(2.37) = 2 -> width=2, recovering from the width=1 forced by the 4GiB inferred bound. sample_width=4 records the parallel concurrency of the source measurement (NOT the current per-chunk concurrency). Named dissolution trigger: run CI with --measure-cgroup-peak after chunking fix lands, capture actual single-chunk peak in isolation, update with measured value and document chunk size."
 }
 
 fn gunbc_ci_floor_per_shard_peak_rss_bytes() -> ByteSize {
