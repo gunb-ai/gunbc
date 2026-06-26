@@ -36,19 +36,12 @@ use crate::resolved_graph_cache::{
 pub enum ResolveTypecheckGate {
     Strict,
     DiscoveryCorpusAdvisory,
-    /// Best-effort whole-liveness-corpus mode: no errors are blocking. Requires
-    /// that `front_end_sources` is per-module fail-closed (post-#5760) so the
-    /// graph is `Some` even when individual modules have unresolvable imports or
-    /// type errors. Used by `wiring_liveness_whole_tree` to compile as much of
-    /// the corpus as possible and run the dead-wire check on the partial graph.
-    WholeLivenessCorpus,
 }
 
 fn is_resolve_typecheck_blocking(d: Rc<CompilerDiagnostic>, gate: ResolveTypecheckGate) -> bool {
     match gate {
         ResolveTypecheckGate::Strict => is_interpreter_blocking_diagnostic(d),
         ResolveTypecheckGate::DiscoveryCorpusAdvisory => is_discovery_corpus_blocking_diagnostic(d),
-        ResolveTypecheckGate::WholeLivenessCorpus => false,
     }
 }
 
@@ -801,7 +794,6 @@ pub fn whole_tree_resolved_ctx(
     source_roots: &[String],
     exclude_substrings: &[String],
     execution_mode: v1_interpreter::ExecutionMode,
-    typecheck_gate: ResolveTypecheckGate,
 ) -> Result<WholeTreeCtx, String> {
     let index = build_module_index(source_roots);
     let total = index.len();
@@ -824,7 +816,8 @@ pub fn whole_tree_resolved_ctx(
         return Err("whole-tree corpus is empty (no .dag modules under source roots)".to_string());
     }
     let modules_excluded = total - all_sources.len();
-    let (graph, source_indices) = resolved_graph_from_sources(all_sources, typecheck_gate)?;
+    let (graph, source_indices) =
+        resolved_graph_from_sources(all_sources, ResolveTypecheckGate::Strict)?;
     Ok(WholeTreeCtx {
         ctx: v1_interpreter::InterpContext::with_runtime_options(
             graph.as_ref(),

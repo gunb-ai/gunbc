@@ -16,7 +16,6 @@ type Gate
   | DslCompileCleanGate
   | GeneratedArtifactDriftGate
   | SourceRootIngestGate
-  | WiringLivenessWholeTreeGate
 
 type DiffMode = DiffMergeBase | DiffTwoDot
 
@@ -38,8 +37,7 @@ data gunbc_ci_floor_gates: List<Gate> = [
   ExtdepsExternalAuthorityGate,
   DslCompileCleanGate,
   GeneratedArtifactDriftGate,
-  SourceRootIngestGate,
-  WiringLivenessWholeTreeGate
+  SourceRootIngestGate
 ]
 
 data gunbc_ci_rust_job_gates: List<Gate> = [

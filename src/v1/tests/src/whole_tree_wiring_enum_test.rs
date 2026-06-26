@@ -89,13 +89,8 @@ fn whole_tree_enumeration_sees_fns_outside_a_per_entry_closure() {
         ctx,
         modules_resolved,
         modules_excluded,
-    } = whole_tree_resolved_ctx(
-        &[fixture_root()],
-        &[],
-        ExecutionMode::Wet,
-        v1_compiler::cli_run::ResolveTypecheckGate::Strict,
-    )
-    .expect("whole-tree resolve of the self-contained fixture");
+    } = whole_tree_resolved_ctx(&[fixture_root()], &[], ExecutionMode::Wet)
+        .expect("whole-tree resolve of the self-contained fixture");
     assert_eq!(modules_excluded, 0, "fixture excludes nothing");
     assert_eq!(
         modules_resolved, 3,

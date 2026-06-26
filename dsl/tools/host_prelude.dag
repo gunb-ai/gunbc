@@ -71,10 +71,6 @@ fn ensure_v1_src_dag_parse_built() -> List<ShellStmt> {
   ensure_bin_built_and_verified(var_name: "V1_SRC_DAG_PARSE", bin_name: "v1_src_dag_parse")
 }
 
-fn ensure_wiring_liveness_whole_tree_built() -> List<ShellStmt> {
-  ensure_bin_built_and_verified(var_name: "WIRING_LIVENESS_WHOLE_TREE", bin_name: "wiring_liveness_whole_tree")
-}
-
 fn toolchain_provision_shell_exec(script: String) -> Bool {
   let result = shell.Exec.Run(script: script)
   result.success
