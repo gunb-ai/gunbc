@@ -29,9 +29,7 @@ import gunbc.ci_runner_placement {
   workload_class_cpu_weight,
 }
 import gunbc.fleet_host_budget {
-  declared_runner_count,
   gunbc_per_runner_memory_cap,
-  gunbc_runner_pool_budget,
 }
 import gunbc.ci_floor_measurement {
   SessionOperatingPointSet,
@@ -57,19 +55,27 @@ fn live_plan() -> RunnerDeploymentPlan {
   runner_deployment_plan()
 }
 
-fn witness_declared_runner_count_is_ten() -> Bool {
-  declared_runner_count() == 10
+fn no_overcommit_runner_count() -> Int {
+  7
+}
+
+fn no_overcommit_runner_pool_bytes() -> Int {
+  60129542144
+}
+
+fn witness_residual_runner_count_is_seven() -> Bool {
+  no_overcommit_runner_count() * byte_size_count(b: gunbc_per_runner_memory_cap) == no_overcommit_runner_pool_bytes()
 }
 
 fn witness_live_plan_is_conservation_sound() -> Bool {
   match live_plan() {
     PlanDerived { hosts: hosts, fleet_concurrent_runs: total } =>
       hosts.length() == fleet_intent_offers.length()
-        && total == declared_runner_count() * fleet_intent_offers.length()
+        && total == no_overcommit_runner_count() * fleet_intent_offers.length()
         && all(hosts, h =>
-            h.runner_count == declared_runner_count()
+            h.runner_count == no_overcommit_runner_count()
               && byte_size_count(b: h.per_runner_memory_cap) == byte_size_count(b: gunbc_per_runner_memory_cap)
-              && byte_size_count(b: h.runner_slice_cap) == byte_size_count(b: gunbc_runner_pool_budget)
+              && byte_size_count(b: h.runner_slice_cap) == no_overcommit_runner_pool_bytes()
               && hardware_thread_count_value(t: h.build_tokens) > 0
           )
     PlanUnsound { reason: _ } => false
@@ -94,9 +100,9 @@ fn witness_live_session_plan_fail_closed() -> Bool {
   }
 }
 
-fn witness_live_effective_runners_derives_ten() -> Bool {
+fn witness_live_effective_runners_derives_seven() -> Bool {
   match effective_runners_per_host() {
-    RunnersPerHostDerived { count: c } => c == declared_runner_count()
+    RunnersPerHostDerived { count: c } => c == no_overcommit_runner_count()
     RunnersPerHostUnsound { reason: _ } => false
   }
 }
@@ -221,11 +227,11 @@ fn witness_session_reservation_line_has_no_cpu_weight() -> Bool {
 }
 
 test fn runner_placement_holds() -> Bool {
-  witness_declared_runner_count_is_ten()
+  witness_residual_runner_count_is_seven()
     && witness_live_plan_is_conservation_sound()
     && witness_per_runner_cap_within_runner_pool()
     && witness_live_session_plan_fail_closed()
-    && witness_live_effective_runners_derives_ten()
+    && witness_live_effective_runners_derives_seven()
     && witness_sound_manifest_line_is_populated()
     && witness_regime1_resolves_worst_case_slice()
     && witness_mode_unset_is_unresolved()

@@ -12,8 +12,10 @@ import gunbc.runner_spec_from_offer { runner_spec_from_offer }
 import gunbc.fleet_host_budget {
   gunbc_fleet_oomd_evidence,
   gunbc_per_runner_memory_cap,
+  gunbc_session_dashboard_reservation,
   host_allocation_conserves,
-  runner_slice_cap,
+  runner_residual_after_cotenants,
+  session_pool_reservation,
   fleet_host_headroom,
 }
 import extdeps.cpu { cpu_facts_threads }
@@ -141,7 +143,7 @@ fn resolve_session_slice(mode: SessionReservationMode, oomd: OomdEnforcementEvid
   }
 }
 
-data gunbc_ci_runner_count_from_budget_disposition: Disposition = Terminal { reason: "DESIGN conservation model, host-reserved-first: the runner pool is the RESIDUAL after the host's own reservation (fixed_overhead + per-core headroom) is taken off the top of host RAM - runner_pool = runner_slice_cap(host - overhead - session - headroom), NOT a declared literal that must be hand-kept consistent (that was the prior fork: an independent runner_pool_budget restating host - reserves). The per-runner count then divides that residual by the per_runner_memory_cap. Soundness is host_allocation_conserves (node_conserves over runner_pool + session_pool + fixed_overhead + headroom <= host RAM), now satisfied by construction since the pool IS the residual; the fail-closed branch fires only when overhead + headroom saturates the host (zero-runner residual). 'Is the cap live on the host' stays a converge-receipt question, not a plan-soundness one. Session pool is the uniform demand class shared with the ctrl session dashboard." }
+data gunbc_ci_runner_count_from_budget_disposition: Disposition = Terminal { reason: "DESIGN conservation model, host-reserved-first, NO over-commitment (operator: we are not sophisticated enough to allow it): every co-resident tenant is reserved off the top of host RAM before runners get anything - fixed_overhead + per-core headroom + the agent-session pool + the session-DASHBOARD pool (all three of runners, sessions, dashboard co-reside on srv1/srv2). The runner pool is the strict RESIDUAL = runner_residual_after_cotenants(host - overhead - headroom - session_pool - dashboard_pool), NOT a declared literal restating that subtraction (the prior runner_pool_budget fork, now deleted). The per-runner count divides that residual by per_runner_memory_cap. Soundness is host_allocation_conserves (node_conserves over runner_pool + session_pool + dashboard_pool + fixed_overhead + headroom <= host RAM), satisfied by construction since the pool IS the residual; the fail-closed branch fires when the co-tenant reservations saturate the host (zero-runner residual). 'Is the cap live on the host' stays a converge-receipt question. The session and dashboard pools are the demand classes shared with the ctrl session dashboard - sized by no-over-commit (concurrency x per-unit <= pool), never oversubscribed." }
 
 fn host_fixed_overhead_bytes(o: HostFixedOverhead) -> ByteSize {
   match o {
@@ -175,13 +177,16 @@ fn accumulate_conservation_deployment(acc: DeploymentAccumulator, offer: Compute
       let host_ram = compute_host_ram_bytes_total(host: offer.supply.physical)
       let overhead = host_fixed_overhead_bytes(o: gunbc_ci_host_fixed_overhead)
       let headroom = fleet_host_headroom(host: host_ram, nproc: cpu_facts_threads(cpu: cpu))
-      let runner_pool = runner_slice_cap(host: host_ram, overhead: overhead, session_slice: byte_size(0), headroom: headroom)
+      let session_pool = session_pool_reservation(mode: gunbc_ci_session_reservation_mode)
+      let dashboard_pool = gunbc_session_dashboard_reservation
+      let runner_pool = runner_residual_after_cotenants(host: host_ram, overhead: overhead, headroom: headroom, session_pool: session_pool, dashboard_pool: dashboard_pool)
       if host_allocation_conserves(
         host: host_ram,
         overhead: overhead,
         headroom: headroom,
         runner_pool: runner_pool,
-        session_pool: byte_size(0)
+        session_pool: session_pool,
+        dashboard_pool: dashboard_pool
       ) {
         let dep = conservation_host_deployment(offer: offer, nproc: cpu_facts_threads(cpu: cpu), runner_pool: runner_pool)
         DeploymentAccumulator {

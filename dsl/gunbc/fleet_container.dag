@@ -46,6 +46,7 @@ fn container_baseline(c: FleetContainerType) -> ContainerBaseline {
   match c {
     GhaRunnerContainer { baseline: b } => b
     AgentSessionContainer { baseline: b } => b
+    SessionDashboardContainer { baseline: b } => b
   }
 }
 

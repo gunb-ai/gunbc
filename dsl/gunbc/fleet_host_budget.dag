@@ -45,6 +45,8 @@ import gunbc.ci_floor_measurement {
   Regime1WorstCase,
   Regime2AggregateOomd,
   SessionReservationModeUnset,
+  SessionAggregateMeasured,
+  SessionAggregateUnmeasured,
   gunbc_ci_session_reservation_mode,
 }
 import gunbc.oomd_install {
@@ -157,14 +159,28 @@ fn child_node(name: String, b: ByteSize) -> BudgetNode {
 }
 
 
-data gunbc_runner_pool_budget: ByteSize = byte_size(85899345920)
-
 data gunbc_per_runner_memory_cap: ByteSize = byte_size(8589934592)
 
 data gunbc_session_container_memory: ByteSize = byte_size(1073741824)
 
+data gunbc_session_dashboard_reservation_basis: String = "PROVISIONAL hard host reservation for the session-dashboard tenant (the ctrl orchestrator + web UI container, FleetContainerType.SessionDashboardContainer) - 4 GiB, NOT yet a measured cap. It is a THIRD co-resident tenant on srv1/srv2 alongside CI runners and agent sessions and MUST be reserved off the host or the host over-commits (operator: no over-commitment - we are not sophisticated enough to allow it). Dissolves to a measured dashboard-container cap (ask keen-dove-772). TOPOLOGY CAVEAT: reserved per-host (every host leaves room for it) as the conservative no-over-commit choice; if the dashboard is actually a single central instance, the non-hosting hosts over-reserve by this amount - confirm topology to tighten."
+
+data gunbc_session_dashboard_reservation: ByteSize = byte_size(4294967296)
+
 fn session_pool_bytes(active_sessions: Nat) -> ByteSize {
   measure_scale_fraction_floor(m: gunbc_session_container_memory, num: active_sessions, den: 1)
+}
+
+fn session_pool_reservation(mode: SessionReservationMode) -> ByteSize {
+  match mode {
+    Regime2AggregateOomd { oomd_eviction_ceiling: _, session_concurrency: _, aggregate_reservation: agg } =>
+      match agg {
+        SessionAggregateMeasured { bytes: b } => b
+        SessionAggregateUnmeasured => byte_size(0)
+      }
+    Regime1WorstCase { point: _ } => byte_size(0)
+    SessionReservationModeUnset => byte_size(0)
+  }
 }
 
 fn host_allocation_tree(
@@ -172,7 +188,8 @@ fn host_allocation_tree(
   overhead: ByteSize,
   headroom: ByteSize,
   runner_pool: ByteSize,
-  session_pool: ByteSize
+  session_pool: ByteSize,
+  dashboard_pool: ByteSize
 ) -> BudgetNode {
   BudgetNode {
     name: "host_allocation",
@@ -181,6 +198,7 @@ fn host_allocation_tree(
     children: [
       child_node(name: "runner_pool", b: runner_pool),
       child_node(name: "session_pool", b: session_pool),
+      child_node(name: "dashboard_pool", b: dashboard_pool),
       child_node(name: "headroom", b: headroom),
     ],
   }
@@ -191,19 +209,17 @@ fn host_allocation_conserves(
   overhead: ByteSize,
   headroom: ByteSize,
   runner_pool: ByteSize,
-  session_pool: ByteSize
+  session_pool: ByteSize,
+  dashboard_pool: ByteSize
 ) -> Bool {
   node_conserves(node: host_allocation_tree(
     host: host,
     overhead: overhead,
     headroom: headroom,
     runner_pool: runner_pool,
-    session_pool: session_pool
+    session_pool: session_pool,
+    dashboard_pool: dashboard_pool
   ))
-}
-
-fn declared_runner_count() -> Int {
-  measure_fit_count_floor(capacity: gunbc_runner_pool_budget, each: gunbc_per_runner_memory_cap)
 }
 
 fn max_concurrent_sessions(session_pool: ByteSize) -> Int {
@@ -215,6 +231,17 @@ fn runner_slice_cap(host: ByteSize, overhead: ByteSize, session_slice: ByteSize,
   let after_overhead = byte_size_saturating_sub(total: host, reserved: overhead)
   let after_session = byte_size_saturating_sub(total: after_overhead, reserved: session_slice)
   byte_size_saturating_sub(total: after_session, reserved: headroom)
+}
+
+fn runner_residual_after_cotenants(
+  host: ByteSize,
+  overhead: ByteSize,
+  headroom: ByteSize,
+  session_pool: ByteSize,
+  dashboard_pool: ByteSize
+) -> ByteSize {
+  let after_dashboard = byte_size_saturating_sub(total: host, reserved: dashboard_pool)
+  runner_slice_cap(host: after_dashboard, overhead: overhead, session_slice: session_pool, headroom: headroom)
 }
 
 fn runner_slice_node(runner_slice: ByteSize, runner_baseline: ByteSize) -> BudgetNode {

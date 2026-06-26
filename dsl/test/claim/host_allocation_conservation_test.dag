@@ -1,31 +1,31 @@
 module test.claim.host_allocation_conservation
 
 import std.logic { Bool }
-import std.measure { byte_size, byte_size_count, hardware_thread_count }
+import std.measure { ByteSize, byte_size, byte_size_count, hardware_thread_count, measure_fit_count_floor }
 import gunbc.fleet_host_budget {
   host_allocation_conserves,
-  declared_runner_count,
   max_concurrent_sessions,
   session_pool_bytes,
-  gunbc_runner_pool_budget,
   gunbc_host_headroom_per_core,
   core_grounded_headroom,
   fleet_host_headroom,
   oomd_actuation_floor,
   runner_slice_cap,
+  runner_residual_after_cotenants,
+  session_pool_reservation,
+  gunbc_session_dashboard_reservation,
+  gunbc_per_runner_memory_cap,
 }
-
-test fn declared_runner_count_is_ten() -> Bool {
-  declared_runner_count() == 10
-}
+import gunbc.ci_floor_measurement { gunbc_ci_session_reservation_mode }
 
 test fn allocation_conserves_when_pools_fit() -> Bool {
   host_allocation_conserves(
     host: byte_size(134217728000),
     overhead: byte_size(17179869184),
     headroom: byte_size(8589934592),
-    runner_pool: gunbc_runner_pool_budget,
-    session_pool: byte_size(0)
+    runner_pool: byte_size(85899345920),
+    session_pool: byte_size(0),
+    dashboard_pool: byte_size(0)
   )
 }
 
@@ -35,7 +35,8 @@ test fn allocation_unsound_when_runner_pool_overcommits() -> Bool {
     overhead: byte_size(17179869184),
     headroom: byte_size(8589934592),
     runner_pool: byte_size(128849018880),
-    session_pool: byte_size(0)
+    session_pool: byte_size(0),
+    dashboard_pool: byte_size(0)
   )
 }
 
@@ -44,8 +45,20 @@ test fn sessions_subtract_from_the_same_budget() -> Bool {
     host: byte_size(134217728000),
     overhead: byte_size(17179869184),
     headroom: byte_size(8589934592),
-    runner_pool: gunbc_runner_pool_budget,
-    session_pool: session_pool_bytes(active_sessions: 40)
+    runner_pool: byte_size(85899345920),
+    session_pool: session_pool_bytes(active_sessions: 40),
+    dashboard_pool: byte_size(0)
+  )
+}
+
+test fn dashboard_subtracts_from_the_same_budget() -> Bool {
+  !host_allocation_conserves(
+    host: byte_size(134217728000),
+    overhead: byte_size(17179869184),
+    headroom: byte_size(8589934592),
+    runner_pool: byte_size(85899345920),
+    session_pool: byte_size(0),
+    dashboard_pool: byte_size(34359738368)
   )
 }
 
@@ -67,11 +80,42 @@ test fn headroom_floors_at_oomd_actuation() -> Bool {
     && byte_size_count(b: fleet_host_headroom(host: host, nproc: tiny)) == byte_size_count(b: oomd_actuation_floor(host: host))
 }
 
-test fn runner_pool_is_residual_after_host_reserved() -> Bool {
-  let host = byte_size(137438953472)
-  let overhead = byte_size(17179869184)
-  let headroom = fleet_host_headroom(host: host, nproc: hardware_thread_count(count: 128))
-  let pool = runner_slice_cap(host: host, overhead: overhead, session_slice: byte_size(0), headroom: headroom)
-  byte_size_count(b: pool) == byte_size_count(b: gunbc_runner_pool_budget)
-    && byte_size_count(b: pool) < byte_size_count(b: host)
+fn host_128gib() -> ByteSize {
+  byte_size(137438953472)
+}
+
+fn overhead_16gib() -> ByteSize {
+  byte_size(17179869184)
+}
+
+fn live_headroom() -> ByteSize {
+  fleet_host_headroom(host: host_128gib(), nproc: hardware_thread_count(count: 128))
+}
+
+fn live_residual() -> ByteSize {
+  runner_residual_after_cotenants(
+    host: host_128gib(),
+    overhead: overhead_16gib(),
+    headroom: live_headroom(),
+    session_pool: session_pool_reservation(mode: gunbc_ci_session_reservation_mode),
+    dashboard_pool: gunbc_session_dashboard_reservation
+  )
+}
+
+test fn runner_pool_is_residual_after_all_cotenants() -> Bool {
+  let pool = live_residual()
+  byte_size_count(b: pool) == 60129542144
+    && host_allocation_conserves(
+        host: host_128gib(),
+        overhead: overhead_16gib(),
+        headroom: live_headroom(),
+        runner_pool: pool,
+        session_pool: session_pool_reservation(mode: gunbc_ci_session_reservation_mode),
+        dashboard_pool: gunbc_session_dashboard_reservation
+      )
+    && byte_size_count(b: pool) < byte_size_count(b: runner_slice_cap(host: host_128gib(), overhead: overhead_16gib(), session_slice: byte_size(0), headroom: live_headroom()))
+}
+
+test fn no_overcommit_runner_count_is_seven() -> Bool {
+  measure_fit_count_floor(capacity: live_residual(), each: gunbc_per_runner_memory_cap) == 7
 }
