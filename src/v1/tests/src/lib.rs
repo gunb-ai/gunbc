@@ -157,6 +157,8 @@ mod target_model_runtime_import_repro;
 #[cfg(test)]
 mod type_alias_phantom_param_test;
 #[cfg(test)]
+mod type_param_casing_test;
+#[cfg(test)]
 mod typescript_effect_io_receipt_test;
 #[cfg(test)]
 mod typescript_field_access_typecheck_test;

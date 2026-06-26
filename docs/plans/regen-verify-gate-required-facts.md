@@ -17,6 +17,35 @@ All other emitted modules stay byte-identical to the committed seed.
 
 "regen-write still emits a non-building seed from ~150 emitter-completeness gaps; the clean green regen fixpoint is deferred, converges with the Route-A emitter self-host." A faithful full regen wires the deliberately-unwired orphan std modules (`std_measure`, `std_algebra`, `std_realization_schedule`, `std_machine_constraints`, `std_integer`, `extdeps_version_semver`, `extdeps_cargo_version`) and surfaces ~150 latent emitter-completeness gaps (std numeric / measure-tower generic emission).
 
+## The third drift — 29 lens/census builtin type-rows the faithful regen DROPS (scope-only partition)
+
+Static analysis (no code flipped, no groundings authored) of the `builtin_function_registry()` §3 fork. The registry is duplicate authority: the `.dag` side `src/v1/04_method.dag:51-128` (`fn builtin_function_registry`) and the hand-synced Rust mirror `src/v1/stage0/src/v1_compiler_infer_method.rs:97-430`. The Rust mirror registers **108** name→return-type rows; the `.dag` authority registers only **79**. **Exactly 29 type-rows live in the Rust seed and are absent from the `.dag` authority** — a faithful `regen_stage0` (which emits `v1_compiler_infer_method.rs` from `04_method.dag`) DROPS them, and every lens/census `.dag` witness that resolves a dropped name then fails closed ("function not found in scope", `compile_clean_forcecheck.md` probe 2). So the regen is **not lossless** until these rows are mirrored into the `.dag` authority.
+
+**Set computed by set-difference of registry keys (Rust mirror ∖ `.dag` authority), grouped by owning lens/census reflection module.** All counts are receipts against the live tree.
+
+| owning lens/census module | dropped type-rows | n | regen class |
+| --- | --- | --: | --- |
+| `doc_reachability_project` (doc-graph) | `doc_graph_orphan_count`, `doc_graph_dangling_link_count`, `doc_graph_doc_count` | 3 | **R-live** — `.dag` witness free-calls them today |
+| `module_path_index` | `module_declaration_facts`, `module_declaration_fact_elem` | 2 | **R-live** (`_facts`) + **C** (`_elem`) |
+| `inert_carrier_project` | `inert_carrier_count`, `inert_carrier_unrostered_count`, `inert_carrier_stale_roster_count`, `inert_carrier_declared_count` | 4 | **R** — realized host builtin, corpus-called as method |
+| `non_fold_residue_project` | `non_fold_residue_count`, `non_fold_residue_unrostered_count`, `non_fold_residue_stale_roster_count`, `non_fold_residue_coproduct_universe_count` | 4 | **R** |
+| `fact_cardinality_census` | `fact_cardinality_cross_tree_coexistence_count`, `..._diverged_fork_count`, `..._is_coexistence`, `..._is_diverged_fork` | 4 | **R** |
+| `layering_imports_project` | `layer_import_facts`, `layer_import_fact_elem` | 2 | **R** (`_facts`) + **C** (`_elem`) |
+| `import_resolution_project` | `import_resolution_facts`, `import_resolution_fact_elem` | 2 | **R** (`_facts`) + **C** (`_elem`) |
+| `medium_structure_project` | `medium_structure_leak_facts`, `medium_structure_leak_fact_elem` | 2 | **R** (`_facts`) + **C** (`_elem`) |
+| extdeps external-authority lens | `extdeps_external_authority_anchor_shadow_masked_for_qualified_name`, `..._live_shadow_mask_holds`, `..._backfill_entries`, `..._backfill_entry_elem` | 4 | **R** ×3 + **C** (`_entry_elem`) |
+| census layer authority | `census_corpus_roots_follow_layer_authority` | 1 | **R** |
+| transport/shell lens | `shell_materialize_argv_for_operation` | 1 | **R** |
+
+## Partition: the two regen classes (the prescription for the lossless mirror)
+
+1. **Class R — host-reflection intrinsic type-rows (24 names, `interp_realized ≥ 1`).** Realized in `v1_interpreter.rs` as corpus-scanning host builtins (filesystem / module-graph / doc-graph reflection), the exact `SeedOnly` class as `filesystem_read` (`compile_clean_forcecheck.md` §6) and `doc_graph_*` (`inert_layer_lens.md`: "no list-dir host effect in `.dag` today"). The lossless-regen fix is to **mirror the type-row** (name → return-type `Node`) into `04_method.dag`'s `builtin_function_registry` — a *type-registration*, NOT a grounding: the realization stays the seed host builtin, because these are host effects that have no pure-`.dag` def until `.dag` gains list-dir / compile-graph access (dissolution: gunbc#5364). Authoring the `.dag` def is the trap this scope-only node must NOT take.
+2. **Class C — type-variable companion rows (5 `_elem` names, `interp_realized = 0`).** Not callable builtins: each is the element-type registration paired with a list-returning `_facts` parent (`..._facts → list_of_type_variable("..._fact_elem")`). Pure type-machinery; re-emit alongside its parent, never independently.
+
+**Highest-priority sub-tag (R-live, 4 names):** `doc_graph_orphan_count`, `doc_graph_dangling_link_count`, `doc_graph_doc_count`, `module_declaration_facts` are free-called by `.dag` witnesses **today** (e.g. `dsl/test/claim/doc_reachability_witness_test.dag:4`). Dropping their type-row breaks the lens-corpus compile immediately — these gate the regen-verify wall first. The other 20 R-rows are realized + method/internally-called; their witnesses do not free-call them, so their drop is latent but still a losslessness violation.
+
+**Why this is the third drift, not new debt:** like the cargo-header and wire-policy drifts above, the 29 rows are a hand-sync the Rust mirror carries that the `.dag` authority lacks. The `regen --verify` wall (a clean regen must reproduce the committed seed bit-identically) cannot go green until the mirror is made faithful in **both** directions — and the construction-correct direction is to add the rows to the `.dag` authority (so regen emits them), advancing the registry's own marked dissolve-on (`04_method.dag:55-62`), not to special-case them out of the verify.
+
 ## Dissolution trigger (DESIGN §6)
 
 §7 fixpoint convergence with the Route-A emitter self-host — when wire-all-emitted-modules → regen-equals-committed is in reach, the `regen --verify` gate (a wall: a clean regen must reproduce the committed seed bit-identically) becomes buildable and this row dissolves into it.
