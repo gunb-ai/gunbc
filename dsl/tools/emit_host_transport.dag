@@ -45,8 +45,7 @@ fn rust_mvp2_program() -> ShellProgram {
       Heredoc { path: Concat { parts: [workdir, lit(text: "/Cargo.toml")] }, delimiter: "EOF", body: fixture_cargo_toml },
       Heredoc { path: Concat { parts: [workdir, lit(text: "/src/main.rs")] }, delimiter: "EOF", body: rust_mvp2_stdout_fixture_source },
       EnvPrefixed {
-        name: "CARGO_TARGET_DIR",
-        value: Concat { parts: [workdir, lit(text: "/target")] },
+        bindings: [env_binding(name: "CARGO_TARGET_DIR", value: Concat { parts: [workdir, lit(text: "/target")] })],
         command: command(words: [
           lit(text: "cargo"), lit(text: "build"), lit(text: "--quiet"),
           lit(text: "--manifest-path"), Concat { parts: [workdir, lit(text: "/Cargo.toml")] }

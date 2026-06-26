@@ -2,9 +2,10 @@ module test.claim.bash_serializer_witness
 
 import extdeps.languages.bash.program {
   ShellWord, Lit, VarRef, CmdSubst, Raw,
-  ShellStmt, Command, Assign, RawLine,
+  ShellStmt, Command, Assign, RawLine, EnvPrefixed, EnvUnset,
+  EnvBinding,
   ShellProgram,
-  lit, var_ref, command, assign, single_quote, serialize_bash
+  lit, var_ref, command, assign, env_binding, env_unset, single_quote, serialize_bash
 }
 
 fn prog_mktemp_rm() -> ShellProgram {
@@ -50,10 +51,43 @@ fn witness_varref_vs_lit_quoting() -> Bool {
   out == "\"$ROOT\" 'ROOT'\n"
 }
 
+fn witness_env_unset_serializes() -> Bool {
+  serialize_bash(p: ShellProgram {
+    set_e: false,
+    statements: [env_unset(names: ["FOO", "BAR"])]
+  }) == "unset FOO BAR\n"
+}
+
+fn witness_env_prefixed_multi_binding_serializes() -> Bool {
+  serialize_bash(p: ShellProgram {
+    set_e: false,
+    statements: [EnvPrefixed {
+      bindings: [
+        env_binding(name: "A", value: lit(text: "1")),
+        env_binding(name: "B", value: var_ref(name: "C"))
+      ],
+      command: command(words: [lit(text: "cargo")])
+    }]
+  }) == "A='1' B=\"$C\" 'cargo'\n"
+}
+
+fn witness_env_prefixed_single_binding_serializes() -> Bool {
+  serialize_bash(p: ShellProgram {
+    set_e: false,
+    statements: [EnvPrefixed {
+      bindings: [env_binding(name: "CARGO_TARGET_DIR", value: lit(text: "/tmp/t"))],
+      command: command(words: [lit(text: "cargo"), lit(text: "build")])
+    }]
+  }) == "CARGO_TARGET_DIR='/tmp/t' 'cargo' 'build'\n"
+}
+
 test fn bash_serializer_keystone_holds() -> Bool {
   witness_serialize_golden() &&
     witness_single_quote_escapes_embedded_quote() &&
     witness_metachars_are_quoted() &&
     witness_discriminates_on_input() &&
-    witness_varref_vs_lit_quoting()
+    witness_varref_vs_lit_quoting() &&
+    witness_env_unset_serializes() &&
+    witness_env_prefixed_multi_binding_serializes() &&
+    witness_env_prefixed_single_binding_serializes()
 }
