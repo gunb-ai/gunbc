@@ -11,13 +11,33 @@
 //! This test pins exactly that observable. It builds a multi-import witness,
 //! discovers the global type-id keyset, then for every (module, key) records the
 //! result of the **`lookup_type` function** (never raw `.bindings`), canonicalized
-//! key-sorted. The same matrix is captured for `func_env` signatures. The golden
-//! is asserted stable across two independent cold resolves — and, by querying
-//! through the lookup API, it is representation-agnostic by construction: when
-//! Layer A lands, re-running this test exercises the scope-chain lookup and goes
-//! RED on any semantic drift. The only edit Layer A needs here is the keyset
-//! discovery (`union of .bindings` -> `union of local + reachable`), called out
-//! at its site below.
+//! key-sorted. The same matrix is captured for `func_env` signatures.
+//!
+//! ## Why determinism alone is NOT a sufficient guard (the discriminating part)
+//!
+//! Asserting `m_one == m_two` across two cold resolves only proves the resolver is
+//! deterministic — both resolves use the SAME representation, so a de-merge that
+//! silently drops imports (every importer cell -> `<not-in-scope>`, *consistently*)
+//! would keep this equal and stay GREEN. That is exactly the "reader bypasses
+//! `lookup_*` and sees only locals" failure the de-merge risks. So this gate adds
+//! two DISCRIMINATING checks that go RED on import-loss:
+//!
+//!   (1) a cross-module **in-scope** assertion: a type defined in `test.common`
+//!       (`Box`) must resolve through `lookup_type` in importer `test.b`. If the
+//!       de-merged enumerator/accessor stops seeing parents, this flips to
+//!       `<not-in-scope>` and the assert fails.
+//!   (2) a cross-import **unit-variant phantom** witness: `test.sig` defines a
+//!       coproduct `Sig = Active | Idle`; `test.phantom` imports `Sig` and uses
+//!       the bare unit variant `Active` in a *type* position. Resolving that name
+//!       runs `collect_unit_variant_phantom_matches`, which enumerates the env's
+//!       bindings for the enclosing coproduct. Under `ResolveTypecheckGate::Strict`
+//!       an unresolved type is FATAL, so if the de-merged enumerator misses the
+//!       imported `Sig`, `resolve_entry_graph` returns `Err` and this test panics.
+//!
+//! The only edit Layer A needs here is the keyset discovery
+//! (`union of .bindings` -> `union of local + reachable`), called out at its site
+//! below; the lookup queries and the two discriminators are unchanged — that is
+//! the whole point.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -88,6 +108,24 @@ fn observable_matrix(graph: &ResolvedGraph) -> String {
     canonical(&matrix)
 }
 
+/// The type-id under which `binding_name` is stored as a *local* type in the
+/// module whose canonical name contains `owner_module`, read via that owner's own
+/// bindings (an owner carries its own locals before and after de-merge). Returns
+/// the interned id so an *importer* can be probed for the same id through
+/// `lookup_type` — a cross-module in-scope discriminator.
+fn local_type_id(graph: &ResolvedGraph, owner_module: &str, binding_name: &str) -> i64 {
+    for m in graph.modules.iter() {
+        if canonical(&m.module).contains(owner_module) {
+            for (id, binding) in m.type_env.bindings.iter() {
+                if binding.name == binding_name {
+                    return *id;
+                }
+            }
+        }
+    }
+    panic!("binding `{binding_name}` not found local to module `{owner_module}`");
+}
+
 fn write_witness() -> (Vec<String>, String, std::path::PathBuf) {
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -110,6 +148,15 @@ fn write_witness() -> (Vec<String>, String, std::path::PathBuf) {
         fn val() -> Int { 10 }\n";
     let shared2 = "module test.shared2\nfn val() -> Int { 20 }\n";
     let extra = "module test.extra\nfn pad() -> Int { 7 }\n";
+    // Cross-import unit-variant phantom: `Sig` is a coproduct of unit variants in
+    // one module; `test.phantom` imports the TYPE `Sig` (not the variant) and then
+    // names the bare unit variant `Active` in a type position. Resolving that name
+    // must enumerate the imported coproduct via the scope chain.
+    let sig = "module test.sig\ntype Sig = Active | Idle\n";
+    let phantom = "module test.phantom\n\
+        import test.sig { Sig }\n\
+        fn classify(s: Active) -> Int { 1 }\n\
+        fn ping() -> Int { 99 }\n";
     let entry_a = "module test.a\n\
         import test.common { boxed, unbox }\n\
         import test.shared1 { val }\n\
@@ -118,6 +165,8 @@ fn write_witness() -> (Vec<String>, String, std::path::PathBuf) {
         import test.common { boxed, unbox }\n\
         import test.shared2 { val }\n\
         import test.extra { pad }\n\
+        import test.phantom { ping }\n\
+        fn uses_phantom() -> Int { ping() }\n\
         fn witness_b() -> Bool { (unbox(boxed(val())) + pad()) == 27 }\n";
 
     for (name, src) in [
@@ -125,6 +174,8 @@ fn write_witness() -> (Vec<String>, String, std::path::PathBuf) {
         ("shared1.dag", shared1),
         ("shared2.dag", shared2),
         ("extra.dag", extra),
+        ("sig.dag", sig),
+        ("phantom.dag", phantom),
         ("entry_a.dag", entry_a),
         ("entry_b.dag", entry_b),
     ] {
@@ -140,6 +191,9 @@ fn write_witness() -> (Vec<String>, String, std::path::PathBuf) {
 fn lookup_observable_is_stable_and_representation_independent() {
     let (roots, entry, _dir) = write_witness();
 
+    // DISCRIMINATOR (2): the cross-import phantom in the witness means a de-merge
+    // that drops imports from the unit-variant enumerator makes this `.expect`
+    // panic — `classify(s: Active)` would raise a fatal UnresolvedType under Strict.
     let (graph_one, _si_one) = resolve_entry_graph(&roots, &entry).expect("first resolve");
     let (graph_two, _si_two) = resolve_entry_graph(&roots, &entry).expect("second resolve");
 
@@ -149,6 +203,32 @@ fn lookup_observable_is_stable_and_representation_independent() {
         graph_one.modules.len() > 1,
         "equivalence gate needs a multi-module closure; got {}",
         graph_one.modules.len()
+    );
+
+    // DISCRIMINATOR (1): a type defined in `test.common` must be in scope (resolve
+    // through `lookup_type`) in the importer `test.b`. `Box` is local to
+    // `test.common`; `test.b` imports `boxed`/`unbox` whose signatures reference it,
+    // so it MUST be reachable. Today it is in the merged map; after the de-merge it
+    // must remain reachable through the parent chain. If the de-merge regresses,
+    // this flips to `<not-in-scope>` and fails — the exact "reader sees only locals"
+    // failure mode, caught here by querying through the lookup API.
+    let box_id = local_type_id(&graph_one, "common", "Box");
+    let mut probed_importer = false;
+    let importer_needle = "\"test.b\"".to_string();
+    for m in graph_one.modules.iter() {
+        if canonical(&m.module).contains(&importer_needle) {
+            let resolved = lookup_type(m.type_env.clone(), box_id);
+            assert!(
+                resolved.is_some(),
+                "importer test.b must resolve imported type `Box` (id {box_id}) through \
+                 lookup_type; got <not-in-scope> — the de-merge dropped the import closure"
+            );
+            probed_importer = true;
+        }
+    }
+    assert!(
+        probed_importer,
+        "expected importer module test.b in the resolved graph to probe cross-module in-scope"
     );
 
     let m_one = observable_matrix(&graph_one);
@@ -162,9 +242,10 @@ fn lookup_observable_is_stable_and_representation_independent() {
     );
 
     eprintln!(
-        "[layer-a-gate] modules={} observable={} bytes",
+        "[layer-a-gate] modules={} observable={} bytes box_id={}",
         graph_one.modules.len(),
-        m_one.len()
+        m_one.len(),
+        box_id
     );
 
     // THE GATE: the lookup-observable is identical across independent resolves.
