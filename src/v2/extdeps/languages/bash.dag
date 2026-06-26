@@ -2249,9 +2249,10 @@ fn bash_program_set_e_source_text(body: String) -> String {
   concat("set -e\n", body)
 }
 
-fn bash_program_set_e_lex() -> LexRules {
+fn bash_program_set_e_lex(body: String) -> LexRules {
   phrase_to_lex_rules(p: phrase([
-    span(text: "set -e\n", class: ^bash_token_program_set_e_kw)
+    span(text: "set -e\n", class: ^bash_token_program_set_e_kw),
+    span(text: body, class: ^bash_token_orch_raw)
   ]))
 }
 
@@ -2275,7 +2276,7 @@ fn bash_program_set_e_target_model(body: String) -> TargetModel {
     production_name: ^bash_production_program_set_e,
     tokens: bash_program_set_e_tokens(),
     source_text: bash_program_set_e_source_text(body: body),
-    lex: bash_program_set_e_lex(),
+    lex: bash_program_set_e_lex(body: body),
     binding_spellings: bash_program_set_e_binding_spellings(body: body)
   )
 }

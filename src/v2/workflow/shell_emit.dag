@@ -343,7 +343,7 @@ fn emit_shell_program(p: ShellProgram) -> Outcome<Medium<String>> {
     if p.set_e {
       emit_program_set_e(body: mb.carried)
     } else {
-      emit_word_pass(spelling: mb.carried)
+      outcome_accepted(lossless_source(text: mb.carried))
     }
   })
 }

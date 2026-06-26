@@ -1,6 +1,6 @@
 module v2.workflow.build_step_transport_emit_test
 
-import v2.workflow.shell_emit { emit_shell_program }
+import v2.workflow.shell_emit { emit_shell_program, emit_shell_stmt }
 import tools.build_step_transport {
   corruption_probe_zero_byte_program,
   corruption_probe_nonempty_program,
@@ -76,4 +76,41 @@ test fn loc_prog_assign_probe_bin_holds() -> Bool {
 
 test fn loc_prog_touch_chmod_holds() -> Bool {
   program_carried_equals_oracle(p: one_stmt_program(s: touch_and_chmod_probe()))
+}
+
+test fn loc_lit_emit_assign_tmpdir_holds() -> Bool {
+  program_emit_carried(p: one_stmt_program(s: assign_tmpdir())) == "TMPDIR=$('mktemp' '-d')\n"
+}
+
+test fn loc_lit_oracle_assign_tmpdir_holds() -> Bool {
+  serialize_bash(p: one_stmt_program(s: assign_tmpdir())) == "TMPDIR=$('mktemp' '-d')\n"
+}
+
+fn stmt_carried(s: ShellStmt) -> String {
+  match emit_shell_stmt(s: s) {
+    Accepted { value: src, diagnostics: _ } => src.carried
+    Rejected { diagnostics: _ } => "REJECTED"
+  }
+}
+
+test fn loc_stmt_emit_assign_tmpdir_lit_holds() -> Bool {
+  stmt_carried(s: assign_tmpdir()) == "TMPDIR=$('mktemp' '-d')"
+}
+
+test fn loc_stmt_emit_touch_chmod_lit_holds() -> Bool {
+  stmt_carried(s: touch_and_chmod_probe()) == "'touch' \"$PROBE_BIN\" && 'chmod' '+x' \"$PROBE_BIN\""
+}
+
+test fn loc_prog_eq_stmt_plus_nl_holds() -> Bool {
+  program_emit_carried(p: one_stmt_program(s: assign_tmpdir())) ==
+    concat(stmt_carried(s: assign_tmpdir()), "\n")
+}
+
+test fn loc_prog_eq_stmt_no_nl_holds() -> Bool {
+  program_emit_carried(p: one_stmt_program(s: assign_tmpdir())) ==
+    stmt_carried(s: assign_tmpdir())
+}
+
+test fn loc_prog_carried_empty_holds() -> Bool {
+  program_emit_carried(p: one_stmt_program(s: assign_tmpdir())) == ""
 }
