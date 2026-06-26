@@ -1,0 +1,107 @@
+module test.claim.container_provision
+
+import std.types { Bool, Int, String }
+import std.measure { byte_size, byte_size_count }
+import product.compute_fabric {
+  ContainerProvision,
+  ContainerProvisionResult,
+  Provisioned,
+  ProvisionRefused,
+  ProvisionApplier,
+  SelfAppliedBySpawner,
+  ExternallyApplied,
+  resolve_container_provision,
+}
+import gunbc.fleet_host_budget {
+  session_container_provision,
+  dashboard_container_provision,
+  gunbc_session_container_memory,
+  gunbc_session_dashboard_reservation,
+  gunbc_container_cpu_shares,
+  gunbc_container_pids_max,
+}
+
+fn applier_is_self(a: ProvisionApplier) -> Bool {
+  match a {
+    SelfAppliedBySpawner => true
+    ExternallyApplied => false
+  }
+}
+
+fn quota_is_unset(p: ContainerProvision) -> Bool {
+  match p.cpu_quota_cores {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+fn witness_swap_equals_mem_cap_by_construction() -> Bool {
+  match session_container_provision() {
+    Provisioned { provision: p } =>
+      byte_size_count(b: p.swap_cap_bytes) == byte_size_count(b: p.mem_cap_bytes)
+    ProvisionRefused { reason: _ } => false
+  }
+}
+
+fn witness_session_provision_caps_at_demand_class() -> Bool {
+  match session_container_provision() {
+    Provisioned { provision: p } =>
+      byte_size_count(b: p.mem_cap_bytes) == byte_size_count(b: gunbc_session_container_memory)
+        && byte_size_count(b: p.mem_reserved_bytes) == 471859200
+        && p.cgroup_slice == "sessions.slice"
+        && p.cpu_shares == gunbc_container_cpu_shares
+        && p.pids_max == gunbc_container_pids_max
+        && quota_is_unset(p: p)
+        && applier_is_self(a: p.applier)
+    ProvisionRefused { reason: _ } => false
+  }
+}
+
+fn witness_dashboard_provision_is_externally_applied() -> Bool {
+  match dashboard_container_provision() {
+    Provisioned { provision: p } =>
+      byte_size_count(b: p.mem_cap_bytes) == byte_size_count(b: gunbc_session_dashboard_reservation)
+        && byte_size_count(b: p.swap_cap_bytes) == byte_size_count(b: gunbc_session_dashboard_reservation)
+        && byte_size_count(b: p.mem_reserved_bytes) == 1073741824
+        && !applier_is_self(a: p.applier)
+    ProvisionRefused { reason: _ } => false
+  }
+}
+
+fn witness_zero_cap_is_refused_fail_closed() -> Bool {
+  match resolve_container_provision(
+    per_unit_cap: byte_size(0),
+    mem_reservation: byte_size(471859200),
+    cgroup_slice: "sessions.slice",
+    cpu_shares: 1024,
+    pids_max: 4096,
+    cargo_build_jobs: none,
+    applier: SelfAppliedBySpawner
+  ) {
+    ProvisionRefused { reason: _ } => true
+    Provisioned { provision: _ } => false
+  }
+}
+
+fn witness_positive_cap_is_provisioned() -> Bool {
+  match resolve_container_provision(
+    per_unit_cap: byte_size(1073741824),
+    mem_reservation: byte_size(471859200),
+    cgroup_slice: "sessions.slice",
+    cpu_shares: 1024,
+    pids_max: 4096,
+    cargo_build_jobs: none,
+    applier: SelfAppliedBySpawner
+  ) {
+    Provisioned { provision: p } => byte_size_count(b: p.mem_cap_bytes) == 1073741824
+    ProvisionRefused { reason: _ } => false
+  }
+}
+
+test fn container_provision_holds() -> Bool {
+  witness_swap_equals_mem_cap_by_construction()
+    && witness_session_provision_caps_at_demand_class()
+    && witness_dashboard_provision_is_externally_applied()
+    && witness_zero_cap_is_refused_fail_closed()
+    && witness_positive_cap_is_provisioned()
+}

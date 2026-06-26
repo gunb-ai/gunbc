@@ -16,7 +16,12 @@ import std.effects { EffectShape, CreateEffect, CreateCause, CreateIfAbsent, Key
 import std.realization_schedule { CostAccount, CostBasis, Predicted }
 import extdeps.accounting.budget { Appropriation, LineItem }
 import product.budget_tree { BudgetNode, BudgetClaim, Guaranteed, node_conserves }
-import product.compute_fabric { ComputeOffer, compute_host_ram_bytes_total, compute_host_primary_cpu }
+import product.compute_fabric {
+  ComputeOffer, compute_host_ram_bytes_total, compute_host_primary_cpu,
+  ContainerProvisionResult, Provisioned, ProvisionRefused,
+  ProvisionApplier, SelfAppliedBySpawner, ExternallyApplied,
+  resolve_container_provision,
+}
 import extdeps.cpu { cpu_facts_threads }
 import extdeps.ctrl.jobserver {
   CtrlJobserverConfig,
@@ -33,6 +38,8 @@ import gunbc.fleet_container {
   BaselineUnmeasured,
   container_baseline_bytes,
   gha_runner_container,
+  agent_session_container,
+  session_dashboard_container,
 }
 import gunbc.ci_floor_measurement {
   OomdEnforcementEvidence,
@@ -53,6 +60,7 @@ import gunbc.oomd_install {
   OomdGroundingThresholds,
   gunbc_oomd_fleet_evidence,
   gunbc_oomd_sessions_policy,
+  gunbc_oomd_sessions_slice,
 }
 
 
@@ -351,6 +359,48 @@ fn fleet_host_plan() -> FleetHostPlan {
   )
 }
 
+
+data gunbc_container_cpu_shares_basis: String = "cpu_shares is the cgroup-v2 CPUWeight (relative scheduling share, NOT a hard core partition - cpu_quota_cores stays none so containers are CPU-soft-capped, free to burst into idle cores). 1024 is the systemd default weight; sessions and the dashboard get the same relative weight as a runner here (equal-share). Distinct from the workload_class cpu_weight in ci_runner_placement, which biases interactive sessions above batch runners at the slice level; this is the per-container default the resolver stamps when a caller does not override. Provisional flat default; dissolves to a per-demand-class weight once relative latency-sensitivity is grounded."
+
+data gunbc_container_cpu_shares: Int = 1024
+
+data gunbc_container_pids_max_basis: String = "pids_max is the cgroup pids.max fork-bomb backstop: a per-container cap on task count so one runaway container cannot exhaust the host PID space (a second conservation axis beside memory). 4096 is a provisional ceiling comfortably above a build's process fan-out; dissolves to a measured peak task count per demand class."
+
+data gunbc_container_pids_max: Int = 4096
+
+fn session_container_provision() -> ContainerProvisionResult {
+  match container_baseline_bytes(c: agent_session_container) {
+    BaselineUnmeasured { reason: _ } =>
+      ProvisionRefused { reason: "session container provision refused: agent-session idle baseline is unmeasured (no grounded reservation floor); fail closed rather than spawn an unreserved session container" }
+    BaselineResolved { bytes: idle } =>
+      resolve_container_provision(
+        per_unit_cap: gunbc_session_container_memory,
+        mem_reservation: idle,
+        cgroup_slice: gunbc_oomd_sessions_slice,
+        cpu_shares: gunbc_container_cpu_shares,
+        pids_max: gunbc_container_pids_max,
+        cargo_build_jobs: none,
+        applier: SelfAppliedBySpawner
+      )
+  }
+}
+
+fn dashboard_container_provision() -> ContainerProvisionResult {
+  match container_baseline_bytes(c: session_dashboard_container) {
+    BaselineUnmeasured { reason: _ } =>
+      ProvisionRefused { reason: "dashboard container provision refused: session-dashboard idle baseline is unmeasured (no grounded reservation floor); fail closed rather than spawn an unreserved dashboard container" }
+    BaselineResolved { bytes: idle } =>
+      resolve_container_provision(
+        per_unit_cap: gunbc_session_dashboard_reservation,
+        mem_reservation: idle,
+        cgroup_slice: gunbc_oomd_sessions_slice,
+        cpu_shares: gunbc_container_cpu_shares,
+        pids_max: gunbc_container_pids_max,
+        cargo_build_jobs: none,
+        applier: ExternallyApplied
+      )
+  }
+}
 
 fn fleet_host_plan_for_offer(
   offer: ComputeOffer,
