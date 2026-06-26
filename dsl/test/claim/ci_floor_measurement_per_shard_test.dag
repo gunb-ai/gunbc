@@ -19,9 +19,19 @@ fn per_shard_peak_bytes_for(m: PerShardRssPeakMeasurement) -> Int {
   }
 }
 
-fn witness_per_shard_uses_cgroup_derived() -> Bool {
-  byte_size_count(b: gunbc_ci_floor_per_shard_peak_rss_bytes()) ==
-    byte_size_count(b: concurrent_memory_peak_per_share(sample: gunbc_ci_floor_measured_peak))
+fn witness_measurement_mode_is_measured() -> Bool {
+  match gunbc_ci_floor_per_shard_rss_measurement {
+    PerShardRssPeakMeasured { per_shard_peak: _, sample_width: _ } => true
+    PerShardRssPeakUnmeasured => false
+  }
+}
+
+fn witness_per_shard_is_four_gib_conservative_bound() -> Bool {
+  byte_size_count(b: gunbc_ci_floor_per_shard_peak_rss_bytes()) == 4294967296
+}
+
+fn witness_per_shard_exceeds_vmhwm_based() -> Bool {
+  byte_size_count(b: gunbc_ci_floor_per_shard_peak_rss_bytes()) > 2100028416
 }
 
 fn witness_cgroup_derived_exceeds_vmhwm_based() -> Bool {
@@ -34,16 +44,10 @@ fn witness_unmeasured_arm_falls_back_to_derived() -> Bool {
   fallback == derived
 }
 
-fn witness_measurement_mode_is_unmeasured() -> Bool {
-  match gunbc_ci_floor_per_shard_rss_measurement {
-    PerShardRssPeakMeasured { per_shard_peak: _, sample_width: _ } => false
-    PerShardRssPeakUnmeasured => true
-  }
-}
-
 test fn ci_floor_measurement_per_shard_rss_witnesses() -> Bool {
-  witness_per_shard_uses_cgroup_derived()
+  witness_measurement_mode_is_measured()
+    && witness_per_shard_is_four_gib_conservative_bound()
+    && witness_per_shard_exceeds_vmhwm_based()
     && witness_cgroup_derived_exceeds_vmhwm_based()
     && witness_unmeasured_arm_falls_back_to_derived()
-    && witness_measurement_mode_is_unmeasured()
 }

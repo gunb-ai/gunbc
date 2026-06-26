@@ -18,10 +18,13 @@ type PerShardRssPeakMeasurement
   = PerShardRssPeakMeasured { per_shard_peak: ByteSize, sample_width: Int }
   | PerShardRssPeakUnmeasured
 
-data gunbc_ci_floor_per_shard_rss_measurement: PerShardRssPeakMeasurement = PerShardRssPeakUnmeasured
+data gunbc_ci_floor_per_shard_rss_measurement: PerShardRssPeakMeasurement = PerShardRssPeakMeasured {
+  per_shard_peak: byte_size(4294967296)
+  sample_width: 2
+}
 
 data gunbc_ci_floor_per_shard_rss_source: Disposition = Terminal {
-  reason: "Cgroup-derived (switched from VmHWM-based): per_shard = gunbc_ci_floor_measured_peak.peak / concurrency = 11592347648/4 = 2898086912 (~2.75GiB). Prior VmHWM-based value (2100028416, run 27893441091) was stale and uniform-avg: VmHWM/width is a process self-RSS average across all 4 concurrent shards, which (a) under-counts child processes (rustc, sccache captured by cgroup but not VmHWM) and (b) under-estimates worst-shard peak by averaging. Cgroup-based concurrent_memory_peak_per_share over-estimates the marginal per-shard cost (it includes base/concurrency from the non-parallelizable executor overhead), implicitly compensating for the reserved=0 limitation in memory_bounded_shard_count without requiring a separate base reservation term — fixing all three causes (stale + uniform-avg + reserved=0-compensation) in one authority. Dissolution paths: per-shard cgroup isolation (cgroup.subtree_control + per-thread memory.peak) gives the true marginal per-shard cost and decouples base accounting from per-shard; width-sweep slope (RSS(w+1)-RSS(w))/1 is a lighter alternative."
+  reason: "Conservative lower-bound from width=2 OOM observation (CI run 28215907472, 2026-06-26): at spawn_width=2 the runner cgroup (memory.max=8GiB) OOM-killed the executor. Lower bound on per-share: (8GiB - base~0.7GiB) / 2 ~= 3.65GiB; set conservatively to 4GiB (4294967296) so floor(8GiB*4/5 / 4GiB) = floor(1.6) = 1 -> width=1, guaranteed under cap. Prior VmHWM-based value (2100028416, run 27893441091) was stale and under-counted: VmHWM misses child-process RSS (rustc, sccache), and the uniform average (8.4GiB/4) under-estimates the heavy corpus-discovery shard. Dissolution path: run at width=1, capture cgroup peak via --measure-cgroup-peak, compute marginal per_shard via width-sweep slope (RSS(w2)-RSS(w1))/(w2-w1) with width-sweep from 1->2."
 }
 
 fn gunbc_ci_floor_per_shard_peak_rss_bytes() -> ByteSize {

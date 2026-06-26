@@ -328,6 +328,10 @@ fn witness_floor_spawn_width_large_budget_clamped() -> Bool {
   width_large == width_cap && width_large < gunbc_ci_floor_breadth()
 }
 
+fn witness_floor_spawn_width_at_cap_is_one() -> Bool {
+  hardware_thread_count_value(t: gunbc_ci_floor_spawn_width_for_budget(memory_budget: gunbc_per_runner_memory_cap)) == 1
+}
+
 fn floor_layer_heavy_resolve_count(batch: ExecutorBatch, spec: CiSpec) -> Int {
   fold(batch.jobs, init: 0, f: fn(acc, job) {
     if floor_node_is_heavy_resolve(node: job.node, spec: spec) { acc + 1 } else { acc }
