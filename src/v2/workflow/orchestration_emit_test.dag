@@ -91,6 +91,7 @@ test fn orch_run_empty_env_delegates_to_shell_emit_holds() -> Bool {
 
 test fn orch_run_env_reduction_trigger_recorded_holds() -> Bool {
   string_contains(s: orch_run_env_reduction_dissolution_trigger, pattern: "EnvPrefixed")
-    && string_contains(s: orch_run_env_reduction_dissolution_trigger, pattern: "straddle")
+    && string_contains(s: orch_run_env_reduction_dissolution_trigger, pattern: "EnvUnset")
+    && string_contains(s: orch_run_env_reduction_dissolution_trigger, pattern: "lower_env_bindings")
     && string_contains(s: orch_run_env_reduction_dissolution_trigger, pattern: "DISSOLVES WHEN")
 }
