@@ -23,6 +23,8 @@ import extdeps.languages.bash.program {
   ShellWord,
   Lit,
   VarRef,
+  Concat,
+  CmdSubst,
   serialize_stmt,
   serialize_bash
 }
@@ -240,4 +242,52 @@ test fn stmt_negation_matches_real_prefix_holds() -> Bool {
 test fn stmt_negation_has_teeth_holds() -> Bool {
   stmt_emit_carried(s: negation_of_subshell()) !=
     stmt_emit_carried(s: Subshell { body: [Command { words: [Lit { text: "false" }] }] })
+}
+
+test fn loc_assign_cmdsubst_oracle_holds() -> Bool {
+  stmt_emits_oracle(s: Assign { name: "TMPDIR", value: CmdSubst { body: Command { words: [Lit { text: "mktemp" }, Lit { text: "-d" }] } } })
+}
+
+test fn loc_assign_concat_oracle_holds() -> Bool {
+  stmt_emits_oracle(s: Assign { name: "PROBE_BIN", value: Concat { parts: [VarRef { name: "TMPDIR" }, Lit { text: "/probe_bin" }] } })
+}
+
+test fn loc_negation_subshell_rawline_oracle_holds() -> Bool {
+  stmt_emits_oracle(s: Negation { stmt: Subshell { body: [RawLine { text: "do_verify\nmore" }] } })
+}
+
+test fn loc_withredir_redirtofile_oracle_holds() -> Bool {
+  stmt_emits_oracle(s: WithRedir { stmt: Command { words: [Lit { text: "printf" }, Lit { text: "x" }] }, redir: RedirToFile { path: VarRef { name: "PROBE_BIN" } } })
+}
+
+test fn loc_raw_eq_holds() -> Bool {
+  stmt_emits_oracle(s: RawLine { text: "x=y" })
+}
+
+test fn loc_raw_cmdsubst_holds() -> Bool {
+  stmt_emits_oracle(s: RawLine { text: "$(a)" })
+}
+
+test fn loc_raw_paren_holds() -> Bool {
+  stmt_emits_oracle(s: RawLine { text: "a)b" })
+}
+
+test fn loc_raw_squote_holds() -> Bool {
+  stmt_emits_oracle(s: RawLine { text: "'q'" })
+}
+
+test fn loc_raw_full_assign_holds() -> Bool {
+  stmt_emits_oracle(s: RawLine { text: "TMPDIR=$('mktemp' '-d')" })
+}
+
+test fn loc_raw_trailing_nl_holds() -> Bool {
+  stmt_emits_oracle(s: RawLine { text: "ab\n" })
+}
+
+test fn loc_andor_withredir_oracle_holds() -> Bool {
+  stmt_emits_oracle(s: AndOr {
+    left: WithRedir { stmt: Command { words: [Lit { text: "printf" }, Lit { text: "x" }] }, redir: RedirToFile { path: VarRef { name: "PROBE_BIN" } } },
+    op: AndThen,
+    right: Command { words: [Lit { text: "chmod" }, Lit { text: "+x" }, VarRef { name: "PROBE_BIN" }] }
+  })
 }
