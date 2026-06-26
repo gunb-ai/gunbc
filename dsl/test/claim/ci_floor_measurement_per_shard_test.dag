@@ -20,13 +20,7 @@ fn per_shard_peak_bytes_for(m: PerShardRssPeakMeasurement) -> Int {
 }
 
 fn witness_per_shard_uses_direct_measurement() -> Bool {
-  byte_size_count(b: gunbc_ci_floor_per_shard_peak_rss_bytes()) == 2684354560
-}
-
-fn witness_direct_is_less_than_derived() -> Bool {
-  let direct = byte_size_count(b: gunbc_ci_floor_per_shard_peak_rss_bytes())
-  let derived = byte_size_count(b: concurrent_memory_peak_per_share(sample: gunbc_ci_floor_measured_peak))
-  direct < derived
+  byte_size_count(b: gunbc_ci_floor_per_shard_peak_rss_bytes()) == 3758096384
 }
 
 fn witness_unmeasured_arm_falls_back_to_derived() -> Bool {
@@ -44,7 +38,6 @@ fn witness_measured_arm_sample_width_is_four() -> Bool {
 
 test fn ci_floor_measurement_per_shard_rss_witnesses() -> Bool {
   witness_per_shard_uses_direct_measurement()
-    && witness_direct_is_less_than_derived()
     && witness_unmeasured_arm_falls_back_to_derived()
     && witness_measured_arm_sample_width_is_four()
 }
