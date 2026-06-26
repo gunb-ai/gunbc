@@ -1959,6 +1959,222 @@ mod compiler_tests {
         result.expect("profile_floor_corpus_ast_pig panicked");
     }
 
+    // THROWAWAY PROBE (do not commit): the TYPED half of the pig. Resolves a sample
+    // of floor entries through ONE shared index (reproducing per-shard accumulation)
+    // and walks the typed graph INCLUDING each node's inferred-type subtree
+    // (InferredNode::Resolved{node}). Measures: typed node count, source-vs-type-subtree
+    // split, current Rc sharing of inferred types (ptr), and the hash-cons ceiling
+    // (content-distinct type-roots) — the likely real Lever B1 win.
+    #[test]
+    #[ignore]
+    fn profile_floor_typed_pig() {
+        let result = std::thread::Builder::new()
+            .stack_size(512 * 1024 * 1024)
+            .spawn(|| {
+                use std::collections::{HashMap, HashSet};
+                use std::rc::Rc;
+                type N = crate::v1_std_core::Node;
+
+                let source_roots = vec!["src/v2".to_string(), "dsl".to_string()];
+                let scan_dirs = vec!["dsl/test/claim".to_string()];
+                let rows = crate::cli_run::discover_floor_corpus_rows(&source_roots, &scan_dirs)
+                    .expect("discover floor corpus");
+                let mut entries: Vec<String> = Vec::new();
+                let mut seen_e = HashSet::new();
+                for r in &rows {
+                    if seen_e.insert(r.entry.clone()) {
+                        entries.push(r.entry.clone());
+                    }
+                }
+                let step = (entries.len() / 24).max(1);
+                let sample: Vec<String> = entries.iter().step_by(step).cloned().collect();
+                eprintln!(
+                    "\n=== FLOOR TYPED PIG PROBE (entries={}, sampling {} thru one index) ===",
+                    entries.len(),
+                    sample.len()
+                );
+
+                let index = crate::cli_run::build_multi_entry_index(&source_roots);
+                let mut typed_modules: HashMap<
+                    usize,
+                    Rc<crate::v1_compiler_infer_items::TypedModule>,
+                > = HashMap::new();
+                let mut resolved_ok = 0usize;
+                for e in &sample {
+                    if let Ok((graph, _si)) =
+                        crate::cli_run::resolve_entry_with_index_for_discovery_corpus(&index, e.as_str())
+                    {
+                        resolved_ok += 1;
+                        for tm in graph.modules.iter() {
+                            typed_modules.insert(Rc::as_ptr(tm) as usize, tm.clone());
+                        }
+                    }
+                }
+                eprintln!(
+                    "  resolved {}/{} sampled entries; distinct typed modules: {}",
+                    resolved_ok,
+                    sample.len(),
+                    typed_modules.len()
+                );
+
+                struct Acc {
+                    node_seen: HashSet<usize>,
+                    source_nodes: usize,
+                    type_nodes: usize,
+                    name_occ: usize,
+                    name_bytes: usize,
+                    distinct_names: HashSet<String>,
+                    distinct_name_bytes: usize,
+                    inferred_occ: usize,
+                    inferred_ptr: HashSet<usize>,
+                    type_root_occ: usize,
+                    type_root_ptr: HashSet<usize>,
+                    type_struct_keys: HashMap<String, usize>,
+                }
+                impl Acc {
+                    fn key(n: &Rc<N>) -> String {
+                        let mut s = n.name.clone();
+                        if !n.children.is_empty() || !n.params.is_empty() {
+                            s.push('(');
+                            for c in n.children.iter() {
+                                s.push_str(&Acc::key(c));
+                                s.push(',');
+                            }
+                            for c in n.params.iter() {
+                                s.push_str(&Acc::key(c));
+                                s.push(';');
+                            }
+                            s.push(')');
+                        }
+                        s
+                    }
+                    fn walk(&mut self, n: &Rc<N>, in_type: bool) {
+                        if !self.node_seen.insert(Rc::as_ptr(n) as usize) {
+                            return;
+                        }
+                        if in_type {
+                            self.type_nodes += 1;
+                        } else {
+                            self.source_nodes += 1;
+                        }
+                        self.name_occ += 1;
+                        self.name_bytes += n.name.len();
+                        if self.distinct_names.insert(n.name.clone()) {
+                            self.distinct_name_bytes += n.name.len();
+                        }
+                        for c in n.children.iter() {
+                            self.walk(c, in_type);
+                        }
+                        for c in n.params.iter() {
+                            self.walk(c, in_type);
+                        }
+                        for c in n.uses.iter() {
+                            self.walk(c, in_type);
+                        }
+                        for c in n.properties.iter() {
+                            self.walk(c, in_type);
+                        }
+                        if let Some(b) = &n.body {
+                            self.walk(b, in_type);
+                        }
+                        if let Some(t) = &n.transport {
+                            self.walk(t, in_type);
+                        }
+                        if let Some(ta) = &n.type_annotation {
+                            self.walk(ta, in_type);
+                        }
+                        if let Some(inf) = &n.inferred {
+                            self.inferred_occ += 1;
+                            self.inferred_ptr.insert(Rc::as_ptr(inf) as usize);
+                            if let Some(tn) = crate::v1_std_core::inferred_to_node(inf.clone()) {
+                                if !in_type {
+                                    self.type_root_occ += 1;
+                                    self.type_root_ptr.insert(Rc::as_ptr(&tn) as usize);
+                                    *self.type_struct_keys.entry(Acc::key(&tn)).or_insert(0) += 1;
+                                }
+                                self.walk(&tn, true);
+                            }
+                        }
+                    }
+                }
+
+                let mut acc = Acc {
+                    node_seen: HashSet::new(),
+                    source_nodes: 0,
+                    type_nodes: 0,
+                    name_occ: 0,
+                    name_bytes: 0,
+                    distinct_names: HashSet::new(),
+                    distinct_name_bytes: 0,
+                    inferred_occ: 0,
+                    inferred_ptr: HashSet::new(),
+                    type_root_occ: 0,
+                    type_root_ptr: HashSet::new(),
+                    type_struct_keys: HashMap::new(),
+                };
+                for tm in typed_modules.values() {
+                    acc.walk(&tm.module, false);
+                    for it in tm.items.iter() {
+                        acc.walk(it, false);
+                    }
+                }
+
+                let node_struct_bytes = std::mem::size_of::<N>();
+                let total_nodes = acc.source_nodes + acc.type_nodes;
+                let mib = |b: usize| format!("{:.1} MiB", b as f64 / 1_048_576.0);
+                eprintln!(
+                    "\n  total distinct typed nodes   : {}  (source {} + type-subtree {})",
+                    total_nodes, acc.source_nodes, acc.type_nodes
+                );
+                eprintln!(
+                    "  node-struct footprint        : {}  (x sizeof(Node)={}B)",
+                    mib(total_nodes * node_struct_bytes),
+                    node_struct_bytes
+                );
+                eprintln!(
+                    "  type-subtree share of nodes  : {:.0}%",
+                    100.0 * acc.type_nodes as f64 / (total_nodes.max(1)) as f64
+                );
+
+                eprintln!("\n  -- inferred-type SHARING (already shared, or hash-cons-able?) --");
+                eprintln!("    nodes carrying inferred      : {}", acc.inferred_occ);
+                eprintln!("    distinct InferredNode (ptr)  : {}", acc.inferred_ptr.len());
+                eprintln!("    type-root occurrences        : {}", acc.type_root_occ);
+                eprintln!(
+                    "    distinct type-roots (ptr)    : {}  (current Rc sharing)",
+                    acc.type_root_ptr.len()
+                );
+                eprintln!(
+                    "    distinct type-roots (content): {}  (hash-cons floor)",
+                    acc.type_struct_keys.len()
+                );
+                let hashcons_dedup = acc.type_root_occ.saturating_sub(acc.type_struct_keys.len());
+                eprintln!(
+                    "    >>> type hash-cons ceiling   : {} dup type-roots collapsible ({:.0}% of type-roots) <<<",
+                    hashcons_dedup,
+                    100.0 * hashcons_dedup as f64 / (acc.type_root_occ.max(1)) as f64
+                );
+
+                eprintln!("\n  -- Node.name interner ceiling (TYPED) --");
+                eprintln!("    name occurrences             : {}", acc.name_occ);
+                eprintln!("    distinct names               : {}", acc.distinct_names.len());
+                eprintln!("    total name bytes             : {}", mib(acc.name_bytes));
+                eprintln!("    distinct name bytes          : {}", mib(acc.distinct_name_bytes));
+                let cur = acc.name_bytes + acc.name_occ * 24;
+                let interned =
+                    acc.distinct_name_bytes + acc.name_occ * 4 + acc.distinct_names.len() * 24;
+                eprintln!(
+                    "    interner reclaim ceiling     : {} ({:.0}%)",
+                    mib(cur.saturating_sub(interned)),
+                    100.0 * (cur.saturating_sub(interned)) as f64 / (cur.max(1)) as f64
+                );
+                eprintln!("=== DONE ===\n");
+            })
+            .expect("spawn")
+            .join();
+        result.expect("profile_floor_typed_pig panicked");
+    }
+
     #[test]
     fn contracts_sidecar_wired_into_emit_scope() {
         let result = std::thread::Builder::new()
