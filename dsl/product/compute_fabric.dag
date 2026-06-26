@@ -719,6 +719,54 @@ type ComputeLease {
   eligibility: ComputeWitness<ComputeLeaseEligibility>
 }
 
+type ProvisionApplier
+  = SelfAppliedBySpawner
+  | ExternallyApplied
+
+type ContainerProvision {
+  mem_reserved_bytes: ByteSize
+  mem_cap_bytes: ByteSize
+  swap_cap_bytes: ByteSize
+  cpu_shares: Int
+  cpu_quota_cores: HardwareThreadCount?
+  pids_max: Int
+  cgroup_slice: NonEmptyStr
+  cargo_build_jobs: Int?
+  applier: ProvisionApplier
+}
+
+type ContainerProvisionResult
+  = Provisioned { provision: ContainerProvision }
+  | ProvisionRefused { reason: NonEmptyStr }
+
+fn resolve_container_provision(
+  per_unit_cap: ByteSize,
+  mem_reservation: ByteSize,
+  cgroup_slice: NonEmptyStr,
+  cpu_shares: Int,
+  pids_max: Int,
+  cargo_build_jobs: Int?,
+  applier: ProvisionApplier
+) -> ContainerProvisionResult {
+  if byte_size_count(b: per_unit_cap) == 0 {
+    ProvisionRefused { reason: "container provision refused: per-unit memory cap is zero - the demand class carries no reserved/measured cap; refuse to spawn an uncapped container (fail closed, no fallback to a host-RAM-fraction heuristic)" }
+  } else {
+    Provisioned {
+      provision: ContainerProvision {
+        mem_reserved_bytes: mem_reservation,
+        mem_cap_bytes: per_unit_cap,
+        swap_cap_bytes: per_unit_cap,
+        cpu_shares: cpu_shares,
+        cpu_quota_cores: none,
+        pids_max: pids_max,
+        cgroup_slice: cgroup_slice,
+        cargo_build_jobs: cargo_build_jobs,
+        applier: applier,
+      }
+    }
+  }
+}
+
 fn isolation_boundary_ordinal(boundary: IsolationBoundary) -> Int {
   match boundary {
     SharedHostHome   => 0
