@@ -28,10 +28,7 @@ use v1_compiler::cli_run::{
     make_eval_context, resolve_entry_graph, run_claim, run_discovery_corpus_with_options,
     run_value, ClaimOutcome, DiscoveryCorpusOptions,
 };
-use v1_compiler::v1_interpreter::{
-    run_in_context_with_args, shell_exec_capture_disable, shell_exec_capture_enable,
-    shell_exec_capture_take, ExecutionMode, InterpContext, Value,
-};
+use v1_compiler::v1_interpreter::{run_in_context_with_args, ExecutionMode, InterpContext, Value};
 
 #[derive(Clone)]
 enum Runnable {
@@ -390,143 +387,54 @@ fn run_batch_unit(
     }
 }
 
-struct CaptureGuard;
-impl CaptureGuard {
-    fn new() -> Self {
-        shell_exec_capture_enable();
-        Self
-    }
-}
-impl Drop for CaptureGuard {
-    fn drop(&mut self) {
-        shell_exec_capture_disable();
-    }
-}
-
-struct FunctionCapture {
-    function: String,
-    mock_outcome: ClaimOutcome,
-    captured_scripts: Vec<String>,
-    resolve_nanos: u128,
-    wall_nanos: u128,
-}
-
-// Execute a Vec of "sh -c <script>" scripts in sequence, returning on the first failure.
-fn execute_captured_scripts(scripts: &[String]) -> ClaimOutcome {
-    for script in scripts {
-        eprintln!("[deferred-shell] sh -c ({} bytes)", script.len());
-        let output = match std::process::Command::new("sh")
-            .arg("-c")
-            .arg(script)
-            .output()
-        {
-            Ok(o) => o,
-            Err(e) => {
-                return ClaimOutcome::RuntimeError {
-                    message: format!("deferred shell spawn failed: {e}"),
-                };
-            }
-        };
-        if !output.stdout.is_empty() {
-            print!("{}", String::from_utf8_lossy(&output.stdout));
-        }
-        if !output.stderr.is_empty() {
-            eprint!("{}", String::from_utf8_lossy(&output.stderr));
-        }
-        if !output.status.success() {
-            return ClaimOutcome::Fail;
-        }
-    }
-    ClaimOutcome::Pass
-}
-
 fn run_shared_entry_claims(
     source_roots: &[String],
     entry: &str,
     functions: &[String],
 ) -> Vec<ClaimResult> {
-    // Phase 1: resolve corpus and evaluate claims in script-capture mode.  The corpus
-    // graph lives only inside this block; it is dropped before any subprocess runs.
-    // For pure claims (no "sh -c" subprocess calls) the mock outcome equals the real
-    // outcome because no shell transports are intercepted.
-    let captures: Vec<FunctionCapture> = {
-        let resolve_start = Instant::now();
-        let (graph, source_indices) = match resolve_entry_graph(source_roots, entry) {
-            Ok(pair) => pair,
-            Err(msg) => {
-                return functions
-                    .iter()
-                    .map(|function| ClaimResult {
-                        function: function.clone(),
-                        ok: false,
-                        detail: format!("resolve failed for {}: {}", entry, msg),
-                        wall_nanos: 0,
-                        resolve_nanos: 0,
-                        corpus_resolve_nanos: 0,
-                        corpus_eval_nanos: 0,
-                        corpus_witnesses: 0,
-                    })
-                    .collect();
-            }
-        };
-        let resolve_nanos = resolve_start.elapsed().as_nanos();
-        let ctx = make_eval_context(&graph, source_indices, ExecutionMode::Wet);
-        let _capture = CaptureGuard::new();
-        let mut first = true;
-        functions
-            .iter()
-            .map(|function| {
-                shell_exec_capture_take(); // clear before each function
-                let claim_start = Instant::now();
-                let mock_outcome = run_claim(&ctx, function);
-                let wall_nanos = claim_start.elapsed().as_nanos();
-                let captured_scripts = shell_exec_capture_take();
-                let rn = if first {
-                    first = false;
-                    resolve_nanos
-                } else {
-                    0
-                };
-                FunctionCapture {
+    let resolve_start = Instant::now();
+    let (graph, source_indices) = match resolve_entry_graph(source_roots, entry) {
+        Ok(pair) => pair,
+        Err(msg) => {
+            return functions
+                .iter()
+                .map(|function| ClaimResult {
                     function: function.clone(),
-                    mock_outcome,
-                    captured_scripts,
-                    resolve_nanos: rn,
-                    wall_nanos,
-                }
-            })
-            .collect()
-        // ctx and graph are dropped here; CaptureGuard disables capture on drop
+                    ok: false,
+                    detail: format!("resolve failed for {}: {}", entry, msg),
+                    wall_nanos: 0,
+                    resolve_nanos: 0,
+                    corpus_resolve_nanos: 0,
+                    corpus_eval_nanos: 0,
+                    corpus_witnesses: 0,
+                })
+                .collect();
+        }
     };
-
-    // Release freed heap pages accumulated during resolution.  Subprocess execution
-    // then runs with only the live process overhead rather than the corpus graph.
-    release_heap();
-
-    // Phase 2: execute captured shell scripts.  For pure claims captured_scripts is
-    // empty and mock_outcome is the correct real outcome.
-    captures
-        .into_iter()
-        .map(|cap| {
-            if cap.captured_scripts.is_empty() {
-                return claim_result_for_outcome(
-                    cap.function,
-                    cap.mock_outcome,
-                    cap.wall_nanos,
-                    cap.resolve_nanos,
-                );
-            }
-            let exec_start = Instant::now();
-            let real_outcome = execute_captured_scripts(&cap.captured_scripts);
-            let exec_nanos = exec_start.elapsed().as_nanos();
-            claim_result_for_outcome(
-                cap.function,
-                real_outcome,
-                cap.wall_nanos + exec_nanos,
-                cap.resolve_nanos,
-            )
+    let resolve_nanos = resolve_start.elapsed().as_nanos();
+    let ctx = make_eval_context(&graph, source_indices, ExecutionMode::Wet);
+    let mut first = true;
+    let results = functions
+        .iter()
+        .map(|function| {
+            let claim_start = Instant::now();
+            let outcome = run_claim(&ctx, function);
+            let wall_nanos = claim_start.elapsed().as_nanos();
+            let rn = if first {
+                first = false;
+                resolve_nanos
+            } else {
+                0
+            };
+            claim_result_for_outcome(function.clone(), outcome, wall_nanos, rn)
         })
-        .collect()
+        .collect();
+    // Release freed heap pages after the corpus graph is dropped so the next batch
+    // starts with cgroup RSS reflecting only live data.
+    drop(ctx);
+    drop(graph);
+    release_heap();
+    results
 }
 
 fn run_discovery_batch_node(
