@@ -292,7 +292,7 @@ fn gunbc_ci_floor_spawn_width_from_tree() -> HardwareThreadCount {
 }
 
 fn gunbc_ci_floor_spawn_width(memory_budget_bytes: Int) -> HardwareThreadCount {
-  hardware_thread_count(count: 3)
+  gunbc_ci_floor_spawn_width_for_budget(memory_budget: byte_size(memory_budget_bytes))
 }
 
 fn gunbc_ci_floor_run_envelope(memory_budget_bytes: Int) -> ResourceEnvelope {
