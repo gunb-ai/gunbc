@@ -1,82 +1,92 @@
-# Resolved-graph representation minimization (the "8 GiB small compiler" root fix)
+# Compiler memory minimization — the "8 GiB small compiler" root cause
 
-Status: design, 2026-06-26. Owner: calm-carp-204. Evidence: live on-disk artifact
-`/tmp/gunbc-rg-cache-shared/da/da20714eb29c3945.bin` (the `ci_floor_test_threads` witness closure).
+Status: landed (root fix) + future work, 2026-06-26. Owner: calm-carp-204.
+Evidence: phase-peak instrumentation of `claim_batch` (the per-shard witness
+runner) + on-disk resolved-graph cache artifacts.
 
-## The defect (measured, not inferred)
+## What the 8 GiB actually was (measured, corrected)
 
-`ResolvedGraph` retains, **per module**, a fully-merged copy of every binding / source-index /
-inductive-field / function it can transitively see. With 59 modules in the witness closure:
+The operator's instinct was right: a small compiler should not use 8 GiB. The
+dominant cost was **not** the per-witness resolve or the cache — it was one
+unconditional step. Phase-peak RSS of `claim_batch` resolving a single tiny
+witness (`ci_floor_test_threads`):
 
-| category | bytes | % of payload | cross-module dup |
-|---|---|---|---|
-| `type_env`  | 125 MB | 54% | bindings 18.9×, source_indices up to 59×, inductive ~10× |
-| `func_env`  | 45 MB | 19% | **59×** (same merged env copied into every module) |
-| `items`     | 44 MB | 19% | none — each module's own AST (legitimate) |
-| `module`    | 14 MB | 6%  | none (legitimate) |
-| `item_registry` (per-module) | 5 MB | 2% | 1.0× (legitimate) |
+| phase | peak RSS |
+|---|---|
+| after `build_multi_entry_index` | 11 MB |
+| after `precompute_whole_tree_published_mock_keys` | **1,529 MB** |
+| after the witness resolve | 1,535 MB |
 
-**73% of the 233 MB is duplicated closure.** `type_env.bindings`: 8,015 stored entries,
-**434 distinct by content-hash** → content-dedup retains **7%** (3.2 MB of 48.5 MB). 9 names
-(`Int`,`Bool`,`Json`,`Float`,`Unit`,…) carry **2** distinct resolved contents across modules, so a
-binding-id-keyed pool is **lossy** — dedup must key by **content hash** (§2 content-addressing).
+The entire jump is `precompute_whole_tree_published_mock_keys` (`cli_run.rs`): it
+Strict-resolved the **entire 608-module dsl tree** into one `ResolvedGraph` just
+to extract **58 published-mock operation keys**, then discarded the graph. Only
+**13 of 608** modules declare `PublishedMockCase`. This is §2 *irrelevant work*:
+600+ modules resolved to read from 13.
 
-This is a §2 horizontal-redundancy violation: one binding is one fact, stored once per module that sees it.
+`claim_batch` is the per-shard runner whose `[measurement] per-shard-peak-rss`
+the floor's `per_shard` budget (the 2.1→2.5 GiB that drove the OOM saga) is
+calibrated from (`roadmap_authority.dag` node `1-sched-resource-aware`). So this
+one step *is* the floor's per-shard memory.
 
-## Why it costs 8 GiB (two compounding leaks, both localized — not spaghetti)
+## The fix (landed)
 
-The in-RAM types already declare single-authority sharing —
-`TypeEnv.bindings: Rc<HashMap<i64, Rc<TypeBinding>>>`, `source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>`.
-The authors *intended* sharing. It leaks in exactly two named places:
+Scope the precompute to the declarers' import closures instead of the whole tree
+(`precompute_whole_tree_published_mock_keys`): select modules whose source
+`.contains("PublishedMockCase")` (safe over-inclusive prefilter — `.dag` has no
+comment syntax, and the downstream `type_annotation_names(.., "PublishedMockCase")`
+check is exact, so a false-positive only widens the closure, never fabricates a
+key), take their transitive import closures via `resolve_transitively`, resolve
+only those.
 
-1. **Cache (de)serialization flattens it.** `serde`'s `rc` feature is enabled, and by its own
-   contract it *does not preserve identity* — every `Rc<T>` deserializes to a **fresh** allocation.
-   So on a cache **hit** (`resolved_graph_cache::read_cached_file`, the floor's common path via
-   `cli_run::resolve_entry_with_parse_cache`), the 211 MB JSON inflates into a graph with all
-   sharing destroyed: 8,015 distinct `TypeBinding` allocations instead of 434, 4,248 `NewlineIndex`
-   copies instead of 72. That deserialized bloat × parallel test-shards is the floor's 8 GiB.
-2. **`build_type_env` merges eagerly.** `src/v1/04_infer.dag:5427` folds every import's bindings
-   into each module (`map_merge(acc, typed_parent.type_env.bindings)`), and `func_env` likewise.
-   Even on the miss path this materializes the closure N times.
+Result — same 58 keys, witnesses still pass:
 
-Steady-state idle RSS is a healthy ~111 MB; everything above is this representation.
+| | before | after |
+|---|---|---|
+| precompute step | 1,529 MB | **37 MB** |
+| per-shard peak (non-mock witness) | ~1,570 MB | **~180–270 MB** |
+| per-shard peak (mock-consuming witness) | ~1,500 MB | **112 MB** |
 
-## Fix — two layers, B then A
+**~8.7× reduction at the root**, with no cap/per_shard/hardware change. Verified:
+non-mock witness (`ci_floor_test_threads`) and a published-mock consumer
+(`git_mock_totality`) both PASS.
 
-### Layer B — content-addressed intern at the cache boundary (contained, zero resolution-semantics risk)
+## Remaining representation work (future — much smaller fish now)
 
-`resolved_graph_cache.rs` only: change the serialized `CachePayload` from "inline everything per
-module" to an interned projection (§2 one-grammar-both-directions):
+The per-witness resolve still carries the §2 redundancy below; it's now a few
+hundred MB, not the 8 GiB headline, so it's a quality/disk concern, not an OOM.
 
-- **Serialize:** build a content-hash-keyed pool of unique `TypeBinding`s (and `NewlineIndex`s,
-  `func_env` entries, `inductive_fields`). Each module's env serializes as a list of *pool indices*,
-  not inline values. Drop per-module `source_indices` entirely — the top-level `source_indices`
-  already holds them once; modules reference by file key.
-- **Deserialize:** materialize one `Rc` per pool entry, then each module's `HashMap` maps key →
-  `pool_rc.clone()` (pointer copy). **Sharing restored** — the deserialized graph matches the
-  fresh-resolve footprint.
+`ResolvedGraph` retains, per module, a fully-merged copy of every binding /
+source-index / inductive-field-list / function it transitively sees. Measured on
+one 59-module witness artifact: `type_env` 54% + `func_env` 19% = **73% of the
+233 MB is duplicated closure**; bindings 8,015 stored / 434 distinct by content
+(7% retained); `func_env` copied once per module; `source_indices` up to 59×. In
+RAM these are `Rc`-shared, but `serde`'s `rc` feature does **not** preserve
+identity, so a cache round-trip (211 MB JSON) shatters the sharing on
+deserialize.
 
-In-RAM `TypeEnv`/`ResolvedGraph` types are **untouched**, so every v1/stage0 consumer keeps working.
-Pure encoding change.
+Two layers, both deferred:
 
-- Estimated on-disk: 211 MB → ~70–80 MB. In-RAM cache-hit footprint collapses ~3–5×; floor 8 GiB → ~2–3 GiB.
-- **Discriminating witness (fail-closed):** resolved graph **byte-identical** after a
-  serialize→deserialize round-trip (DESIGN already names "byte-identical cached-vs-cold" the purity
-  oracle), plus a RSS-drop assertion on the witness closure. A perturbation that drops one pool
-  entry must turn the round-trip RED.
+- **Cache-boundary intern (B).** Content-addressed pool of unique
+  bindings/indices/funcs, modules reference by index; rebuild one `Rc` per pool
+  entry on load (sharing restored). Shrinks the artifact ~211 → ~75 MB. **Attempted
+  and reverted in this window**: a working interned encoder/decoder shrank the
+  artifact to 124 MB and round-tripped value-faithfully, but the on-disk pool
+  order is sensitive to in-RAM HashMap iteration order; even sorting pools by
+  content hash, the DESIGN §5 `warm==cold` byte-identity purity oracle
+  (`cache_purity_oracle_test`) is not yet satisfied because the per-value hash is
+  taken over `serde_json::to_vec` of values that themselves contain HashMaps. A
+  clean landing needs a canonical (key-sorted) value serialization for the pool
+  hash. Deferred to its own change with the purity oracle as the guard. It buys
+  disk size, not the floor RSS (that was the precompute), so it is not urgent.
+- **Source-side de-merge (A).** Stop materializing the closure in
+  `build_type_env` (`04_infer.dag`): env = local bindings + references to imports'
+  envs (scope chain); `lookup_*` walk the chain. Removes duplication on every
+  path and subsumes B. Touches a **load-bearing pipeline file** → model-first,
+  escalate if the brief predates the relevant model PR.
 
-### Layer A — single-authority environments at the source (the true minimal; careful, model-first)
+## sccache reliability connection
 
-Stop materializing the closure in `build_type_env` (`04_infer.dag`). A module's env = its **local**
-bindings + **references** to its imports' envs (a scope/parent chain); `lookup_type*` walk the chain
-local→imports. Removes the duplication at the source on **every** path (RAM included) and subsumes
-Layer B's pool (the cache then serializes locals + import edges only).
-
-Touches a **load-bearing pipeline file** (`04_infer.dag`) and the lookup consumers in
-`v1_compiler_infer_env.rs` → do model-first, escalate if the brief predates the relevant model PR.
-
-## Sequence
-
-1. **B now** — banks most of the floor win, reversible, safe, with the round-trip oracle. Unblocks
-   the floor OOM saga (supersedes per_shard/cap/malloc_trim symptom treatments).
-2. **A next** — the real §3 single-authority representation; folds B's pool into the import-edge structure.
+`resolved_graph_cache.rs` is the `.dag`-cited content-addressed cache the operator
+wants to lean on instead of flaky sccache. Layer B (when landed with a canonical
+pool hash) makes its artifacts ~3× smaller and its reads/writes lighter, directly
+reducing the cache-server memory pressure that triggers the sccache flakiness.

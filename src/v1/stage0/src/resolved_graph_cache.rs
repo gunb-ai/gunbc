@@ -6,16 +6,12 @@ use std::rc::Rc;
 use std::sync::OnceLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::std_induction::InductiveField;
 use crate::v1_compiler_compile::SourceFile;
-use crate::v1_compiler_infer_emit_info::EmitGraphInfo;
-use crate::v1_compiler_infer_env::{TypeBinding, TypeEnv};
-use crate::v1_compiler_infer_items::{ItemInfo, ResolvedGraph, TypedModule};
-use crate::v1_compiler_infer_sigs::ResolvedFuncEnv;
+use crate::v1_compiler_infer_items::ResolvedGraph;
 use crate::v1_rt::{self, Hash};
-use crate::v1_std_core::{ErrorNode, InternTable, NewlineIndex, Node};
+use crate::v1_std_core::NewlineIndex;
 
-const FORMAT_VERSION: u32 = 2;
+const FORMAT_VERSION: u32 = 1;
 const MAGIC: &[u8; 8] = b"gunbgrpc";
 
 /// Single-authority mirror of the modeled `SizeBounded` cap:
@@ -57,276 +53,10 @@ pub struct CachedResolvedGraph {
     pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 }
 
-// ---------------------------------------------------------------------------
-// Interned cache payload (§2 single-authority / content-addressing).
-//
-// `ResolvedGraph` retains, per module, a fully-merged copy of every binding /
-// source-index / inductive-field-list / function it can transitively see. In
-// RAM those are `Rc`-shared, but `serde`'s `rc` feature does NOT preserve
-// identity — a naive serialize flattens the sharing, so the on-disk payload and
-// (worse) the deserialized in-RAM graph balloon to N copies of one fact
-// (measured: bindings 8015 stored / 434 distinct, func_env copied once per
-// module, source_indices up to 59x). The interned payload stores each unique
-// value ONCE in a content-addressed pool and references it by index; decode
-// rebuilds one `Rc` per pool entry and hands clones to every referent, so the
-// reconstructed graph is value-identical to the original AND shares storage
-// the way a fresh resolve does. Pure encoding change — the in-RAM types are
-// untouched, so every consumer is unaffected. Round-trip identity is the
-// fail-closed oracle (`cache_purity_oracle` / interned_round_trip test).
-// ---------------------------------------------------------------------------
-
-/// Content-addressed pool: each distinct value is stored once, keyed by the
-/// content hash of its serialization, so only byte-identical values collapse
-/// (the 9 names carrying two distinct resolved contents across modules stay
-/// distinct — id-keying would be lossy). `add` records a value and returns its
-/// content hash; `finalize` emits the pool in **content-hash-sorted** order with
-/// a hash→index map. Sorting makes the on-disk pool order independent of the
-/// in-RAM HashMap iteration order, so two value-identical graphs encode to
-/// byte-identical payloads — the DESIGN §5 warm==cold purity oracle.
-struct PoolBuilder<T> {
-    by_hash: std::collections::BTreeMap<Hash, T>,
-}
-
-impl<T: serde::Serialize + Clone> PoolBuilder<T> {
-    fn new() -> Self {
-        Self {
-            by_hash: std::collections::BTreeMap::new(),
-        }
-    }
-
-    fn add(&mut self, value: &T) -> Hash {
-        let bytes = serde_json::to_vec(value).expect("cache interner: value must serialize");
-        let h = v1_rt::bytes_identity_hash(&bytes);
-        self.by_hash.entry(h.clone()).or_insert_with(|| value.clone());
-        h
-    }
-
-    fn finalize(self) -> (Vec<T>, HashMap<Hash, u32>) {
-        let mut pool = Vec::with_capacity(self.by_hash.len());
-        let mut index = HashMap::with_capacity(self.by_hash.len());
-        for (h, v) in self.by_hash.into_iter() {
-            index.insert(h, pool.len() as u32);
-            pool.push(v);
-        }
-        (pool, index)
-    }
-}
-
-#[derive(serde::Serialize, serde::Deserialize)]
-struct InternedTypeEnv {
-    bindings: HashMap<i64, u32>,
-    recursive_types: Vec<i64>,
-    recursive_type_set: HashMap<i64, bool>,
-    inductive_fields: HashMap<String, u32>,
-    source_indices: HashMap<String, u32>,
-    intern_table: u32,
-}
-
-#[derive(serde::Serialize, serde::Deserialize)]
-struct InternedModule {
-    module: Rc<Node>,
-    items: Rc<Vec<Rc<Node>>>,
-    type_env: InternedTypeEnv,
-    func_env: u32,
-    item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-}
-
 #[derive(serde::Serialize, serde::Deserialize)]
 struct CachePayload {
-    binding_pool: Vec<Rc<TypeBinding>>,
-    newline_pool: Vec<Rc<NewlineIndex>>,
-    inductive_pool: Vec<Rc<Vec<Rc<InductiveField>>>>,
-    func_env_pool: Vec<Rc<ResolvedFuncEnv>>,
-    intern_pool: Vec<Rc<InternTable>>,
-    modules: Vec<InternedModule>,
-    graph_item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    graph_diagnostics: Rc<Vec<Rc<ErrorNode>>>,
-    emit_graph_info: Rc<EmitGraphInfo>,
-    source_indices: HashMap<String, u32>,
-}
-
-/// Per-module references collected in phase 1, holding content hashes; phase 2
-/// resolves each hash to its sorted pool index.
-struct ModuleRefs {
-    module: Rc<Node>,
-    items: Rc<Vec<Rc<Node>>>,
-    item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    bindings: Vec<(i64, Hash)>,
-    recursive_types: Vec<i64>,
-    recursive_type_set: HashMap<i64, bool>,
-    inductive_fields: Vec<(String, Hash)>,
-    source_indices: Vec<(String, Hash)>,
-    intern_table: Hash,
-    func_env: Hash,
-}
-
-fn to_interned_payload(
-    graph: &ResolvedGraph,
-    source_indices: &HashMap<String, Rc<NewlineIndex>>,
-) -> CachePayload {
-    let mut bindings = PoolBuilder::new();
-    let mut newlines = PoolBuilder::new();
-    let mut inductive = PoolBuilder::new();
-    let mut func_envs = PoolBuilder::new();
-    let mut interns = PoolBuilder::new();
-
-    // Phase 1 — collect every value into its content-addressed pool, recording
-    // each reference as a hash. Module order is preserved as authored.
-    let module_refs: Vec<ModuleRefs> = graph
-        .modules
-        .iter()
-        .map(|m| {
-            let te = &*m.type_env;
-            ModuleRefs {
-                module: m.module.clone(),
-                items: m.items.clone(),
-                item_registry: m.item_registry.clone(),
-                bindings: te
-                    .bindings
-                    .iter()
-                    .map(|(k, v)| (*k, bindings.add(v)))
-                    .collect(),
-                recursive_types: (*te.recursive_types).clone(),
-                recursive_type_set: (*te.recursive_type_set).clone(),
-                inductive_fields: te
-                    .inductive_fields
-                    .iter()
-                    .map(|(k, v)| (k.clone(), inductive.add(v)))
-                    .collect(),
-                source_indices: te
-                    .source_indices
-                    .iter()
-                    .map(|(k, v)| (k.clone(), newlines.add(v)))
-                    .collect(),
-                intern_table: interns.add(&te.intern_table),
-                func_env: func_envs.add(&m.func_env),
-            }
-        })
-        .collect();
-
-    let top_refs: Vec<(String, Hash)> = source_indices
-        .iter()
-        .map(|(k, v)| (k.clone(), newlines.add(v)))
-        .collect();
-
-    // Phase 2 — freeze pools in content-hash-sorted order and resolve every
-    // recorded hash to its stable index.
-    let (binding_pool, b_idx) = bindings.finalize();
-    let (newline_pool, n_idx) = newlines.finalize();
-    let (inductive_pool, i_idx) = inductive.finalize();
-    let (func_env_pool, f_idx) = func_envs.finalize();
-    let (intern_pool, t_idx) = interns.finalize();
-
-    let modules: Vec<InternedModule> = module_refs
-        .into_iter()
-        .map(|mr| InternedModule {
-            module: mr.module,
-            items: mr.items,
-            type_env: InternedTypeEnv {
-                bindings: mr.bindings.into_iter().map(|(k, h)| (k, b_idx[&h])).collect(),
-                recursive_types: mr.recursive_types,
-                recursive_type_set: mr.recursive_type_set,
-                inductive_fields: mr
-                    .inductive_fields
-                    .into_iter()
-                    .map(|(k, h)| (k, i_idx[&h]))
-                    .collect(),
-                source_indices: mr
-                    .source_indices
-                    .into_iter()
-                    .map(|(k, h)| (k, n_idx[&h]))
-                    .collect(),
-                intern_table: t_idx[&mr.intern_table],
-            },
-            func_env: f_idx[&mr.func_env],
-            item_registry: mr.item_registry,
-        })
-        .collect();
-
-    CachePayload {
-        binding_pool,
-        newline_pool,
-        inductive_pool,
-        func_env_pool,
-        intern_pool,
-        modules,
-        graph_item_registry: graph.item_registry.clone(),
-        graph_diagnostics: graph.diagnostics.clone(),
-        emit_graph_info: graph.emit_graph_info.clone(),
-        source_indices: top_refs.into_iter().map(|(k, h)| (k, n_idx[&h])).collect(),
-    }
-}
-
-/// Rebuild the shared graph from the interned pools. Returns `None` if any pool
-/// index is out of bounds (treated as a cache miss — fail-safe re-resolve).
-fn from_interned_payload(p: CachePayload) -> Option<CachedResolvedGraph> {
-    let binding_pool = p.binding_pool;
-    let newline_pool = p.newline_pool;
-    let inductive_pool = p.inductive_pool;
-    let func_env_pool = p.func_env_pool;
-    let intern_pool = p.intern_pool;
-
-    let mut modules: Vec<Rc<TypedModule>> = Vec::with_capacity(p.modules.len());
-    for im in p.modules.into_iter() {
-        let te = im.type_env;
-        let mut bindings: HashMap<i64, Rc<TypeBinding>> = HashMap::with_capacity(te.bindings.len());
-        for (k, i) in te.bindings.into_iter() {
-            bindings.insert(k, binding_pool.get(i as usize)?.clone());
-        }
-        let mut inductive_fields: HashMap<String, Rc<Vec<Rc<InductiveField>>>> =
-            HashMap::with_capacity(te.inductive_fields.len());
-        for (k, i) in te.inductive_fields.into_iter() {
-            inductive_fields.insert(k, inductive_pool.get(i as usize)?.clone());
-        }
-        let mut si: HashMap<String, Rc<NewlineIndex>> =
-            HashMap::with_capacity(te.source_indices.len());
-        for (k, i) in te.source_indices.into_iter() {
-            si.insert(k, newline_pool.get(i as usize)?.clone());
-        }
-        let type_env = Rc::new(TypeEnv {
-            bindings: Rc::new(bindings),
-            recursive_types: Rc::new(te.recursive_types),
-            recursive_type_set: Rc::new(te.recursive_type_set),
-            inductive_fields: Rc::new(inductive_fields),
-            source_indices: Rc::new(si),
-            intern_table: intern_pool.get(te.intern_table as usize)?.clone(),
-        });
-        modules.push(Rc::new(TypedModule {
-            module: im.module,
-            items: im.items,
-            type_env,
-            func_env: func_env_pool.get(im.func_env as usize)?.clone(),
-            item_registry: im.item_registry,
-        }));
-    }
-
-    let graph = ResolvedGraph {
-        modules: Rc::new(modules),
-        item_registry: p.graph_item_registry,
-        diagnostics: p.graph_diagnostics,
-        emit_graph_info: p.emit_graph_info,
-    };
-
-    let mut top_si: HashMap<String, Rc<NewlineIndex>> =
-        HashMap::with_capacity(p.source_indices.len());
-    for (k, i) in p.source_indices.into_iter() {
-        top_si.insert(k, newline_pool.get(i as usize)?.clone());
-    }
-
-    Some(CachedResolvedGraph {
-        graph: Rc::new(graph),
-        source_indices: Rc::new(top_si),
-    })
-}
-
-/// Single authority for encoding the cache payload (used by `write`, the raw
-/// artifact builder, and the fixture helper) — one grammar, both directions.
-fn encode_payload(
-    graph: &ResolvedGraph,
-    source_indices: &HashMap<String, Rc<NewlineIndex>>,
-) -> Result<Vec<u8>, String> {
-    serde_json::to_vec(&to_interned_payload(graph, source_indices))
-        .map_err(|e| format!("cache payload encode failed: {e}"))
+    graph: ResolvedGraph,
+    source_indices: HashMap<String, NewlineIndex>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -526,10 +256,17 @@ fn read_cached_file(path: &Path, expected_subject: &str) -> CacheLookupResult {
         Ok(p) => p,
         Err(_) => return CacheLookupResult::Miss,
     };
-    match from_interned_payload(payload) {
-        Some(cached) => CacheLookupResult::Hit(cached),
-        None => CacheLookupResult::Miss,
-    }
+    let source_indices = Rc::new(
+        payload
+            .source_indices
+            .into_iter()
+            .map(|(k, v)| (k, Rc::new(v)))
+            .collect(),
+    );
+    CacheLookupResult::Hit(CachedResolvedGraph {
+        graph: Rc::new(payload.graph),
+        source_indices,
+    })
 }
 
 pub fn lookup(cache_root: &Path, subject_digest: &str) -> CacheLookupResult {
@@ -599,7 +336,16 @@ pub fn write(
         fs::create_dir_all(parent)
             .map_err(|e| format!("failed to create cache dir {:?}: {}", parent, e))?;
     }
-    let payload_bytes = encode_payload(graph, source_indices)?;
+    let si_plain: HashMap<String, NewlineIndex> = source_indices
+        .iter()
+        .map(|(k, v)| (k.clone(), (**v).clone()))
+        .collect();
+    let payload = CachePayload {
+        graph: graph.clone(),
+        source_indices: si_plain,
+    };
+    let payload_bytes =
+        serde_json::to_vec(&payload).map_err(|e| format!("cache payload encode failed: {e}"))?;
     let content_digest = payload_content_digest(&payload_bytes);
 
     reclaim_stale_temp(&final_path);
@@ -659,7 +405,16 @@ pub fn build_valid_artifact_bytes(
     graph: &ResolvedGraph,
     source_indices: &HashMap<String, Rc<NewlineIndex>>,
 ) -> Result<Vec<u8>, String> {
-    let payload_bytes = encode_payload(graph, source_indices)?;
+    let si_plain: HashMap<String, NewlineIndex> = source_indices
+        .iter()
+        .map(|(k, v)| (k.clone(), (**v).clone()))
+        .collect();
+    let payload = CachePayload {
+        graph: graph.clone(),
+        source_indices: si_plain,
+    };
+    let payload_bytes =
+        serde_json::to_vec(&payload).map_err(|e| format!("cache payload encode failed: {e}"))?;
     let content_digest = payload_content_digest(&payload_bytes);
     let mut bytes = Vec::new();
     bytes.extend_from_slice(MAGIC);
@@ -675,14 +430,31 @@ pub fn serialize_fixture_payload_for_test(
     graph: &ResolvedGraph,
     source_indices: &HashMap<String, Rc<NewlineIndex>>,
 ) -> Result<Vec<u8>, String> {
-    encode_payload(graph, source_indices).map_err(|e| format!("fixture payload encode: {e}"))
+    let si_plain: HashMap<String, NewlineIndex> = source_indices
+        .iter()
+        .map(|(k, v)| (k.clone(), (**v).clone()))
+        .collect();
+    let payload = CachePayload {
+        graph: graph.clone(),
+        source_indices: si_plain,
+    };
+    serde_json::to_vec(&payload).map_err(|e| format!("fixture payload encode: {e}"))
 }
 
 pub fn deserialize_fixture_payload_for_test(bytes: &[u8]) -> Result<CachedResolvedGraph, String> {
     let payload: CachePayload =
         serde_json::from_slice(bytes).map_err(|e| format!("fixture payload decode: {e}"))?;
-    from_interned_payload(payload)
-        .ok_or_else(|| "fixture payload decode: pool index out of bounds".to_string())
+    let source_indices = Rc::new(
+        payload
+            .source_indices
+            .into_iter()
+            .map(|(k, v)| (k, Rc::new(v)))
+            .collect(),
+    );
+    Ok(CachedResolvedGraph {
+        graph: Rc::new(payload.graph),
+        source_indices,
+    })
 }
 
 pub fn validate_fixture_intern_table_for_test(cached: &CachedResolvedGraph) -> Result<(), String> {
