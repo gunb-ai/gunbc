@@ -415,7 +415,11 @@ struct FunctionCapture {
 fn execute_captured_scripts(scripts: &[String]) -> ClaimOutcome {
     for script in scripts {
         eprintln!("[deferred-shell] sh -c ({} bytes)", script.len());
-        let output = match std::process::Command::new("sh").arg("-c").arg(script).output() {
+        let output = match std::process::Command::new("sh")
+            .arg("-c")
+            .arg(script)
+            .output()
+        {
             Ok(o) => o,
             Err(e) => {
                 return ClaimOutcome::RuntimeError {
