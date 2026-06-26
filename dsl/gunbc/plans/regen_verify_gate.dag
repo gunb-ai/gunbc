@@ -2,7 +2,7 @@ module gunbc.plans.regen_verify_gate
 
 import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
 import std.markdown { MarkdownBlock, TableBlock, AlignNone, AlignRight }
-import gunbc.plans.md_helpers { h2, p, li, ul, ol, cell, row }
+import gunbc.plans.md_helpers { h2, p, li, ol, cell, row }
 
 fn regen_verify_gate_body() -> List<MarkdownBlock> {
   [
