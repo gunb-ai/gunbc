@@ -6,19 +6,19 @@ use std::process::ExitCode;
 use std::thread;
 use std::time::Instant;
 
-/// Return freed heap pages back to the OS so the cgroup RSS drops before the next batch.
-/// glibc's arena allocator does not return freed blocks to the OS without an explicit nudge;
-/// without this, two sequential startup corpus resolves (eval_plan + eval_spawn_width) leave
-/// 3–5 GiB of "freed but mapped" heap that inflates the cgroup peak for every subsequent
-/// batch — pushing source_root_ingest (batch 3) over the 8 GiB runner cap even when the
-/// batch itself would fit.  `malloc_trim(0)` is a standard glibc / musl extension that
-/// triggers an immediate `MADV_DONTNEED` on all free top-of-arena pages.  No-op on non-Linux.
+/// MITIGATION (not root fix): return freed heap pages to the OS before each batch so the
+/// cgroup RSS reflects only live data rather than the allocator's retained free pool.
+/// Root: this one-process floor accumulates RSS monotonically across batches because glibc's
+/// arena allocator holds freed blocks without calling MADV_DONTNEED; the durable fix is
+/// per-batch process isolation so RSS is bounded structurally, but that is a bigger change
+/// (tracked as a follow-on to the resource-aware-scheduler lane).
+/// `malloc_trim(0)` is a standard glibc extension; no-op on non-Linux.
 #[cfg(target_os = "linux")]
 fn release_heap() {
-    // Safety: malloc_trim is a documented, async-signal-safe glibc/musl libc function.
     extern "C" {
         fn malloc_trim(pad: usize) -> i32;
     }
+    // Safety: malloc_trim is a standard glibc/musl libc function.
     unsafe { malloc_trim(0) };
 }
 #[cfg(not(target_os = "linux"))]
