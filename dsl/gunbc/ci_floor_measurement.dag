@@ -19,12 +19,12 @@ type PerShardRssPeakMeasurement
   | PerShardRssPeakUnmeasured
 
 data gunbc_ci_floor_per_shard_rss_measurement: PerShardRssPeakMeasurement = PerShardRssPeakMeasured {
-  per_shard_peak: byte_size(2100028416)
-  sample_width: 4
+  per_shard_peak: byte_size(3221225472)
+  sample_width: 2
 }
 
 data gunbc_ci_floor_per_shard_rss_source: Disposition = Terminal {
-  reason: "Measured: CI run 27893441091, VmHWM=8.4GiB at spawn_width=4 => per-shard = VmHWM/width = 8.4GiB/4 = 2.1GiB; corroborated by run 28003119550 (self-RSS=8.7GiB at width=4, executor base approx 0.7GiB, shard approx 2.0GiB, model: total=base+width*per_shard). Finer measurement path: width-sweep slope (RSS(w1)-RSS(w0))/(w1-w0) or per-shard cgroup isolation once per-thread RSS is available."
+  reason: "Re-measured post-#5836: width=3 OOM-kills on the 8GiB cgroup cap (runs 28253594624, 28256000608, 28256000608 all exit-137); this proves per_shard_actual > (8GiB - executor_base_0.7GiB) / 3 = 2.43GiB. Prior measurement (run 27893441091, 2.1GiB) was taken on a larger-budget runner and stale corpus pre-cgroup enforcement. Updated to 3GiB (3221225472 bytes): within observed range [2.43, 3.65]GiB (upper bound = (8GiB - 0.7GiB) / 2 for width=2 to fit). Derives width=2 at 8GiB: floor(8GiB * 4/5 / 3GiB) = 2; fits: 2*3GiB + 0.7GiB = 6.7GiB < 8GiB. Finer re-measurement path: width-sweep slope on current corpus under 8GiB cgroup isolation."
 }
 
 fn gunbc_ci_floor_per_shard_peak_rss_bytes() -> ByteSize {
@@ -36,7 +36,7 @@ fn gunbc_ci_floor_per_shard_peak_rss_bytes() -> ByteSize {
 
 data gunbc_ci_host_container_memory_cap: ByteSize = byte_size(33578549248)
 
-data gunbc_ci_floor_conservative_fallback_width: Int = 4
+data gunbc_ci_floor_conservative_fallback_width: Int = 2
 
 type JobCgroupPeakMeasurement
   = JobCgroupPeakMeasured { cgroup_peak: ByteSize }
