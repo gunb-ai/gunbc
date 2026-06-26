@@ -347,6 +347,18 @@ pub fn build_multi_entry_index(source_roots: &[String]) -> MultiEntryIndex {
     }
 }
 
+impl MultiEntryIndex {
+    /// Drops the accumulated parse results and typed-module results, releasing
+    /// the heavy per-entry heap data between discovery chunks. The intern_table
+    /// and source_files are kept: intern_table is monotonic (content-addressed
+    /// names only accumulate; no names are ever removed) and source_files is
+    /// the static file-path index for the source roots.
+    pub fn clear_entry_caches(&self) {
+        *self.parse_cache.borrow_mut() = HashMap::new();
+        *self.typed_module_cache.borrow_mut() = HashMap::new();
+    }
+}
+
 pub fn resolve_entry_with_index(
     index: &MultiEntryIndex,
     entry_file: &str,
@@ -3138,9 +3150,11 @@ fn merge_discovery_summaries(summaries: Vec<DiscoverySummary>) -> DiscoverySumma
 }
 
 /// Chunks discovery rows so each chunk's parse_cache/typed_module_cache (in MultiEntryIndex)
-/// accumulates at most ~1/DISCOVERY_CHUNK_FACTOR of the corpus before dropping. The index
-/// itself always scans the full source roots; peak reduction comes from dropping the in-process
-/// caches between chunks, not from partitioning the on-disk source index.
+/// accumulates at most ~1/DISCOVERY_CHUNK_FACTOR of the corpus before being cleared. The
+/// intern_table and source_files are shared across all chunks: intern_table is monotonic
+/// (content-addressed names only accumulate) and source_files is the static file-path scan.
+/// Peak reduction comes from clearing the heavy per-entry caches (parsed ASTs, typed-module
+/// results) between chunks; the index itself is built once for the whole shard.
 const DISCOVERY_CHUNK_FACTOR: usize = 4;
 
 fn count_entry_groups(rows: &[DiscoveryRow]) -> usize {
@@ -3196,9 +3210,11 @@ fn run_discovery_rows_chunked(
         chunks.len(),
         max_groups_per_chunk
     );
+    // Build the index once for the whole shard: source_files and intern_table
+    // are shared. Only parse_cache and typed_module_cache are cleared between chunks.
+    let index = build_multi_entry_index(source_roots);
     let mut summaries = Vec::with_capacity(chunks.len());
-    for chunk in &chunks {
-        let index = build_multi_entry_index(source_roots);
+    for (chunk_idx, chunk) in chunks.iter().enumerate() {
         summaries.push(run_discovery_rows(
             chunk,
             &index,
@@ -3207,9 +3223,42 @@ fn run_discovery_rows_chunked(
             frontier_seeds,
             whole_tree_published_keys.clone(),
         )?);
-        // index drops here, freeing parse_cache and typed_module_cache
+        // Drop parsed ASTs and typed-module results. The intern_table stays alive
+        // (monotonic, content-addressed); source_files is the static path index.
+        index.clear_entry_caches();
+        // Ask glibc to return free pages to the OS so the cgroup RSS actually drops.
+        #[cfg(target_os = "linux")]
+        extern "C" {
+            fn malloc_trim(pad: usize) -> i32;
+        }
+        #[cfg(target_os = "linux")]
+        unsafe {
+            malloc_trim(0);
+        }
+        if let Ok(rss_kb) = proc_self_rss_kb() {
+            eprintln!(
+                "run_discovery_rows_chunked: after chunk {}/{} rss={}MiB",
+                chunk_idx + 1,
+                chunks.len(),
+                rss_kb / 1024
+            );
+        }
     }
     Ok(merge_discovery_summaries(summaries))
+}
+
+fn proc_self_rss_kb() -> Result<u64, ()> {
+    let s = std::fs::read_to_string("/proc/self/status").map_err(|_| ())?;
+    for line in s.lines() {
+        if line.starts_with("VmRSS:") {
+            return line
+                .split_whitespace()
+                .nth(1)
+                .and_then(|v| v.parse().ok())
+                .ok_or(());
+        }
+    }
+    Err(())
 }
 
 fn run_discovery_rows(
