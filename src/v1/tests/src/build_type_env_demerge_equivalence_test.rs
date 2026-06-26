@@ -33,6 +33,12 @@
 //!       bindings for the enclosing coproduct. Under `ResolveTypecheckGate::Strict`
 //!       an unresolved type is FATAL, so if the de-merged enumerator misses the
 //!       imported `Sig`, `resolve_entry_graph` returns `Err` and this test panics.
+//!   (3) the **`std.types` type-variable filter** — the ONLY selective filter in the
+//!       merge (`build_type_env` imports the whole `std.types` env minus
+//!       `is_type_variable_name` bindings; every other import path merges unfiltered).
+//!       A synthetic `std.types` defines `type T`; importer `test.c` MUST NOT get `T`
+//!       in scope (`lookup_type(T_id)` None) while `std.types` itself keeps it (Some).
+//!       A de-merge that chains `std.types` raw leaks `T` (None -> Some) -> RED.
 //!
 //! The only edit Layer A needs here is the keyset discovery
 //! (`union of .bindings` -> `union of local + reachable`), called out at its site
@@ -157,6 +163,19 @@ fn write_witness() -> (Vec<String>, String, std::path::PathBuf) {
         import test.sig { Sig }\n\
         fn classify(s: Active) -> Int { 1 }\n\
         fn ping() -> Int { 99 }\n";
+    // std.types selective filter: `build_type_env` excludes type-variable-named
+    // bindings (T/K/V/MappedElement/FoldAccumulator — `is_type_variable_name`) ONLY
+    // when importing from the module path "std.types". `T` is local to this synthetic
+    // std.types; an importer of std.types must NOT get `T` in scope. The de-merge must
+    // reproduce that filter EXACTLY — a missed filter leaks `T` into the importer
+    // (lookup_type flips None->Some), a duplicated/over-broad filter would drop a
+    // legitimate binding. Either way the std.types-type-var assertion below goes RED.
+    let std_types = "module std.types\n\
+        type T { x: Int }\n\
+        fn idint(n: Int) -> Int { n }\n";
+    let stdtypes_user = "module test.c\n\
+        import std.types { idint }\n\
+        fn usec() -> Int { idint(5) }\n";
     let entry_a = "module test.a\n\
         import test.common { boxed, unbox }\n\
         import test.shared1 { val }\n\
@@ -166,7 +185,9 @@ fn write_witness() -> (Vec<String>, String, std::path::PathBuf) {
         import test.shared2 { val }\n\
         import test.extra { pad }\n\
         import test.phantom { ping }\n\
+        import test.c { usec }\n\
         fn uses_phantom() -> Int { ping() }\n\
+        fn uses_stdtypes() -> Int { usec() }\n\
         fn witness_b() -> Bool { (unbox(boxed(val())) + pad()) == 27 }\n";
 
     for (name, src) in [
@@ -176,6 +197,8 @@ fn write_witness() -> (Vec<String>, String, std::path::PathBuf) {
         ("extra.dag", extra),
         ("sig.dag", sig),
         ("phantom.dag", phantom),
+        ("std_types.dag", std_types),
+        ("stdtypes_user.dag", stdtypes_user),
         ("entry_a.dag", entry_a),
         ("entry_b.dag", entry_b),
     ] {
@@ -229,6 +252,47 @@ fn lookup_observable_is_stable_and_representation_independent() {
     assert!(
         probed_importer,
         "expected importer module test.b in the resolved graph to probe cross-module in-scope"
+    );
+
+    // DISCRIMINATOR (3): the `std.types` type-variable filter. `build_type_env`
+    // imports the WHOLE `std.types` env minus `is_type_variable_name` bindings
+    // (T/K/V/MappedElement/FoldAccumulator) — the ONLY selective filter in the merge
+    // (04_infer:5430-5440; every other import path merges unfiltered). `T` is local to
+    // the synthetic `std.types`, so:
+    //   - in `std.types` itself, `lookup_type(T_id)` is Some (its own local), and
+    //   - in importer `test.c`, `lookup_type(T_id)` MUST be None (filtered out).
+    // A de-merge that chains `std.types` as a raw parent without reproducing the
+    // filter LEAKS `T` into `test.c` (None -> Some) and this goes RED; an over-broad
+    // filter that drops a legitimate binding is caught by the in-scope discriminators
+    // above. This pins the filter wrinkle by execution, not by inspection.
+    let t_id = local_type_id(&graph_one, "std.types", "T");
+    let mut probed_stdtypes_owner = false;
+    let mut probed_stdtypes_importer = false;
+    for m in graph_one.modules.iter() {
+        // Exact module-name match — the full-Node JSON of an importer also *contains*
+        // the substring "std.types" (its import node names the module), so match on the
+        // module Node's `name` field, not a substring of its serialization.
+        if m.module.name == "std.types" {
+            assert!(
+                lookup_type(m.type_env.clone(), t_id).is_some(),
+                "std.types must resolve its own local type-variable-named type `T` \
+                 (id {t_id}); got <not-in-scope>"
+            );
+            probed_stdtypes_owner = true;
+        }
+        if m.module.name == "test.c" {
+            assert!(
+                lookup_type(m.type_env.clone(), t_id).is_none(),
+                "importer test.c must NOT have `std.types` type-variable `T` (id {t_id}) \
+                 in scope — the is_type_variable_name filter was missed/leaked by the de-merge"
+            );
+            probed_stdtypes_importer = true;
+        }
+    }
+    assert!(
+        probed_stdtypes_owner && probed_stdtypes_importer,
+        "expected both std.types (owner) and test.c (importer) in the resolved graph \
+         to probe the type-variable filter; owner={probed_stdtypes_owner} importer={probed_stdtypes_importer}"
     );
 
     let m_one = observable_matrix(&graph_one);
