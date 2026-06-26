@@ -1561,7 +1561,7 @@ fn eval_binop(op: &BinOp, left: Value, right: Value, ctx: &InterpContext) -> Int
                     return Ok(Value::Str(format!("{}{}", ls, s)));
                 }
                 if let Some(mut result) = free_monoid_to_vec(l) {
-                    if let Some(detail) = string_realization_straddle_detail(&result) {
+                    if let Some(detail) = string_realization_straddle_detail(l, &result) {
                         return Err(InterpError::StringRealizationStraddle { detail });
                     }
                     record_push(result.len());
@@ -5831,7 +5831,14 @@ pub(crate) fn free_monoid_to_vec(val: &Value) -> Option<Vec<Value>> {
 /// completeness insurance for grounding the known sites: any future un-grounded
 /// `FreeMonoid<Char>` × `Str` meeting point surfaces here as a loud error
 /// instead of silently straddling again.
-fn string_realization_straddle_detail(items: &[Value]) -> Option<String> {
+fn string_realization_straddle_detail(orig: &Value, items: &[Value]) -> Option<String> {
+    // A `Value::List` is a generic collection, never a straddled String (see
+    // `free_monoid_to_string`); its `Int` elements are genuine data, so a `Str`
+    // appended to it is a legitimate heterogeneous element, not a straddle. Only
+    // a `Cons`-chain / `Str`-derived flattening carries codepoint semantics.
+    if matches!(orig, Value::List(_)) {
+        return None;
+    }
     if items.iter().any(|x| matches!(x, Value::Int(_))) {
         Some(format!(
             "free monoid mixing Char codepoints with a native String at a concat/`+` meeting point ({} elements); a String must realize as a single native Value::Str, never a mixed [codepoint.., Str] list",
@@ -5855,6 +5862,18 @@ fn string_realization_straddle_detail(items: &[Value]) -> Option<String> {
 pub(crate) fn free_monoid_to_string(val: &Value) -> Option<String> {
     if let Value::Str(s) = val {
         return Some(s.clone());
+    }
+    // A `Value::List` is a generic ordered collection (the `[1]`/`[1,2,3]` list
+    // literal representation), NEVER a modeled `String`. A modeled
+    // `FreeMonoid<Char>` realizes as an `Empty`/`Cons` `Value::Variant` chain.
+    // Treating a `List` as string-like would collapse `List<Int>` append/`+`/
+    // concat into one string — exactly what the `list_free_monoid_chokepoint`
+    // tests forbid (`[1] + "ab"` stays length 2). Only a native `Str` or a
+    // `Cons`-chain is a String candidate; representation is the discriminator
+    // the Value level affords (a `List<Int>` and a codepoint `Cons`-chain are
+    // otherwise element-identical).
+    if matches!(val, Value::List(_)) {
+        return None;
     }
     let items = free_monoid_to_vec(val)?;
     let mut out = String::new();
