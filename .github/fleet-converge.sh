@@ -113,9 +113,9 @@ converge_verify_only_cap() {
 
 emit_sessions_membership() {
   # host slice_cgroup legacy_cgroup  (membership signal for the OomdEnforced guard; EMPTY slice => 0, not error)
-  in_slice=$(ls -d "$2"/docker-*.scope 2>/dev/null | wc -l | tr -d ' ')
+  in_slice=$(ls -d "$2"/docker-*.scope 2>/dev/null | wc -l | tr -d ' ' || true)
   in_slice=${in_slice:-0}
-  legacy=$(ls -d "$3"/docker-*.scope 2>/dev/null | wc -l | tr -d ' ')
+  legacy=$(ls -d "$3"/docker-*.scope 2>/dev/null | wc -l | tr -d ' ' || true)
   legacy=${legacy:-0}
   if [ "$in_slice" -gt 0 ]; then verdict=converged; else verdict=absent; fi
   printf 'converge-receipt host=%s slice=sessions sessions_in_slice=%s sessions_legacy_flat=%s verdict=%s\n' "$1" "$in_slice" "$legacy" "$verdict"
@@ -132,7 +132,7 @@ converge_runner_width "srv1" "runner" "runner_count" "actions-runner@srv1-*.serv
 converge_slice_property "srv1" "sessions" "slice_max_bytes" "sessions.slice" "MemoryMax" "21474836480" "21474836480" "21474836480"
 converge_verify_only_cap "srv1" "sessions" "per_session_max_bytes" "sessions.slice" "MemoryMax" "10737418240"
 converge_slice_property "srv1" "sessions" "oom_pressure_kill" "sessions.slice" "ManagedOOMMemoryPressure" "kill" "kill" "true"
-converge_slice_property "srv1" "sessions" "oom_pressure_limit_pct" "sessions.slice" "ManagedOOMMemoryPressureLimit" "60%" "60%" "60"
+converge_slice_property "srv1" "sessions" "oom_pressure_limit_pct" "sessions.slice" "ManagedOOMMemoryPressureLimit" "60%" "2576980377" "60"
 converge_slice_property "srv1" "sessions" "cpu_weight" "sessions.slice" "CPUWeight" "1000" "1000" "1000"
 emit_sessions_membership "srv1" "/sys/fs/cgroup/sessions.slice" "/sys/fs/cgroup/system.slice"
 host_summary "srv1"
@@ -146,7 +146,7 @@ converge_runner_width "srv2" "runner" "runner_count" "actions-runner@srv2-*.serv
 converge_slice_property "srv2" "sessions" "slice_max_bytes" "sessions.slice" "MemoryMax" "21474836480" "21474836480" "21474836480"
 converge_verify_only_cap "srv2" "sessions" "per_session_max_bytes" "sessions.slice" "MemoryMax" "10737418240"
 converge_slice_property "srv2" "sessions" "oom_pressure_kill" "sessions.slice" "ManagedOOMMemoryPressure" "kill" "kill" "true"
-converge_slice_property "srv2" "sessions" "oom_pressure_limit_pct" "sessions.slice" "ManagedOOMMemoryPressureLimit" "60%" "60%" "60"
+converge_slice_property "srv2" "sessions" "oom_pressure_limit_pct" "sessions.slice" "ManagedOOMMemoryPressureLimit" "60%" "2576980377" "60"
 converge_slice_property "srv2" "sessions" "cpu_weight" "sessions.slice" "CPUWeight" "1000" "1000" "1000"
 emit_sessions_membership "srv2" "/sys/fs/cgroup/sessions.slice" "/sys/fs/cgroup/system.slice"
 host_summary "srv2"
