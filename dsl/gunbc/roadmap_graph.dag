@@ -4,6 +4,7 @@ import ctrl.process_algebra { ProcessNodeId }
 import gunbc.roadmap_model {
   RoadmapNode, RoadmapEdge,
   NodeSizing, Sized, Unsized,
+  Acceptance,
   Intricacy, Volume,
   RoadmapParent, TopLevel, UnderParent, roadmap_parent, roadmap_parents,
 }
@@ -12,6 +13,7 @@ import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
 import gunbc.roadmap_spawner {
   doc_all_nodes, doc_all_edges, node_dep_done, section_nodes,
   json_str, join_strings, node_title, intricacy_str, volume_str,
+  acceptance_json,
 }
 
 type GraphStatus
@@ -153,13 +155,14 @@ fn wave_json_val(status: GraphStatus, wave: Int) -> String {
   }
 }
 
-fn sizing_fields_json(sizing: NodeSizing) -> String {
+fn sizing_fields_json(sizing: NodeSizing, line: RoadmapItem) -> String {
   match sizing {
-    Unsized => ", \"repo\": null, \"intricacy\": null, \"volume\": null"
-    Sized { intricacy, volume, repo, acceptance: _ } =>
+    Unsized => ", \"repo\": null, \"intricacy\": null, \"volume\": null, \"acceptance\": null"
+    Sized { intricacy, volume, repo, acceptance } =>
       concat(", \"repo\": ", concat(json_str(s: repo),
         concat(", \"intricacy\": ", concat(json_str(s: intricacy_str(i: intricacy)),
-          concat(", \"volume\": ", json_str(s: volume_str(v: volume)))))))
+          concat(", \"volume\": ", concat(json_str(s: volume_str(v: volume)),
+            concat(", \"acceptance\": ", acceptance_json(a: acceptance, line: line))))))))
   }
 }
 
@@ -170,7 +173,7 @@ fn graph_node_json(n: RoadmapNode, status: GraphStatus, wave_json: String, edges
   }
   let title = node_title(item: n.line)
   let s = status_str(s: status)
-  let sf = sizing_fields_json(sizing: n.sizing)
+  let sf = sizing_fields_json(sizing: n.sizing, line: n.line)
   concat("{",
     concat("\"node_id\": ", concat(json_str(s: n.node),
     concat(", \"title\": ", concat(json_str(s: title),
