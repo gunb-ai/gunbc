@@ -37,6 +37,7 @@ import extdeps.os.oomd {
   oomd_managed_oom_memory_pressure_property,
   oomd_managed_oom_memory_pressure_limit_property,
   managed_oom_action_value,
+  managed_oom_pressure_limit_show_value,
 }
 
 
@@ -228,7 +229,7 @@ fn session_host_knobs(slice_max: ByteSize, per_session: ByteSize) -> List<Conver
         unit: gunbc_oomd_sessions_slice,
         property: oomd_managed_oom_memory_pressure_limit_property,
         apply_value: concat(pct, "%"),
-        expected_effective: concat(pct, "%"),
+        expected_effective: to_string(managed_oom_pressure_limit_show_value(p: gunbc_oomd_sessions_policy.managed_oom_memory_pressure_limit)),
       },
     },
     slice_numeric_knob(

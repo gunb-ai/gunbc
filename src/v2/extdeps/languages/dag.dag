@@ -1962,7 +1962,7 @@ fn dag_grammar_import_block_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_terminal(token_class: ^dag_token_lbrace),
     right: dag_grammar_sequence(
-      left: dag_grammar_comma_list_expr(item: dag_grammar_terminal(token_class: ^dag_token_ident)),
+      left: dag_grammar_comma_list_expr(item: dag_grammar_terminal_lexeme(token_class: ^dag_token_ident)),
       right: dag_grammar_terminal(token_class: ^dag_token_rbrace)
     )
   )
@@ -6027,6 +6027,76 @@ fn parse_qualified_name_segments_from_capture(qn_capture: Node, root: Node) -> O
                     diagnostics: tail_diag
                   )
               }
+          }
+      }
+  }
+}
+
+fn parse_comma_ident_list_items(
+  comma_list_capture: Node,
+  root: Node
+) -> Outcome<List<Symbol>> {
+  match find_named_child(root: comma_list_capture, name: ^grammar_sequence_left_node_projection) {
+    Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+    Accepted { value: head_node, diagnostics: _ } =>
+      match parse_qn_lexeme_segment(sym_node: head_node, root: root) {
+        Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+        Accepted { value: head_sym, diagnostics: head_diag } =>
+          match find_named_child(
+            root: comma_list_capture,
+            name: ^grammar_sequence_right_node_projection
+          ) {
+            Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+            Accepted { value: outer_right, diagnostics: _ } =>
+              match find_named_child(
+                root: outer_right,
+                name: ^grammar_sequence_left_node_projection
+              ) {
+                Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+                Accepted { value: repeat_node, diagnostics: _ } =>
+                  match parse_qn_repeat_suffixes(repeat_capture: repeat_node, root: root) {
+                    Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+                    Accepted { value: suffixes, diagnostics: tail_diag } =>
+                      outcome_accepted(
+                        value: list_append(
+                          left: Cons { head: head_sym, tail: Empty },
+                          right: suffixes
+                        ),
+                        diagnostics: tail_diag
+                      )
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn parse_import_block_idents(
+  import_decl_node: Node,
+  root: Node
+) -> Outcome<List<Symbol>> {
+  match parse_subtree_find_production_captured(
+    root: import_decl_node,
+    emitted: ^dag_surface_import_block
+  ) {
+    ParseSubtreeAbsent => outcome_accepted(value: Empty)
+    ParseSubtreeFound { captured: block_capture } =>
+      match find_named_child(
+        root: block_capture,
+        name: ^grammar_sequence_right_node_projection
+      ) {
+        Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+        Accepted { value: inner_seq, diagnostics: _ } =>
+          match find_named_child(
+            root: inner_seq,
+            name: ^grammar_sequence_left_node_projection
+          ) {
+            Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+            Accepted { value: comma_list_capture, diagnostics: _ } =>
+              parse_comma_ident_list_items(
+                comma_list_capture: comma_list_capture,
+                root: root
+              )
           }
       }
   }

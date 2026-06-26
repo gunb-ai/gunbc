@@ -152,7 +152,8 @@ import v2.std.compilers.target_model {
   derive_bodied_arrow_scaffold,
   TargetModuleProjection,
   TargetImportShape,
-  EsModuleImport
+  EsModuleImport,
+  module_import_projection_bundle_node
 }
 import v2.std.node {
   Arrow,
@@ -1488,6 +1489,10 @@ fn ts_mvp1_target_model_node() -> Node {
       ts_named_edge(
         name: ^target_model_edge_operator_realizations,
         target: ts_operator_realizations_catalog_node()
+      ),
+      ts_named_edge(
+        name: ^target_model_edge_module_import_projection,
+        target: module_import_projection_bundle_node(projection: ts_module_projection())
       )
     ],
     occurrence_id: SyntheticOccurrence
