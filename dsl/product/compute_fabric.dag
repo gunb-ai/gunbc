@@ -71,6 +71,10 @@ import extdeps.toolchain.types {
   Riscv64,
   Wasm32,
 }
+import extdeps.os.systemd {
+  systemd_actions_runner_service_dropin_prefix,
+  systemd_exclusive_cpuset_dropin_suffix,
+}
 import product.placement_supply { HostIdentity, PlacementSupplyRow }
 import std.baseboard { ServerBaseboard }
 import std.realization_width { bounded_host_spawn_width, memory_aware_spawn_width, int_min, byte_size_saturating_sub }
@@ -153,6 +157,10 @@ data lease_mode_k8s_qos_grounding: Disposition = Scaffold {
     field: WholeDeclaration
   }
 }
+
+data lease_mode_k8s_qos_mapping_note: List<NonEmptyStr> = [
+  "Reserved maps to Guaranteed (CPU+memory guaranteed); BestEffort maps to BestEffort. Burstable is a k8s scheduler hint with no LeaseMode mirror — it is not modeled as a lease commitment. At dissolution, Reserved->Guaranteed and BestEffort->BestEffort are the justified mappings; the variant sets are intentionally non-isomorphic."
+]
 
 data performance_isolation_cpuset_grounding: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
@@ -802,7 +810,7 @@ fn shard_dropin_content(shard: ShardCpusetPartition) -> String {
 
 fn shard_dropin_path(host: HostIdentity, shard_index: Int) -> String {
   let idx_str = to_string(shard_index)
-  concat("/etc/systemd/system/actions-runner@", concat(host, concat("-", concat(idx_str, ".service.d/30-exclusive-cpuset.conf"))))
+  concat(systemd_actions_runner_service_dropin_prefix, concat(host, concat("-", concat(idx_str, systemd_exclusive_cpuset_dropin_suffix))))
 }
 
 fn shard_dropin(host: HostIdentity, shard: ShardCpusetPartition) -> SystemdShardDropIn {
@@ -894,6 +902,20 @@ fn isolation_boundary_label(boundary: IsolationBoundary) -> NonEmptyStr {
   }
 }
 
+fn performance_isolation_label(mode: PerformanceIsolation) -> NonEmptyStr {
+  match mode {
+    Shared => "Shared"
+    Exclusive => "Exclusive"
+  }
+}
+
+fn lease_mode_label(mode: LeaseMode) -> NonEmptyStr {
+  match mode {
+    BestEffort => "BestEffort"
+    Reserved => "Reserved"
+  }
+}
+
 fn isolation_satisfies(supply: IsolationBoundary, demand: IsolationBoundary) -> Bool {
   isolation_boundary_ordinal(boundary: supply) >= isolation_boundary_ordinal(boundary: demand)
 }
@@ -910,14 +932,14 @@ fn satisfies(offer: ComputeOffer, demand: WorkDemand) -> ComputeLeaseEligibility
     Rejected {
       reason: MissingDemandFact {
         dimension: DemandPerformanceIsolation,
-        required: "exclusive_performance_isolation",
+        required: performance_isolation_label(mode: demand.performance_isolation),
       },
     }
   } else if !lease_mode_satisfies(supply: offer.lease_mode, demand: demand.lease_mode) {
     Rejected {
       reason: MissingDemandFact {
         dimension: DemandLeaseMode,
-        required: "reserved_lease_mode",
+        required: lease_mode_label(mode: demand.lease_mode),
       },
     }
   } else if !requires_placement_facts(demand: demand) {

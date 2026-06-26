@@ -34,6 +34,10 @@ data systemd_cpu_weight_property: NonEmptyStr = "CPUWeight"
 
 data systemd_allowed_cpus_property: NonEmptyStr = "AllowedCPUs"
 
+data systemd_actions_runner_service_dropin_prefix: NonEmptyStr = "/etc/systemd/system/actions-runner@"
+
+data systemd_exclusive_cpuset_dropin_suffix: NonEmptyStr = ".service.d/30-exclusive-cpuset.conf"
+
 fn parse_systemd_unit_active_state(raw: String) -> SystemdUnitActiveState? {
   if raw == "active" { Present { value: Active } }
   else { if raw == "inactive" { Present { value: Inactive } }
