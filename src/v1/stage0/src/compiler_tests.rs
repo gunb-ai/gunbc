@@ -2347,6 +2347,85 @@ mod compiler_tests {
         result.expect("profile_floor_eval_phase_rss panicked");
     }
 
+    // Decompose a heavy entry's RESOLVE transient into: held-by-graph (rss1-rss0),
+    // freed-intermediate-during-resolve (res_peak-rss1), and freed-on-drop (rss1-rss2).
+    // Settles whether Lever C targets graph size (A/B1) or the resolve working set.
+    #[test]
+    #[ignore]
+    fn profile_resolve_split_heavy() {
+        let result = std::thread::Builder::new()
+            .stack_size(512 * 1024 * 1024)
+            .spawn(|| {
+                fn rss_kb(field: &str) -> u64 {
+                    let s = std::fs::read_to_string("/proc/self/status").unwrap_or_default();
+                    for line in s.lines() {
+                        if let Some(rest) = line.strip_prefix(field) {
+                            return rest
+                                .split_whitespace()
+                                .next()
+                                .and_then(|v| v.parse().ok())
+                                .unwrap_or(0);
+                        }
+                    }
+                    0
+                }
+                fn reset_peak() {
+                    let _ = std::fs::write("/proc/self/clear_refs", "5\n");
+                }
+                let m = |kb: i64| format!("{:>7} MiB", kb / 1024);
+
+                std::env::set_current_dir(workspace_root()).expect("chdir");
+                let source_roots = vec!["src/v2".to_string(), "dsl".to_string()];
+                let index = crate::cli_run::build_multi_entry_index(&source_roots);
+
+                let heavy = [
+                    "src/v2/lens/affected_set/sg_claims_test.dag",
+                    "dsl/test/claim/generated_artifact_drift_test.dag",
+                    "src/v2/lens/affected_set/edit_locus_resolver_test.dag",
+                    "src/v2/compiler/manual/typescript_import_pipeline_test.dag",
+                    "src/v2/lens/complexity/nested_test.dag",
+                ];
+                eprintln!("\n=== RESOLVE TRANSIENT SPLIT (heavy entries) ===");
+                eprintln!(
+                    "  {:<58} {:>11} {:>11} {:>11} {:>11}",
+                    "entry", "held(g)", "freed-int", "freed-drop", "peak"
+                );
+                for entry in heavy {
+                    reset_peak();
+                    let rss0 = rss_kb("VmRSS:") as i64;
+                    let resolved = crate::cli_run::resolve_entry_with_index_for_discovery_corpus(
+                        &index, entry,
+                    );
+                    let (graph, _si) = match resolved {
+                        Ok(g) => g,
+                        Err(e) => {
+                            eprintln!("  {entry}: ERR {e}");
+                            continue;
+                        }
+                    };
+                    let res_peak = rss_kb("VmHWM:") as i64;
+                    let rss1 = rss_kb("VmRSS:") as i64;
+                    let strong = std::rc::Rc::strong_count(&graph);
+                    drop(graph);
+                    let rss2 = rss_kb("VmRSS:") as i64;
+                    let short = entry.rsplit('/').next().unwrap_or(entry);
+                    eprintln!(
+                        "  {:<58} {:>11} {:>11} {:>11} {:>11}  (rc={})",
+                        short,
+                        m(rss1 - rss0),
+                        m(res_peak - rss1),
+                        m(rss1 - rss2),
+                        m(res_peak - rss0),
+                        strong
+                    );
+                }
+                eprintln!("=== DONE ===\n");
+            })
+            .expect("spawn")
+            .join();
+        result.expect("profile_resolve_split_heavy panicked");
+    }
+
     #[test]
     fn contracts_sidecar_wired_into_emit_scope() {
         let result = std::thread::Builder::new()
