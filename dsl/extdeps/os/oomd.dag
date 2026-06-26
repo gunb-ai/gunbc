@@ -1,7 +1,8 @@
 module extdeps.os.oomd
 
 import std.types { NonEmptyStr, String, FilePath, Bool }
-import std.measure { Second, second, Percent, percent }
+import std.measure { Second, second, Percent, percent, percent_count }
+import std.types { Int }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -48,6 +49,12 @@ data oomd_managed_oom_swap_property: NonEmptyStr = "ManagedOOMSwap"
 
 data oomd_managed_value_kill: NonEmptyStr = "kill"
 data oomd_managed_value_auto: NonEmptyStr = "auto"
+
+data systemd_managed_oom_pressure_limit_show_scale: Int = 4294967295
+
+fn managed_oom_pressure_limit_show_value(p: Percent) -> Int {
+  percent_count(p: p) * systemd_managed_oom_pressure_limit_show_scale / 100
+}
 
 fn managed_oom_action_value(a: ManagedOomAction) -> NonEmptyStr {
   match a {
