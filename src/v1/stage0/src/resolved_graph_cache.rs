@@ -75,33 +75,40 @@ pub struct CachedResolvedGraph {
 // fail-closed oracle (`cache_purity_oracle` / interned_round_trip test).
 // ---------------------------------------------------------------------------
 
-/// Content-addressed pool: each distinct value is stored once; `intern` returns
-/// a stable index. Keyed by the content hash of the value's serialization, so
-/// only byte-identical values collapse (the 9 names carrying two distinct
-/// resolved contents across modules stay distinct — id-keying would be lossy).
-struct PoolInterner<T> {
-    pool: Vec<T>,
-    index: HashMap<Hash, u32>,
+/// Content-addressed pool: each distinct value is stored once, keyed by the
+/// content hash of its serialization, so only byte-identical values collapse
+/// (the 9 names carrying two distinct resolved contents across modules stay
+/// distinct — id-keying would be lossy). `add` records a value and returns its
+/// content hash; `finalize` emits the pool in **content-hash-sorted** order with
+/// a hash→index map. Sorting makes the on-disk pool order independent of the
+/// in-RAM HashMap iteration order, so two value-identical graphs encode to
+/// byte-identical payloads — the DESIGN §5 warm==cold purity oracle.
+struct PoolBuilder<T> {
+    by_hash: std::collections::BTreeMap<Hash, T>,
 }
 
-impl<T: serde::Serialize + Clone> PoolInterner<T> {
+impl<T: serde::Serialize + Clone> PoolBuilder<T> {
     fn new() -> Self {
         Self {
-            pool: Vec::new(),
-            index: HashMap::new(),
+            by_hash: std::collections::BTreeMap::new(),
         }
     }
 
-    fn intern(&mut self, value: &T) -> u32 {
+    fn add(&mut self, value: &T) -> Hash {
         let bytes = serde_json::to_vec(value).expect("cache interner: value must serialize");
         let h = v1_rt::bytes_identity_hash(&bytes);
-        if let Some(&existing) = self.index.get(&h) {
-            return existing;
+        self.by_hash.entry(h.clone()).or_insert_with(|| value.clone());
+        h
+    }
+
+    fn finalize(self) -> (Vec<T>, HashMap<Hash, u32>) {
+        let mut pool = Vec::with_capacity(self.by_hash.len());
+        let mut index = HashMap::with_capacity(self.by_hash.len());
+        for (h, v) in self.by_hash.into_iter() {
+            index.insert(h, pool.len() as u32);
+            pool.push(v);
         }
-        let idx = self.pool.len() as u32;
-        self.pool.push(value.clone());
-        self.index.insert(h, idx);
-        idx
+        (pool, index)
     }
 }
 
@@ -138,67 +145,115 @@ struct CachePayload {
     source_indices: HashMap<String, u32>,
 }
 
+/// Per-module references collected in phase 1, holding content hashes; phase 2
+/// resolves each hash to its sorted pool index.
+struct ModuleRefs {
+    module: Rc<Node>,
+    items: Rc<Vec<Rc<Node>>>,
+    item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    bindings: Vec<(i64, Hash)>,
+    recursive_types: Vec<i64>,
+    recursive_type_set: HashMap<i64, bool>,
+    inductive_fields: Vec<(String, Hash)>,
+    source_indices: Vec<(String, Hash)>,
+    intern_table: Hash,
+    func_env: Hash,
+}
+
 fn to_interned_payload(
     graph: &ResolvedGraph,
     source_indices: &HashMap<String, Rc<NewlineIndex>>,
 ) -> CachePayload {
-    let mut bindings = PoolInterner::new();
-    let mut newlines = PoolInterner::new();
-    let mut inductive = PoolInterner::new();
-    let mut func_envs = PoolInterner::new();
-    let mut interns = PoolInterner::new();
+    let mut bindings = PoolBuilder::new();
+    let mut newlines = PoolBuilder::new();
+    let mut inductive = PoolBuilder::new();
+    let mut func_envs = PoolBuilder::new();
+    let mut interns = PoolBuilder::new();
 
-    let modules: Vec<InternedModule> = graph
+    // Phase 1 — collect every value into its content-addressed pool, recording
+    // each reference as a hash. Module order is preserved as authored.
+    let module_refs: Vec<ModuleRefs> = graph
         .modules
         .iter()
         .map(|m| {
             let te = &*m.type_env;
-            let interned_te = InternedTypeEnv {
+            ModuleRefs {
+                module: m.module.clone(),
+                items: m.items.clone(),
+                item_registry: m.item_registry.clone(),
                 bindings: te
                     .bindings
                     .iter()
-                    .map(|(k, v)| (*k, bindings.intern(v)))
+                    .map(|(k, v)| (*k, bindings.add(v)))
                     .collect(),
                 recursive_types: (*te.recursive_types).clone(),
                 recursive_type_set: (*te.recursive_type_set).clone(),
                 inductive_fields: te
                     .inductive_fields
                     .iter()
-                    .map(|(k, v)| (k.clone(), inductive.intern(v)))
+                    .map(|(k, v)| (k.clone(), inductive.add(v)))
                     .collect(),
                 source_indices: te
                     .source_indices
                     .iter()
-                    .map(|(k, v)| (k.clone(), newlines.intern(v)))
+                    .map(|(k, v)| (k.clone(), newlines.add(v)))
                     .collect(),
-                intern_table: interns.intern(&te.intern_table),
-            };
-            InternedModule {
-                module: m.module.clone(),
-                items: m.items.clone(),
-                type_env: interned_te,
-                func_env: func_envs.intern(&m.func_env),
-                item_registry: m.item_registry.clone(),
+                intern_table: interns.add(&te.intern_table),
+                func_env: func_envs.add(&m.func_env),
             }
         })
         .collect();
 
-    let top_source_indices: HashMap<String, u32> = source_indices
+    let top_refs: Vec<(String, Hash)> = source_indices
         .iter()
-        .map(|(k, v)| (k.clone(), newlines.intern(v)))
+        .map(|(k, v)| (k.clone(), newlines.add(v)))
+        .collect();
+
+    // Phase 2 — freeze pools in content-hash-sorted order and resolve every
+    // recorded hash to its stable index.
+    let (binding_pool, b_idx) = bindings.finalize();
+    let (newline_pool, n_idx) = newlines.finalize();
+    let (inductive_pool, i_idx) = inductive.finalize();
+    let (func_env_pool, f_idx) = func_envs.finalize();
+    let (intern_pool, t_idx) = interns.finalize();
+
+    let modules: Vec<InternedModule> = module_refs
+        .into_iter()
+        .map(|mr| InternedModule {
+            module: mr.module,
+            items: mr.items,
+            type_env: InternedTypeEnv {
+                bindings: mr.bindings.into_iter().map(|(k, h)| (k, b_idx[&h])).collect(),
+                recursive_types: mr.recursive_types,
+                recursive_type_set: mr.recursive_type_set,
+                inductive_fields: mr
+                    .inductive_fields
+                    .into_iter()
+                    .map(|(k, h)| (k, i_idx[&h]))
+                    .collect(),
+                source_indices: mr
+                    .source_indices
+                    .into_iter()
+                    .map(|(k, h)| (k, n_idx[&h]))
+                    .collect(),
+                intern_table: t_idx[&mr.intern_table],
+            },
+            func_env: f_idx[&mr.func_env],
+            item_registry: mr.item_registry,
+        })
         .collect();
 
     CachePayload {
-        binding_pool: bindings.pool,
-        newline_pool: newlines.pool,
-        inductive_pool: inductive.pool,
-        func_env_pool: func_envs.pool,
-        intern_pool: interns.pool,
+        binding_pool,
+        newline_pool,
+        inductive_pool,
+        func_env_pool,
+        intern_pool,
         modules,
         graph_item_registry: graph.item_registry.clone(),
         graph_diagnostics: graph.diagnostics.clone(),
         emit_graph_info: graph.emit_graph_info.clone(),
-        source_indices: top_source_indices,
+        source_indices: top_refs.into_iter().map(|(k, h)| (k, n_idx[&h])).collect(),
     }
 }
 
