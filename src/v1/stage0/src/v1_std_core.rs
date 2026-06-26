@@ -3532,8 +3532,7 @@ pub fn intern(table: Rc<InternTable>, s: String) -> Rc<InternResult> {
             // so intern IDs are byte-preserved; if the table is shared we fall
             // back to a clone (today's deep-copy behavior — no speedup on that
             // path, never wrong IDs).
-            let mut new_table =
-                Rc::try_unwrap(table).unwrap_or_else(|shared| (*shared).clone());
+            let mut new_table = Rc::try_unwrap(table).unwrap_or_else(|shared| (*shared).clone());
             new_table.strings = v1_rt::rc_list_push(new_table.strings, s.clone());
             new_table.index = v1_rt::rc_map_insert(new_table.index, s, id);
             new_table.next_id = id + 1;
