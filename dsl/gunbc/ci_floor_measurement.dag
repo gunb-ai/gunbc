@@ -23,6 +23,8 @@ data gunbc_ci_floor_per_shard_rss_measurement: PerShardRssPeakMeasurement = PerS
   sample_width: 4
 }
 
+data gunbc_ci_floor_per_shard_rss_measurement_basis: String = "Iterative OOM grounding: 2.1GiB (CI run 27893441091, VmHWM=8.4GiB/4) OOMd at width=3 (CI run 28215122136); 2.5GiB OOMd at width=2 (CI run 28215640088). Root: VmHWM measures claim_executor self-RSS; cgroup cap enforces ALL RSS incl child cargo/rustc from emit_host_gate. Proven lower bound >3.2GiB = (8GiBx4/5)/2. 3.5GiB forces width=1 (floor(8GiBx4/5/3.5GiB)=1)."
+
 data gunbc_ci_floor_per_shard_rss_source: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
