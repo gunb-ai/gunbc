@@ -40,7 +40,6 @@ data realization_vocab_exception_roster: List<String> = [
   "dsl/tools/host_prelude.dag",
   "dsl/tools/layering_imports_transport.dag",
   "dsl/tools/v1_dag_parse_transport.dag",
-  "dsl/tools/wiring_liveness_transport.dag",
   "src/v2/workflow/compiler_closure_ingest_transport.dag",
   "src/v2/workflow/source_root_ingest_transport.dag"
 ]
