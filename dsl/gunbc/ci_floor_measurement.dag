@@ -34,14 +34,7 @@ fn gunbc_ci_floor_per_shard_peak_rss_bytes() -> ByteSize {
   }
 }
 
-fn gunbc_ci_floor_whole_run_peak_rss_bytes() -> ByteSize {
-  gunbc_ci_floor_measured_peak.peak
-}
-
 data gunbc_ci_host_container_memory_cap: ByteSize = byte_size(33578549248)
-
-data gunbc_ci_floor_runner_margin_num: Int = 6
-data gunbc_ci_floor_runner_margin_den: Int = 5
 
 data gunbc_ci_floor_conservative_fallback_width: Int = 4
 

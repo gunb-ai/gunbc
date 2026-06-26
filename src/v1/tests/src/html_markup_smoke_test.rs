@@ -10,7 +10,6 @@ pub fn assert_html_markup_smoke_executes() {
 
     let entry = ws.join("dsl/examples/html_markup_smoke/html_markup_smoke.dag");
     let std_root = ws.join("dsl/std");
-    let extdeps_root = ws.join("dsl/extdeps");
     let smoke_root = ws.join("dsl/examples/html_markup_smoke");
 
     let output = std::process::Command::new(&gunbc)
