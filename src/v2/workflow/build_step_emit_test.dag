@@ -1,0 +1,60 @@
+module v2.workflow.build_step_emit_test
+
+import v2.workflow.shell_emit { emit_shell_program }
+import extdeps.languages.bash.program { ShellProgram, serialize_bash }
+import v2.std.diagnostic { Accepted, None, Rejected }
+import tools.build_step {
+  BuildArtifact,
+  VarPath,
+  VarPlusLitPath,
+  emit_verifications,
+  verifications_script
+}
+import std.logic { Bool }
+
+fn program_emits_oracle(p: ShellProgram) -> Bool {
+  match emit_shell_program(p: p) {
+    Accepted { value: src, diagnostics: dg } =>
+      (src.carried == serialize_bash(p: p)) && (dg == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn var_path_artifact() -> BuildArtifact {
+  BuildArtifact {
+    path: VarPath { var_name: "PROBE_BIN" },
+    name: "probe_bin"
+  }
+}
+
+fn concat_path_artifact() -> BuildArtifact {
+  BuildArtifact {
+    path: VarPlusLitPath { var_name: "ROOT", suffix: "/target/release/gunbc" },
+    name: "gunbc"
+  }
+}
+
+fn verifications_program(produces: List<BuildArtifact>) -> ShellProgram {
+  ShellProgram {
+    set_e: false,
+    statements: emit_verifications(produces: produces)
+  }
+}
+
+test fn build_step_var_path_emit_byte_identical_holds() -> Bool {
+  program_emits_oracle(p: verifications_program(produces: [var_path_artifact()]))
+}
+
+test fn build_step_concat_path_emit_byte_identical_holds() -> Bool {
+  program_emits_oracle(p: verifications_program(produces: [concat_path_artifact()]))
+}
+
+test fn build_step_concat_path_verifications_script_oracle_holds() -> Bool {
+  let art = concat_path_artifact()
+  let p = verifications_program(produces: [art])
+  match emit_shell_program(p: p) {
+    Accepted { value: src, diagnostics: _ } =>
+      src.carried == verifications_script(produces: [art])
+    Rejected { diagnostics: _ } => false
+  }
+}
