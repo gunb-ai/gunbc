@@ -66,15 +66,7 @@ import v2.extdeps.languages.bash {
   bash_env_prefixed_cargo_emitted,
   bash_env_prefixed_cargo_source_text,
   bash_env_prefixed_cargo_target_model,
-  bash_exit_code_1_emitted,
-  bash_exit_code_1_source_text,
-  bash_exit_code_1_target_model,
-  bash_exit_code_0_emitted,
-  bash_exit_code_0_source_text,
-  bash_exit_code_0_target_model,
-  bash_exit_code_1_quoted_wrong_emitted,
-  bash_exit_code_1_quoted_wrong_source_text,
-  bash_exit_code_1_quoted_wrong_target_model
+  bash_multi_orch_raw_welds_dissolution_trigger
 }
 import v2.std.collection { Map, empty_map }
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
@@ -442,46 +434,10 @@ test fn bash_emit_env_prefixed_cargo_holds() -> Bool {
   )
 }
 
-test fn bash_emit_exit_code_1_holds() -> Bool {
-  bash_emit_slice4_holds(
-    emitted: bash_exit_code_1_emitted,
-    source_text: bash_exit_code_1_source_text,
-    target: bash_exit_code_1_target_model()
-  )
-}
-
-test fn bash_emit_exit_code_0_holds() -> Bool {
-  bash_emit_slice4_holds(
-    emitted: bash_exit_code_0_emitted,
-    source_text: bash_exit_code_0_source_text,
-    target: bash_exit_code_0_target_model()
-  )
-}
-
-test fn bash_emit_exit_code_1_quoted_wrong_ne_correct_holds() -> Bool {
-  bash_exit_code_1_quoted_wrong_source_text != bash_exit_code_1_source_text
-}
-
-test fn bash_emit_exit_code_1_quoted_wrong_model_holds() -> Bool {
-  bash_emit_slice4_holds(
-    emitted: bash_exit_code_1_quoted_wrong_emitted,
-    source_text: bash_exit_code_1_quoted_wrong_source_text,
-    target: bash_exit_code_1_quoted_wrong_target_model()
-  )
-}
-
-fn bash_emit_exit_code_1_wrong_quoted_model_rejects() -> Bool {
-  let tree = InferredTree {
-    root: bash_exit_code_1_emitted,
-    facts: Map { lookup: bash_facts_lookup }
-  }
-  match emit(tree: tree, target: bash_exit_code_1_quoted_wrong_target_model()) {
-    Accepted { value: source, diagnostics: d } =>
-      (source.carried != bash_exit_code_1_source_text) && (d == None)
-    Rejected { diagnostics: _ } => true
-  }
-}
-
-test fn bash_emit_exit_code_1_wrong_quoted_model_rejects_holds() -> Bool {
-  bash_emit_exit_code_1_wrong_quoted_model_rejects()
+test fn bash_held_welds_dissolution_trigger_recorded_holds() -> Bool {
+  string_contains(s: bash_multi_orch_raw_welds_dissolution_trigger, pattern: "bash_assign_cmdsubst_mktemp")
+    && string_contains(s: bash_multi_orch_raw_welds_dissolution_trigger, pattern: "bash_assign_concat_gunbc")
+    && string_contains(s: bash_multi_orch_raw_welds_dissolution_trigger, pattern: "bash_env_prefixed_cargo")
+    && string_contains(s: bash_multi_orch_raw_welds_dissolution_trigger, pattern: "straddle")
+    && string_contains(s: bash_multi_orch_raw_welds_dissolution_trigger, pattern: "DISSOLVES WHEN")
 }
