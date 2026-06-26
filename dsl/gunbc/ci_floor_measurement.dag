@@ -19,12 +19,12 @@ type PerShardRssPeakMeasurement
   | PerShardRssPeakUnmeasured
 
 data gunbc_ci_floor_per_shard_rss_measurement: PerShardRssPeakMeasurement = PerShardRssPeakMeasured {
-  per_shard_peak: byte_size(2100028416)
+  per_shard_peak: byte_size(2684354560)
   sample_width: 4
 }
 
 data gunbc_ci_floor_per_shard_rss_source: Disposition = Terminal {
-  reason: "Measured: CI run 27893441091, VmHWM=8.4GiB at spawn_width=4 => per-shard = VmHWM/width = 8.4GiB/4 = 2.1GiB; corroborated by run 28003119550 (self-RSS=8.7GiB at width=4, executor base approx 0.7GiB, shard approx 2.0GiB, model: total=base+width*per_shard). Finer measurement path: width-sweep slope (RSS(w1)-RSS(w0))/(w1-w0) or per-shard cgroup isolation once per-thread RSS is available."
+  reason: "Interim reground after corpus growth: prior value 2.1GiB (CI run 27893441091, VmHWM=8.4GiB/4) caused exit-137 OOM at width=3 on the 8GiB runner cgroup (CI run 28215122136), proving actual per_shard > (8GiB x 4/5) / 3 = 2.15GiB. Set to 2684354560 (2.5GiB, exactly 2.5x2^30) as a conservative interim lower bound; forces width=2 (floor(8GiB x 4/5 / 2.5GiB) = floor(2.56) = 2), actual at width=2 approx 5.5GiB well within cap. Finer measurement path: fresh width-sweep slope (RSS(w2)-RSS(w1)) or per-shard cgroup isolation."
 }
 
 fn gunbc_ci_floor_per_shard_peak_rss_bytes() -> ByteSize {
