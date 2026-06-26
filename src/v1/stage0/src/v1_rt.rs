@@ -140,6 +140,18 @@ pub fn contains(s: String, sub: String) -> bool {
     string_contains(&s, sub)
 }
 
+pub fn starts_with(s: String, prefix: String) -> bool {
+    s.starts_with(&*prefix)
+}
+
+pub fn ends_with(s: String, suffix: String) -> bool {
+    s.ends_with(&*suffix)
+}
+
+pub fn trim(s: String) -> String {
+    s.trim().to_string()
+}
+
 pub fn count<T>(items: Rc<Vec<T>>) -> i64 {
     items.len() as i64
 }
@@ -497,7 +509,8 @@ pub fn is_xid_continue(cp: i64) -> bool {
 }
 
 pub fn is_emoji_ident(cp: i64) -> bool {
-    use unicode_properties::emoji::{EmojiStatus, UnicodeEmoji};
+    use unicode_properties::emoji::EmojiStatus;
+    use unicode_properties::emoji::UnicodeEmoji;
     char::from_u32(cp as u32)
         .map(|c| {
             matches!(
