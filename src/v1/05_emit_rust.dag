@@ -148,7 +148,7 @@ import v1.compiler.emit_core_support {
 fn render_rust_type(n: Node, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>) -> String {
   if is_host_text_carrier_type(n: n, source_indices: source_indices, corpus_repr: corpus_repr) { return rust_carrier_optional_wrap(n: n, rendered: "String") }
   match n.inferred {
-    Present { value: TypeVariable { id: tv } } => tv
+    Present { value: TypeVariable { id: tv } } => to_pascal(name: tv)
     _ =>
       match find_property(props: n.properties, prop_name: "__applied_type_args", source_indices: source_indices) {
         Present { value: applied } =>

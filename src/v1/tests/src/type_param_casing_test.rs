@@ -75,6 +75,34 @@ fn alias_unused_param_phantom_emits_upper_camel() {
     );
 }
 
+// ── coproduct with a single lowercase type param ──────────────────────────────
+
+const COPRODUCT_FIXTURE: &str = concat!(
+    "module type_param_casing.coproduct\n\n",
+    "type Maybe<item> {\n",
+    "  Some { value: item }\n",
+    "  None\n",
+    "}\n",
+);
+
+#[test]
+#[ignore = "requires stage0 regen — passes after v1_compiler_emit_rust.rs is rebuilt with the to_pascal fix"]
+fn coproduct_variant_field_emits_upper_camel() {
+    let emitted = emit("src/v1/type_param_casing_coproduct.dag", COPRODUCT_FIXTURE);
+    assert!(
+        emitted.contains("Maybe<Item>"),
+        "lowercase `.dag` type param `item` must emit as `Item` in Rust enum decl:\n{emitted}"
+    );
+    assert!(
+        emitted.contains("value: Item,"),
+        "variant field type `item` must emit as `Item`:\n{emitted}"
+    );
+    assert!(
+        !emitted.contains("Maybe<item>") && !emitted.contains("value: item,"),
+        "no lowercase type param must survive in enum decl or variant fields:\n{emitted}"
+    );
+}
+
 // ── multi-param record: all params pascal-cased ────────────────────────────────
 
 const MULTI_PARAM_FIXTURE: &str = concat!(
