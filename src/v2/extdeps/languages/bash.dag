@@ -46,6 +46,8 @@ import v2.std.node {
 }
 import v2.std.witness { Holds, Violates, Witness }
 
+data bash_multi_orch_raw_welds_dissolution_trigger: String = "HELD WELDS (multi-orch_raw, kernel-blocked): bash_assign_cmdsubst_mktemp, bash_assign_concat_gunbc, bash_assign_concat_gunbc_spaced_wrong, bash_env_prefixed_cargo. These are multi-orch_raw grammar rows that the general bash_stmt_assign / bash_stmt_env_prefixed single-authority rows subsume (DESIGN section 2). They are NOT deleted because their general replacement routes a consumer through emit_shell_program, which today returns a String<->List-Int-codepoint straddle on shared multi-orch_raw roots (emit returns Accepted with a codepoint-list carried instead of a realized String, DESIGN section 5 fail-open), so the replacement cannot be proven green by execution. DISSOLVES WHEN the emit-kernel String<->List-Int-codepoint straddle on shared multi-orch_raw roots is fixed (debt surfaced to operator 2026-06-26; new instance of the model<->realization fork, sibling to Int<->Nat coproduct PR 5428 and the Value::Null split)."
+
 fn bash_word_atom(id: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: id } },
