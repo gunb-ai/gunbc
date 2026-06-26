@@ -183,7 +183,7 @@ test fn stmt_env_multi_binding_byte_identical_holds() -> Bool {
 }
 
 test fn stmt_env_multi_binding_has_teeth_holds() -> Bool {
-  stmt_differs_from_oracle_of(s: env_multi_binding_t(), other: EnvPrefixed { name: "KEY", value: Lit { text: "other" }, command: EnvUnset { name: "TMPDIR", command: cmd_true() } })
+  stmt_differs_from_oracle_of(s: env_multi_binding_t(), other: EnvPrefixed { name: "KEY", value: Lit { text: "other" }, command: EnvUnsetCmd { name: "TMPDIR", command: cmd_true() } })
 }
 
 fn heredoc_t() -> ShellStmt {
