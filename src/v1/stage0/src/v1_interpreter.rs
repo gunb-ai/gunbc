@@ -1550,6 +1550,12 @@ fn eval_binop(op: &BinOp, left: Value, right: Value, ctx: &InterpContext) -> Int
         };
         match (&left, &right) {
             (l, Value::Str(s)) => {
+                // String grounding: a string-like left operand concatenated with
+                // a native String realizes as a native `Value::Str`, never a
+                // mixed `[codepoint.., Str]` list (model↔realization).
+                if let Some(ls) = free_monoid_to_string(l) {
+                    return Ok(Value::Str(format!("{}{}", ls, s)));
+                }
                 if let Some(mut result) = free_monoid_to_vec(l) {
                     record_push(result.len());
                     result.push(Value::Str(s.clone()));
@@ -1557,6 +1563,9 @@ fn eval_binop(op: &BinOp, left: Value, right: Value, ctx: &InterpContext) -> Int
                 }
             }
             (Value::Str(s), r) => {
+                if let Some(rs) = free_monoid_to_string(r) {
+                    return Ok(Value::Str(format!("{}{}", s, rs)));
+                }
                 if let Some(result) = free_monoid_to_vec(r) {
                     record_push(result.len());
                     let mut out = vec![Value::Str(s.clone())];
@@ -2993,6 +3002,23 @@ fn eval_algebra_method(
                     result.push_str(&format!("{}", arg));
                 }
                 return Ok(Value::Str(result));
+            }
+            // String grounding (model↔realization): when a native String arg
+            // participates, the whole `concat` is a String and realizes as one
+            // native `Value::Str` — provided the receiver is itself string-like
+            // (all-codepoint). A `List<String>` receiver (`Str` *elements*) is
+            // rejected by `free_monoid_to_string` and falls through to the list
+            // path below, so `["a","b"].concat("c")` stays a list.
+            if method == "concat" && args.iter().any(|a| matches!(a, Value::Str(_))) {
+                if let Some(base) = free_monoid_to_string(&receiver) {
+                    if let Some(rest) = args
+                        .iter()
+                        .map(free_monoid_to_string)
+                        .collect::<Option<Vec<_>>>()
+                    {
+                        return Ok(Value::Str(format!("{}{}", base, rest.concat())));
+                    }
+                }
             }
             if let Ok(items) = expect_list(&receiver, "concat") {
                 let mut result = (*items).clone();
@@ -5767,6 +5793,31 @@ pub(crate) fn free_monoid_to_vec(val: &Value) -> Option<Vec<Value>> {
             _ => return None,
         }
     }
+}
+
+/// String grounding (DESIGN §1/§2/§7, model↔realization fork): render a
+/// string-like free monoid (`String = FreeMonoid<Char>`, `Char = Nat`) to its
+/// native realization. A native `Value::Str` is already grounded; a modeled
+/// `Empty`/`Cons` chain or `List` is a String **only** when every element is a
+/// `Char` codepoint (`Value::Int`). A `Value::Str` *element* (not the whole
+/// value) means `List<String>`, not `String`, so it returns `None` — that
+/// discriminator is what keeps `List<String>` push/concat from collapsing into
+/// one string. Used so a folded String concatenation realizes as a single
+/// `Value::Str` instead of straddling as a mixed `[codepoint.., Str]` list that
+/// fails `==` against a native String oracle (the held emit-weld debt).
+pub(crate) fn free_monoid_to_string(val: &Value) -> Option<String> {
+    if let Value::Str(s) = val {
+        return Some(s.clone());
+    }
+    let items = free_monoid_to_vec(val)?;
+    let mut out = String::new();
+    for it in items {
+        match it {
+            Value::Int(n) => out.push(u32::try_from(n).ok().and_then(char::from_u32)?),
+            _ => return None,
+        }
+    }
+    Some(out)
 }
 
 fn value_to_list_carrier(val: &Value) -> Option<(Rc<RrbVector<Value>>, u64)> {
