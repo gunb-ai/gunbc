@@ -11,6 +11,7 @@ type ContainerBaseline
 type FleetContainerType
   = GhaRunnerContainer { baseline: ContainerBaseline }
   | AgentSessionContainer { baseline: ContainerBaseline }
+  | SessionDashboardContainer { baseline: ContainerBaseline }
 
 fn idle_memory_envelope(min_bytes: ByteSize) -> ResourceEnvelope {
   ResourceEnvelope {
@@ -28,6 +29,12 @@ data gha_runner_container: FleetContainerType = GhaRunnerContainer {
 
 data agent_session_container: FleetContainerType = AgentSessionContainer {
   baseline: ContainerBaselineMeasured { idle: idle_memory_envelope(min_bytes: byte_size(471859200)) }
+}
+
+data session_dashboard_idle_basis: String = "PROVISIONAL idle baseline for the session-dashboard (ctrl orchestrator + web UI) container - estimated ~1 GiB, NOT yet a measured cgroup read like the runner (300 MiB) and agent-session (450 MiB) baselines above. Dissolves to a measured per-type idle RSS read from the live dashboard container (ask keen-dove-772 / the ctrl dashboard host). The host RESERVATION cap (not this idle figure) is gunbc_session_dashboard_reservation in fleet_host_budget; this baseline is the idle floor that cap sits above."
+
+data session_dashboard_container: FleetContainerType = SessionDashboardContainer {
+  baseline: ContainerBaselineMeasured { idle: idle_memory_envelope(min_bytes: byte_size(1073741824)) }
 }
 
 
