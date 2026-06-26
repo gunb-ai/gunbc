@@ -3167,6 +3167,12 @@ fn eval_algebra_method(
         }
 
         "chars" => {
+            // §6 residue: this materializes a string as a `Value::List` of
+            // codepoint `Int`s, indistinguishable at the Value level from a
+            // generic `Int` list. That is the named hole in the String-straddle
+            // wall — see `string_realization_straddle_detail`'s `Value::List`
+            // exemption. Closed by regrounding `Char`/codepoint-sequence so the
+            // realization is distinguishable (grounding root, sibling #5428).
             let s = expect_str(Some(&receiver), "chars")?;
             let items: Vec<Value> = s.chars().map(|c| Value::Int(c as i64)).collect();
             Ok(list_value(items))
@@ -5838,6 +5844,21 @@ fn string_realization_straddle_detail(orig: &Value, items: &[Value]) -> Option<S
     // `free_monoid_to_string`); its `Int` elements are genuine data, so a `Str`
     // appended to it is a legitimate heterogeneous element, not a straddle. Only
     // a `Cons`-chain / `Str`-derived flattening carries codepoint semantics.
+    //
+    // OPEN THREAD (DESIGN §6 residue — named, not silently shipped): this
+    // `Value::List` exemption makes the wall a RATCHET WITH A NAMED HOLE, not a
+    // universal value-level wall. The `"chars"` method (this file) materializes
+    // a string as a `Value::List` of codepoint `Int`s, structurally identical to
+    // a generic `Int` list — so a `.chars()`-result straddled with a native
+    // `Str` would be exempted here and fail open (the original bug, uncaught).
+    // This is undecidable at the Value level (a codepoint list and a generic
+    // `Int` list are element-identical), so it is honest §6 residue, the
+    // `Value::Null` pattern. LATENT today: no `.dag` program evaluates the
+    // interpreter `chars` method into a concat/`+` with a `Str` (the two
+    // `.chars()` rows in `languages.dag` / `rust/emit.dag` are emit *templates*,
+    // not interpreter calls). DISSOLVES WHEN `.chars()` / `Char` is regrounded so
+    // a codepoint-sequence is distinguishable from a generic `Int` list at the
+    // realization level (the grounding root, sibling to Int↔Nat #5428).
     if matches!(orig, Value::List(_)) {
         return None;
     }
