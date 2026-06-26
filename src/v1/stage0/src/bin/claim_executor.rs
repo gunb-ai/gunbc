@@ -6,6 +6,24 @@ use std::process::ExitCode;
 use std::thread;
 use std::time::Instant;
 
+/// Return freed heap pages back to the OS so the cgroup RSS drops before the next batch.
+/// glibc's arena allocator does not return freed blocks to the OS without an explicit nudge;
+/// without this, two sequential startup corpus resolves (eval_plan + eval_spawn_width) leave
+/// 3–5 GiB of "freed but mapped" heap that inflates the cgroup peak for every subsequent
+/// batch — pushing source_root_ingest (batch 3) over the 8 GiB runner cap even when the
+/// batch itself would fit.  `malloc_trim(0)` is a standard glibc / musl extension that
+/// triggers an immediate `MADV_DONTNEED` on all free top-of-arena pages.  No-op on non-Linux.
+#[cfg(target_os = "linux")]
+fn release_heap() {
+    // Safety: malloc_trim is a documented, async-signal-safe glibc/musl libc function.
+    extern "C" {
+        fn malloc_trim(pad: usize) -> i32;
+    }
+    unsafe { malloc_trim(0) };
+}
+#[cfg(not(target_os = "linux"))]
+fn release_heap() {}
+
 use v1_compiler::cli_run::{
     make_eval_context, resolve_entry_graph, run_claim, run_discovery_corpus_with_options,
     run_value, ClaimOutcome, DiscoveryCorpusOptions,
@@ -948,6 +966,8 @@ fn run_walk(source_roots: &[String], batches: &[Vec<Runnable>], spawn_width: usi
             wall_nanos: batch_wall_nanos,
             results: batch_results,
         });
+        // Release freed heap pages before the next batch so cgroup RSS reflects only live data.
+        release_heap();
         if any_failed {
             eprintln!(
                 "claim_executor: batch {} had failures — stopping before dependent batches",
@@ -1246,6 +1266,8 @@ fn run() -> Result<ExitCode, ExitCode> {
             .unwrap_or("<serial>")
     );
 
+    // Release heap accumulated by the two startup corpus resolves before workers start.
+    release_heap();
     let outcome = run_walk(&source_roots, &batches, spawn_width);
     match peak_rss_bytes() {
         Some(bytes) => {
