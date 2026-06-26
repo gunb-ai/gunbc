@@ -23,13 +23,8 @@ data gunbc_ci_floor_per_shard_rss_measurement: PerShardRssPeakMeasurement = PerS
   sample_width: 4
 }
 
-data gunbc_ci_floor_per_shard_rss_source: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "gunbc.ci_floor_measurement",
-    decl_name: "gunbc_ci_floor_per_shard_rss_measurement",
-    field: WholeDeclaration
-  }
+data gunbc_ci_floor_per_shard_rss_source: Disposition = Terminal {
+  reason: "DERIVED: whole-run cgroup peak (11592347648 bytes at sample_width=4) / 4 concurrent shards. Not a direct per-chunk measurement. Update path: re-run CI with --measure-cgroup-peak after chunking fix lands, capture the actual single-chunk peak in isolation, replace per_shard_peak with the measured value and set sample_width=1."
 }
 
 fn gunbc_ci_floor_per_shard_peak_rss_bytes() -> ByteSize {
