@@ -11813,37 +11813,37 @@ pub fn build_type_env(
                         .iter()
                         .cloned()
                         .fold(
-                            acc,
+                            acc.clone(),
                             |bacc: Rc<HashMap<i64, Rc<TypeBinding>>>, ident: i64| {
                                 let name = intern_str(
                                     typed_parent.type_env.clone().intern_table.clone(),
                                     ident.clone(),
                                 );
                                 if is_type_variable_name(name.clone()) {
-                                    bacc
+                                    bacc.clone()
                                 } else {
                                     match v1_rt::map_get(
                                         &typed_parent.type_env.clone().bindings.clone(),
                                         ident.clone(),
                                     ) {
                                         Some(binding) => v1_rt::rc_map_insert(
-                                            bacc,
+                                            bacc.clone(),
                                             ident.clone(),
                                             binding.clone(),
                                         ),
-                                        None => bacc,
+                                        None => bacc.clone(),
                                     }
                                 }
                             },
                         )
                     } else {
                         v1_rt::rc_map_merge(
-                            acc,
+                            acc.clone(),
                             typed_parent.type_env.clone().bindings.clone(),
                         )
                     }
                 }
-                None => acc,
+                None => acc.clone(),
             },
         );
         let import_recursive = parent_envs
@@ -12409,37 +12409,37 @@ pub fn build_type_env_unresolved(
                         .iter()
                         .cloned()
                         .fold(
-                            acc,
+                            acc.clone(),
                             |bacc: Rc<HashMap<i64, Rc<TypeBinding>>>, ident: i64| {
                                 let name = intern_str(
                                     typed_parent.type_env.clone().intern_table.clone(),
                                     ident.clone(),
                                 );
                                 if is_type_variable_name(name.clone()) {
-                                    bacc
+                                    bacc.clone()
                                 } else {
                                     match v1_rt::map_get(
                                         &typed_parent.type_env.clone().bindings.clone(),
                                         ident.clone(),
                                     ) {
                                         Some(binding) => v1_rt::rc_map_insert(
-                                            bacc,
+                                            bacc.clone(),
                                             ident.clone(),
                                             binding.clone(),
                                         ),
-                                        None => bacc,
+                                        None => bacc.clone(),
                                     }
                                 }
                             },
                         )
                     } else {
                         v1_rt::rc_map_merge(
-                            acc,
+                            acc.clone(),
                             typed_parent.type_env.clone().bindings.clone(),
                         )
                     }
                 }
-                None => acc,
+                None => acc.clone(),
             },
         );
         let import_recursive = parent_envs
