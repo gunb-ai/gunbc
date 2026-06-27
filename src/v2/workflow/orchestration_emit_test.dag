@@ -1,6 +1,6 @@
 module v2.workflow.orchestration_emit_test
 
-import v2.workflow.orchestration_emit { orch_emit_pipeline, orch_emit_run, orch_run_env_reduction_dissolution_trigger }
+import v2.compiler.emit_orchestration { orch_emit_pipeline, orch_emit_run, orch_run_env_reduction_dissolution_trigger }
 import extdeps.communication.medium { Medium }
 import v2.std.orchestration {
   Run,

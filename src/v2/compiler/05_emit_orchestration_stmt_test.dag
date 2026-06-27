@@ -1,6 +1,6 @@
-module v2.workflow.orchestration_stmt_emit_test
+module v2.compiler.emit_orchestration_stmt_test
 
-import v2.workflow.shell_emit { emit_shell_stmt, emit_shell_program, emit_shell_word_raw_scaffold }
+import v2.compiler.emit_shell { emit_shell_stmt, emit_shell_program, emit_shell_word_raw_scaffold }
 import extdeps.languages.bash.program {
   ShellStmt,
   Command,
