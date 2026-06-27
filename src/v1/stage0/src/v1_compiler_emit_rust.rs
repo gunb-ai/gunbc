@@ -12114,7 +12114,7 @@ pub fn effective_variant_parent(
             }
             None => None,
         };
-        match cached {
+        let result = match cached {
             Some(parent) => Some(parent.clone()),
             None => match resolved_type.as_deref().cloned() {
                 Some(InferredNode::Resolved { node: rt, .. }) => {
@@ -12133,7 +12133,11 @@ pub fn effective_variant_parent(
                 }
                 _ => variant_parent_from_binding_kind(binding_kind),
             },
+        };
+        if (name.clone() == "WriteThenCommit".to_string() || name.clone() == "ApiKey".to_string() || name.clone() == "CasContentEncoding".to_string()) {
+            eprintln!("DEBUG effective_variant_parent: name={} result={:?}", name, result);
         }
+        result
     }
 }
 
