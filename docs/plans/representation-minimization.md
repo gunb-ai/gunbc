@@ -1,0 +1,27 @@
+# Resolved-graph representation minimization (root-first, v1-survivable)
+
+Status: operator-funded 2026-06-27. Steer: minimal representation, attack root causes as much as we can, v1 is going away. This is the resolved-graph REPRESENTATION-minimization follow-on to the acute floor-OOM fix (#5867 shared InternTable: whole-tree resolve 14.2 GiB to 5.5 GiB, 61 percent reclaimed). It repoints the orphaned tidy-wren-707 resolved-graph-minimization lane. Distinct from `docs/plans/resource-aware-scheduler.md`, which is the ALLOCATION lane; this lane is REPRESENTATION minimization at the root.
+
+## The discriminator: root authority vs doomed seed
+
+v1 is going away, so every item is gated on one test: does the fix live in the `.dag` authority (and therefore survive into the v2 self-host), or is it a hand-edit to the doomed v1 Rust seed (and therefore die with v1)? Root items live in this plan. v1-only polish is explicitly de-scoped to bank-if-cheap and is NOT a pillar.
+
+## Current footprint
+
+Whole-tree resolve is about 5.5 GiB for about 7.5 MB of source: roughly 730x source-to-resolved. That is the width-1 all-modules-live worst case; the sharded CI floor holds only a subset per shard and sits under cap post-#5867. The footprint is now LINEAR with no quadratic OOM. Target: 20 to 50x. The path is structural (the levers below), not another big dedup: the func_env.sigs second-quadratic is real but only hundreds-of-MiB because its heavy provenance payloads are already Rc-shared (established by code read of `declared_to_resolved` and `merge_scope_from_imports`, not a probe).
+
+## Sequencing (root-first, v1-survivable)
+
+1. Emitter determinism is THE GATE for Lever B, and it is its own lane: PR #5879 (stern-fox-585) is the single authority for the gate's status and mechanism — this plan does not re-own it, it sequences on it. The dependency this plan asserts: while emit is non-reproducible, the standing workaround hand-edits the v1 Rust seed after each emit, which FORCES every representation change into the doomed v1 Rust instead of the `.dag` authority. So until #5879 lands the bit-identical fixed point (the §7 self-host last mile, see `regen-verify-gate.md`), the Node-representation change (Lever B) cannot be done at the root in `.dag` and regenerated. Gate for B; status lives in #5879, not here.
+2. Lever C, stream/evict, is the biggest mover for the all-at-once figure and has NO dependency on the emitter gate. The 5.5 GiB is the whole-tree-all-modules-live worst case; resolve in dependency batches and evict a module env once its dependents are satisfied. Shares its root with the prune-resolve / affected_set selector lane (do not hold the whole corpus resolved at once), so author them as ONE batching-and-eviction model, not two. Better-ROI entry point; resolution-strategy fix at the root.
+3. Lever B, variant-Node minimal representation, comes AFTER the gate. The Node is an 18-field superset struct; a leaf variable uses 3 fields and pays for about 18 (roughly 76 percent of the struct is unused per leaf, times about 627k nodes). Model a minimal per-kind sum type in `std/` (the `.dag` authority) and emit it, so the change regenerates rather than being hand-edited into the v1 seed (hence gated on item 1). The operator's minimal representation at the root; deep, broad blast radius.
+4. func_env.sigs single-authority can land anytime. Each importing module re-materializes its transitive-closure signatures (merge_scope_from_imports plus rc_map_merge plus re-resolve), allocating fresh outer ResolvedFuncSig structs, a fresh map backbone, and duplicated raw function-name keys per module; the heavy provenance payloads are already Rc-shared. Fix: resolve each function signature ONCE and share the Rc, or look up imports via parent_index instead of merge-and-re-resolve, and intern the name keys. Same single-authority move as #5867. Moderate payoff, about hundreds of MiB.
+5. Cheap hygiene is bank-if-cheap, NOT a pillar, because it lives in the v1 Rust seed and dies with v1: shared empty-Vec singleton (landed, about 43.7 MiB) and interning Node.name. Correction of record: Node.ident is NOT dead. An earlier reflection-count claim of 0-percent-used was refuted by execution; ident is a live ident-keyed fast-path on module and import nodes. Do not delete it.
+
+## Provenance
+
+Byte-attribution receipts: quiet-gull-17 (node-struct walk), fierce-bear-302 (env-map and payload walks, both probes reverted clean), silent-moth-532 (the intern-table root and the #5867 fix, three receipts: unique InternTable Rc 1397 to 1, byte-identical diagnostic fingerprint, 14.2 to 5.5 GiB). The func_env.sigs verdict was established by code read of the conversion sites, not by a probe.
+
+## Dissolution trigger (DESIGN §6)
+
+§7 v2 self-host fixed point: when the resolved-graph representation is minimal-by-construction in the `.dag` authority and the v1 Rust seed is retired, items 1 through 4 are landed-or-moot and item 5 dies with the seed; this lane dissolves into the v2 representation.
