@@ -1,8 +1,8 @@
-module v2.workflow.orchestration_emit
+module v2.compiler.emit_orchestration
 
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
-import v2.workflow.shell_emit { emit_shell_stmt }
+import v2.compiler.emit_shell { emit_shell_stmt }
 import extdeps.languages.bash.program { RawLine }
 import extdeps.communication.medium { Medium }
 import v2.extdeps.languages.bash {
