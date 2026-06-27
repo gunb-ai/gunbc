@@ -1,4 +1,4 @@
-module extdeps.render.emoji_glyph
+module extdeps.render.glyph
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -6,16 +6,16 @@ import extdeps.uri { Uri, Https }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
-    locator: "www.unicode.org/reports/tr51/"
+    locator: "www.unicode.org/versions/latest/"
   }
 }
 
-type EmojiGlyph = String where brand("EmojiGlyph")
+type Glyph = String where brand("Glyph")
 
-fn emoji_glyph(text: String) -> EmojiGlyph {
+fn glyph(text: String) -> Glyph {
   text
 }
 
-fn emoji_glyph_text(g: EmojiGlyph) -> String {
+fn glyph_text(g: Glyph) -> String {
   g
 }
