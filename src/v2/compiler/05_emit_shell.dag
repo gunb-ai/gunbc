@@ -1,4 +1,4 @@
-module v2.workflow.shell_emit
+module v2.compiler.emit_shell
 
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
