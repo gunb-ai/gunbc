@@ -125,3 +125,20 @@ test fn orch_run_multi_binding_env_has_teeth_holds() -> Bool {
     Rejected { diagnostics: _ } => false
   }
 }
+
+fn orch_run_env_metachar_value() -> Run {
+  Run {
+    command: "cargo build",
+    env: [EnvSet { name: "FOO", value: "hello world" }],
+    redirect: Absent,
+    capture: Absent
+  }
+}
+
+test fn orch_run_env_metachar_value_emits_verbatim_known_gap_holds() -> Bool {
+  match orch_emit_run(r: orch_run_env_metachar_value()) {
+    Accepted { value: src, diagnostics: _ } =>
+      src.carried == "FOO=hello world cargo build"
+    Rejected { diagnostics: _ } => false
+  }
+}
