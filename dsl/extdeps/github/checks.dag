@@ -1,7 +1,7 @@
 module extdeps.github.checks
 
 import extdeps.github.github { default_api_base, default_per_page }
-import std.types { CommitSha, Timestamp, Url }
+import std.types { CommitSha, NonEmptyStr, Timestamp }
 import extdeps.github.errors { GitHubErrorShape }
 import std.credentials { EnvVar }
 import extdeps.external_authority { ExternalAuthority }
@@ -104,7 +104,7 @@ type CheckRun {
   started_at: Timestamp?
   completed_at: Timestamp?
   output: CheckOutput
-  html_url: Url
+  html_url: NonEmptyStr
 }
 
 type CheckRunList {
