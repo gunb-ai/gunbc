@@ -1,7 +1,7 @@
 module extdeps.render.terminal
 
 import extdeps.render.glyphs { resolve_symbol }
-import std.render { Frame, Line, Span, Viewport }
+import std.render { Frame, Line, RenderCapability, Span, Viewport, cursor_action_under }
 import std.symbols { Tier }
 import std.unicode { string_display_width }
 import std.width { truncate_text }
@@ -78,6 +78,13 @@ fn constrain_frame(frame: Frame, viewport: Viewport, tier: Tier) -> Frame? {
   )
   match result {
     Present { value: lines } => Present { value: Frame { lines: lines, cursor_action: frame.cursor_action } }
+    Absent => none
+  }
+}
+
+fn project_frame(frame: Frame, viewport: Viewport, cap: RenderCapability) -> Frame? {
+  match constrain_frame(frame: frame, viewport: viewport, tier: cap.tier) {
+    Present { value: f } => Present { value: Frame { lines: f.lines, cursor_action: cursor_action_under(requested: f.cursor_action, cap: cap) } }
     Absent => none
   }
 }
