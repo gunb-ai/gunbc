@@ -1,9 +1,9 @@
 module test.claim.extdeps_github_errors_url_grounding_witness
 
 import extdeps.github.errors { GitHubErrorShape, github_error_example }
-import std.types { Url }
+import std.types { NonEmptyStr }
 
-data sample_docs_url: Url = "https://docs.github.com/rest"
+data sample_docs_url: NonEmptyStr = "https://docs.github.com/rest"
 
 fn w_github_error_shape_documentation_url_grounded() -> Bool {
   let row = GitHubErrorShape {

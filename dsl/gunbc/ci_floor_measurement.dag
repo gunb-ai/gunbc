@@ -10,8 +10,8 @@ import std.disposition { Disposition, Scaffold, SingleAuthority, Terminal }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data gunbc_ci_floor_measured_peak: ConcurrentMemoryPeakSample = ConcurrentMemoryPeakSample {
-  peak: byte_size(11592347648)
-  concurrency: 4
+  peak: byte_size(6452113408)
+  concurrency: 2
 }
 
 type PerShardRssPeakMeasurement
@@ -19,12 +19,12 @@ type PerShardRssPeakMeasurement
   | PerShardRssPeakUnmeasured
 
 data gunbc_ci_floor_per_shard_rss_measurement: PerShardRssPeakMeasurement = PerShardRssPeakMeasured {
-  per_shard_peak: byte_size(2100028416)
-  sample_width: 4
+  per_shard_peak: byte_size(3226056704)
+  sample_width: 2
 }
 
 data gunbc_ci_floor_per_shard_rss_source: Disposition = Terminal {
-  reason: "Measured: CI run 27893441091, VmHWM=8.4GiB at spawn_width=4 => per-shard = VmHWM/width = 8.4GiB/4 = 2.1GiB; corroborated by run 28003119550 (self-RSS=8.7GiB at width=4, executor base approx 0.7GiB, shard approx 2.0GiB, model: total=base+width*per_shard). Finer measurement path: width-sweep slope (RSS(w1)-RSS(w0))/(w1-w0) or per-shard cgroup isolation once per-thread RSS is available."
+  reason: "Measured local floor, post-#5860 corpus, main HEAD 6461042c64 at spawn_width=2 (pinned): floor peak VmHWM=6.0GiB => per-shard = VmHWM/width = 6.0GiB/2 = 3.0GiB (3226056704 bytes). Supersedes the stale 2.1GiB@width4 (CI run 27893441091) which the corpus outgrew: at the stale value the formula picked width=3 and 3 concurrent shards exceeded the 8GiB runner cap => exit-137 (run 28296782925). Refreshed to the operating width (2), the conservative per-shard (it is higher at lower width); formula now derives width=2 which fits at 6.0GiB. Finer path / durable fix: auto-measure per_shard each run instead of a committed scalar that lags every corpus bump."
 }
 
 fn gunbc_ci_floor_per_shard_peak_rss_bytes() -> ByteSize {
@@ -117,7 +117,7 @@ data gunbc_ci_regime2_aggregate_dissolution_marker: Disposition = Scaffold {
 
 
 
-data gunbc_ci_footprint_granularity_disposition: Disposition = Terminal { reason: "DESIGN §3 deliberate two-concerns split: INTER-run whole-run cgroup peak (gunbc_ci_job_peaks, ~24GiB) governs co-residence - how many runs share a host, feeding the conserving budget tree; WITHIN-run per-shard peak (gunbc_ci_floor_per_shard_peak_rss_bytes, ~2.0GiB directly measured) governs parallelism inside one run against its container cap, feeding memory_aware_spawn_width. Different granularity, different scheduling decision, different consumer. Do not consolidate them into one authority." }
+data gunbc_ci_footprint_granularity_disposition: Disposition = Terminal { reason: "DESIGN §3 deliberate two-concerns split: INTER-run whole-run cgroup peak (gunbc_ci_job_peaks, ~24GiB) governs co-residence - how many runs share a host, feeding the conserving budget tree; WITHIN-run per-shard peak (gunbc_ci_floor_per_shard_peak_rss_bytes, ~3.0GiB directly measured) governs parallelism inside one run against its container cap, feeding memory_aware_spawn_width. Different granularity, different scheduling decision, different consumer. Do not consolidate them into one authority." }
 
 data gunbc_ci_footprint_bridge_disposition: Disposition = Terminal { reason: "Deferred unification path (acknowledged, not attempted): INTER-run whole-run peak is plausibly within-run-width x per-shard-peak + base, so the INTER-run footprint could eventually derive from the WITHIN-run model once both are measured - the real single authority. Held back deliberately: re-coupling the two carriers risks zeroing the live floor width before per-type baseline measurement data exists." }
 
