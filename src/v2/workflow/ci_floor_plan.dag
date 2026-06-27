@@ -388,8 +388,8 @@ fn gunbc_ci_floor_plan_co_runs_heavy_without_serialization() -> Bool {
 
 fn witness_floor_confirmed_safe_width_bounds_actual_width() -> Bool {
   let cap_budget = 8589934592
-  hardware_thread_count_value(t: gunbc_ci_floor_spawn_width(memory_budget_bytes: cap_budget))
-    <= gunbc_ci_floor_confirmed_safe_width
+  let actual_width = hardware_thread_count_value(t: gunbc_ci_floor_spawn_width(memory_budget_bytes: cap_budget))
+  actual_width <= gunbc_ci_floor_confirmed_safe_width
 }
 
 fn witness_floor_ceiling_clamps_stale_per_shard() -> Bool {
