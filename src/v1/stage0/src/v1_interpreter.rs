@@ -3774,7 +3774,7 @@ pub enum Verbosity {
 }
 
 /// Read the CLI verbosity once. The env-var names are the dispatch grounded by
-/// `gunbc.output_policy.gunbc_verbosity_env_vars` (verbose=`GUNBC_VERBOSE`,
+/// `gunbc.output_policy.env_var_for` (verbose=`GUNBC_VERBOSE`,
 /// quiet=`GUNBC_QUIET`); the precedence mirrors `resolve_verbosity`.
 pub fn cli_verbosity() -> Verbosity {
     thread_local! {

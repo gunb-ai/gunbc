@@ -1,31 +1,15 @@
 module gunbc.output_policy
 
-import std.types { Bool, Int, List, String }
+import std.types { Bool, Int, String }
 
 type Verbosity = Quiet | Normal | Verbose
 
-fn verbosity_eq(a: Verbosity, b: Verbosity) -> Bool {
-  match a {
-    Quiet => match b { Quiet => true, _ => false }
-    Normal => match b { Normal => true, _ => false }
-    Verbose => match b { Verbose => true, _ => false }
-  }
-}
-
-type VerbosityEnvBinding {
-  verbosity: Verbosity
-  env_var: String
-}
-
-data gunbc_verbosity_env_vars: List<VerbosityEnvBinding> = [
-  VerbosityEnvBinding { verbosity: Verbose, env_var: "GUNBC_VERBOSE" },
-  VerbosityEnvBinding { verbosity: Quiet, env_var: "GUNBC_QUIET" }
-]
-
 fn env_var_for(v: Verbosity) -> String {
-  fold(gunbc_verbosity_env_vars,
-    init: "",
-    f: (acc, binding) => if verbosity_eq(a: binding.verbosity, b: v) { binding.env_var } else { acc })
+  match v {
+    Verbose => "GUNBC_VERBOSE"
+    Quiet => "GUNBC_QUIET"
+    Normal => ""
+  }
 }
 
 data shell_trace_summary_max_columns: Int = 100
