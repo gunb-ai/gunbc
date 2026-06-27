@@ -152,6 +152,8 @@ fn emit_shell_word(w: ShellWord) -> Outcome<Medium<String>> {
   }
 }
 
+data emit_shell_word_raw_scaffold: String = "SCAFFOLD: Raw ShellWord passthrough in emit_shell_word bypasses grammar quoting analysis — any text emits verbatim, including values with shell metacharacters. Safe for current use: only caller is lower_env_binding, which sources values from EnvBinding.value (structured orchestration model facts, not arbitrary user input). DISSOLVES WHEN EnvBinding.value gains a dedicated ShellWord variant (e.g. EnvLiteral { text: String }) that grounds per-context quoting behavior, making Raw unreachable in emit_shell_word. Added by #5868."
+
 fn emit_stmt_subshell(body: String) -> Outcome<Medium<String>> {
   emit(
     tree: InferredTree {
