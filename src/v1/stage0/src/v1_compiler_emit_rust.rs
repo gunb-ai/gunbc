@@ -17834,7 +17834,9 @@ pub fn find_struct_name_by_fields(
             }
             __result
         });
-        match candidates.first().cloned() {
+        let mut candidates_sorted = (*candidates).clone();
+        candidates_sorted.sort_by(|a, b| a.name.cmp(&b.name));
+        match candidates_sorted.first().cloned() {
             Some(s) => Some(s.name.clone()),
             None => None,
         }
