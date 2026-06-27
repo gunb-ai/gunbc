@@ -13759,7 +13759,9 @@ pub fn seed_kernel_intern_table(intern_table: Rc<InternTable>) -> Rc<InternTable
         .fold(intern_table.clone(), |t: Rc<InternTable>, name: String| {
             intern(t, name.clone()).table.clone()
         });
-    intern(intern_table.clone(), "Unit".to_string()).table.clone()
+    intern(intern_table.clone(), "Unit".to_string())
+        .table
+        .clone()
 }
 
 pub fn typecheck(
