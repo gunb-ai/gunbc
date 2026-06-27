@@ -3,7 +3,7 @@
 
 use self::ParsedHrefScheme::*;
 use self::UriScheme::*;
-pub use crate::std_types::{NonEmptyStr, Url};
+pub use crate::std_types::NonEmptyStr;
 use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};

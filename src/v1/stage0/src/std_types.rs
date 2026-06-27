@@ -237,8 +237,6 @@ pub type Secret = String;
 
 pub type SecretValue = String;
 
-pub type Url = String;
-
 pub type SemVer = String;
 
 pub type NonEmptyStr = String;
