@@ -3715,6 +3715,123 @@ pub fn materialize_shell_argv_for_operation(
     Ok(argv)
 }
 
+/// SGR foreground parameters per `SemanticColor`, mirroring the
+/// `extdeps.render.ansi` authority (`ansi_mappings` in `dsl/extdeps/render/ansi.dag`).
+/// Seed realization until the interpreter consumes that table directly; the
+/// dissolution is the single checkable receipt ROADMAP §1 "interpreter
+/// terminal-output de-fork" (`dsl/gunbc/roadmap_authority.dag`).
+pub mod sgr {
+    pub const SUCCESS: &str = "38;5;34";
+    pub const ERROR: &str = "38;5;196";
+    pub const WARNING: &str = "38;5;208";
+    pub const INFO: &str = "38;5;39";
+    pub const DIM: &str = "2";
+}
+
+/// Whether the CLI should emit ANSI color, mirroring the `color` arm of
+/// `extdeps.render.terminal_capability.detect_capability`: NO_COLOR (no-color
+/// convention) and TERM=dumb force it off; otherwise color is on for an
+/// interactive TTY or a CI log viewer (which renders SGR). CI keeps color even
+/// though it loses cursor addressing — the CI/interactive split this PR models.
+pub fn color_enabled() -> bool {
+    use std::io::IsTerminal;
+    thread_local! {
+        static ENABLED: Cell<Option<bool>> = const { Cell::new(None) };
+    }
+    ENABLED.with(|c| match c.get() {
+        Some(b) => b,
+        None => {
+            let no_color = std::env::var_os("NO_COLOR").is_some_and(|v| !v.is_empty());
+            let dumb = std::env::var("TERM").map(|t| t == "dumb").unwrap_or(false);
+            let ci = std::env::var_os("CI").is_some_and(|v| v != "0" && !v.is_empty());
+            let is_tty = std::io::stderr().is_terminal() || std::io::stdout().is_terminal();
+            let b = !no_color && !dumb && (is_tty || ci);
+            c.set(Some(b));
+            b
+        }
+    })
+}
+
+/// Wrap `text` in the given SGR parameters when color is enabled, else return it
+/// plain — the single funnel so a NO_COLOR/redirected run never leaks escapes.
+pub fn paint(text: &str, sgr_params: &str) -> String {
+    if color_enabled() {
+        format!("\x1b[{sgr_params}m{text}\x1b[0m")
+    } else {
+        text.to_string()
+    }
+}
+
+/// CLI output verbosity. Seed realization of the `gunbc.output_policy.Verbosity`
+/// authority (`dsl/gunbc/output_policy.dag`); resolution precedence mirrors that
+/// module's `resolve_verbosity` (verbose wins over quiet, default Normal). When
+/// the interpreter self-hosts, this dissolves into consuming the .dag policy.
+#[derive(Clone, Copy, PartialEq)]
+pub enum Verbosity {
+    Quiet,
+    Normal,
+    Verbose,
+}
+
+/// Read the CLI verbosity once. The env-var names are the dispatch grounded by
+/// `gunbc.output_policy.env_var_for` (verbose=`GUNBC_VERBOSE`,
+/// quiet=`GUNBC_QUIET`); the precedence mirrors `resolve_verbosity`.
+pub fn cli_verbosity() -> Verbosity {
+    thread_local! {
+        static POLICY: Cell<Option<Verbosity>> = const { Cell::new(None) };
+    }
+    POLICY.with(|c| match c.get() {
+        Some(p) => p,
+        None => {
+            let p = if std::env::var("GUNBC_VERBOSE")
+                .map(|v| v == "1")
+                .unwrap_or(false)
+            {
+                Verbosity::Verbose
+            } else if std::env::var("GUNBC_QUIET")
+                .map(|v| v == "1")
+                .unwrap_or(false)
+            {
+                Verbosity::Quiet
+            } else {
+                Verbosity::Normal
+            };
+            c.set(Some(p));
+            p
+        }
+    })
+}
+
+// The funnel for the ShellTrace channel. Applies the `gunbc.output_policy`
+// ShellTrace row: Quiet => Suppressed, Normal => Condensed (one concise line),
+// Verbose => Full (the verbatim multiline argv). Keeps CI logs readable instead
+// of dumping every `sh -c` script.
+fn render_shell_trace(argv: &[String]) {
+    match cli_verbosity() {
+        Verbosity::Quiet => {}
+        Verbosity::Verbose => eprintln!("[shell] {}", argv.join(" ")),
+        Verbosity::Normal => {
+            // Collapse newlines/runs of whitespace into a single readable line,
+            // then truncate so a multiline `sh -c` script is one tidy summary.
+            let collapsed: String = argv
+                .join(" ")
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ");
+            // Fallback column bound (no Viewport at the trace site); the single
+            // authority is `gunbc.output_policy.shell_trace_summary_max_columns`.
+            const MAX: usize = 100;
+            let summary = if collapsed.chars().count() > MAX {
+                let head: String = collapsed.chars().take(MAX).collect();
+                format!("{head}…")
+            } else {
+                collapsed
+            };
+            eprintln!("{}", paint(&format!("  $ {summary}"), sgr::DIM));
+        }
+    }
+}
+
 fn dispatch_shell(
     transport: &Rc<Node>,
     param_env: &Rc<Env>,
@@ -3733,7 +3850,7 @@ fn dispatch_shell(
         });
     }
 
-    eprintln!("[shell] {}", argv.join(" "));
+    render_shell_trace(&argv);
 
     let output = std::process::Command::new(&argv[0])
         .args(&argv[1..])
