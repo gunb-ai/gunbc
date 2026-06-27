@@ -1,6 +1,6 @@
 module extdeps.cloud.gcp.sts
 
-import std.types { Url, HttpMethod, AuthScheme }
+import std.types { NonEmptyStr, HttpMethod, AuthScheme }
 import extdeps.cloud.gcp.errors { GcpErrorShape, GcpOAuth2ErrorShape }
 import extdeps.github.errors { GitHubErrorShape }
 
@@ -34,7 +34,7 @@ type MetadataRuntime {}
 
 data metadata_runtime: MetadataRuntime = {}
 
-data sts_endpoint: Url = "https://sts.googleapis.com/v1/token"
+data sts_endpoint: NonEmptyStr = "https://sts.googleapis.com/v1/token"
 
 data default_grant_type: String = "urn:ietf:params:oauth:grant-type:token-exchange"
 

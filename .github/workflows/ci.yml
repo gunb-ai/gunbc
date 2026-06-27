@@ -79,10 +79,7 @@ jobs:
             fi
           fi
           rm -f "$BUILD_LOG"
-          if '[' '!' '-x' "$ROOT"'/target/release/claim_executor' ']'; then 'echo' '::error::build verification: declared artifact '\''claim_executor'\'' absent or not executable after a '\''successful'\'' build (sccache/cache corruption — DESIGN §5 fail-open); failing closed: '"$ROOT"'/target/release/claim_executor' >&2; exit 1; fi
-          if '[' '!' '-s' "$ROOT"'/target/release/claim_executor' ']'; then 'echo' '::error::build verification: declared artifact '\''claim_executor'\'' is zero-byte after a '\''successful'\'' build (sccache served a truncated/empty cached artifact — DESIGN §5 fail-open); failing closed: '"$ROOT"'/target/release/claim_executor' >&2; exit 1; fi
-          if '[' '!' '-x' "$ROOT"'/target/release/gunbc' ']'; then 'echo' '::error::build verification: declared artifact '\''gunbc'\'' absent or not executable after a '\''successful'\'' build (sccache/cache corruption — DESIGN §5 fail-open); failing closed: '"$ROOT"'/target/release/gunbc' >&2; exit 1; fi
-          if '[' '!' '-s' "$ROOT"'/target/release/gunbc' ']'; then 'echo' '::error::build verification: declared artifact '\''gunbc'\'' is zero-byte after a '\''successful'\'' build (sccache served a truncated/empty cached artifact — DESIGN §5 fail-open); failing closed: '"$ROOT"'/target/release/gunbc' >&2; exit 1; fi
+          "$ROOT/target/release/claim_executor" --verify-build-artifacts "$ROOT/target/release/claim_executor" "$ROOT/target/release/gunbc"
           sccache --show-stats 2>/dev/null || true
           git fetch --no-tags origin main 2>/dev/null || true
           "$ROOT/target/release/claim_executor" --source-root dsl --source-root src/v2 --plan-entry src/v2/workflow/ci_floor_plan.dag --plan-function gunbc_ci_floor_batches --notice-title "v2 claim corpus"
@@ -157,10 +154,7 @@ jobs:
             fi
           fi
           rm -f "$BUILD_LOG"
-          if '[' '!' '-x' "$ROOT"'/target/release/claim_executor' ']'; then 'echo' '::error::build verification: declared artifact '\''claim_executor'\'' absent or not executable after a '\''successful'\'' build (sccache/cache corruption — DESIGN §5 fail-open); failing closed: '"$ROOT"'/target/release/claim_executor' >&2; exit 1; fi
-          if '[' '!' '-s' "$ROOT"'/target/release/claim_executor' ']'; then 'echo' '::error::build verification: declared artifact '\''claim_executor'\'' is zero-byte after a '\''successful'\'' build (sccache served a truncated/empty cached artifact — DESIGN §5 fail-open); failing closed: '"$ROOT"'/target/release/claim_executor' >&2; exit 1; fi
-          if '[' '!' '-x' "$ROOT"'/target/release/gunbc' ']'; then 'echo' '::error::build verification: declared artifact '\''gunbc'\'' absent or not executable after a '\''successful'\'' build (sccache/cache corruption — DESIGN §5 fail-open); failing closed: '"$ROOT"'/target/release/gunbc' >&2; exit 1; fi
-          if '[' '!' '-s' "$ROOT"'/target/release/gunbc' ']'; then 'echo' '::error::build verification: declared artifact '\''gunbc'\'' is zero-byte after a '\''successful'\'' build (sccache served a truncated/empty cached artifact — DESIGN §5 fail-open); failing closed: '"$ROOT"'/target/release/gunbc' >&2; exit 1; fi
+          "$ROOT/target/release/claim_executor" --verify-build-artifacts "$ROOT/target/release/claim_executor" "$ROOT/target/release/gunbc"
           sccache --show-stats 2>/dev/null || true
           git fetch --no-tags origin main 2>/dev/null || true
           set -o pipefail
