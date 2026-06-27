@@ -836,6 +836,7 @@ type RemoteExecutorHandle {
 type FulfillmentRejection
   = LocalCapacityExhausted { lane_count: Nat, held: Nat }
   | NeedsUnsatisfiable { reason: MissingDemandFact }
+  | DuplicateLeaseId { lease_id: HeavyComputeLeaseId }
 
 type Fulfillment
   = Fulfilled { executor: RemoteExecutorHandle }
@@ -894,6 +895,10 @@ fn ledger_has_free_lane(pool: HeavyComputePool, ledger: LeaseLedger) -> Bool {
   ledger_held_count(ledger: ledger) < pool.lane_count
 }
 
+fn ledger_has_lease_id(ledger: LeaseLedger, lease_id: HeavyComputeLeaseId) -> Bool {
+  fold(ledger.held, init: false, f: (acc, l) => acc || l.lease_id == lease_id)
+}
+
 fn ledger_conserves(pool: HeavyComputePool, ledger: LeaseLedger) -> Bool {
   !(pool.lane_count < ledger_held_count(ledger: ledger))
 }
@@ -902,6 +907,7 @@ type LeaseGrantOutcome
   = LeaseGranted { ledger: LeaseLedger, granted: HeavyComputeLease }
   | LeaseRejectedIneligible { reason: MissingDemandFact }
   | LeaseRejectedPoolExhausted { lane_count: Nat, held: Nat }
+  | LeaseRejectedDuplicateId { lease_id: HeavyComputeLeaseId }
 
 fn lease_grant(
   pool: HeavyComputePool,
@@ -914,7 +920,9 @@ fn lease_grant(
   match satisfies(offer: offer, demand: demand) {
     Rejected { reason: r } => LeaseRejectedIneligible { reason: r }
     Eligible { witness: _w } =>
-      if ledger_has_free_lane(pool: pool, ledger: ledger) {
+      if ledger_has_lease_id(ledger: ledger, lease_id: lease_id) {
+        LeaseRejectedDuplicateId { lease_id: lease_id }
+      } else if ledger_has_free_lane(pool: pool, ledger: ledger) {
         let lease = HeavyComputeLease {
           lease_id: lease_id,
           source: source,
