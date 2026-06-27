@@ -24,7 +24,7 @@ data gunbc_ci_floor_per_shard_rss_measurement: PerShardRssPeakMeasurement = PerS
 }
 
 data gunbc_ci_floor_per_shard_rss_source: Disposition = Terminal {
-  reason: "Measured local floor, post-#5860 corpus, main HEAD 6461042c64 at spawn_width=2 (pinned): floor peak VmHWM=6.0GiB => per-shard = VmHWM/width = 6.0GiB/2 = 3.0GiB (3226056704 bytes). Supersedes the stale 2.1GiB@width4 (CI run 27893441091) which the corpus outgrew: at the stale value the formula picked width=3 and 3 concurrent shards exceeded the 8GiB runner cap => exit-137 (run 28296782925). Refreshed to the operating width (2), the conservative per-shard (it is higher at lower width); formula now derives width=2 which fits at 6.0GiB. Finer path / durable fix: auto-measure per_shard each run instead of a committed scalar that lags every corpus bump."
+  reason: "Measured local floor, post-#5860 corpus, main HEAD 6461042c64 at spawn_width=2 (pinned): floor peak VmHWM=6.0GiB => per-shard = VmHWM/width = 6.0GiB/2 = 3.0GiB (3226056704 bytes). Supersedes the stale 2.1GiB@width4 (CI run 27893441091) which the corpus outgrew: at the stale value the formula picked width=3 and 3 concurrent shards exceeded the 8GiB runner cap => exit-137 (run 28296782925). VESTIGIAL IN WIDTH FORMULA as of gunbc_ci_floor_confirmed_safe_width: spawn_width is now min(cpu_bound, confirmed_safe_width), not floor(budget/per_shard). per_shard_committed is retained as (a) width=1 guard (if budget < per_shard, even one shard may not fit) and (b) ResourceEnvelope memory estimate. It is a [calibration] receipt, not a live scheduler input. Durable fix: resource-aware-scheduler Node B/C (docs/plans/resource-aware-scheduler.md)."
 }
 
 fn gunbc_ci_floor_per_shard_peak_rss_bytes() -> ByteSize {
