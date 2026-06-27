@@ -157,6 +157,7 @@ fn stage0_crate_plan() -> Stage0CratePlan {
         kind: CoreCrate,
         header_doc: stage0_core_header_doc(),
         modules: [
+          "extdeps_external_authority",
           "extdeps_languages_dag_emit",
           "extdeps_languages_dag_syntax",
           "extdeps_languages_dag_types",
@@ -169,6 +170,7 @@ fn stage0_crate_plan() -> Stage0CratePlan {
           "extdeps_languages_rust_emit",
           "extdeps_languages_rust_syntax",
           "extdeps_languages_rust_types",
+          "extdeps_uri",
           "std_algebra",
           "std_coercion",
           "std_computation",
