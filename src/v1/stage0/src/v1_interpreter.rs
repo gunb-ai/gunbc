@@ -3677,9 +3677,15 @@ fn shell_trace_policy() -> ShellTrace {
     POLICY.with(|c| match c.get() {
         Some(p) => p,
         None => {
-            let p = if std::env::var("GUNBC_VERBOSE").map(|v| v == "1").unwrap_or(false) {
+            let p = if std::env::var("GUNBC_VERBOSE")
+                .map(|v| v == "1")
+                .unwrap_or(false)
+            {
                 ShellTrace::Verbose
-            } else if std::env::var("GUNBC_QUIET").map(|v| v == "1").unwrap_or(false) {
+            } else if std::env::var("GUNBC_QUIET")
+                .map(|v| v == "1")
+                .unwrap_or(false)
+            {
                 ShellTrace::Quiet
             } else {
                 ShellTrace::Normal
@@ -3697,7 +3703,11 @@ fn render_shell_trace(argv: &[String]) {
         ShellTrace::Normal => {
             // Collapse newlines/runs of whitespace into a single readable line,
             // then truncate so a multiline `sh -c` script is one tidy summary.
-            let collapsed: String = argv.join(" ").split_whitespace().collect::<Vec<_>>().join(" ");
+            let collapsed: String = argv
+                .join(" ")
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ");
             const MAX: usize = 100;
             let summary = if collapsed.chars().count() > MAX {
                 let head: String = collapsed.chars().take(MAX).collect();
@@ -3705,7 +3715,7 @@ fn render_shell_trace(argv: &[String]) {
             } else {
                 collapsed
             };
-            eprintln!("  › {summary}");
+            eprintln!("  $ {summary}");
         }
     }
 }
