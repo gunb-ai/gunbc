@@ -4710,7 +4710,10 @@ pub fn import_module_enum_scope(
                             let mut __keys = v1_rt::map_keys(&exported);
                             __keys.sort();
                             __keys
-                        }).iter().cloned() {
+                        })
+                        .iter()
+                        .cloned()
+                        {
                             if (is_known_variant(type_summaries.clone(), n.clone())
                                 && (is_enum_in_summaries(type_summaries.clone(), n.clone())
                                     == false))

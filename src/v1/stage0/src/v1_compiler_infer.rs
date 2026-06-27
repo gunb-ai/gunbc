@@ -12964,10 +12964,8 @@ pub fn build_module_context(
                     (binding.resolved.clone().connective.clone() == Connective::Disj);
                 if is_coproduct.clone() {
                     {
-                        let binding_enum_name = authored_name_at(
-                            env.source_indices.clone(),
-                            binding.resolved.clone(),
-                        );
+                        let binding_enum_name =
+                            authored_name_at(env.source_indices.clone(), binding.resolved.clone());
                         binding
                             .resolved
                             .clone()
@@ -12978,10 +12976,8 @@ pub fn build_module_context(
                             .fold(
                                 acc.clone(),
                                 |vacc: Rc<VariantFoldState>, child: Rc<Node>| {
-                                    let child_name = authored_name_at(
-                                        env.source_indices.clone(),
-                                        child.clone(),
-                                    );
+                                    let child_name =
+                                        authored_name_at(env.source_indices.clone(), child.clone());
                                     // Per-child check: is this enum the unambiguous owner of
                                     // this specific variant name in its source module?
                                     let curr_child_is_imported = imported_variants
@@ -12991,10 +12987,7 @@ pub fn build_module_context(
                                             unique_parent.as_str() == binding_enum_name.as_str()
                                         })
                                         .unwrap_or(false);
-                                    match v1_rt::map_get(
-                                        &vacc.locals.clone(),
-                                        child_name.clone(),
-                                    ) {
+                                    match v1_rt::map_get(&vacc.locals.clone(), child_name.clone()) {
                                         Some(_prev) => {
                                             if curr_child_is_imported {
                                                 Rc::new(VariantFoldState {
@@ -13009,9 +13002,7 @@ pub fn build_module_context(
                                                             ),
                                                         }),
                                                     ),
-                                                    collision_errors: vacc
-                                                        .collision_errors
-                                                        .clone(),
+                                                    collision_errors: vacc.collision_errors.clone(),
                                                 })
                                             } else {
                                                 vacc.clone()
