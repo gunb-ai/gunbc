@@ -4,7 +4,7 @@ import ctrl.process_algebra { ProcessNodeId }
 import ctrl.pr_digests { MergeReadinessVerdict, Ready, NotReady }
 import ctrl.review_verdict { MergeReadinessTally }
 import extdeps.github.pulls { PullRequest, Open, Closed }
-import std.types { CommitSha, NonEmptyStr, Timestamp, Url }
+import std.types { CommitSha, NonEmptyStr, Timestamp }
 
 type CodeChangeActiveStage
   = ChangeOpen

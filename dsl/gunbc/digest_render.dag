@@ -2,12 +2,12 @@ module gunbc.digest_render
 
 import extdeps.github.pulls { PullRequest, PullReview, PullRequestState, ReviewState, Open }
 import std.render { kv_pair, list_block }
-import std.types { Url }
+import std.types { NonEmptyStr }
 
 type PullRequestDigestSubject {
   number: Int
   title: String
-  url: Url
+  url: NonEmptyStr
   state: PullRequestState
   draft: Bool
   head_sha: String
@@ -117,7 +117,7 @@ fn render_pull_request_digest_line(view: PullRequestDigestView) -> String {
 fn render_pull_request_digest_block(view: PullRequestDigestView) -> String {
   let entries = [
     kv_pair(key: "PR", sep: ": ", value: "#\{view.subject.number\} \{view.subject.title\}"),
-    kv_pair(key: "URL", sep: ": ", value: view.subject.url as String),
+    kv_pair(key: "URL", sep: ": ", value: view.subject.url),
     kv_pair(key: "Base", sep: ": ", value: view.subject.base_ref),
     kv_pair(key: "Head", sep: ": ", value: view.subject.head_sha),
     kv_pair(key: "State", sep: ": ", value: render_pull_request_state(state: view.subject.state)),

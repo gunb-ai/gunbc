@@ -10,7 +10,9 @@ use v1_compiler::cli_run::{
     make_eval_context, resolve_entry_graph, run_claim, run_discovery_corpus_with_options,
     run_value, ClaimOutcome, DiscoveryCorpusOptions,
 };
-use v1_compiler::v1_interpreter::{run_in_context_with_args, ExecutionMode, InterpContext, Value};
+use v1_compiler::v1_interpreter::{
+    paint, run_in_context_with_args, sgr, ExecutionMode, InterpContext, Value,
+};
 
 #[derive(Clone)]
 enum Runnable {
@@ -748,6 +750,61 @@ fn cgroup_job_measurement() -> Option<CgroupMeasurement> {
     })
 }
 
+/// Verify each declared release artifact exists, is executable, and is non-empty — failing CLOSED
+/// (exit 1) with the GitHub-Actions `::error::` annotation on the first violation. This is the
+/// in-binary home of what was previously inline `[ -x ]` / `[ -s ]` shell in the generated ci.yml
+/// (DESIGN §5 fail-open guard: an sccache-served truncated/empty cached artifact after a
+/// `successful` build). The artifact paths are authored by the .dag spec and passed positionally.
+fn verify_build_artifacts(paths: &[String]) -> Result<ExitCode, ExitCode> {
+    use std::os::unix::fs::PermissionsExt;
+    if paths.is_empty() {
+        eprintln!("claim_executor: --verify-build-artifacts requires at least one artifact path");
+        return Err(ExitCode::from(2));
+    }
+    for path in paths {
+        let name = std::path::Path::new(path)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or(path.as_str());
+        match std::fs::metadata(path) {
+            Ok(meta) => {
+                let executable = meta.permissions().mode() & 0o111 != 0;
+                if !meta.is_file() || !executable {
+                    eprintln!(
+                        "::error::build verification: declared artifact '{name}' absent or not \
+                         executable after a 'successful' build (sccache/cache corruption — DESIGN \
+                         §5 fail-open); failing closed: {path}"
+                    );
+                    return Err(ExitCode::from(1));
+                }
+                if meta.len() == 0 {
+                    eprintln!(
+                        "::error::build verification: declared artifact '{name}' is zero-byte after \
+                         a 'successful' build (sccache served a truncated/empty cached artifact — \
+                         DESIGN §5 fail-open); failing closed: {path}"
+                    );
+                    return Err(ExitCode::from(1));
+                }
+            }
+            Err(_) => {
+                eprintln!(
+                    "::error::build verification: declared artifact '{name}' absent or not \
+                     executable after a 'successful' build (sccache/cache corruption — DESIGN §5 \
+                     fail-open); failing closed: {path}"
+                );
+                return Err(ExitCode::from(1));
+            }
+        }
+    }
+    eprintln!(
+        "claim_executor: build-artifact verification passed ({} declared release binar{} present \
+         + non-empty)",
+        paths.len(),
+        if paths.len() == 1 { "y" } else { "ies" }
+    );
+    Ok(ExitCode::SUCCESS)
+}
+
 /// Single authority for the one-line whole-tree cgroup measurement, shared by the floor run and the
 /// standalone `--measure-cgroup-peak` mode so the `ci` and `rust_tests` jobs report an
 /// identically-shaped line. `context` distinguishes the call site.
@@ -923,13 +980,25 @@ fn run_walk(source_roots: &[String], batches: &[Vec<Runnable>], spawn_width: usi
                 Ok(results) => {
                     for result in results {
                         if result.ok {
-                            println!("PASS [batch {}] {}", bi + 1, result.function);
+                            println!(
+                                "{}",
+                                paint(
+                                    &format!("✓ PASS [batch {}] {}", bi + 1, result.function),
+                                    sgr::SUCCESS
+                                )
+                            );
                         } else {
                             println!(
-                                "FAIL [batch {}] {} ({})",
-                                bi + 1,
-                                result.function,
-                                result.detail
+                                "{}",
+                                paint(
+                                    &format!(
+                                        "✗ FAIL [batch {}] {} ({})",
+                                        bi + 1,
+                                        result.function,
+                                        result.detail
+                                    ),
+                                    sgr::ERROR
+                                )
                             );
                             any_failed = true;
                         }
@@ -937,7 +1006,13 @@ fn run_walk(source_roots: &[String], batches: &[Vec<Runnable>], spawn_width: usi
                     }
                 }
                 Err(_) => {
-                    println!("FAIL [batch {}] <claim thread panicked>", bi + 1);
+                    println!(
+                        "{}",
+                        paint(
+                            &format!("✗ FAIL [batch {}] <claim thread panicked>", bi + 1),
+                            sgr::ERROR
+                        )
+                    );
                     any_failed = true;
                 }
             }
@@ -1153,10 +1228,22 @@ fn run() -> Result<ExitCode, ExitCode> {
     let mut notice_title: Option<String> = None;
     let mut perturb_check = false;
     let mut measure_cgroup_peak = false;
+    let mut verify_artifacts: Vec<String> = Vec::new();
+    let mut verify_artifacts_mode = false;
 
     let mut i = 1;
     while i < args.len() {
         match args[i].as_str() {
+            "--verify-build-artifacts" => {
+                // All remaining positional args are declared release-artifact paths to verify.
+                verify_artifacts_mode = true;
+                i += 1;
+                while i < args.len() {
+                    verify_artifacts.push(args[i].clone());
+                    i += 1;
+                }
+                break;
+            }
             "--source-root" => {
                 i += 1;
                 source_roots.push(require_value(&args, i, "--source-root")?);
@@ -1181,6 +1268,16 @@ fn run() -> Result<ExitCode, ExitCode> {
             }
         }
         i += 1;
+    }
+
+    // Build-artifact verification (no plan run): the floor's bootstrap `cargo build` is followed by
+    // this check so a `successful` build that nonetheless produced a missing/zero-byte binary
+    // (sccache serving a truncated/empty cached artifact — DESIGN §5 fail-open) fails CLOSED before
+    // the floor runs. The LOGIC lives here (the floor binary) instead of inline shell in ci.yml; the
+    // declared artifact paths are still authored by the .dag spec and passed as positional args.
+    // Short-circuits before the plan-arg requirements so it needs no `--plan-entry`.
+    if verify_artifacts_mode {
+        return verify_build_artifacts(&verify_artifacts);
     }
 
     // Standalone whole-tree cgroup measurement (no plan run): the `rust_tests` job invokes this
@@ -1430,5 +1527,67 @@ mod tests {
             })
             .expect("gate group present");
         assert_eq!(gate, &["g1", "g2"], "both gate claims kept in one group");
+    }
+
+    // --- build-artifact verification teeth (DESIGN §5 fail-open guard) ---
+
+    fn write_exec(dir: &std::path::Path, name: &str, bytes: &[u8]) -> String {
+        use std::os::unix::fs::PermissionsExt;
+        let p = dir.join(name);
+        std::fs::write(&p, bytes).expect("write artifact");
+        let mut perms = std::fs::metadata(&p).unwrap().permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&p, perms).expect("chmod");
+        p.to_string_lossy().into_owned()
+    }
+
+    #[test]
+    fn verify_build_artifacts_accepts_nonempty_executables() {
+        let dir = std::env::temp_dir().join(format!("cev-ok-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let a = write_exec(&dir, "claim_executor", b"\x7fELF-not-really-but-nonempty");
+        let b = write_exec(&dir, "gunbc", b"binary");
+        let r = verify_build_artifacts(&[a, b]);
+        std::fs::remove_dir_all(&dir).ok();
+        assert!(
+            matches!(r, Ok(c) if c == ExitCode::SUCCESS),
+            "real bins pass"
+        );
+    }
+
+    #[test]
+    fn verify_build_artifacts_reds_on_zero_byte() {
+        let dir = std::env::temp_dir().join(format!("cev-zero-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let a = write_exec(&dir, "claim_executor", b"ok");
+        let b = write_exec(&dir, "gunbc", b""); // sccache served a truncated/empty cached artifact
+        let r = verify_build_artifacts(&[a, b]);
+        std::fs::remove_dir_all(&dir).ok();
+        assert!(
+            matches!(r, Err(c) if c == ExitCode::from(1)),
+            "zero-byte artifact fails closed"
+        );
+    }
+
+    #[test]
+    fn verify_build_artifacts_reds_on_missing() {
+        let missing = std::env::temp_dir()
+            .join(format!("cev-missing-{}/gunbc", std::process::id()))
+            .to_string_lossy()
+            .into_owned();
+        let r = verify_build_artifacts(&[missing]);
+        assert!(
+            matches!(r, Err(c) if c == ExitCode::from(1)),
+            "absent artifact fails closed"
+        );
+    }
+
+    #[test]
+    fn verify_build_artifacts_reds_on_empty_arglist() {
+        let r = verify_build_artifacts(&[]);
+        assert!(
+            matches!(r, Err(c) if c == ExitCode::from(2)),
+            "no declared artifacts is a usage error, fail closed"
+        );
     }
 }
