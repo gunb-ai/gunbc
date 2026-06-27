@@ -17796,6 +17796,7 @@ pub fn emit_field_value_with_context(
 
 pub fn find_struct_name_by_fields(
     field_names: Rc<Vec<String>>,
+    field_type_hints: Rc<HashMap<String, String>>,
     type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
 ) -> Option<String> {
     {
@@ -17834,12 +17835,29 @@ pub fn find_struct_name_by_fields(
             }
             __result
         });
+        if candidates.len() <= 1 {
+            return candidates.first().map(|s| s.name.clone());
+        }
+        // Multiple candidates share the same field names; disambiguate by field types.
+        // field_type_hints maps field_name → inferred value type name at the call site.
+        let typed_candidates: Vec<_> = candidates
+            .iter()
+            .filter(|cand| {
+                field_type_hints.iter().all(|(fname, hint_type)| {
+                    match v1_rt::map_get(&cand.field_type_map, fname.clone()) {
+                        Some(cand_type) => *cand_type == *hint_type,
+                        None => true,
+                    }
+                })
+            })
+            .collect();
+        if typed_candidates.len() == 1 {
+            return typed_candidates.first().map(|s| s.name.clone());
+        }
+        // Still ambiguous: deterministic fallback — sort by name.
         let mut candidates_sorted = (*candidates).clone();
         candidates_sorted.sort_by(|a, b| a.name.cmp(&b.name));
-        match candidates_sorted.first().cloned() {
-            Some(s) => Some(s.name.clone()),
-            None => None,
-        }
+        candidates_sorted.first().map(|s| s.name.clone())
     }
 }
 
