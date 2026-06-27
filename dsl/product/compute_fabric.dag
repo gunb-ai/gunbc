@@ -813,9 +813,13 @@ type ComputeLocality
   = FulfillableRemotely
   | MustRunLocal
 
+type ComputeWorkload
+  = ExecCommand { command: NonEmptyStr }
+  | GhaRunner { repo: NonEmptyStr, labels: List<NonEmptyStr> }
+
 type ComputeRequest {
   requester: SessionSubject
-  workload: WorkUnitId
+  workload: ComputeWorkload
   needs: ResourceEnvelope
   locality: ComputeLocality
 }
@@ -835,6 +839,7 @@ type FulfillmentRejection
 
 type Fulfillment
   = Fulfilled { executor: RemoteExecutorHandle }
+  | FulfillmentQueued { lane_count: Nat, held: Nat }
   | FulfillmentRejected { reason: FulfillmentRejection }
 
 type FulfillmentOutcome {
@@ -941,6 +946,13 @@ type ComputeFabric {
   local_offer: ComputeOffer
 }
 
+fn workload_lease_source(workload: ComputeWorkload) -> HeavyComputeLaneSource {
+  match workload {
+    ExecCommand { command: _ } => OnDemandSessionLease
+    GhaRunner { repo: _, labels: _ } => GithubCiRunner
+  }
+}
+
 fn request_to_work_demand(request: ComputeRequest) -> WorkDemand {
   WorkDemand {
     resources: request.needs,
@@ -974,7 +986,7 @@ fn fulfill(
         ledger: ledger,
         offer: fabric.local_offer,
         lease_id: lease_id,
-        source: OnDemandSessionLease,
+        source: workload_lease_source(workload: request.workload),
         demand: request_to_work_demand(request: request),
         acquired_at: acquired_at,
         max_hold: max_hold
@@ -993,11 +1005,19 @@ fn fulfill(
             ledger: granted_ledger,
           }
         LeaseRejectedPoolExhausted { lane_count: lc, held: h } =>
-          FulfillmentOutcome {
-            fulfillment: FulfillmentRejected {
-              reason: LocalCapacityExhausted { lane_count: lc, held: h },
-            },
-            ledger: ledger,
+          match request.workload {
+            GhaRunner { repo: _, labels: _ } =>
+              FulfillmentOutcome {
+                fulfillment: FulfillmentQueued { lane_count: lc, held: h },
+                ledger: ledger,
+              }
+            ExecCommand { command: _ } =>
+              FulfillmentOutcome {
+                fulfillment: FulfillmentRejected {
+                  reason: LocalCapacityExhausted { lane_count: lc, held: h },
+                },
+                ledger: ledger,
+              }
           }
         LeaseRejectedIneligible { reason: r } =>
           FulfillmentOutcome {
@@ -1608,22 +1628,29 @@ data example_compute_fabric: ComputeFabric = ComputeFabric {
 
 data example_remote_request: ComputeRequest = ComputeRequest {
   requester: example_session_subject,
-  workload: "cargo-build-workspace",
+  workload: ExecCommand { command: "cargo build --workspace" },
   needs: heavy_compute_lane_work_demand.resources,
   locality: FulfillableRemotely,
 }
 
 data example_local_request: ComputeRequest = ComputeRequest {
   requester: example_session_subject,
-  workload: "profile-typed-ast-byte-breakdown",
+  workload: ExecCommand { command: "profile_typed_ast_byte_breakdown" },
   needs: heavy_compute_lane_work_demand.resources,
   locality: MustRunLocal,
 }
 
 data example_oversized_local_request: ComputeRequest = ComputeRequest {
   requester: example_session_subject,
-  workload: "oversized-local",
+  workload: ExecCommand { command: "oversized-local" },
   needs: example_thread_work_demand.resources,
+  locality: MustRunLocal,
+}
+
+data example_gha_runner_request: ComputeRequest = ComputeRequest {
+  requester: example_session_subject,
+  workload: GhaRunner { repo: "gunb-ai/gunbc", labels: ["self-hosted", "srv1"] },
+  needs: heavy_compute_lane_work_demand.resources,
   locality: MustRunLocal,
 }
 
@@ -1650,6 +1677,7 @@ fn witness_remote_request_fulfilled_off_session() -> Bool {
         BuildBuddyRemote { endpoint: _ } => ledger_held_count(ledger: outcome.ledger) == 0
         LeasedComputeLane { lease_id: _, host: _ } => false
       }
+    FulfillmentQueued { lane_count: _, held: _ } => false
     FulfillmentRejected { reason: _ } => false
   }
 }
@@ -1670,6 +1698,7 @@ fn witness_local_request_leases_a_lane() -> Bool {
           lid == "lease-local-1" && ledger_held_count(ledger: outcome.ledger) == 1
         BuildBuddyRemote { endpoint: _ } => false
       }
+    FulfillmentQueued { lane_count: _, held: _ } => false
     FulfillmentRejected { reason: _ } => false
   }
 }
@@ -1695,6 +1724,7 @@ fn witness_local_request_rejected_when_pool_exhausted() -> Bool {
         NeedsUnsatisfiable { reason: _ } => false
       }
     Fulfilled { executor: _ } => false
+    FulfillmentQueued { lane_count: _, held: _ } => false
   }
 }
 
@@ -1714,6 +1744,67 @@ fn witness_unsatisfiable_local_needs_rejected() -> Bool {
         LocalCapacityExhausted { lane_count: _, held: _ } => false
       }
     Fulfilled { executor: _ } => false
+    FulfillmentQueued { lane_count: _, held: _ } => false
+  }
+}
+
+fn witness_gha_runner_request_leases_same_lane_as_exec() -> Bool {
+  let exec_outcome = fulfill(
+    fabric: example_compute_fabric, ledger: empty_lease_ledger, request: example_local_request,
+    lease_id: "exec-1", acquired_at: "t0", max_hold: example_lease_max_hold
+  )
+  let runner_outcome = fulfill(
+    fabric: example_compute_fabric, ledger: empty_lease_ledger, request: example_gha_runner_request,
+    lease_id: "runner-1", acquired_at: "t0", max_hold: example_lease_max_hold
+  )
+  let same_envelope =
+    work_demand_content_digest(demand: request_to_work_demand(request: example_local_request))
+      == work_demand_content_digest(demand: request_to_work_demand(request: example_gha_runner_request))
+  match exec_outcome.fulfillment {
+    Fulfilled { executor: ee } =>
+      match runner_outcome.fulfillment {
+        Fulfilled { executor: re } =>
+          match ee.target {
+            LeasedComputeLane { lease_id: _, host: eh } =>
+              match re.target {
+                LeasedComputeLane { lease_id: _, host: rh } => eh == rh && same_envelope
+                BuildBuddyRemote { endpoint: _ } => false
+              }
+            BuildBuddyRemote { endpoint: _ } => false
+          }
+        FulfillmentQueued { lane_count: _, held: _ } => false
+        FulfillmentRejected { reason: _ } => false
+      }
+    FulfillmentQueued { lane_count: _, held: _ } => false
+    FulfillmentRejected { reason: _ } => false
+  }
+}
+
+fn witness_gha_runner_queues_when_pool_exhausted_not_rejects() -> Bool {
+  let o1 = fulfill(
+    fabric: example_compute_fabric, ledger: empty_lease_ledger, request: example_local_request,
+    lease_id: "l1", acquired_at: "t0", max_hold: example_lease_max_hold
+  )
+  let o2 = fulfill(
+    fabric: example_compute_fabric, ledger: o1.ledger, request: example_local_request,
+    lease_id: "l2", acquired_at: "t1", max_hold: example_lease_max_hold
+  )
+  let o3 = fulfill(
+    fabric: example_compute_fabric, ledger: o2.ledger, request: example_gha_runner_request,
+    lease_id: "runner-overflow", acquired_at: "t2", max_hold: example_lease_max_hold
+  )
+  match o3.fulfillment {
+    FulfillmentQueued { lane_count: _, held: h } =>
+      h == 2 && ledger_held_count(ledger: o3.ledger) == 2
+    Fulfilled { executor: _ } => false
+    FulfillmentRejected { reason: _ } => false
+  }
+}
+
+fn witness_gha_runner_uses_ci_lane_source() -> Bool {
+  match workload_lease_source(workload: GhaRunner { repo: "gunb-ai/gunbc", labels: [] }) {
+    GithubCiRunner => true
+    OnDemandSessionLease => false
   }
 }
 
