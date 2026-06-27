@@ -13753,15 +13753,12 @@ pub fn seed_kernel_intern_table(intern_table: Rc<InternTable>) -> Rc<InternTable
     .fold(intern_table.clone(), |t: Rc<InternTable>, name: String| {
         intern(t, name.clone()).table.clone()
     });
-    let intern_table = Rc::new(v1_rt::map_keys(&compiler_recursive_types()))
+    Rc::new(v1_rt::map_keys(&compiler_recursive_types()))
         .iter()
         .cloned()
         .fold(intern_table.clone(), |t: Rc<InternTable>, name: String| {
             intern(t, name.clone()).table.clone()
-        });
-    intern(intern_table.clone(), "Unit".to_string())
-        .table
-        .clone()
+        })
 }
 
 pub fn typecheck(

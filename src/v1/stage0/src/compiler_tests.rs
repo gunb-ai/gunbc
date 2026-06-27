@@ -1799,4 +1799,65 @@ mod compiler_tests {
             .join();
         result.expect("contracts_sidecar_wired_into_emit_scope panicked");
     }
+
+    // TEMP probe (reverted before merge): confirms the Unit-dedup cleanup is inert via diag fingerprint.
+    fn resolve_source_closure_primary3(
+        entry_pairs: Vec<(String, String)>,
+        roots: &[&str],
+    ) -> Vec<std::rc::Rc<crate::v1_compiler_compile::SourceFile>> {
+        let mut index = HashMap::<String, (String, String)>::new();
+        for root in roots {
+            for (path, content) in discover_dag_files(root) {
+                let module_path = module_path_from_source(&path, &content);
+                index.entry(module_path).or_insert((path, content));
+            }
+        }
+        let mut seen = HashMap::<String, std::rc::Rc<crate::v1_compiler_compile::SourceFile>>::new();
+        let mut queue = Vec::new();
+        for (path, content) in entry_pairs {
+            let module_path = module_path_from_source(&path, &content);
+            seen.insert(module_path, std::rc::Rc::new(crate::v1_compiler_compile::SourceFile { path: path.clone(), content: content.clone() }));
+            queue.push((path, content));
+        }
+        while let Some((_path, content)) = queue.pop() {
+            for module_path in import_paths_from_source(&_path, &content) {
+                if seen.contains_key(&module_path) { continue; }
+                if let Some((path, file_content)) = index.get(&module_path).cloned() {
+                    seen.insert(module_path, std::rc::Rc::new(crate::v1_compiler_compile::SourceFile { path: path.clone(), content: file_content.clone() }));
+                    queue.push((path, file_content));
+                }
+            }
+        }
+        let mut result: Vec<_> = seen.into_values().collect();
+        result.sort_by(|a, b| a.path.cmp(&b.path));
+        result
+    }
+
+    #[test]
+    #[ignore]
+    fn probe_floor_rss() {
+        if std::env::var("GUNBC_FLOOR_RSS").is_err() { return; }
+        let result = std::thread::Builder::new().stack_size(512*1024*1024).spawn(|| {
+            fn rss_mib() -> u64 {
+                std::fs::read_to_string("/proc/self/status").ok()
+                    .and_then(|s| s.lines().find(|l| l.starts_with("VmHWM"))
+                        .and_then(|l| l.split_whitespace().nth(1)).and_then(|v| v.parse::<u64>().ok()))
+                    .map(|kb| kb/1024).unwrap_or(0)
+            }
+            let mut entries: Vec<(String,String)> = Vec::new();
+            for r in ["src/v2","dsl"] { for (p,c) in discover_dag_files(r) { entries.push((p,c)); } }
+            let sources = resolve_source_closure_primary3(entries, &["src/v2","dsl"]);
+            let rc_sources = std::rc::Rc::new(sources.iter().cloned().collect::<Vec<_>>());
+            let result = crate::v1_compiler_compile::compile_to_resolved(rc_sources);
+            let peak = rss_mib();
+            let g = result.graph.as_ref();
+            use std::hash::{Hash, Hasher};
+            let mut h = std::collections::hash_map::DefaultHasher::new();
+            for d in result.diagnostics.iter() { serde_json::to_vec(d).unwrap_or_default().hash(&mut h); }
+            let uniq: std::collections::HashSet<usize> = g.map(|g| g.modules.iter().map(|m| std::rc::Rc::as_ptr(&m.type_env.intern_table) as usize).collect()).unwrap_or_default();
+            eprintln!("[floor-rss] typed_modules {} diagnostics {} diag_fingerprint {:016x} unique_intern_rc {} PEAK_VmHWM {} MiB",
+                g.map(|g| g.modules.len()).unwrap_or(0), result.diagnostics.len(), h.finish(), uniq.len(), peak);
+        }).expect("spawn").join();
+        result.expect("probe_floor_rss panicked");
+    }
 }

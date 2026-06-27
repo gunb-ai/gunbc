@@ -6128,8 +6128,7 @@ fn build_emit_graph_info(modules: List<TypedModule>) -> EmitGraphInfo {
 fn seed_kernel_intern_table(intern_table: InternTable) -> InternTable {
   let intern_table = fold(map_keys(kernel_type_set), init: intern_table, f: (t, name) => intern(table: t, s: name).table)
   let intern_table = fold(["Optional", "Present", "Absent", "value", "none"], init: intern_table, f: (t, name) => intern(table: t, s: name).table)
-  let intern_table = fold(map_keys(compiler_recursive_types), init: intern_table, f: (t, name) => intern(table: t, s: name).table)
-  intern(table: intern_table, s: "Unit").table
+  fold(map_keys(compiler_recursive_types), init: intern_table, f: (t, name) => intern(table: t, s: name).table)
 }
 
 fn typecheck(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>, intern_table: InternTable) -> TypedGraph {
