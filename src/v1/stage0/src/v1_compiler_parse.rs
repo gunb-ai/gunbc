@@ -752,6 +752,11 @@ impl TokenStream {
             pos: self.pos + n,
         }
     }
+
+    // Read-only view of the unconsumed tail (from the cursor onward).
+    pub fn remaining(&self) -> &[Rc<Token>] {
+        self.all.get(self.pos..).unwrap_or(&[])
+    }
 }
 
 pub fn advance(tokens: TokenStream) -> Rc<AdvanceResult> {
@@ -1191,10 +1196,7 @@ pub fn tok_is_ident_text(tok: Option<Rc<Token>>, text: String) -> bool {
     }
 }
 
-pub fn drop_leading_type_modifier(
-    tokens: TokenStream,
-    modifier: String,
-) -> TokenStream {
+pub fn drop_leading_type_modifier(tokens: TokenStream, modifier: String) -> TokenStream {
     if tok_is_ident_text(tokens.clone().first().cloned(), modifier) {
         skip_newlines(tokens.clone().advance(1))
     } else {
@@ -1643,8 +1645,7 @@ pub fn skip_newlines(mut tokens: TokenStream) -> TokenStream {
             Some(t) => {
                 if is_newline_shape(t.shape.clone()) {
                     {
-                        let __tco_0 =
-                            tokens.advance(1);
+                        let __tco_0 = tokens.advance(1);
                         tokens = __tco_0;
                         continue;
                     }
@@ -4156,10 +4157,7 @@ pub fn parse_single_predicate(tokens: TokenStream, ctx: Rc<ParseContext>) -> Rc<
     }
 }
 
-pub fn parse_named_int_args(
-    tokens: TokenStream,
-    ctx: Rc<ParseContext>,
-) -> Rc<RangeArgsResult> {
+pub fn parse_named_int_args(tokens: TokenStream, ctx: Rc<ParseContext>) -> Rc<RangeArgsResult> {
     {
         let r = parse_single_named_int(tokens, ctx);
         if has_err(r.err.clone()) {
@@ -4232,10 +4230,7 @@ pub fn parse_named_int_args(
     }
 }
 
-pub fn parse_single_named_int(
-    tokens: TokenStream,
-    ctx: Rc<ParseContext>,
-) -> Rc<NamedIntResult> {
+pub fn parse_single_named_int(tokens: TokenStream, ctx: Rc<ParseContext>) -> Rc<NamedIntResult> {
     {
         let r = expect_ident(tokens);
         if has_err(r.err.clone()) {
@@ -4435,10 +4430,7 @@ pub fn parse_variant_fields(
     }
 }
 
-pub fn parse_more_variants(
-    tokens: TokenStream,
-    ctx: Rc<ParseContext>,
-) -> Rc<VariantsResult> {
+pub fn parse_more_variants(tokens: TokenStream, ctx: Rc<ParseContext>) -> Rc<VariantsResult> {
     parse_more_variants_acc(tokens, ctx, Rc::new(vec![]))
 }
 
@@ -4508,10 +4500,7 @@ pub fn parse_type_expr(tokens: TokenStream, ctx: Rc<ParseContext>) -> Rc<TypeRes
         let span = token_span(tok.clone());
         match sh {
             Some(TokenShape::ShLBrace) => {
-                let r = parse_field_list(
-                    skip_newlines(tokens.clone().advance(1)),
-                    ctx.clone(),
-                );
+                let r = parse_field_list(skip_newlines(tokens.clone().advance(1)), ctx.clone());
                 if has_err(r.err.clone()) {
                     return Rc::new(TypeResult {
                         type_expr: leaf_type_node("".to_string(), span.clone()),
@@ -4566,11 +4555,7 @@ pub fn parse_type_expr(tokens: TokenStream, ctx: Rc<ParseContext>) -> Rc<TypeRes
             }
             Some(TokenShape::ShKeyword) => {
                 if (tok.clone().unwrap().text.clone().as_str() == "fn".to_string().as_str()) {
-                    parse_callable_type_expr(
-                        tokens.clone().advance(1),
-                        ctx.clone(),
-                        span.clone(),
-                    )
+                    parse_callable_type_expr(tokens.clone().advance(1), ctx.clone(), span.clone())
                 } else {
                     Rc::new(TypeResult {
                         type_expr: leaf_type_node("".to_string(), span.clone()),
@@ -4585,12 +4570,7 @@ pub fn parse_type_expr(tokens: TokenStream, ctx: Rc<ParseContext>) -> Rc<TypeRes
             }
             Some(TokenShape::ShIdent) => {
                 let n = tok.clone().unwrap().text.clone();
-                finish_type_expr_from_name(
-                    tokens.clone().advance(1),
-                    ctx.clone(),
-                    n,
-                    span.clone(),
-                )
+                finish_type_expr_from_name(tokens.clone().advance(1), ctx.clone(), n, span.clone())
             }
             _ => Rc::new(TypeResult {
                 type_expr: leaf_type_node("".to_string(), span.clone()),
@@ -5148,10 +5128,7 @@ pub fn parse_field(tokens: TokenStream, ctx: Rc<ParseContext>) -> Rc<FieldResult
     }
 }
 
-pub fn parse_optional_from_key(
-    tokens: TokenStream,
-    ctx: Rc<ParseContext>,
-) -> Rc<FromKeyResult> {
+pub fn parse_optional_from_key(tokens: TokenStream, ctx: Rc<ParseContext>) -> Rc<FromKeyResult> {
     {
         let tok = tokens.clone().first().cloned();
         let sh = match tok.clone() {
@@ -5817,10 +5794,7 @@ pub fn parse_uses_clause(tokens: TokenStream, ctx: Rc<ParseContext>) -> Rc<UsesR
         };
         if is_uses {
             {
-                let r = parse_uses_list(
-                    tokens.clone().advance(1),
-                    ctx,
-                );
+                let r = parse_uses_list(tokens.clone().advance(1), ctx);
                 if has_err(r.err.clone()) {
                     return r.clone();
                 }
@@ -6066,10 +6040,7 @@ pub fn parse_resource_config_acc(
     }
 }
 
-pub fn parse_optional_inferred(
-    tokens: TokenStream,
-    ctx: Rc<ParseContext>,
-) -> Rc<OptRetResult> {
+pub fn parse_optional_inferred(tokens: TokenStream, ctx: Rc<ParseContext>) -> Rc<OptRetResult> {
     match (*eat(tokens.clone(), Rc::new(ExpectedToken::ExpectArrow))).clone() {
         EatResult::EatConsumed { tokens: __ec, .. } => {
             let r = parse_type_expr(__ec.clone(), ctx);
@@ -6287,10 +6258,7 @@ pub fn parse_service_after_kw(
     }
 }
 
-pub fn parse_service_body(
-    tokens: TokenStream,
-    ctx: Rc<ParseContext>,
-) -> Rc<ServiceBodyResult> {
+pub fn parse_service_body(tokens: TokenStream, ctx: Rc<ParseContext>) -> Rc<ServiceBodyResult> {
     parse_service_entries(
         tokens.clone(),
         ctx,
@@ -6380,10 +6348,7 @@ pub fn parse_service_entries(
                         }
                     } else {
                         if (id.clone().as_str() == "transport".to_string().as_str()) {
-                            let r = parse_transport_binding(
-                                tokens.clone().advance(1),
-                                ctx.clone(),
-                            );
+                            let r = parse_transport_binding(tokens.clone().advance(1), ctx.clone());
                             if has_err(r.err.clone()) {
                                 return Rc::new(ServiceBodyResult {
                                     config: config.clone(),
@@ -6475,10 +6440,7 @@ pub fn parse_service_entries(
     }
 }
 
-pub fn parse_service_config_block(
-    tokens: TokenStream,
-    ctx: Rc<ParseContext>,
-) -> Rc<ConfigResult> {
+pub fn parse_service_config_block(tokens: TokenStream, ctx: Rc<ParseContext>) -> Rc<ConfigResult> {
     parse_config_fields(tokens, ctx, None, None, None, None, None, None)
 }
 
@@ -6615,10 +6577,7 @@ pub fn parse_config_fields(
     }
 }
 
-pub fn parse_transport_binding(
-    tokens: TokenStream,
-    ctx: Rc<ParseContext>,
-) -> Rc<TransportResult> {
+pub fn parse_transport_binding(tokens: TokenStream, ctx: Rc<ParseContext>) -> Rc<TransportResult> {
     {
         let span = token_span(tokens.clone().first().cloned());
         let dummy = local_transport_node(span);
@@ -6789,10 +6748,7 @@ pub fn parse_transport_binding(
     }
 }
 
-pub fn parse_rest_binding_body(
-    tokens: TokenStream,
-    ctx: Rc<ParseContext>,
-) -> Rc<TransportResult> {
+pub fn parse_rest_binding_body(tokens: TokenStream, ctx: Rc<ParseContext>) -> Rc<TransportResult> {
     parse_rest_fields(
         tokens,
         ctx,
@@ -6966,10 +6922,7 @@ pub fn parse_rest_fields(
     }
 }
 
-pub fn parse_shell_binding_body(
-    tokens: TokenStream,
-    ctx: Rc<ParseContext>,
-) -> Rc<TransportResult> {
+pub fn parse_shell_binding_body(tokens: TokenStream, ctx: Rc<ParseContext>) -> Rc<TransportResult> {
     parse_shell_fields(tokens, ctx, Rc::new(vec![]), None)
 }
 
@@ -7105,10 +7058,7 @@ pub fn parse_shell_fields(
     }
 }
 
-pub fn parse_file_binding_body(
-    tokens: TokenStream,
-    ctx: Rc<ParseContext>,
-) -> Rc<TransportResult> {
+pub fn parse_file_binding_body(tokens: TokenStream, ctx: Rc<ParseContext>) -> Rc<TransportResult> {
     parse_file_fields(tokens, ctx, None)
 }
 
@@ -7666,10 +7616,7 @@ pub fn parse_op_body_entries(
                 Some(TokenShape::ShIdent) => {
                     let id = tok.clone().unwrap().text.clone();
                     if (id.clone().as_str() == "transport".to_string().as_str()) {
-                        let r = parse_transport_binding(
-                            tokens.clone().advance(1),
-                            ctx.clone(),
-                        );
+                        let r = parse_transport_binding(tokens.clone().advance(1), ctx.clone());
                         if has_err(r.err.clone()) {
                             return Rc::new(OpBodyResult {
                                 inputs: inputs.clone(),
@@ -8123,10 +8070,7 @@ pub fn node_to_name_str(
     })
 }
 
-pub fn parse_exit_entries(
-    tokens: TokenStream,
-    ctx: Rc<ParseContext>,
-) -> Rc<ExitEntriesResult> {
+pub fn parse_exit_entries(tokens: TokenStream, ctx: Rc<ParseContext>) -> Rc<ExitEntriesResult> {
     parse_exit_entries_acc(tokens, ctx, Rc::new(vec![]))
 }
 
@@ -8216,10 +8160,7 @@ pub fn parse_exit_entries_acc(
     }
 }
 
-pub fn parse_operation_modifiers(
-    tokens: TokenStream,
-    ctx: Rc<ParseContext>,
-) -> Rc<ModsResult> {
+pub fn parse_operation_modifiers(tokens: TokenStream, ctx: Rc<ParseContext>) -> Rc<ModsResult> {
     parse_operation_modifiers_acc(tokens, ctx, Rc::new(vec![]))
 }
 
@@ -8241,8 +8182,7 @@ pub fn parse_operation_modifiers_acc(
         } else {
             if (kw.clone().as_str() == "readonly".to_string().as_str()) {
                 {
-                    let __tco_0 =
-                        tokens.advance(1);
+                    let __tco_0 = tokens.advance(1);
                     let __tco_1 = v1_rt::rc_list_push(acc, OperationModifier::Readonly);
                     tokens = __tco_0;
                     acc = __tco_1;
@@ -8251,8 +8191,7 @@ pub fn parse_operation_modifiers_acc(
             } else {
                 if (kw.clone().as_str() == "hermetic".to_string().as_str()) {
                     {
-                        let __tco_0 =
-                            tokens.advance(1);
+                        let __tco_0 = tokens.advance(1);
                         let __tco_1 = v1_rt::rc_list_push(acc, OperationModifier::Hermetic);
                         tokens = __tco_0;
                         acc = __tco_1;
@@ -8457,10 +8396,7 @@ pub fn parse_optional_response_block(
     }
 }
 
-pub fn parse_response_entries(
-    tokens: TokenStream,
-    ctx: Rc<ParseContext>,
-) -> Rc<RespEntriesResult> {
+pub fn parse_response_entries(tokens: TokenStream, ctx: Rc<ParseContext>) -> Rc<RespEntriesResult> {
     parse_response_entries_acc(tokens, ctx, Rc::new(vec![]))
 }
 
@@ -9259,10 +9195,7 @@ pub fn parse_capability(tokens: TokenStream, ctx: Rc<ParseContext>) -> Rc<CapRes
     }
 }
 
-pub fn parse_input_output_blocks(
-    tokens: TokenStream,
-    ctx: Rc<ParseContext>,
-) -> Rc<IOResult> {
+pub fn parse_input_output_blocks(tokens: TokenStream, ctx: Rc<ParseContext>) -> Rc<IOResult> {
     parse_io_blocks_acc(tokens, ctx, Rc::new(vec![]), Rc::new(vec![]))
 }
 
@@ -9922,17 +9855,13 @@ pub fn peek_is_node_decl(tokens: TokenStream) -> bool {
 pub fn is_constraint_bracket_after_ident(tokens: TokenStream) -> bool {
     match tokens.clone().get(1 as usize).cloned() {
         Some(t) => {
-            (is_lbracket_shape(t.shape.clone())
-                && is_constraint_bracket(tokens.clone().advance(1)))
+            (is_lbracket_shape(t.shape.clone()) && is_constraint_bracket(tokens.clone().advance(1)))
         }
         None => false,
     }
 }
 
-pub fn parse_constrained_assignment(
-    tokens: TokenStream,
-    ctx: Rc<ParseContext>,
-) -> Rc<ExprResult> {
+pub fn parse_constrained_assignment(tokens: TokenStream, ctx: Rc<ParseContext>) -> Rc<ExprResult> {
     {
         let span = token_span(tokens.clone().first().cloned());
         let dummy_expr = parse_recovery_placeholder();
@@ -10191,11 +10120,7 @@ pub fn parse_expr(tokens: TokenStream, ctx: Rc<ParseContext>) -> Rc<ExprResult> 
     parse_expr_bp(tokens, ctx, 0)
 }
 
-pub fn parse_expr_bp(
-    tokens: TokenStream,
-    ctx: Rc<ParseContext>,
-    min_bp: i64,
-) -> Rc<ExprResult> {
+pub fn parse_expr_bp(tokens: TokenStream, ctx: Rc<ParseContext>, min_bp: i64) -> Rc<ExprResult> {
     {
         let r = parse_prefix(tokens, ctx);
         if has_err(r.err.clone()) {
@@ -10549,11 +10474,7 @@ pub fn parse_prefix(tokens: TokenStream, ctx: Rc<ParseContext>) -> Rc<ExprResult
         let span = token_span(tok.clone());
         match sh {
             Some(TokenShape::ShBang) => {
-                let r = parse_expr_bp(
-                    tokens.clone().advance(1),
-                    ctx,
-                    12,
-                );
+                let r = parse_expr_bp(tokens.clone().advance(1), ctx, 12);
                 if has_err(r.err.clone()) {
                     return Rc::new(ExprResult {
                         expr: r.expr.clone(),
@@ -10577,11 +10498,7 @@ pub fn parse_prefix(tokens: TokenStream, ctx: Rc<ParseContext>) -> Rc<ExprResult
                 })
             }
             Some(TokenShape::ShMinus) => {
-                let r = parse_expr_bp(
-                    tokens.clone().advance(1),
-                    ctx,
-                    12,
-                );
+                let r = parse_expr_bp(tokens.clone().advance(1), ctx, 12);
                 if has_err(r.err.clone()) {
                     return Rc::new(ExprResult {
                         expr: r.expr.clone(),
@@ -10639,10 +10556,7 @@ pub fn parse_caret_expr(tokens: TokenStream, ctx: Rc<ParseContext>) -> Rc<ExprRe
                 })
             }
             Some(TokenShape::ShLParen) => {
-                let r = parse_expr(
-                    after_caret.clone().advance(1),
-                    ctx.clone(),
-                );
+                let r = parse_expr(after_caret.clone().advance(1), ctx.clone());
                 if has_err(r.err.clone()) {
                     return Rc::new(ExprResult {
                         expr: r.expr.clone(),
@@ -10977,10 +10891,7 @@ pub fn parse_ident_expr(
         let tokens = tokens.clone().advance(1);
         if tok_is_fat_arrow(tokens.clone().first().cloned()) {
             {
-                let r = parse_lambda_body(
-                    tokens.clone().advance(1),
-                    ctx,
-                );
+                let r = parse_lambda_body(tokens.clone().advance(1), ctx);
                 if has_err(r.err.clone()) {
                     return r.clone();
                 }
@@ -11092,10 +11003,7 @@ pub fn try_postfix(
                         })
                     } else {
                         {
-                            let r = parse_type_expr(
-                                tokens.clone().advance(1),
-                                ctx.clone(),
-                            );
+                            let r = parse_type_expr(tokens.clone().advance(1), ctx.clone());
                             if has_err(r.err.clone()) {
                                 return Rc::new(PostfixResult {
                                     expr: lhs.clone(),
@@ -11326,10 +11234,7 @@ pub fn parse_constraint_list(
             });
         }
         let kw_name = tok.clone().unwrap().text.clone();
-        let r = parse_expr(
-            tokens.clone().advance(1),
-            ctx.clone(),
-        );
+        let r = parse_expr(tokens.clone().advance(1), ctx.clone());
         if has_err(r.err.clone()) {
             return Rc::new(ConstraintsResult {
                 constraints: Rc::new(vec![]),
@@ -11454,10 +11359,7 @@ pub fn parse_index_or_slice(
         let ctx = r.ctx.clone();
         if tok_is_dot_dot(tokens.clone().first().cloned()) {
             {
-                let r = parse_expr(
-                    tokens.clone().advance(1),
-                    ctx.clone(),
-                );
+                let r = parse_expr(tokens.clone().advance(1), ctx.clone());
                 if has_err(r.err.clone()) {
                     return Rc::new(ExprResult {
                         expr: r.expr.clone(),
@@ -11648,10 +11550,7 @@ pub fn parse_single_arg(tokens: TokenStream, ctx: Rc<ParseContext>) -> Rc<ArgRes
                 } else {
                     if tok_is_colon(name_r.tokens.clone().first().cloned()) {
                         {
-                            let r = parse_expr(
-                                name_r.tokens.clone().advance(1),
-                                ctx,
-                            );
+                            let r = parse_expr(name_r.tokens.clone().advance(1), ctx);
                             if has_err(r.err.clone()) {
                                 return Rc::new(ArgResult {
                                     arg: dummy_arg,
@@ -12259,10 +12158,7 @@ pub fn looks_like_arm_start(tokens: TokenStream) -> bool {
                                 1,
                                 Rc::new(ExpectedToken::ExpectLBrace),
                             ) {
-                                scan_for_fat_arrow_after_braces(
-                                    tokens.clone().advance(2),
-                                    1,
-                                )
+                                scan_for_fat_arrow_after_braces(tokens.clone().advance(2), 1)
                             } else {
                                 false
                             }
@@ -12284,11 +12180,7 @@ pub fn peek_is_fat_arrow_at(tokens: TokenStream, offset: i64) -> bool {
     }
 }
 
-pub fn peek_is_expected_at(
-    tokens: TokenStream,
-    offset: i64,
-    expected: Rc<ExpectedToken>,
-) -> bool {
+pub fn peek_is_expected_at(tokens: TokenStream, offset: i64, expected: Rc<ExpectedToken>) -> bool {
     match tokens.get(offset as usize).cloned() {
         Some(t) => token_matches_expected(t.clone(), expected),
         None => false,
@@ -12346,10 +12238,7 @@ pub fn scan_for_fat_arrow_after_braces(mut remaining: TokenStream, mut depth: i6
 pub fn parse_optional_guard(tokens: TokenStream, ctx: Rc<ParseContext>) -> Rc<GuardResult> {
     if tok_is_keyword(tokens.clone().first().cloned(), "if".to_string()) {
         {
-            let r = parse_expr(
-                tokens.clone().advance(1),
-                ctx,
-            );
+            let r = parse_expr(tokens.clone().advance(1), ctx);
             if has_err(r.err.clone()) {
                 return Rc::new(GuardResult {
                     guard: None,
@@ -12395,11 +12284,7 @@ pub fn parse_pattern(tokens: TokenStream, ctx: Rc<ParseContext>) -> Rc<PatternRe
                     })
                 } else {
                     if is_uppercase_start(n.clone()) {
-                        parse_variant_pattern(
-                            tokens.clone().advance(1),
-                            ctx.clone(),
-                            n.clone(),
-                        )
+                        parse_variant_pattern(tokens.clone().advance(1), ctx.clone(), n.clone())
                     } else {
                         Rc::new(PatternResult {
                             pattern: Rc::new(MatchPattern::Bind { name: n.clone() }),
@@ -12490,10 +12375,7 @@ pub fn parse_variant_pattern(
         let span = token_span(tokens.clone().first().cloned());
         if tok_is_lbrace(tokens.clone().first().cloned()) {
             {
-                let r = parse_variant_bindings_brace(
-                    skip_newlines(tokens.clone().advance(1)),
-                    ctx,
-                );
+                let r = parse_variant_bindings_brace(skip_newlines(tokens.clone().advance(1)), ctx);
                 if has_err(r.err.clone()) {
                     return Rc::new(PatternResult {
                         pattern: Rc::new(MatchPattern::Wildcard),
@@ -12528,10 +12410,7 @@ pub fn parse_variant_pattern(
         } else {
             if tok_is_lparen(tokens.clone().first().cloned()) {
                 {
-                    let r = parse_pattern(
-                        tokens.clone().advance(1),
-                        ctx,
-                    );
+                    let r = parse_pattern(tokens.clone().advance(1), ctx);
                     if has_err(r.err.clone()) {
                         return Rc::new(PatternResult {
                             pattern: Rc::new(MatchPattern::Wildcard),
@@ -13014,10 +12893,7 @@ pub fn parse_record_literal(
     }
 }
 
-pub fn parse_field_init_list(
-    tokens: TokenStream,
-    ctx: Rc<ParseContext>,
-) -> Rc<FieldInitsResult> {
+pub fn parse_field_init_list(tokens: TokenStream, ctx: Rc<ParseContext>) -> Rc<FieldInitsResult> {
     parse_field_init_list_acc(tokens, ctx, Rc::new(vec![]))
 }
 
@@ -13088,10 +12964,7 @@ pub fn parse_field_init(tokens: TokenStream, ctx: Rc<ParseContext>) -> Rc<FieldI
                 let n = name_r.name.clone();
                 if tok_is_colon(name_r.tokens.clone().first().cloned()) {
                     {
-                        let r = parse_expr(
-                            name_r.tokens.clone().advance(1),
-                            ctx.clone(),
-                        );
+                        let r = parse_expr(name_r.tokens.clone().advance(1), ctx.clone());
                         if has_err(r.err.clone()) {
                             return Rc::new(FieldInitResult {
                                 field: dummy_fi.clone(),
@@ -13144,10 +13017,7 @@ pub fn parse_field_init(tokens: TokenStream, ctx: Rc<ParseContext>) -> Rc<FieldI
                         Some(t) => t.text.clone(),
                         None => "_".to_string(),
                     };
-                    let r = parse_expr(
-                        tokens.clone().advance(2),
-                        ctx.clone(),
-                    );
+                    let r = parse_expr(tokens.clone().advance(2), ctx.clone());
                     if has_err(r.err.clone()) {
                         return Rc::new(FieldInitResult {
                             field: dummy_fi.clone(),
@@ -13489,8 +13359,7 @@ pub fn collect_fn_lambda_params(
                 tokens = skip_newlines(name_r.tokens.clone());
                 if tok_is_comma(tokens.clone().first().cloned()) {
                     {
-                        let __tco_0 =
-                            tokens.advance(1);
+                        let __tco_0 = tokens.advance(1);
                         let __tco_1 = v1_rt::rc_list_push(
                             acc,
                             Rc::new(ParserParam {
@@ -13522,10 +13391,7 @@ pub fn collect_fn_lambda_params(
     }
 }
 
-pub fn try_lambda_params(
-    tokens: TokenStream,
-    ctx: Rc<ParseContext>,
-) -> Rc<LambdaCheckResult> {
+pub fn try_lambda_params(tokens: TokenStream, ctx: Rc<ParseContext>) -> Rc<LambdaCheckResult> {
     {
         let r = collect_lambda_idents(tokens.clone(), ctx.clone(), Rc::new(vec![]));
         if (r.success.clone() && ((r.params.clone().len() as i64) >= 2)) {
@@ -13637,12 +13503,7 @@ pub fn parse_string_interp(tokens: TokenStream, ctx: Rc<ParseContext>) -> Rc<Exp
                 } else {
                     Rc::new(vec![])
                 };
-                parse_interp_parts(
-                    tokens.clone().advance(1),
-                    ctx,
-                    parts_init,
-                    span.clone(),
-                )
+                parse_interp_parts(tokens.clone().advance(1), ctx, parts_init, span.clone())
             }
             _ => Rc::new(ExprResult {
                 expr: parse_recovery_expr(
@@ -13693,8 +13554,7 @@ pub fn parse_interp_parts(
                     new_parts
                 };
                 {
-                    let __tco_0 =
-                        tokens.advance(1);
+                    let __tco_0 = tokens.advance(1);
                     let __tco_1 = mid_parts;
                     tokens = __tco_0;
                     parts = __tco_1;
