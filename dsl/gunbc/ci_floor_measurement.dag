@@ -38,6 +38,17 @@ data gunbc_ci_host_container_memory_cap: ByteSize = byte_size(33578549248)
 
 data gunbc_ci_floor_conservative_fallback_width: Int = 4
 
+data gunbc_ci_floor_confirmed_safe_width: Int = 2
+
+data gunbc_ci_floor_confirmed_safe_width_disposition: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "std.realization_schedule",
+    decl_name: "Runnable",
+    field: WholeDeclaration
+  }
+}
+
 type JobCgroupPeakMeasurement
   = JobCgroupPeakMeasured { cgroup_peak: ByteSize }
   | JobCgroupPeakUnmeasured

@@ -26,7 +26,8 @@ import product.compute_fabric {
 }
 import gunbc.ci_floor_measurement {
   gunbc_ci_floor_per_shard_peak_rss_bytes,
-  gunbc_ci_floor_conservative_fallback_width
+  gunbc_ci_floor_conservative_fallback_width,
+  gunbc_ci_floor_confirmed_safe_width
 }
 import gunbc.ci_budget_tree { srv1_floor_memory_budget }
 import extdeps.cpu.ampere { altra_max_m12830_catalog }
@@ -277,12 +278,19 @@ fn gunbc_ci_floor_hardware_threads() -> HardwareThreadCount {
   altra_max_m12830_catalog.threads
 }
 
+fn gunbc_ci_floor_per_shard_effective(memory_budget: ByteSize) -> ByteSize {
+  let budget_count = byte_size_count(b: memory_budget)
+  let ceil_count = if gunbc_ci_floor_confirmed_safe_width <= 0 { budget_count } else { budget_count / gunbc_ci_floor_confirmed_safe_width }
+  let committed_count = byte_size_count(b: gunbc_ci_floor_per_shard_peak_rss_bytes())
+  byte_size(if committed_count >= ceil_count { committed_count } else { ceil_count })
+}
+
 fn gunbc_ci_floor_spawn_width_for_budget(memory_budget: ByteSize) -> HardwareThreadCount {
   memory_aware_spawn_width(
     shard_count: gunbc_ci_floor_breadth(),
     hardware_threads: gunbc_ci_floor_hardware_threads(),
     memory_budget: memory_budget,
-    per_shard_peak: gunbc_ci_floor_per_shard_peak_rss_bytes(),
+    per_shard_peak: gunbc_ci_floor_per_shard_effective(memory_budget: memory_budget),
     conservative_fallback_width: gunbc_ci_floor_conservative_fallback_width
   )
 }
@@ -300,7 +308,7 @@ fn gunbc_ci_floor_run_envelope(memory_budget_bytes: Int) -> ResourceEnvelope {
     shard_count: gunbc_ci_floor_breadth(),
     hardware_threads: gunbc_ci_floor_hardware_threads(),
     memory_budget: byte_size(memory_budget_bytes),
-    per_shard_peak: gunbc_ci_floor_per_shard_peak_rss_bytes(),
+    per_shard_peak: gunbc_ci_floor_per_shard_effective(memory_budget: byte_size(memory_budget_bytes)),
     conservative_fallback_width: gunbc_ci_floor_conservative_fallback_width
   )
 }
@@ -382,4 +390,21 @@ fn gunbc_ci_floor_plan_co_runs_heavy_without_serialization() -> Bool {
   floor_plan_serializes_heavy_resolves(
     dependencies: floor_dependencies_with(spec: gunbc_ci_spec, serialize_heavy: false)
   ) == false
+}
+
+fn witness_floor_confirmed_safe_width_bounds_actual_width() -> Bool {
+  let cap_budget = 8589934592
+  hardware_thread_count_value(t: gunbc_ci_floor_spawn_width(memory_budget_bytes: cap_budget))
+    <= gunbc_ci_floor_confirmed_safe_width
+}
+
+fn witness_floor_ceiling_clamps_stale_per_shard() -> Bool {
+  let runner_cap_bytes = 8589934592
+  let stale_bytes = 2254857830
+  let confirmed_safe = gunbc_ci_floor_confirmed_safe_width
+  let raw_width = runner_cap_bytes / stale_bytes
+  let ceil_per_shard = runner_cap_bytes / confirmed_safe
+  let eff_per_shard = if stale_bytes >= ceil_per_shard { stale_bytes } else { ceil_per_shard }
+  let clamped_width = runner_cap_bytes / eff_per_shard
+  raw_width > confirmed_safe && clamped_width <= confirmed_safe
 }
