@@ -2054,53 +2054,58 @@ mod compiler_tests {
                 // -----------------------------------------------------------------
                 // Report
                 // -----------------------------------------------------------------
-                eprintln!("\n--- CATEGORY (a): Per-module env-map structural bytes ---");
-                eprintln!("  bindings (HashMap<i64,Rc<TB>>):          {:>10} MiB  (capacity-slots × 17B)",
-                    a_bindings_structural / 1_048_576);
-                eprintln!("  recursive_type_set (HashMap<i64,bool>):  {:>10} MiB  (capacity-slots × 10B)",
-                    a_rectype_structural / 1_048_576);
-                eprintln!("  inductive_fields (HashMap<Str,Rc<..>>):  {:>10} MiB  (slots × 33B + key-heap)",
-                    a_indfields_structural / 1_048_576);
-                eprintln!("  source_indices (HashMap<Str,Rc<NLI>>):   {:>10} MiB  (slots × 33B + key-heap)",
-                    a_srcidx_structural / 1_048_576);
-                eprintln!("  func_env.sigs (HashMap<Str,Rc<FuncSig>>):{:>10} MiB  (slots × 33B + key-heap)",
-                    a_funcsigs_structural / 1_048_576);
-                eprintln!("  TOTAL (a) structural:                     {:>10} MiB", a_total_structural / 1_048_576);
-                eprintln!("  Shared leaf VALUES (unique TypeBinding payloads + name heap): {} MiB",
-                    a_shared_leaf_bytes / 1_048_576);
-                eprintln!("  TypeBinding distinct ptrs: {}  total slots: {}  replication: {:.1}x",
+                p!("\n--- CATEGORY (a): Per-module env-map structural bytes ---");
+                p!("  bindings (HashMap<i64,Rc<TB>>):          {:>10} KiB  ({} slots × 17B)",
+                    a_bindings_structural / 1024, a_bindings_structural / 17);
+                p!("  recursive_type_set (HashMap<i64,bool>):  {:>10} KiB  ({} slots × 10B)",
+                    a_rectype_structural / 1024, a_rectype_structural / 10);
+                p!("  inductive_fields (HashMap<Str,Rc<..>>):  {:>10} KiB  (slots × 33B + key-heap)",
+                    a_indfields_structural / 1024);
+                p!("  source_indices (HashMap<Str,Rc<NLI>>):   {:>10} KiB  (slots × 33B + key-heap)",
+                    a_srcidx_structural / 1024);
+                p!("  func_env.sigs (HashMap<Str,Rc<FuncSig>>):{:>10} KiB  (slots × 33B + key-heap)",
+                    a_funcsigs_structural / 1024);
+                p!("  TOTAL (a) structural:                     {:>10} KiB  ({} MiB)", a_total_structural / 1024, a_total_structural / 1_048_576);
+                p!("  Shared leaf VALUES (unique TypeBinding payloads + name heap): {} KiB",
+                    a_shared_leaf_bytes / 1024);
+                p!("  TypeBinding distinct ptrs: {}  total slots: {}  replication: {:.1}x",
                     unique_binding_ptrs.len(), total_binding_slots, replication_factor);
+                p!("  EXTRAPOLATED to 945 modules: (a) structural ~{} MiB",
+                    if num_typed_modules > 0 { a_total_structural / num_typed_modules * 945 / 1_048_576 } else { 0 });
 
-                eprintln!("\n--- CATEGORY (b): ItemRegistry bytes ---");
-                eprintln!("  per-module item_registries (summed):     {:>10} MiB  (slots × 33B + key-heap)",
-                    b_itemreg_structural / 1_048_576);
-                eprintln!("  graph-level item_registry (one shared):  {:>10} MiB",
-                    b_graph_itemreg_structural / 1_048_576);
+                p!("\n--- CATEGORY (b): ItemRegistry bytes ---");
+                p!("  per-module item_registries (summed):     {:>10} KiB  (slots × 33B + key-heap)",
+                    b_itemreg_structural / 1024);
+                p!("  graph-level item_registry (one shared):  {:>10} KiB",
+                    b_graph_itemreg_structural / 1024);
+                p!("  EXTRAPOLATED to 945 modules: (b) per-module ~{} MiB",
+                    if num_typed_modules > 0 { b_itemreg_structural / num_typed_modules * 945 / 1_048_576 } else { 0 });
 
-                eprintln!("\n--- CATEGORY (c): Node/SourceSpan/ExprData struct bytes (distinct Rc targets) ---");
-                eprintln!("  Unique Node allocations: {}  × {} B (struct+Rc) = {} MiB",
-                    seen_nodes.len(), node_size + 16, c_node_struct_bytes / 1_048_576);
-                eprintln!("  Unique SourceSpan allocs: {}  × {} B = {} MiB",
-                    seen_spans.len(), span_size + 16, c_span_struct_bytes / 1_048_576);
-                eprintln!("  Unique ExprData allocs: {}   × {} B = {} MiB",
-                    seen_exprs.len(), expr_size + 16, c_expr_struct_bytes / 1_048_576);
-                eprintln!("  TOTAL (c): {} MiB", c_total_bytes / 1_048_576);
-                eprintln!("  Note: {}", d_note);
+                p!("\n--- CATEGORY (c): Node/SourceSpan/ExprData struct bytes (distinct Rc targets) ---");
+                p!("  Unique Node allocations: {}  × {} B (struct+Rc) = {} KiB",
+                    seen_nodes.len(), node_size + 16, c_node_struct_bytes / 1024);
+                p!("  Unique SourceSpan allocs: {}  × {} B = {} KiB",
+                    seen_spans.len(), span_size + 16, c_span_struct_bytes / 1024);
+                p!("  Unique ExprData allocs: {}   × {} B = {} KiB",
+                    seen_exprs.len(), expr_size + 16, c_expr_struct_bytes / 1024);
+                p!("  TOTAL (c): {} KiB  ({} MiB)", c_total_bytes / 1024, c_total_bytes / 1_048_576);
+                p!("  EXTRAPOLATED to 945 modules: (c) node payloads ~{} MiB",
+                    if num_typed_modules > 0 { c_total_bytes / num_typed_modules * 945 / 1_048_576 } else { 0 });
 
-                eprintln!("\n--- SUMMARY ---");
+                p!("\n--- SUMMARY (sample: {} modules, floor: 945 modules) ---", num_typed_modules);
                 let all_measured = a_total_structural + a_shared_leaf_bytes
                     + b_itemreg_structural + b_graph_itemreg_structural
                     + c_total_bytes;
                 let rss_delta_bytes = rss_after_resolve.saturating_sub(rss_start) * 1024;
-                eprintln!("  RSS delta from resolve: {} MiB  ({} GiB)",
-                    rss_after_resolve.saturating_sub(rss_start) / 1024,
-                    rss_after_resolve.saturating_sub(rss_start) / 1_048_576);
-                eprintln!("  All measured categories sum: {} MiB", all_measured / 1_048_576);
-                eprintln!("  Unattributed (RSS delta - measured): {} MiB",
+                p!("  RSS delta from resolve: {} MiB",
+                    rss_after_resolve.saturating_sub(rss_start) / 1024);
+                p!("  All measured categories sum: {} KiB ({} MiB)", all_measured / 1024, all_measured / 1_048_576);
+                p!("  Unattributed (RSS delta - measured): {} MiB",
                     (rss_delta_bytes as i64 - all_measured as i64) / 1_048_576);
-                eprintln!("  (a) dominates? {}",
+                p!("  (a) dominates? {}",
                     if a_total_structural * 2 > all_measured { "YES — env-map structural dup is >50% of measured" }
                     else { "NO — other categories dominate" });
+                p!("  Results written to {}", out_path);
             })
             .expect("thread spawn failed")
             .join();
