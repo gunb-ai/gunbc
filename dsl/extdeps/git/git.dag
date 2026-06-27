@@ -77,6 +77,20 @@ service git.Core {
     }
   }
 
+  operation HeadCommit {
+    input {}
+    output {
+      sha: CommitSha from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["git", "rev-parse", "HEAD"] }
+    exit {
+      0 => Unit
+      128 => String "Not a git repository"
+    }
+  }
+
   operation RemoteBranches {
     input {}
     output { branches: List<String> from "stdout_lines" }
