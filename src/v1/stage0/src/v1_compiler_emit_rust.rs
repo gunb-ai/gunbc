@@ -4706,7 +4706,11 @@ pub fn import_module_enum_scope(
                     let mut __result = Vec::new();
                     for n in Rc::new({
                         let mut __result = Vec::new();
-                        for n in Rc::new(v1_rt::map_keys(&exported)).iter().cloned() {
+                        for n in Rc::new({
+                            let mut __keys = v1_rt::map_keys(&exported);
+                            __keys.sort();
+                            __keys
+                        }).iter().cloned() {
                             if (is_known_variant(type_summaries.clone(), n.clone())
                                 && (is_enum_in_summaries(type_summaries.clone(), n.clone())
                                     == false))
@@ -4874,7 +4878,11 @@ pub fn wildcard_import_pool_surface_names(
                             (*{
                                 let src_mod = authored_name_at(source_indices.clone(), imp.clone());
                                 let direct = match v1_rt::map_get(&export_sets, src_mod.clone()) {
-                                    Some(exported) => Rc::new(v1_rt::map_keys(&exported)),
+                                    Some(exported) => Rc::new({
+                                        let mut __keys = v1_rt::map_keys(&exported);
+                                        __keys.sort();
+                                        __keys
+                                    }),
                                     None => Rc::new(vec![]),
                                 };
                                 v1_rt::concat(
@@ -4912,7 +4920,11 @@ pub fn wildcard_reexport_surface_names(
 ) -> Rc<Vec<String>> {
     {
         let local_candidates = match v1_rt::map_get(&export_sets, import_module.clone()) {
-            Some(exported) => Rc::new(v1_rt::map_keys(&exported)),
+            Some(exported) => Rc::new({
+                let mut __keys = v1_rt::map_keys(&exported);
+                __keys.sort();
+                __keys
+            }),
             None => Rc::new(vec![]),
         };
         let wildcard_pool_candidates = wildcard_import_pool_surface_names(
