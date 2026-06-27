@@ -1,0 +1,83 @@
+module test.claim.output_policy_witness
+
+import gunbc.output_policy {
+  ClaimResult,
+  Condensed,
+  Diagnostic,
+  Full,
+  Instrumentation,
+  Normal,
+  OutputDecision,
+  Progress,
+  Quiet,
+  ShellTrace,
+  Suppressed,
+  Verbose,
+  Verbosity,
+  VerbosityEnv,
+  channel_decision,
+  resolve_verbosity
+}
+
+fn dec_is(d: OutputDecision, suppressed: Bool, condensed: Bool, full: Bool) -> Bool {
+  match d {
+    Suppressed => suppressed
+    Condensed => condensed
+    Full => full
+  }
+}
+
+fn verbosity_is_verbose(v: Verbosity) -> Bool {
+  match v { Verbose => true, _ => false }
+}
+
+fn verbosity_is_quiet(v: Verbosity) -> Bool {
+  match v { Quiet => true, _ => false }
+}
+
+fn verbosity_is_normal(v: Verbosity) -> Bool {
+  match v { Normal => true, _ => false }
+}
+
+fn w_diagnostic_never_hidden() -> Bool {
+  dec_is(d: channel_decision(channel: Diagnostic, verbosity: Quiet), suppressed: false, condensed: false, full: true) &&
+  dec_is(d: channel_decision(channel: Diagnostic, verbosity: Normal), suppressed: false, condensed: false, full: true) &&
+  dec_is(d: channel_decision(channel: Diagnostic, verbosity: Verbose), suppressed: false, condensed: false, full: true)
+}
+
+fn w_instrumentation_is_debug_only() -> Bool {
+  dec_is(d: channel_decision(channel: Instrumentation, verbosity: Normal), suppressed: true, condensed: false, full: false) &&
+  dec_is(d: channel_decision(channel: Instrumentation, verbosity: Quiet), suppressed: true, condensed: false, full: false) &&
+  dec_is(d: channel_decision(channel: Instrumentation, verbosity: Verbose), suppressed: false, condensed: false, full: true)
+}
+
+fn w_shell_trace_condenses_at_normal() -> Bool {
+  dec_is(d: channel_decision(channel: ShellTrace, verbosity: Normal), suppressed: false, condensed: true, full: false) &&
+  dec_is(d: channel_decision(channel: ShellTrace, verbosity: Quiet), suppressed: true, condensed: false, full: false) &&
+  dec_is(d: channel_decision(channel: ShellTrace, verbosity: Verbose), suppressed: false, condensed: false, full: true)
+}
+
+fn w_claim_result_shown_at_normal_hidden_at_quiet() -> Bool {
+  dec_is(d: channel_decision(channel: ClaimResult, verbosity: Normal), suppressed: false, condensed: false, full: true) &&
+  dec_is(d: channel_decision(channel: ClaimResult, verbosity: Quiet), suppressed: true, condensed: false, full: false)
+}
+
+fn w_progress_condenses_at_normal() -> Bool {
+  dec_is(d: channel_decision(channel: Progress, verbosity: Normal), suppressed: false, condensed: true, full: false) &&
+  dec_is(d: channel_decision(channel: Progress, verbosity: Quiet), suppressed: true, condensed: false, full: false)
+}
+
+fn w_verbose_wins_over_quiet() -> Bool {
+  verbosity_is_verbose(v: resolve_verbosity(env: VerbosityEnv { verbose: true, quiet: true })) &&
+  verbosity_is_quiet(v: resolve_verbosity(env: VerbosityEnv { verbose: false, quiet: true })) &&
+  verbosity_is_normal(v: resolve_verbosity(env: VerbosityEnv { verbose: false, quiet: false }))
+}
+
+test fn output_policy_witnesses() -> Bool {
+  w_diagnostic_never_hidden() &&
+  w_instrumentation_is_debug_only() &&
+  w_shell_trace_condenses_at_normal() &&
+  w_claim_result_shown_at_normal_hidden_at_quiet() &&
+  w_progress_condenses_at_normal() &&
+  w_verbose_wins_over_quiet()
+}

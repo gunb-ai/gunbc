@@ -3659,20 +3659,22 @@ pub fn materialize_shell_argv_for_operation(
     Ok(argv)
 }
 
+/// CLI output verbosity. Seed realization of the `gunbc.output_policy.Verbosity`
+/// authority (`dsl/gunbc/output_policy.dag`); resolution precedence mirrors that
+/// module's `resolve_verbosity` (verbose wins over quiet, default Normal). When
+/// the interpreter self-hosts, this dissolves into consuming the .dag policy.
 #[derive(Clone, Copy, PartialEq)]
-enum ShellTrace {
+pub enum Verbosity {
     Quiet,
     Normal,
     Verbose,
 }
 
-// Single funnel for shell-invocation tracing. Default (Normal) emits one concise
-// line per op; GUNBC_VERBOSE=1 restores the full multiline argv (debugging);
-// GUNBC_QUIET=1 suppresses it. Keeps CI logs readable instead of dumping every
-// `sh -c` script verbatim.
-fn shell_trace_policy() -> ShellTrace {
+/// Read the CLI verbosity once from the `GUNBC_VERBOSE` / `GUNBC_QUIET` env
+/// convention (the dispatch grounded by `gunbc.output_policy`).
+pub fn cli_verbosity() -> Verbosity {
     thread_local! {
-        static POLICY: Cell<Option<ShellTrace>> = const { Cell::new(None) };
+        static POLICY: Cell<Option<Verbosity>> = const { Cell::new(None) };
     }
     POLICY.with(|c| match c.get() {
         Some(p) => p,
@@ -3681,14 +3683,11 @@ fn shell_trace_policy() -> ShellTrace {
                 .map(|v| v == "1")
                 .unwrap_or(false)
             {
-                ShellTrace::Verbose
-            } else if std::env::var("GUNBC_QUIET")
-                .map(|v| v == "1")
-                .unwrap_or(false)
-            {
-                ShellTrace::Quiet
+                Verbosity::Verbose
+            } else if std::env::var("GUNBC_QUIET").map(|v| v == "1").unwrap_or(false) {
+                Verbosity::Quiet
             } else {
-                ShellTrace::Normal
+                Verbosity::Normal
             };
             c.set(Some(p));
             p
@@ -3696,11 +3695,15 @@ fn shell_trace_policy() -> ShellTrace {
     })
 }
 
+// The funnel for the ShellTrace channel. Applies the `gunbc.output_policy`
+// ShellTrace row: Quiet => Suppressed, Normal => Condensed (one concise line),
+// Verbose => Full (the verbatim multiline argv). Keeps CI logs readable instead
+// of dumping every `sh -c` script.
 fn render_shell_trace(argv: &[String]) {
-    match shell_trace_policy() {
-        ShellTrace::Quiet => {}
-        ShellTrace::Verbose => eprintln!("[shell] {}", argv.join(" ")),
-        ShellTrace::Normal => {
+    match cli_verbosity() {
+        Verbosity::Quiet => {}
+        Verbosity::Verbose => eprintln!("[shell] {}", argv.join(" ")),
+        Verbosity::Normal => {
             // Collapse newlines/runs of whitespace into a single readable line,
             // then truncate so a multiline `sh -c` script is one tidy summary.
             let collapsed: String = argv

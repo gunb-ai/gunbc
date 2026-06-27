@@ -1,0 +1,71 @@
+module gunbc.output_policy
+
+import std.types { Bool }
+
+type Verbosity = Quiet | Normal | Verbose
+
+type OutputDecision = Suppressed | Condensed | Full
+
+type OutputChannel
+  = Diagnostic
+  | ClaimResult
+  | Progress
+  | ShellTrace
+  | Instrumentation
+
+type VerbosityEnv {
+  verbose: Bool
+  quiet: Bool
+}
+
+fn resolve_verbosity(env: VerbosityEnv) -> Verbosity {
+  if env.verbose {
+    Verbose
+  } else if env.quiet {
+    Quiet
+  } else {
+    Normal
+  }
+}
+
+fn channel_decision(channel: OutputChannel, verbosity: Verbosity) -> OutputDecision {
+  match channel {
+    Diagnostic => Full
+    ClaimResult => match verbosity {
+      Quiet => Suppressed
+      Normal => Full
+      Verbose => Full
+    }
+    Progress => match verbosity {
+      Quiet => Suppressed
+      Normal => Condensed
+      Verbose => Full
+    }
+    ShellTrace => match verbosity {
+      Quiet => Suppressed
+      Normal => Condensed
+      Verbose => Full
+    }
+    Instrumentation => match verbosity {
+      Quiet => Suppressed
+      Normal => Suppressed
+      Verbose => Full
+    }
+  }
+}
+
+fn is_emitted(channel: OutputChannel, verbosity: Verbosity) -> Bool {
+  match channel_decision(channel: channel, verbosity: verbosity) {
+    Suppressed => false
+    Condensed => true
+    Full => true
+  }
+}
+
+fn is_condensed(channel: OutputChannel, verbosity: Verbosity) -> Bool {
+  match channel_decision(channel: channel, verbosity: verbosity) {
+    Condensed => true
+    Suppressed => false
+    Full => false
+  }
+}
