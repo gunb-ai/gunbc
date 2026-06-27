@@ -203,6 +203,30 @@ test fn program_set_e_byte_identical_holds() -> Bool {
 test fn program_set_e_has_teeth_holds() -> Bool {
   program_differs_from_oracle_of(p: prog_set_e(), other: prog_plain())
 }
+fn prog_multi_orch_raw() -> ShellProgram {
+  ShellProgram {
+    set_e: true,
+    statements: [
+      Assign {
+        name: "PROBE_BIN",
+        value: Concat { parts: [VarRef { name: "TMPDIR" }, Lit { text: "/probe_bin" }] }
+      },
+      Assign {
+        name: "TMPDIR",
+        value: CmdSubst { body: Command { words: [Lit { text: "mktemp" }, Lit { text: "-d" }] } }
+      },
+      cmd_true()
+    ]
+  }
+}
+
+test fn program_multi_orch_raw_byte_identical_holds() -> Bool {
+  program_emits_oracle(p: prog_multi_orch_raw())
+}
+
+test fn program_multi_orch_raw_has_teeth_holds() -> Bool {
+  program_differs_from_oracle_of(p: prog_multi_orch_raw(), other: prog_set_e())
+}
 
 fn stmt_emits_literal(s: ShellStmt, expected: String) -> Bool {
   match emit_shell_stmt(s: s) {
