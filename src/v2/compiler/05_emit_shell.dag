@@ -63,7 +63,8 @@ import extdeps.languages.bash.program {
   StderrToNull,
   StdoutAndStderrToNull,
   StdoutToStderr,
-  RedirToFile
+  RedirToFile,
+  serialize_redir
 }
 import v2.std.algebra { list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent }
 import v2.std.collection { List, Map }
