@@ -2112,7 +2112,34 @@ mod compiler_tests {
                     it_idx_slot += ix_bytes;
                     if it_idx_uptr.insert(ixp) { it_idx_phys += ix_bytes; }
                 }
+                let it_str_counts: Vec<usize> = graph.modules.iter().map(|m| m.type_env.intern_table.strings.len()).collect();
+                let it_str_total: usize = it_str_counts.iter().sum();
+                let it_str_max = it_str_counts.iter().max().copied().unwrap_or(0);
+                let it_str_min = it_str_counts.iter().min().copied().unwrap_or(0);
                 p!("\n--- InternTable (type_env.intern_table, {} modules) ---", it_total);
+                p!("  strings/table: min={} max={} avg={} (sum {} across modules)",
+                    it_str_min, it_str_max, it_str_total/it_total.max(1), it_str_total);
+                p!("  O(corpus^2) TELL: if avg strings/table ~= total distinct corpus strings, each table = whole-corpus copy");
+                // id-stability: are all per-module strings-Vecs IDENTICAL (same string at same id)?
+                if let Some(m0) = graph.modules.iter().next() {
+                    let ref0 = &m0.type_env.intern_table.strings;
+                    let mut identical = 0usize; let mut diff = 0usize; let mut first_diff = String::new();
+                    for m in graph.modules.iter() {
+                        let s = &m.type_env.intern_table.strings;
+                        if s.len() == ref0.len() && s.iter().zip(ref0.iter()).all(|(a,b)| a==b) {
+                            identical += 1;
+                        } else {
+                            diff += 1;
+                            if first_diff.is_empty() {
+                                let n = s.iter().zip(ref0.iter()).position(|(a,b)| a!=b).unwrap_or(0);
+                                first_diff = format!("len {} vs {}, first mismatch idx {}", s.len(), ref0.len(), n);
+                            }
+                        }
+                    }
+                    p!("  ID-STABILITY: {}/{} tables byte-identical to module[0] (diff {}) {}",
+                        identical, graph.modules.len(), diff, first_diff);
+                    p!("  => if all identical, ONE shared table preserves every string->id mapping (RAM-only win, zero semantic change)");
+                }
                 p!("  unique InternTable Rc: {}  unique strings-Vec Rc: {}  unique index-map Rc: {}",
                     it_uptr.len(), it_strvec_uptr.len(), it_idx_uptr.len());
                 p!("  strings: PHYS(unique vecs) {} MiB sample / SLOT(per-module sum) {} MiB sample",
