@@ -5392,9 +5392,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   let source_indices = fold(["Optional", "Present", "Absent", "value", "none"], init: source_indices, f: (acc, name) =>
     map_insert(acc, concat("<kernel:", name, ">"), build_newline_index(file: concat("<kernel:", name, ">"), source: name))
   )
-  let intern_table = fold(map_keys(kernel_type_set), init: intern_table, f: (t, name) => intern(table: t, s: name).table)
-  let intern_table = fold(["Optional", "Present", "Absent", "value", "none"], init: intern_table, f: (t, name) => intern(table: t, s: name).table)
-  let intern_table = fold(map_keys(compiler_recursive_types), init: intern_table, f: (t, name) => intern(table: t, s: name).table)
+  let intern_table = seed_kernel_intern_table(intern_table: intern_table)
   let kernel_bindings_base = fold(
     map_keys(kernel_type_set),
     init: empty_map(),
@@ -6127,8 +6125,15 @@ fn build_emit_graph_info(modules: List<TypedModule>) -> EmitGraphInfo {
   }
 }
 
-fn typecheck(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>, intern_table: InternTable) -> TypedGraph {
+fn seed_kernel_intern_table(intern_table: InternTable) -> InternTable {
+  let intern_table = fold(map_keys(kernel_type_set), init: intern_table, f: (t, name) => intern(table: t, s: name).table)
+  let intern_table = fold(["Optional", "Present", "Absent", "value", "none"], init: intern_table, f: (t, name) => intern(table: t, s: name).table)
+  let intern_table = fold(map_keys(compiler_recursive_types), init: intern_table, f: (t, name) => intern(table: t, s: name).table)
+  intern(table: intern_table, s: "Unit").table
+}
 
+fn typecheck(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>, intern_table: InternTable) -> TypedGraph {
+  let intern_table = seed_kernel_intern_table(intern_table: intern_table)
   typecheck_modules(
     remaining: graph.modules,
     modules: [],

@@ -2139,6 +2139,25 @@ mod compiler_tests {
                     p!("  ID-STABILITY: {}/{} tables byte-identical to module[0] (diff {}) {}",
                         identical, graph.modules.len(), diff, first_diff);
                     p!("  => if all identical, ONE shared table preserves every string->id mapping (RAM-only win, zero semantic change)");
+                    // EXPLICIT string->id MAP identity (cool-ram's make-or-break: same SET is necessary not sufficient)
+                    let idx0 = &m0.type_env.intern_table.index;
+                    let mut map_identical = 0usize; let mut map_diff = 0usize; let mut map_first = String::new();
+                    for m in graph.modules.iter() {
+                        let idx = &m.type_env.intern_table.index;
+                        let same = idx.len() == idx0.len()
+                            && idx.iter().all(|(k, v)| idx0.get(k) == Some(v));
+                        if same { map_identical += 1; } else {
+                            map_diff += 1;
+                            if map_first.is_empty() {
+                                if let Some((k, v)) = idx.iter().find(|(k, v)| idx0.get(*k) != Some(*v)) {
+                                    map_first = format!("string {:?}: id {} here vs {:?} in m0", k, v, idx0.get(k));
+                                }
+                            }
+                        }
+                    }
+                    p!("  MAP-IDENTITY (string->i64): {}/{} index-maps identical to module[0] (diff {}) {}",
+                        map_identical, graph.modules.len(), map_diff, map_first);
+                    p!("  intern id = next_id monotonic in first-seen order => identical maps PROVES order-stable ids (shared table = no-op)");
                 }
                 p!("  unique InternTable Rc: {}  unique strings-Vec Rc: {}  unique index-map Rc: {}",
                     it_uptr.len(), it_strvec_uptr.len(), it_idx_uptr.len());
