@@ -158,7 +158,8 @@ fn witness_release_build_eagain_tiers_wrap_build_command() -> Bool {
 
 fn witness_release_build_verifies_nonempty_artifacts() -> Bool {
   let script = ci_release_build_script()
-  string_contains(s: script, pattern: "-s") &&
+  string_contains(s: script, pattern: "--verify-build-artifacts") &&
+    string_contains(s: script, pattern: "$ROOT/target/release/gunbc") &&
     !string_contains(s: script, pattern: "-newer")
 }
 
