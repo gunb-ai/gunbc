@@ -2012,6 +2012,135 @@ mod compiler_tests {
                 indf.report("InductiveField vecs (type_env.inductive_fields)", scale, &mut emit);
                 iteminfo.report("ItemInfo (item_registry)", scale, &mut emit);
 
+                // ============ PHYSICAL reachable-node walk ============
+                // probe2 walked ONLY m.module + m.items (source AST). The resolve
+                // PAYLOADS (TypeBinding.resolved, FuncSig.inferred + params, node.inferred,
+                // node.match_pattern) reach a SEPARATE resolved-type node graph never counted.
+                // Seed seen-set with source AST, then extend via payloads, report the DELTA.
+                fn walk_phys(
+                    node: &std::rc::Rc<crate::v1_std_core::Node>,
+                    sn: &mut HashSet<usize>, sv: &mut HashSet<usize>,
+                    sp: &mut HashSet<usize>, se: &mut HashSet<usize>,
+                    si: &mut HashSet<usize>,
+                    vec_heap: &mut usize, name_heap: &mut usize,
+                ) {
+                    let a = std::rc::Rc::as_ptr(node) as usize;
+                    if !sn.insert(a) { return; }
+                    *name_heap += node.name.len();
+                    sp.insert(std::rc::Rc::as_ptr(&node.span) as usize);
+                    if let Some(ref is) = node.ident_span { sp.insert(std::rc::Rc::as_ptr(is) as usize); }
+                    se.insert(std::rc::Rc::as_ptr(&node.expr_data) as usize);
+                    for vrc in [&node.children, &node.params, &node.uses, &node.properties] {
+                        let vp = std::rc::Rc::as_ptr(vrc) as usize;
+                        if sv.insert(vp) { *vec_heap += 40 + vrc.capacity() * 8; }
+                    }
+                    for c in node.children.iter() { walk_phys(c, sn, sv, sp, se, si, vec_heap, name_heap); }
+                    for p in node.params.iter() { walk_phys(p, sn, sv, sp, se, si, vec_heap, name_heap); }
+                    for u in node.uses.iter() { walk_phys(u, sn, sv, sp, se, si, vec_heap, name_heap); }
+                    if let Some(ref b) = node.body { walk_phys(b, sn, sv, sp, se, si, vec_heap, name_heap); }
+                    if let Some(ref t) = node.transport { walk_phys(t, sn, sv, sp, se, si, vec_heap, name_heap); }
+                    for pr in node.properties.iter() { walk_phys(pr, sn, sv, sp, se, si, vec_heap, name_heap); }
+                    if let Some(ref ta) = node.type_annotation { walk_phys(ta, sn, sv, sp, se, si, vec_heap, name_heap); }
+                    // PAYLOAD edges probe2 missed:
+                    if let Some(ref inf) = node.inferred {
+                        if si.insert(std::rc::Rc::as_ptr(inf) as usize) {
+                            if let crate::v1_std_core::InferredNode::Resolved { node: rn } = inf.as_ref() {
+                                walk_phys(rn, sn, sv, sp, se, si, vec_heap, name_heap);
+                            }
+                        }
+                    }
+                }
+                let node_size = std::mem::size_of::<crate::v1_std_core::Node>();
+                let span_size = std::mem::size_of::<crate::v1_std_core::SourceSpan>();
+                let expr_size = std::mem::size_of::<crate::v1_std_core::ExprData>();
+                let (mut sn, mut sv, mut sp, mut se, mut si) =
+                    (HashSet::new(), HashSet::new(), HashSet::new(), HashSet::new(), HashSet::new());
+                let (mut vh, mut nh) = (0usize, 0usize);
+                // Phase 1: source AST only (probe2 baseline)
+                for m in graph.modules.iter() {
+                    walk_phys(&m.module, &mut sn, &mut sv, &mut sp, &mut se, &mut si, &mut vh, &mut nh);
+                    for it in m.items.iter() { walk_phys(it, &mut sn, &mut sv, &mut sp, &mut se, &mut si, &mut vh, &mut nh); }
+                }
+                let base_nodes = sn.len(); let base_vh = vh; let base_spans = sp.len(); let base_exprs = se.len();
+                // Phase 2: extend via resolve payloads (shared seen-set => only NEW nodes counted)
+                for m in graph.modules.iter() {
+                    for (_k, b) in m.type_env.bindings.iter() {
+                        walk_phys(&b.resolved, &mut sn, &mut sv, &mut sp, &mut se, &mut si, &mut vh, &mut nh);
+                    }
+                    for (_k, s) in m.func_env.signatures.iter() {
+                        walk_phys(&s.inferred, &mut sn, &mut sv, &mut sp, &mut se, &mut si, &mut vh, &mut nh);
+                        for p in s.params.iter() { walk_phys(p, &mut sn, &mut sv, &mut sp, &mut se, &mut si, &mut vh, &mut nh); }
+                    }
+                }
+                let pay_nodes = sn.len() - base_nodes;
+                let pay_vh = vh - base_vh;
+                let node_struct_b = node_size + 16;
+                let base_node_ram = base_nodes * node_struct_b + base_vh + base_spans * (span_size+16) + base_exprs * (expr_size+16) + nh;
+                let pay_node_ram = pay_nodes * node_struct_b + pay_vh + (sp.len()-base_spans)*(span_size+16) + (se.len()-base_exprs)*(expr_size+16);
+                p!("\n--- PHYSICAL reachable-node walk (source AST vs resolve payloads) ---");
+                p!("  source-AST nodes: {} ({} MiB)  [probe2 counted these]", base_nodes, base_node_ram/1_048_576);
+                p!("  PAYLOAD-only NEW nodes: {} ({} MiB sample, {} MiB @floor) [probe2 MISSED these]",
+                    pay_nodes, pay_node_ram/1_048_576, (pay_node_ram as f64 * scale) as usize/1_048_576);
+                p!("  InferredNode unique allocs: {}", si.len());
+                // physical struct shells for the replicated sig carrier
+                let sig_shell = std::mem::size_of::<crate::v1_compiler_infer_sigs::ResolvedFuncSig>() + 16;
+                let sig_ram = sig.total_slots * sig_shell;
+                let sigmap_backbone: usize = graph.modules.iter()
+                    .map(|m| m.func_env.signatures.capacity()*56 + m.func_env.signatures.keys().map(|k| k.len()+24).sum::<usize>())
+                    .sum();
+                p!("  ResolvedFuncSig struct shells: {} slots x {}B = {} MiB sample ({} MiB @floor)",
+                    sig.total_slots, sig_shell, sig_ram/1_048_576, (sig_ram as f64*scale) as usize/1_048_576);
+                p!("  func_env.signatures map backbone+keys: {} MiB sample ({} MiB @floor)",
+                    sigmap_backbone/1_048_576, (sigmap_backbone as f64*scale) as usize/1_048_576);
+
+                // ===== InternTable per-module (merged => O(corpus) strings x 945 modules?) =====
+                let mut it_total = 0usize; let mut it_uptr: HashSet<usize> = HashSet::new();
+                let mut it_strvec_uptr: HashSet<usize> = HashSet::new();
+                let mut it_idx_uptr: HashSet<usize> = HashSet::new();
+                let mut it_phys_strbytes = 0usize; let mut it_slot_strbytes = 0usize;
+                let mut it_idx_phys = 0usize; let mut it_idx_slot = 0usize;
+                for m in graph.modules.iter() {
+                    let it = &m.type_env.intern_table;
+                    it_total += 1;
+                    it_uptr.insert(std::rc::Rc::as_ptr(it) as usize);
+                    let svp = std::rc::Rc::as_ptr(&it.strings) as usize;
+                    let sv_bytes: usize = it.strings.iter().map(|s| s.len()+24).sum::<usize>() + it.strings.capacity()*24;
+                    it_slot_strbytes += sv_bytes;
+                    if it_strvec_uptr.insert(svp) { it_phys_strbytes += sv_bytes; }
+                    let ixp = std::rc::Rc::as_ptr(&it.index) as usize;
+                    let ix_bytes = it.index.capacity()*56 + it.index.keys().map(|k| k.len()+24).sum::<usize>();
+                    it_idx_slot += ix_bytes;
+                    if it_idx_uptr.insert(ixp) { it_idx_phys += ix_bytes; }
+                }
+                p!("\n--- InternTable (type_env.intern_table, {} modules) ---", it_total);
+                p!("  unique InternTable Rc: {}  unique strings-Vec Rc: {}  unique index-map Rc: {}",
+                    it_uptr.len(), it_strvec_uptr.len(), it_idx_uptr.len());
+                p!("  strings: PHYS(unique vecs) {} MiB sample / SLOT(per-module sum) {} MiB sample",
+                    it_phys_strbytes/1_048_576, it_slot_strbytes/1_048_576);
+                p!("  index-map: PHYS {} MiB / SLOT {} MiB sample ({} MiB @floor PHYS)",
+                    it_idx_phys/1_048_576, it_idx_slot/1_048_576, (it_idx_phys as f64*scale) as usize/1_048_576);
+                p!("  >>> intern PHYS total: {} MiB sample ({} MiB @floor) — if PHYS~=SLOT, each module has its OWN full-corpus table = O(corpus^2)",
+                    (it_phys_strbytes+it_idx_phys)/1_048_576, ((it_phys_strbytes+it_idx_phys) as f64*scale) as usize/1_048_576);
+
+                // ===== variant_provenance map-bucket heap (3-level nested HashMaps) =====
+                let mut vp_uptr: HashSet<usize> = HashSet::new(); let mut vp_bucket = 0usize;
+                for m in graph.modules.iter() {
+                    for (_k, s) in m.func_env.signatures.iter() {
+                        let vpp = std::rc::Rc::as_ptr(&s.variant_provenance) as usize;
+                        if vp_uptr.insert(vpp) {
+                            for (k1, l2) in s.variant_provenance.iter() {
+                                vp_bucket += s.variant_provenance.capacity()*56 + k1.len()+24;
+                                for (k2, l3) in l2.iter() {
+                                    vp_bucket += l2.capacity()*56 + k2.len()+24;
+                                    for (k3, _r) in l3.iter() { vp_bucket += l3.capacity()*56 + k3.len()+24; }
+                                }
+                            }
+                        }
+                    }
+                }
+                p!("\n--- variant_provenance map-bucket heap (unique {} maps) ---", vp_uptr.len());
+                p!("  3-level bucket heap: {} MiB sample ({} MiB @floor)", vp_bucket/1_048_576, (vp_bucket as f64*scale) as usize/1_048_576);
+
                 let phys_total = tb.phys_bytes + sig.phys_bytes + indf.phys_bytes + iteminfo.phys_bytes;
                 let reclaim_total = (tb.phys_bytes - tb.dedup_bytes)
                     + (sig.phys_bytes - sig.dedup_bytes)
