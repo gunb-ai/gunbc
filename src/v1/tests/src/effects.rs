@@ -2,11 +2,11 @@
 
 use std::collections::HashMap;
 use std::rc::Rc;
+use v1_compiler::extdeps_uri_path::{parse_path_template, PathTemplateParseResult};
 use v1_compiler::rest_transport_facts::{
     collect_rest_transport_operations, DeclaredRestTransportOp,
 };
 use v1_compiler::std_effects::*;
-use v1_compiler::extdeps_uri_path::{parse_path_template, PathTemplateParseResult};
 use v1_compiler::std_http_path::{has_path_params, last_path_param};
 use v1_compiler::std_types::HttpMethod;
 use v1_compiler::v1_compiler_parse::parse;
