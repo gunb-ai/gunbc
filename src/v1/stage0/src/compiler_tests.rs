@@ -1867,6 +1867,51 @@ mod compiler_tests {
         (h.finish(), bytes.len())
     }
 
+    // Whole-tree resolve RSS (= width-1 floor per-shard worst case) + diagnostics fingerprint.
+    // Run: GUNBC_FLOOR_RSS=1 ... probe_floor_rss -- --ignored --nocapture
+    #[test]
+    #[ignore]
+    fn probe_floor_rss() {
+        if std::env::var("GUNBC_FLOOR_RSS").is_err() {
+            eprintln!("probe_floor_rss: set GUNBC_FLOOR_RSS=1 to run");
+            return;
+        }
+        let result = std::thread::Builder::new()
+            .stack_size(512 * 1024 * 1024)
+            .spawn(|| {
+                fn rss_mib() -> u64 {
+                    std::fs::read_to_string("/proc/self/status").ok()
+                        .and_then(|s| s.lines().find(|l| l.starts_with("VmHWM"))
+                            .and_then(|l| l.split_whitespace().nth(1)).and_then(|v| v.parse::<u64>().ok()))
+                        .map(|kb| kb/1024).unwrap_or(0)
+                }
+                // Full floor corpus: every dsl + src/v2 module as an entry (src/v2 primary on dup paths).
+                let mut entries: Vec<(String,String)> = Vec::new();
+                for r in ["src/v2","dsl"] { for (p,c) in discover_dag_files(r) { entries.push((p,c)); } }
+                let sources = resolve_source_closure_primary3(entries, &["src/v2","dsl"]);
+                eprintln!("[floor-rss] closure {} modules; RSS before resolve {} MiB", sources.len(), rss_mib());
+                let rc_sources = std::rc::Rc::new(sources.iter().cloned().collect::<Vec<_>>());
+                let t = std::time::Instant::now();
+                let result = crate::v1_compiler_compile::compile_to_resolved(rc_sources);
+                let peak = rss_mib();
+                let g = result.graph.as_ref();
+                let nmod = g.map(|g| g.modules.len()).unwrap_or(0);
+                let ndiag = result.diagnostics.len();
+                // diagnostics fingerprint (semantic no-op oracle: must match baseline)
+                use std::hash::{Hash, Hasher};
+                let mut h = std::collections::hash_map::DefaultHasher::new();
+                for d in result.diagnostics.iter() { serde_json::to_vec(d).unwrap_or_default().hash(&mut h); }
+                let unique_intern: std::collections::HashSet<usize> = g.map(|g|
+                    g.modules.iter().map(|m| std::rc::Rc::as_ptr(&m.type_env.intern_table) as usize).collect()
+                ).unwrap_or_default();
+                eprintln!("[floor-rss] resolve {:?}  typed_modules {}  diagnostics {}  diag_fingerprint {:016x}",
+                    t.elapsed(), nmod, ndiag, h.finish());
+                eprintln!("[floor-rss] unique InternTable Rc across {} modules: {}", nmod, unique_intern.len());
+                eprintln!("[floor-rss] >>> PEAK VmHWM: {} MiB", peak);
+            }).expect("spawn").join();
+        result.expect("probe_floor_rss panicked");
+    }
+
     #[test]
     #[ignore]
     fn probe_payload_dedup() {
