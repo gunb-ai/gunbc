@@ -3762,6 +3762,8 @@ fn render_shell_trace(argv: &[String]) {
                 .split_whitespace()
                 .collect::<Vec<_>>()
                 .join(" ");
+            // Fallback column bound (no Viewport at the trace site); the single
+            // authority is `gunbc.output_policy.shell_trace_summary_max_columns`.
             const MAX: usize = 100;
             let summary = if collapsed.chars().count() > MAX {
                 let head: String = collapsed.chars().take(MAX).collect();
