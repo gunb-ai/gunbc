@@ -65,15 +65,21 @@ pub enum CacheWriteOutcome {
     AlreadyExists,
 }
 
-pub fn resolved_graph_cache_root() -> PathBuf {
-    std::env::var_os("GUNBC_RESOLVED_GRAPH_CACHE_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| {
-            let user_tag = std::env::var("USER")
-                .or_else(|_| std::env::var("USERNAME"))
-                .unwrap_or_else(|_| "shared".to_string());
-            std::env::temp_dir().join(format!("gunbc-rg-cache-{user_tag}"))
-        })
+/// The cross-process resolved-graph disk cache is **opt-in**: it activates only
+/// when `GUNBC_RESOLVED_GRAPH_CACHE_DIR` names a directory. With it unset the
+/// cache is entirely off (`None` — no read and no write).
+///
+/// Why opt-in and not a `temp_dir()` default: under the CI floor the cache is a
+/// net loss. Every commit changes the compiler binary, which is part of the
+/// content digest, so the floor re-colds each run and is overwhelmingly a miss;
+/// and both paths buffer a whole cache file in memory (a hit `read_to_end`s the
+/// verbose-JSON file, ~11x the packed graph; a miss `to_vec`s the whole JSON),
+/// so multi-GiB entries resolved across concurrent shards OOM the runner. The
+/// cache pays its worst cost exactly where it collects ~no benefit. (#5789 made
+/// it always-on via a `temp_dir()` default; this reverts to opt-in — its IO
+/// realization must stream, not buffer, before it is safe to default on.)
+pub fn resolved_graph_cache_root_from_env() -> Option<PathBuf> {
+    std::env::var_os("GUNBC_RESOLVED_GRAPH_CACHE_DIR").map(PathBuf::from)
 }
 
 fn extract_module_path(content: &str) -> Option<String> {
