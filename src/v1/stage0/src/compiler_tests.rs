@@ -1799,4 +1799,290 @@ mod compiler_tests {
             .join();
         result.expect("contracts_sidecar_wired_into_emit_scope panicked");
     }
+
+    // =========================================================================
+    // ENV-SIZE ATTRIBUTION PROBE 2 — src/v2-heavy sample, Node-Vec + char_codes
+    // Run: GUNBC_ENV_SIZE_PROBE2=1 CTRL_BUILD_BYPASS_SHIMS=1 RUSTC_WRAPPER=
+    //      CARGO_BUILD_JOBS=4 cargo test -p v1-compiler --release
+    //      probe_env_size_v2_heavy -- --ignored --nocapture
+    // =========================================================================
+
+    fn get_rss_kb2() -> u64 {
+        if let Ok(s) = std::fs::read_to_string("/proc/self/statm") {
+            if let Some(rss_pages) = s.split_whitespace().nth(1).and_then(|t| t.parse::<u64>().ok()) {
+                return rss_pages * 4;
+            }
+        }
+        0
+    }
+
+    fn walk_node_full(
+        node: &std::rc::Rc<crate::v1_std_core::Node>,
+        seen_nodes: &mut std::collections::HashSet<usize>,
+        seen_spans: &mut std::collections::HashSet<usize>,
+        seen_exprs: &mut std::collections::HashSet<usize>,
+        seen_vecs: &mut std::collections::HashSet<usize>,
+        node_name_heap: &mut usize,
+        node_vec_heap: &mut usize,
+    ) {
+        let node_addr = std::rc::Rc::as_ptr(node) as usize;
+        if !seen_nodes.insert(node_addr) {
+            return;
+        }
+        *node_name_heap += node.name.len();
+        seen_spans.insert(std::rc::Rc::as_ptr(&node.span) as usize);
+        if let Some(ref is) = node.ident_span {
+            seen_spans.insert(std::rc::Rc::as_ptr(is) as usize);
+        }
+        seen_exprs.insert(std::rc::Rc::as_ptr(&node.expr_data) as usize);
+        // 4 Rc<Vec<Rc<Node>>> fields: children, params, uses, properties
+        for vec_rc in [&node.children, &node.params, &node.uses, &node.properties] {
+            let vec_ptr = std::rc::Rc::as_ptr(vec_rc) as usize;
+            if seen_vecs.insert(vec_ptr) {
+                *node_vec_heap += 40; // Rc header (16) + Vec struct (24)
+                *node_vec_heap += vec_rc.capacity() * 8; // element array: cap × sizeof(Rc<Node>)
+            }
+        }
+        for child in node.children.iter() {
+            walk_node_full(child, seen_nodes, seen_spans, seen_exprs, seen_vecs, node_name_heap, node_vec_heap);
+        }
+        for p in node.params.iter() {
+            walk_node_full(p, seen_nodes, seen_spans, seen_exprs, seen_vecs, node_name_heap, node_vec_heap);
+        }
+        for u in node.uses.iter() {
+            walk_node_full(u, seen_nodes, seen_spans, seen_exprs, seen_vecs, node_name_heap, node_vec_heap);
+        }
+        if let Some(ref b) = node.body {
+            walk_node_full(b, seen_nodes, seen_spans, seen_exprs, seen_vecs, node_name_heap, node_vec_heap);
+        }
+        if let Some(ref t) = node.transport {
+            walk_node_full(t, seen_nodes, seen_spans, seen_exprs, seen_vecs, node_name_heap, node_vec_heap);
+        }
+        for prop in node.properties.iter() {
+            walk_node_full(prop, seen_nodes, seen_spans, seen_exprs, seen_vecs, node_name_heap, node_vec_heap);
+        }
+        if let Some(ref ta) = node.type_annotation {
+            walk_node_full(ta, seen_nodes, seen_spans, seen_exprs, seen_vecs, node_name_heap, node_vec_heap);
+        }
+    }
+
+    #[test]
+    #[ignore]
+    fn probe_env_size_v2_heavy() {
+        if std::env::var("GUNBC_ENV_SIZE_PROBE2").is_err() {
+            eprintln!("probe_env_size_v2_heavy: set GUNBC_ENV_SIZE_PROBE2=1 to run");
+            return;
+        }
+        let result = std::thread::Builder::new()
+            .stack_size(64 * 1024 * 1024)
+            .spawn(|| {
+                use std::collections::HashSet;
+                use std::io::Write as _;
+
+                let out_path = "/tmp/probe_env_size_v2.txt";
+                let mut out = std::fs::File::create(out_path).expect("open probe output");
+                macro_rules! p {
+                    ($($arg:tt)*) => {{
+                        let line = format!($($arg)*);
+                        eprintln!("{}", &line);
+                        writeln!(out, "{}", &line).ok();
+                        out.flush().ok();
+                    }}
+                }
+
+                let node_size = std::mem::size_of::<crate::v1_std_core::Node>();
+                let span_size = std::mem::size_of::<crate::v1_std_core::SourceSpan>();
+                let expr_size = std::mem::size_of::<crate::v1_std_core::ExprData>();
+                let rss_start = get_rss_kb2();
+
+                p!("\n=== ENV-SIZE PROBE 2 (src/v2-heavy) ===");
+                p!("  Node={} B  SourceSpan={} B  ExprData={} B", node_size, span_size, expr_size);
+                p!("  RSS at start: {} MiB", rss_start / 1024);
+
+                // Entry: 4 large pipeline files named by parent + 00_compile as top-level anchor
+                let entry_files = [
+                    "src/v2/compiler/06_translate.dag",
+                    "src/v2/std/compilers/target_model.dag",
+                    "src/v2/compiler/00_compile.dag",
+                    "src/v2/std/grammar.dag",
+                ];
+                let root = {
+                    let mut d = std::env::current_dir().expect("no cwd");
+                    loop {
+                        if d.join("Cargo.toml").exists() && d.join("dsl").exists() { break; }
+                        if !d.pop() { panic!("workspace root not found"); }
+                    }
+                    d
+                };
+                let entry_pairs: Vec<(String, String)> = entry_files.iter().filter_map(|p| {
+                    let full = root.join(p);
+                    std::fs::read_to_string(&full).ok().map(|content| (p.to_string(), content))
+                }).collect();
+                p!("  Entry files loaded: {}", entry_pairs.len());
+
+                let sources = resolve_source_closure(entry_pairs, &["dsl", "src/v2"]);
+                let module_count = sources.len();
+                p!("  Closure size: {} modules (dsl+src/v2 pool)", module_count);
+
+                let t_resolve = std::time::Instant::now();
+                let rc_sources = std::rc::Rc::new(sources.iter().map(|s| s.clone()).collect::<Vec<_>>());
+                let result = crate::v1_compiler_compile::compile_to_resolved(rc_sources);
+                let elapsed_resolve = t_resolve.elapsed();
+
+                let rss_after = get_rss_kb2();
+                p!("  Resolve: {:?}  RSS after: {} MiB  (+{} MiB)",
+                    elapsed_resolve, rss_after / 1024, rss_after.saturating_sub(rss_start) / 1024);
+
+                let graph = match result.graph.as_ref() {
+                    Some(g) => g.clone(),
+                    None => {
+                        p!("  ERROR: no graph ({} diagnostics) — first 3:", result.diagnostics.len());
+                        for d in result.diagnostics.iter().take(3) {
+                            p!("    {:?}", d);
+                        }
+                        return;
+                    }
+                };
+                let num_modules = graph.modules.len();
+                p!("  TypedModules in graph: {}", num_modules);
+
+                // ---- (a) env-map structural ----
+                let mut a_bindings: usize = 0;
+                let mut a_rectype: usize = 0;
+                let mut a_indfields: usize = 0;
+                let mut a_srcidx: usize = 0;
+                let mut a_funcsigs: usize = 0;
+                let mut unique_tb_ptrs: HashSet<usize> = HashSet::new();
+                let mut total_tb_slots: usize = 0;
+
+                // ---- (b) item registry ----
+                let mut b_itemreg: usize = 0;
+
+                // ---- (2) char_codes ----
+                let mut seen_nli_ptrs: HashSet<usize> = HashSet::new();
+                let mut char_codes_bytes: usize = 0;
+                let mut offsets_bytes: usize = 0;
+                let mut unique_nli_count: usize = 0;
+
+                for m in graph.modules.iter() {
+                    let env = &m.type_env;
+                    a_bindings += env.bindings.capacity() * 17;
+                    for (_k, v) in env.bindings.iter() {
+                        total_tb_slots += 1;
+                        unique_tb_ptrs.insert(std::rc::Rc::as_ptr(v) as usize);
+                    }
+                    a_rectype += env.recursive_type_set.capacity() * 10;
+                    a_indfields += env.inductive_fields.capacity() * 33
+                        + env.inductive_fields.keys().map(|k| k.len()).sum::<usize>();
+                    let si_cap = env.source_indices.capacity();
+                    let si_key: usize = env.source_indices.keys().map(|k| k.len()).sum();
+                    a_srcidx += si_cap * 33 + si_key;
+                    a_funcsigs += m.func_env.signatures.capacity() * 33
+                        + m.func_env.signatures.keys().map(|k| k.len()).sum::<usize>();
+                    b_itemreg += m.item_registry.capacity() * 33
+                        + m.item_registry.keys().map(|k| k.len()).sum::<usize>();
+
+                    // char_codes: walk unique NewlineIndex allocations
+                    for (_k, nli) in env.source_indices.iter() {
+                        let ptr = std::rc::Rc::as_ptr(nli) as usize;
+                        if seen_nli_ptrs.insert(ptr) {
+                            unique_nli_count += 1;
+                            char_codes_bytes += nli.char_codes.len() * 8;
+                            offsets_bytes += nli.offsets.len() * 8;
+                        }
+                    }
+                }
+
+                let replication = if unique_tb_ptrs.is_empty() { 0.0f64 }
+                    else { total_tb_slots as f64 / unique_tb_ptrs.len() as f64 };
+                let a_total = a_bindings + a_rectype + a_indfields + a_srcidx + a_funcsigs;
+
+                // ---- (c) + (1) node walk ----
+                let mut seen_nodes: HashSet<usize> = HashSet::new();
+                let mut seen_spans: HashSet<usize> = HashSet::new();
+                let mut seen_exprs: HashSet<usize> = HashSet::new();
+                let mut seen_vecs: HashSet<usize> = HashSet::new();
+                let mut node_name_heap: usize = 0;
+                let mut node_vec_heap: usize = 0;
+
+                for m in graph.modules.iter() {
+                    walk_node_full(&m.module, &mut seen_nodes, &mut seen_spans, &mut seen_exprs,
+                        &mut seen_vecs, &mut node_name_heap, &mut node_vec_heap);
+                    for item in m.items.iter() {
+                        walk_node_full(item, &mut seen_nodes, &mut seen_spans, &mut seen_exprs,
+                            &mut seen_vecs, &mut node_name_heap, &mut node_vec_heap);
+                    }
+                }
+                let c_nodes = seen_nodes.len() * (node_size + 16);
+                let c_spans = seen_spans.len() * (span_size + 16);
+                let c_exprs = seen_exprs.len() * (expr_size + 16);
+                let c_total = c_nodes + c_spans + c_exprs;
+
+                // ---- Report ----
+                p!("\n--- (a) Per-module env-map structural bytes ({} modules) ---", num_modules);
+                p!("  bindings (i64->Rc<TB>):              {:>8} KiB  ({} slots, replication {:.1}x)",
+                    a_bindings / 1024, total_tb_slots, replication);
+                p!("  recursive_type_set (i64->bool):      {:>8} KiB", a_rectype / 1024);
+                p!("  inductive_fields (Str->Rc<..>):      {:>8} KiB", a_indfields / 1024);
+                p!("  source_indices (Str->Rc<NLI>) STRUCT:{:>8} KiB  (backbone only, key heap incl)", a_srcidx / 1024);
+                p!("  func_env.sigs (Str->Rc<FuncSig>):   {:>8} KiB", a_funcsigs / 1024);
+                p!("  TOTAL (a):                           {:>8} KiB  ({} MiB)", a_total / 1024, a_total / 1_048_576);
+
+                p!("\n--- (b) ItemRegistry ({} modules) ---", num_modules);
+                p!("  per-module item_registries:          {:>8} KiB  ({} MiB)", b_itemreg / 1024, b_itemreg / 1_048_576);
+
+                p!("\n--- (c) Distinct Rc struct bytes (node walk) ---");
+                p!("  {} unique Nodes × {} B =              {:>8} KiB", seen_nodes.len(), node_size+16, c_nodes/1024);
+                p!("  {} unique SourceSpans × {} B =        {:>8} KiB", seen_spans.len(), span_size+16, c_spans/1024);
+                p!("  {} unique ExprData × {} B =           {:>8} KiB", seen_exprs.len(), expr_size+16, c_exprs/1024);
+                p!("  TOTAL (c):                           {:>8} KiB  ({} MiB)", c_total/1024, c_total/1_048_576);
+
+                p!("\n--- (1) Node-internal Vec heap (Rc<Vec<Rc<Node>>> × 4 fields) ---");
+                p!("  {} unique Rc<Vec> allocs: 40B header+struct + cap×8B elements", seen_vecs.len());
+                p!("  Node.name String heap:               {:>8} KiB", node_name_heap / 1024);
+                p!("  Vec Rc+struct+element arrays:        {:>8} KiB  ({} MiB)", node_vec_heap / 1024, node_vec_heap / 1_048_576);
+                p!("  TOTAL (1) Node-internal heap:        {:>8} KiB  ({} MiB)",
+                    (node_name_heap + node_vec_heap) / 1024, (node_name_heap + node_vec_heap) / 1_048_576);
+
+                p!("\n--- (2) char_codes (Rc<Vec<i64>>) in NewlineIndex, UNIQUE ptrs ---");
+                p!("  {} unique NewlineIndex allocations (= distinct source files in graph)", unique_nli_count);
+                p!("  char_codes total:                    {:>8} KiB  ({} MiB)", char_codes_bytes / 1024, char_codes_bytes / 1_048_576);
+                p!("  offsets total:                       {:>8} KiB", offsets_bytes / 1024);
+                p!("  char_codes per source file avg:      {:>8} KiB", if unique_nli_count > 0 { char_codes_bytes / unique_nli_count / 1024 } else { 0 });
+                p!("  EXTRAPOLATED to floor (900 files):   {:>8} MiB",
+                    if unique_nli_count > 0 { char_codes_bytes / unique_nli_count * 900 / 1_048_576 } else { 0 });
+
+                p!("\n--- FULL ATTRIBUTION SUMMARY ({} modules) ---", num_modules);
+                let rss_delta = rss_after.saturating_sub(rss_start);
+                let all_measured = a_total + b_itemreg + c_total + node_name_heap + node_vec_heap + char_codes_bytes + offsets_bytes;
+                let rss_delta_bytes = rss_delta * 1024;
+                p!("  RSS delta: {} MiB  ({} GiB)", rss_delta / 1024, rss_delta / 1_048_576);
+                p!("  (a) env-map structural:  {:>7} MiB", a_total / 1_048_576);
+                p!("  (b) ItemRegistry:        {:>7} MiB", b_itemreg / 1_048_576);
+                p!("  (c) Rc struct bytes:     {:>7} MiB", c_total / 1_048_576);
+                p!("  (1) Node-Vec heap:       {:>7} MiB  (name+{} vecs)", (node_name_heap + node_vec_heap) / 1_048_576, seen_vecs.len());
+                p!("  (2) char_codes+offsets:  {:>7} MiB  ({} unique files × avg {} KiB)",
+                    (char_codes_bytes + offsets_bytes) / 1_048_576, unique_nli_count,
+                    if unique_nli_count > 0 { char_codes_bytes / unique_nli_count / 1024 } else { 0 });
+                p!("  Sum of above:            {:>7} MiB", all_measured / 1_048_576);
+                p!("  Still unattributed:      {:>7} MiB  ({:.0}% of RSS delta)",
+                    (rss_delta_bytes as i64 - all_measured as i64) / 1_048_576,
+                    if rss_delta_bytes > 0 { (rss_delta_bytes as i64 - all_measured as i64).max(0) as f64 / rss_delta_bytes as f64 * 100.0 } else { 0.0 });
+                p!("  Dominant category: {}",
+                    {
+                        let cats = [
+                            ("(a) env-map structural", a_total),
+                            ("(b) ItemRegistry", b_itemreg),
+                            ("(c) Rc struct bytes", c_total),
+                            ("(1) Node-Vec heap", node_name_heap + node_vec_heap),
+                            ("(2) char_codes+offsets", char_codes_bytes + offsets_bytes),
+                        ];
+                        cats.iter().max_by_key(|&&(_, b)| b).map(|(n, _)| *n).unwrap_or("unknown")
+                    });
+                p!("  Results written to {}", out_path);
+            })
+            .expect("thread spawn failed")
+            .join();
+        result.expect("probe_env_size_v2_heavy panicked");
+    }
 }
