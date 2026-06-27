@@ -8,7 +8,6 @@ import v2.workflow.orch_env_lower { lower_env_bindings }
 import extdeps.communication.medium { Medium }
 import v2.extdeps.languages.bash {
   orch_run_emitted_command,
-  orch_run_target_model,
   orch_seq2_emitted_command,
   orch_seq2_target_model,
   orch_retry_emitted_command,
@@ -51,23 +50,10 @@ fn orch_emit_facts_lookup(key: Node) -> Witness<InferredFacts> {
   }
 }
 
-data orch_run_env_reduction_dissolution_trigger: String = "orchestration_emit Run/Step/Retry path reduces onto emit_shell_stmt: an env-FREE Run lowers to a RawLine carrying the command and is delegated to emit_shell_stmt now (single orch_raw, green path, proven byte-identical by orch_run_empty_env_delegates_to_shell_emit). An env-BEARING Run lowers via lower_env_bindings (orch_env_lower.dag) to a nested EnvPrefixed/EnvUnsetCmd tree over the Run.env FreeMonoid with a RawLine command at the leaf, then delegates to emit_shell_stmt. BOTH blockers are now cleared: (1) the emit-kernel String<->List-Int-codepoint straddle is FIXED by #5841 (free_monoid_to_string grounding; program_multi_orch_raw_byte_identical_holds green-by-execution); (2) the bash AST now models EnvUnsetCmd (env -u NAME) and multi-binding via nesting, proven byte-identical by stmt_env_unset_byte_identical_holds and stmt_env_multi_binding_byte_identical_holds (#5846). orch_emit_run_env_welded DISSOLVES WHEN the integration follow-on lands: replace the orch_emit_run_env_welded call with emit_shell_stmt(lower_env_bindings(env: r.env, command: RawLine { text: r.command })) and delete the weld scaffold (deletion-is-receipt). Verify by orch_run_multi_binding_env_emits_correctly (multi EnvSet + EnvUnset oracle) going green-by-execution."
+data orch_run_env_reduction_dissolution_trigger: String = "DISSOLVED. orchestration_emit Run path reduces fully onto emit_shell_stmt via lower_env_bindings (orch_env_lower.dag): env-FREE Run lowers to RawLine (proven byte-identical by orch_run_empty_env_delegates_to_shell_emit_holds); env-BEARING Run lowers via lower_env_bindings to a nested EnvPrefixed/EnvUnsetCmd ShellStmt tree over the Run.env FreeMonoid, then delegates to emit_shell_stmt (proven byte-identical + discriminating by orch_run_multi_binding_env_emits_correctly). orch_emit_run_env_welded DELETED as dissolution receipt (#5841 kernel straddle + #5846 bash AST EnvUnsetCmd + lower_env_bindings = all blockers cleared)."
 
 fn orch_emit_run(r: Run) -> Outcome<Medium<String>> {
-  match list_head(xs: r.env) {
-    HeadAbsent => emit_shell_stmt(s: RawLine { text: r.command })
-    HeadFound { value: _ } => orch_emit_run_env_welded(r: r)
-  }
-}
-
-fn orch_emit_run_env_welded(r: Run) -> Outcome<Medium<String>> {
-  emit(
-    tree: InferredTree {
-      root: orch_run_emitted_command,
-      facts: Map { lookup: orch_emit_facts_lookup }
-    },
-    target: orch_run_target_model(r: r)
-  )
+  emit_shell_stmt(s: lower_env_bindings(env: r.env, command: RawLine { text: r.command }))
 }
 
 fn orch_emit_join2(left: String, right: String) -> Outcome<Medium<String>> {

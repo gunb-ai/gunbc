@@ -8,7 +8,8 @@ import v2.std.orchestration {
   Do,
   Pipeline,
   FailFast,
-  EnvSet
+  EnvSet,
+  EnvUnset
 }
 import v2.std.collection { Absent }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
@@ -90,8 +91,37 @@ test fn orch_run_empty_env_delegates_to_shell_emit_holds() -> Bool {
 }
 
 test fn orch_run_env_reduction_trigger_recorded_holds() -> Bool {
-  string_contains(s: orch_run_env_reduction_dissolution_trigger, pattern: "EnvPrefixed")
-    && string_contains(s: orch_run_env_reduction_dissolution_trigger, pattern: "EnvUnset")
+  string_contains(s: orch_run_env_reduction_dissolution_trigger, pattern: "DISSOLVED")
+    && string_contains(s: orch_run_env_reduction_dissolution_trigger, pattern: "EnvUnsetCmd")
     && string_contains(s: orch_run_env_reduction_dissolution_trigger, pattern: "lower_env_bindings")
-    && string_contains(s: orch_run_env_reduction_dissolution_trigger, pattern: "DISSOLVES WHEN")
+    && string_contains(s: orch_run_env_reduction_dissolution_trigger, pattern: "DELETED")
+}
+
+fn orch_run_multi_binding_env() -> Run {
+  Run {
+    command: "cargo build",
+    env: [EnvSet { name: "CARGO_BUILD_JOBS", value: "1" }, EnvUnset { name: "TMPDIR" }],
+    redirect: Absent,
+    capture: Absent
+  }
+}
+
+fn orch_run_multi_binding_env_oracle() -> String {
+  "CARGO_BUILD_JOBS=1 env -u TMPDIR cargo build"
+}
+
+test fn orch_run_multi_binding_env_emits_correctly_holds() -> Bool {
+  match orch_emit_run(r: orch_run_multi_binding_env()) {
+    Accepted { value: src, diagnostics: dg } =>
+      (src.carried == orch_run_multi_binding_env_oracle()) && (dg == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn orch_run_multi_binding_env_has_teeth_holds() -> Bool {
+  match orch_emit_run(r: orch_run_multi_binding_env()) {
+    Accepted { value: src, diagnostics: _ } =>
+      src.carried != "CARGO_BUILD_JOBS=1 cargo build"
+    Rejected { diagnostics: _ } => false
+  }
 }
