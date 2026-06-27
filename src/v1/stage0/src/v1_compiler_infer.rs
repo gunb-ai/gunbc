@@ -12904,33 +12904,36 @@ pub fn build_module_context(
         );
         // Build per-variant disambiguation: variant_name → Some(unique parent enum in source
         // module) when the import unambiguously identifies the owning coproduct, else None.
-        // Uses the SOURCE module's bindings (not the current module's transitive env) so that
-        // e.g. `import std.cache_interface { ApiKey }` resolves to AuthScope (the only enum in
-        // std.cache_interface with ApiKey), not AuthScheme (from std.types, which transits in).
+        // Uses the SOURCE module's LOCALLY-DEFINED items (not the transitive type_env.bindings)
+        // so that transitive imports don't pollute the lookup. E.g.:
+        //   `import std.cache_interface { ApiKey }` → AuthScope (local to cache_interface),
+        //     not AuthScheme (from std.types which transits in via std.cache_interface).
+        //   `import v2.std.collection { Absent, Present }` → Optional (local to collection),
+        //     not NamedEdgeTargetLookup (from v2.std.node which transits in).
         let imported_variants: HashMap<String, Option<String>> = {
             let mut map: HashMap<String, Option<String>> = HashMap::new();
             for imp in resolved_imports.iter().cloned() {
-                let source_bindings: Vec<Rc<TypeBinding>> =
+                let source_items: Vec<Rc<Node>> =
                     match v1_rt::map_get(&parent_index, imp.module_path.clone()) {
-                        Some(parent_tm) => v1_rt::map_values(&parent_tm.type_env.bindings),
+                        Some(parent_tm) => (*parent_tm.items).clone(),
                         None => vec![],
                     };
                 for variant_name in imp.specific_names.iter().cloned() {
                     if map.contains_key(&variant_name) {
                         continue;
                     }
-                    let parents: Vec<String> = source_bindings
+                    let parents: Vec<String> = source_items
                         .iter()
-                        .filter(|b| b.resolved.connective == Connective::Disj)
-                        .filter_map(|b| {
-                            let has_child = b.resolved.children.iter().any(|c| {
+                        .filter(|item| item.connective == Connective::Disj)
+                        .filter_map(|item| {
+                            let has_child = item.children.iter().any(|c| {
                                 authored_name_at(env.source_indices.clone(), c.clone())
                                     == variant_name
                             });
                             if has_child {
                                 Some(authored_name_at(
                                     env.source_indices.clone(),
-                                    b.resolved.clone(),
+                                    (*item).clone(),
                                 ))
                             } else {
                                 None
