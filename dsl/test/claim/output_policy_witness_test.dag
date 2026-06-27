@@ -16,7 +16,7 @@ import gunbc.output_policy {
   Verbosity,
   VerbosityEnv,
   channel_decision,
-  gunbc_verbosity_env_vars,
+  env_var_for,
   resolve_verbosity,
   shell_trace_summary_max_columns
 }
@@ -76,8 +76,8 @@ fn w_verbose_wins_over_quiet() -> Bool {
 }
 
 fn w_env_var_dispatch_names_grounded() -> Bool {
-  gunbc_verbosity_env_vars.verbose == "GUNBC_VERBOSE" &&
-  gunbc_verbosity_env_vars.quiet == "GUNBC_QUIET"
+  env_var_for(v: Verbose) == "GUNBC_VERBOSE" &&
+  env_var_for(v: Quiet) == "GUNBC_QUIET"
 }
 
 fn w_shell_trace_cap_is_authority() -> Bool {
