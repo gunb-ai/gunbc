@@ -1,7 +1,7 @@
 module extdeps.github.pulls
 
 import extdeps.github.github { GitHubUser, default_api_base, default_per_page }
-import std.types { CommitSha, FilePath, GitRef, Timestamp, Url, HttpMethod, AuthScheme }
+import std.types { CommitSha, FilePath, GitRef, NonEmptyStr, Timestamp, HttpMethod, AuthScheme }
 import extdeps.github.errors { GitHubErrorShape }
 import std.credentials { CredentialSource, EnvVar }
 import std.serialization { WireFormat, Text }
@@ -38,7 +38,7 @@ type PullRequest {
   title: String
   body: String?
   state: PullRequestState
-  html_url: Url
+  html_url: NonEmptyStr
   user: GitHubUser
   head: PullRequestRef
   base: PullRequestRef
@@ -50,7 +50,7 @@ type PullRequest {
 
 type IssueComment {
   id: Int
-  html_url: Url
+  html_url: NonEmptyStr
   body: String
   created_at: Timestamp
 }
@@ -150,7 +150,7 @@ service github.Pulls {
     }
     output {
       id: Int from "id"
-      html_url: Url from "html_url"
+      html_url: NonEmptyStr from "html_url"
     }
     transport rest {
       method: POST,
@@ -202,7 +202,7 @@ service github.Pulls {
     }
     output {
       id: Int from "id"
-      html_url: Url from "html_url"
+      html_url: NonEmptyStr from "html_url"
     }
     transport rest {
       method: POST,
@@ -246,7 +246,7 @@ type PullReview {
   body: String
   state: ReviewState
   commit_id: CommitSha
-  html_url: Url
+  html_url: NonEmptyStr
 }
 
 data structural_coverage_gap_github_pull_review_response_residual: List<CoverageClosureEntry> = [
@@ -271,5 +271,5 @@ type ReviewComment {
   line: Int?
   original_line: Int?
   body: String
-  html_url: Url
+  html_url: NonEmptyStr
 }

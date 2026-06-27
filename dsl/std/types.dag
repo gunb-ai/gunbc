@@ -122,8 +122,6 @@ type GistId       = String
 type Secret       nominal_opaque = String
 type SecretValue  = Secret where non_empty
 
-type Url          = String
-
 type SemVer       = String
 type NonEmptyStr     = String where non_empty
 type LanguageId      = String where non_empty
