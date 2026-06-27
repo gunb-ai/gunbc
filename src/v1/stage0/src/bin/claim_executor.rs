@@ -10,7 +10,9 @@ use v1_compiler::cli_run::{
     make_eval_context, resolve_entry_graph, run_claim, run_discovery_corpus_with_options,
     run_value, ClaimOutcome, DiscoveryCorpusOptions,
 };
-use v1_compiler::v1_interpreter::{run_in_context_with_args, ExecutionMode, InterpContext, Value};
+use v1_compiler::v1_interpreter::{
+    paint, run_in_context_with_args, sgr, ExecutionMode, InterpContext, Value,
+};
 
 #[derive(Clone)]
 enum Runnable {
@@ -923,13 +925,25 @@ fn run_walk(source_roots: &[String], batches: &[Vec<Runnable>], spawn_width: usi
                 Ok(results) => {
                     for result in results {
                         if result.ok {
-                            println!("PASS [batch {}] {}", bi + 1, result.function);
+                            println!(
+                                "{}",
+                                paint(
+                                    &format!("✓ PASS [batch {}] {}", bi + 1, result.function),
+                                    sgr::SUCCESS
+                                )
+                            );
                         } else {
                             println!(
-                                "FAIL [batch {}] {} ({})",
-                                bi + 1,
-                                result.function,
-                                result.detail
+                                "{}",
+                                paint(
+                                    &format!(
+                                        "✗ FAIL [batch {}] {} ({})",
+                                        bi + 1,
+                                        result.function,
+                                        result.detail
+                                    ),
+                                    sgr::ERROR
+                                )
                             );
                             any_failed = true;
                         }
@@ -937,7 +951,13 @@ fn run_walk(source_roots: &[String], batches: &[Vec<Runnable>], spawn_width: usi
                     }
                 }
                 Err(_) => {
-                    println!("FAIL [batch {}] <claim thread panicked>", bi + 1);
+                    println!(
+                        "{}",
+                        paint(
+                            &format!("✗ FAIL [batch {}] <claim thread panicked>", bi + 1),
+                            sgr::ERROR
+                        )
+                    );
                     any_failed = true;
                 }
             }
