@@ -12114,6 +12114,23 @@ pub fn effective_variant_parent(
             }
             None => None,
         };
+        let debug_flag = name.clone() == "WriteThenCommit" || name.clone() == "ApiKey" || name.clone() == "CasContentEncoding";
+        let bk_debug = if debug_flag {
+            match binding_kind.as_deref().cloned() {
+                Some(VarBindingKind::VariantValueBinding { parent_enum: pe, .. }) => format!("VariantValueBinding({})", pe),
+                Some(_) => "OtherBinding".to_string(),
+                None => "NoBinding".to_string(),
+            }
+        } else { String::new() };
+        let rt_debug = if debug_flag {
+            match resolved_type.as_deref().cloned() {
+                Some(InferredNode::Resolved { node: rt, .. }) => {
+                    format!("Resolved({})", authored_name_at(source_indices.clone(), rt))
+                }
+                Some(_) => "OtherResolved".to_string(),
+                None => "NoResolved".to_string(),
+            }
+        } else { String::new() };
         let result = match cached {
             Some(parent) => Some(parent.clone()),
             None => match resolved_type.as_deref().cloned() {
@@ -12134,8 +12151,8 @@ pub fn effective_variant_parent(
                 _ => variant_parent_from_binding_kind(binding_kind),
             },
         };
-        if (name.clone() == "WriteThenCommit".to_string() || name.clone() == "ApiKey".to_string() || name.clone() == "CasContentEncoding".to_string()) {
-            eprintln!("DEBUG effective_variant_parent: name={} result={:?}", name, result);
+        if debug_flag {
+            eprintln!("DEBUG effective_variant_parent: name={} bk={} rt={} result={:?}", name, bk_debug, rt_debug, result);
         }
         result
     }
