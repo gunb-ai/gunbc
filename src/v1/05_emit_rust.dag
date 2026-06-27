@@ -3348,11 +3348,7 @@ fn emit_struct_field_from_child(struct_name: String, child: Node, generic_param_
   let rt_child = resolved_type(n: child)
   let authored_child_type = field_node_type_expr(n: child)
   let ty = if generic_param_names |> count > 0 {
-    if type_node_has_value_variant_arg(n: rt_child, generic_param_names: generic_param_names, variant_to_enum: emit_info.variant_to_enum, source_indices: env.source_indices) {
-      render_rust_decl_type(n: rt_child, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: env.source_indices, variant_to_enum: emit_info.variant_to_enum, env: env)
-    } else {
-      render_node_type(n: rt_child, target: Rust, shared_types: shared_types, source_indices: env.source_indices)
-    }
+    render_rust_decl_type(n: rt_child, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: env.source_indices, variant_to_enum: emit_info.variant_to_enum, env: env)
   } else if find_property(props: child.properties, prop_name: "__applied_type_args", source_indices: env.source_indices) != none {
     render_rust_type_with_applied_binding(n: child, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: env.source_indices)
   } else if find_property(props: authored_child_type.properties, prop_name: "__applied_type_args", source_indices: env.source_indices) != none {
