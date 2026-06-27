@@ -1025,6 +1025,11 @@ fn fulfill(
             fulfillment: FulfillmentRejected { reason: NeedsUnsatisfiable { reason: r } },
             ledger: ledger,
           }
+        LeaseRejectedDuplicateId { lease_id: dup } =>
+          FulfillmentOutcome {
+            fulfillment: FulfillmentRejected { reason: DuplicateLeaseId { lease_id: dup } },
+            ledger: ledger,
+          }
       }
   }
 }
@@ -1630,6 +1635,15 @@ data heavy_compute_pool_lane_count_projection_scaffold: Disposition = Scaffold {
   }
 }
 
+data buildbuddy_remote_executor_vendor_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "extdeps.vendor",
+    decl_name: "Vendor",
+    field: WholeDeclaration
+  }
+}
+
 data example_session_subject: SessionSubject = SessionSubject { agent: ClaudeCode }
 
 data example_remote_executor: RemoteExecutorHandle = RemoteExecutorHandle {
@@ -1735,6 +1749,7 @@ fn witness_local_request_rejected_when_pool_exhausted() -> Bool {
         LocalCapacityExhausted { lane_count: _, held: h } =>
           h == 2 && ledger_held_count(ledger: o3.ledger) == 2
         NeedsUnsatisfiable { reason: _ } => false
+        DuplicateLeaseId { lease_id: _ } => false
       }
     Fulfilled { executor: _ } => false
     FulfillmentQueued { lane_count: _, held: _ } => false
@@ -1753,6 +1768,7 @@ fn witness_unsatisfiable_local_needs_rejected() -> Bool {
       match r {
         NeedsUnsatisfiable { reason: m } => m.dimension == DemandCpu
         LocalCapacityExhausted { lane_count: _, held: _ } => false
+        DuplicateLeaseId { lease_id: _ } => false
       }
     Fulfilled { executor: _ } => false
     FulfillmentQueued { lane_count: _, held: _ } => false
@@ -1832,6 +1848,7 @@ fn witness_pool_unifies_ci_and_ondemand_then_rejects() -> Bool {
   ) {
     LeaseRejectedIneligible { reason: _ } => false
     LeaseRejectedPoolExhausted { lane_count: _, held: _ } => false
+    LeaseRejectedDuplicateId { lease_id: _ } => false
     LeaseGranted { ledger: l1, granted: _ } =>
       match lease_grant(
         pool: example_heavy_compute_pool,
@@ -1843,6 +1860,7 @@ fn witness_pool_unifies_ci_and_ondemand_then_rejects() -> Bool {
       ) {
         LeaseRejectedIneligible { reason: _ } => false
         LeaseRejectedPoolExhausted { lane_count: _, held: _ } => false
+        LeaseRejectedDuplicateId { lease_id: _ } => false
         LeaseGranted { ledger: l2, granted: _ } =>
           match lease_grant(
             pool: example_heavy_compute_pool,
@@ -1854,6 +1872,7 @@ fn witness_pool_unifies_ci_and_ondemand_then_rejects() -> Bool {
           ) {
             LeaseGranted { ledger: _, granted: _ } => false
             LeaseRejectedIneligible { reason: _ } => false
+            LeaseRejectedDuplicateId { lease_id: _ } => false
             LeaseRejectedPoolExhausted { lane_count: _, held: h } =>
               ledger_held_count(ledger: l2) == 2
                 && h == 2
@@ -1875,6 +1894,7 @@ fn witness_lease_release_frees_lane() -> Bool {
   ) {
     LeaseRejectedIneligible { reason: _ } => false
     LeaseRejectedPoolExhausted { lane_count: _, held: _ } => false
+    LeaseRejectedDuplicateId { lease_id: _ } => false
     LeaseGranted { ledger: l1, granted: _ } => {
       let l2 = lease_release(ledger: l1, lease_id: "rel-1")
       ledger_held_count(ledger: l1) == 1
@@ -1895,6 +1915,7 @@ fn witness_full_ledger_conserves_with_no_free_lane() -> Bool {
   ) {
     LeaseRejectedIneligible { reason: _ } => false
     LeaseRejectedPoolExhausted { lane_count: _, held: _ } => false
+    LeaseRejectedDuplicateId { lease_id: _ } => false
     LeaseGranted { ledger: l1, granted: _ } =>
       match lease_grant(
         pool: example_heavy_compute_pool,
@@ -1906,10 +1927,33 @@ fn witness_full_ledger_conserves_with_no_free_lane() -> Bool {
       ) {
         LeaseRejectedIneligible { reason: _ } => false
         LeaseRejectedPoolExhausted { lane_count: _, held: _ } => false
+        LeaseRejectedDuplicateId { lease_id: _ } => false
         LeaseGranted { ledger: l2, granted: _ } =>
           ledger_conserves(pool: example_heavy_compute_pool, ledger: l2)
             && !ledger_has_free_lane(pool: example_heavy_compute_pool, ledger: l2)
             && ledger_held_count(ledger: l2) == 2
       }
+  }
+}
+
+fn witness_duplicate_lease_id_rejected_fail_closed() -> Bool {
+  let o1 = fulfill(
+    fabric: example_compute_fabric, ledger: empty_lease_ledger, request: example_local_request,
+    lease_id: "dup-1"
+  )
+  let o2 = fulfill(
+    fabric: example_compute_fabric, ledger: o1.ledger, request: example_local_request,
+    lease_id: "dup-1"
+  )
+  match o2.fulfillment {
+    FulfillmentRejected { reason: r } =>
+      match r {
+        DuplicateLeaseId { lease_id: lid } =>
+          lid == "dup-1" && ledger_held_count(ledger: o2.ledger) == 1
+        LocalCapacityExhausted { lane_count: _, held: _ } => false
+        NeedsUnsatisfiable { reason: _ } => false
+      }
+    Fulfilled { executor: _ } => false
+    FulfillmentQueued { lane_count: _, held: _ } => false
   }
 }

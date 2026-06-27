@@ -13,6 +13,7 @@ import product.compute_fabric {
   witness_local_request_leases_a_lane,
   witness_local_request_rejected_when_pool_exhausted,
   witness_unsatisfiable_local_needs_rejected,
+  witness_duplicate_lease_id_rejected_fail_closed,
   witness_gha_runner_request_leases_same_lane_as_exec,
   witness_gha_runner_queues_when_pool_exhausted_not_rejects,
   witness_gha_runner_uses_ci_lane_source,
@@ -41,6 +42,7 @@ test fn compute_request_fulfillment_interface_holds() -> Bool {
     && witness_local_request_leases_a_lane()
     && witness_local_request_rejected_when_pool_exhausted()
     && witness_unsatisfiable_local_needs_rejected()
+    && witness_duplicate_lease_id_rejected_fail_closed()
 }
 
 test fn gha_runner_is_same_request_on_one_ledger() -> Bool {
