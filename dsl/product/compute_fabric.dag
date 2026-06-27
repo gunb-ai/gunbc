@@ -886,23 +886,8 @@ fn ledger_holds_source(ledger: LeaseLedger, source: HeavyComputeLaneSource) -> B
   fold(
     ledger.held,
     init: false,
-    f: (acc, l) => acc || lease_source_eq(a: l.source, b: source)
+    f: (acc, l) => acc || l.source == source
   )
-}
-
-fn lease_source_eq(a: HeavyComputeLaneSource, b: HeavyComputeLaneSource) -> Bool {
-  match a {
-    GithubCiRunner =>
-      match b {
-        GithubCiRunner => true
-        OnDemandSessionLease => false
-      }
-    OnDemandSessionLease =>
-      match b {
-        OnDemandSessionLease => true
-        GithubCiRunner => false
-      }
-  }
 }
 
 fn ledger_has_free_lane(pool: HeavyComputePool, ledger: LeaseLedger) -> Bool {
