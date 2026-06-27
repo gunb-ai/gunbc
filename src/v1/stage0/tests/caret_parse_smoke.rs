@@ -3,7 +3,9 @@ use std::rc::Rc;
 
 use v1_compiler::v1_compiler_artifact::RenderTarget;
 use v1_compiler::v1_compiler_compile::{compile_sources, compile_to_resolved, SourceFile};
-use v1_compiler::v1_compiler_parse::{parse_caret_expr, parse_expr, parse_module, ParseContext};
+use v1_compiler::v1_compiler_parse::{
+    parse_caret_expr, parse_expr, parse_module, ParseContext, TokenStream,
+};
 use v1_compiler::v1_compiler_tokenize::tokenize;
 use v1_compiler::v1_std_core::{
     diagnostic_to_message, empty_intern_table, is_error_diagnostic, ExprData, TokenShape,
@@ -39,7 +41,7 @@ fn caret_paren_tokenizes_as_caret_then_lparen() {
 #[test]
 fn parse_caret_ident_produces_literal() {
     let tokens = tokenize_expr("^foo_tag");
-    let r = parse_caret_expr(tokens, parse_ctx());
+    let r = parse_caret_expr(TokenStream::new(tokens), parse_ctx());
     assert!(r.err.is_none(), "{:?}", r.err);
     match &*r.expr.expr_data {
         ExprData::ExprLiteral { .. } => {}
@@ -50,7 +52,7 @@ fn parse_caret_ident_produces_literal() {
 #[test]
 fn parse_caret_paren_produces_discriminant_call() {
     let tokens = tokenize_expr("^(1)");
-    let r = parse_caret_expr(tokens, parse_ctx());
+    let r = parse_caret_expr(TokenStream::new(tokens), parse_ctx());
     assert!(r.err.is_none(), "{:?}", r.err);
     match &*r.expr.expr_data {
         ExprData::ExprCall { .. } => assert_eq!(r.expr.name, "discriminant"),
@@ -64,10 +66,11 @@ fn parse_caret_paren_produces_discriminant_call() {
 #[test]
 fn parse_expr_caret_paren_full_pipeline() {
     let tokens = tokenize_expr("^(1)");
-    let r = parse_expr(tokens, parse_ctx());
+    let r = parse_expr(TokenStream::new(tokens), parse_ctx());
     assert!(r.err.is_none(), "{:?}", r.err);
     let non_eof: Vec<_> = r
         .tokens
+        .remaining()
         .iter()
         .filter(|t| t.shape != TokenShape::ShEof)
         .collect();
@@ -81,7 +84,7 @@ fn parse_expr_caret_paren_full_pipeline() {
 #[test]
 fn parse_expr_caret_var_arg_produces_discriminant_call() {
     let tokens = tokenize_expr("^(alpha)");
-    let r = parse_expr(tokens, parse_ctx());
+    let r = parse_expr(TokenStream::new(tokens), parse_ctx());
     assert!(r.err.is_none(), "{:?}", r.err);
     match &*r.expr.expr_data {
         ExprData::ExprCall { .. } => assert_eq!(r.expr.name, "discriminant"),
@@ -99,7 +102,7 @@ fn probe() -> Bool {
 }
 "#;
     let tokens = tokenize(src.to_string(), "caret_probe5b.dag".to_string());
-    let r = parse_module(tokens, parse_ctx());
+    let r = parse_module(TokenStream::new(tokens), parse_ctx());
     assert!(r.err.is_none(), "{:?}", r.err);
 }
 
