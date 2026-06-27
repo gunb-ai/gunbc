@@ -1757,9 +1757,7 @@ fn witness_gha_runner_request_leases_same_lane_as_exec() -> Bool {
     fabric: example_compute_fabric, ledger: empty_lease_ledger, request: example_gha_runner_request,
     lease_id: "runner-1", acquired_at: "t0", max_hold: example_lease_max_hold
   )
-  let same_envelope =
-    work_demand_content_digest(demand: request_to_work_demand(request: example_local_request))
-      == work_demand_content_digest(demand: request_to_work_demand(request: example_gha_runner_request))
+  let same_envelope = work_demand_content_digest(demand: request_to_work_demand(request: example_local_request)) == work_demand_content_digest(demand: request_to_work_demand(request: example_gha_runner_request))
   match exec_outcome.fulfillment {
     Fulfilled { executor: ee } =>
       match runner_outcome.fulfillment {
