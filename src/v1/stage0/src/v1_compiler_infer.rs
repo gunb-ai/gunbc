@@ -12905,60 +12905,23 @@ pub fn build_module_context(
         let imported_enum_names = resolved_imports.clone().iter().cloned().fold(
             v1_rt::rc_empty_map::<String, bool>(),
             |acc: Rc<HashMap<String, bool>>, imp: Rc<ResolvedImport>| {
-                // Build a variant→parent-enum map from the import's source module so that
-                // variant-by-name imports (e.g. `import std.cache_interface { ApiKey }`)
-                // correctly identify the owning coproduct (AuthScope) rather than checking
-                // the variant name against the enum-name key, which was always false.
-                let parent_variant_owners: HashMap<String, String> =
-                    match v1_rt::map_get(&parent_index, imp.module_path.clone()) {
-                        Some(typed_parent) => v1_rt::map_values(
-                            &typed_parent.type_env.bindings.clone(),
-                        )
-                        .into_iter()
-                        .filter(|b: &Rc<TypeBinding>| {
-                            b.resolved.connective == Connective::Disj
-                        })
-                        .flat_map(|b: Rc<TypeBinding>| {
-                            let enum_name = authored_name_at(
-                                env.source_indices.clone(),
-                                b.resolved.clone(),
-                            );
-                            b.resolved
-                                .children
-                                .clone()
-                                .iter()
-                                .cloned()
-                                .map(move |child| {
-                                    (
-                                        authored_name_at(
-                                            env.source_indices.clone(),
-                                            child,
-                                        ),
-                                        enum_name.clone(),
-                                    )
-                                })
-                                .collect::<Vec<_>>()
-                        })
-                        .collect(),
-                        None => HashMap::new(),
-                    };
                 imp.specific_names.clone().iter().cloned().fold(
                     acc,
                     |inner: Rc<HashMap<String, bool>>, n: String| {
-                        let key = parent_variant_owners
-                            .get(&n)
-                            .cloned()
-                            .unwrap_or_else(|| n.clone());
-                        v1_rt::rc_map_insert(inner, key, true)
+                        v1_rt::rc_map_insert(inner, n.clone(), true)
                     },
                 )
             },
         );
-        let variant_fold = v1_rt::map_values(&env.bindings.clone())
-            .iter()
-            .cloned()
-            .fold(
-                Rc::new(VariantFoldState {
+        let variant_fold = {
+            let mut bindings_sorted = v1_rt::map_values(&env.bindings.clone());
+            bindings_sorted.sort_by(|a, b| a.name.cmp(&b.name));
+            bindings_sorted
+        }
+        .iter()
+        .cloned()
+        .fold(
+            Rc::new(VariantFoldState {
                 locals: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
                 collision_errors: Rc::new(vec![]),
             }),
