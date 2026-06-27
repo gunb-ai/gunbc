@@ -33,6 +33,7 @@ import std.measure {
   hardware_thread_count,
   hardware_thread_count_value,
   measure_scale_fraction_ceil,
+  measure_scale_fraction_floor,
   hertz,
   watt,
   Bandwidth,
@@ -312,7 +313,7 @@ type ComputeSupplyFacts {
 type ProviderConstraint
   = HostJobserverFifo { fifo_path: NonEmptyStr, config_ref: CtrlJobserverConfig }
   | SharedHomeRoot { path: NonEmptyStr }
-  | MaxConcurrentRunners { cap: Int }
+  | MaxConcurrentHeavyComputeLanes { cap: Int }
   | OomBehavior { signal: OomSignalClass }
 
 type AvailabilityWindow { open: LogicalTime, close: LogicalTime? }
@@ -797,6 +798,123 @@ fn satisfies(offer: ComputeOffer, demand: WorkDemand) -> ComputeLeaseEligibility
         }
     }
   }
+}
+
+type DemandClass
+  = SessionClass
+  | HeavyComputeClass
+
+type ClassedWorkDemand {
+  demand_class: DemandClass
+  demand: WorkDemand
+}
+
+type HeavyComputeLaneSource
+  = GithubCiRunner
+  | OnDemandSessionLease
+
+type HeavyWorkRoutability
+  = RoutableRemote
+  | NonRoutableLocal
+
+type HeavyWorkPlacement
+  = OffHostRemote
+  | LeasedLane { source: HeavyComputeLaneSource }
+
+fn heavy_work_placement(routability: HeavyWorkRoutability) -> HeavyWorkPlacement {
+  match routability {
+    RoutableRemote => OffHostRemote
+    NonRoutableLocal => LeasedLane { source: OnDemandSessionLease }
+  }
+}
+
+type HeavyComputeLeaseId = NonEmptyStr where brand("HeavyComputeLeaseId")
+
+type LeaseReleaseTrigger
+  = LeaseExit
+  | LeaseTimeout
+  | SessionArchive
+
+type HeavyComputeLease {
+  lease_id: HeavyComputeLeaseId
+  source: HeavyComputeLaneSource
+  demand: WorkDemand
+  acquired_at: LogicalTime
+  max_hold: Duration
+}
+
+type LeaseLedger {
+  held: List<HeavyComputeLease>
+}
+
+data empty_lease_ledger: LeaseLedger = LeaseLedger { held: [] }
+
+type HeavyComputePool {
+  lane_envelope: ResourceEnvelope
+  lane_count: Nat
+}
+
+fn heavy_compute_lane_memory(pool: HeavyComputePool) -> ByteSize {
+  demand_envelope_memory(envelope: pool.lane_envelope)
+}
+
+fn heavy_compute_pool_bytes(pool: HeavyComputePool) -> ByteSize {
+  measure_scale_fraction_floor(m: heavy_compute_lane_memory(pool: pool), num: pool.lane_count, den: 1)
+}
+
+fn ledger_held_count(ledger: LeaseLedger) -> Nat {
+  fold(ledger.held, init: 0, f: (acc, _l) => acc + 1)
+}
+
+fn ledger_has_free_lane(pool: HeavyComputePool, ledger: LeaseLedger) -> Bool {
+  ledger_held_count(ledger: ledger) < pool.lane_count
+}
+
+fn ledger_conserves(pool: HeavyComputePool, ledger: LeaseLedger) -> Bool {
+  !(pool.lane_count < ledger_held_count(ledger: ledger))
+}
+
+type LeaseGrantOutcome
+  = LeaseGranted { ledger: LeaseLedger, granted: HeavyComputeLease }
+  | LeaseRejectedIneligible { reason: MissingDemandFact }
+  | LeaseRejectedPoolExhausted { lane_count: Nat, held: Nat }
+
+fn lease_grant(
+  pool: HeavyComputePool,
+  ledger: LeaseLedger,
+  offer: ComputeOffer,
+  lease_id: HeavyComputeLeaseId,
+  source: HeavyComputeLaneSource,
+  demand: WorkDemand,
+  acquired_at: LogicalTime,
+  max_hold: Duration
+) -> LeaseGrantOutcome {
+  match satisfies(offer: offer, demand: demand) {
+    Rejected { reason: r } => LeaseRejectedIneligible { reason: r }
+    Eligible { witness: _w } =>
+      if ledger_has_free_lane(pool: pool, ledger: ledger) {
+        let lease = HeavyComputeLease {
+          lease_id: lease_id,
+          source: source,
+          demand: demand,
+          acquired_at: acquired_at,
+          max_hold: max_hold,
+        }
+        LeaseGranted {
+          ledger: LeaseLedger { held: concat(ledger.held, [lease]) },
+          granted: lease,
+        }
+      } else {
+        LeaseRejectedPoolExhausted {
+          lane_count: pool.lane_count,
+          held: ledger_held_count(ledger: ledger),
+        }
+      }
+  }
+}
+
+fn lease_release(ledger: LeaseLedger, lease_id: HeavyComputeLeaseId) -> LeaseLedger {
+  LeaseLedger { held: filter(ledger.held, l => l.lease_id != lease_id) }
 }
 
 type WorkUnitId = NonEmptyStr where brand("WorkUnitId")
