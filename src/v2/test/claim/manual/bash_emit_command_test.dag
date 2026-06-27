@@ -53,20 +53,7 @@ import v2.extdeps.languages.bash {
   bash_pipe_and_or_brace_grouped_target_model,
   bash_pipe_and_or_flat_wrong_emitted,
   bash_pipe_and_or_flat_wrong_source_text,
-  bash_pipe_and_or_flat_wrong_target_model,
-  bash_assign_cmdsubst_mktemp_emitted,
-  bash_assign_cmdsubst_mktemp_source_text,
-  bash_assign_cmdsubst_mktemp_target_model,
-  bash_assign_concat_gunbc_emitted,
-  bash_assign_concat_gunbc_source_text,
-  bash_assign_concat_gunbc_target_model,
-  bash_assign_concat_gunbc_spaced_wrong_emitted,
-  bash_assign_concat_gunbc_spaced_wrong_source_text,
-  bash_assign_concat_gunbc_spaced_wrong_target_model,
-  bash_env_prefixed_cargo_emitted,
-  bash_env_prefixed_cargo_source_text,
-  bash_env_prefixed_cargo_target_model,
-  bash_multi_orch_raw_welds_dissolution_trigger
+  bash_pipe_and_or_flat_wrong_target_model
 }
 import v2.std.collection { Map, empty_map }
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
@@ -380,64 +367,4 @@ fn bash_emit_pipe_brace_grouped_wrong_flat_model_rejects() -> Bool {
 
 test fn bash_emit_pipe_brace_grouped_wrong_flat_model_rejects_holds() -> Bool {
   bash_emit_pipe_brace_grouped_wrong_flat_model_rejects()
-}
-
-test fn bash_emit_assign_cmdsubst_mktemp_holds() -> Bool {
-  bash_emit_slice4_holds(
-    emitted: bash_assign_cmdsubst_mktemp_emitted,
-    source_text: bash_assign_cmdsubst_mktemp_source_text,
-    target: bash_assign_cmdsubst_mktemp_target_model()
-  )
-}
-
-test fn bash_emit_assign_concat_gunbc_holds() -> Bool {
-  bash_emit_slice4_holds(
-    emitted: bash_assign_concat_gunbc_emitted,
-    source_text: bash_assign_concat_gunbc_source_text,
-    target: bash_assign_concat_gunbc_target_model()
-  )
-}
-
-test fn bash_emit_assign_concat_spaced_wrong_ne_correct_holds() -> Bool {
-  bash_assign_concat_gunbc_spaced_wrong_source_text != bash_assign_concat_gunbc_source_text
-}
-
-test fn bash_emit_assign_concat_spaced_wrong_model_holds() -> Bool {
-  bash_emit_slice4_holds(
-    emitted: bash_assign_concat_gunbc_spaced_wrong_emitted,
-    source_text: bash_assign_concat_gunbc_spaced_wrong_source_text,
-    target: bash_assign_concat_gunbc_spaced_wrong_target_model()
-  )
-}
-
-fn bash_emit_assign_concat_gunbc_wrong_spaced_model_rejects() -> Bool {
-  let tree = InferredTree {
-    root: bash_assign_concat_gunbc_emitted,
-    facts: Map { lookup: bash_facts_lookup }
-  }
-  match emit(tree: tree, target: bash_assign_concat_gunbc_spaced_wrong_target_model()) {
-    Accepted { value: source, diagnostics: d } =>
-      (source.carried != bash_assign_concat_gunbc_source_text) && (d == None)
-    Rejected { diagnostics: _ } => true
-  }
-}
-
-test fn bash_emit_assign_concat_gunbc_wrong_spaced_model_rejects_holds() -> Bool {
-  bash_emit_assign_concat_gunbc_wrong_spaced_model_rejects()
-}
-
-test fn bash_emit_env_prefixed_cargo_holds() -> Bool {
-  bash_emit_slice4_holds(
-    emitted: bash_env_prefixed_cargo_emitted,
-    source_text: bash_env_prefixed_cargo_source_text,
-    target: bash_env_prefixed_cargo_target_model()
-  )
-}
-
-test fn bash_held_welds_dissolution_trigger_recorded_holds() -> Bool {
-  string_contains(s: bash_multi_orch_raw_welds_dissolution_trigger, pattern: "bash_assign_cmdsubst_mktemp")
-    && string_contains(s: bash_multi_orch_raw_welds_dissolution_trigger, pattern: "bash_assign_concat_gunbc")
-    && string_contains(s: bash_multi_orch_raw_welds_dissolution_trigger, pattern: "bash_env_prefixed_cargo")
-    && string_contains(s: bash_multi_orch_raw_welds_dissolution_trigger, pattern: "straddle")
-    && string_contains(s: bash_multi_orch_raw_welds_dissolution_trigger, pattern: "DISSOLVES WHEN")
 }

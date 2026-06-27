@@ -585,6 +585,7 @@ pub enum InterpError {
     NoSuchField { type_name: String, field: String },
     TypeError { msg: String },
     CrossRepresentationEquality { detail: String },
+    StringRealizationStraddle { detail: String },
     PatternMatchFailure { value: String },
     DivisionByZero,
     Unimplemented { what: String },
@@ -604,6 +605,9 @@ impl fmt::Display for InterpError {
             InterpError::TypeError { msg } => write!(f, "type error: {}", msg),
             InterpError::CrossRepresentationEquality { detail } => {
                 write!(f, "cross-representation equality: {}", detail)
+            }
+            InterpError::StringRealizationStraddle { detail } => {
+                write!(f, "string realization straddle: {}", detail)
             }
             InterpError::PatternMatchFailure { value } => {
                 write!(f, "non-exhaustive pattern match on: {}", value)
@@ -1550,14 +1554,29 @@ fn eval_binop(op: &BinOp, left: Value, right: Value, ctx: &InterpContext) -> Int
         };
         match (&left, &right) {
             (l, Value::Str(s)) => {
+                // String grounding: a string-like left operand concatenated with
+                // a native String realizes as a native `Value::Str`, never a
+                // mixed `[codepoint.., Str]` list (model↔realization).
+                if let Some(ls) = free_monoid_to_string(l) {
+                    return Ok(Value::Str(format!("{}{}", ls, s)));
+                }
                 if let Some(mut result) = free_monoid_to_vec(l) {
+                    if let Some(detail) = string_realization_straddle_detail(l, &result) {
+                        return Err(InterpError::StringRealizationStraddle { detail });
+                    }
                     record_push(result.len());
                     result.push(Value::Str(s.clone()));
                     return Ok(list_value((result)));
                 }
             }
             (Value::Str(s), r) => {
+                if let Some(rs) = free_monoid_to_string(r) {
+                    return Ok(Value::Str(format!("{}{}", s, rs)));
+                }
                 if let Some(result) = free_monoid_to_vec(r) {
+                    if let Some(detail) = string_realization_straddle_detail(r, &result) {
+                        return Err(InterpError::StringRealizationStraddle { detail });
+                    }
                     record_push(result.len());
                     let mut out = vec![Value::Str(s.clone())];
                     out.extend(result);
@@ -2994,7 +3013,38 @@ fn eval_algebra_method(
                 }
                 return Ok(Value::Str(result));
             }
+            // String grounding (model↔realization): when a native String arg
+            // participates, the whole `concat` is a String and realizes as one
+            // native `Value::Str` — provided the receiver is itself string-like
+            // (all-codepoint). A `List<String>` receiver (`Str` *elements*) is
+            // rejected by `free_monoid_to_string` and falls through to the list
+            // path below, so `["a","b"].concat("c")` stays a list.
+            if method == "concat" && args.iter().any(|a| matches!(a, Value::Str(_))) {
+                if let Some(base) = free_monoid_to_string(&receiver) {
+                    if let Some(rest) = args
+                        .iter()
+                        .map(free_monoid_to_string)
+                        .collect::<Option<Vec<_>>>()
+                    {
+                        return Ok(Value::Str(format!("{}{}", base, rest.concat())));
+                    }
+                }
+            }
             if let Ok(items) = expect_list(&receiver, "concat") {
+                // Fail-closed backstop (DESIGN §5): a native String arg meeting a
+                // codepoint-bearing `Cons`-chain receiver here is the
+                // model↔realization straddle that grounding above did not
+                // dissolve — refuse loudly rather than push the `Str` into a
+                // mixed `[codepoint.., Str]` list. A `Value::List` receiver is a
+                // generic collection (`[1].append("ab")` is a legitimate
+                // two-element list), and a homogeneous `List<String>` carries no
+                // codepoint — both pass (the `orig` representation guard).
+                if args.iter().any(|a| matches!(a, Value::Str(_))) {
+                    let snapshot: Vec<Value> = items.iter().cloned().collect();
+                    if let Some(detail) = string_realization_straddle_detail(&receiver, &snapshot) {
+                        return Err(InterpError::StringRealizationStraddle { detail });
+                    }
+                }
                 let mut result = (*items).clone();
                 let mut merged_items = 0usize;
                 let mut copied_items = 0usize;
@@ -3117,6 +3167,12 @@ fn eval_algebra_method(
         }
 
         "chars" => {
+            // §6 residue: this materializes a string as a `Value::List` of
+            // codepoint `Int`s, indistinguishable at the Value level from a
+            // generic `Int` list. That is the named hole in the String-straddle
+            // wall — see `string_realization_straddle_detail`'s `Value::List`
+            // exemption. Closed by regrounding `Char`/codepoint-sequence so the
+            // realization is distinguishable (grounding root, sibling #5428).
             let s = expect_str(Some(&receiver), "chars")?;
             let items: Vec<Value> = s.chars().map(|c| Value::Int(c as i64)).collect();
             Ok(list_value(items))
@@ -5767,6 +5823,90 @@ pub(crate) fn free_monoid_to_vec(val: &Value) -> Option<Vec<Value>> {
             _ => return None,
         }
     }
+}
+
+/// Fail-closed backstop for the model↔realization String straddle (DESIGN §5).
+/// At a String-meeting point (a free monoid concatenated with a native
+/// `Value::Str`), grounding (`free_monoid_to_string`) has already consumed every
+/// well-typed String (all-codepoint, rendered to a native `Value::Str`).
+/// Reaching the list path therefore means the operand is *not* a pure codepoint
+/// list — and if it nonetheless contains a `Char` codepoint (`Value::Int`), it
+/// is a *mixed* `[codepoint.., non-codepoint]` value: the straddle this
+/// grounding exists to dissolve. We refuse LOUDLY (turning the prior §5
+/// fail-open — `Accepted` carrying a wrong-type mixed list — into a typed error)
+/// rather than fabricate it. A homogeneous `List<String>` (all `Value::Str`)
+/// carries no codepoint and is legitimate, so it passes. This is the
+/// completeness insurance for grounding the known sites: any future un-grounded
+/// `FreeMonoid<Char>` × `Str` meeting point surfaces here as a loud error
+/// instead of silently straddling again.
+fn string_realization_straddle_detail(orig: &Value, items: &[Value]) -> Option<String> {
+    // A `Value::List` is a generic collection, never a straddled String (see
+    // `free_monoid_to_string`); its `Int` elements are genuine data, so a `Str`
+    // appended to it is a legitimate heterogeneous element, not a straddle. Only
+    // a `Cons`-chain / `Str`-derived flattening carries codepoint semantics.
+    //
+    // OPEN THREAD (DESIGN §6 residue — named, not silently shipped): this
+    // `Value::List` exemption makes the wall a RATCHET WITH A NAMED HOLE, not a
+    // universal value-level wall. The `"chars"` method (this file) materializes
+    // a string as a `Value::List` of codepoint `Int`s, structurally identical to
+    // a generic `Int` list — so a `.chars()`-result straddled with a native
+    // `Str` would be exempted here and fail open (the original bug, uncaught).
+    // This is undecidable at the Value level (a codepoint list and a generic
+    // `Int` list are element-identical), so it is honest §6 residue, the
+    // `Value::Null` pattern. LATENT today: no `.dag` program evaluates the
+    // interpreter `chars` method into a concat/`+` with a `Str` (the two
+    // `.chars()` rows in `languages.dag` / `rust/emit.dag` are emit *templates*,
+    // not interpreter calls). DISSOLVES WHEN `.chars()` / `Char` is regrounded so
+    // a codepoint-sequence is distinguishable from a generic `Int` list at the
+    // realization level (the grounding root, sibling to Int↔Nat #5428).
+    if matches!(orig, Value::List(_)) {
+        return None;
+    }
+    if items.iter().any(|x| matches!(x, Value::Int(_))) {
+        Some(format!(
+            "free monoid mixing Char codepoints with a native String at a concat/`+` meeting point ({} elements); a String must realize as a single native Value::Str, never a mixed [codepoint.., Str] list",
+            items.len()
+        ))
+    } else {
+        None
+    }
+}
+
+/// String grounding (DESIGN §1/§2/§7, model↔realization fork): render a
+/// string-like free monoid (`String = FreeMonoid<Char>`, `Char = Nat`) to its
+/// native realization. A native `Value::Str` is already grounded; a modeled
+/// `Empty`/`Cons` chain or `List` is a String **only** when every element is a
+/// `Char` codepoint (`Value::Int`). A `Value::Str` *element* (not the whole
+/// value) means `List<String>`, not `String`, so it returns `None` — that
+/// discriminator is what keeps `List<String>` push/concat from collapsing into
+/// one string. Used so a folded String concatenation realizes as a single
+/// `Value::Str` instead of straddling as a mixed `[codepoint.., Str]` list that
+/// fails `==` against a native String oracle (the held emit-weld debt).
+pub(crate) fn free_monoid_to_string(val: &Value) -> Option<String> {
+    if let Value::Str(s) = val {
+        return Some(s.clone());
+    }
+    // A `Value::List` is a generic ordered collection (the `[1]`/`[1,2,3]` list
+    // literal representation), NEVER a modeled `String`. A modeled
+    // `FreeMonoid<Char>` realizes as an `Empty`/`Cons` `Value::Variant` chain.
+    // Treating a `List` as string-like would collapse `List<Int>` append/`+`/
+    // concat into one string — exactly what the `list_free_monoid_chokepoint`
+    // tests forbid (`[1] + "ab"` stays length 2). Only a native `Str` or a
+    // `Cons`-chain is a String candidate; representation is the discriminator
+    // the Value level affords (a `List<Int>` and a codepoint `Cons`-chain are
+    // otherwise element-identical).
+    if matches!(val, Value::List(_)) {
+        return None;
+    }
+    let items = free_monoid_to_vec(val)?;
+    let mut out = String::new();
+    for it in items {
+        match it {
+            Value::Int(n) => out.push(u32::try_from(n).ok().and_then(char::from_u32)?),
+            _ => return None,
+        }
+    }
+    Some(out)
 }
 
 fn value_to_list_carrier(val: &Value) -> Option<(Rc<RrbVector<Value>>, u64)> {

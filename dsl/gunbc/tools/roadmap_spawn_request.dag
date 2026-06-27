@@ -1,13 +1,13 @@
 module gunbc.tools.roadmap_spawn_request
 
-import extdeps.shell
+import extdeps.git
 import gunbc.roadmap_spawner { roadmap_spawn_request_json }
 import gunbc.roadmap_authority { roadmap_authority, authored_merged_prs }
 
 func roadmap_next_spawnable() -> String {
-  let sha_result = shell.Exec.Run(script: "git rev-parse HEAD 2>/dev/null | tr -d '\\n'")
+  let sha_result = git.Core.HeadCommit()
   if sha_result.success {
-    roadmap_spawn_request_json(doc: roadmap_authority(), merged: authored_merged_prs(), anchor_commit: sha_result.stdout)
+    roadmap_spawn_request_json(doc: roadmap_authority(), merged: authored_merged_prs(), anchor_commit: sha_result.sha)
   } else {
     "{\"schema\": \"roadmap-spawn-request/v1\", \"error\": \"anchor_commit unavailable: git rev-parse HEAD failed\", \"ready\": []}"
   }
