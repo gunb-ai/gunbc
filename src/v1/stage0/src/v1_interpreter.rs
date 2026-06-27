@@ -3659,6 +3659,51 @@ pub fn materialize_shell_argv_for_operation(
     Ok(argv)
 }
 
+/// SGR foreground parameters per `SemanticColor`, mirroring the
+/// `extdeps.render.ansi` authority (`ansi_mappings` in `dsl/extdeps/render/ansi.dag`).
+/// Seed realization until the interpreter consumes that table directly.
+pub mod sgr {
+    pub const SUCCESS: &str = "38;5;34";
+    pub const ERROR: &str = "38;5;196";
+    pub const WARNING: &str = "38;5;208";
+    pub const INFO: &str = "38;5;39";
+    pub const DIM: &str = "2";
+}
+
+/// Whether the CLI should emit ANSI color, mirroring the `color` arm of
+/// `extdeps.render.terminal_capability.detect_capability`: NO_COLOR (no-color
+/// convention) and TERM=dumb force it off; otherwise color is on for an
+/// interactive TTY or a CI log viewer (which renders SGR). CI keeps color even
+/// though it loses cursor addressing — the CI/interactive split this PR models.
+pub fn color_enabled() -> bool {
+    use std::io::IsTerminal;
+    thread_local! {
+        static ENABLED: Cell<Option<bool>> = const { Cell::new(None) };
+    }
+    ENABLED.with(|c| match c.get() {
+        Some(b) => b,
+        None => {
+            let no_color = std::env::var_os("NO_COLOR").is_some_and(|v| !v.is_empty());
+            let dumb = std::env::var("TERM").map(|t| t == "dumb").unwrap_or(false);
+            let ci = std::env::var_os("CI").is_some_and(|v| v != "0" && !v.is_empty());
+            let is_tty = std::io::stderr().is_terminal() || std::io::stdout().is_terminal();
+            let b = !no_color && !dumb && (is_tty || ci);
+            c.set(Some(b));
+            b
+        }
+    })
+}
+
+/// Wrap `text` in the given SGR parameters when color is enabled, else return it
+/// plain — the single funnel so a NO_COLOR/redirected run never leaks escapes.
+pub fn paint(text: &str, sgr_params: &str) -> String {
+    if color_enabled() {
+        format!("\x1b[{sgr_params}m{text}\x1b[0m")
+    } else {
+        text.to_string()
+    }
+}
+
 /// CLI output verbosity. Seed realization of the `gunbc.output_policy.Verbosity`
 /// authority (`dsl/gunbc/output_policy.dag`); resolution precedence mirrors that
 /// module's `resolve_verbosity` (verbose wins over quiet, default Normal). When
@@ -3721,7 +3766,7 @@ fn render_shell_trace(argv: &[String]) {
             } else {
                 collapsed
             };
-            eprintln!("  $ {summary}");
+            eprintln!("{}", paint(&format!("  $ {summary}"), sgr::DIM));
         }
     }
 }
