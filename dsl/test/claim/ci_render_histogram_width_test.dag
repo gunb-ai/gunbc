@@ -1,6 +1,6 @@
 module test.claim.ci_render_histogram_width
 
-import gunbc.ci_render { timing_histogram_frame, percentile_box_frame, render_percentile_box }
+import gunbc.ci_render { timing_histogram_frame, percentiles_box_frame_ns, render_percentile_box }
 import extdeps.render.terminal { serialize_line, serialize_frame }
 import std.render { Frame, RenderCapability }
 import std.symbols { Ascii, Unicode }
@@ -31,7 +31,7 @@ fn exact_small_box() -> Bool {
 }
 
 fn ascii_box(width: Int) -> Frame {
-  percentile_box_frame(title: "X", p50: 1, p90: 2, p95: 3, p99: 4, p100: 5, width: width, tier: Ascii)
+  percentiles_box_frame_ns(title: "X", p50: 1, p90: 2, p95: 3, p99: 4, p100: 5, width: width, tier: Ascii)
 }
 
 fn ascii_width_holds() -> Bool {
