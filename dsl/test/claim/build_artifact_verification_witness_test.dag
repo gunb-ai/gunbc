@@ -11,9 +11,7 @@ import tools.build_step_transport {
   witness_zero_byte_artifact_rejected_by_execution,
   witness_nonempty_executable_accepted_by_execution
 }
-import gunbc.ci_spec {
-  ci_floor_required_artifacts, ci_floor_build_verify_script
-}
+import gunbc.ci_spec { ci_floor_build_verify_script }
 
 fn probe_artifact() -> BuildArtifact {
   BuildArtifact {
@@ -59,14 +57,11 @@ fn witness_serialized_conjuncts_and_teeth() -> Bool {
 }
 
 fn witness_floor_covers_both_release_bins() -> Bool {
-  let stmts = emit_verifications(produces: ci_floor_required_artifacts)
   let script = ci_floor_build_verify_script()
-  stmts.length() == 4
+  string_contains(s: script, pattern: "--verify-build-artifacts")
     && string_contains(s: script, pattern: "/target/release/claim_executor")
     && string_contains(s: script, pattern: "/target/release/gunbc")
     && !string_contains(s: script, pattern: "-newer")
-    && string_contains(s: script, pattern: "-s")
-    && string_contains(s: script, pattern: "exit 1")
 }
 
 test fn build_artifact_verification_holds() -> Bool {

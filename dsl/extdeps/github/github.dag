@@ -1,6 +1,6 @@
 module extdeps.github.github
 
-import std.types { Timestamp, Url }
+import std.types { NonEmptyStr, Timestamp }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -49,7 +49,7 @@ type Pagination {
 
 type GitHubPermission = PermRead | PermWrite | PermAdmin
 
-data default_api_base: Url = "https://api.github.com"
+data default_api_base: NonEmptyStr = "https://api.github.com"
 
 data default_per_page: Int = 30
 

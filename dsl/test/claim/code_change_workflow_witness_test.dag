@@ -20,10 +20,10 @@ import extdeps.github.pulls {
   PullRequest, PullRequestRef, PullRequestState, Open, Closed,
 }
 import extdeps.github.github { GitHubUser, User }
-import std.types { CommitSha, NonEmptyStr, Timestamp, Url }
+import std.types { CommitSha, NonEmptyStr, Timestamp }
 
 data witness_repo: NonEmptyStr = "gunb-ai/gunbc"
-data witness_pr_url: Url = "https://github.com/gunb-ai/gunbc/pull/1"
+data witness_pr_url: NonEmptyStr = "https://github.com/gunb-ai/gunbc/pull/1"
 data witness_head_sha: CommitSha = "abc1234def5678901234567890abcd1234567890"
 data witness_merged_at: Timestamp = "2026-06-18T01:00:00Z"
 data witness_node: ProcessNodeId = "session-calm-swift-738"
