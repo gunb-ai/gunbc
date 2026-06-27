@@ -7,6 +7,7 @@ import gunbc.plans.resolver_type_name_collision_wall { resolver_type_name_collis
 import gunbc.plans.realization_measurement_loop { realization_measurement_loop_plan }
 import gunbc.plans.host_effect_orchestration { host_effect_orchestration_plan }
 import gunbc.plans.ci_floor_fractal_gantt { ci_floor_fractal_gantt_plan }
+import gunbc.plans.representation_minimization { representation_minimization_plan }
 
 data batch_g_plans: List<Plan> = [
   ci_humming_plan,
@@ -14,5 +15,6 @@ data batch_g_plans: List<Plan> = [
   resolver_type_name_collision_wall_plan,
   realization_measurement_loop_plan,
   host_effect_orchestration_plan,
-  ci_floor_fractal_gantt_plan
+  ci_floor_fractal_gantt_plan,
+  representation_minimization_plan
 ]
