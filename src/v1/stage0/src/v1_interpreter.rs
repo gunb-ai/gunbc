@@ -3684,7 +3684,10 @@ pub fn cli_verbosity() -> Verbosity {
                 .unwrap_or(false)
             {
                 Verbosity::Verbose
-            } else if std::env::var("GUNBC_QUIET").map(|v| v == "1").unwrap_or(false) {
+            } else if std::env::var("GUNBC_QUIET")
+                .map(|v| v == "1")
+                .unwrap_or(false)
+            {
                 Verbosity::Quiet
             } else {
                 Verbosity::Normal
