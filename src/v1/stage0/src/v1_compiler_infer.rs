@@ -11570,30 +11570,7 @@ pub fn build_type_env(
                 )
             },
         );
-        let intern_table = Rc::new(v1_rt::map_keys(&kernel_type_set()))
-            .iter()
-            .cloned()
-            .fold(intern_table.clone(), |t: Rc<InternTable>, name: String| {
-                intern(t, name.clone()).table.clone()
-            });
-        let intern_table = Rc::new(vec![
-            "Optional".to_string(),
-            "Present".to_string(),
-            "Absent".to_string(),
-            "value".to_string(),
-            "none".to_string(),
-        ])
-        .iter()
-        .cloned()
-        .fold(intern_table.clone(), |t: Rc<InternTable>, name: String| {
-            intern(t, name.clone()).table.clone()
-        });
-        let intern_table = Rc::new(v1_rt::map_keys(&compiler_recursive_types()))
-            .iter()
-            .cloned()
-            .fold(intern_table.clone(), |t: Rc<InternTable>, name: String| {
-                intern(t, name.clone()).table.clone()
-            });
+        let intern_table = seed_kernel_intern_table(intern_table);
         let kernel_bindings_base = Rc::new(v1_rt::map_keys(&kernel_type_set()))
             .iter()
             .cloned()
@@ -13757,11 +13734,40 @@ pub fn build_emit_graph_info(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<EmitGraphI
     }
 }
 
+pub fn seed_kernel_intern_table(intern_table: Rc<InternTable>) -> Rc<InternTable> {
+    let intern_table = Rc::new(v1_rt::map_keys(&kernel_type_set()))
+        .iter()
+        .cloned()
+        .fold(intern_table.clone(), |t: Rc<InternTable>, name: String| {
+            intern(t, name.clone()).table.clone()
+        });
+    let intern_table = Rc::new(vec![
+        "Optional".to_string(),
+        "Present".to_string(),
+        "Absent".to_string(),
+        "value".to_string(),
+        "none".to_string(),
+    ])
+    .iter()
+    .cloned()
+    .fold(intern_table.clone(), |t: Rc<InternTable>, name: String| {
+        intern(t, name.clone()).table.clone()
+    });
+    let intern_table = Rc::new(v1_rt::map_keys(&compiler_recursive_types()))
+        .iter()
+        .cloned()
+        .fold(intern_table.clone(), |t: Rc<InternTable>, name: String| {
+            intern(t, name.clone()).table.clone()
+        });
+    intern(intern_table.clone(), "Unit".to_string()).table.clone()
+}
+
 pub fn typecheck(
     graph: Rc<ModuleGraph>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
 ) -> Rc<TypedGraph> {
+    let intern_table = seed_kernel_intern_table(intern_table);
     typecheck_modules(
         graph.modules.clone(),
         Rc::new(vec![]),
