@@ -1,0 +1,61 @@
+module extdeps.render.terminal_capability
+
+import std.render { RenderCapability }
+import std.symbols { Ascii, Tier, Unicode }
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "no-color.org/"
+  }
+}
+
+data ci_convention_marker: String = "ci grounds the de-facto CI environment-variable convention (set to a truthy value by GitHub Actions, GitLab CI, CircleCI, Travis, and Buildkite): the process output is a captured linear log, not an interactive terminal. no_color grounds the NO_COLOR opt-out convention (no-color.org): an unconditional, environment-set request to suppress SGR color. dumb_term grounds TERM=dumb (terminfo): a terminal with no cursor-addressing or SGR capability. is_tty grounds POSIX isatty(3) on the output stream."
+
+type TerminalEnvironment {
+  is_tty: Bool
+  ci: Bool
+  no_color: Bool
+  dumb_term: Bool
+}
+
+fn cursor_addressable_for(env: TerminalEnvironment) -> Bool {
+  if env.dumb_term {
+    false
+  } else if env.ci {
+    false
+  } else {
+    env.is_tty
+  }
+}
+
+fn color_for(env: TerminalEnvironment) -> Bool {
+  if env.no_color {
+    false
+  } else if env.dumb_term {
+    false
+  } else {
+    env.is_tty || env.ci
+  }
+}
+
+fn tier_for(env: TerminalEnvironment) -> Tier {
+  if env.dumb_term {
+    Ascii
+  } else if env.is_tty {
+    Unicode
+  } else {
+    Ascii
+  }
+}
+
+fn detect_capability(env: TerminalEnvironment) -> RenderCapability {
+  RenderCapability {
+    color: color_for(env: env),
+    tier: tier_for(env: env),
+    cursor_addressable: cursor_addressable_for(env: env)
+  }
+}
