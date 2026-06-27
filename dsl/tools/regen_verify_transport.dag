@@ -1,0 +1,26 @@
+module tools.regen_verify_transport
+
+import extdeps.shell
+import extdeps.languages.bash.program {
+  ShellProgram, ShellStmt,
+  Command, Lit, VarRef,
+  lit, var_ref, command, serialize_bash
+}
+import tools.host_prelude { ensure_regen_stage0_built }
+
+fn regen_verify_program() -> ShellProgram {
+  let root = var_ref(name: "ROOT")
+  let regen = var_ref(name: "REGEN_STAGE0")
+  ShellProgram {
+    set_e: true,
+    statements: concat(ensure_regen_stage0_built(), [
+      command(words: [lit(text: "cd"), root]),
+      command(words: [regen, lit(text: "--verify")])
+    ])
+  }
+}
+
+fn run_regen_verify() -> Bool {
+  let result = shell.Exec.Run(script: serialize_bash(p: regen_verify_program()))
+  result.success
+}
