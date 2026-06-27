@@ -1799,4 +1799,299 @@ mod compiler_tests {
             .join();
         result.expect("contracts_sidecar_wired_into_emit_scope panicked");
     }
+
+    // =========================================================================
+    // ENV-SIZE ATTRIBUTION PROBE — read-only, revert after measurement
+    // Run: GUNBC_ENV_SIZE_PROBE=1 CTRL_BUILD_BYPASS_SHIMS=1 RUSTC_WRAPPER=
+    //      CARGO_BUILD_JOBS=4 cargo test -p v1-compiler --release
+    //      probe_per_module_env_size -- --ignored --nocapture
+    // =========================================================================
+
+    fn get_rss_kb() -> u64 {
+        // Linux: /proc/self/statm — fields are pages; 2nd field = RSS
+        if let Ok(s) = std::fs::read_to_string("/proc/self/statm") {
+            if let Some(rss_pages) = s.split_whitespace().nth(1).and_then(|t| t.parse::<u64>().ok()) {
+                return rss_pages * 4; // 4 KiB pages
+            }
+        }
+        0
+    }
+
+    fn hm_structural_bytes_i64_rc(cap: usize) -> usize {
+        // HashMap<i64, Rc<T>>: slot = 8 (key) + 8 (Rc ptr) + 1 (ctrl) = 17
+        cap * 17
+    }
+
+    fn hm_structural_bytes_i64_bool(cap: usize) -> usize {
+        // HashMap<i64, bool>: slot = 8 + 1 + 1 = 10
+        cap * 10
+    }
+
+    fn hm_structural_bytes_str_rc(cap: usize, key_heap_total: usize) -> usize {
+        // HashMap<String, Rc<T>>: slot = 24 (String struct) + 8 (Rc ptr) + 1 (ctrl) = 33
+        // key_heap_total = sum of all key string byte lengths (separate heap allocs)
+        cap * 33 + key_heap_total
+    }
+
+    fn walk_node_rc_addresses(
+        node: &std::rc::Rc<crate::v1_std_core::Node>,
+        seen_nodes: &mut std::collections::HashSet<usize>,
+        seen_spans: &mut std::collections::HashSet<usize>,
+        seen_exprs: &mut std::collections::HashSet<usize>,
+    ) {
+        let node_addr = std::rc::Rc::as_ptr(node) as usize;
+        if !seen_nodes.insert(node_addr) {
+            return;
+        }
+        seen_spans.insert(std::rc::Rc::as_ptr(&node.span) as usize);
+        if let Some(ref is) = node.ident_span {
+            seen_spans.insert(std::rc::Rc::as_ptr(is) as usize);
+        }
+        seen_exprs.insert(std::rc::Rc::as_ptr(&node.expr_data) as usize);
+        for child in node.children.iter() {
+            walk_node_rc_addresses(child, seen_nodes, seen_spans, seen_exprs);
+        }
+        for p in node.params.iter() {
+            walk_node_rc_addresses(p, seen_nodes, seen_spans, seen_exprs);
+        }
+        for u in node.uses.iter() {
+            walk_node_rc_addresses(u, seen_nodes, seen_spans, seen_exprs);
+        }
+        if let Some(ref b) = node.body {
+            walk_node_rc_addresses(b, seen_nodes, seen_spans, seen_exprs);
+        }
+        if let Some(ref t) = node.transport {
+            walk_node_rc_addresses(t, seen_nodes, seen_spans, seen_exprs);
+        }
+        for prop in node.properties.iter() {
+            walk_node_rc_addresses(prop, seen_nodes, seen_spans, seen_exprs);
+        }
+        if let Some(ref ta) = node.type_annotation {
+            walk_node_rc_addresses(ta, seen_nodes, seen_spans, seen_exprs);
+        }
+    }
+
+    #[test]
+    #[ignore]
+    fn probe_per_module_env_size() {
+        if std::env::var("GUNBC_ENV_SIZE_PROBE").is_err() {
+            eprintln!("probe_per_module_env_size: set GUNBC_ENV_SIZE_PROBE=1 to run");
+            return;
+        }
+        let result = std::thread::Builder::new()
+            .stack_size(64 * 1024 * 1024)
+            .spawn(|| {
+                use std::collections::HashSet;
+
+                let node_size = std::mem::size_of::<crate::v1_std_core::Node>();
+                let span_size = std::mem::size_of::<crate::v1_std_core::SourceSpan>();
+                let expr_size = std::mem::size_of::<crate::v1_std_core::ExprData>();
+
+                let rss_start = get_rss_kb();
+                eprintln!("\n=== ENV-SIZE ATTRIBUTION PROBE ===");
+                eprintln!("  Node={} B  SourceSpan={} B  ExprData={} B", node_size, span_size, expr_size);
+                eprintln!("  RSS at start: {} MiB", rss_start / 1024);
+
+                // Use self_compile_sources: src/v1 entries with dsl+src/v1 pool
+                let sources = self_compile_sources();
+                let module_count = sources.len();
+                eprintln!("  Corpus: {} source files", module_count);
+
+                let t_resolve = std::time::Instant::now();
+                let rc_sources = std::rc::Rc::new(sources.iter().map(|s| s.clone()).collect::<Vec<_>>());
+                let result = crate::v1_compiler_compile::compile_to_resolved(rc_sources);
+                let elapsed_resolve = t_resolve.elapsed();
+
+                let rss_after_resolve = get_rss_kb();
+                eprintln!("  Resolve: {:?}  RSS after: {} MiB  (+{} MiB)",
+                    elapsed_resolve,
+                    rss_after_resolve / 1024,
+                    rss_after_resolve.saturating_sub(rss_start) / 1024,
+                );
+
+                let graph = match result.graph.as_ref() {
+                    Some(g) => g.clone(),
+                    None => {
+                        eprintln!("  resolve produced no graph ({} diagnostics) — aborting probe",
+                            result.diagnostics.len());
+                        return;
+                    }
+                };
+
+                let num_typed_modules = graph.modules.len();
+                eprintln!("  TypedModules in graph: {}", num_typed_modules);
+
+                // -----------------------------------------------------------------
+                // (a) Per-module env-map STRUCTURAL bytes
+                // -----------------------------------------------------------------
+                let mut a_bindings_structural: usize = 0;
+                let mut a_rectype_structural: usize = 0;
+                let mut a_indfields_structural: usize = 0;
+                let mut a_srcidx_structural: usize = 0;
+                let mut a_funcsigs_structural: usize = 0;
+
+                // Distinct-vs-replicated tracking for TypeBinding values
+                let mut unique_binding_ptrs: HashSet<usize> = HashSet::new();
+                let mut total_binding_slots: usize = 0;
+
+                // Key string heap bytes for String-keyed maps (summed across all modules)
+                let mut a_indfields_key_heap: usize = 0;
+                let mut a_srcidx_key_heap: usize = 0;
+                let mut a_funcsigs_key_heap: usize = 0;
+
+                // Shared leaf Rc VALUE payloads (TypeBinding struct + Rc header, counted once per unique ptr)
+                let mut unique_binding_payload_bytes: usize = 0;
+                let mut unique_binding_name_heap: usize = 0;
+
+                // (b) ItemRegistry
+                let mut b_itemreg_structural: usize = 0;
+                let mut b_itemreg_key_heap: usize = 0;
+                let mut b_graph_itemreg_structural: usize = 0;
+
+                for m in graph.modules.iter() {
+                    let env = &m.type_env;
+
+                    // bindings: HashMap<i64, Rc<TypeBinding>>
+                    let b_cap = env.bindings.capacity();
+                    a_bindings_structural += hm_structural_bytes_i64_rc(b_cap);
+                    for (_k, v) in env.bindings.iter() {
+                        total_binding_slots += 1;
+                        let ptr = std::rc::Rc::as_ptr(v) as usize;
+                        if unique_binding_ptrs.insert(ptr) {
+                            // Count this TypeBinding payload once
+                            let tb_struct = std::mem::size_of::<crate::v1_compiler_infer::TypeBinding>();
+                            let rc_header = 16usize; // strong + weak count
+                            unique_binding_payload_bytes += rc_header + tb_struct;
+                            unique_binding_name_heap += v.name.len();
+                        }
+                    }
+
+                    // recursive_type_set: HashMap<i64, bool>
+                    a_rectype_structural += hm_structural_bytes_i64_bool(env.recursive_type_set.capacity());
+
+                    // inductive_fields: HashMap<String, Rc<Vec<Rc<InductiveField>>>>
+                    let if_cap = env.inductive_fields.capacity();
+                    let if_key_heap: usize = env.inductive_fields.keys().map(|k| k.len()).sum();
+                    a_indfields_structural += hm_structural_bytes_str_rc(if_cap, if_key_heap);
+                    a_indfields_key_heap += if_key_heap;
+
+                    // source_indices: HashMap<String, Rc<NewlineIndex>>
+                    let si_cap = env.source_indices.capacity();
+                    let si_key_heap: usize = env.source_indices.keys().map(|k| k.len()).sum();
+                    a_srcidx_structural += hm_structural_bytes_str_rc(si_cap, si_key_heap);
+                    a_srcidx_key_heap += si_key_heap;
+
+                    // func_env.signatures: HashMap<String, Rc<ResolvedFuncSig>>
+                    let fs_cap = m.func_env.signatures.capacity();
+                    let fs_key_heap: usize = m.func_env.signatures.keys().map(|k| k.len()).sum();
+                    a_funcsigs_structural += hm_structural_bytes_str_rc(fs_cap, fs_key_heap);
+                    a_funcsigs_key_heap += fs_key_heap;
+
+                    // (b) per-module item_registry: HashMap<String, Rc<ItemInfo>>
+                    let ir_cap = m.item_registry.capacity();
+                    let ir_key_heap: usize = m.item_registry.keys().map(|k| k.len()).sum();
+                    b_itemreg_structural += hm_structural_bytes_str_rc(ir_cap, ir_key_heap);
+                    b_itemreg_key_heap += ir_key_heap;
+                }
+
+                // graph-level item_registry (one shared map)
+                {
+                    let ir_cap = graph.item_registry.capacity();
+                    let ir_key_heap: usize = graph.item_registry.keys().map(|k| k.len()).sum();
+                    b_graph_itemreg_structural = hm_structural_bytes_str_rc(ir_cap, ir_key_heap) + ir_key_heap;
+                }
+
+                let replication_factor = if unique_binding_ptrs.is_empty() {
+                    0.0f64
+                } else {
+                    total_binding_slots as f64 / unique_binding_ptrs.len() as f64
+                };
+
+                // (a) total structural bytes
+                let a_total_structural = a_bindings_structural + a_rectype_structural
+                    + a_indfields_structural + a_srcidx_structural + a_funcsigs_structural;
+                let a_shared_leaf_bytes = unique_binding_payload_bytes + unique_binding_name_heap;
+
+                // -----------------------------------------------------------------
+                // (c) node tree size — walk all live module items
+                // -----------------------------------------------------------------
+                let mut seen_nodes: HashSet<usize> = HashSet::new();
+                let mut seen_spans: HashSet<usize> = HashSet::new();
+                let mut seen_exprs: HashSet<usize> = HashSet::new();
+
+                for m in graph.modules.iter() {
+                    walk_node_rc_addresses(&m.module, &mut seen_nodes, &mut seen_spans, &mut seen_exprs);
+                    for item in m.items.iter() {
+                        walk_node_rc_addresses(item, &mut seen_nodes, &mut seen_spans, &mut seen_exprs);
+                    }
+                }
+                let c_node_struct_bytes = seen_nodes.len() * (node_size + 16); // +16 Rc header
+                let c_span_struct_bytes = seen_spans.len() * (span_size + 16);
+                let c_expr_struct_bytes = seen_exprs.len() * (expr_size + 16);
+                let c_total_bytes = c_node_struct_bytes + c_span_struct_bytes + c_expr_struct_bytes;
+
+                // -----------------------------------------------------------------
+                // (d) SourceSpan + ExprData pointed-to payload bytes
+                //     (Node struct counted above; here just the Rc-pointed payloads)
+                // -----------------------------------------------------------------
+                // SourceSpan payload: file String len + 2×i64 = 16 + file.len()
+                // We already walked all spans above; we don't have access to the String
+                // lengths without re-walking. Use struct size as proxy (already in c_span_struct_bytes).
+                let d_note = "SourceSpan/ExprData payload already in (c) via struct sizes";
+
+                // -----------------------------------------------------------------
+                // Report
+                // -----------------------------------------------------------------
+                eprintln!("\n--- CATEGORY (a): Per-module env-map structural bytes ---");
+                eprintln!("  bindings (HashMap<i64,Rc<TB>>):          {:>10} MiB  (capacity-slots × 17B)",
+                    a_bindings_structural / 1_048_576);
+                eprintln!("  recursive_type_set (HashMap<i64,bool>):  {:>10} MiB  (capacity-slots × 10B)",
+                    a_rectype_structural / 1_048_576);
+                eprintln!("  inductive_fields (HashMap<Str,Rc<..>>):  {:>10} MiB  (slots × 33B + key-heap)",
+                    a_indfields_structural / 1_048_576);
+                eprintln!("  source_indices (HashMap<Str,Rc<NLI>>):   {:>10} MiB  (slots × 33B + key-heap)",
+                    a_srcidx_structural / 1_048_576);
+                eprintln!("  func_env.sigs (HashMap<Str,Rc<FuncSig>>):{:>10} MiB  (slots × 33B + key-heap)",
+                    a_funcsigs_structural / 1_048_576);
+                eprintln!("  TOTAL (a) structural:                     {:>10} MiB", a_total_structural / 1_048_576);
+                eprintln!("  Shared leaf VALUES (unique TypeBinding payloads + name heap): {} MiB",
+                    a_shared_leaf_bytes / 1_048_576);
+                eprintln!("  TypeBinding distinct ptrs: {}  total slots: {}  replication: {:.1}x",
+                    unique_binding_ptrs.len(), total_binding_slots, replication_factor);
+
+                eprintln!("\n--- CATEGORY (b): ItemRegistry bytes ---");
+                eprintln!("  per-module item_registries (summed):     {:>10} MiB  (slots × 33B + key-heap)",
+                    b_itemreg_structural / 1_048_576);
+                eprintln!("  graph-level item_registry (one shared):  {:>10} MiB",
+                    b_graph_itemreg_structural / 1_048_576);
+
+                eprintln!("\n--- CATEGORY (c): Node/SourceSpan/ExprData struct bytes (distinct Rc targets) ---");
+                eprintln!("  Unique Node allocations: {}  × {} B (struct+Rc) = {} MiB",
+                    seen_nodes.len(), node_size + 16, c_node_struct_bytes / 1_048_576);
+                eprintln!("  Unique SourceSpan allocs: {}  × {} B = {} MiB",
+                    seen_spans.len(), span_size + 16, c_span_struct_bytes / 1_048_576);
+                eprintln!("  Unique ExprData allocs: {}   × {} B = {} MiB",
+                    seen_exprs.len(), expr_size + 16, c_expr_struct_bytes / 1_048_576);
+                eprintln!("  TOTAL (c): {} MiB", c_total_bytes / 1_048_576);
+                eprintln!("  Note: {}", d_note);
+
+                eprintln!("\n--- SUMMARY ---");
+                let all_measured = a_total_structural + a_shared_leaf_bytes
+                    + b_itemreg_structural + b_graph_itemreg_structural
+                    + c_total_bytes;
+                let rss_delta_bytes = rss_after_resolve.saturating_sub(rss_start) * 1024;
+                eprintln!("  RSS delta from resolve: {} MiB  ({} GiB)",
+                    rss_after_resolve.saturating_sub(rss_start) / 1024,
+                    rss_after_resolve.saturating_sub(rss_start) / 1_048_576);
+                eprintln!("  All measured categories sum: {} MiB", all_measured / 1_048_576);
+                eprintln!("  Unattributed (RSS delta - measured): {} MiB",
+                    (rss_delta_bytes as i64 - all_measured as i64) / 1_048_576);
+                eprintln!("  (a) dominates? {}",
+                    if a_total_structural * 2 > all_measured { "YES — env-map structural dup is >50% of measured" }
+                    else { "NO — other categories dominate" });
+            })
+            .expect("thread spawn failed")
+            .join();
+        result.expect("probe_per_module_env_size panicked");
+    }
 }
