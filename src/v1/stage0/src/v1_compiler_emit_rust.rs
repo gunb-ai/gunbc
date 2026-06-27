@@ -18050,8 +18050,29 @@ pub fn emit_typed_record_lit(
                                 }
                                 __result
                             });
+                            let field_type_hints: Rc<HashMap<String, String>> = Rc::new({
+                                let mut __hints: HashMap<String, String> = HashMap::new();
+                                for f in fields.clone().iter().cloned() {
+                                    let fname = field_init_node_name_at(
+                                        f.clone(),
+                                        scope.type_env.clone().source_indices.clone(),
+                                    );
+                                    let fval = field_init_node_value(f.clone());
+                                    if let Some(inf) = fval.inferred.clone() {
+                                        if let Resolved { node: type_node } = (*inf).clone() {
+                                            let tname = authored_name_at(
+                                                scope.type_env.clone().source_indices.clone(),
+                                                type_node,
+                                            );
+                                            __hints.insert(fname, tname);
+                                        }
+                                    }
+                                }
+                                __hints
+                            });
                             match find_struct_name_by_fields(
                                 lit_field_names,
+                                field_type_hints,
                                 emit_info.type_summaries.clone(),
                             ) {
                                 Some(resolved_sn) => {
