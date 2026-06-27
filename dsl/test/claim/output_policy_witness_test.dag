@@ -16,7 +16,9 @@ import gunbc.output_policy {
   Verbosity,
   VerbosityEnv,
   channel_decision,
-  resolve_verbosity
+  gunbc_verbosity_env_vars,
+  resolve_verbosity,
+  shell_trace_summary_max_columns
 }
 
 fn dec_is(d: OutputDecision, suppressed: Bool, condensed: Bool, full: Bool) -> Bool {
@@ -73,11 +75,22 @@ fn w_verbose_wins_over_quiet() -> Bool {
   verbosity_is_normal(v: resolve_verbosity(env: VerbosityEnv { verbose: false, quiet: false }))
 }
 
+fn w_env_var_dispatch_names_grounded() -> Bool {
+  gunbc_verbosity_env_vars.verbose == "GUNBC_VERBOSE" &&
+  gunbc_verbosity_env_vars.quiet == "GUNBC_QUIET"
+}
+
+fn w_shell_trace_cap_is_authority() -> Bool {
+  shell_trace_summary_max_columns == 100
+}
+
 test fn output_policy_witnesses() -> Bool {
   w_diagnostic_never_hidden() &&
   w_instrumentation_is_debug_only() &&
   w_shell_trace_condenses_at_normal() &&
   w_claim_result_shown_at_normal_hidden_at_quiet() &&
   w_progress_condenses_at_normal() &&
-  w_verbose_wins_over_quiet()
+  w_verbose_wins_over_quiet() &&
+  w_env_var_dispatch_names_grounded() &&
+  w_shell_trace_cap_is_authority()
 }

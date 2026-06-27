@@ -3661,7 +3661,9 @@ pub fn materialize_shell_argv_for_operation(
 
 /// SGR foreground parameters per `SemanticColor`, mirroring the
 /// `extdeps.render.ansi` authority (`ansi_mappings` in `dsl/extdeps/render/ansi.dag`).
-/// Seed realization until the interpreter consumes that table directly.
+/// Seed realization until the interpreter consumes that table directly; the
+/// dissolution is the single checkable receipt ROADMAP §1 "interpreter
+/// terminal-output de-fork" (`dsl/gunbc/roadmap_authority.dag`).
 pub mod sgr {
     pub const SUCCESS: &str = "38;5;34";
     pub const ERROR: &str = "38;5;196";
@@ -3715,8 +3717,9 @@ pub enum Verbosity {
     Verbose,
 }
 
-/// Read the CLI verbosity once from the `GUNBC_VERBOSE` / `GUNBC_QUIET` env
-/// convention (the dispatch grounded by `gunbc.output_policy`).
+/// Read the CLI verbosity once. The env-var names are the dispatch grounded by
+/// `gunbc.output_policy.gunbc_verbosity_env_vars` (verbose=`GUNBC_VERBOSE`,
+/// quiet=`GUNBC_QUIET`); the precedence mirrors `resolve_verbosity`.
 pub fn cli_verbosity() -> Verbosity {
     thread_local! {
         static POLICY: Cell<Option<Verbosity>> = const { Cell::new(None) };

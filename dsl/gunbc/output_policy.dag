@@ -1,8 +1,20 @@
 module gunbc.output_policy
 
-import std.types { Bool }
+import std.types { Bool, Int, String }
 
 type Verbosity = Quiet | Normal | Verbose
+
+type VerbosityEnvVarNames {
+  verbose: String
+  quiet: String
+}
+
+data gunbc_verbosity_env_vars: VerbosityEnvVarNames = VerbosityEnvVarNames {
+  verbose: "GUNBC_VERBOSE"
+  quiet: "GUNBC_QUIET"
+}
+
+data shell_trace_summary_max_columns: Int = 100
 
 type OutputDecision = Suppressed | Condensed | Full
 
