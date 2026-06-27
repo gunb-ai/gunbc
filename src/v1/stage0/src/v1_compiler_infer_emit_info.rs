@@ -167,8 +167,6 @@ pub fn derive_variant_to_enum(
                 _ => acc.clone(),
             },
         );
-    eprintln!("DEBUG WriteThenCommit owner = {:?}", result.get("WriteThenCommit"));
-    eprintln!("DEBUG WriteThenRename owner = {:?}", result.get("WriteThenRename"));
     result
 }
 
