@@ -1,0 +1,112 @@
+module gunbc.ci_render
+
+import std.render { Frame, Line, Span, SpanStyle, RenderCapability, repeat_string }
+import std.symbols {
+  SemanticColor, SymbolId, Tier, Unicode,
+  BoxHorizontal, BoxVertical, BoxCornerTopLeft, BoxCornerTopRight, BoxCornerBottomLeft, BoxCornerBottomRight,
+}
+import std.unicode { string_display_width }
+import std.width { truncate_text }
+import extdeps.render.glyphs { resolve_symbol }
+import extdeps.render.terminal { serialize_frame }
+
+fn glyph_for(id: SymbolId, tier: Tier) -> String {
+  match resolve_symbol(id: id, tier: tier) {
+    Present { value: s } => s
+    Absent => ""
+  }
+}
+
+fn pad_to(text: String, width: Int) -> String {
+  let w = string_display_width(s: text)
+  if w >= width {
+    text
+  } else {
+    concat(text, repeat_string(s: " ", n: width - w))
+  }
+}
+
+fn plain_span(text: String) -> Span {
+  Span { text: text, style: SpanStyle { color: none, bold: false, italic: false, symbol: none } }
+}
+
+fn dim_span(text: String) -> Span {
+  Span { text: text, style: SpanStyle { color: Present { value: Dim }, bold: false, italic: false, symbol: none } }
+}
+
+fn line_of(span: Span) -> Line {
+  Line { spans: [span], indent: 0, max_width: none }
+}
+
+fn box_top(title: String, width: Int, tier: Tier) -> Line {
+  let hz = glyph_for(id: BoxHorizontal, tier: tier)
+  let tr = glyph_for(id: BoxCornerTopRight, tier: tier)
+  let prefix = concat(glyph_for(id: BoxCornerTopLeft, tier: tier), concat(hz, concat(" ", concat(title, " "))))
+  let dashes = width - string_display_width(s: prefix) - string_display_width(s: tr)
+  line_of(span: dim_span(text: concat(prefix, concat(repeat_string(s: hz, n: dashes), tr))))
+}
+
+fn box_bottom(width: Int, tier: Tier) -> Line {
+  let hz = glyph_for(id: BoxHorizontal, tier: tier)
+  let bl = glyph_for(id: BoxCornerBottomLeft, tier: tier)
+  let br = glyph_for(id: BoxCornerBottomRight, tier: tier)
+  let dashes = width - string_display_width(s: bl) - string_display_width(s: br)
+  line_of(span: dim_span(text: concat(bl, concat(repeat_string(s: hz, n: dashes), br))))
+}
+
+fn box_content_line(text: String, width: Int, tier: Tier) -> Line {
+  let v = glyph_for(id: BoxVertical, tier: tier)
+  let inner_budget = width - (2 * string_display_width(s: v)) - 2
+  let inner = pad_to(text: truncate_text(text: text, max_width: inner_budget), width: inner_budget)
+  line_of(span: plain_span(text: concat(v, concat(" ", concat(inner, concat(" ", v))))))
+}
+
+fn boxed_frame(title: String, body: List<String>, width: Int, tier: Tier) -> Frame {
+  let content = map(body, l => box_content_line(text: l, width: width, tier: tier))
+  let all = concat([box_top(title: title, width: width, tier: tier)], concat(content, [box_bottom(width: width, tier: tier)]))
+  Frame { lines: all, cursor_action: Append }
+}
+
+fn format_duration_ns(ns: Int) -> String {
+  if ns < 1000 {
+    concat(to_string(ns), "ns")
+  } else if ns < 1000000 {
+    concat(to_string(ns / 1000), "us")
+  } else if ns < 1000000000 {
+    concat(to_string(ns / 1000000), "ms")
+  } else {
+    concat(to_string(ns / 1000000000), "s")
+  }
+}
+
+fn timing_cell(label: String, ns: Int) -> String {
+  concat(label, concat(": ", format_duration_ns(ns: ns)))
+}
+
+fn percentile_row(p50: Int, p90: Int, p95: Int, p99: Int, p100: Int) -> String {
+  concat(timing_cell(label: "p50", ns: p50),
+  concat("  ", concat(timing_cell(label: "p90", ns: p90),
+  concat("  ", concat(timing_cell(label: "p95", ns: p95),
+  concat("  ", concat(timing_cell(label: "p99", ns: p99),
+  concat("  ", timing_cell(label: "max", ns: p100)))))))))
+}
+
+fn percentile_box_frame(title: String, p50: Int, p90: Int, p95: Int, p99: Int, p100: Int, width: Int, tier: Tier) -> Frame {
+  boxed_frame(title: title, body: [percentile_row(p50: p50, p90: p90, p95: p95, p99: p99, p100: p100)], width: width, tier: tier)
+}
+
+fn render_capability(color: Bool) -> RenderCapability {
+  RenderCapability { color: color, tier: Unicode, cursor_addressable: false }
+}
+
+fn render_percentile_box(title: String, p50: Int, p90: Int, p95: Int, p99: Int, p100: Int, width: Int, color: Bool) -> String {
+  let cap = render_capability(color: color)
+  serialize_frame(
+    frame: percentile_box_frame(title: title, p50: p50, p90: p90, p95: p95, p99: p99, p100: p100, width: width, tier: cap.tier),
+    cap: cap
+  )
+}
+
+fn timing_histogram_frame(p50: Int, p90: Int, p95: Int, p99: Int, p100: Int, width: Int) -> Frame {
+  percentile_box_frame(title: "WITNESS TIMING HISTOGRAM", p50: p50, p90: p90, p95: p95, p99: p99, p100: p100, width: width, tier: Unicode)
+}

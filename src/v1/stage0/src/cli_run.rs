@@ -1986,21 +1986,28 @@ pub fn compute_percentiles(mut values: Vec<u128>) -> TimingPercentiles {
     }
 }
 
-// SCAFFOLD (§7 hand-Rust shrink-to-zero, dissolution named): witness timing histogram measures v1
-// evaluator execution characteristics (resolve+eval per-witness percentiles). Seed-side justified
-// (evaluator cannot measure itself without circularity). Dissolution: ROADMAP lane "CI observability"
-// adds machine-readable timing-data emission to claim_executor (dsl/gunbc/ci_spec.dag TimingRecord
-// rows), then dsl/ .dag witness consumes and histograms natively. At full dissolution, delete this
-// hand-Rust output and hand_generated_percentiles_test.dag coverage.
-pub fn generate_witness_timing_histogram(summary: &DiscoverySummary) -> String {
+// SCAFFOLD (§7 hand-Rust shrink-to-zero, dissolution named): the v1 evaluator measures its own
+// per-witness resolve+eval percentiles here — seed-side justified (the evaluator cannot measure
+// itself without circularity). The *rendering* of these timings now lives in `dsl/gunbc/ci_render.dag`
+// (boxed Frames over `std.render`, width-parameterized by the medium's `Viewport.width`); this Rust
+// only produces the measured data. Full dissolution: ROADMAP lane "CI observability" emits the
+// `TimingPercentiles` rows as a substrate value so a .dag witness measures + histograms natively,
+// at which point this measurement struct collapses too.
+pub struct HistogramData {
+    pub included: usize,
+    pub skipped: usize,
+    pub total: TimingPercentiles,
+    pub resolve: TimingPercentiles,
+    pub eval: TimingPercentiles,
+}
+
+pub fn compute_histogram_data(summary: &DiscoverySummary) -> Result<HistogramData, String> {
     if summary.performance_receipts.len() != summary.witness_outcomes.len() {
-        let msg = format!(
+        return Err(format!(
             "[histogram] SKIPPED: mismatched vector lengths (performance_receipts={}, witness_outcomes={}) — timings unreliable",
             summary.performance_receipts.len(),
             summary.witness_outcomes.len()
-        );
-        eprintln!("{}", msg);
-        return format!("╔════════════════════════════════════════════════════════════════════════════╗\n║ {:<74} ║\n╚════════════════════════════════════════════════════════════════════════════╝\n", msg);
+        ));
     }
 
     let mut entry_resolve_map: HashMap<String, u128> = HashMap::new();
@@ -2035,92 +2042,13 @@ pub fn generate_witness_timing_histogram(summary: &DiscoverySummary) -> String {
         eval_times.push(eval_nanos);
     }
 
-    let included_witnesses = total_times.len();
-    let total_percentiles = compute_percentiles(total_times);
-    let resolve_percentiles = compute_percentiles(resolve_times);
-    let eval_percentiles = compute_percentiles(eval_times);
-
-    let mut output = String::new();
-    output.push_str(
-        "╔════════════════════════════════════════════════════════════════════════════╗\n",
-    );
-    output.push_str(
-        "║                    WITNESS TIMING HISTOGRAM                                 ║\n",
-    );
-    output.push_str(
-        "║                Per-Witness Resolve+Eval Percentiles                         ║\n",
-    );
-    output.push_str(
-        "╚════════════════════════════════════════════════════════════════════════════╝\n\n",
-    );
-
-    output.push_str(&format!(
-        "Total witnesses: {} (included in histogram); {} skipped (no entry-resolve timing)\n",
-        included_witnesses, skipped_missing_entry_resolve
-    ));
-    output.push_str(
-        "Note: Resolve times are per-entry-amortized (all witnesses in an entry share the\n",
-    );
-    output.push_str("entry's resolve cost). Eval times are per-witness measurements.\n\n");
-
-    output.push_str(
-        "┌─ TOTAL TIME (Resolve + Eval) ───────────────────────────────────────────────┐\n",
-    );
-    output.push_str(&format!(
-        "│ p50: {:>12} | p90: {:>12} | p95: {:>12} | p99: {:>12} | max: {:>12} │\n",
-        format_nanos(total_percentiles.p50),
-        format_nanos(total_percentiles.p90),
-        format_nanos(total_percentiles.p95),
-        format_nanos(total_percentiles.p99),
-        format_nanos(total_percentiles.p100),
-    ));
-    output.push_str(
-        "└─────────────────────────────────────────────────────────────────────────────┘\n\n",
-    );
-
-    output.push_str(
-        "┌─ RESOLVE TIME ──────────────────────────────────────────────────────────────┐\n",
-    );
-    output.push_str(&format!(
-        "│ p50: {:>12} | p90: {:>12} | p95: {:>12} | p99: {:>12} | max: {:>12} │\n",
-        format_nanos(resolve_percentiles.p50),
-        format_nanos(resolve_percentiles.p90),
-        format_nanos(resolve_percentiles.p95),
-        format_nanos(resolve_percentiles.p99),
-        format_nanos(resolve_percentiles.p100),
-    ));
-    output.push_str(
-        "└─────────────────────────────────────────────────────────────────────────────┘\n\n",
-    );
-
-    output.push_str(
-        "┌─ EVAL TIME ─────────────────────────────────────────────────────────────────┐\n",
-    );
-    output.push_str(&format!(
-        "│ p50: {:>12} | p90: {:>12} | p95: {:>12} | p99: {:>12} | max: {:>12} │\n",
-        format_nanos(eval_percentiles.p50),
-        format_nanos(eval_percentiles.p90),
-        format_nanos(eval_percentiles.p95),
-        format_nanos(eval_percentiles.p99),
-        format_nanos(eval_percentiles.p100),
-    ));
-    output.push_str(
-        "└─────────────────────────────────────────────────────────────────────────────┘\n",
-    );
-
-    output
-}
-
-fn format_nanos(nanos: u128) -> String {
-    if nanos < 1_000 {
-        format!("{}ns", nanos)
-    } else if nanos < 1_000_000 {
-        format!("{:.1}µs", nanos as f64 / 1_000.0)
-    } else if nanos < 1_000_000_000 {
-        format!("{:.1}ms", nanos as f64 / 1_000_000.0)
-    } else {
-        format!("{:.1}s", nanos as f64 / 1_000_000_000.0)
-    }
+    Ok(HistogramData {
+        included: total_times.len(),
+        skipped: skipped_missing_entry_resolve,
+        total: compute_percentiles(total_times),
+        resolve: compute_percentiles(resolve_times),
+        eval: compute_percentiles(eval_times),
+    })
 }
 
 pub const WET_HERMETIC_EQUIVALENCE_WITNESS_ENTRY: &str =

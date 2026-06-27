@@ -1,0 +1,56 @@
+module test.claim.ci_render_histogram_width
+
+import gunbc.ci_render { timing_histogram_frame, percentile_box_frame, render_percentile_box }
+import extdeps.render.terminal { serialize_line, serialize_frame }
+import std.render { Frame, RenderCapability }
+import std.symbols { Ascii, Unicode }
+import std.unicode { string_display_width }
+
+fn no_color_cap() -> RenderCapability {
+  RenderCapability { color: false, tier: Unicode, cursor_addressable: false }
+}
+
+fn sample_frame(width: Int) -> Frame {
+  timing_histogram_frame(p50: 12, p90: 3400, p95: 56000, p99: 7800000, p100: 920000000, width: width)
+}
+
+fn all_lines_have_width(width: Int) -> Bool {
+  fold(sample_frame(width: width).lines,
+    init: true,
+    f: (acc, line) => acc && (string_display_width(s: serialize_line(line: line, cap: no_color_cap())) == width)
+  )
+}
+
+fn has_three_lines(width: Int) -> Bool {
+  count(sample_frame(width: width).lines) == 3
+}
+
+fn exact_small_box() -> Bool {
+  render_percentile_box(title: "X", p50: 1, p90: 2, p95: 3, p99: 4, p100: 5, width: 30, color: false) ==
+  "┌─ X ────────────────────────┐\n│ p50: 1ns  p90: 2ns  p95: 3 │\n└────────────────────────────┘"
+}
+
+fn ascii_box(width: Int) -> Frame {
+  percentile_box_frame(title: "X", p50: 1, p90: 2, p95: 3, p99: 4, p100: 5, width: width, tier: Ascii)
+}
+
+fn ascii_width_holds() -> Bool {
+  fold(ascii_box(width: 48).lines,
+    init: true,
+    f: (acc, line) => acc && (string_display_width(s: serialize_line(line: line, cap: no_color_cap())) == 48)
+  )
+}
+
+fn tier_swaps_glyphs() -> Bool {
+  serialize_frame(frame: ascii_box(width: 48), cap: no_color_cap()) !=
+  serialize_frame(frame: timing_histogram_frame(p50: 1, p90: 2, p95: 3, p99: 4, p100: 5, width: 48), cap: no_color_cap())
+}
+
+test fn ci_render_histogram_width_witnesses() -> Bool {
+  all_lines_have_width(width: 80) &&
+  all_lines_have_width(width: 64) &&
+  has_three_lines(width: 80) &&
+  exact_small_box() &&
+  ascii_width_holds() &&
+  tier_swaps_glyphs()
+}

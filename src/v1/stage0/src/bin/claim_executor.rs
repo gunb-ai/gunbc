@@ -7,11 +7,12 @@ use std::thread;
 use std::time::Instant;
 
 use v1_compiler::cli_run::{
-    make_eval_context, resolve_entry_graph, run_claim, run_discovery_corpus_with_options,
-    run_value, ClaimOutcome, DiscoveryCorpusOptions,
+    compute_histogram_data, make_eval_context, resolve_entry_graph, run_claim,
+    run_discovery_corpus_with_options, run_value, ClaimOutcome, DiscoveryCorpusOptions,
+    HistogramData, TimingPercentiles,
 };
 use v1_compiler::v1_interpreter::{
-    paint, run_in_context_with_args, sgr, ExecutionMode, InterpContext, Value,
+    color_enabled, paint, run_in_context_with_args, sgr, ExecutionMode, InterpContext, Value,
 };
 
 #[derive(Clone)]
@@ -415,6 +416,93 @@ fn run_shared_entry_claims(
         .collect()
 }
 
+/// The medium's `Viewport.width` for boxed output. The seed sources the runtime value from the host
+/// (`COLUMNS` when present) and passes it into the `.dag` render model; the model owns how width
+/// shapes the box. Conservative 88-col default fits common CI-log and chat viewers; clamped so a
+/// hostile `COLUMNS` cannot produce a degenerate box.
+fn histogram_output_width() -> i64 {
+    std::env::var("COLUMNS")
+        .ok()
+        .and_then(|v| v.trim().parse::<i64>().ok())
+        .filter(|w| *w >= 48)
+        .unwrap_or(88)
+        .min(120)
+}
+
+fn clamp_nanos_to_i64(n: u128) -> i64 {
+    i64::try_from(n).unwrap_or(i64::MAX)
+}
+
+/// Render the timing histogram boxes through `dsl/gunbc/ci_render.dag` (`render_percentile_box`),
+/// the single authority for boxed-Frame width. The seed only supplies measured data + the host
+/// viewport width; all layout (borders, padding, duration formatting) lives in `.dag`.
+fn render_timing_histogram(
+    source_roots: &[String],
+    data: &HistogramData,
+) -> Result<String, String> {
+    let entry = "dsl/gunbc/ci_render.dag";
+    let (graph, indices) = resolve_entry_graph(source_roots, entry)
+        .map_err(|m| format!("resolve failed for {entry}:\n{m}"))?;
+    let ctx = make_eval_context(&graph, indices, ExecutionMode::Wet);
+    let width = histogram_output_width();
+    let color = color_enabled();
+
+    let render_box = |title: &str, p: &TimingPercentiles| -> Result<String, String> {
+        let value = run_in_context_with_args(
+            &ctx,
+            "render_percentile_box",
+            &[
+                (Some("title".to_string()), Value::Str(title.to_string())),
+                (
+                    Some("p50".to_string()),
+                    Value::Int(clamp_nanos_to_i64(p.p50)),
+                ),
+                (
+                    Some("p90".to_string()),
+                    Value::Int(clamp_nanos_to_i64(p.p90)),
+                ),
+                (
+                    Some("p95".to_string()),
+                    Value::Int(clamp_nanos_to_i64(p.p95)),
+                ),
+                (
+                    Some("p99".to_string()),
+                    Value::Int(clamp_nanos_to_i64(p.p99)),
+                ),
+                (
+                    Some("p100".to_string()),
+                    Value::Int(clamp_nanos_to_i64(p.p100)),
+                ),
+                (Some("width".to_string()), Value::Int(width)),
+                (Some("color".to_string()), Value::Bool(color)),
+            ],
+            false,
+        )
+        .map_err(|e| format!("render_percentile_box eval failed: {e}"))?;
+        match value {
+            Value::Str(s) => Ok(s),
+            other => Err(format!(
+                "render_percentile_box returned non-string: {other}"
+            )),
+        }
+    };
+
+    let mut out = String::new();
+    out.push_str(&format!(
+        "Total witnesses: {} (included in histogram); {} skipped (no entry-resolve timing)\n",
+        data.included, data.skipped
+    ));
+    out.push_str(
+        "Note: Resolve times are per-entry-amortized (witnesses in an entry share its resolve cost); eval times are per-witness.\n\n",
+    );
+    out.push_str(&render_box("TOTAL TIME (Resolve + Eval)", &data.total)?);
+    out.push('\n');
+    out.push_str(&render_box("RESOLVE TIME", &data.resolve)?);
+    out.push('\n');
+    out.push_str(&render_box("EVAL TIME", &data.eval)?);
+    Ok(out)
+}
+
 fn run_discovery_batch_node(
     source_roots: Vec<String>,
     scan_dirs: Vec<String>,
@@ -448,8 +536,13 @@ fn run_discovery_batch_node(
                 summary.total_measured_nanos as f64 / 1.0e6,
                 summary.total_measured_nanos,
             );
-            let histogram = v1_compiler::cli_run::generate_witness_timing_histogram(&summary);
-            eprintln!("{}", histogram);
+            match compute_histogram_data(&summary) {
+                Ok(data) => match render_timing_histogram(&source_roots, &data) {
+                    Ok(histogram) => eprintln!("{histogram}"),
+                    Err(e) => eprintln!("[histogram] render failed (timings unaffected): {e}"),
+                },
+                Err(msg) => eprintln!("{msg}"),
+            }
             ClaimResult {
                 function: format!("{label} ({} witnesses)", summary.total),
                 ok: true,
