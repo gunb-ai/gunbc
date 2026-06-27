@@ -800,33 +800,51 @@ fn satisfies(offer: ComputeOffer, demand: WorkDemand) -> ComputeLeaseEligibility
   }
 }
 
-type DemandClass
-  = SessionClass
-  | HeavyComputeClass
+type ControlPlaneAgent
+  = ClaudeCode
+  | Codex
+  | Cursor
 
-type ClassedWorkDemand {
-  demand_class: DemandClass
-  demand: WorkDemand
+type SessionSubject {
+  agent: ControlPlaneAgent
+}
+
+type ComputeLocality
+  = FulfillableRemotely
+  | MustRunLocal
+
+type ComputeRequest {
+  requester: SessionSubject
+  workload: WorkUnitId
+  needs: ResourceEnvelope
+  locality: ComputeLocality
+}
+
+type ExecutorTarget
+  = BuildBuddyRemote { endpoint: NonEmptyStr }
+  | LeasedComputeLane { lease_id: HeavyComputeLeaseId, host: HostIdentity }
+
+type RemoteExecutorHandle {
+  provider: ProviderIdentity
+  target: ExecutorTarget
+}
+
+type FulfillmentRejection
+  = LocalCapacityExhausted { lane_count: Nat, held: Nat }
+  | NeedsUnsatisfiable { reason: MissingDemandFact }
+
+type Fulfillment
+  = Fulfilled { executor: RemoteExecutorHandle }
+  | FulfillmentRejected { reason: FulfillmentRejection }
+
+type FulfillmentOutcome {
+  fulfillment: Fulfillment
+  ledger: LeaseLedger
 }
 
 type HeavyComputeLaneSource
   = GithubCiRunner
   | OnDemandSessionLease
-
-type HeavyWorkRoutability
-  = RoutableRemote
-  | NonRoutableLocal
-
-type HeavyWorkPlacement
-  = OffHostRemote
-  | LeasedLane { source: HeavyComputeLaneSource }
-
-fn heavy_work_placement(routability: HeavyWorkRoutability) -> HeavyWorkPlacement {
-  match routability {
-    RoutableRemote => OffHostRemote
-    NonRoutableLocal => LeasedLane { source: OnDemandSessionLease }
-  }
-}
 
 type HeavyComputeLeaseId = NonEmptyStr where brand("HeavyComputeLeaseId")
 
@@ -915,6 +933,79 @@ fn lease_grant(
 
 fn lease_release(ledger: LeaseLedger, lease_id: HeavyComputeLeaseId) -> LeaseLedger {
   LeaseLedger { held: filter(ledger.held, l => l.lease_id != lease_id) }
+}
+
+type ComputeFabric {
+  pool: HeavyComputePool
+  remote_executor: RemoteExecutorHandle
+  local_offer: ComputeOffer
+}
+
+fn request_to_work_demand(request: ComputeRequest) -> WorkDemand {
+  WorkDemand {
+    resources: request.needs,
+    os: none,
+    isolation: IsolationRequirement { boundary: SharedHostHome },
+    toolchains: [],
+    parallelism: SingleWorkItem,
+    data_locality: [],
+    effects: [],
+    input_envelope: EnvelopeUnknown,
+  }
+}
+
+fn fulfill(
+  fabric: ComputeFabric,
+  ledger: LeaseLedger,
+  request: ComputeRequest,
+  lease_id: HeavyComputeLeaseId,
+  acquired_at: LogicalTime,
+  max_hold: Duration
+) -> FulfillmentOutcome {
+  match request.locality {
+    FulfillableRemotely =>
+      FulfillmentOutcome {
+        fulfillment: Fulfilled { executor: fabric.remote_executor },
+        ledger: ledger,
+      }
+    MustRunLocal =>
+      match lease_grant(
+        pool: fabric.pool,
+        ledger: ledger,
+        offer: fabric.local_offer,
+        lease_id: lease_id,
+        source: OnDemandSessionLease,
+        demand: request_to_work_demand(request: request),
+        acquired_at: acquired_at,
+        max_hold: max_hold
+      ) {
+        LeaseGranted { ledger: granted_ledger, granted: g } =>
+          FulfillmentOutcome {
+            fulfillment: Fulfilled {
+              executor: RemoteExecutorHandle {
+                provider: fabric.local_offer.provider,
+                target: LeasedComputeLane {
+                  lease_id: g.lease_id,
+                  host: fabric.local_offer.supply.physical.identity,
+                },
+              },
+            },
+            ledger: granted_ledger,
+          }
+        LeaseRejectedPoolExhausted { lane_count: lc, held: h } =>
+          FulfillmentOutcome {
+            fulfillment: FulfillmentRejected {
+              reason: LocalCapacityExhausted { lane_count: lc, held: h },
+            },
+            ledger: ledger,
+          }
+        LeaseRejectedIneligible { reason: r } =>
+          FulfillmentOutcome {
+            fulfillment: FulfillmentRejected { reason: NeedsUnsatisfiable { reason: r } },
+            ledger: ledger,
+          }
+      }
+  }
 }
 
 type WorkUnitId = NonEmptyStr where brand("WorkUnitId")
@@ -1473,5 +1564,261 @@ data gunbc_ci_corpus_envelope_ceiling_scaffold: Disposition = Scaffold {
     module_path: "gunbc.plans.input_envelope_roadmap",
     decl_name: "input_envelope_roadmap_plan",
     field: WholeDeclaration
+  }
+}
+
+data heavy_compute_lane_work_demand: WorkDemand = WorkDemand {
+  resources: ResourceEnvelope {
+    cpu: Present {
+      value: CpuRequirement { min_threads: hardware_thread_count(16), architecture: none },
+    },
+    gpu: none,
+    memory: Present { value: MemoryRequirement { min_bytes: byte_size(34359738368) } },
+    storage: none,
+    network: none,
+  },
+  os: none,
+  isolation: IsolationRequirement { boundary: SharedHostHome },
+  toolchains: [],
+  parallelism: SingleWorkItem,
+  data_locality: [],
+  effects: [],
+  input_envelope: EnvelopeUnknown,
+}
+
+data example_heavy_compute_pool: HeavyComputePool = HeavyComputePool {
+  lane_envelope: heavy_compute_lane_work_demand.resources,
+  lane_count: 2,
+}
+
+data example_lease_max_hold: Duration = Measure { count: 7200 }
+
+data example_session_subject: SessionSubject = SessionSubject { agent: ClaudeCode }
+
+data example_remote_executor: RemoteExecutorHandle = RemoteExecutorHandle {
+  provider: "buildbuddy-remote",
+  target: BuildBuddyRemote { endpoint: "grpcs://remote.buildbuddy.io" },
+}
+
+data example_compute_fabric: ComputeFabric = ComputeFabric {
+  pool: example_heavy_compute_pool,
+  remote_executor: example_remote_executor,
+  local_offer: example_resource_offer,
+}
+
+data example_remote_request: ComputeRequest = ComputeRequest {
+  requester: example_session_subject,
+  workload: "cargo-build-workspace",
+  needs: heavy_compute_lane_work_demand.resources,
+  locality: FulfillableRemotely,
+}
+
+data example_local_request: ComputeRequest = ComputeRequest {
+  requester: example_session_subject,
+  workload: "profile-typed-ast-byte-breakdown",
+  needs: heavy_compute_lane_work_demand.resources,
+  locality: MustRunLocal,
+}
+
+data example_oversized_local_request: ComputeRequest = ComputeRequest {
+  requester: example_session_subject,
+  workload: "oversized-local",
+  needs: example_thread_work_demand.resources,
+  locality: MustRunLocal,
+}
+
+fn witness_session_subject_is_control_plane_agent() -> Bool {
+  match example_session_subject.agent {
+    ClaudeCode => true
+    Codex => true
+    Cursor => true
+  }
+}
+
+fn witness_remote_request_fulfilled_off_session() -> Bool {
+  let outcome = fulfill(
+    fabric: example_compute_fabric,
+    ledger: empty_lease_ledger,
+    request: example_remote_request,
+    lease_id: "unused-remote",
+    acquired_at: "t0",
+    max_hold: example_lease_max_hold
+  )
+  match outcome.fulfillment {
+    Fulfilled { executor: e } =>
+      match e.target {
+        BuildBuddyRemote { endpoint: _ } => ledger_held_count(ledger: outcome.ledger) == 0
+        LeasedComputeLane { lease_id: _, host: _ } => false
+      }
+    FulfillmentRejected { reason: _ } => false
+  }
+}
+
+fn witness_local_request_leases_a_lane() -> Bool {
+  let outcome = fulfill(
+    fabric: example_compute_fabric,
+    ledger: empty_lease_ledger,
+    request: example_local_request,
+    lease_id: "lease-local-1",
+    acquired_at: "t0",
+    max_hold: example_lease_max_hold
+  )
+  match outcome.fulfillment {
+    Fulfilled { executor: e } =>
+      match e.target {
+        LeasedComputeLane { lease_id: lid, host: _ } =>
+          lid == "lease-local-1" && ledger_held_count(ledger: outcome.ledger) == 1
+        BuildBuddyRemote { endpoint: _ } => false
+      }
+    FulfillmentRejected { reason: _ } => false
+  }
+}
+
+fn witness_local_request_rejected_when_pool_exhausted() -> Bool {
+  let o1 = fulfill(
+    fabric: example_compute_fabric, ledger: empty_lease_ledger, request: example_local_request,
+    lease_id: "l1", acquired_at: "t0", max_hold: example_lease_max_hold
+  )
+  let o2 = fulfill(
+    fabric: example_compute_fabric, ledger: o1.ledger, request: example_local_request,
+    lease_id: "l2", acquired_at: "t1", max_hold: example_lease_max_hold
+  )
+  let o3 = fulfill(
+    fabric: example_compute_fabric, ledger: o2.ledger, request: example_local_request,
+    lease_id: "l3", acquired_at: "t2", max_hold: example_lease_max_hold
+  )
+  match o3.fulfillment {
+    FulfillmentRejected { reason: r } =>
+      match r {
+        LocalCapacityExhausted { lane_count: _, held: h } =>
+          h == 2 && ledger_held_count(ledger: o3.ledger) == 2
+        NeedsUnsatisfiable { reason: _ } => false
+      }
+    Fulfilled { executor: _ } => false
+  }
+}
+
+fn witness_unsatisfiable_local_needs_rejected() -> Bool {
+  let outcome = fulfill(
+    fabric: example_compute_fabric,
+    ledger: empty_lease_ledger,
+    request: example_oversized_local_request,
+    lease_id: "oversized",
+    acquired_at: "t0",
+    max_hold: example_lease_max_hold
+  )
+  match outcome.fulfillment {
+    FulfillmentRejected { reason: r } =>
+      match r {
+        NeedsUnsatisfiable { reason: m } => m.dimension == DemandCpu
+        LocalCapacityExhausted { lane_count: _, held: _ } => false
+      }
+    Fulfilled { executor: _ } => false
+  }
+}
+
+fn witness_heavy_pool_bytes_is_lanes_times_envelope() -> Bool {
+  byte_size_count(heavy_compute_pool_bytes(pool: example_heavy_compute_pool)) == 68719476736
+}
+
+fn witness_pool_unifies_ci_and_ondemand_then_rejects() -> Bool {
+  match lease_grant(
+    pool: example_heavy_compute_pool,
+    ledger: empty_lease_ledger,
+    offer: example_resource_offer,
+    lease_id: "ci-1",
+    source: GithubCiRunner,
+    demand: heavy_compute_lane_work_demand,
+    acquired_at: "t0",
+    max_hold: example_lease_max_hold
+  ) {
+    LeaseRejectedIneligible { reason: _ } => false
+    LeaseRejectedPoolExhausted { lane_count: _, held: _ } => false
+    LeaseGranted { ledger: l1, granted: _ } =>
+      match lease_grant(
+        pool: example_heavy_compute_pool,
+        ledger: l1,
+        offer: example_resource_offer,
+        lease_id: "od-1",
+        source: OnDemandSessionLease,
+        demand: heavy_compute_lane_work_demand,
+        acquired_at: "t1",
+        max_hold: example_lease_max_hold
+      ) {
+        LeaseRejectedIneligible { reason: _ } => false
+        LeaseRejectedPoolExhausted { lane_count: _, held: _ } => false
+        LeaseGranted { ledger: l2, granted: _ } =>
+          match lease_grant(
+            pool: example_heavy_compute_pool,
+            ledger: l2,
+            offer: example_resource_offer,
+            lease_id: "od-2",
+            source: OnDemandSessionLease,
+            demand: heavy_compute_lane_work_demand,
+            acquired_at: "t2",
+            max_hold: example_lease_max_hold
+          ) {
+            LeaseGranted { ledger: _, granted: _ } => false
+            LeaseRejectedIneligible { reason: _ } => false
+            LeaseRejectedPoolExhausted { lane_count: _, held: h } =>
+              ledger_held_count(ledger: l2) == 2 && h == 2
+          }
+      }
+  }
+}
+
+fn witness_lease_release_frees_lane() -> Bool {
+  match lease_grant(
+    pool: example_heavy_compute_pool,
+    ledger: empty_lease_ledger,
+    offer: example_resource_offer,
+    lease_id: "rel-1",
+    source: GithubCiRunner,
+    demand: heavy_compute_lane_work_demand,
+    acquired_at: "t0",
+    max_hold: example_lease_max_hold
+  ) {
+    LeaseRejectedIneligible { reason: _ } => false
+    LeaseRejectedPoolExhausted { lane_count: _, held: _ } => false
+    LeaseGranted { ledger: l1, granted: _ } => {
+      let l2 = lease_release(ledger: l1, lease_id: "rel-1")
+      ledger_held_count(ledger: l1) == 1
+        && ledger_held_count(ledger: l2) == 0
+        && ledger_has_free_lane(pool: example_heavy_compute_pool, ledger: l2)
+    }
+  }
+}
+
+fn witness_full_ledger_conserves_with_no_free_lane() -> Bool {
+  match lease_grant(
+    pool: example_heavy_compute_pool,
+    ledger: empty_lease_ledger,
+    offer: example_resource_offer,
+    lease_id: "ci-1",
+    source: GithubCiRunner,
+    demand: heavy_compute_lane_work_demand,
+    acquired_at: "t0",
+    max_hold: example_lease_max_hold
+  ) {
+    LeaseRejectedIneligible { reason: _ } => false
+    LeaseRejectedPoolExhausted { lane_count: _, held: _ } => false
+    LeaseGranted { ledger: l1, granted: _ } =>
+      match lease_grant(
+        pool: example_heavy_compute_pool,
+        ledger: l1,
+        offer: example_resource_offer,
+        lease_id: "od-1",
+        source: OnDemandSessionLease,
+        demand: heavy_compute_lane_work_demand,
+        acquired_at: "t1",
+        max_hold: example_lease_max_hold
+      ) {
+        LeaseRejectedIneligible { reason: _ } => false
+        LeaseRejectedPoolExhausted { lane_count: _, held: _ } => false
+        LeaseGranted { ledger: l2, granted: _ } =>
+          ledger_conserves(pool: example_heavy_compute_pool, ledger: l2)
+            && !ledger_has_free_lane(pool: example_heavy_compute_pool, ledger: l2)
+            && ledger_held_count(ledger: l2) == 2
+      }
   }
 }

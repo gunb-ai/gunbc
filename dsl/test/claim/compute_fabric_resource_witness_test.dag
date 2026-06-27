@@ -8,6 +8,15 @@ import product.compute_fabric {
   witness_high_demand_shrinks_envelope_and_fits,
   witness_fail_open_memory_blind_demand_exceeds_budget,
   witness_unreadable_budget_uses_conservative_demand,
+  witness_session_subject_is_control_plane_agent,
+  witness_remote_request_fulfilled_off_session,
+  witness_local_request_leases_a_lane,
+  witness_local_request_rejected_when_pool_exhausted,
+  witness_unsatisfiable_local_needs_rejected,
+  witness_heavy_pool_bytes_is_lanes_times_envelope,
+  witness_pool_unifies_ci_and_ondemand_then_rejects,
+  witness_lease_release_frees_lane,
+  witness_full_ledger_conserves_with_no_free_lane,
 }
 
 test fn compute_fabric_resource_feasibility_holds() -> Bool {
@@ -21,4 +30,19 @@ test fn ci_floor_run_demand_envelope_model_holds() -> Bool {
     && witness_high_demand_shrinks_envelope_and_fits()
     && witness_fail_open_memory_blind_demand_exceeds_budget()
     && witness_unreadable_budget_uses_conservative_demand()
+}
+
+test fn compute_request_fulfillment_interface_holds() -> Bool {
+  witness_session_subject_is_control_plane_agent()
+    && witness_remote_request_fulfilled_off_session()
+    && witness_local_request_leases_a_lane()
+    && witness_local_request_rejected_when_pool_exhausted()
+    && witness_unsatisfiable_local_needs_rejected()
+}
+
+test fn fulfillment_internals_conserve_the_pool() -> Bool {
+  witness_heavy_pool_bytes_is_lanes_times_envelope()
+    && witness_pool_unifies_ci_and_ondemand_then_rejects()
+    && witness_lease_release_frees_lane()
+    && witness_full_ledger_conserves_with_no_free_lane()
 }
