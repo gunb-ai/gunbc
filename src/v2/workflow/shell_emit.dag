@@ -148,8 +148,7 @@ fn emit_shell_word(w: ShellWord) -> Outcome<Medium<String>> {
       bind_outcome(o: emit_shell_stmt(s: b), f: fn(m) {
         emit_word_cmdsubst(body: m.carried)
       })
-    Raw { text: _ } =>
-      outcome_rejected(shell_emit_unsupported(reason: ^emit_shell_word_raw_uninhabited))
+    Raw { text: t } => emit_word_pass(spelling: t)
   }
 }
 

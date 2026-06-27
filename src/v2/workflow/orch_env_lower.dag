@@ -2,11 +2,11 @@ module v2.workflow.orch_env_lower
 
 import v2.std.orchestration { EnvBinding, EnvSet, EnvUnset }
 import v2.std.algebra { FreeMonoid, list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent }
-import extdeps.languages.bash.program { ShellStmt, EnvPrefixed, EnvUnsetCmd, Lit }
+import extdeps.languages.bash.program { ShellStmt, EnvPrefixed, EnvUnsetCmd, Raw }
 
 fn lower_env_binding(b: EnvBinding, inner: ShellStmt) -> ShellStmt {
   match b {
-    EnvSet { name: n, value: v } => EnvPrefixed { name: n, value: Lit { text: v }, command: inner }
+    EnvSet { name: n, value: v } => EnvPrefixed { name: n, value: Raw { text: v }, command: inner }
     EnvUnset { name: n } => EnvUnsetCmd { name: n, command: inner }
   }
 }
