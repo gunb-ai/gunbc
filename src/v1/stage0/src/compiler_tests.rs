@@ -1799,4 +1799,235 @@ mod compiler_tests {
             .join();
         result.expect("contracts_sidecar_wired_into_emit_scope panicked");
     }
+
+    // =========================================================================
+    // PAYLOAD-DEDUP PROBE 3 — shared-vs-distinct walk of the nested resolve
+    // payloads (TypeBinding, ResolvedFuncSig + variant/output provenance).
+    // Answers the discriminating question: are the 254 MiB unattributed by
+    // probe2 Rc-SHARED across the 945 live modules (content-addressed dedup
+    // buys nothing) or DISTINCTLY allocated with identical content (O(corpus^2)
+    // replication -> #5834-style interning is the win)?
+    // Run: GUNBC_PAYLOAD_PROBE=1 CTRL_BUILD_BYPASS_SHIMS=1 RUSTC_WRAPPER=
+    //      CARGO_BUILD_JOBS=4 cargo test -p v1-compiler --release
+    //      probe_payload_dedup -- --ignored --nocapture
+    // =========================================================================
+
+    // first root wins on duplicate module paths (src/v2 takes precedence over dsl)
+    fn resolve_source_closure_primary3(
+        entry_pairs: Vec<(String, String)>,
+        roots: &[&str],
+    ) -> Vec<std::rc::Rc<crate::v1_compiler_compile::SourceFile>> {
+        let mut index = HashMap::<String, (String, String)>::new();
+        for root in roots {
+            for (path, content) in discover_dag_files(root) {
+                let module_path = module_path_from_source(&path, &content);
+                index.entry(module_path).or_insert((path, content));
+            }
+        }
+        let mut seen = HashMap::<String, std::rc::Rc<crate::v1_compiler_compile::SourceFile>>::new();
+        let mut queue = Vec::new();
+        for (path, content) in entry_pairs {
+            let module_path = module_path_from_source(&path, &content);
+            seen.insert(
+                module_path,
+                std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: path.clone(),
+                    content: content.clone(),
+                }),
+            );
+            queue.push((path, content));
+        }
+        while let Some((_path, content)) = queue.pop() {
+            for module_path in import_paths_from_source(&_path, &content) {
+                if seen.contains_key(&module_path) {
+                    continue;
+                }
+                if let Some((path, file_content)) = index.get(&module_path).cloned() {
+                    seen.insert(
+                        module_path,
+                        std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                            path: path.clone(),
+                            content: file_content.clone(),
+                        }),
+                    );
+                    queue.push((path, file_content));
+                }
+            }
+        }
+        let mut result: Vec<_> = seen.into_values().collect();
+        result.sort_by(|a, b| a.path.cmp(&b.path));
+        result
+    }
+
+    fn content_hash<T: serde::Serialize>(v: &T) -> (u64, usize) {
+        use std::hash::{Hash, Hasher};
+        let bytes = serde_json::to_vec(v).unwrap_or_default();
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        bytes.hash(&mut h);
+        (h.finish(), bytes.len())
+    }
+
+    #[test]
+    #[ignore]
+    fn probe_payload_dedup() {
+        if std::env::var("GUNBC_PAYLOAD_PROBE").is_err() {
+            eprintln!("probe_payload_dedup: set GUNBC_PAYLOAD_PROBE=1 to run");
+            return;
+        }
+        let result = std::thread::Builder::new()
+            .stack_size(256 * 1024 * 1024)
+            .spawn(|| {
+                use std::collections::{HashMap as Map, HashSet};
+                use std::io::Write as _;
+                let out_path = "/tmp/probe_payload_dedup.txt";
+                let mut out = std::fs::File::create(out_path).expect("open probe output");
+                macro_rules! p {
+                    ($($arg:tt)*) => {{
+                        let line = format!($($arg)*);
+                        eprintln!("{}", &line);
+                        writeln!(out, "{}", &line).ok();
+                        out.flush().ok();
+                    }}
+                }
+
+                // Same src/v2-heavy 73-mod sample as probe2 so numbers compare directly.
+                let entry_files = [
+                    "src/v2/compiler/06_translate.dag",
+                    "src/v2/std/compilers/target_model.dag",
+                    "src/v2/compiler/00_compile.dag",
+                    "src/v2/std/grammar.dag",
+                ];
+                let root = workspace_root();
+                let entry_pairs: Vec<(String, String)> = entry_files
+                    .iter()
+                    .filter_map(|p| {
+                        std::fs::read_to_string(root.join(p))
+                            .ok()
+                            .map(|content| (p.to_string(), content))
+                    })
+                    .collect();
+                let sources = resolve_source_closure_primary3(entry_pairs, &["src/v2", "dsl"]);
+                let module_count = sources.len();
+                let rc_sources =
+                    std::rc::Rc::new(sources.iter().map(|s| s.clone()).collect::<Vec<_>>());
+                let result = crate::v1_compiler_compile::compile_to_resolved(rc_sources);
+                let graph = match result.graph.as_ref() {
+                    Some(g) => g.clone(),
+                    None => {
+                        p!("  ERROR: no graph ({} diagnostics)", result.diagnostics.len());
+                        return;
+                    }
+                };
+                let num_modules = graph.modules.len();
+                let scale = 945.0 / num_modules as f64;
+                p!("\n=== PAYLOAD-DEDUP PROBE 3 ===");
+                p!("  closure {} modules (typed {}), floor-scale x{:.1}", module_count, num_modules, scale);
+
+                // ---- helper: accumulate ptr-replication + content-replication for an Rc<T> carrier
+                // total_slots: every (module, key) occurrence
+                // unique_ptrs: distinct physical Rc allocations (already-shared across modules)
+                // distinct_content: distinct serialized content among the unique ptrs
+                // phys_bytes: serialized bytes summed once per unique ptr (RAM-resident content volume)
+                // dedup_bytes: serialized bytes summed once per distinct content (post-interning volume)
+                struct Acc {
+                    total_slots: usize,
+                    unique_ptrs: HashSet<usize>,
+                    content_seen: HashSet<u64>,
+                    phys_bytes: usize,
+                    dedup_bytes: usize,
+                    distinct_content: usize,
+                }
+                impl Acc {
+                    fn new() -> Self {
+                        Acc { total_slots: 0, unique_ptrs: HashSet::new(), content_seen: HashSet::new(),
+                               phys_bytes: 0, dedup_bytes: 0, distinct_content: 0 }
+                    }
+                    fn add<T: serde::Serialize>(&mut self, rc: &std::rc::Rc<T>) {
+                        self.total_slots += 1;
+                        let ptr = std::rc::Rc::as_ptr(rc) as usize;
+                        if !self.unique_ptrs.insert(ptr) {
+                            return; // physically shared — counted already
+                        }
+                        let (h, bytes) = content_hash(rc.as_ref());
+                        self.phys_bytes += bytes;
+                        if self.content_seen.insert(h) {
+                            self.distinct_content += 1;
+                            self.dedup_bytes += bytes;
+                        }
+                    }
+                    fn report(&self, name: &str, scale: f64, p: &mut dyn FnMut(String)) {
+                        let phys_rep = if self.unique_ptrs.is_empty() { 0.0 }
+                            else { self.total_slots as f64 / self.unique_ptrs.len() as f64 };
+                        let content_rep = if self.distinct_content == 0 { 0.0 }
+                            else { self.unique_ptrs.len() as f64 / self.distinct_content as f64 };
+                        let reclaim = self.phys_bytes.saturating_sub(self.dedup_bytes);
+                        let reclaim_pct = if self.phys_bytes > 0 {
+                            reclaim as f64 / self.phys_bytes as f64 * 100.0 } else { 0.0 };
+                        p(format!("\n--- {} ---", name));
+                        p(format!("  slots={}  unique_ptrs={}  ptr_replication={:.1}x (Rc-sharing already present)",
+                            self.total_slots, self.unique_ptrs.len(), phys_rep));
+                        p(format!("  distinct_content={}  content_replication={:.2}x (identical content, distinct allocs)",
+                            self.distinct_content, content_rep));
+                        p(format!("  phys serialized bytes (unique ptrs): {} KiB ({} MiB @floor x{:.1})",
+                            self.phys_bytes / 1024, (self.phys_bytes as f64 * scale) as usize / 1_048_576, scale));
+                        p(format!("  post-dedup serialized bytes:         {} KiB",
+                            self.dedup_bytes / 1024));
+                        p(format!("  >>> INTERNING RECLAIM: {} KiB = {:.0}% ({} MiB @floor)",
+                            reclaim / 1024, reclaim_pct, (reclaim as f64 * scale) as usize / 1_048_576));
+                    }
+                }
+
+                let mut tb = Acc::new();          // TypeBinding (type_env.bindings values)
+                let mut sig = Acc::new();          // whole ResolvedFuncSig
+                let mut vp = Acc::new();           // ResolvedFuncSig.variant_provenance (triple-nested map) — PRIME SUSPECT
+                let mut op = Acc::new();           // ResolvedFuncSig.output_provenance (Vec<map>)
+                let mut sigenv = Acc::new();       // ResolvedFuncEnv.signatures map (one per module)
+                let mut indf = Acc::new();         // Rc<Vec<Rc<InductiveField>>> (inductive_fields values)
+                let mut iteminfo = Acc::new();     // ItemInfo (item_registry values)
+
+                for m in graph.modules.iter() {
+                    for (_k, v) in m.type_env.bindings.iter() {
+                        tb.add(v);
+                    }
+                    sigenv.add(&m.func_env.signatures);
+                    for (_k, v) in m.func_env.signatures.iter() {
+                        sig.add(v);
+                        vp.add(&v.variant_provenance);
+                        op.add(&v.output_provenance);
+                    }
+                    for (_k, v) in m.type_env.inductive_fields.iter() {
+                        indf.add(v);
+                    }
+                    for (_k, v) in m.item_registry.iter() {
+                        iteminfo.add(v);
+                    }
+                }
+
+                let mut emit = |s: String| { p!("{}", s); };
+                tb.report("TypeBinding (type_env.bindings)", scale, &mut emit);
+                sig.report("ResolvedFuncSig WHOLE (incl shared inferred Node)", scale, &mut emit);
+                vp.report("variant_provenance (TRIPLE-NESTED map) <<< PRIME SUSPECT", scale, &mut emit);
+                op.report("output_provenance (Vec<map>)", scale, &mut emit);
+                sigenv.report("ResolvedFuncEnv.signatures map (per-module)", scale, &mut emit);
+                indf.report("InductiveField vecs (type_env.inductive_fields)", scale, &mut emit);
+                iteminfo.report("ItemInfo (item_registry)", scale, &mut emit);
+
+                let phys_total = tb.phys_bytes + sig.phys_bytes + indf.phys_bytes + iteminfo.phys_bytes;
+                let reclaim_total = (tb.phys_bytes - tb.dedup_bytes)
+                    + (sig.phys_bytes - sig.dedup_bytes)
+                    + (indf.phys_bytes - indf.dedup_bytes)
+                    + (iteminfo.phys_bytes - iteminfo.dedup_bytes);
+                p!("\n--- VERDICT (serialized-content proxy; floor-scale x{:.1}) ---", scale);
+                p!("  total payload phys serialized: {} MiB @floor", (phys_total as f64 * scale) as usize / 1_048_576);
+                p!("  total interning reclaim:       {} MiB @floor ({:.0}% of payload)",
+                    (reclaim_total as f64 * scale) as usize / 1_048_576,
+                    if phys_total > 0 { reclaim_total as f64 / phys_total as f64 * 100.0 } else { 0.0 });
+                p!("  INTERPRETATION: content_replication >> 1x => distinct allocs w/ identical content");
+                p!("  => content-addressed interning (#5834 shape) reclaims; ~1x => already shared, dedup moot.");
+                p!("  Results written to {}", out_path);
+            })
+            .expect("thread spawn failed")
+            .join();
+        result.expect("probe_payload_dedup panicked");
+    }
 }
