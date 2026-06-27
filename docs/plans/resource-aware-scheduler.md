@@ -139,6 +139,13 @@ A and B can proceed concurrently; B can use provisional values until D closes th
 - Not a new caching mechanism — `realization-measurement-loop.md` owns the cache arc (Phase 0/P3 resolve-cache, Phase 2 cache kernel). This work is orthogonal: it's about *scheduling width*, not *whether to re-execute*.
 - Not a placement mechanism — `compute-envelope-model.md` owns the BUILD phase fan-out / host packing / G1–G3 arc. This work covers the RUN phase (corpus shard width). Per that doc: "width-up is pids-safe on its own" — the two invariants don't multiply.
 
+## Floor-OOM root-cause analyses (what calibrated `per_runnable_peak`)
+
+The `per_runnable_peak` this scheduler divides into available memory is not a free parameter — it was driven down by two landed root fixes, each its own analysis. Both feed directly into the width invariant above (a smaller per-shard peak → larger derived `spawn_width`):
+
+- [`resolved-graph-representation-minimization.md`](resolved-graph-representation-minimization.md) — the per-shard RSS root cause: `precompute_whole_tree_published_mock_keys` Strict-resolved all 608 dsl modules to read 58 keys declared by only 13 (§2 irrelevant work). Scoping it to the declarers' closures cut the per-shard peak 8.7× (landed `7ce82319e5`). This *is* the floor's `per_shard` number.
+- [`emit-host-batch-isolation.md`](emit-host-batch-isolation.md) — the batch-placement constraint: `EmitHostGate` spawns rustc children (~1.5 GiB) yet got no serialize edge, so it co-located with the wide corpus shards and the concurrent peak blew the cgroup. Giving it a serialize edge keeps the host-compiler cost off the wide batch (landed #5837). The §3 distinction it preserves — *heavy whole-tree resolve* vs *spawns a host compiler* — is two grounded contributors to one "gate cost," not one nicknamed axis.
+
 ## Dissolution trigger (DESIGN §6)
 
 Delete this doc when: (a) `gunbc_ci_floor_measured_peak` is retired (no consumers), (b) `spawn_width` is derived from the plan via `WidthBoundedRealization` rather than a side-channel, and (c) a host memory increase is provably reflected in higher width without any `.dag` data row edits — at which point the invariant is a by-construction property and this tracker is redundant.
