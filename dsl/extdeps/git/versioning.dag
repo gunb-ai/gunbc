@@ -1,6 +1,6 @@
 module extdeps.git.versioning
 
-import std.types { Url }
+import std.types { NonEmptyStr }
 import std.integer { NonNegativeInt }
 import std.algebra { Ordering, Equal, Greater }
 import std.nat { nat_compare }
@@ -36,7 +36,7 @@ data git_2_0_release: GitReleaseVersion = {
   patch: 0
 }
 
-data git_release_versioning_spec_url: Url = "https://git-scm.com/docs/BreakingChanges.html"
+data git_release_versioning_spec_url: NonEmptyStr = "https://git-scm.com/docs/BreakingChanges.html"
 
 type GitVersionConstraint = VersionConstraint where brand("GitVersionConstraint")
 

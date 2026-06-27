@@ -6,10 +6,10 @@ import std.types {
   FilePath,
   Milliseconds,
   NonEmptyStr,
-  Timestamp,
-  Url
+  Timestamp
 }
 import extdeps.cloud.gcp.gcp { GcpProjectId, ServiceAccountEmail }
+import extdeps.uri { Uri }
 
 type ArtifactKind = Design | Review | Plan | CiReport
 type AuthorSource = Llm | Human
@@ -49,7 +49,7 @@ type TrackedIssue {
   title: String
   body: String
   stage: IssueLifecycleStage
-  url: Url?
+  url: NonEmptyStr?
   author: String?
   labels: List<String>
   created_at: Timestamp?
@@ -113,7 +113,7 @@ type PipelineArtifact {
   stage: IssueLifecycleStage
   kind: ArtifactKind
   content: String
-  url: Url?
+  url: NonEmptyStr?
 }
 
 type IssueState = Open | Closed
@@ -191,7 +191,7 @@ type ArtifactType
 
 type ArtifactPayload
   = Inline { body: String }
-  | BlobRef { uri: Url, size_bytes: Int }
+  | BlobRef { uri: Uri, size_bytes: Int }
 
 type Artifact {
   artifact_id: NonEmptyStr
@@ -240,7 +240,7 @@ type RuntimeProfile
 type LaunchConfig {
   worker_count: Int
   drain_flag_path: String?
-  drain_flag_url: Url?
+  drain_flag_url: NonEmptyStr?
 }
 
 type InfraIntent {
