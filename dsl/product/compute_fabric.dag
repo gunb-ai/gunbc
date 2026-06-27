@@ -853,17 +853,10 @@ type HeavyComputeLaneSource
 
 type HeavyComputeLeaseId = NonEmptyStr where brand("HeavyComputeLeaseId")
 
-type LeaseReleaseTrigger
-  = LeaseExit
-  | LeaseTimeout
-  | SessionArchive
-
 type HeavyComputeLease {
   lease_id: HeavyComputeLeaseId
   source: HeavyComputeLaneSource
   demand: WorkDemand
-  acquired_at: LogicalTime
-  max_hold: Duration
 }
 
 type LeaseLedger {
@@ -889,6 +882,29 @@ fn ledger_held_count(ledger: LeaseLedger) -> Nat {
   fold(ledger.held, init: 0, f: (acc, _l) => acc + 1)
 }
 
+fn ledger_holds_source(ledger: LeaseLedger, source: HeavyComputeLaneSource) -> Bool {
+  fold(
+    ledger.held,
+    init: false,
+    f: (acc, l) => acc || lease_source_eq(a: l.source, b: source)
+  )
+}
+
+fn lease_source_eq(a: HeavyComputeLaneSource, b: HeavyComputeLaneSource) -> Bool {
+  match a {
+    GithubCiRunner =>
+      match b {
+        GithubCiRunner => true
+        OnDemandSessionLease => false
+      }
+    OnDemandSessionLease =>
+      match b {
+        OnDemandSessionLease => true
+        GithubCiRunner => false
+      }
+  }
+}
+
 fn ledger_has_free_lane(pool: HeavyComputePool, ledger: LeaseLedger) -> Bool {
   ledger_held_count(ledger: ledger) < pool.lane_count
 }
@@ -908,9 +924,7 @@ fn lease_grant(
   offer: ComputeOffer,
   lease_id: HeavyComputeLeaseId,
   source: HeavyComputeLaneSource,
-  demand: WorkDemand,
-  acquired_at: LogicalTime,
-  max_hold: Duration
+  demand: WorkDemand
 ) -> LeaseGrantOutcome {
   match satisfies(offer: offer, demand: demand) {
     Rejected { reason: r } => LeaseRejectedIneligible { reason: r }
@@ -920,8 +934,6 @@ fn lease_grant(
           lease_id: lease_id,
           source: source,
           demand: demand,
-          acquired_at: acquired_at,
-          max_hold: max_hold,
         }
         LeaseGranted {
           ledger: LeaseLedger { held: concat(ledger.held, [lease]) },
@@ -970,9 +982,7 @@ fn fulfill(
   fabric: ComputeFabric,
   ledger: LeaseLedger,
   request: ComputeRequest,
-  lease_id: HeavyComputeLeaseId,
-  acquired_at: LogicalTime,
-  max_hold: Duration
+  lease_id: HeavyComputeLeaseId
 ) -> FulfillmentOutcome {
   match request.locality {
     FulfillableRemotely =>
@@ -987,9 +997,7 @@ fn fulfill(
         offer: fabric.local_offer,
         lease_id: lease_id,
         source: workload_lease_source(workload: request.workload),
-        demand: request_to_work_demand(request: request),
-        acquired_at: acquired_at,
-        max_hold: max_hold
+        demand: request_to_work_demand(request: request)
       ) {
         LeaseGranted { ledger: granted_ledger, granted: g } =>
           FulfillmentOutcome {
@@ -1611,7 +1619,23 @@ data example_heavy_compute_pool: HeavyComputePool = HeavyComputePool {
   lane_count: 2,
 }
 
-data example_lease_max_hold: Duration = Measure { count: 7200 }
+data control_plane_agent_vendor_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "extdeps.vendor",
+    decl_name: "Vendor",
+    field: WholeDeclaration
+  }
+}
+
+data heavy_compute_pool_lane_count_projection_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.fleet_host_budget",
+    decl_name: "fleet_host_plan_for_offer",
+    field: WholeDeclaration
+  }
+}
 
 data example_session_subject: SessionSubject = SessionSubject { agent: ClaudeCode }
 
@@ -1667,9 +1691,7 @@ fn witness_remote_request_fulfilled_off_session() -> Bool {
     fabric: example_compute_fabric,
     ledger: empty_lease_ledger,
     request: example_remote_request,
-    lease_id: "unused-remote",
-    acquired_at: "t0",
-    max_hold: example_lease_max_hold
+    lease_id: "unused-remote"
   )
   match outcome.fulfillment {
     Fulfilled { executor: e } =>
@@ -1687,9 +1709,7 @@ fn witness_local_request_leases_a_lane() -> Bool {
     fabric: example_compute_fabric,
     ledger: empty_lease_ledger,
     request: example_local_request,
-    lease_id: "lease-local-1",
-    acquired_at: "t0",
-    max_hold: example_lease_max_hold
+    lease_id: "lease-local-1"
   )
   match outcome.fulfillment {
     Fulfilled { executor: e } =>
@@ -1706,15 +1726,15 @@ fn witness_local_request_leases_a_lane() -> Bool {
 fn witness_local_request_rejected_when_pool_exhausted() -> Bool {
   let o1 = fulfill(
     fabric: example_compute_fabric, ledger: empty_lease_ledger, request: example_local_request,
-    lease_id: "l1", acquired_at: "t0", max_hold: example_lease_max_hold
+    lease_id: "l1"
   )
   let o2 = fulfill(
     fabric: example_compute_fabric, ledger: o1.ledger, request: example_local_request,
-    lease_id: "l2", acquired_at: "t1", max_hold: example_lease_max_hold
+    lease_id: "l2"
   )
   let o3 = fulfill(
     fabric: example_compute_fabric, ledger: o2.ledger, request: example_local_request,
-    lease_id: "l3", acquired_at: "t2", max_hold: example_lease_max_hold
+    lease_id: "l3"
   )
   match o3.fulfillment {
     FulfillmentRejected { reason: r } =>
@@ -1733,9 +1753,7 @@ fn witness_unsatisfiable_local_needs_rejected() -> Bool {
     fabric: example_compute_fabric,
     ledger: empty_lease_ledger,
     request: example_oversized_local_request,
-    lease_id: "oversized",
-    acquired_at: "t0",
-    max_hold: example_lease_max_hold
+    lease_id: "oversized"
   )
   match outcome.fulfillment {
     FulfillmentRejected { reason: r } =>
@@ -1751,11 +1769,11 @@ fn witness_unsatisfiable_local_needs_rejected() -> Bool {
 fn witness_gha_runner_request_leases_same_lane_as_exec() -> Bool {
   let exec_outcome = fulfill(
     fabric: example_compute_fabric, ledger: empty_lease_ledger, request: example_local_request,
-    lease_id: "exec-1", acquired_at: "t0", max_hold: example_lease_max_hold
+    lease_id: "exec-1"
   )
   let runner_outcome = fulfill(
     fabric: example_compute_fabric, ledger: empty_lease_ledger, request: example_gha_runner_request,
-    lease_id: "runner-1", acquired_at: "t0", max_hold: example_lease_max_hold
+    lease_id: "runner-1"
   )
   let same_envelope = work_demand_content_digest(demand: request_to_work_demand(request: example_local_request)) == work_demand_content_digest(demand: request_to_work_demand(request: example_gha_runner_request))
   match exec_outcome.fulfillment {
@@ -1781,15 +1799,15 @@ fn witness_gha_runner_request_leases_same_lane_as_exec() -> Bool {
 fn witness_gha_runner_queues_when_pool_exhausted_not_rejects() -> Bool {
   let o1 = fulfill(
     fabric: example_compute_fabric, ledger: empty_lease_ledger, request: example_local_request,
-    lease_id: "l1", acquired_at: "t0", max_hold: example_lease_max_hold
+    lease_id: "l1"
   )
   let o2 = fulfill(
     fabric: example_compute_fabric, ledger: o1.ledger, request: example_local_request,
-    lease_id: "l2", acquired_at: "t1", max_hold: example_lease_max_hold
+    lease_id: "l2"
   )
   let o3 = fulfill(
     fabric: example_compute_fabric, ledger: o2.ledger, request: example_gha_runner_request,
-    lease_id: "runner-overflow", acquired_at: "t2", max_hold: example_lease_max_hold
+    lease_id: "runner-overflow"
   )
   match o3.fulfillment {
     FulfillmentQueued { lane_count: _, held: h } =>
@@ -1817,9 +1835,7 @@ fn witness_pool_unifies_ci_and_ondemand_then_rejects() -> Bool {
     offer: example_resource_offer,
     lease_id: "ci-1",
     source: GithubCiRunner,
-    demand: heavy_compute_lane_work_demand,
-    acquired_at: "t0",
-    max_hold: example_lease_max_hold
+    demand: heavy_compute_lane_work_demand
   ) {
     LeaseRejectedIneligible { reason: _ } => false
     LeaseRejectedPoolExhausted { lane_count: _, held: _ } => false
@@ -1830,9 +1846,7 @@ fn witness_pool_unifies_ci_and_ondemand_then_rejects() -> Bool {
         offer: example_resource_offer,
         lease_id: "od-1",
         source: OnDemandSessionLease,
-        demand: heavy_compute_lane_work_demand,
-        acquired_at: "t1",
-        max_hold: example_lease_max_hold
+        demand: heavy_compute_lane_work_demand
       ) {
         LeaseRejectedIneligible { reason: _ } => false
         LeaseRejectedPoolExhausted { lane_count: _, held: _ } => false
@@ -1843,14 +1857,15 @@ fn witness_pool_unifies_ci_and_ondemand_then_rejects() -> Bool {
             offer: example_resource_offer,
             lease_id: "od-2",
             source: OnDemandSessionLease,
-            demand: heavy_compute_lane_work_demand,
-            acquired_at: "t2",
-            max_hold: example_lease_max_hold
+            demand: heavy_compute_lane_work_demand
           ) {
             LeaseGranted { ledger: _, granted: _ } => false
             LeaseRejectedIneligible { reason: _ } => false
             LeaseRejectedPoolExhausted { lane_count: _, held: h } =>
-              ledger_held_count(ledger: l2) == 2 && h == 2
+              ledger_held_count(ledger: l2) == 2
+                && h == 2
+                && ledger_holds_source(ledger: l2, source: GithubCiRunner)
+                && ledger_holds_source(ledger: l2, source: OnDemandSessionLease)
           }
       }
   }
@@ -1863,9 +1878,7 @@ fn witness_lease_release_frees_lane() -> Bool {
     offer: example_resource_offer,
     lease_id: "rel-1",
     source: GithubCiRunner,
-    demand: heavy_compute_lane_work_demand,
-    acquired_at: "t0",
-    max_hold: example_lease_max_hold
+    demand: heavy_compute_lane_work_demand
   ) {
     LeaseRejectedIneligible { reason: _ } => false
     LeaseRejectedPoolExhausted { lane_count: _, held: _ } => false
@@ -1885,9 +1898,7 @@ fn witness_full_ledger_conserves_with_no_free_lane() -> Bool {
     offer: example_resource_offer,
     lease_id: "ci-1",
     source: GithubCiRunner,
-    demand: heavy_compute_lane_work_demand,
-    acquired_at: "t0",
-    max_hold: example_lease_max_hold
+    demand: heavy_compute_lane_work_demand
   ) {
     LeaseRejectedIneligible { reason: _ } => false
     LeaseRejectedPoolExhausted { lane_count: _, held: _ } => false
@@ -1898,9 +1909,7 @@ fn witness_full_ledger_conserves_with_no_free_lane() -> Bool {
         offer: example_resource_offer,
         lease_id: "od-1",
         source: OnDemandSessionLease,
-        demand: heavy_compute_lane_work_demand,
-        acquired_at: "t1",
-        max_hold: example_lease_max_hold
+        demand: heavy_compute_lane_work_demand
       ) {
         LeaseRejectedIneligible { reason: _ } => false
         LeaseRejectedPoolExhausted { lane_count: _, held: _ } => false
