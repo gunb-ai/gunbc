@@ -1866,6 +1866,44 @@ mod compiler_tests {
         }
     }
 
+    // Like resolve_source_closure but first root wins on duplicate module paths
+    fn resolve_source_closure_primary(
+        entry_pairs: Vec<(String, String)>,
+        roots: &[&str],
+    ) -> Vec<std::rc::Rc<crate::v1_compiler_compile::SourceFile>> {
+        // Build index with primary-precedence: first root's module path wins
+        let mut index = HashMap::<String, (String, String)>::new();
+        for root in roots {
+            for (path, content) in discover_dag_files(root) {
+                let module_path = module_path_from_source(&path, &content);
+                index.entry(module_path).or_insert((path, content));
+            }
+        }
+        let mut seen = HashMap::<String, std::rc::Rc<crate::v1_compiler_compile::SourceFile>>::new();
+        let mut queue = Vec::new();
+        for (path, content) in entry_pairs {
+            let module_path = module_path_from_source(&path, &content);
+            seen.insert(module_path, std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                path: path.clone(), content: content.clone(),
+            }));
+            queue.push((path, content));
+        }
+        while let Some((_path, content)) = queue.pop() {
+            for module_path in import_paths_from_source(&_path, &content) {
+                if seen.contains_key(&module_path) { continue; }
+                if let Some((path, file_content)) = index.get(&module_path).cloned() {
+                    seen.insert(module_path, std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                        path: path.clone(), content: file_content.clone(),
+                    }));
+                    queue.push((path, file_content));
+                }
+            }
+        }
+        let mut result: Vec<_> = seen.into_values().collect();
+        result.sort_by(|a, b| a.path.cmp(&b.path));
+        result
+    }
+
     #[test]
     #[ignore]
     fn probe_env_size_v2_heavy() {
@@ -1920,7 +1958,8 @@ mod compiler_tests {
                 }).collect();
                 p!("  Entry files loaded: {}", entry_pairs.len());
 
-                let sources = resolve_source_closure(entry_pairs, &["dsl", "src/v2"]);
+                // src/v2 primary — takes precedence over dsl on duplicate module paths (e.g. extdeps.shell)
+                let sources = resolve_source_closure_primary(entry_pairs, &["src/v2", "dsl"]);
                 let module_count = sources.len();
                 p!("  Closure size: {} modules (dsl+src/v2 pool)", module_count);
 
