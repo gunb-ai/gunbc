@@ -35,7 +35,6 @@ const GENERATED_STAGE0_FILES: &[&str] = &[
     "extdeps_languages_rust_syntax.rs",
     "extdeps_languages_rust_types.rs",
     "extdeps_uri.rs",
-    "extdeps_uri_path.rs",
     "extdeps_version.rs",
     "extdeps_version_semver.rs",
     "lib.rs",
