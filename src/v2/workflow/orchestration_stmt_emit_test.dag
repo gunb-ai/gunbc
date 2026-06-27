@@ -352,3 +352,9 @@ test fn stmt_exit_code_unquoted_matches_real_holds() -> Bool {
 test fn stmt_exit_code_not_quoted_has_teeth_holds() -> Bool {
   stmt_emit_carried(s: Exit { code: 1 }) != "exit '1'"
 }
+
+test fn emit_shell_word_raw_scaffold_recorded_holds() -> Bool {
+  string_contains(s: emit_shell_word_raw_scaffold, pattern: "SCAFFOLD")
+    && string_contains(s: emit_shell_word_raw_scaffold, pattern: "LATENT")
+    && string_contains(s: emit_shell_word_raw_scaffold, pattern: "DISSOLVES WHEN")
+}
