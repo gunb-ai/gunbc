@@ -1887,15 +1887,27 @@ mod compiler_tests {
                 let span_size = std::mem::size_of::<crate::v1_std_core::SourceSpan>();
                 let expr_size = std::mem::size_of::<crate::v1_std_core::ExprData>();
 
+                let out_path = "/tmp/probe_env_size.txt";
                 let rss_start = get_rss_kb();
-                eprintln!("\n=== ENV-SIZE ATTRIBUTION PROBE ===");
-                eprintln!("  Node={} B  SourceSpan={} B  ExprData={} B", node_size, span_size, expr_size);
-                eprintln!("  RSS at start: {} MiB", rss_start / 1024);
+                let mut out = std::fs::File::create(out_path).expect("open probe output");
+                use std::io::Write as _;
+                macro_rules! p {
+                    ($($arg:tt)*) => {{
+                        let line = format!($($arg)*);
+                        eprintln!("{}", &line);
+                        writeln!(out, "{}", &line).ok();
+                        out.flush().ok();
+                    }}
+                }
+                p!("\n=== ENV-SIZE ATTRIBUTION PROBE ===");
+                p!("  Node={} B  SourceSpan={} B  ExprData={} B", node_size, span_size, expr_size);
+                p!("  RSS at start: {} MiB", rss_start / 1024);
 
-                // Use self_compile_sources: src/v1 entries with dsl+src/v1 pool
-                let sources = self_compile_sources();
+                // Use dsl/std as entry points — smaller corpus, faster typecheck
+                // dsl/std has ~81 files; their closure is self-contained within dsl/
+                let sources = resolve_source_closure(discover_dag_files("dsl/std"), &["dsl"]);
                 let module_count = sources.len();
-                eprintln!("  Corpus: {} source files", module_count);
+                p!("  Corpus: {} source files (dsl/std closure)", module_count);
 
                 let t_resolve = std::time::Instant::now();
                 let rc_sources = std::rc::Rc::new(sources.iter().map(|s| s.clone()).collect::<Vec<_>>());
@@ -1903,7 +1915,7 @@ mod compiler_tests {
                 let elapsed_resolve = t_resolve.elapsed();
 
                 let rss_after_resolve = get_rss_kb();
-                eprintln!("  Resolve: {:?}  RSS after: {} MiB  (+{} MiB)",
+                p!("  Resolve: {:?}  RSS after: {} MiB  (+{} MiB)",
                     elapsed_resolve,
                     rss_after_resolve / 1024,
                     rss_after_resolve.saturating_sub(rss_start) / 1024,
@@ -1912,14 +1924,14 @@ mod compiler_tests {
                 let graph = match result.graph.as_ref() {
                     Some(g) => g.clone(),
                     None => {
-                        eprintln!("  resolve produced no graph ({} diagnostics) — aborting probe",
+                        p!("  resolve produced no graph ({} diagnostics) — aborting probe",
                             result.diagnostics.len());
                         return;
                     }
                 };
 
                 let num_typed_modules = graph.modules.len();
-                eprintln!("  TypedModules in graph: {}", num_typed_modules);
+                p!("  TypedModules in graph: {}", num_typed_modules);
 
                 // -----------------------------------------------------------------
                 // (a) Per-module env-map STRUCTURAL bytes
