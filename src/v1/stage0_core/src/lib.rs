@@ -20,6 +20,8 @@
     clippy::all
 )]
 
+#[path = "../../stage0/src/extdeps_external_authority.rs"]
+pub mod extdeps_external_authority;
 #[path = "../../stage0/src/extdeps_languages_dag_emit.rs"]
 pub mod extdeps_languages_dag_emit;
 #[path = "../../stage0/src/extdeps_languages_dag_syntax.rs"]
@@ -44,6 +46,8 @@ pub mod extdeps_languages_rust_emit;
 pub mod extdeps_languages_rust_syntax;
 #[path = "../../stage0/src/extdeps_languages_rust_types.rs"]
 pub mod extdeps_languages_rust_types;
+#[path = "../../stage0/src/extdeps_uri.rs"]
+pub mod extdeps_uri;
 #[path = "../../stage0/src/std_algebra.rs"]
 pub mod std_algebra;
 #[path = "../../stage0/src/std_coercion.rs"]
