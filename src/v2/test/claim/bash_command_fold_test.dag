@@ -6,10 +6,12 @@ import extdeps.languages.bash.program {
   Assign,
   Command,
   Exit,
+  If,
   Lit,
   OrElse,
   Pipe,
   ShellStmt,
+  Subshell,
   VarRef,
   serialize_stmt
 }
@@ -25,8 +27,10 @@ import v2.extdeps.languages.bash_command_fold {
   bash_fold_cmd_true_wrong_target_model_witness,
   bash_fold_cmd_var_x_emitted,
   bash_fold_exit_wrong_target_model_witness,
+  bash_fold_if_wrong_target_model_witness,
   bash_fold_pipe_wrong_target_model_witness,
   bash_fold_relation_row_witness,
+  bash_fold_subshell_wrong_target_model_witness,
   bash_fold_stmt_emitted_witness,
   bash_fold_target_model_for_stmt_witness
 }
@@ -340,5 +344,74 @@ test fn bash_fold_pipe_three_stage_holds() -> Bool {
       },
       right: Command { words: [Lit { text: "tr" }, Lit { text: "-d" }, Lit { text: " " }] }
     }
+  )
+}
+
+test fn bash_fold_subshell_true_holds() -> Bool {
+  bash_fold_fold_matches_oracle(
+    stmt: Subshell { body: [Command { words: [Lit { text: "true" }] }] }
+  )
+}
+
+test fn bash_fold_subshell_multi_stmt_holds() -> Bool {
+  bash_fold_fold_matches_oracle(
+    stmt: Subshell {
+      body: [
+        Command { words: [Lit { text: "true" }] },
+        Command { words: [Lit { text: "false" }] }
+      ]
+    }
+  )
+}
+
+test fn bash_fold_subshell_nested_and_then_holds() -> Bool {
+  bash_fold_fold_matches_oracle(
+    stmt: Subshell {
+      body: [
+        AndOr {
+          left: Command { words: [Lit { text: "true" }] },
+          op: AndThen,
+          right: Command { words: [Lit { text: "false" }] }
+        }
+      ]
+    }
+  )
+}
+
+test fn bash_fold_if_true_then_echo_holds() -> Bool {
+  bash_fold_fold_matches_oracle(
+    stmt: If {
+      cond: Command { words: [Lit { text: "true" }] },
+      then: [Command { words: [Lit { text: "echo" }, Lit { text: "hi" }] }]
+    }
+  )
+}
+
+test fn bash_fold_if_multi_then_holds() -> Bool {
+  bash_fold_fold_matches_oracle(
+    stmt: If {
+      cond: Command { words: [Lit { text: "true" }] },
+      then: [
+        Command { words: [Lit { text: "echo" }, Lit { text: "hi" }] },
+        Command { words: [Lit { text: "false" }] }
+      ]
+    }
+  )
+}
+
+test fn bash_fold_subshell_wrong_production_rejects_oracle_holds() -> Bool {
+  bash_fold_wrong_production_mismatch_holds(
+    stmt: Subshell { body: [Command { words: [Lit { text: "true" }] }] },
+    wrong_target_witness: bash_fold_subshell_wrong_target_model_witness()
+  )
+}
+
+test fn bash_fold_if_wrong_production_rejects_oracle_holds() -> Bool {
+  bash_fold_wrong_production_mismatch_holds(
+    stmt: If {
+      cond: Command { words: [Lit { text: "true" }] },
+      then: [Command { words: [Lit { text: "echo" }, Lit { text: "hi" }] }]
+    },
+    wrong_target_witness: bash_fold_if_wrong_target_model_witness()
   )
 }
