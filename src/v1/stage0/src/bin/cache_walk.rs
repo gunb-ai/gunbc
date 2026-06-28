@@ -57,7 +57,10 @@ fn main() -> ExitCode {
                 return ExitCode::FAILURE;
             }
             Ok(_) => {
-                eprintln!("cache_walk: resolve OK ({} modules cached so far)", index.typed_module_count());
+                eprintln!(
+                    "cache_walk: resolve OK ({} modules cached so far)",
+                    index.typed_module_count()
+                );
             }
         }
     }
