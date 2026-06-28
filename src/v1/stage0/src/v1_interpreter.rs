@@ -3850,6 +3850,58 @@ pub fn output_decision(channel: OutputChannel) -> OutputDecision {
     }
 }
 
+/// Carrier for `extdeps.render.surface.GroupSyntax` — the per-target group-marker
+/// strings the entry binary evaluated from `resolve_group_syntax(github_actions)`.
+/// `close_line` is `None` for a plain terminal (a section closes implicitly) and
+/// `Some("::endgroup::")` under GitHub Actions. The seed only TRANSPORTS these
+/// literals; the choice of syntax per target stays the .dag authority's.
+#[derive(Clone)]
+pub struct InstalledGroupSyntax {
+    pub open_prefix: String,
+    pub open_suffix: String,
+    pub close_line: Option<String>,
+}
+
+static GROUP_SYNTAX: std::sync::OnceLock<InstalledGroupSyntax> = std::sync::OnceLock::new();
+
+/// Install the group-marker syntax evaluated from the .dag authority. Set once at
+/// startup, before the parallel walk spawns. Without it, `group_begin`/`group_end`
+/// are no-ops (bins that don't opt in emit ungrouped, as before).
+pub fn set_group_syntax(syntax: InstalledGroupSyntax) {
+    let _ = GROUP_SYNTAX.set(syntax);
+}
+
+/// Whether grouping should bracket host-effect output: a syntax is installed AND at
+/// least one trace-bearing channel is actually visible. When every host-effect
+/// channel is Suppressed (e.g. Quiet) there is nothing to group, so callers skip the
+/// brackets and leave empty groups out of the log.
+pub fn host_trace_grouping_active() -> bool {
+    GROUP_SYNTAX.get().is_some()
+        && (output_decision(OutputChannel::ShellTrace) != OutputDecision::Suppressed
+            || output_decision(OutputChannel::Instrumentation) != OutputDecision::Suppressed)
+}
+
+/// Open a titled group on stderr — the same stream the host-effect trace lines use,
+/// so the runner folds those lines under the marker. No-op when no syntax is
+/// installed. Pair with `group_end`; the caller must keep the bracket tight (open →
+/// run+join the effectful work → close) and defer non-trace output (PASS/FAIL) until
+/// after `group_end` so it stays OUTSIDE the collapsed section.
+pub fn group_begin(title: &str) {
+    if let Some(s) = GROUP_SYNTAX.get() {
+        eprintln!("{}{}{}", s.open_prefix, title, s.open_suffix);
+    }
+}
+
+/// Close the current group. Emits the close line only when the target defines one
+/// (GitHub Actions); a plain terminal closes implicitly and prints nothing.
+pub fn group_end() {
+    if let Some(s) = GROUP_SYNTAX.get() {
+        if let Some(close) = &s.close_line {
+            eprintln!("{close}");
+        }
+    }
+}
+
 /// Emit a host-effect trace line under its channel's installed decision:
 /// Suppressed drops it, Condensed prints a dim indented summary, Full prints it
 /// verbatim. The decision is the .dag authority's, not a Rust re-derivation.
