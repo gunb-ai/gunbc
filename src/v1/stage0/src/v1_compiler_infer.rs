@@ -844,6 +844,45 @@ pub fn infer_var_binding_kind(scope: Rc<InferScope>, name: String) -> Rc<VarBind
     }
 }
 
+pub fn expected_type_override_enum(
+    scope: Rc<InferScope>,
+    name: String,
+    scope_enum: String,
+    expected: Option<Rc<Node>>,
+) -> Option<String> {
+    match expected {
+        Some(exp_node) => {
+            let exp_name = authored_name_at(
+                scope.type_env.clone().source_indices.clone(),
+                exp_node.clone(),
+            );
+            if (((exp_name.clone() != "".to_string()) && (exp_name.clone() != scope_enum))
+                && (exp_name.clone() != name.clone()))
+            {
+                match lookup_type_by_name(scope.type_env.clone(), exp_name.clone()) {
+                    Some(exp_type) => {
+                        if ((exp_type.connective.clone() == Connective::Disj)
+                            && has_child_named(
+                                exp_type.clone(),
+                                name.clone(),
+                                scope.type_env.clone().source_indices.clone(),
+                            ))
+                        {
+                            Some(exp_name.clone())
+                        } else {
+                            None
+                        }
+                    }
+                    None => None,
+                }
+            } else {
+                None
+            }
+        }
+        None => None,
+    }
+}
+
 pub fn inference_error(
     message: String,
     span: Rc<SourceSpan>,
@@ -2630,80 +2669,62 @@ pub fn infer_expr(
                 match v1_rt::map_get(&scope.locals.clone(), name.clone()) {
                     Some(binding) => {
                         let scope_parent = lookup_variant_parent_enum(scope.clone(), name.clone());
-                        // Ground variant owner by the EXPECTED/FIELD type at each site.
-                        // The scope may assign a variant to enum A by import-order or
-                        // alpha-sort when it appears in two enums; the expected type at
-                        // THIS site is the authoritative discriminant (§3 single authority).
-                        // E.g. WriteThenCommit ∈ {AtomicityModel, CacheWriteSemantics}:
-                        // each field site declares which enum is expected, so we follow it.
-                        let (effective_parent_opt, effective_resolved) = match scope_parent.clone()
-                        {
+                        match scope_parent {
                             Some(scope_enum) => {
-                                let override_owner = match expected.clone() {
-                                    Some(exp_node) => {
-                                        let exp_name = authored_name_at(
-                                            scope.type_env.clone().source_indices.clone(),
-                                            exp_node.clone(),
-                                        );
-                                        if ((!exp_name.is_empty())
-                                            && (exp_name.clone() != scope_enum.clone())
-                                            && (exp_name.clone() != name.clone()))
-                                        {
-                                            match lookup_type_by_name(
-                                                scope.type_env.clone(),
-                                                exp_name.clone(),
-                                            ) {
-                                                Some(exp_type) => {
-                                                    if ((exp_type.connective.clone()
-                                                        == Connective::Disj)
-                                                        && has_child_named(
-                                                            exp_type.clone(),
-                                                            name.clone(),
-                                                            scope
-                                                                .type_env
-                                                                .clone()
-                                                                .source_indices
-                                                                .clone(),
-                                                        ))
-                                                    {
-                                                        Some((exp_name, exp_type))
-                                                    } else {
-                                                        None
-                                                    }
-                                                }
-                                                None => None,
-                                            }
-                                        } else {
-                                            None
-                                        }
-                                    }
-                                    None => None,
+                                let override_enum = expected_type_override_enum(
+                                    scope.clone(),
+                                    name.clone(),
+                                    scope_enum.clone(),
+                                    expected.clone(),
+                                );
+                                let effective_enum = match override_enum.clone() {
+                                    Some(ov) => ov.clone(),
+                                    None => scope_enum.clone(),
                                 };
-                                match override_owner {
-                                    Some((exp_enum, exp_type)) => (Some(exp_enum), exp_type),
-                                    None => (Some(scope_enum), binding.resolved.clone()),
-                                }
+                                let effective_resolved = match override_enum.clone() {
+                                    Some(ov) => match lookup_type_by_name(
+                                        scope.type_env.clone(),
+                                        ov.clone(),
+                                    ) {
+                                        Some(t) => t.clone(),
+                                        None => binding.resolved.clone(),
+                                    },
+                                    None => binding.resolved.clone(),
+                                };
+                                ok_infer(make_named_expr_node(
+                                    name.clone(),
+                                    Rc::new(ExprData::ExprVar {
+                                        binding_kind: Some(Rc::new(
+                                            VarBindingKind::VariantValueBinding {
+                                                parent_enum: effective_enum,
+                                            },
+                                        )),
+                                    }),
+                                    Rc::new(vec![]),
+                                    Some(Rc::new(InferredNode::Resolved {
+                                        node: effective_resolved,
+                                    })),
+                                    span.clone(),
+                                    span.clone(),
+                                ))
                             }
-                            None => (None, binding.resolved.clone()),
-                        };
-                        let binding_kind = match effective_parent_opt.clone() {
-                            Some(parent_enum) => {
-                                Rc::new(VarBindingKind::VariantValueBinding { parent_enum })
+                            None => {
+                                let binding_kind =
+                                    infer_var_binding_kind(scope.clone(), name.clone());
+                                ok_infer(make_named_expr_node(
+                                    name.clone(),
+                                    Rc::new(ExprData::ExprVar {
+                                        binding_kind: Some(binding_kind),
+                                    }),
+                                    Rc::new(vec![]),
+                                    Some(Rc::new(InferredNode::Resolved {
+                                        node: binding.resolved.clone(),
+                                    })),
+                                    span.clone(),
+                                    span.clone(),
+                                ))
                             }
-                            None => infer_var_binding_kind(scope.clone(), name.clone()),
-                        };
-                        ok_infer(make_named_expr_node(
-                            name.clone(),
-                            Rc::new(ExprData::ExprVar {
-                                binding_kind: Some(binding_kind),
-                            }),
-                            Rc::new(vec![]),
-                            Some(Rc::new(InferredNode::Resolved {
-                                node: effective_resolved,
-                            })),
-                            span.clone(),
-                            span.clone(),
-                        ))
+                        }
                     }
                     None => match lookup_func_sig(scope.func_env.clone(), name.clone()) {
                         Some(fsig) => {
