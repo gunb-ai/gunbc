@@ -81,18 +81,6 @@ fn build_name_set(names: List<String>) -> Map<String, Bool> {
   fold(names, init: empty_map(), f: (acc, name) => map_insert(acc, name, true))
 }
 
-fn collect_parent_resolved_sigs(declared_sigs: Map<String, DeclaredFuncSig>, local_func_set: Map<String, Bool>) -> Map<String, ResolvedFuncSig> {
-  fold(map_values(declared_sigs), init: empty_map(), f: (acc, dsig) =>
-    if emit_map_has(m: local_func_set, key: dsig.name) {
-      acc
-    } else if dsig.inferred != none {
-      map_insert(acc, dsig.name, declared_to_resolved(dsig: dsig))
-    } else {
-      acc
-    }
-  )
-}
-
 fn declared_to_resolved(dsig: DeclaredFuncSig) -> ResolvedFuncSig {
   ResolvedFuncSig { name: dsig.name, params: dsig.params, inferred: dsig.inferred.value, is_async: dsig.is_async, output_provenance: dsig.output_provenance, variant_provenance: dsig.variant_provenance }
 }
@@ -185,7 +173,8 @@ fn topo_resolve_loop(
   )
 }
 
-fn resolve_func_sigs(
+fn resolve_func_sigs_with_parent_resolved(
+    parent_resolved: Map<String, ResolvedFuncSig>,
     declared_sigs: Map<String, DeclaredFuncSig>,
     items: List<Node>,
     module_name: String,
@@ -196,8 +185,7 @@ fn resolve_func_sigs(
     |> map(item => authored_name_at(source_indices: source_indices, node: item))
   let local_func_set = build_name_set(names: local_func_names)
   let call_edges = collect_func_call_edges(items: items, local_func_set: local_func_set, source_indices: source_indices)
-  let parent_resolved = collect_parent_resolved_sigs(declared_sigs: declared_sigs, local_func_set: local_func_set)
-  topo_resolve_loop(
+  let topo_result = topo_resolve_loop(
     remaining: local_func_names,
     resolved: parent_resolved,
     declared_sigs: declared_sigs,
@@ -207,4 +195,23 @@ fn resolve_func_sigs(
     diagnostics: [],
     fuel: local_func_names |> count
   )
+  let failed_locals = local_func_names |> filter(fn_name =>
+    match map_get(declared_sigs, fn_name) {
+      Present { value: dsig } => dsig.inferred == none
+      Absent => false
+    }
+  )
+  if failed_locals |> count == 0 {
+    topo_result
+  } else {
+    let erase_set = build_name_set(names: failed_locals)
+    let erased_sigs = fold(map_values(topo_result.func_env.signatures), init: empty_map(), f: (acc, sig) =>
+      if emit_map_has(m: erase_set, key: sig.name) { acc }
+      else { map_insert(acc, sig.name, sig) }
+    )
+    ResolveFuncSigsResult {
+      func_env: ResolvedFuncEnv { signatures: erased_sigs },
+      diagnostics: topo_result.diagnostics
+    }
+  }
 }

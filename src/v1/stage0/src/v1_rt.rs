@@ -351,6 +351,15 @@ pub fn rc_map_insert<K: std::cmp::Eq + std::hash::Hash + Clone, V: Clone>(
     m
 }
 
+pub fn rc_map_remove<K: std::cmp::Eq + std::hash::Hash + Clone, V: Clone>(
+    map: Rc<HashMap<K, V>>,
+    key: K,
+) -> Rc<HashMap<K, V>> {
+    let mut m = map;
+    Rc::make_mut(&mut m).remove(&key);
+    m
+}
+
 pub fn rc_map_merge<K: std::cmp::Eq + std::hash::Hash + Clone, V: Clone>(
     base: Rc<HashMap<K, V>>,
     overlay: Rc<HashMap<K, V>>,

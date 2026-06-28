@@ -182,33 +182,6 @@ pub fn build_name_set(names: Rc<Vec<String>>) -> Rc<HashMap<String, bool>> {
     )
 }
 
-pub fn collect_parent_resolved_sigs(
-    declared_sigs: Rc<HashMap<String, Rc<DeclaredFuncSig>>>,
-    local_func_set: Rc<HashMap<String, bool>>,
-) -> Rc<HashMap<String, Rc<ResolvedFuncSig>>> {
-    Rc::new(v1_rt::map_values(&declared_sigs))
-        .iter()
-        .cloned()
-        .fold(
-            v1_rt::rc_empty_map::<String, Rc<ResolvedFuncSig>>(),
-            |acc: Rc<HashMap<String, Rc<ResolvedFuncSig>>>, dsig: Rc<DeclaredFuncSig>| {
-                if emit_map_has(local_func_set.clone(), dsig.name.clone()) {
-                    acc.clone()
-                } else {
-                    if (dsig.inferred.clone() != None) {
-                        v1_rt::rc_map_insert(
-                            acc.clone(),
-                            dsig.name.clone(),
-                            declared_to_resolved(dsig.clone()),
-                        )
-                    } else {
-                        acc.clone()
-                    }
-                }
-            },
-        )
-}
-
 pub fn declared_to_resolved(dsig: Rc<DeclaredFuncSig>) -> Rc<ResolvedFuncSig> {
     Rc::new(ResolvedFuncSig {
         name: dsig.name.clone(),
@@ -469,7 +442,8 @@ pub fn topo_resolve_loop(
     }
 }
 
-pub fn resolve_func_sigs(
+pub fn resolve_func_sigs_with_parent_resolved(
+    parent_resolved: Rc<HashMap<String, Rc<ResolvedFuncSig>>>,
     declared_sigs: Rc<HashMap<String, Rc<DeclaredFuncSig>>>,
     items: Rc<Vec<Rc<Node>>>,
     module_name: String,
@@ -500,9 +474,7 @@ pub fn resolve_func_sigs(
             local_func_set.clone(),
             source_indices.clone(),
         );
-        let parent_resolved =
-            collect_parent_resolved_sigs(declared_sigs.clone(), local_func_set.clone());
-        topo_resolve_loop(
+        let topo_result = topo_resolve_loop(
             local_func_names.clone(),
             parent_resolved,
             declared_sigs.clone(),
@@ -511,6 +483,27 @@ pub fn resolve_func_sigs(
             module_name,
             Rc::new(vec![]),
             (local_func_names.clone().len() as i64),
-        )
+        );
+        // Erase any foreign sig that survived in the seed under a locally-failed shadow.
+        // Old collect_parent_resolved_sigs filtered local_func_set out before seeding;
+        // we seed unfiltered (Rc-share wins) then surgically remove failures: O(local_funcs).
+        let mut sigs = topo_result.func_env.signatures.clone();
+        let mut any_erased = false;
+        for fn_name in local_func_names.iter() {
+            if let Some(dsig) = v1_rt::map_get(&declared_sigs, fn_name.clone()) {
+                if dsig.inferred.clone() == None {
+                    sigs = v1_rt::rc_map_remove(sigs, fn_name.clone());
+                    any_erased = true;
+                }
+            }
+        }
+        if !any_erased {
+            topo_result
+        } else {
+            Rc::new(ResolveFuncSigsResult {
+                func_env: Rc::new(ResolvedFuncEnv { signatures: sigs }),
+                diagnostics: topo_result.diagnostics.clone(),
+            })
+        }
     }
 }

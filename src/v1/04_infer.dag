@@ -104,7 +104,7 @@ import v1.compiler.infer_resolve {
 }
 import v1.compiler.infer_sigs {
   ResolvedFuncSig, ResolvedFuncEnv, ResolveFuncSigsResult,
-  resolve_func_sigs
+  resolve_func_sigs_with_parent_resolved
 }
 import v1.compiler.infer_emit_info {
   TypeRepr, StructRepr, EnumRepr,
@@ -280,7 +280,7 @@ type CycleDetectState {
 }
 
 type InferScopeComponents {
-  func_sigs: Map<String, DeclaredFuncSig>
+  resolved_func_sigs: Map<String, ResolvedFuncSig>
   svc_registry: Map<String, List<OpEntry>>
   svc_locals: Map<String, TypeBinding>
 }
@@ -295,32 +295,20 @@ type LocalContributionState {
 }
 
 fn merge_scope_from_imports(remaining: List<ResolvedImport>, parent_index: Map<String, TypedModule>, env: TypeEnv,
-    func_sigs: Map<String, DeclaredFuncSig>,
+    resolved_func_sigs: Map<String, ResolvedFuncSig>,
     svc_registry: Map<String, List<OpEntry>>,
     svc_locals: Map<String, TypeBinding>) -> InferScopeComponents {
   match remaining |> first {
     Absent => InferScopeComponents {
-      func_sigs: func_sigs, svc_registry: svc_registry,
+      resolved_func_sigs: resolved_func_sigs, svc_registry: svc_registry,
       svc_locals: svc_locals
     }
     Present { value: imp } =>
       match map_get(parent_index, imp.module_path) {
         Present { value: typed_parent } =>
-          let next_func_sigs = fold(typed_parent.func_env.signatures |> map_values, init: func_sigs, f: (acc, rsig) =>
-            let sig_key = rsig.name
-            let sig_params = rsig.params
-            let sig_rt = rsig.inferred
-            let sig_async = rsig.is_async
-            map_insert(acc, sig_key, DeclaredFuncSig {
-              name: sig_key, params: sig_params,
-              inferred: Present { value: sig_rt },
-              is_async: sig_async,
-              output_provenance: rsig.output_provenance,
-              variant_provenance: rsig.variant_provenance
-            })
-          )
+          let next_resolved_func_sigs = map_merge(resolved_func_sigs, typed_parent.func_env.signatures)
           let parent_result = fold(typed_parent.items, init: InferScopeComponents {
-            func_sigs: next_func_sigs, svc_registry: svc_registry,
+            resolved_func_sigs: next_resolved_func_sigs, svc_registry: svc_registry,
             svc_locals: svc_locals
           }, f: (acc, titem) =>
             if titem.transport != none && titem.children |> count > 0 {
@@ -329,14 +317,14 @@ fn merge_scope_from_imports(remaining: List<ResolvedImport>, parent_index: Map<S
               )
               let root = namespace_root_from_properties(properties: titem.properties, name: authored_name_at(source_indices: env.source_indices, node: titem), source_indices: env.source_indices)
               InferScopeComponents {
-                func_sigs: acc.func_sigs,
+                resolved_func_sigs: acc.resolved_func_sigs,
                 svc_registry: map_insert(acc.svc_registry, authored_name_at(source_indices: env.source_indices, node: titem), entries),
                 svc_locals: map_insert(acc.svc_locals, root, nominal_type_binding(name: root))
               }
             }
             else if titem.body != none && (titem.params |> count == 0) && titem.transport == none && titem.connective == NoConnective && titem.inferred != none {
               InferScopeComponents {
-                func_sigs: acc.func_sigs,
+                resolved_func_sigs: acc.resolved_func_sigs,
                 svc_registry: acc.svc_registry,
                 svc_locals: map_insert(acc.svc_locals, authored_name_at(source_indices: env.source_indices, node: titem), TypeBinding { name: authored_name_at(source_indices: env.source_indices, node: titem), resolved: resolved_type(n: titem), provenance: SubValueUnknown })
               }
@@ -346,11 +334,11 @@ fn merge_scope_from_imports(remaining: List<ResolvedImport>, parent_index: Map<S
             }
           )
           merge_scope_from_imports(remaining: remaining |> skip(1), parent_index: parent_index, env: env,
-            func_sigs: parent_result.func_sigs, svc_registry: parent_result.svc_registry,
+            resolved_func_sigs: parent_result.resolved_func_sigs, svc_registry: parent_result.svc_registry,
             svc_locals: parent_result.svc_locals)
         Absent =>
           merge_scope_from_imports(remaining: remaining |> skip(1), parent_index: parent_index, env: env,
-            func_sigs: func_sigs, svc_registry: svc_registry,
+            resolved_func_sigs: resolved_func_sigs, svc_registry: svc_registry,
             svc_locals: svc_locals)
       }
   }
@@ -5836,13 +5824,13 @@ fn build_module_context(contributions: List<ItemContribution>,
     remaining: resolved_imports,
     parent_index: parent_index,
     env: env,
-    func_sigs: empty_map(),
+    resolved_func_sigs: empty_map(),
     svc_registry: local.svc_registry,
     svc_locals: local.svc_locals
   )
-  let all_declared_sigs = map_merge(merged_scope.func_sigs, local.func_sigs)
-  let resolve_result = resolve_func_sigs(
-    declared_sigs: all_declared_sigs,
+  let resolve_result = resolve_func_sigs_with_parent_resolved(
+    parent_resolved: merged_scope.resolved_func_sigs,
+    declared_sigs: local.func_sigs,
     items: local.resolved_items,
     module_name: module_name,
     source_indices: env.source_indices
