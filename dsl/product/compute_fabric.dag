@@ -1,15 +1,16 @@
 module product.compute_fabric
 
-import std.types { NonEmptyStr, Bool, Int, List }
+import std.types { NonEmptyStr, Bool, List }
+import std.measure { HardwareThreadCount, hardware_thread_count, hardware_thread_count_value, measure_le }
 
 type Fabric = NonEmptyStr where brand("Fabric")
 
-type HardRequirements { threads: Int }
+type HardRequirements { threads: HardwareThreadCount }
 
 type Shape { hard: HardRequirements }
 
 fn shape_covers(offered: Shape, needed: Shape) -> Bool {
-  offered.hard.threads >= needed.hard.threads
+  measure_le(a: needed.hard.threads, b: offered.hard.threads)
 }
 
 type ProgramPreference { preferred_tag: NonEmptyStr? }
@@ -63,43 +64,43 @@ data example_fabric: Fabric = "ci-fleet"
 
 data example_small_program: Program = Program {
   id: "small-prog",
-  hard: HardRequirements { threads: 4 },
+  hard: HardRequirements { threads: hardware_thread_count(4) },
   prefers: ProgramPreference { preferred_tag: none },
 }
 
 data example_large_program: Program = Program {
   id: "large-prog",
-  hard: HardRequirements { threads: 64 },
+  hard: HardRequirements { threads: hardware_thread_count(64) },
   prefers: ProgramPreference { preferred_tag: none },
 }
 
 data example_opportunity: Opportunity = Opportunity {
   fabric: example_fabric,
-  offers: Shape { hard: HardRequirements { threads: 128 } },
+  offers: Shape { hard: HardRequirements { threads: hardware_thread_count(128) } },
   tag: "srv1",
 }
 
 data example_small_opportunity: Opportunity = Opportunity {
   fabric: example_fabric,
-  offers: Shape { hard: HardRequirements { threads: 8 } },
+  offers: Shape { hard: HardRequirements { threads: hardware_thread_count(8) } },
   tag: "srv1",
 }
 
 data example_pref_program: Program = Program {
   id: "pref-prog",
-  hard: HardRequirements { threads: 2 },
+  hard: HardRequirements { threads: hardware_thread_count(2) },
   prefers: ProgramPreference { preferred_tag: Present { value: "srv1" } },
 }
 
 data example_pref_miss_opportunity: Opportunity = Opportunity {
   fabric: example_fabric,
-  offers: Shape { hard: HardRequirements { threads: 64 } },
+  offers: Shape { hard: HardRequirements { threads: hardware_thread_count(64) } },
   tag: "srv2",
 }
 
 fn witness_need_is_only_fabric_plus_program() -> Bool {
   let need = ComputeNeed { fabric: example_fabric, program: example_small_program }
-  need.program.hard.threads == 4
+  hardware_thread_count_value(t: need.program.hard.threads) == 4
 }
 
 fn witness_shape_is_derived_from_program() -> Bool {
@@ -120,12 +121,12 @@ fn witness_fabric_binds_need_to_opportunity() -> Bool {
 fn witness_exec_and_ci_are_just_programs() -> Bool {
   let exec_prog = Program {
     id: "exec-cmd",
-    hard: HardRequirements { threads: 4 },
+    hard: HardRequirements { threads: hardware_thread_count(4) },
     prefers: ProgramPreference { preferred_tag: none },
   }
   let ci_job = Program {
     id: "ci-job",
-    hard: HardRequirements { threads: 4 },
+    hard: HardRequirements { threads: hardware_thread_count(4) },
     prefers: ProgramPreference { preferred_tag: none },
   }
   let need_exec = ComputeNeed { fabric: example_fabric, program: exec_prog }
