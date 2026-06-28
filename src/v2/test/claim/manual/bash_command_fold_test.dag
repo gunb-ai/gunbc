@@ -1,0 +1,144 @@
+module v2.test.manual.bash_command_fold
+
+import extdeps.languages.bash.program {
+  Command,
+  Lit,
+  ShellStmt,
+  VarRef,
+  serialize_stmt
+}
+import v2.compiler.emit { emit }
+import v2.compiler.infer { InferredFacts, InferredTree }
+import v2.compiler.translate { target_serialize_source_from_model }
+import v2.extdeps.languages.bash_command_fold {
+  bash_fold_cmd_echo_hi_emitted,
+  bash_fold_cmd_echo_hi_target_model,
+  bash_fold_cmd_true_emitted,
+  bash_fold_cmd_true_target_model,
+  bash_fold_cmd_true_wrong_emitted,
+  bash_fold_cmd_true_wrong_target_model,
+  bash_fold_cmd_var_x_emitted,
+  bash_fold_cmd_var_x_target_model,
+  bash_fold_stmt_emitted
+}
+import v2.std.compilers.target_model { TargetModel }
+import v2.std.collection { Map }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  None,
+  Outcome,
+  Rejected,
+  Some,
+  Unavailable,
+  node_locus
+}
+import v2.std.logic { Bool }
+import v2.std.node { Node }
+import v2.std.witness { Violates, Witness }
+
+fn bash_fold_facts_lookup(key: Node) -> Witness<InferredFacts> {
+  Violates {
+    diagnostic: Diagnostic {
+      reason: ^bash_fold_facts_unexpected_consultation,
+      at: node_locus(node: key),
+      correction: Unavailable { reason: ExternalContractUnknown }
+    }
+  }
+}
+
+fn bash_fold_fold_serialize(stmt: ShellStmt, target: TargetModel) -> Outcome<String> {
+  let emitted = bash_fold_stmt_emitted(stmt: stmt)
+  let tree = InferredTree {
+    root: emitted,
+    facts: Map { lookup: bash_fold_facts_lookup }
+  }
+  match emit(tree: tree, target: target) {
+    Accepted { value: source, diagnostics: d } =>
+      match d {
+        None => Accepted { value: source.carried, diagnostics: None }
+        Some { diagnostics: r } => Rejected { diagnostics: r }
+      }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+fn bash_fold_fold_matches_oracle(stmt: ShellStmt, target: TargetModel) -> Bool {
+  match bash_fold_fold_serialize(stmt: stmt, target: target) {
+    Accepted { value: folded, diagnostics: _ } => folded == serialize_stmt(s: stmt)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn bash_fold_command_single_lit_true_holds() -> Bool {
+  bash_fold_fold_matches_oracle(
+    stmt: Command { words: [Lit { text: "true" }] },
+    target: bash_fold_cmd_true_target_model()
+  )
+}
+
+test fn bash_fold_command_multi_lit_echo_hi_holds() -> Bool {
+  bash_fold_fold_matches_oracle(
+    stmt: Command { words: [Lit { text: "echo" }, Lit { text: "hi" }] },
+    target: bash_fold_cmd_echo_hi_target_model()
+  )
+}
+
+test fn bash_fold_command_var_ref_x_holds() -> Bool {
+  bash_fold_fold_matches_oracle(
+    stmt: Command { words: [VarRef { name: "X" }] },
+    target: bash_fold_cmd_var_x_target_model()
+  )
+}
+
+fn bash_fold_wrong_production_oracle_mismatch_holds() -> Bool {
+  let stmt = Command { words: [Lit { text: "true" }] }
+  match bash_fold_fold_serialize(
+    stmt: stmt,
+    target: bash_fold_cmd_true_wrong_target_model()
+  ) {
+    Accepted { value: folded, diagnostics: _ } => folded != serialize_stmt(s: stmt)
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+test fn bash_fold_wrong_production_rejects_oracle_holds() -> Bool {
+  bash_fold_wrong_production_oracle_mismatch_holds()
+}
+
+fn bash_fold_direct_serialize_matches_oracle(emitted: Node, target: TargetModel, stmt: ShellStmt) -> Bool {
+  match target_serialize_source_from_model(target: target, emitted: emitted) {
+    Accepted { value: source, diagnostics: d } =>
+      (source.carried == serialize_stmt(s: stmt)) && (d == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn bash_fold_direct_serialize_single_lit_true_holds() -> Bool {
+  bash_fold_direct_serialize_matches_oracle(
+    emitted: bash_fold_cmd_true_emitted,
+    target: bash_fold_cmd_true_target_model(),
+    stmt: Command { words: [Lit { text: "true" }] }
+  )
+}
+
+test fn bash_fold_direct_serialize_multi_lit_echo_hi_holds() -> Bool {
+  bash_fold_direct_serialize_matches_oracle(
+    emitted: bash_fold_cmd_echo_hi_emitted,
+    target: bash_fold_cmd_echo_hi_target_model(),
+    stmt: Command { words: [Lit { text: "echo" }, Lit { text: "hi" }] }
+  )
+}
+
+test fn bash_fold_direct_serialize_var_ref_x_holds() -> Bool {
+  bash_fold_direct_serialize_matches_oracle(
+    emitted: bash_fold_cmd_var_x_emitted,
+    target: bash_fold_cmd_var_x_target_model(),
+    stmt: Command { words: [VarRef { name: "X" }] }
+  )
+}
+
+test fn bash_fold_emitted_tree_differs_on_wrong_fixture_holds() -> Bool {
+  bash_fold_cmd_true_emitted != bash_fold_cmd_true_wrong_emitted
+}

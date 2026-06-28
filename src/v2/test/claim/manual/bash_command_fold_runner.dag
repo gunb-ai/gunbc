@@ -1,0 +1,45 @@
+module v2.test.manual.bash_command_fold_runner
+
+import std.realization_schedule { Runnable, RunnableSingleClaim }
+import v2.std.collection { List }
+
+data bash_fold_test_entry: String = "src/v2/test/claim/manual/bash_command_fold_test.dag"
+
+fn bash_command_fold_plan() -> List<List<Runnable>> {
+  [
+    [
+      RunnableSingleClaim {
+        entry: bash_fold_test_entry,
+        function: "bash_fold_command_single_lit_true_holds"
+      },
+      RunnableSingleClaim {
+        entry: bash_fold_test_entry,
+        function: "bash_fold_command_multi_lit_echo_hi_holds"
+      },
+      RunnableSingleClaim {
+        entry: bash_fold_test_entry,
+        function: "bash_fold_command_var_ref_x_holds"
+      },
+      RunnableSingleClaim {
+        entry: bash_fold_test_entry,
+        function: "bash_fold_wrong_production_rejects_oracle_holds"
+      },
+      RunnableSingleClaim {
+        entry: bash_fold_test_entry,
+        function: "bash_fold_direct_serialize_single_lit_true_holds"
+      },
+      RunnableSingleClaim {
+        entry: bash_fold_test_entry,
+        function: "bash_fold_direct_serialize_multi_lit_echo_hi_holds"
+      },
+      RunnableSingleClaim {
+        entry: bash_fold_test_entry,
+        function: "bash_fold_direct_serialize_var_ref_x_holds"
+      },
+      RunnableSingleClaim {
+        entry: bash_fold_test_entry,
+        function: "bash_fold_emitted_tree_differs_on_wrong_fixture_holds"
+      }
+    ]
+  ]
+}
