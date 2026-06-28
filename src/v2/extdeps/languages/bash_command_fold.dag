@@ -717,7 +717,7 @@ fn bash_fold_lex() -> LexRules {
 
 data bash_fold_word_kind_marker_dissolution_trigger: String = "🟡 dissolve-on: phantom \\u{0000}/\\u{0001} kind-marker lex bytes and zero-width bash_fold_kind_emit_transform are replaced by real bash word-class lexing that disambiguates lit vs var without sentinel bytes"
 
-fn bash_fold_kind_emit_transform(spelling: String) -> String {
+fn bash_fold_kind_emit_transform(_spelling: String) -> String {
   ""
 }
 
