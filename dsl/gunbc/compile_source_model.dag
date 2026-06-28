@@ -1,0 +1,65 @@
+module gunbc.compile_source_model
+
+import std.logic { Bool }
+
+type DependencyPoolIndex
+  = StrictPoolIndex
+  | PrimaryPrecedencePoolIndex
+
+type SourceRootRole
+  = EntrySourceRoot
+  | DependencyPoolRoot
+
+type CompileSourceRoots {
+  ordered_roots: List<String>
+  pool_index: DependencyPoolIndex
+}
+
+fn dependency_pool_index_from_flag(flag: String) -> DependencyPoolIndex? {
+  match flag {
+    "strict" => Present { value: StrictPoolIndex }
+    "primary-precedence" => Present { value: PrimaryPrecedencePoolIndex }
+    _ => Absent
+  }
+}
+
+fn source_root_role(root_index: Int, pool_index: DependencyPoolIndex) -> SourceRootRole {
+  match pool_index {
+    StrictPoolIndex => EntrySourceRoot
+    PrimaryPrecedencePoolIndex =>
+      if root_index == 0 { EntrySourceRoot } else { DependencyPoolRoot }
+  }
+}
+
+fn pool_fill_only_for_role(role: SourceRootRole, pool_index: DependencyPoolIndex) -> Bool {
+  match pool_index {
+    StrictPoolIndex => false
+    PrimaryPrecedencePoolIndex =>
+      match role {
+        EntrySourceRoot => false
+        DependencyPoolRoot => true
+      }
+  }
+}
+
+fn compile_entry_source_root_index() -> Int {
+  0
+}
+
+fn skip_pool_module_when_indexed(
+  module_already_indexed: Bool,
+  pool_fill_only: Bool
+) -> Bool {
+  pool_fill_only && module_already_indexed
+}
+
+fn duplicate_module_path_across_index_is_error(
+  module_already_indexed: Bool,
+  pool_fill_only: Bool
+) -> Bool {
+  module_already_indexed && !pool_fill_only
+}
+
+fn duplicate_module_path_within_root_scan_is_error() -> Bool {
+  true
+}

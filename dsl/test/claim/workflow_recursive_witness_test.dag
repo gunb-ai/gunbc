@@ -14,7 +14,7 @@ import gunbc.idea_pr_spine {
   StageStep, IdeaInput, DagModel, Review, review_step,
   settle, demo_spine_green, demo_spine_unknown,
 }
-import ctrl.review_verdict { Claude, RequestChanges }
+import ctrl.review_verdict { Llm, Claude, RequestChanges }
 
 fn linearize_steps(steps: List<StageStep>) -> VerdictTree {
   linearize_verdicts(
@@ -46,7 +46,7 @@ fn all_green_tree() -> VerdictTree {
 fn review_tree_blocks() -> VerdictTree {
   Decomposed { children: [
     Leaf { verdict: Reduced { last_parts: 1 } },
-    Leaf { verdict: review_step(Review { subject: DagModel, reviewer: Claude, verdict: RequestChanges }).verdict },
+    Leaf { verdict: review_step(Review { subject: DagModel, reviewer: Llm { provider: Claude }, verdict: RequestChanges }).verdict },
     Leaf { verdict: Reduced { last_parts: 9 } },
   ] }
 }

@@ -5,11 +5,11 @@ import extdeps.cache.types {
   NativeInternal,
   RustcInvocation,
   ToolchainSpec,
+  FilePaths,
   CargoFingerprintEncoding,
 }
 import std.cache_identity { CacheInterfaceId }
 import std.cache_interface {
-  FilePaths,
   NativeInternalLookup,
   ProviderInternal,
   MissThenCreate,
