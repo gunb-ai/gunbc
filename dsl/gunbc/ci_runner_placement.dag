@@ -39,7 +39,7 @@ import gunbc.ci_floor_measurement {
   gunbc_ci_per_session_peak_samples,
   gunbc_ci_session_reservation_mode,
 }
-import gunbc.fleet_intent { fleet_intent_offers }
+import gunbc.ci_fleet { fleet_intent_offers }
 
 type WorkloadClass
   = BatchLatencyTolerant
