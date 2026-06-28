@@ -185,7 +185,7 @@ fn resolve_func_sigs_with_parent_resolved(
     |> map(item => authored_name_at(source_indices: source_indices, node: item))
   let local_func_set = build_name_set(names: local_func_names)
   let call_edges = collect_func_call_edges(items: items, local_func_set: local_func_set, source_indices: source_indices)
-  topo_resolve_loop(
+  let topo_result = topo_resolve_loop(
     remaining: local_func_names,
     resolved: parent_resolved,
     declared_sigs: declared_sigs,
@@ -195,4 +195,23 @@ fn resolve_func_sigs_with_parent_resolved(
     diagnostics: [],
     fuel: local_func_names |> count
   )
+  let failed_locals = local_func_names |> filter(fn_name =>
+    match map_get(declared_sigs, fn_name) {
+      Present { value: dsig } => dsig.inferred == none
+      Absent => false
+    }
+  )
+  if failed_locals |> count == 0 {
+    topo_result
+  } else {
+    let erase_set = build_name_set(names: failed_locals)
+    let erased_sigs = fold(map_values(topo_result.func_env.signatures), init: empty_map(), f: (acc, sig) =>
+      if emit_map_has(m: erase_set, key: sig.name) { acc }
+      else { map_insert(acc, sig.name, sig) }
+    )
+    ResolveFuncSigsResult {
+      func_env: ResolvedFuncEnv { signatures: erased_sigs },
+      diagnostics: topo_result.diagnostics
+    }
+  }
 }

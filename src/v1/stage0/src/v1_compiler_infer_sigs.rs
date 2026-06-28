@@ -474,7 +474,7 @@ pub fn resolve_func_sigs_with_parent_resolved(
             local_func_set.clone(),
             source_indices.clone(),
         );
-        topo_resolve_loop(
+        let topo_result = topo_resolve_loop(
             local_func_names.clone(),
             parent_resolved,
             declared_sigs.clone(),
@@ -483,6 +483,27 @@ pub fn resolve_func_sigs_with_parent_resolved(
             module_name,
             Rc::new(vec![]),
             (local_func_names.clone().len() as i64),
-        )
+        );
+        // Erase any foreign sig that survived in the seed under a locally-failed shadow.
+        // Old collect_parent_resolved_sigs filtered local_func_set out before seeding;
+        // we seed unfiltered (Rc-share wins) then surgically remove failures: O(local_funcs).
+        let mut sigs = topo_result.func_env.signatures.clone();
+        let mut any_erased = false;
+        for fn_name in local_func_names.iter() {
+            if let Some(dsig) = v1_rt::map_get(&declared_sigs, fn_name.clone()) {
+                if dsig.inferred.clone() == None {
+                    sigs = v1_rt::rc_map_remove(sigs, fn_name.clone());
+                    any_erased = true;
+                }
+            }
+        }
+        if !any_erased {
+            topo_result
+        } else {
+            Rc::new(ResolveFuncSigsResult {
+                func_env: Rc::new(ResolvedFuncEnv { signatures: sigs }),
+                diagnostics: topo_result.diagnostics.clone(),
+            })
+        }
     }
 }
