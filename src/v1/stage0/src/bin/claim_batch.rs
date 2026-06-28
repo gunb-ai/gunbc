@@ -8,7 +8,7 @@ use std::time::Instant;
 
 use v1_compiler::cli_run::{
     build_multi_entry_index, check_floor_filename_hygiene, closure_subject_for_entry,
-    discover_floor_corpus_rows, make_eval_context_with_runtime_options,
+    discover_floor_corpus_rows, make_eval_context_with_runtime_options, peak_rss_vhwm_bytes,
     precompute_whole_tree_published_mock_keys, resolve_entry_with_index, run_claim_measured,
     ClaimOutcome, DiscoveryRow, MultiEntryIndex,
 };
@@ -39,18 +39,15 @@ fn peak_rss_lines() -> String {
 }
 
 fn peak_rss_bytes() -> Option<u64> {
-    let status = std::fs::read_to_string("/proc/self/status").ok()?;
-    let line = status.lines().find(|l| l.starts_with("VmHWM"))?;
-    let kb: u64 = line.split_whitespace().nth(1)?.parse().ok()?;
-    Some(kb.saturating_mul(1024))
+    peak_rss_vhwm_bytes()
 }
 
 /// Peak RSS of terminated child processes (Linux `getrusage(RUSAGE_CHILDREN)`).
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", target_pointer_width = "64"))]
 fn children_max_rss_bytes() -> Option<u64> {
     // Hand-decoded `struct rusage` (no libc dep): layout assumes Linux lp64
     // (x86_64 / aarch64) — 144-byte buffer, `ru_maxrss` at byte offset 32 after
-    // two 16-byte `timeval`s. Misreads on other ABIs; returns None on syscall failure.
+    // two 16-byte `timeval`s. Non-lp64 Linux is gated out below; syscall failure → None.
     extern "C" {
         fn getrusage(who: i32, usage: *mut std::ffi::c_void) -> i32;
     }
@@ -66,6 +63,11 @@ fn children_max_rss_bytes() -> Option<u64> {
             .ok()?,
     );
     Some(ru_maxrss as u64 * 1024)
+}
+
+#[cfg(all(target_os = "linux", not(target_pointer_width = "64")))]
+fn children_max_rss_bytes() -> Option<u64> {
+    None
 }
 
 #[cfg(not(target_os = "linux"))]

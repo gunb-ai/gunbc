@@ -9,15 +9,10 @@
 
 use std::process::ExitCode;
 
-use v1_compiler::cli_run::{whole_tree_resolved_ctx, WholeTreeCtx, FLOOR_DISCOVERY_EXCLUDES};
+use v1_compiler::cli_run::{
+    peak_rss_vhwm_bytes, whole_tree_resolved_ctx, WholeTreeCtx, FLOOR_DISCOVERY_EXCLUDES,
+};
 use v1_compiler::v1_interpreter::ExecutionMode;
-
-fn peak_rss_bytes() -> Option<u64> {
-    let status = std::fs::read_to_string("/proc/self/status").ok()?;
-    let line = status.lines().find(|l| l.starts_with("VmHWM"))?;
-    let kb: u64 = line.split_whitespace().nth(1)?.parse().ok()?;
-    Some(kb.saturating_mul(1024))
-}
 
 fn require_value(args: &[String], idx: usize, flag: &str) -> Result<String, ExitCode> {
     match args.get(idx) {
@@ -87,7 +82,7 @@ fn run() -> Result<ExitCode, ExitCode> {
         source_roots.len(),
     );
 
-    match peak_rss_bytes() {
+    match peak_rss_vhwm_bytes() {
         Some(bytes) => eprintln!(
             "[measurement] whole-tree resolve peak RSS: {bytes} bytes (VmHWM) modules={modules_resolved}"
         ),
