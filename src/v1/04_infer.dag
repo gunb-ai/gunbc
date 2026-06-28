@@ -280,7 +280,7 @@ type CycleDetectState {
 }
 
 type InferScopeComponents {
-  func_sigs: Map<String, DeclaredFuncSig>
+  imported_sigs: Map<String, ResolvedFuncSig>
   svc_registry: Map<String, List<OpEntry>>
   svc_locals: Map<String, TypeBinding>
 }
@@ -295,32 +295,20 @@ type LocalContributionState {
 }
 
 fn merge_scope_from_imports(remaining: List<ResolvedImport>, parent_index: Map<String, TypedModule>, env: TypeEnv,
-    func_sigs: Map<String, DeclaredFuncSig>,
+    imported_sigs: Map<String, ResolvedFuncSig>,
     svc_registry: Map<String, List<OpEntry>>,
     svc_locals: Map<String, TypeBinding>) -> InferScopeComponents {
   match remaining |> first {
     Absent => InferScopeComponents {
-      func_sigs: func_sigs, svc_registry: svc_registry,
+      imported_sigs: imported_sigs, svc_registry: svc_registry,
       svc_locals: svc_locals
     }
     Present { value: imp } =>
       match map_get(parent_index, imp.module_path) {
         Present { value: typed_parent } =>
-          let next_func_sigs = fold(typed_parent.func_env.signatures |> map_values, init: func_sigs, f: (acc, rsig) =>
-            let sig_key = rsig.name
-            let sig_params = rsig.params
-            let sig_rt = rsig.inferred
-            let sig_async = rsig.is_async
-            map_insert(acc, sig_key, DeclaredFuncSig {
-              name: sig_key, params: sig_params,
-              inferred: Present { value: sig_rt },
-              is_async: sig_async,
-              output_provenance: rsig.output_provenance,
-              variant_provenance: rsig.variant_provenance
-            })
-          )
+          let next_imported_sigs = map_merge(imported_sigs, typed_parent.func_env.signatures)
           let parent_result = fold(typed_parent.items, init: InferScopeComponents {
-            func_sigs: next_func_sigs, svc_registry: svc_registry,
+            imported_sigs: next_imported_sigs, svc_registry: svc_registry,
             svc_locals: svc_locals
           }, f: (acc, titem) =>
             if titem.transport != none && titem.children |> count > 0 {
@@ -329,14 +317,14 @@ fn merge_scope_from_imports(remaining: List<ResolvedImport>, parent_index: Map<S
               )
               let root = namespace_root_from_properties(properties: titem.properties, name: authored_name_at(source_indices: env.source_indices, node: titem), source_indices: env.source_indices)
               InferScopeComponents {
-                func_sigs: acc.func_sigs,
+                imported_sigs: acc.imported_sigs,
                 svc_registry: map_insert(acc.svc_registry, authored_name_at(source_indices: env.source_indices, node: titem), entries),
                 svc_locals: map_insert(acc.svc_locals, root, nominal_type_binding(name: root))
               }
             }
             else if titem.body != none && (titem.params |> count == 0) && titem.transport == none && titem.connective == NoConnective && titem.inferred != none {
               InferScopeComponents {
-                func_sigs: acc.func_sigs,
+                imported_sigs: acc.imported_sigs,
                 svc_registry: acc.svc_registry,
                 svc_locals: map_insert(acc.svc_locals, authored_name_at(source_indices: env.source_indices, node: titem), TypeBinding { name: authored_name_at(source_indices: env.source_indices, node: titem), resolved: resolved_type(n: titem), provenance: SubValueUnknown })
               }
@@ -346,11 +334,11 @@ fn merge_scope_from_imports(remaining: List<ResolvedImport>, parent_index: Map<S
             }
           )
           merge_scope_from_imports(remaining: remaining |> skip(1), parent_index: parent_index, env: env,
-            func_sigs: parent_result.func_sigs, svc_registry: parent_result.svc_registry,
+            imported_sigs: parent_result.imported_sigs, svc_registry: parent_result.svc_registry,
             svc_locals: parent_result.svc_locals)
         Absent =>
           merge_scope_from_imports(remaining: remaining |> skip(1), parent_index: parent_index, env: env,
-            func_sigs: func_sigs, svc_registry: svc_registry,
+            imported_sigs: imported_sigs, svc_registry: svc_registry,
             svc_locals: svc_locals)
       }
   }
@@ -5783,6 +5771,43 @@ fn fold_module_contributions(remaining: List<ItemContribution>,
   }
 }
 
+fn enum_parents_for_variant_in_items(variant_name: String, items: List<Node>, source_indices: Map<String, NewlineIndex>) -> List<String> {
+  items
+    |> filter(item => item.connective == Disj)
+    |> filter(item => item.children |> any(child => authored_name_at(source_indices: source_indices, node: child) == variant_name))
+    |> map(item => authored_name_at(source_indices: source_indices, node: item))
+}
+
+fn unique_imported_variant_owner(variant_name: String, items: List<Node>, source_indices: Map<String, NewlineIndex>) -> String? {
+  let parents = enum_parents_for_variant_in_items(variant_name: variant_name, items: items, source_indices: source_indices)
+  if parents |> count == 1 {
+    parents |> first
+  } else { none }
+}
+
+fn is_imported_variant_owned_by(imported_variants: Map<String, String?>, variant_name: String, enum_name: String) -> Bool {
+  match map_get(imported_variants, variant_name) {
+    Present { value: Present { value: unique_parent } } => unique_parent == enum_name
+    _ => false
+  }
+}
+
+fn build_imported_variants(resolved_imports: List<ResolvedImport>, parent_index: Map<String, TypedModule>, source_indices: Map<String, NewlineIndex>) -> Map<String, String?> {
+  fold(resolved_imports, init: empty_map(), f: (acc, imp) =>
+    fold(imp.specific_names, init: acc, f: (inner, variant_name) =>
+      if map_contains_key(inner, variant_name) {
+        inner
+      } else {
+        let source_items = match map_get(parent_index, imp.module_path) {
+          Present { value: parent_tm } => parent_tm.items
+          Absent => []
+        }
+        map_insert(inner, variant_name, unique_imported_variant_owner(variant_name: variant_name, items: source_items, source_indices: source_indices))
+      }
+    )
+  )
+}
+
 fn build_module_context(contributions: List<ItemContribution>,
     parent_index: Map<String, TypedModule>,
     resolved_imports: List<ResolvedImport>,
@@ -5798,31 +5823,25 @@ fn build_module_context(contributions: List<ItemContribution>,
     diag_chunks: [],
     source_indices: env.source_indices
   )
-  let imported_enum_names = fold(resolved_imports, init: empty_map(), f: (acc, imp) =>
-    fold(imp.specific_names, init: acc, f: (inner, n) => map_insert(inner, n, true))
-  )
-  let variant_fold = fold(env.bindings |> map_values, init: VariantFoldState { locals: empty_map(), collision_errors: [] }, f: (acc, binding) =>
+  let imported_variants = build_imported_variants(resolved_imports: resolved_imports, parent_index: parent_index, source_indices: env.source_indices)
+  let variant_fold = fold(env.bindings |> map_values |> sort_by(b => b.name), init: VariantFoldState { locals: empty_map(), collision_errors: [] }, f: (acc, binding) =>
     let is_coproduct = binding.resolved.connective == Disj
     if is_coproduct {
-      let curr_is_imported = map_get(imported_enum_names, authored_name_at(source_indices: env.source_indices, node: binding.resolved)) != none
+      let binding_enum_name = authored_name_at(source_indices: env.source_indices, node: binding.resolved)
       fold(binding.resolved.children, init: acc, f: (vacc, child) =>
-        match map_get(vacc.locals, authored_name_at(source_indices: env.source_indices, node: child)) {
-          Present { value: prev } =>
-            let prev_is_imported = map_get(imported_enum_names, authored_name_at(source_indices: env.source_indices, node: prev.resolved)) != none
-            if curr_is_imported && prev_is_imported {
+        let child_name = authored_name_at(source_indices: env.source_indices, node: child)
+        let curr_child_is_imported = is_imported_variant_owned_by(imported_variants: imported_variants, variant_name: child_name, enum_name: binding_enum_name)
+        match map_get(vacc.locals, child_name) {
+          Present { value: _prev } =>
+            if curr_child_is_imported {
               VariantFoldState {
-                locals: vacc.locals,
-                collision_errors: list_push(vacc.collision_errors, make_error_node(diagnostic: VariantCollision { variant: authored_name_at(source_indices: env.source_indices, node: child), enum1: authored_name_at(source_indices: env.source_indices, node: prev.resolved), enum2: authored_name_at(source_indices: env.source_indices, node: binding.resolved), span: no_span() }, module_name: module_name))
-              }
-            } else if curr_is_imported {
-              VariantFoldState {
-                locals: map_insert(vacc.locals, authored_name_at(source_indices: env.source_indices, node: child), TypeBinding { name: authored_name_at(source_indices: env.source_indices, node: child), resolved: binding.resolved, provenance: SubValueUnknown }),
+                locals: map_insert(vacc.locals, child_name, TypeBinding { name: child_name, resolved: binding.resolved, provenance: SubValueUnknown }),
                 collision_errors: vacc.collision_errors
               }
             } else { vacc }
           Absent =>
             VariantFoldState {
-              locals: map_insert(vacc.locals, authored_name_at(source_indices: env.source_indices, node: child), TypeBinding { name: authored_name_at(source_indices: env.source_indices, node: child), resolved: binding.resolved, provenance: SubValueUnknown }),
+              locals: map_insert(vacc.locals, child_name, TypeBinding { name: child_name, resolved: binding.resolved, provenance: SubValueUnknown }),
               collision_errors: vacc.collision_errors
             }
         }
@@ -5836,16 +5855,16 @@ fn build_module_context(contributions: List<ItemContribution>,
     remaining: resolved_imports,
     parent_index: parent_index,
     env: env,
-    func_sigs: empty_map(),
+    imported_sigs: empty_map(),
     svc_registry: local.svc_registry,
     svc_locals: local.svc_locals
   )
-  let all_declared_sigs = map_merge(merged_scope.func_sigs, local.func_sigs)
   let resolve_result = resolve_func_sigs(
-    declared_sigs: all_declared_sigs,
+    declared_sigs: local.func_sigs,
     items: local.resolved_items,
     module_name: module_name,
-    source_indices: env.source_indices
+    source_indices: env.source_indices,
+    parent_sigs: merged_scope.imported_sigs
   )
   let all_locals = fold(merged_scope.svc_locals |> map_values, init: env_variant_locals, f: (acc, binding) =>
     map_insert(acc, binding.name, binding)

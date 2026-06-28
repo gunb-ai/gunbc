@@ -4723,7 +4723,14 @@ pub fn import_module_enum_scope(
                     let mut __result = Vec::new();
                     for n in Rc::new({
                         let mut __result = Vec::new();
-                        for n in Rc::new(v1_rt::map_keys(&exported)).iter().cloned() {
+                        for n in Rc::new({
+                            let mut __keys = v1_rt::map_keys(&exported);
+                            __keys.sort();
+                            __keys
+                        })
+                        .iter()
+                        .cloned()
+                        {
                             if (is_known_variant(type_summaries.clone(), n.clone())
                                 && (is_enum_in_summaries(type_summaries.clone(), n.clone())
                                     == false))
@@ -4891,7 +4898,11 @@ pub fn wildcard_import_pool_surface_names(
                             (*{
                                 let src_mod = authored_name_at(source_indices.clone(), imp.clone());
                                 let direct = match v1_rt::map_get(&export_sets, src_mod.clone()) {
-                                    Some(exported) => Rc::new(v1_rt::map_keys(&exported)),
+                                    Some(exported) => Rc::new({
+                                        let mut __keys = v1_rt::map_keys(&exported);
+                                        __keys.sort();
+                                        __keys
+                                    }),
                                     None => Rc::new(vec![]),
                                 };
                                 v1_rt::concat(
@@ -4929,7 +4940,11 @@ pub fn wildcard_reexport_surface_names(
 ) -> Rc<Vec<String>> {
     {
         let local_candidates = match v1_rt::map_get(&export_sets, import_module.clone()) {
-            Some(exported) => Rc::new(v1_rt::map_keys(&exported)),
+            Some(exported) => Rc::new({
+                let mut __keys = v1_rt::map_keys(&exported);
+                __keys.sort();
+                __keys
+            }),
             None => Rc::new(vec![]),
         };
         let wildcard_pool_candidates = wildcard_import_pool_surface_names(
@@ -12112,7 +12127,7 @@ pub fn effective_variant_parent(
             }
             None => None,
         };
-        match cached {
+        let result = match cached {
             Some(parent) => Some(parent.clone()),
             None => match resolved_type.as_deref().cloned() {
                 Some(InferredNode::Resolved { node: rt, .. }) => {
@@ -12131,7 +12146,8 @@ pub fn effective_variant_parent(
                 }
                 _ => variant_parent_from_binding_kind(binding_kind),
             },
-        }
+        };
+        result
     }
 }
 
@@ -17787,6 +17803,7 @@ pub fn emit_field_value_with_context(
 
 pub fn find_struct_name_by_fields(
     field_names: Rc<Vec<String>>,
+    field_type_hints: Rc<HashMap<String, String>>,
     type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
 ) -> Option<String> {
     {
@@ -17825,10 +17842,29 @@ pub fn find_struct_name_by_fields(
             }
             __result
         });
-        match candidates.first().cloned() {
-            Some(s) => Some(s.name.clone()),
-            None => None,
+        if candidates.len() <= 1 {
+            return candidates.first().map(|s| s.name.clone());
         }
+        // Multiple candidates share the same field names; disambiguate by field types.
+        // field_type_hints maps field_name → inferred value type name at the call site.
+        let typed_candidates: Vec<_> = candidates
+            .iter()
+            .filter(|cand| {
+                field_type_hints.iter().all(|(fname, hint_type)| {
+                    match v1_rt::map_get(&cand.field_type_map, fname.clone()) {
+                        Some(cand_type) => *cand_type == *hint_type,
+                        None => true,
+                    }
+                })
+            })
+            .collect();
+        if typed_candidates.len() == 1 {
+            return typed_candidates.first().map(|s| s.name.clone());
+        }
+        // Still ambiguous: deterministic fallback — sort by name.
+        let mut candidates_sorted = (*candidates).clone();
+        candidates_sorted.sort_by(|a, b| a.name.cmp(&b.name));
+        candidates_sorted.first().map(|s| s.name.clone())
     }
 }
 
@@ -18021,8 +18057,29 @@ pub fn emit_typed_record_lit(
                                 }
                                 __result
                             });
+                            let field_type_hints: Rc<HashMap<String, String>> = Rc::new({
+                                let mut __hints: HashMap<String, String> = HashMap::new();
+                                for f in fields.clone().iter().cloned() {
+                                    let fname = field_init_node_name_at(
+                                        f.clone(),
+                                        scope.type_env.clone().source_indices.clone(),
+                                    );
+                                    let fval = field_init_node_value(f.clone());
+                                    if let Some(inf) = fval.inferred.clone() {
+                                        if let Resolved { node: type_node } = (*inf).clone() {
+                                            let tname = authored_name_at(
+                                                scope.type_env.clone().source_indices.clone(),
+                                                type_node,
+                                            );
+                                            __hints.insert(fname, tname);
+                                        }
+                                    }
+                                }
+                                __hints
+                            });
                             match find_struct_name_by_fields(
                                 lit_field_names,
+                                field_type_hints,
                                 emit_info.type_summaries.clone(),
                             ) {
                                 Some(resolved_sn) => {
