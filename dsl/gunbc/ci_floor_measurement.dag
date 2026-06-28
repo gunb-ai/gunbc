@@ -24,17 +24,8 @@ data gunbc_ci_floor_measured_peak: ConcurrentMemoryPeakSample = ConcurrentMemory
   concurrency: 2
 }
 
-type PerShardRssPeakMeasurement
-  = PerShardRssPeakMeasured { per_shard_peak: ByteSize, sample_width: Int }
-  | PerShardRssPeakUnmeasured
-
-data gunbc_ci_floor_per_shard_rss_measurement: PerShardRssPeakMeasurement = PerShardRssPeakMeasured {
-  per_shard_peak: byte_size(3489660928)
-  sample_width: 2
-}
-
 data gunbc_ci_floor_per_shard_rss_source: Disposition = Terminal {
-  reason: "per_shard authority = max(gunbc_ci_floor_per_shard_peak_samples), not a single-run mean. Samples: 3226056704 (run 6461042c64 width=2), 3489660928 (run 28331500155 width=2), 4556861440 (run 28332256178 width=1 co-shard peak). Width fold reads gunbc_ci_floor_per_shard_peak_max()."
+  reason: "per_shard authority = max(gunbc_ci_floor_per_shard_peak_samples), not a single-run mean. Samples: 3226056704 (run 6461042c64 width=2), 3489660928 (run 28331500155 width=2), 4556861440 (run 28332256178 width=1 co-shard peak). Width fold reads gunbc_ci_floor_per_shard_peak_max(). Retired PerShardRssPeakMeasurement scaffold (stale 3.25GiB@width2 row)."
 }
 
 data gunbc_ci_floor_per_shard_peak_samples: List<ByteSize> = [
