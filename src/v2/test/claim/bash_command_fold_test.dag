@@ -317,3 +317,28 @@ test fn bash_fold_pipe_wrong_production_rejects_oracle_holds() -> Bool {
     wrong_target_witness: bash_fold_pipe_wrong_target_model_witness()
   )
 }
+
+test fn bash_fold_pipe_and_then_left_holds() -> Bool {
+  bash_fold_fold_matches_oracle(
+    stmt: Pipe {
+      left: AndOr {
+        left: bash_fold_cmd_true_stmt(),
+        op: AndThen,
+        right: bash_fold_cmd_false_stmt()
+      },
+      right: Command { words: [Lit { text: "wc" }, Lit { text: "-c" }] }
+    }
+  )
+}
+
+test fn bash_fold_pipe_three_stage_holds() -> Bool {
+  bash_fold_fold_matches_oracle(
+    stmt: Pipe {
+      left: Pipe {
+        left: Command { words: [Lit { text: "echo" }, Lit { text: "hi" }] },
+        right: Command { words: [Lit { text: "wc" }, Lit { text: "-c" }] }
+      },
+      right: Command { words: [Lit { text: "tr" }, Lit { text: "-d" }, Lit { text: " " }] }
+    }
+  )
+}
