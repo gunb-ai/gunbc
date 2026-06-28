@@ -81,18 +81,18 @@ pub struct ScheduleWitnessEntry {
 #[serde(tag = "_variant")]
 pub enum RunnableMemoryClass {
     RunnableMemoryNegligible,
-    RunnableMemorySubstantial { predicted_peak: Box<ByteSize> },
+    RunnableMemorySubstantial { peak_byte_count: i64 },
 }
 impl RunnableMemoryClass {
-    pub fn predicted_peak(&self) -> ByteSize {
+    pub fn peak_byte_count(&self) -> i64 {
         match self {
             RunnableMemoryClass::RunnableMemoryNegligible => {
-                panic!("no predicted_peak on unit variant")
+                panic!("no peak_byte_count on unit variant")
             }
             RunnableMemoryClass::RunnableMemorySubstantial {
-                predicted_peak: __val,
+                peak_byte_count: __val,
                 ..
-            } => __val.as_ref().clone(),
+            } => __val.clone(),
         }
     }
 }
@@ -110,7 +110,7 @@ pub fn runnable_memory_negligible() -> Rc<RunnableMemoryClass> {
 
 pub fn runnable_memory_substantial(predicted_peak: ByteSize) -> Rc<RunnableMemoryClass> {
     Rc::new(RunnableMemoryClass::RunnableMemorySubstantial {
-        predicted_peak: Box::new(predicted_peak),
+        peak_byte_count: byte_size_count(predicted_peak),
     })
 }
 
@@ -122,16 +122,18 @@ pub fn runnable_memory_class_eq(
         RunnableMemoryClass::RunnableMemoryNegligible => match (*right).clone() {
             RunnableMemoryClass::RunnableMemoryNegligible => true,
             RunnableMemoryClass::RunnableMemorySubstantial {
-                predicted_peak: _, ..
+                peak_byte_count: _, ..
             } => false,
         },
         RunnableMemoryClass::RunnableMemorySubstantial {
-            predicted_peak: lp, ..
+            peak_byte_count: lp,
+            ..
         } => match (*right).clone() {
             RunnableMemoryClass::RunnableMemoryNegligible => false,
             RunnableMemoryClass::RunnableMemorySubstantial {
-                predicted_peak: rp, ..
-            } => (byte_size_count(lp.as_ref().clone()) == byte_size_count(rp.as_ref().clone())),
+                peak_byte_count: rp,
+                ..
+            } => (lp.clone() == rp.clone()),
         },
     }
 }
@@ -144,16 +146,18 @@ pub fn runnable_memory_substantial_sum(
         let left_count = match (*left).clone() {
             RunnableMemoryClass::RunnableMemoryNegligible => 0,
             RunnableMemoryClass::RunnableMemorySubstantial {
-                predicted_peak: p, ..
-            } => byte_size_count(p.as_ref().clone()),
+                peak_byte_count: p, ..
+            } => p.clone(),
         };
         let right_count = match (*right).clone() {
             RunnableMemoryClass::RunnableMemoryNegligible => 0,
             RunnableMemoryClass::RunnableMemorySubstantial {
-                predicted_peak: p, ..
-            } => byte_size_count(p.as_ref().clone()),
+                peak_byte_count: p, ..
+            } => p.clone(),
         };
-        runnable_memory_substantial(byte_size((left_count + right_count)))
+        Rc::new(RunnableMemoryClass::RunnableMemorySubstantial {
+            peak_byte_count: (left_count + right_count),
+        })
     }
 }
 
@@ -190,7 +194,7 @@ pub fn runnable_excludes_corpus_co_residence(profile: Rc<RunnableResourceProfile
     match (*profile.memory.clone()).clone() {
         RunnableMemoryClass::RunnableMemoryNegligible => false,
         RunnableMemoryClass::RunnableMemorySubstantial {
-            predicted_peak: _, ..
+            peak_byte_count: _, ..
         } => true,
     }
 }
@@ -203,8 +207,8 @@ pub fn runnable_predicted_space(profile: Rc<RunnableResourceProfile>) -> ByteSiz
     match (*profile.memory.clone()).clone() {
         RunnableMemoryClass::RunnableMemoryNegligible => byte_size(0),
         RunnableMemoryClass::RunnableMemorySubstantial {
-            predicted_peak: p, ..
-        } => p.as_ref().clone(),
+            peak_byte_count: p, ..
+        } => byte_size(p.clone()),
     }
 }
 

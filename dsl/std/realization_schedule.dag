@@ -59,7 +59,7 @@ type ScheduleWitnessEntry {
 
 type RunnableMemoryClass
   = RunnableMemoryNegligible
-  | RunnableMemorySubstantial { predicted_peak: ByteSize }
+  | RunnableMemorySubstantial { peak_byte_count: Int }
 
 type RunnableResourceProfile {
   heavy_whole_tree_resolve: Bool
@@ -72,19 +72,18 @@ fn runnable_memory_negligible() -> RunnableMemoryClass {
 }
 
 fn runnable_memory_substantial(predicted_peak: ByteSize) -> RunnableMemoryClass {
-  RunnableMemorySubstantial { predicted_peak: predicted_peak }
+  RunnableMemorySubstantial { peak_byte_count: byte_size_count(b: predicted_peak) }
 }
 
 fn runnable_memory_class_eq(left: RunnableMemoryClass, right: RunnableMemoryClass) -> Bool {
   match left {
     RunnableMemoryNegligible => match right {
       RunnableMemoryNegligible => true
-      RunnableMemorySubstantial { predicted_peak: _ } => false
+      RunnableMemorySubstantial { peak_byte_count: _ } => false
     }
-    RunnableMemorySubstantial { predicted_peak: lp } => match right {
+    RunnableMemorySubstantial { peak_byte_count: lp } => match right {
       RunnableMemoryNegligible => false
-      RunnableMemorySubstantial { predicted_peak: rp } =>
-        byte_size_count(b: lp) == byte_size_count(b: rp)
+      RunnableMemorySubstantial { peak_byte_count: rp } => lp == rp
     }
   }
 }
@@ -92,13 +91,13 @@ fn runnable_memory_class_eq(left: RunnableMemoryClass, right: RunnableMemoryClas
 fn runnable_memory_substantial_sum(left: RunnableMemoryClass, right: RunnableMemoryClass) -> RunnableMemoryClass {
   let left_count = match left {
     RunnableMemoryNegligible => 0
-    RunnableMemorySubstantial { predicted_peak: p } => byte_size_count(b: p)
+    RunnableMemorySubstantial { peak_byte_count: p } => p
   }
   let right_count = match right {
     RunnableMemoryNegligible => 0
-    RunnableMemorySubstantial { predicted_peak: p } => byte_size_count(b: p)
+    RunnableMemorySubstantial { peak_byte_count: p } => p
   }
-  runnable_memory_substantial(predicted_peak: byte_size(count: left_count + right_count))
+  RunnableMemorySubstantial { peak_byte_count: left_count + right_count }
 }
 
 fn runnable_resource_profile_eq(left: RunnableResourceProfile, right: RunnableResourceProfile) -> Bool {
@@ -130,7 +129,7 @@ fn runnable_resource_profile(
 fn runnable_excludes_corpus_co_residence(profile: RunnableResourceProfile) -> Bool {
   match profile.memory {
     RunnableMemoryNegligible => false
-    RunnableMemorySubstantial { predicted_peak: _ } => true
+    RunnableMemorySubstantial { peak_byte_count: _ } => true
   }
 }
 
@@ -141,7 +140,7 @@ fn runnable_heavy_whole_tree_resolve(profile: RunnableResourceProfile) -> Bool {
 fn runnable_predicted_space(profile: RunnableResourceProfile) -> ByteSize {
   match profile.memory {
     RunnableMemoryNegligible => byte_size(count: 0)
-    RunnableMemorySubstantial { predicted_peak: p } => p
+    RunnableMemorySubstantial { peak_byte_count: p } => byte_size(count: p)
   }
 }
 
