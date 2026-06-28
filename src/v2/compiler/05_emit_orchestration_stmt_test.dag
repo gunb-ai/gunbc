@@ -17,6 +17,8 @@ import extdeps.languages.bash.program {
   AndThen,
   OrElse,
   StderrToNull,
+  StdoutAndStderrToNull,
+  StdoutToStderr,
   RedirToFile,
   Negation,
   ShellProgram,
@@ -322,4 +324,34 @@ test fn stmt_exit_code_unquoted_matches_real_holds() -> Bool {
 
 test fn stmt_exit_code_not_quoted_has_teeth_holds() -> Bool {
   stmt_emit_carried(s: Exit { code: 1 }) != "exit '1'"
+}
+
+fn withredir_stdout_and_stderr_null() -> ShellStmt {
+  WithRedir { stmt: cmd_true(), redir: StdoutAndStderrToNull }
+}
+
+test fn redir_stdout_and_stderr_null_byte_identical_holds() -> Bool {
+  stmt_emits_oracle(s: withredir_stdout_and_stderr_null())
+}
+
+test fn redir_stdout_and_stderr_null_has_teeth_holds() -> Bool {
+  stmt_emit_carried(s: withredir_stdout_and_stderr_null()) !=
+    stmt_emit_carried(s: WithRedir { stmt: cmd_true(), redir: StderrToNull })
+}
+
+fn withredir_stdout_to_stderr() -> ShellStmt {
+  WithRedir { stmt: cmd_true(), redir: StdoutToStderr }
+}
+
+test fn redir_stdout_to_stderr_byte_identical_holds() -> Bool {
+  stmt_emits_oracle(s: withredir_stdout_to_stderr())
+}
+
+test fn redir_stdout_to_stderr_literal_holds() -> Bool {
+  stmt_emits_literal(s: withredir_stdout_to_stderr(), expected: "'true' >&2")
+}
+
+test fn redir_stdout_to_stderr_has_teeth_holds() -> Bool {
+  stmt_emit_carried(s: withredir_stdout_to_stderr()) !=
+    stmt_emit_carried(s: WithRedir { stmt: cmd_true(), redir: StderrToNull })
 }

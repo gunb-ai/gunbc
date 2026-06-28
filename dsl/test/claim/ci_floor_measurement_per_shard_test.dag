@@ -7,6 +7,7 @@ import gunbc.ci_floor_measurement {
   gunbc_ci_floor_per_shard_peak_rss_bytes,
   gunbc_ci_floor_per_shard_rss_measurement,
   gunbc_ci_floor_measured_peak,
+  gunbc_ci_floor_confirmed_safe_width,
   PerShardRssPeakMeasurement,
   PerShardRssPeakMeasured,
   PerShardRssPeakUnmeasured,
@@ -42,9 +43,21 @@ fn witness_measured_arm_sample_width_is_two() -> Bool {
   }
 }
 
+fn witness_confirmed_safe_width_is_positive_and_small() -> Bool {
+  gunbc_ci_floor_confirmed_safe_width > 0 && gunbc_ci_floor_confirmed_safe_width <= 4
+}
+
+fn witness_per_shard_fits_within_confirmed_safe_shards() -> Bool {
+  let committed_count = byte_size_count(b: gunbc_ci_floor_per_shard_peak_rss_bytes())
+  let runner_cap_count = 8589934592
+  committed_count * gunbc_ci_floor_confirmed_safe_width <= runner_cap_count
+}
+
 test fn ci_floor_measurement_per_shard_rss_witnesses() -> Bool {
   witness_per_shard_uses_direct_measurement()
     && witness_direct_is_at_most_derived()
     && witness_unmeasured_arm_falls_back_to_derived()
     && witness_measured_arm_sample_width_is_two()
+    && witness_confirmed_safe_width_is_positive_and_small()
+    && witness_per_shard_fits_within_confirmed_safe_shards()
 }
