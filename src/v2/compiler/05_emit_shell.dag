@@ -23,8 +23,6 @@ import v2.extdeps.languages.bash {
   bash_stmt_with_redir_target_model,
   bash_stmt_env_prefixed_emitted,
   bash_stmt_env_prefixed_target_model,
-  bash_stmt_env_unset_emitted,
-  bash_stmt_env_unset_target_model,
   bash_stmt_if_emitted,
   bash_stmt_if_target_model,
   bash_stmt_heredoc_emitted,
@@ -60,7 +58,6 @@ import extdeps.languages.bash.program {
   AndOr,
   Pipe,
   EnvPrefixed,
-  EnvUnsetCmd,
   WithRedir,
   Heredoc,
   Exit,
@@ -156,11 +153,10 @@ fn emit_shell_word(w: ShellWord) -> Outcome<Medium<String>> {
       bind_outcome(o: emit_shell_stmt(s: b), f: fn(m) {
         emit_word_cmdsubst(body: m.carried)
       })
-    Raw { text: t } => emit_word_pass(spelling: t)
+    Raw { text: _ } =>
+      outcome_rejected(shell_emit_unsupported(reason: ^emit_shell_word_raw_uninhabited))
   }
 }
-
-data emit_shell_word_raw_scaffold: String = "SCAFFOLD: Raw ShellWord emits verbatim via bash_word_pass (bash_token_orch_raw span, no quoting or escaping). This matches the behavior of the deleted orch_emit_run_env_welded weld, which also emitted env values as verbatim orch_raw tokens. An EnvSet.value with shell metacharacters (space, $, quotes) mis-emits — e.g. FOO=hello world emits as the token 'hello world' so bash parses it as FOO=hello then executes 'world'. LATENT: current env-value consumers are simple CI tokens (no metacharacters), so the gap does not surface in production. DISSOLVES WHEN env-value emission routes through a quoted or escaped-word production, OR EnvSet.value is constrained to a no-metachar token type by construction. Added by #5868."
 
 fn emit_stmt_subshell(body: String) -> Outcome<Medium<String>> {
   emit(
@@ -229,16 +225,6 @@ fn emit_stmt_env_prefixed(name: String, value: String, command: String) -> Outco
       facts: Map { lookup: shell_emit_facts_lookup }
     },
     target: bash_stmt_env_prefixed_target_model(name: name, value: value, command: command)
-  )
-}
-
-fn emit_stmt_env_unset(name: String, command: String) -> Outcome<Medium<String>> {
-  emit(
-    tree: InferredTree {
-      root: bash_stmt_env_unset_emitted,
-      facts: Map { lookup: shell_emit_facts_lookup }
-    },
-    target: bash_stmt_env_unset_target_model(name: name, command: command)
   )
 }
 
@@ -426,10 +412,6 @@ fn emit_shell_stmt(s: ShellStmt) -> Outcome<Medium<String>> {
         bind_outcome(o: emit_shell_stmt(s: c), f: fn(mc) {
           emit_stmt_env_prefixed(name: n, value: mv.carried, command: mc.carried)
         })
-      })
-    EnvUnsetCmd { name: n, command: c } =>
-      bind_outcome(o: emit_shell_stmt(s: c), f: fn(mc) {
-        emit_stmt_env_unset(name: n, command: mc.carried)
       })
     WithRedir { stmt: st, redir: rd } =>
       bind_outcome(o: emit_shell_stmt(s: st), f: fn(mst) {
