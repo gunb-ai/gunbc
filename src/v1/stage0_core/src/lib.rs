@@ -50,8 +50,6 @@ pub mod std_algebra;
 pub mod std_coercion;
 #[path = "../../stage0/src/std_computation.rs"]
 pub mod std_computation;
-#[path = "../../stage0/src/std_decl_ref.rs"]
-pub mod std_decl_ref;
 #[path = "../../stage0/src/std_effects.rs"]
 pub mod std_effects;
 #[path = "../../stage0/src/std_emit_model.rs"]
