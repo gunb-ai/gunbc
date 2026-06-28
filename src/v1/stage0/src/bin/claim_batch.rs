@@ -58,7 +58,11 @@ fn children_max_rss_bytes() -> Option<u64> {
     if unsafe { getrusage(RUSAGE_CHILDREN, buf.as_mut_ptr().cast()) } != 0 {
         return None;
     }
-    let ru_maxrss = i64::from_ne_bytes(buf[RU_MAXRSS_OFFSET..RU_MAXRSS_OFFSET + 8].try_into().ok()?);
+    let ru_maxrss = i64::from_ne_bytes(
+        buf[RU_MAXRSS_OFFSET..RU_MAXRSS_OFFSET + 8]
+            .try_into()
+            .ok()?,
+    );
     Some(ru_maxrss as u64 * 1024)
 }
 
@@ -604,9 +608,7 @@ fn run() -> Result<ExitCode, ExitCode> {
 
     emit_rss_measurement("per-shard-peak-rss");
     if let Some(bytes) = children_max_rss_bytes() {
-        eprintln!(
-            "[measurement] children-max-rss: {bytes} bytes (getrusage RUSAGE_CHILDREN)"
-        );
+        eprintln!("[measurement] children-max-rss: {bytes} bytes (getrusage RUSAGE_CHILDREN)");
     }
 
     if any_failed {
