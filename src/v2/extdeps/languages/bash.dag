@@ -1822,58 +1822,6 @@ fn bash_stmt_env_prefixed_target_model(name: String, value: String, command: Str
   )
 }
 
-fn bash_stmt_env_unset_tokens() -> List<ConcreteSyntaxToken> {
-  [
-    FixedToken { token_class: ^bash_token_env_unset_prefix },
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_envp_unset_name },
-    FixedToken { token_class: ^bash_token_env_unset_sp },
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_envp_unset_command }
-  ]
-}
-
-data bash_stmt_env_unset_emitted: Node = bash_conj_emitted_from_tokens(
-  tokens: bash_stmt_env_unset_tokens()
-)
-
-fn bash_stmt_env_unset_source_text(name: String, command: String) -> String {
-  concat("env -u ", concat(name, concat(" ", command)))
-}
-
-fn bash_stmt_env_unset_lex() -> LexRules {
-  phrase_to_lex_rules(p: phrase([
-    span(text: "env -u ", class: ^bash_token_env_unset_prefix),
-    span(text: " ", class: ^bash_token_env_unset_sp)
-  ]))
-}
-
-fn bash_stmt_env_unset_translation_rules_node() -> Node {
-  bash_relation_translation_rules_node(
-    rule_name: ^bash_relation_rule_stmt_env_unset,
-    lhs: ^bash_production_stmt_env_unset,
-    tokens: bash_stmt_env_unset_tokens(),
-    emitted: bash_stmt_env_unset_emitted
-  )
-}
-
-fn bash_stmt_env_unset_binding_spellings(name: String, command: String) -> Map<Symbol, String> {
-  map_insert(
-    map_insert(empty_map(), ^bash_stmt_envp_unset_name, name),
-    ^bash_stmt_envp_unset_command, command
-  )
-}
-
-fn bash_stmt_env_unset_target_model(name: String, command: String) -> TargetModel {
-  bash_make_bound_tokens_target_model(
-    rules: bash_stmt_env_unset_translation_rules_node(),
-    source_literal: ^bash_stmt_env_unset_source_literal,
-    production_name: ^bash_production_stmt_env_unset,
-    tokens: bash_stmt_env_unset_tokens(),
-    source_text: bash_stmt_env_unset_source_text(name: name, command: command),
-    lex: bash_stmt_env_unset_lex(),
-    binding_spellings: bash_stmt_env_unset_binding_spellings(name: name, command: command)
-  )
-}
-
 fn bash_stmt_if_tokens() -> List<ConcreteSyntaxToken> {
   [
     FixedToken { token_class: ^bash_token_if_kw },
