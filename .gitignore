@@ -130,4 +130,3 @@ src/v2/test/claim/manual/sg2_scratch_probe.dag
 /.github/fleet-runner-deploy.manifest
 /provisioning/srv3/user-data
 /provisioning/srv3/dnsmasq.conf
-scratchpad/
