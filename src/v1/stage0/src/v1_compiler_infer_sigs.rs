@@ -514,3 +514,48 @@ pub fn resolve_func_sigs(
         )
     }
 }
+
+pub fn resolve_func_sigs_with_parent_resolved(
+    parent_resolved: Rc<HashMap<String, Rc<ResolvedFuncSig>>>,
+    declared_sigs: Rc<HashMap<String, Rc<DeclaredFuncSig>>>,
+    items: Rc<Vec<Rc<Node>>>,
+    module_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<ResolveFuncSigsResult> {
+    {
+        let local_func_names = Rc::new({
+            let mut __result = Vec::new();
+            for item in Rc::new({
+                let mut __result = Vec::new();
+                for item in items.clone().iter().cloned() {
+                    if (((item.params.clone().len() as i64) > 0) && (item.body.clone() != None)) {
+                        __result.push(item);
+                    }
+                }
+                __result
+            })
+            .iter()
+            .cloned()
+            {
+                __result.push(authored_name_at(source_indices.clone(), item.clone()));
+            }
+            __result
+        });
+        let local_func_set = build_name_set(local_func_names.clone());
+        let call_edges = collect_func_call_edges(
+            items.clone(),
+            local_func_set.clone(),
+            source_indices.clone(),
+        );
+        topo_resolve_loop(
+            local_func_names.clone(),
+            parent_resolved,
+            declared_sigs.clone(),
+            call_edges,
+            local_func_set.clone(),
+            module_name,
+            Rc::new(vec![]),
+            (local_func_names.clone().len() as i64),
+        )
+    }
+}
