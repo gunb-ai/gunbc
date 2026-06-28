@@ -1,6 +1,6 @@
 module v2.compiler.emit_orchestration_stmt_test
 
-import v2.compiler.emit_shell { emit_shell_stmt, emit_shell_program }
+import v2.compiler.emit_shell { emit_shell_stmt, emit_shell_program, emit_shell_word_raw_scaffold }
 import extdeps.languages.bash.program {
   ShellStmt,
   Command,
@@ -12,6 +12,7 @@ import extdeps.languages.bash.program {
   AndOr,
   Pipe,
   EnvPrefixed,
+  EnvUnsetCmd,
   WithRedir,
   Heredoc,
   AndThen,
@@ -157,6 +158,34 @@ test fn stmt_env_prefixed_byte_identical_holds() -> Bool {
 
 test fn stmt_env_prefixed_has_teeth_holds() -> Bool {
   stmt_differs_from_oracle_of(s: envp_t(), other: EnvPrefixed { name: "TMPDIR", value: Lit { text: "/x" }, command: cmd_true() })
+}
+
+fn env_unset_t() -> ShellStmt {
+  EnvUnsetCmd { name: "TMPDIR", command: cmd_true() }
+}
+
+test fn stmt_env_unset_byte_identical_holds() -> Bool {
+  stmt_emits_oracle(s: env_unset_t())
+}
+
+test fn stmt_env_unset_has_teeth_holds() -> Bool {
+  stmt_differs_from_oracle_of(s: env_unset_t(), other: EnvUnsetCmd { name: "OTHER", command: cmd_true() })
+}
+
+fn env_multi_binding_t() -> ShellStmt {
+  EnvPrefixed {
+    name: "KEY",
+    value: Lit { text: "val" },
+    command: EnvUnsetCmd { name: "TMPDIR", command: cmd_true() }
+  }
+}
+
+test fn stmt_env_multi_binding_byte_identical_holds() -> Bool {
+  stmt_emits_oracle(s: env_multi_binding_t())
+}
+
+test fn stmt_env_multi_binding_has_teeth_holds() -> Bool {
+  stmt_differs_from_oracle_of(s: env_multi_binding_t(), other: EnvPrefixed { name: "KEY", value: Lit { text: "other" }, command: EnvUnsetCmd { name: "TMPDIR", command: cmd_true() } })
 }
 
 fn heredoc_t() -> ShellStmt {
@@ -354,4 +383,10 @@ test fn redir_stdout_to_stderr_literal_holds() -> Bool {
 test fn redir_stdout_to_stderr_has_teeth_holds() -> Bool {
   stmt_emit_carried(s: withredir_stdout_to_stderr()) !=
     stmt_emit_carried(s: WithRedir { stmt: cmd_true(), redir: StderrToNull })
+}
+
+test fn emit_shell_word_raw_scaffold_recorded_holds() -> Bool {
+  string_contains(s: emit_shell_word_raw_scaffold, pattern: "SCAFFOLD")
+    && string_contains(s: emit_shell_word_raw_scaffold, pattern: "LATENT")
+    && string_contains(s: emit_shell_word_raw_scaffold, pattern: "DISSOLVES WHEN")
 }
