@@ -743,6 +743,69 @@ pub fn install_output_policy(source_roots: &[String]) {
     ]);
 }
 
+/// Evaluate `extdeps.render.surface.resolve_group_syntax(github_actions)` from the
+/// .dag authority and install the per-target group-marker strings for the host-effect
+/// trace grouping (`v1_interpreter::group_begin`/`group_end`). `github_actions` is
+/// read from the environment (`GITHUB_ACTIONS=true`, the runner's own signal) — the
+/// ONLY seed-side fact; which markers that target implies stays the .dag authority's.
+/// Best-effort: if the module can't resolve/evaluate, grouping stays off (ungrouped,
+/// pre-grouping behavior).
+pub fn install_group_syntax(source_roots: &[String]) {
+    use v1_interpreter::{InstalledGroupSyntax, Value};
+    let github_actions = std::env::var("GITHUB_ACTIONS")
+        .map(|v| v == "true")
+        .unwrap_or(false);
+    let entry = "dsl/extdeps/render/surface.dag";
+    let (graph, indices) = match resolve_entry_graph(source_roots, entry) {
+        Ok(g) => g,
+        Err(_) => return,
+    };
+    let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
+    let syntax = match v1_interpreter::run_in_context_with_args(
+        &ctx,
+        "resolve_group_syntax",
+        &[(
+            Some("github_actions".to_string()),
+            Value::Bool(github_actions),
+        )],
+        false,
+    ) {
+        Ok(v) => v,
+        Err(_) => return,
+    };
+    let Value::Record { fields, .. } = &syntax else {
+        return;
+    };
+    let str_field = |name: &str| -> Option<String> {
+        match ctx.field(fields, name) {
+            Some(Value::Str(s)) => Some(s.clone()),
+            _ => None,
+        }
+    };
+    let (Some(open_prefix), Some(open_suffix)) =
+        (str_field("open_prefix"), str_field("open_suffix"))
+    else {
+        return;
+    };
+    // close_line is an Optional: Present { value: "::endgroup::" } | Absent (none).
+    let close_line = match ctx.field(fields, "close_line") {
+        Some(Value::Variant {
+            variant_name,
+            fields: vf,
+            ..
+        }) if ctx.sym_eq(*variant_name, "Present") => match ctx.field(vf, "value") {
+            Some(Value::Str(s)) => Some(s.clone()),
+            _ => None,
+        },
+        _ => None,
+    };
+    v1_interpreter::set_group_syntax(InstalledGroupSyntax {
+        open_prefix,
+        open_suffix,
+        close_line,
+    });
+}
+
 pub fn make_eval_context_with_fixture_store(
     graph: &v1_compiler_compile::ResolvedGraph,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,

@@ -1060,6 +1060,17 @@ fn run_walk(source_roots: &[String], batches: &[Vec<Runnable>], spawn_width: usi
             width
         );
         let batch_start = Instant::now();
+        // Bracket the parallel walk in a host-effect group: the `[file]`/`[rest]`/
+        // `[shell]` trace lines stream to stderr from the worker threads INSIDE the
+        // group, while the scannable PASS/FAIL summary is deferred to AFTER the group
+        // closes (below) so it stays outside the collapsed section. GitHub Actions
+        // renders this as a collapsible `::group::`; a plain terminal as a header.
+        // Threads can't interleave group markers (one open/close on the main thread
+        // spans the whole batch), so it is sound under `spawn_width > 1`.
+        let grouped = v1_compiler::v1_interpreter::host_trace_grouping_active();
+        if grouped {
+            v1_compiler::v1_interpreter::group_begin(&format!("batch {} host-effects", bi + 1));
+        }
         let handles: Vec<_> = units
             .into_iter()
             .map(|unit| {
@@ -1067,48 +1078,53 @@ fn run_walk(source_roots: &[String], batches: &[Vec<Runnable>], spawn_width: usi
                 thread::spawn(move || run_batch_unit(roots, unit, width))
             })
             .collect();
+        // Collect all results before printing any PASS/FAIL — the prints must land
+        // after `group_end`, and a thread panic still has to close the group.
         let mut batch_results: Vec<ClaimResult> = Vec::new();
+        let mut thread_panicked = false;
         for handle in handles {
             match handle.join() {
-                Ok(results) => {
-                    for result in results {
-                        if result.ok {
-                            println!(
-                                "{}",
-                                paint(
-                                    &format!("✓ PASS [batch {}] {}", bi + 1, result.function),
-                                    sgr::SUCCESS
-                                )
-                            );
-                        } else {
-                            println!(
-                                "{}",
-                                paint(
-                                    &format!(
-                                        "✗ FAIL [batch {}] {} ({})",
-                                        bi + 1,
-                                        result.function,
-                                        result.detail
-                                    ),
-                                    sgr::ERROR
-                                )
-                            );
-                            any_failed = true;
-                        }
-                        batch_results.push(result);
-                    }
-                }
-                Err(_) => {
-                    println!(
-                        "{}",
-                        paint(
-                            &format!("✗ FAIL [batch {}] <claim thread panicked>", bi + 1),
-                            sgr::ERROR
-                        )
-                    );
-                    any_failed = true;
-                }
+                Ok(results) => batch_results.extend(results),
+                Err(_) => thread_panicked = true,
             }
+        }
+        if grouped {
+            v1_compiler::v1_interpreter::group_end();
+        }
+        for result in &batch_results {
+            if result.ok {
+                println!(
+                    "{}",
+                    paint(
+                        &format!("✓ PASS [batch {}] {}", bi + 1, result.function),
+                        sgr::SUCCESS
+                    )
+                );
+            } else {
+                println!(
+                    "{}",
+                    paint(
+                        &format!(
+                            "✗ FAIL [batch {}] {} ({})",
+                            bi + 1,
+                            result.function,
+                            result.detail
+                        ),
+                        sgr::ERROR
+                    )
+                );
+                any_failed = true;
+            }
+        }
+        if thread_panicked {
+            println!(
+                "{}",
+                paint(
+                    &format!("✗ FAIL [batch {}] <claim thread panicked>", bi + 1),
+                    sgr::ERROR
+                )
+            );
+            any_failed = true;
         }
         let batch_wall_nanos = batch_start.elapsed().as_nanos();
         batch_records.push(BatchRecord {
@@ -1399,6 +1415,10 @@ fn run() -> Result<ExitCode, ExitCode> {
     // discovery threads spawn, so `[file] read` / `[rest]` / `[hermetic:mock]` etc.
     // are funnelled per `gunbc.output_policy` instead of flooding the floor log.
     v1_compiler::cli_run::install_output_policy(&source_roots);
+    // Install the per-target group-marker syntax (GitHub Actions `::group::` vs a
+    // plain-terminal header) from the .dag authority, so the parallel walk folds each
+    // batch's host-effect traces into a collapsible group.
+    v1_compiler::cli_run::install_group_syntax(&source_roots);
 
     if perturb_check {
         return run_perturb_check(&source_roots, &plan_entry, &plan_function);
