@@ -14,20 +14,12 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-// Which output *protocol* a surface speaks. This is the dispatch discriminant that
-// selects a Document realization (DESIGN §3: dispatch lives in extdeps, the agnostic
-// shape stays in std). It is orthogonal to `std.render.RenderCapability`: capability
-// is what the *device* can display (colour, glyph tier, cursor); target is which
-// *command vocabulary* the consuming surface parses. CI today serialises identically
-// to a dumb pipe because there was no such axis — this is it.
 type RenderTarget = PlainTerminal | GithubActions
 
 type SurfaceEnv {
   github_actions: Bool
 }
 
-// GitHub Actions advertises itself with `GITHUB_ACTIONS=true`; everything else is a
-// plain terminal/pipe. Mirrors `terminal_capability.detect_capability` (env → fact).
 fn detect_target(env: SurfaceEnv) -> RenderTarget {
   if env.github_actions {
     GithubActions
@@ -36,12 +28,6 @@ fn detect_target(env: SurfaceEnv) -> RenderTarget {
   }
 }
 
-// The per-target group-marker syntax, factored out of the Document serialiser so the
-// streaming seed (which emits a group bracket around a phase of live trace lines,
-// not a built Document) reads the SAME authority instead of re-deriving `::group::`
-// in Rust. `close_line` is optional: GitHub Actions needs an explicit `::endgroup::`;
-// a plain terminal closes a section implicitly (the next header / EOF), so it carries
-// no closing line.
 type GroupSyntax {
   open_prefix: String
   open_suffix: String

@@ -36,14 +36,6 @@ type RenderCapability {
   cursor_addressable: Bool
 }
 
-// A target-agnostic output document: a sequence of blocks, each either ungrouped
-// lines or a titled collapsible group. This is the "one concept, every target"
-// shape (DESIGN §2-horizontal): a titled section is modeled once here, target-
-// blind, and each surface realization (plain terminal, GitHub Actions, …) decides
-// how a Group renders — a section header + indent, or `::group::`/`::endgroup::`.
-// Groups carry a flat Frame (not nested Blocks): nesting buys nothing the consumers
-// need and GitHub Actions does not support nested log groups, so the model refuses
-// to represent a state no realization can honour (DESIGN §5: unwritable > validated).
 type Block
   = Leaf { frame: Frame }
   | Group { title: String, frame: Frame }

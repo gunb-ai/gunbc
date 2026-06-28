@@ -32,7 +32,6 @@ data sample_doc: Document = Document {
   ]
 }
 
-// GitHub Actions env advertised → GithubActions; a bare pipe → PlainTerminal.
 fn w_detect_github() -> Bool {
   match detect_target(env: SurfaceEnv { github_actions: true }) {
     GithubActions => true
@@ -47,8 +46,6 @@ fn w_detect_plain() -> Bool {
   }
 }
 
-// A Group serialised for GitHub Actions is bracketed by `::group::` / `::endgroup::`;
-// the ungrouped Leaf below it carries neither marker.
 fn w_github_wraps_group_in_workflow_commands() -> Bool {
   let out = serialize_document(doc: sample_doc, target: GithubActions, cap: plain_cap)
   string_contains(s: out, pattern: "::group::host effects") &&
@@ -57,8 +54,6 @@ fn w_github_wraps_group_in_workflow_commands() -> Bool {
   string_contains(s: out, pattern: "PASS some_witness")
 }
 
-// The SAME Document on a plain terminal renders the group as a `── title ──` header
-// with NO workflow-command markers — the surface, not the document, owns the protocol.
 fn w_plain_terminal_uses_header_not_commands() -> Bool {
   let out = serialize_document(doc: sample_doc, target: PlainTerminal, cap: plain_cap)
   string_contains(s: out, pattern: "── host effects ──") &&
@@ -67,8 +62,6 @@ fn w_plain_terminal_uses_header_not_commands() -> Bool {
   !string_contains(s: out, pattern: "::endgroup::")
 }
 
-// The streaming seed reads the same marker authority: GitHub Actions carries an
-// explicit close line, a plain terminal closes implicitly (no close line).
 fn w_close_line_is_explicit_only_on_github() -> Bool {
   let gha = group_syntax(target: GithubActions)
   let term = group_syntax(target: PlainTerminal)
