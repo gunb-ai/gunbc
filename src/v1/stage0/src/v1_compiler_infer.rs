@@ -13001,6 +13001,119 @@ pub fn fold_module_contributions(
     }
 }
 
+pub fn enum_parents_for_variant_in_items(
+    variant_name: String,
+    items: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for item in Rc::new({
+            let mut __result = Vec::new();
+            for item in Rc::new({
+                let mut __result = Vec::new();
+                for item in items.iter().cloned() {
+                    if (item.connective.clone() == Connective::Disj) {
+                        __result.push(item);
+                    }
+                }
+                __result
+            })
+            .iter()
+            .cloned()
+            {
+                if {
+                    let mut __found = false;
+                    for child in item.children.clone().iter().cloned() {
+                        if (authored_name_at(source_indices.clone(), child.clone())
+                            == variant_name.clone())
+                        {
+                            __found = true;
+                            break;
+                        }
+                    }
+                    __found
+                } {
+                    __result.push(item);
+                }
+            }
+            __result
+        })
+        .iter()
+        .cloned()
+        {
+            __result.push(authored_name_at(source_indices.clone(), item.clone()));
+        }
+        __result
+    })
+}
+
+pub fn unique_imported_variant_owner(
+    variant_name: String,
+    items: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
+    {
+        let parents = enum_parents_for_variant_in_items(variant_name, items, source_indices);
+        if ((parents.clone().len() as i64) == 1) {
+            parents.clone().first().cloned()
+        } else {
+            None
+        }
+    }
+}
+
+pub fn is_imported_variant_owned_by(
+    imported_variants: Rc<HashMap<String, String>>,
+    variant_name: String,
+    enum_name: String,
+) -> bool {
+    match v1_rt::map_get(&imported_variants, variant_name) {
+        Some(unique_parent) => (unique_parent.clone() == enum_name),
+        None => false,
+    }
+}
+
+pub fn build_imported_variants(
+    resolved_imports: Rc<Vec<Rc<ResolvedImport>>>,
+    parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<HashMap<String, String>> {
+    resolved_imports.iter().cloned().fold(
+        v1_rt::rc_empty_map::<String, String>(),
+        |acc: Rc<HashMap<String, String>>, imp: Rc<ResolvedImport>| {
+            imp.specific_names.clone().iter().cloned().fold(
+                acc,
+                |inner: Rc<HashMap<String, String>>, variant_name: String| {
+                    if v1_rt::map_contains_key(&inner, variant_name.clone()) {
+                        inner.clone()
+                    } else {
+                        {
+                            let source_items =
+                                match v1_rt::map_get(&parent_index, imp.module_path.clone()) {
+                                    Some(parent_tm) => parent_tm.items.clone(),
+                                    None => Rc::new(vec![]),
+                                };
+                            match unique_imported_variant_owner(
+                                variant_name.clone(),
+                                source_items.clone(),
+                                source_indices.clone(),
+                            ) {
+                                Some(parent) => v1_rt::rc_map_insert(
+                                    inner.clone(),
+                                    variant_name.clone(),
+                                    parent.clone(),
+                                ),
+                                None => inner.clone(),
+                            }
+                        }
+                    }
+                },
+            )
+        },
+    )
+}
+
 pub fn build_module_context(
     contributions: Rc<Vec<Rc<ItemContribution>>>,
     parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
@@ -13019,67 +13132,98 @@ pub fn build_module_context(
             Rc::new(vec![]),
             env.source_indices.clone(),
         );
-        let imported_enum_names = resolved_imports.clone().iter().cloned().fold(
-            v1_rt::rc_empty_map::<String, bool>(),
-            |acc: Rc<HashMap<String, bool>>, imp: Rc<ResolvedImport>| {
-                imp.specific_names.clone().iter().cloned().fold(
-                    acc,
-                    |inner: Rc<HashMap<String, bool>>, n: String| {
-                        v1_rt::rc_map_insert(inner, n.clone(), true)
-                    },
-                )
+        let imported_variants = build_imported_variants(
+            resolved_imports.clone(),
+            parent_index.clone(),
+            env.source_indices.clone(),
+        );
+        let variant_fold = Rc::new({
+            let mut __sorted: Vec<_> = Rc::new(v1_rt::map_values(&env.bindings.clone()))
+                .iter()
+                .cloned()
+                .collect();
+            __sorted.sort_by(|a: &Rc<TypeBinding>, b: &Rc<TypeBinding>| {
+                let __ka = (|b: Rc<TypeBinding>| b.name.clone())(a.clone());
+                let __kb = (|b: Rc<TypeBinding>| b.name.clone())(b.clone());
+                __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal)
+            });
+            __sorted
+        })
+        .iter()
+        .cloned()
+        .fold(
+            Rc::new(VariantFoldState {
+                locals: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
+                collision_errors: Rc::new(vec![]),
+            }),
+            |acc: Rc<VariantFoldState>, binding: Rc<TypeBinding>| {
+                let is_coproduct =
+                    (binding.resolved.clone().connective.clone() == Connective::Disj);
+                if is_coproduct.clone() {
+                    {
+                        let binding_enum_name =
+                            authored_name_at(env.source_indices.clone(), binding.resolved.clone());
+                        binding
+                            .resolved
+                            .clone()
+                            .children
+                            .clone()
+                            .iter()
+                            .cloned()
+                            .fold(
+                                acc.clone(),
+                                |vacc: Rc<VariantFoldState>, child: Rc<Node>| {
+                                    let child_name =
+                                        authored_name_at(env.source_indices.clone(), child.clone());
+                                    let curr_child_is_imported = is_imported_variant_owned_by(
+                                        imported_variants.clone(),
+                                        child_name.clone(),
+                                        binding_enum_name.clone(),
+                                    );
+                                    match v1_rt::map_get(&vacc.locals.clone(), child_name.clone()) {
+                                        Some(_prev) => {
+                                            if curr_child_is_imported.clone() {
+                                                Rc::new(VariantFoldState {
+                                                    locals: v1_rt::rc_map_insert(
+                                                        vacc.locals.clone(),
+                                                        child_name.clone(),
+                                                        Rc::new(TypeBinding {
+                                                            name: child_name.clone(),
+                                                            resolved: binding.resolved.clone(),
+                                                            provenance: Rc::new(
+                                                                SubValueRelation::SubValueUnknown,
+                                                            ),
+                                                        }),
+                                                    ),
+                                                    collision_errors: vacc.collision_errors.clone(),
+                                                })
+                                            } else {
+                                                vacc.clone()
+                                            }
+                                        }
+                                        None => Rc::new(VariantFoldState {
+                                            locals: v1_rt::rc_map_insert(
+                                                vacc.locals.clone(),
+                                                child_name.clone(),
+                                                Rc::new(TypeBinding {
+                                                    name: child_name.clone(),
+                                                    resolved: binding.resolved.clone(),
+                                                    provenance: Rc::new(
+                                                        SubValueRelation::SubValueUnknown,
+                                                    ),
+                                                }),
+                                            ),
+                                            collision_errors: vacc.collision_errors.clone(),
+                                        }),
+                                    }
+                                },
+                            )
+                    }
+                } else {
+                    acc.clone()
+                }
             },
         );
-        let variant_fold = Rc::new(v1_rt::map_values(&env.bindings.clone())).iter().cloned().fold(Rc::new(VariantFoldState {
-    locals: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
-    collision_errors: Rc::new(vec![]),
-}), |acc: Rc<VariantFoldState>, binding: Rc<TypeBinding>| {
-            let is_coproduct = (binding.resolved.clone().connective.clone() == Connective::Disj);
-if is_coproduct.clone() {
-                {
-                    let curr_is_imported = (v1_rt::map_get(&imported_enum_names, authored_name_at(env.source_indices.clone(), binding.resolved.clone())) != None);
-binding.resolved.clone().children.clone().iter().cloned().fold(acc.clone(), |vacc: Rc<VariantFoldState>, child: Rc<Node>| match v1_rt::map_get(&vacc.locals.clone(), authored_name_at(env.source_indices.clone(), child.clone())) {
-    Some(prev) => {
-                        let prev_is_imported = (v1_rt::map_get(&imported_enum_names, authored_name_at(env.source_indices.clone(), prev.resolved.clone())) != None);
-if (curr_is_imported.clone() && prev_is_imported.clone()) {
-                            Rc::new(VariantFoldState {
-    locals: vacc.locals.clone(),
-    collision_errors: v1_rt::rc_list_push(vacc.collision_errors.clone(), make_error_node(Rc::new(CompilerDiagnostic::VariantCollision {
-    variant: authored_name_at(env.source_indices.clone(), child.clone()),
-    enum1: authored_name_at(env.source_indices.clone(), prev.resolved.clone()),
-    enum2: authored_name_at(env.source_indices.clone(), binding.resolved.clone()),
-    span: no_span(),
-}), module_name.clone())),
-})
-                        } else {
-                            if curr_is_imported.clone() {
-                                Rc::new(VariantFoldState {
-    locals: v1_rt::rc_map_insert(vacc.locals.clone(), authored_name_at(env.source_indices.clone(), child.clone()), Rc::new(TypeBinding {
-    name: authored_name_at(env.source_indices.clone(), child.clone()),
-    resolved: binding.resolved.clone(),
-    provenance: Rc::new(SubValueRelation::SubValueUnknown),
-})),
-    collision_errors: vacc.collision_errors.clone(),
-})
-                            } else {
-                                vacc.clone()
-                            }
-                        }
-},
-    None => Rc::new(VariantFoldState {
-    locals: v1_rt::rc_map_insert(vacc.locals.clone(), authored_name_at(env.source_indices.clone(), child.clone()), Rc::new(TypeBinding {
-    name: authored_name_at(env.source_indices.clone(), child.clone()),
-    resolved: binding.resolved.clone(),
-    provenance: Rc::new(SubValueRelation::SubValueUnknown),
-})),
-    collision_errors: vacc.collision_errors.clone(),
-}),
-})
-}
-            } else {
-                acc.clone()
-            }
-});
         let imported_variant_locals = variant_fold.locals.clone();
         let variant_collision_errors = variant_fold.collision_errors.clone();
         let env_variant_locals = variant_locals_from_items(
@@ -13089,7 +13233,7 @@ if (curr_is_imported.clone() && prev_is_imported.clone()) {
         );
         let merged_scope = merge_scope_from_imports(
             resolved_imports.clone(),
-            parent_index,
+            parent_index.clone(),
             env.clone(),
             v1_rt::rc_empty_map::<String, Rc<DeclaredFuncSig>>(),
             local.svc_registry.clone(),
@@ -13100,7 +13244,7 @@ if (curr_is_imported.clone() && prev_is_imported.clone()) {
         let resolve_result = resolve_func_sigs(
             all_declared_sigs,
             local.resolved_items.clone(),
-            module_name.clone(),
+            module_name,
             env.source_indices.clone(),
         );
         let all_locals = Rc::new(v1_rt::map_values(&merged_scope.svc_locals.clone()))

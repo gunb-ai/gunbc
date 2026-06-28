@@ -13,8 +13,6 @@ import v2.std.dependency { DataDependsOn, ResourceDependsOn, DependencyView }
 import v2.std.node { Atom, Node, TypeNode }
 import v2.std.text { String }
 import std.types { ContentHash, Int }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.measure { HardwareThreadCount, hardware_thread_count, hardware_thread_count_value, byte_size, ByteSize, byte_size_count }
 import std.realization_width { width_fold_objective_goals, bounded_host_spawn_width, int_min }
 import product.compute_fabric {
@@ -25,6 +23,7 @@ import product.compute_fabric {
 }
 import gunbc.ci_floor_measurement {
   gunbc_ci_floor_per_shard_peak_rss_bytes,
+  gunbc_ci_floor_host_compiler_spawn_peak,
   gunbc_ci_floor_conservative_fallback_width,
   gunbc_ci_floor_memory_derived_width,
   gunbc_ci_runner_cgroup_memory_cap,
@@ -37,6 +36,15 @@ import std.realization_schedule {
   Runnable,
   RunnableSingleClaim,
   RunnableDiscoveryBatch,
+  RunnableResourceProfile,
+  runnable_resource_profile,
+  runnable_resource_profile_negligible,
+  runnable_memory_negligible,
+  runnable_memory_substantial,
+  runnable_memory_substantial_sum,
+  runnable_excludes_corpus_co_residence,
+  runnable_heavy_whole_tree_resolve,
+  runnable_forbids_corpus_co_residence,
   cost_account_predicted_zero,
   schedule_lens_verdict_for_ci_floor
 }
@@ -75,24 +83,65 @@ fn gate_node(g: Gate) -> Node {
   }
 }
 
-fn gate_runnable(g: Gate) -> Runnable {
+fn floor_compile_root_node() -> Node {
+  gate_node(g: DslCompileCleanGate)
+}
+
+fn floor_resource_anchor_node(node: Node) -> Bool {
+  (node == floor_compile_root_node()) || (node == floor_corpus_node)
+}
+
+fn gate_runnable_profile(g: Gate) -> RunnableResourceProfile {
+  let per_shard = runnable_memory_substantial(predicted_peak: gunbc_ci_floor_per_shard_peak_rss_bytes())
+  let host_compiler = runnable_memory_substantial(predicted_peak: gunbc_ci_floor_host_compiler_spawn_peak)
   match g {
-    RustMonolithGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "rust_monolith_gate_passes" }
-    EmitHostGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "emit_host_gate_passes" }
-    LayeringImportsGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "layering_imports_gate_passes" }
-    ExtdepsExternalAuthorityGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "extdeps_external_authority_gate_passes" }
-    DslCompileCleanGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "dsl_compile_clean_gate_passes" }
-    GeneratedArtifactDriftGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "generated_artifact_drift_gate_passes" }
-    SourceRootIngestGate => RunnableSingleClaim {
-      entry: floor_source_root_ingest_gate_entry,
-      function: "source_root_ingest_gate_passes"
-    }
-    RegenVerifyGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "regen_verify_gate_passes" }
+    DslCompileCleanGate =>
+      runnable_resource_profile(
+        heavy_whole_tree_resolve: true,
+        spawns_host_compiler: false,
+        memory: per_shard
+      )
+    SourceRootIngestGate =>
+      runnable_resource_profile(
+        heavy_whole_tree_resolve: true,
+        spawns_host_compiler: false,
+        memory: per_shard
+      )
+    RegenVerifyGate =>
+      runnable_resource_profile(
+        heavy_whole_tree_resolve: true,
+        spawns_host_compiler: true,
+        memory: runnable_memory_substantial_sum(left: per_shard, right: host_compiler)
+      )
+    EmitHostGate =>
+      runnable_resource_profile(
+        heavy_whole_tree_resolve: false,
+        spawns_host_compiler: true,
+        memory: host_compiler
+      )
+    RustMonolithGate => runnable_resource_profile_negligible()
+    LayeringImportsGate => runnable_resource_profile_negligible()
+    ExtdepsExternalAuthorityGate => runnable_resource_profile_negligible()
+    GeneratedArtifactDriftGate => runnable_resource_profile_negligible()
   }
 }
 
-fn floor_compile_root_node() -> Node {
-  gate_node(g: DslCompileCleanGate)
+fn gate_runnable(g: Gate) -> Runnable {
+  let profile = gate_runnable_profile(g: g)
+  match g {
+    RustMonolithGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "rust_monolith_gate_passes", profile: profile }
+    EmitHostGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "emit_host_gate_passes", profile: profile }
+    LayeringImportsGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "layering_imports_gate_passes", profile: profile }
+    ExtdepsExternalAuthorityGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "extdeps_external_authority_gate_passes", profile: profile }
+    DslCompileCleanGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "dsl_compile_clean_gate_passes", profile: profile }
+    GeneratedArtifactDriftGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "generated_artifact_drift_gate_passes", profile: profile }
+    SourceRootIngestGate => RunnableSingleClaim {
+      entry: floor_source_root_ingest_gate_entry,
+      function: "source_root_ingest_gate_passes",
+      profile: profile
+    }
+    RegenVerifyGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "regen_verify_gate_passes", profile: profile }
+  }
 }
 
 fn corpus_source_roots() -> List<String> {
@@ -104,7 +153,12 @@ fn corpus_runnable() -> Runnable {
     source_roots: corpus_source_roots(),
     scan_dirs: witness_discovery_scan_dirs,
     explicit_entries: [],
-    skip_unaffected_node_frontier: true
+    skip_unaffected_node_frontier: true,
+    profile: runnable_resource_profile(
+      heavy_whole_tree_resolve: true,
+      spawns_host_compiler: false,
+      memory: runnable_memory_substantial(predicted_peak: gunbc_ci_floor_per_shard_peak_rss_bytes())
+    )
   }
 }
 
@@ -123,56 +177,7 @@ fn floor_depends_on_compile(dependent: Node) -> DependencyView {
   }
 }
 
-fn gate_is_heavy_resolve(g: Gate) -> Bool {
-  match g {
-    SourceRootIngestGate => true
-    DslCompileCleanGate => true
-    RegenVerifyGate => true
-    RustMonolithGate => false
-    EmitHostGate => false
-    LayeringImportsGate => false
-    ExtdepsExternalAuthorityGate => false
-    GeneratedArtifactDriftGate => false
-  }
-}
-
-fn gate_spawns_host_compiler(g: Gate) -> Bool {
-  match g {
-    EmitHostGate => true
-    RustMonolithGate => false
-    SourceRootIngestGate => false
-    DslCompileCleanGate => false
-    LayeringImportsGate => false
-    ExtdepsExternalAuthorityGate => false
-    GeneratedArtifactDriftGate => false
-    RegenVerifyGate => true
-  }
-}
-
-fn gate_serializes_against_corpus(g: Gate) -> Bool {
-  gate_is_heavy_resolve(g: g) || gate_spawns_host_compiler(g: g)
-}
-
-data gate_serializes_against_corpus_disposition: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "std.realization_schedule",
-    decl_name: "Runnable",
-    field: WholeDeclaration
-  }
-}
-
-fn floor_node_is_heavy_resolve(node: Node, spec: CiSpec) -> Bool {
-  if node == floor_corpus_node {
-    true
-  } else {
-    fold(spec.gates, init: false, f: fn(acc, g) {
-      if node == gate_node(g: g) { gate_is_heavy_resolve(g: g) } else { acc }
-    })
-  }
-}
-
-fn floor_serialize_after(source: Node, dependent: Node) -> DependencyView {
+fn floor_resource_depends_on(source: Node, dependent: Node) -> DependencyView {
   DependencyView {
     source: source,
     dependent: dependent,
@@ -181,57 +186,67 @@ fn floor_serialize_after(source: Node, dependent: Node) -> DependencyView {
   }
 }
 
-fn floor_corpus_serializes(dependent: Node) -> DependencyView {
-  floor_serialize_after(source: floor_corpus_node, dependent: dependent)
-}
-
-fn floor_heavy_resolve_gate_nodes(spec: CiSpec) -> List<Node> {
+fn floor_corpus_exclusion_resource_edges(spec: CiSpec) -> List<DependencyView> {
   fold(spec.gates, init: [], f: fn(acc, g) {
-    match g {
-      DslCompileCleanGate => acc
-      _ => if gate_is_heavy_resolve(g: g) {
-        list_snoc_item(xs: acc, item: gate_node(g: g))
-      } else {
-        acc
-      }
+    let node = gate_node(g: g)
+    if floor_resource_anchor_node(node: node) {
+      acc
+    } else if runnable_excludes_corpus_co_residence(profile: gate_runnable_profile(g: g)) {
+      list_snoc_item(
+        xs: acc,
+        item: floor_resource_depends_on(source: floor_corpus_node, dependent: node)
+      )
+    } else {
+      acc
     }
   })
 }
 
-fn floor_heavy_resolve_chain(spec: CiSpec) -> List<DependencyView> {
-  let heavy = floor_heavy_resolve_gate_nodes(spec: spec)
+fn floor_heavy_resolve_chain_resource_edges(spec: CiSpec) -> List<DependencyView> {
+  let heavy_nodes = fold(spec.gates, init: [], f: fn(acc, g) {
+    let node = gate_node(g: g)
+    if floor_resource_anchor_node(node: node) {
+      acc
+    } else if runnable_heavy_whole_tree_resolve(profile: gate_runnable_profile(g: g)) {
+      list_snoc_item(xs: acc, item: node)
+    } else {
+      acc
+    }
+  })
   zip_map(
-    a: heavy,
-    b: skip(xs: heavy, n: 1),
-    f: fn(prev, next) { floor_serialize_after(source: prev, dependent: next) }
+    a: heavy_nodes,
+    b: skip(xs: heavy_nodes, n: 1),
+    f: fn(prev, next) {
+      floor_resource_depends_on(source: prev, dependent: next)
+    }
   )
 }
 
-fn floor_expected_readiness_layers(spec: CiSpec) -> Int {
-  2 + length(xs: floor_heavy_resolve_gate_nodes(spec: spec))
+fn floor_data_dependencies(spec: CiSpec) -> List<DependencyView> {
+  fold(spec.gates, init: [floor_depends_on_compile(dependent: floor_corpus_node)], f: fn(acc, g) {
+    match g {
+      DslCompileCleanGate => acc
+      _ => list_snoc_item(
+        xs: acc,
+        item: floor_depends_on_compile(dependent: gate_node(g: g))
+      )
+    }
+  })
+}
+
+fn floor_resource_dependencies(spec: CiSpec) -> List<DependencyView> {
+  concat(
+    floor_corpus_exclusion_resource_edges(spec: spec),
+    floor_heavy_resolve_chain_resource_edges(spec: spec)
+  )
 }
 
 fn floor_dependencies_with(spec: CiSpec, serialize_heavy: Bool) -> List<DependencyView> {
-  let corpus_serialized = fold(spec.gates, init: [floor_depends_on_compile(dependent: floor_corpus_node)], f: fn(acc, g) {
-    match g {
-      DslCompileCleanGate => acc
-      _ => {
-        let after_compile = list_snoc_item(
-          xs: acc,
-          item: floor_depends_on_compile(dependent: gate_node(g: g))
-        )
-        if serialize_heavy && gate_serializes_against_corpus(g: g) {
-          list_snoc_item(xs: after_compile, item: floor_corpus_serializes(dependent: gate_node(g: g)))
-        } else {
-          after_compile
-        }
-      }
-    }
-  })
+  let data_deps = floor_data_dependencies(spec: spec)
   if serialize_heavy {
-    concat(corpus_serialized, floor_heavy_resolve_chain(spec: spec))
+    concat(data_deps, floor_resource_dependencies(spec: spec))
   } else {
-    corpus_serialized
+    data_deps
   }
 }
 
@@ -240,7 +255,11 @@ fn floor_dependencies(spec: CiSpec) -> List<DependencyView> {
 }
 
 fn floor_unrunnable_sentinel() -> Runnable {
-  RunnableSingleClaim { entry: "", function: "__gunbc_ci_floor_unmapped__" }
+  RunnableSingleClaim {
+    entry: "",
+    function: "__gunbc_ci_floor_unmapped__",
+    profile: runnable_resource_profile_negligible()
+  }
 }
 
 fn runnable_for_node(node: Node, spec: CiSpec) -> Runnable {
@@ -392,36 +411,51 @@ fn witness_floor_spawn_width_zero_budget_falls_back() -> Bool {
   width == gunbc_ci_floor_conservative_fallback_width
 }
 
-fn floor_layer_heavy_resolve_count(batch: ExecutorBatch, spec: CiSpec) -> Int {
-  fold(batch.jobs, init: 0, f: fn(acc, job) {
-    if floor_node_is_heavy_resolve(node: job.node, spec: spec) { acc + 1 } else { acc }
+fn floor_batch_heavy_gate_resolve_count(batch: List<Runnable>) -> Int {
+  fold(batch, init: 0, f: fn(acc, r) {
+    match r {
+      RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, skip_unaffected_node_frontier: _, profile: _ } => acc
+      RunnableSingleClaim { entry: _, function: f, profile: p } =>
+        if f == ci_floor_compile_gate_fn {
+          acc
+        } else if runnable_heavy_whole_tree_resolve(profile: p) {
+          acc + 1
+        } else {
+          acc
+        }
+    }
   })
 }
 
-fn floor_plan_serializes_heavy_resolves(dependencies: List<DependencyView>) -> Bool {
-  match parallel_executor_plan_from_dependencies(
-    nodes: floor_nodes(spec: gunbc_ci_spec),
-    dependencies: dependencies,
-    scheduled: []
-  ) {
-    ExecutorRunComplete { batches: batches, scheduled: _ } =>
-      fold(batches, init: true, f: fn(ok, batch) {
-        ok && (floor_layer_heavy_resolve_count(batch: batch, spec: gunbc_ci_spec) <= 1)
-      })
-
-    ExecutorRunRunnable { batch: _, scheduled: _, remaining: _ } => false
-    ExecutorRunBlocked { evidence: _, batches: _, scheduled: _, remaining: _ } => false
-  }
+fn floor_plan_at_most_one_heavy_gate_resolve_per_batch(batches: List<List<Runnable>>) -> Bool {
+  fold(batches, init: true, f: fn(ok, batch) {
+    ok && (floor_batch_heavy_gate_resolve_count(batch: batch) <= 1)
+  })
 }
 
 fn gunbc_ci_floor_plan_serializes_heavy_resolves() -> Bool {
-  floor_plan_serializes_heavy_resolves(dependencies: floor_dependencies(spec: gunbc_ci_spec))
+  floor_plan_at_most_one_heavy_gate_resolve_per_batch(batches: gunbc_ci_floor_batches())
 }
 
 fn gunbc_ci_floor_plan_co_runs_heavy_without_serialization() -> Bool {
-  floor_plan_serializes_heavy_resolves(
-    dependencies: floor_dependencies_with(spec: gunbc_ci_spec, serialize_heavy: false)
+  floor_plan_at_most_one_heavy_gate_resolve_per_batch(
+    batches: gunbc_ci_floor_schedule_without_serialization()
   ) == false
+}
+
+fn witness_floor_corpus_exclusion_edges_exist() -> Bool {
+  length(xs: floor_corpus_exclusion_resource_edges(spec: gunbc_ci_spec)) > 0
+}
+
+fn witness_floor_compile_gate_honest_heavy_profile() -> Bool {
+  runnable_heavy_whole_tree_resolve(profile: gate_runnable_profile(g: DslCompileCleanGate))
+    && runnable_excludes_corpus_co_residence(profile: gate_runnable_profile(g: DslCompileCleanGate))
+}
+
+fn witness_floor_no_corpus_resource_edge_to_compile_anchor() -> Bool {
+  fold(floor_corpus_exclusion_resource_edges(spec: gunbc_ci_spec), init: true, f: fn(ok, edge) {
+    ok && (edge.dependent != floor_compile_root_node())
+  })
 }
 
 fn witness_floor_derived_width_at_runner_cap() -> Bool {

@@ -1,0 +1,65 @@
+module test.claim.runnable_resource_profile
+
+import std.realization_schedule {
+  Runnable,
+  RunnableSingleClaim,
+  RunnableDiscoveryBatch,
+  runnable_resource_profile,
+  runnable_resource_profile_negligible,
+  runnable_memory_substantial,
+  runnable_memory_substantial_sum,
+  runnable_forbids_corpus_co_residence,
+  runnable_predicted_space,
+  runnable_heavy_whole_tree_resolve,
+}
+import std.measure { byte_size, byte_size_count }
+
+fn witness_negligible_profile_is_not_heavy() -> Bool {
+  !runnable_heavy_whole_tree_resolve(profile: runnable_resource_profile_negligible())
+}
+
+fn witness_substantial_memory_forbids_corpus_co_residence() -> Bool {
+  let heavy = RunnableSingleClaim {
+    entry: "e"
+    function: "f"
+    profile: runnable_resource_profile(
+      heavy_whole_tree_resolve: false,
+      spawns_host_compiler: false,
+      memory: runnable_memory_substantial(predicted_peak: byte_size(count: 1))
+    )
+  }
+  runnable_forbids_corpus_co_residence(r: heavy)
+}
+
+fn witness_corpus_never_forbids_co_residence() -> Bool {
+  let corpus = RunnableDiscoveryBatch {
+    source_roots: []
+    scan_dirs: []
+    explicit_entries: []
+    skip_unaffected_node_frontier: false
+    profile: runnable_resource_profile(
+      heavy_whole_tree_resolve: true,
+      spawns_host_compiler: false,
+      memory: runnable_memory_substantial(predicted_peak: byte_size(count: 3226056704))
+    )
+  }
+  !runnable_forbids_corpus_co_residence(r: corpus)
+}
+
+fn witness_memory_sum_matches_byte_totals() -> Bool {
+  let left = runnable_memory_substantial(predicted_peak: byte_size(count: 100))
+  let right = runnable_memory_substantial(predicted_peak: byte_size(count: 200))
+  let sum = runnable_memory_substantial_sum(left: left, right: right)
+  byte_size_count(b: runnable_predicted_space(profile: runnable_resource_profile(
+    heavy_whole_tree_resolve: false,
+    spawns_host_compiler: false,
+    memory: sum
+  ))) == 300
+}
+
+test fn runnable_resource_profile_witnesses() -> Bool {
+  witness_negligible_profile_is_not_heavy()
+    && witness_substantial_memory_forbids_corpus_co_residence()
+    && witness_corpus_never_forbids_co_residence()
+    && witness_memory_sum_matches_byte_totals()
+}
