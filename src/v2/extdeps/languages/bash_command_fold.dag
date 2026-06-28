@@ -1248,7 +1248,17 @@ fn bash_fold_stmt_uses_delegated_grammar(stmt: ShellStmt) -> Bool {
   match stmt {
     WithRedir { stmt: _, redir: _ } => true
     Heredoc { path: _, delimiter: _, body: _ } => true
-    _ => false
+    Command { words: _ } => false
+    Assign { name: _, value: _ } => false
+    If { cond: _, then: _ } => false
+    Subshell { body: _ } => false
+    BraceGroup { body: _ } => false
+    AndOr { left: _, op: _, right: _ } => false
+    Pipe { left: _, right: _ } => false
+    EnvPrefixed { name: _, value: _, command: _ } => false
+    Exit { code: _ } => false
+    Negation { stmt: _ } => false
+    RawLine { text: _ } => false
   }
 }
 
