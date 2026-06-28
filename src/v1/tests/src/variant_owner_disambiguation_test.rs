@@ -134,36 +134,32 @@ fn shared_variant_resolves_by_expected_type_not_alpha_order() {
     );
 }
 
-/// §2 — field-level expected-type grounding (struct literal site).
+/// §2b — per-function expected-type grounding: two functions with DIFFERENT declared
+/// return types, both returning the same shared variant.  Each must emit the enum
+/// matching ITS OWN declared return type, proving the fix is per-site not per-module.
 ///
-/// A struct has two fields with DIFFERENT enum types, both sharing the same variant name.
-/// The emitter must pick the correct owner for each field independently.
+/// `make_early() -> AEarlyEnum` → must emit `AEarlyEnum::SharedVarField`
+/// `make_late()  -> ZLaterEnum` → must emit `ZLaterEnum::SharedVarField`
 ///
-///   struct TwoFields { first: AEarlyEnum, second: ZLaterEnum }
-///
-/// A constructor `{ first: SharedVarField, second: SharedVarField }` must emit:
-///   first: AEarlyEnum::SharedVarField
-///   second: ZLaterEnum::SharedVarField
-///
-/// If the emitter uses a single corpus-global owner for SharedVarField it would emit
-/// the same qualifier for both fields — one will be wrong.
+/// Both variants live in the same scope (same import list), so without expected-type
+/// grounding both would collapse to `AEarlyEnum` (alpha-first).
 #[test]
-fn shared_variant_resolves_per_field_by_expected_type() {
-    let types_mod = (
-        "dsl/test/disc_field_types.dag",
-        "module test.disc_field_types\n\
+fn shared_variant_resolves_per_site_independently() {
+    let owner_mod = (
+        "dsl/test/disc_per_site_owner.dag",
+        "module test.disc_per_site_owner\n\
          type AEarlyEnum = SharedVarField | AEarlyOnlyF\n\
-         type ZLaterEnum = SharedVarField | ZLaterOnlyF\n\
-         type TwoFields = { first: AEarlyEnum, second: ZLaterEnum }",
+         type ZLaterEnum = SharedVarField | ZLaterOnlyF",
     );
     let consumer = (
-        "dsl/test/disc_field_consumer.dag",
-        "module test.disc_field_consumer\n\
-         import test.disc_field_types { SharedVarField, AEarlyEnum, ZLaterEnum, TwoFields }\n\
-         fn make_two() -> TwoFields { { first: SharedVarField, second: SharedVarField } }",
+        "dsl/test/disc_per_site_consumer.dag",
+        "module test.disc_per_site_consumer\n\
+         import test.disc_per_site_owner { SharedVarField, AEarlyEnum, ZLaterEnum }\n\
+         fn make_early() -> AEarlyEnum { SharedVarField }\n\
+         fn make_late() -> ZLaterEnum { SharedVarField }",
     );
 
-    let result = compile_multi_target(&[types_mod, consumer], RenderTarget::Rust);
+    let result = compile_multi_target(&[owner_mod, consumer], RenderTarget::Rust);
     let diags: Vec<String> = result
         .diagnostics
         .iter()
@@ -178,16 +174,16 @@ fn shared_variant_resolves_per_field_by_expected_type() {
     let emitted: String = result
         .files
         .iter()
-        .filter(|f| f.path.contains("disc_field_consumer"))
+        .filter(|f| f.path.contains("disc_per_site_consumer"))
         .map(|f| f.content.clone())
         .collect::<Vec<_>>()
         .join("\n");
     assert!(
         emitted.contains("AEarlyEnum::SharedVarField"),
-        "first field must emit AEarlyEnum::SharedVarField:\n{emitted}"
+        "make_early must emit AEarlyEnum::SharedVarField:\n{emitted}"
     );
     assert!(
         emitted.contains("ZLaterEnum::SharedVarField"),
-        "second field must emit ZLaterEnum::SharedVarField:\n{emitted}"
+        "make_late must emit ZLaterEnum::SharedVarField:\n{emitted}"
     );
 }
