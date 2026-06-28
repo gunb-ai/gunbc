@@ -34,6 +34,8 @@ fn run_witness(src: &str, witness_fn: &str) -> Value {
 
 #[test]
 fn string_family_alias_casts_are_identity_at_runtime() {
+    // Url was a hollow String alias removed by #5818 (§3); Uri is now a struct and
+    // does not participate in the string-cast family. Test mirrors string_family_cast_witness_test.dag.
     let src = r#"module test.string_family_cast
 
 import std.types { NonEmptyStr, Secret, SecretValue }
