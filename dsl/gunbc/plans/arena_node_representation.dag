@@ -1,0 +1,89 @@
+module gunbc.plans.arena_node_representation
+
+import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
+import std.markdown { MarkdownBlock, TableBlock, AlignNone }
+import gunbc.plans.md_helpers { h2, h3, p, li, ul, cell, row, hr }
+
+fn arena_node_representation_body() -> List<MarkdownBlock> {
+  [
+    p(text: "Status: **DESIGN NOTE — lever analysis (2026-06-28).** Pairs with Lever C (stream/evict, `docs/plans/representation-minimization.md`) as the second independent axis on the 5 GiB floor: Lever C attacks holding all 1409 modules at once; this lever attacks bytes per held node. They compose; neither blocks the other. This is Lever B from the representation-minimization lane."),
+    p(text: "On-thesis, not a detour: DESIGN §4's substrate is Node+Edge, content-addressed. An arena of nodes with u32-index edges is the faithful realization. The current `Rc<Node>` pointer-graph is a bootstrap shortcut in the doomed v1 Rust seed (§7: Rust shrinks to zero). Flatter representation and v2 self-host end-goal are the same arrow."),
+    hr(),
+    h2(text: "1. Measured ground truth"),
+    p(text: "Base: post-#5910, commit 529fd65044. Floor self-RSS at width=1 = 5.12 GiB; cgroup peak 5.31 GiB; no exit-137. Serial per-shard peak ~4.82 GiB = ~94% of the floor. The 5 GiB is almost entirely whole-corpus resident retention, NOT per-shard accumulation (first-entry resolve ~158 MiB) and NOT intern (deduped #5867). Source text: 7.58 MB / 1409 files / 221k lines = ~400x blowup to resolved graph. regen_stage0 --verify = 64.2s (compile 60.1s + rustfmt 4.1s + verify 6ms)."),
+    hr(),
+    h2(text: "2. Node anatomy (verified)"),
+    p(text: "`Node` at `src/v1/stage0/src/v1_std_core.rs:742`. `size_of::<Node>()` = 144 B. Rc-wrapped = 16 B Rc ctrl + 144 B = 160 B minimum per node before String/Vec allocations. 12 pointer fields (96 B): `span`, `ident_span`, `children`, `params`, `uses`, `properties`, `body`, `transport`, `type_annotation`, `inferred`, `match_pattern`, `expr_data`. Plus 24 B inline `String name` and 16 B `Option<i64> ident`. `SourceSpan` at `std_types.rs:265` = 40 B: `file: String(24)`, `start: i64(8)`, `end: i64(8)`."),
+    h3(text: "Identified redundancies (cited)"),
+    ul(items: [
+      li(text: "EMPTY-VEC CHURN (biggest per-node waste): 4x `Rc<Vec<Rc<Node>>>` per node (children/params/uses/properties). `make_expr_node` at `v1_std_core.rs:782` allocates fresh `Rc::new(vec![])` for params/uses/properties on every node, most empty. ~120 B/node overhead (3 x [16 B Rc ctrl + 24 B Vec header]). Note: #5878 (be26e1c2ed) landed a shared-empty-list win (measured -43.7 MiB) but `empty_node_list()` at `v1_std_core.rs:778` is still `Rc::new(vec![])` (fresh) and constructors inline `Rc::new(vec![])` on the v1 .rs SEED path. Verify whether the singleton is wired only in the v2/.dag path; if the seed lost it, recoverable .dag-first (NOT a seed hand-edit)."),
+      li(text: "NAMES STORED TWICE: `Node.name: String` coexists with `Node.ident: Option<i64>` (interned id of same name). Interner dedups the store; node keeps an inline String. Correction of record: `Node.ident` is NOT dead (an earlier reflection-count claim of 0% was refuted by execution). `ident` is a live ident-keyed fast-path on module and import nodes. Do not delete it."),
+      li(text: "FILE PATH DUP PER SPAN: `SourceSpan.file: String` — every span carries its own copy of the file path. Should be a 4 B file-id into a side table; ~20 B saved per span."),
+      li(text: "`Option<i64> ident` = 16 B for 8 B payload (no niche). u32 id with 0-sentinel (table seeds id 0 = empty string) = 4 B, saving ~12 B/node."),
+      li(text: "PER-MODULE KERNEL-BINDINGS REBUILD: `seed_kernel_intern_table` at `infer.rs:13854` and `kernel_bindings_base` at `infer.rs:11695` are rebuilt inside `build_type_env` for EVERY module — kernel types re-interned/re-bound 1409x, source_indices re-inserted per module. The intern TABLE is shared (#5867, `infer.rs:11641`) but the kernel SLICE of bindings/source_indices is not. Several of these sites touch load-bearing `build_type_env` — escalate before editing."),
+    ]),
+    hr(),
+    h2(text: "3. The arena/u32-index representation"),
+    p(text: "Decisive structural fact: the graph is an ACYCLIC downward-only DAG — no parent back-pointers, no cycles (DESIGN §4 guarantees). `Rc` exists for shared ownership plus cycle safety; the Node graph uses neither, only downward sharing. So 16 B/node refcount plus per-node malloc header pays for an unused capability."),
+    p(text: "Proposed replacement: a `u32` index into one `Vec<Node>` arena (4 B, no ctrl block, no per-node malloc header). Four child-Vecs become `(u32 start, u32 len)` slices into a shared edge-arena. This erases the 16 B ctrl/node plus per-node allocator overhead, and halves all 12 pointer fields (8 B ptr to 4 B index). Structural sharing is preserved for free: two u32 values pointing to the same slot share the subgraph without reference counting."),
+    p(text: "Estimated node-graph memory cut: ~40 to 55%. Composes with struct-of-arrays layout (columnar, recovers alignment padding ~10 to 15%) and spans-as-side-table (file path stored once per file, span encoded as 2 x u32)."),
+    h3(text: "Two-lever summary"),
+    TableBlock {
+      header: row(cells: [
+        cell(text: "Lever"),
+        cell(text: "Attacks"),
+        cell(text: "Prize"),
+        cell(text: "Status"),
+      ]),
+      alignments: [AlignNone, AlignNone, AlignNone, AlignNone],
+      rows: [
+        row(cells: [
+          cell(text: "Lever C — stream/evict"),
+          cell(text: "holding all 1409 modules at once"),
+          cell(text: "5 GiB to ~1.6 GiB envelope"),
+          cell(text: "design note in representation-minimization.md; v2 streaming-infer realization"),
+        ]),
+        row(cells: [
+          cell(text: "Arena + u32 index (this lever)"),
+          cell(text: "bytes per held node"),
+          cell(text: "node-graph -40 to -55%"),
+          cell(text: "v2 self-host realization of DESIGN §4; gated on emitter determinism (#5879)"),
+        ]),
+        row(cells: [
+          cell(text: "Cheap recoverables"),
+          cell(text: "empty-Vec singleton / ident u32 / kernel-slice sharing"),
+          cell(text: "~100+ MiB"),
+          cell(text: "low-risk .dag-first; build_type_env sites are load-bearing — escalate before editing"),
+        ]),
+      ],
+    },
+    hr(),
+    h2(text: "4. Decidability framing (DESIGN §5/§6)"),
+    ul(items: [
+      li(text: "Empty-Vec churn, dup-name inline String, ident u32, and kernel-slice redundancies are WALL-NOW: decidable, structural — can be made unwritable by a single authority in .dag."),
+      li(text: "The arena/u32 representation itself is a RATCHET (a representation and performance lever), priced in displaced cost (~3 GiB resident at width=1, DESIGN §6), NOT elegance. Guard the purity trap: the arena is the right call because it erases ~3 GiB of retained memory, not because it is elegant."),
+      li(text: "The arena change touches a load-bearing substrate type and is operator-gated. It lands in the v2/.dag realization, NOT as a seed rewrite."),
+      li(text: "Caveat: sizeof and field counts above are from the v1 .rs seed (bootstrap truth today). The v2/.dag Node model at `src/v2/std/node.dag` is the eventual authority — confirm v2 representation before proposing the arena there."),
+    ]),
+    hr(),
+    h2(text: "5. Gate and sequencing"),
+    p(text: "Lever B (arena/u32-index representation) is gated on emitter determinism (PR #5879, stern-fox-585). While emit is non-reproducible, any representation change is forced into the doomed v1 Rust seed by hand after each emit, instead of being generated from the `.dag` authority. The landing surface is v2/.dag self-host, not the v1 seed. Cheap recoverables (§6 below) can land anytime as .dag-first changes, but sites that touch `build_type_env` are load-bearing floor infrastructure — escalate before editing those."),
+    hr(),
+    h2(text: "6. Cheap recoverables (.dag-first, independent of emitter gate)"),
+    ul(items: [
+      li(text: "Wire `empty_node_list()` singleton in the seed path if #5878 left it fresh on that path (verify first before authoring)."),
+      li(text: "`Option<i64> ident` to u32 with 0-sentinel: check all readers first — `ident` IS live on module and import nodes, do not drop it."),
+      li(text: "Spans-as-side-table: `SourceSpan.file: String` to a u32 file-id (saves ~20 B/span, single-authority side table)."),
+      li(text: "Kernel-bindings/source-index slice shared across modules — analogous to #5867 shared `InternTable`. Touches `build_type_env`; escalate before editing (load-bearing-file bar)."),
+    ]),
+  ]
+}
+
+data arena_node_representation_plan: Plan = Plan {
+  slug: "arena-node-representation",
+  title: "Arena/u32-index Node representation — design note (Lever B)",
+  body: arena_node_representation_body(),
+  dissolution: HasTrigger {
+    text: "Dissolves when the v2 .dag Node model adopts arena/index representation and the v1 Rc<Node> seed is deleted (DESIGN §7 self-host fixed point); the design note is superseded by the realized v2 substrate."
+  }
+}
