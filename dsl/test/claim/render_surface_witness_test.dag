@@ -1,0 +1,91 @@
+module test.claim.render_surface_witness
+
+import std.render {
+  Document, Block, Leaf, Group, Frame, Line, Span, SpanStyle,
+  RenderCapability, Append,
+}
+import std.symbols { Ascii }
+import extdeps.render.surface {
+  RenderTarget, PlainTerminal, GithubActions, SurfaceEnv,
+  detect_target, group_syntax, serialize_document,
+}
+
+data plain_cap: RenderCapability = RenderCapability {
+  color: false, tier: Ascii, cursor_addressable: false
+}
+
+fn plain_span(text: String) -> Span {
+  Span { text: text, style: SpanStyle { color: none, bold: false, italic: false, symbol: none } }
+}
+
+fn one_line_frame(text: String) -> Frame {
+  Frame {
+    lines: [Line { spans: [plain_span(text: text)], indent: 0, max_width: none }],
+    cursor_action: Append
+  }
+}
+
+data sample_doc: Document = Document {
+  blocks: [
+    Group { title: "host effects", frame: one_line_frame(text: "[file] read foo.dag") },
+    Leaf { frame: one_line_frame(text: "PASS some_witness") }
+  ]
+}
+
+// GitHub Actions env advertised → GithubActions; a bare pipe → PlainTerminal.
+fn w_detect_github() -> Bool {
+  match detect_target(env: SurfaceEnv { github_actions: true }) {
+    GithubActions => true
+    PlainTerminal => false
+  }
+}
+
+fn w_detect_plain() -> Bool {
+  match detect_target(env: SurfaceEnv { github_actions: false }) {
+    PlainTerminal => true
+    GithubActions => false
+  }
+}
+
+// A Group serialised for GitHub Actions is bracketed by `::group::` / `::endgroup::`;
+// the ungrouped Leaf below it carries neither marker.
+fn w_github_wraps_group_in_workflow_commands() -> Bool {
+  let out = serialize_document(doc: sample_doc, target: GithubActions, cap: plain_cap)
+  string_contains(s: out, pattern: "::group::host effects") &&
+  string_contains(s: out, pattern: "[file] read foo.dag") &&
+  string_contains(s: out, pattern: "::endgroup::") &&
+  string_contains(s: out, pattern: "PASS some_witness")
+}
+
+// The SAME Document on a plain terminal renders the group as a `── title ──` header
+// with NO workflow-command markers — the surface, not the document, owns the protocol.
+fn w_plain_terminal_uses_header_not_commands() -> Bool {
+  let out = serialize_document(doc: sample_doc, target: PlainTerminal, cap: plain_cap)
+  string_contains(s: out, pattern: "── host effects ──") &&
+  string_contains(s: out, pattern: "[file] read foo.dag") &&
+  !string_contains(s: out, pattern: "::group::") &&
+  !string_contains(s: out, pattern: "::endgroup::")
+}
+
+// The streaming seed reads the same marker authority: GitHub Actions carries an
+// explicit close line, a plain terminal closes implicitly (no close line).
+fn w_close_line_is_explicit_only_on_github() -> Bool {
+  let gha = group_syntax(target: GithubActions)
+  let term = group_syntax(target: PlainTerminal)
+  match gha.close_line {
+    Present { value: c } => c == "::endgroup::"
+    Absent => false
+  } &&
+  match term.close_line {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+test fn render_surface_witnesses() -> Bool {
+  w_detect_github() &&
+  w_detect_plain() &&
+  w_github_wraps_group_in_workflow_commands() &&
+  w_plain_terminal_uses_header_not_commands() &&
+  w_close_line_is_explicit_only_on_github()
+}
