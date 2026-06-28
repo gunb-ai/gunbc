@@ -7,6 +7,7 @@ import std.cache_interface {
   UpsertSubject,
   FilePaths,
   PrefixFallback,
+  OverwriteAllowed,
   WriteThenCommit,
   MissThenCreate,
   TarArchive,
@@ -56,7 +57,7 @@ data gha_actions_cache_facts: CacheInterfaceCatalogFacts = {
         "runner-scoped",
       ]
     }
-    write_semantics: WriteThenCommit
+    write_semantics: OverwriteAllowed
     miss_semantics: MissThenCreate
   }
   placement: {
