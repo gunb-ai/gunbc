@@ -991,8 +991,17 @@ fn bash_fold_list_production_for_lhs(lhs: Symbol) -> List<FormalProduction> {
 
 fn bash_fold_derive_productions() -> List<FormalProduction> {
   list_append(
-    bash_fold_leaf_stmt_productions(),
-    bash_fold_operand_productions()
+    list_append(
+      bash_fold_word_leaf_productions(),
+      bash_fold_command_words_leaf_productions()
+    ),
+    list_append(
+      bash_fold_command_words_list_productions(),
+      list_append(
+        bash_fold_stmt_list_leaf_productions(),
+        bash_fold_operand_productions()
+      )
+    )
   )
 }
 
