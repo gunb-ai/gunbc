@@ -77,35 +77,28 @@ fn shared_variant_resolves_to_locally_defined_owner_not_transitive() {
 
 /// §2 — expected-type-at-site grounding.
 ///
-/// `SharedVarAmbig` belongs to TWO locally-defined enums in the same module:
-///   `AEarlyEnum` (sorts first alphabetically — the wrong default)
-///   `ZLaterEnum` (sorts last)
+/// `SharedVarAmbig` belongs to TWO locally-defined enums in a single module:
+///   `ZLaterEnum` (defined first — scope will be overwritten)
+///   `AEarlyEnum` (defined second — wins scope by last-write in variant_locals_from_items)
 ///
-/// The function return type is `ZLaterEnum`, so at the call site the expected type is
-/// `ZLaterEnum`.  The correct emit is `ZLaterEnum::SharedVarAmbig`.
-/// The alpha-sort fallback would emit `AEarlyEnum::SharedVarAmbig` — wrong.
+/// The function return type is `ZLaterEnum`, so the expected type overrides the scope
+/// winner `AEarlyEnum`.  The correct emit is `ZLaterEnum::SharedVarAmbig`.
+/// Without the fix the scope winner `AEarlyEnum::SharedVarAmbig` causes a type mismatch.
 ///
-/// Negative control: `AEarlyEnum` MUST NOT appear in the emitted return expression.
+/// Single-module (no imports): imported_enum_names is empty → no VariantCollision.
 #[test]
 fn shared_variant_resolves_by_expected_type_not_alpha_order() {
-    // Module defines both enums locally: AEarlyEnum (alpha-first, wrong) and ZLaterEnum
-    // (alpha-last, correct for the declared return type).
-    let owner_mod = (
-        "dsl/test/disc_ambig_owner.dag",
-        "module test.disc_ambig_owner\n\
+    // ZLaterEnum defined first, AEarlyEnum second → AEarlyEnum wins scope (last-write).
+    // fn make_z return type is ZLaterEnum → expected-type override must fire.
+    let source = (
+        "dsl/test/disc_ambig.dag",
+        "module test.disc_ambig\n\
+         type ZLaterEnum = SharedVarAmbig | ZLaterOnly\n\
          type AEarlyEnum = SharedVarAmbig | AEarlyOnly\n\
-         type ZLaterEnum = SharedVarAmbig | ZLaterOnly",
-    );
-    // Consumer: imports SharedVarAmbig from the owner module.
-    // Return type is ZLaterEnum — the expected type at this site must pick ZLaterEnum.
-    let consumer = (
-        "dsl/test/disc_ambig_consumer.dag",
-        "module test.disc_ambig_consumer\n\
-         import test.disc_ambig_owner { SharedVarAmbig, AEarlyEnum, ZLaterEnum }\n\
          fn make_z() -> ZLaterEnum { SharedVarAmbig }",
     );
 
-    let result = compile_multi_target(&[owner_mod, consumer], RenderTarget::Rust);
+    let result = compile_multi_target(&[source], RenderTarget::Rust);
     let diags: Vec<String> = result
         .diagnostics
         .iter()
@@ -120,7 +113,7 @@ fn shared_variant_resolves_by_expected_type_not_alpha_order() {
     let emitted: String = result
         .files
         .iter()
-        .filter(|f| f.path.contains("disc_ambig_consumer"))
+        .filter(|f| f.path.contains("disc_ambig"))
         .map(|f| f.content.clone())
         .collect::<Vec<_>>()
         .join("\n");
@@ -130,7 +123,7 @@ fn shared_variant_resolves_by_expected_type_not_alpha_order() {
     );
     assert!(
         !emitted.contains("AEarlyEnum::SharedVarAmbig"),
-        "emitted code must NOT use the alpha-order owner AEarlyEnum:\n{emitted}"
+        "emitted code must NOT use the scope-order winner AEarlyEnum:\n{emitted}"
     );
 }
 
