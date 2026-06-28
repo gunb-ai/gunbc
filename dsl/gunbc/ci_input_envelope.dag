@@ -1,0 +1,90 @@
+module gunbc.ci_input_envelope
+
+import std.measure { Measure, Count, One }
+import std.types { List }
+import std.nat { Nat }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+type InputSizeAxis
+  = WitnessCount
+  | SourceNodeCount
+  | CorpusNodeCount
+
+type InputBound {
+  axis: InputSizeAxis
+  max: Measure<Count, One, Nat>
+}
+
+type InputEnvelope
+  = BoundedInput { bounds: List<InputBound> }
+  | EnvelopeUnknown
+
+type AdmissionVerdict
+  = Admitted
+  | RefusedOverEnvelope { axis: InputSizeAxis }
+  | RefusedUndeclared
+
+fn find_input_bound_for_axis(declared: List<InputBound>, axis: InputSizeAxis) -> InputBound? {
+  fold(
+    declared,
+    init: none,
+    f: (acc, b) =>
+      match acc {
+        Present { value: _ } => acc
+        Absent => if b.axis == axis { Present { value: b } } else { none }
+      }
+  )
+}
+
+fn input_admitted(envelope: InputEnvelope, actual: List<InputBound>) -> AdmissionVerdict {
+  match envelope {
+    EnvelopeUnknown => RefusedUndeclared
+    BoundedInput { bounds: declared } =>
+      fold(
+        actual,
+        init: Admitted,
+        f: (verdict, actual_bound) =>
+          match verdict {
+            RefusedOverEnvelope { axis: _ } => verdict
+            RefusedUndeclared => verdict
+            Admitted =>
+              match find_input_bound_for_axis(declared: declared, axis: actual_bound.axis) {
+                Absent => RefusedOverEnvelope { axis: actual_bound.axis }
+                Present { value: decl_bound } =>
+                  if actual_bound.max.count > decl_bound.max.count {
+                    RefusedOverEnvelope { axis: actual_bound.axis }
+                  } else {
+                    Admitted
+                  }
+              }
+          }
+      )
+  }
+}
+
+data gunbc_ci_corpus_envelope: InputEnvelope = BoundedInput {
+  bounds: [
+    InputBound {
+      axis: WitnessCount,
+      max: Measure { count: 2000 }
+    },
+    InputBound {
+      axis: SourceNodeCount,
+      max: Measure { count: 500000 }
+    },
+    InputBound {
+      axis: CorpusNodeCount,
+      max: Measure { count: 5000000 }
+    },
+  ]
+}
+
+data gunbc_ci_corpus_envelope_ceiling_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.plans.input_envelope_roadmap",
+    decl_name: "input_envelope_roadmap_plan",
+    field: WholeDeclaration
+  }
+}
