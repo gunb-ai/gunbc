@@ -1,12 +1,9 @@
 module gunbc.fleet_intent
 
 import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2, operator_host_srv3 }
-import product.compute_fabric {
-  IsolationBoundary,
-  SharedHostHome,
-  PerJobFilesystem,
-  ContainerRuntime,
-}
+type IsolationBoundary = SharedHostHome | PerJobFilesystem | ContainerHermetic | Vm
+type ContainerRuntime = Docker | Podman | Gvisor | Ubicloud | GcloudRun
+
 import extdeps.storage.western_digital { wd_black_sn850x_2tb_catalog }
 import extdeps.storage.samsung { samsung_970_evo_plus_2tb_catalog }
 import extdeps.storage.types {
