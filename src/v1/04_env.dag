@@ -5,7 +5,6 @@ import std.induction { InductiveField, RecursionShape, DirectRecursion, ListRecu
 
 type TypeEnv {
   bindings: Map<Int, TypeBinding>
-  parents: List<TypeEnv>
   recursive_types: List<Int>
   recursive_type_set: Map<Int, Bool>
   inductive_fields: Map<String, List<InductiveField>>
@@ -38,27 +37,6 @@ fn lookup_type(env: TypeEnv, ident: Int) -> Node? {
     Present { value: binding } => Present { value: binding.resolved }
     Absent => Absent
   }
-}
-
-fn lookup_binding_in_scope(env: TypeEnv, ident: Int) -> TypeBinding? {
-  fold(env.parents, init: map_get(env.bindings, ident), f: (acc, parent) =>
-    match acc {
-      Present { value: _ } => acc
-      Absent => lookup_binding_in_scope(env: parent, ident: ident)
-    })
-}
-
-fn enumerate_bindings_in_scope(env: TypeEnv) -> Map<Int, TypeBinding> {
-  fold(env.parents, init: env.bindings, f: (acc, parent) =>
-    let parent_scope = enumerate_bindings_in_scope(env: parent)
-    fold(map_keys(parent_scope), init: acc, f: (scoped, ident) =>
-      match map_get(scoped, ident) {
-        Present { value: _ } => scoped
-        Absent => match map_get(parent_scope, ident) {
-          Present { value: binding } => map_insert(scoped, ident, binding)
-          Absent => scoped
-        }
-      }))
 }
 
 fn lookup_type_by_name(env: TypeEnv, name: String) -> Node? {
@@ -148,5 +126,5 @@ fn merge_envs(envs: List<TypeEnv>) -> TypeEnv {
     Present { value: first_env } => first_env.intern_table
     Absent => empty_intern_table()
   }
-  TypeEnv { bindings: merged_bindings, parents: [], recursive_types: merged_recursive, recursive_type_set: merged_recursive_set, inductive_fields: merged_inductive_fields, source_indices: merged_source_indices, intern_table: merged_intern_table }
+  TypeEnv { bindings: merged_bindings, recursive_types: merged_recursive, recursive_type_set: merged_recursive_set, inductive_fields: merged_inductive_fields, source_indices: merged_source_indices, intern_table: merged_intern_table }
 }
