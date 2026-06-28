@@ -1,0 +1,54 @@
+module tools.emit_determinism_transport
+
+import extdeps.shell
+import gunbc.ci_layer_roots { witness_layer_roots }
+import extdeps.languages.bash.program {
+  ShellProgram, ShellStmt, ShellWord,
+  Command, Assign, If, WithRedir, Exit,
+  Lit, VarRef, Concat, CmdSubst,
+  StdoutAndStderrToNull,
+  lit, var_ref, command, assign, serialize_bash
+}
+import tools.host_prelude { ensure_gunbc_built }
+
+fn ed_source_root_flags() -> List<ShellWord> {
+  fold(witness_layer_roots, init: [], f: (acc, r) => concat(acc, [lit(text: "--source-root"), lit(text: r)]))
+}
+
+fn ed_pool_index_flags() -> List<ShellWord> {
+  [lit(text: "--dependency-pool-index"), lit(text: "primary-precedence")]
+}
+
+fn compile_to_dir(gunbc: ShellWord, out: ShellWord) -> ShellStmt {
+  command(words: concat(
+    [gunbc, lit(text: "compile")],
+    concat(ed_source_root_flags(), concat(ed_pool_index_flags(), [
+      lit(text: "--output-dir"), out,
+      lit(text: "--target"), lit(text: "rust")
+    ]))
+  ))
+}
+
+fn emit_corpus_x2_diff_zero_program() -> ShellProgram {
+  let root = var_ref(name: "ROOT")
+  let gunbc = var_ref(name: "GUNBC")
+  let out1 = var_ref(name: "OUT1")
+  let out2 = var_ref(name: "OUT2")
+  ShellProgram {
+    set_e: true,
+    statements: concat(ensure_gunbc_built(), [
+      command(words: [lit(text: "cd"), root]),
+      assign(name: "OUT1", value: CmdSubst { body: command(words: [lit(text: "mktemp"), lit(text: "-d")]) }),
+      assign(name: "OUT2", value: CmdSubst { body: command(words: [lit(text: "mktemp"), lit(text: "-d")]) }),
+      compile_to_dir(gunbc: gunbc, out: out1),
+      compile_to_dir(gunbc: gunbc, out: out2),
+      command(words: [lit(text: "diff"), lit(text: "-r"), out1, out2]),
+      command(words: [lit(text: "rm"), lit(text: "-rf"), out1, out2])
+    ])
+  }
+}
+
+fn run_emit_corpus_x2_diff_zero() -> Bool {
+  let result = shell.Exec.Run(script: serialize_bash(p: emit_corpus_x2_diff_zero_program()))
+  result.success
+}
