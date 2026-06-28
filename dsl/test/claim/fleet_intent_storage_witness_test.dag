@@ -5,7 +5,7 @@ import std.types { list_length }
 import std.measure { byte_size_count }
 import gunbc.fleet_intent { srv1_host, srv2_host, srv3_host, srv1_nvme0, srv3_nvme0 }
 import extdeps.observability { OutOfBand, StorageInventory, route_observation }
-import product.compute_fabric { storage_device_capacity, storage_device_pcie_link, storage_device_serial }
+import extdeps.storage.types { storage_device_capacity, storage_device_pcie_link, storage_device_serial }
 
 test fn every_host_carries_its_real_drive() -> Bool {
   list_length(items: srv1_host.storage) == 1
