@@ -413,6 +413,9 @@ fn run() -> Result<ExitCode, ExitCode> {
         return Err(ExitCode::from(2));
     }
 
+    // Funnel host-effect traces per the .dag output policy (see claim_executor).
+    v1_compiler::cli_run::install_output_policy(&source_roots);
+
     let (entry_groups, discovery_notice) = if let Some(disc) = parsed.discovery {
         if let Err(e) = check_floor_filename_hygiene(&source_roots) {
             eprintln!("claim_batch: {e}");
