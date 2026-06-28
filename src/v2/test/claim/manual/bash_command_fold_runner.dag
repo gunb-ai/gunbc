@@ -134,6 +134,10 @@ fn bash_command_fold_plan() -> List<List<Runnable>> {
       },
       RunnableSingleClaim {
         entry: bash_fold_test_entry,
+        function: "bash_fold_if_then_pipe_soundness_holds"
+      },
+      RunnableSingleClaim {
+        entry: bash_fold_test_entry,
         function: "bash_fold_subshell_wrong_production_rejects_oracle_holds"
       },
       RunnableSingleClaim {

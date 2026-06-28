@@ -397,6 +397,20 @@ test fn bash_fold_if_multi_then_holds() -> Bool {
   )
 }
 
+test fn bash_fold_if_then_pipe_soundness_holds() -> Bool {
+  bash_fold_fold_matches_oracle(
+    stmt: If {
+      cond: Command { words: [Lit { text: "true" }] },
+      then: [
+        Pipe {
+          left: Command { words: [Lit { text: "echo" }, Lit { text: "hi" }] },
+          right: Command { words: [Lit { text: "wc" }, Lit { text: "-c" }] }
+        }
+      ]
+    }
+  )
+}
+
 test fn bash_fold_subshell_wrong_production_rejects_oracle_holds() -> Bool {
   match bash_fold_stmt_bundle_witness(
     stmt: Subshell { body: [Command { words: [Lit { text: "true" }] }] }
