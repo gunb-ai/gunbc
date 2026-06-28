@@ -1,12 +1,16 @@
 module extdeps.cache.github_actions
 
-import extdeps.cache.types { CacheInterfaceCatalogFacts, HandAuthored }
+import extdeps.cache.types {
+  CacheInterfaceCatalogFacts,
+  HandAuthored,
+  UpsertSubject,
+  FilePaths,
+}
 import std.cache_identity { CacheInterfaceId }
 import std.cache_interface {
   OpaqueStringEncoding,
-  UpsertSubject,
-  FilePaths,
   PrefixFallback,
+  OverwriteAllowed,
   WriteThenCommit,
   MissThenCreate,
   TarArchive,
@@ -56,7 +60,7 @@ data gha_actions_cache_facts: CacheInterfaceCatalogFacts = {
         "runner-scoped",
       ]
     }
-    write_semantics: WriteThenCommit
+    write_semantics: OverwriteAllowed
     miss_semantics: MissThenCreate
   }
   placement: {

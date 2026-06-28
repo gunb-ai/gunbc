@@ -21,8 +21,6 @@ import std.cache_interface {
   CacheEvidence,
   OpaqueStringEncoding,
   CasContentEncoding,
-  UpsertSubject,
-  FilePaths,
   OpaqueStringKey,
   CasContentDigest,
   ArtifactIdentity,

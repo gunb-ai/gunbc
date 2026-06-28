@@ -1,6 +1,6 @@
 module test.claim.input_envelope_admission
 
-import product.compute_fabric {
+import gunbc.ci_input_envelope {
   InputSizeAxis,
   WitnessCount,
   SourceNodeCount,
