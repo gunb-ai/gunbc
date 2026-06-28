@@ -110,15 +110,7 @@ data bash_fold_diagnostic_anchor: Node = Node {
   occurrence_id: SyntheticOccurrence
 }
 
-fn bash_fold_unsupported_word_diagnostic(variant: Symbol) -> Diagnostic {
-  Diagnostic {
-    reason: variant,
-    at: node_locus(node: bash_fold_diagnostic_anchor),
-    correction: Unavailable { reason: ExternalContractUnknown }
-  }
-}
-
-fn bash_fold_unsupported_stmt_diagnostic(variant: Symbol) -> Diagnostic {
+fn bash_fold_unsupported_variant_diagnostic(variant: Symbol) -> Diagnostic {
   Diagnostic {
     reason: variant,
     at: node_locus(node: bash_fold_diagnostic_anchor),
@@ -131,11 +123,11 @@ fn bash_fold_word_emitted_witness(w: ShellWord) -> Witness<Node> {
     Lit { text: t } => Holds { value: bash_fold_word_lit_emitted(text: t) }
     VarRef { name: n } => Holds { value: bash_fold_word_var_emitted(name: n) }
     Concat { parts: _ } =>
-      Violates { diagnostic: bash_fold_unsupported_word_diagnostic(variant: ^bash_fold_word_concat) }
+      Violates { diagnostic: bash_fold_unsupported_variant_diagnostic(variant: ^bash_fold_word_concat) }
     CmdSubst { body: _ } =>
-      Violates { diagnostic: bash_fold_unsupported_word_diagnostic(variant: ^bash_fold_word_cmdsubst) }
+      Violates { diagnostic: bash_fold_unsupported_variant_diagnostic(variant: ^bash_fold_word_cmdsubst) }
     Raw { text: _ } =>
-      Violates { diagnostic: bash_fold_unsupported_word_diagnostic(variant: ^bash_fold_word_raw) }
+      Violates { diagnostic: bash_fold_unsupported_variant_diagnostic(variant: ^bash_fold_word_raw) }
   }
 }
 
@@ -226,29 +218,29 @@ fn bash_fold_stmt_emitted_witness(stmt: ShellStmt) -> Witness<Node> {
         Violates { diagnostic: d } => Violates { diagnostic: d }
       }
     Assign { name: _, value: _ } =>
-      Violates { diagnostic: bash_fold_unsupported_stmt_diagnostic(variant: ^bash_fold_stmt_assign) }
+      Violates { diagnostic: bash_fold_unsupported_variant_diagnostic(variant: ^bash_fold_stmt_assign) }
     If { cond: _, then: _ } =>
-      Violates { diagnostic: bash_fold_unsupported_stmt_diagnostic(variant: ^bash_fold_stmt_if) }
+      Violates { diagnostic: bash_fold_unsupported_variant_diagnostic(variant: ^bash_fold_stmt_if) }
     Subshell { body: _ } =>
-      Violates { diagnostic: bash_fold_unsupported_stmt_diagnostic(variant: ^bash_fold_stmt_subshell) }
+      Violates { diagnostic: bash_fold_unsupported_variant_diagnostic(variant: ^bash_fold_stmt_subshell) }
     BraceGroup { body: _ } =>
-      Violates { diagnostic: bash_fold_unsupported_stmt_diagnostic(variant: ^bash_fold_stmt_brace_group) }
+      Violates { diagnostic: bash_fold_unsupported_variant_diagnostic(variant: ^bash_fold_stmt_brace_group) }
     AndOr { left: _, op: _, right: _ } =>
-      Violates { diagnostic: bash_fold_unsupported_stmt_diagnostic(variant: ^bash_fold_stmt_and_or) }
+      Violates { diagnostic: bash_fold_unsupported_variant_diagnostic(variant: ^bash_fold_stmt_and_or) }
     Pipe { left: _, right: _ } =>
-      Violates { diagnostic: bash_fold_unsupported_stmt_diagnostic(variant: ^bash_fold_stmt_pipe) }
+      Violates { diagnostic: bash_fold_unsupported_variant_diagnostic(variant: ^bash_fold_stmt_pipe) }
     EnvPrefixed { name: _, value: _, command: _ } =>
-      Violates { diagnostic: bash_fold_unsupported_stmt_diagnostic(variant: ^bash_fold_stmt_env_prefixed) }
+      Violates { diagnostic: bash_fold_unsupported_variant_diagnostic(variant: ^bash_fold_stmt_env_prefixed) }
     WithRedir { stmt: _, redir: _ } =>
-      Violates { diagnostic: bash_fold_unsupported_stmt_diagnostic(variant: ^bash_fold_stmt_with_redir) }
+      Violates { diagnostic: bash_fold_unsupported_variant_diagnostic(variant: ^bash_fold_stmt_with_redir) }
     Heredoc { path: _, delimiter: _, body: _ } =>
-      Violates { diagnostic: bash_fold_unsupported_stmt_diagnostic(variant: ^bash_fold_stmt_heredoc) }
+      Violates { diagnostic: bash_fold_unsupported_variant_diagnostic(variant: ^bash_fold_stmt_heredoc) }
     Exit { code: _ } =>
-      Violates { diagnostic: bash_fold_unsupported_stmt_diagnostic(variant: ^bash_fold_stmt_exit) }
+      Violates { diagnostic: bash_fold_unsupported_variant_diagnostic(variant: ^bash_fold_stmt_exit) }
     Negation { stmt: _ } =>
-      Violates { diagnostic: bash_fold_unsupported_stmt_diagnostic(variant: ^bash_fold_stmt_negation) }
+      Violates { diagnostic: bash_fold_unsupported_variant_diagnostic(variant: ^bash_fold_stmt_negation) }
     RawLine { text: _ } =>
-      Violates { diagnostic: bash_fold_unsupported_stmt_diagnostic(variant: ^bash_fold_stmt_raw_line) }
+      Violates { diagnostic: bash_fold_unsupported_variant_diagnostic(variant: ^bash_fold_stmt_raw_line) }
   }
 }
 
@@ -456,49 +448,54 @@ fn bash_fold_target_model_bundle_witness(
   }
 }
 
-fn bash_fold_target_model_for_emitted(
+fn bash_fold_target_model_for_emitted_witness(
   emitted: Node,
   source_literal: Symbol,
   source_text: String
-) -> TargetModel {
+) -> Witness<TargetModel> {
   match bash_fold_target_model_bundle_witness(
     emitted: emitted,
     source_literal: source_literal,
     source_text: source_text
   ) {
     Holds { value: bundle } =>
-      target_model_make_with_emit_transforms(
-        bundle: bundle,
-        lex: bash_fold_lex(),
-        binding_spellings: bash_fold_binding_spellings(),
-        token_class_emit_transforms: bash_fold_emit_transforms(),
-        authority_source_text: source_text,
-        runtime_row: target_emit_host_runtime_row_unconfigured
-      )
-    Violates { diagnostic: _ } =>
-      target_model_make_with_emit_transforms(
-        bundle: Node {
-          kind: TypeNode { connective: Conj },
-          children: [],
-          occurrence_id: SyntheticOccurrence
-        },
-        lex: bash_fold_lex(),
-        binding_spellings: empty_map(),
-        token_class_emit_transforms: target_model_emit_transforms_empty,
-        authority_source_text: "",
-        runtime_row: target_emit_host_runtime_row_unconfigured
-      )
+      Holds {
+        value: target_model_make_with_emit_transforms(
+          bundle: bundle,
+          lex: bash_fold_lex(),
+          binding_spellings: bash_fold_binding_spellings(),
+          token_class_emit_transforms: bash_fold_emit_transforms(),
+          authority_source_text: source_text,
+          runtime_row: target_emit_host_runtime_row_unconfigured
+        )
+      }
+    Violates { diagnostic: d } => Violates { diagnostic: d }
   }
 }
 
-fn bash_fold_target_model_for_stmt(stmt: ShellStmt) -> TargetModel {
+fn bash_fold_target_model_for_stmt_witness(stmt: ShellStmt) -> Witness<TargetModel> {
   match bash_fold_stmt_emitted_witness(stmt: stmt) {
     Holds { value: emitted } =>
-      bash_fold_target_model_for_emitted(
+      bash_fold_target_model_for_emitted_witness(
         emitted: emitted,
         source_literal: ^bash_fold_dynamic_source_literal,
         source_text: serialize_stmt(s: stmt)
       )
+    Violates { diagnostic: d } => Violates { diagnostic: d }
+  }
+}
+
+fn bash_fold_fixture_target_model(
+  emitted: Node,
+  source_literal: Symbol,
+  source_text: String
+) -> TargetModel {
+  match bash_fold_target_model_for_emitted_witness(
+    emitted: emitted,
+    source_literal: source_literal,
+    source_text: source_text
+  ) {
+    Holds { value: target } => target
     Violates { diagnostic: _ } =>
       target_model_make_with_emit_transforms(
         bundle: Node {
@@ -516,7 +513,7 @@ fn bash_fold_target_model_for_stmt(stmt: ShellStmt) -> TargetModel {
 }
 
 fn bash_fold_cmd_true_target_model() -> TargetModel {
-  bash_fold_target_model_for_emitted(
+  bash_fold_fixture_target_model(
     emitted: bash_fold_cmd_true_emitted,
     source_literal: ^bash_fold_cmd_true_source_literal,
     source_text: "'true'"
@@ -524,7 +521,7 @@ fn bash_fold_cmd_true_target_model() -> TargetModel {
 }
 
 fn bash_fold_cmd_echo_hi_target_model() -> TargetModel {
-  bash_fold_target_model_for_emitted(
+  bash_fold_fixture_target_model(
     emitted: bash_fold_cmd_echo_hi_emitted,
     source_literal: ^bash_fold_cmd_echo_hi_source_literal,
     source_text: "'echo' 'hi'"
@@ -532,7 +529,7 @@ fn bash_fold_cmd_echo_hi_target_model() -> TargetModel {
 }
 
 fn bash_fold_cmd_var_x_target_model() -> TargetModel {
-  bash_fold_target_model_for_emitted(
+  bash_fold_fixture_target_model(
     emitted: bash_fold_cmd_var_x_emitted,
     source_literal: ^bash_fold_cmd_var_x_source_literal,
     source_text: "\"$X\""
@@ -546,7 +543,7 @@ data bash_fold_cmd_true_wrong_emitted: Node = bash_fold_command_emitted(
 )
 
 fn bash_fold_cmd_true_wrong_target_model() -> TargetModel {
-  bash_fold_target_model_for_emitted(
+  bash_fold_fixture_target_model(
     emitted: bash_fold_cmd_true_wrong_emitted,
     source_literal: ^bash_fold_cmd_true_wrong_source_literal,
     source_text: "'echo'"
