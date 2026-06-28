@@ -79,7 +79,7 @@ pub use crate::v1_compiler_infer_patterns::{
 pub use crate::v1_compiler_infer_patterns::{NodeLookupResult, PatternSubject};
 pub use crate::v1_compiler_infer_resolve::{
     is_user_generic_use_site, peel_nominal_alias_identity, preserve_nominal_brand_on_resolve,
-    resolve_item_types, resolve_node,
+    resolve_generic_use_decl, resolve_item_types, resolve_node,
 };
 pub use crate::v1_compiler_infer_resolve::{ItemResult, NodeResolveResult};
 pub use crate::v1_compiler_infer_service::{
@@ -5413,6 +5413,98 @@ pub fn record_has_unresolved_param_field(record: Rc<Node>, env: Rc<TypeEnv>) -> 
     }
 }
 
+pub fn alias_chain_generic_decl(env: Rc<TypeEnv>, carrier: Rc<Node>, target: Rc<Node>) -> Rc<Node> {
+    if ((target.params.clone().len() as i64) > 0) {
+        target.clone()
+    } else {
+        resolve_generic_use_decl(env, carrier)
+    }
+}
+
+pub fn alias_chain_type_arg_subst(
+    env: Rc<TypeEnv>,
+    carrier: Rc<Node>,
+    target: Rc<Node>,
+    type_args: Rc<Vec<Rc<Node>>>,
+) -> Rc<HashMap<String, Rc<Node>>> {
+    {
+        let decl = alias_chain_generic_decl(env.clone(), carrier, target);
+        Rc::new(
+            decl.params
+                .clone()
+                .iter()
+                .cloned()
+                .enumerate()
+                .map(|(i, v)| (i as i64, v))
+                .collect::<Vec<_>>(),
+        )
+        .iter()
+        .cloned()
+        .fold(
+            v1_rt::rc_empty_map::<String, Rc<Node>>(),
+            |acc: Rc<HashMap<String, Rc<Node>>>, pair: (i64, Rc<Node>)| {
+                let slot = generic_param_name_at(pair.1.clone(), env.source_indices.clone());
+                match type_args.clone().get(pair.0.clone() as usize).cloned() {
+                    Some(arg) => v1_rt::rc_map_insert(
+                        acc.clone(),
+                        slot.clone(),
+                        resolve_scrutinee_type_node(env.clone(), arg.clone()),
+                    ),
+                    None => acc.clone(),
+                }
+            },
+        )
+    }
+}
+
+pub fn alias_chain_target_after_args(
+    target: Rc<Node>,
+    carrier: Rc<Node>,
+    env: Rc<TypeEnv>,
+) -> Rc<Node> {
+    {
+        let type_args = carrier.children.clone();
+        if ((type_args.clone().len() as i64) == 0) {
+            target.clone()
+        } else {
+            {
+                let decl = alias_chain_generic_decl(env.clone(), carrier.clone(), target.clone());
+                let subst = alias_chain_type_arg_subst(
+                    env.clone(),
+                    carrier.clone(),
+                    target.clone(),
+                    type_args.clone(),
+                );
+                let is_parameterized_alias = (((decl.inferred.clone() != None)
+                    && ((decl.children.clone().len() as i64) == 0))
+                    && (decl.connective.clone() == Connective::NoConnective));
+                if is_parameterized_alias {
+                    match decl.inferred.clone().as_deref().cloned() {
+                        Some(InferredNode::Resolved {
+                            node: alias_body, ..
+                        }) => substitute_generics(
+                            alias_body.clone(),
+                            subst,
+                            env.source_indices.clone(),
+                        ),
+                        _ => target.clone(),
+                    }
+                } else {
+                    substitute_generics(decl.clone(), subst, env.source_indices.clone())
+                }
+            }
+        }
+    }
+}
+
+pub fn alias_chain_carrier(n: Rc<Node>) -> Rc<Node> {
+    if ((n.connective.clone() == Connective::NoConnective) && (n.name.clone() != "".to_string())) {
+        n.clone()
+    } else {
+        structural_from_expanded_type(n.clone())
+    }
+}
+
 pub fn expand_alias_chain_for_field_access(
     mut n: Rc<Node>,
     mut env: Rc<TypeEnv>,
@@ -5427,20 +5519,45 @@ pub fn expand_alias_chain_for_field_access(
         } else {
             n.clone()
         };
+        let carrier = alias_chain_carrier(peeled.clone());
         let structural =
-            structural_from_expanded_type(resolve_scrutinee_type_node(env.clone(), peeled));
+            structural_from_expanded_type(resolve_scrutinee_type_node(env.clone(), peeled.clone()));
         let is_record = ((structural.connective.clone() == Connective::Conj)
             || (structural.connective.clone() == Connective::Disj));
         if is_record {
+            let resolved_record =
+                if ((record_has_unresolved_param_field(structural.clone(), env.clone())
+                    && ((carrier.children.clone().len() as i64) > 0))
+                    && (carrier.name.clone() != "".to_string()))
+                {
+                    match lookup_type_by_name(env.clone(), carrier.name.clone()) {
+                        Some(target) => {
+                            let subst = alias_chain_type_arg_subst(
+                                env.clone(),
+                                carrier.clone(),
+                                target.clone(),
+                                carrier.children.clone(),
+                            );
+                            substitute_generics(
+                                structural.clone(),
+                                subst,
+                                env.source_indices.clone(),
+                            )
+                        }
+                        None => structural.clone(),
+                    }
+                } else {
+                    structural.clone()
+                };
             let fail_closed =
-                (lossy && record_has_unresolved_param_field(structural.clone(), env.clone()));
+                (lossy && record_has_unresolved_param_field(resolved_record.clone(), env.clone()));
             if fail_closed {
                 break nominal_type_ref(origin_name);
             } else {
-                break structural.clone();
+                break resolved_record.clone();
             }
         } else {
-            let next_name = structural.name.clone();
+            let next_name = carrier.name.clone();
             let is_optional = (structural.return_cardinality.clone() == Cardinality::CardOptional);
             let stop = ((is_optional || (next_name.clone() == "".to_string()))
                 || emit_map_has(seen.clone(), next_name.clone()));
@@ -5450,10 +5567,25 @@ pub fn expand_alias_chain_for_field_access(
                 match lookup_type_by_name(env.clone(), next_name.clone()) {
                     Some(target) => {
                         let next_seen = v1_rt::rc_map_insert(seen.clone(), next_name.clone(), true);
-                        let dropped_args = ((structural.children.clone().len() as i64) > 0);
-                        let next_lossy = (lossy || dropped_args);
+                        let type_arg_count = (carrier.children.clone().len() as i64);
+                        let decl =
+                            alias_chain_generic_decl(env.clone(), carrier.clone(), target.clone());
+                        let param_count = (decl.params.clone().len() as i64);
+                        let dropped_args = (((type_arg_count.clone() > 0)
+                            && (param_count.clone() > 0))
+                            && (param_count.clone() != type_arg_count.clone()));
+                        let next_lossy = (lossy || dropped_args.clone());
+                        let next_n = if ((type_arg_count.clone() > 0) && !dropped_args.clone()) {
+                            alias_chain_target_after_args(
+                                target.clone(),
+                                carrier.clone(),
+                                env.clone(),
+                            )
+                        } else {
+                            target.clone()
+                        };
                         {
-                            let __tco_0 = target.clone();
+                            let __tco_0 = next_n;
                             let __tco_1 = next_seen;
                             let __tco_2 = next_lossy;
                             n = __tco_0;
