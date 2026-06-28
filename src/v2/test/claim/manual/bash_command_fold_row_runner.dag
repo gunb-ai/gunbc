@@ -1,0 +1,17 @@
+module v2.test.manual.bash_command_fold_row_runner
+
+import std.realization_schedule { Runnable, RunnableSingleClaim }
+import v2.std.collection { List }
+
+data bash_fold_row_entry: String = "src/v2/test/claim/bash_command_fold_test.dag"
+
+fn bash_command_fold_row_plan() -> List<List<Runnable>> {
+  [
+    [
+      RunnableSingleClaim {
+        entry: bash_fold_row_entry,
+        function: "bash_fold_relation_row_true_witness_holds"
+      }
+    ]
+  ]
+}
