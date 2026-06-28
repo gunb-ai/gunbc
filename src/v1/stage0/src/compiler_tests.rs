@@ -1686,4 +1686,44 @@ mod compiler_tests {
             .join();
         result.expect("profile_reconcile_per_module panicked");
     }
+<<<<<<< HEAD
+=======
+
+    #[test]
+    fn contracts_sidecar_wired_into_emit_scope() {
+        let result = std::thread::Builder::new()
+            .stack_size(64 * 1024 * 1024)
+            .spawn(|| {
+                let entry_pairs = discover_dag_files("dsl/extdeps/llm");
+                let sources = std::rc::Rc::new(resolve_source_closure(entry_pairs, &["dsl"]));
+                let result = crate::v1_compiler_compile::compile_sources(
+                    sources,
+                    crate::v1_compiler_artifact::RenderTarget::Rust,
+                );
+                // AnthropicChatMessage is declared in extdeps.llm.anthropic, so its `tag = "role"`
+                // contract must merge into THAT module's emitted file. Match it exactly: the loose
+                // `contains("extdeps_llm_anthropic")` glob also matched the sibling `_errors`/`_rest`
+                // split-out modules (which don't declare it), and `.find()` grabbed the wrong one.
+                let anthropic_file = result
+                    .files
+                    .iter()
+                    .find(|f| f.path.ends_with("extdeps_llm_anthropic.rs"))
+                    .expect(
+                        "emitted file for extdeps.llm.anthropic not found — \
+                         module must be present in dsl/extdeps/llm source closure",
+                    );
+                assert!(
+                    anthropic_file.content.contains("#[serde(tag = \"role\""),
+                    "AnthropicChatMessage serde tag annotation must be present in emitted Rust — \
+                     contracts_items_for_module must be merged into emit scope; \
+                     missing from: {}\nfile content (first 2000 chars):\n{}",
+                    anthropic_file.path,
+                    &anthropic_file.content[..anthropic_file.content.len().min(2000)]
+                );
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result.expect("contracts_sidecar_wired_into_emit_scope panicked");
+    }
+>>>>>>> origin/main
 }

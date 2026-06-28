@@ -721,17 +721,17 @@ pub fn nominal_ref_node(
         name: name.clone(),
         span: span,
         ident_span: ident_span,
-        children: Rc::new(vec![]),
+        children: crate::v1_std_core::empty_node_list(),
         connective: Connective::NoConnective,
-        params: Rc::new(vec![]),
+        params: crate::v1_std_core::empty_node_list(),
         inferred: Some(Rc::new(InferredNode::Resolved {
             node: nominal_leaf_type(name.clone()),
         })),
         return_cardinality: Cardinality::Required,
-        uses: Rc::new(vec![]),
+        uses: crate::v1_std_core::empty_node_list(),
         body: None,
         transport: None,
-        properties: Rc::new(vec![]),
+        properties: crate::v1_std_core::empty_node_list(),
         type_annotation: None,
         is_self_recursive: false,
         has_non_tail_self_call: false,
@@ -1775,15 +1775,15 @@ pub fn type_variable_node(id: String) -> Rc<Node> {
         name: "".to_string(),
         span: make_span(0, 0),
         ident_span: None,
-        children: Rc::new(vec![]),
+        children: crate::v1_std_core::empty_node_list(),
         connective: Connective::NoConnective,
-        params: Rc::new(vec![]),
+        params: crate::v1_std_core::empty_node_list(),
         inferred: Some(Rc::new(InferredNode::TypeVariable { id: id })),
         return_cardinality: Cardinality::Required,
-        uses: Rc::new(vec![]),
+        uses: crate::v1_std_core::empty_node_list(),
         body: None,
         transport: None,
-        properties: Rc::new(vec![]),
+        properties: crate::v1_std_core::empty_node_list(),
         type_annotation: None,
         is_self_recursive: false,
         has_non_tail_self_call: false,
@@ -2449,15 +2449,15 @@ pub fn infer_method_args_with_fold(
                                     name: "".to_string(),
                                     span: no_span(),
                                     ident_span: None,
-                                    children: Rc::new(vec![]),
+                                    children: crate::v1_std_core::empty_node_list(),
                                     connective: Connective::NoConnective,
                                     params: fold_params.clone(),
                                     inferred: None,
                                     return_cardinality: Cardinality::Required,
-                                    uses: Rc::new(vec![]),
+                                    uses: crate::v1_std_core::empty_node_list(),
                                     body: None,
                                     transport: None,
-                                    properties: Rc::new(vec![]),
+                                    properties: crate::v1_std_core::empty_node_list(),
                                     type_annotation: None,
                                     is_self_recursive: false,
                                     has_non_tail_self_call: false,
@@ -5753,15 +5753,15 @@ pub fn infer_record_lit(
                             ),
                             span: fir.typed_field.clone().span.clone(),
                             ident_span: fir.typed_field.clone().ident_span.clone(),
-                            children: Rc::new(vec![]),
+                            children: crate::v1_std_core::empty_node_list(),
                             connective: Connective::NoConnective,
-                            params: Rc::new(vec![]),
+                            params: crate::v1_std_core::empty_node_list(),
                             inferred: fir.infer_result.clone().typed.clone().inferred.clone(),
                             return_cardinality: Cardinality::Required,
-                            uses: Rc::new(vec![]),
+                            uses: crate::v1_std_core::empty_node_list(),
                             body: None,
                             transport: None,
-                            properties: Rc::new(vec![]),
+                            properties: crate::v1_std_core::empty_node_list(),
                             type_annotation: None,
                             is_self_recursive: false,
                             has_non_tail_self_call: false,
@@ -5778,13 +5778,13 @@ pub fn infer_record_lit(
                     ident_span: None,
                     children: child_nodes,
                     connective: Connective::Conj,
-                    params: Rc::new(vec![]),
+                    params: crate::v1_std_core::empty_node_list(),
                     inferred: None,
                     return_cardinality: Cardinality::Required,
-                    uses: Rc::new(vec![]),
+                    uses: crate::v1_std_core::empty_node_list(),
                     body: None,
                     transport: None,
-                    properties: Rc::new(vec![]),
+                    properties: crate::v1_std_core::empty_node_list(),
                     type_annotation: None,
                     is_self_recursive: false,
                     has_non_tail_self_call: false,
@@ -8438,7 +8438,7 @@ make_arm_node(arm_pattern(arm_node.clone()), arm_guard(arm_node.clone()), annota
                 let threaded = body.children.clone().iter().cloned().fold(
                     Rc::new(BlockAnnotateAcc {
                         ctx: ctx.clone(),
-                        children: Rc::new(vec![]),
+                        children: crate::v1_std_core::empty_node_list(),
                     }),
                     |acc: Rc<BlockAnnotateAcc>, child: Rc<Node>| {
                         let annotated = annotate_descent(child.clone(), acc.ctx.clone());
@@ -10922,11 +10922,11 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                                 name: item.name.clone(),
                                 span: item.span.clone(),
                                 ident_span: item.ident_span.clone(),
-                                children: Rc::new(vec![]),
-                                params: Rc::new(vec![]),
+                                children: crate::v1_std_core::empty_node_list(),
+                                params: crate::v1_std_core::empty_node_list(),
                                 inferred: item.inferred.clone(),
                                 return_cardinality: item.return_cardinality.clone(),
-                                uses: Rc::new(vec![]),
+                                uses: crate::v1_std_core::empty_node_list(),
                                 body: Some(body_typed.clone()),
                                 connective: Connective::NoConnective,
                                 transport: typed_transport,
@@ -10971,11 +10971,11 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                                     name: item.name.clone(),
                                     span: item.span.clone(),
                                     ident_span: item.ident_span.clone(),
-                                    children: Rc::new(vec![]),
-                                    params: Rc::new(vec![]),
+                                    children: crate::v1_std_core::empty_node_list(),
+                                    params: crate::v1_std_core::empty_node_list(),
                                     inferred: inferred_ret,
                                     return_cardinality: item.return_cardinality.clone(),
-                                    uses: Rc::new(vec![]),
+                                    uses: crate::v1_std_core::empty_node_list(),
                                     body: Some(val_typed.clone()),
                                     connective: Connective::NoConnective,
                                     transport: typed_transport,
@@ -11624,15 +11624,15 @@ pub fn build_type_env(
                                 name: name.clone(),
                                 span: kernel_span(name.clone()),
                                 ident_span: Some(kernel_span(name.clone())),
-                                children: Rc::new(vec![]),
+                                children: crate::v1_std_core::empty_node_list(),
                                 connective: Connective::NoConnective,
-                                params: Rc::new(vec![]),
+                                params: crate::v1_std_core::empty_node_list(),
                                 inferred: None,
                                 return_cardinality: Cardinality::Required,
-                                uses: Rc::new(vec![]),
+                                uses: crate::v1_std_core::empty_node_list(),
                                 body: None,
                                 transport: None,
-                                properties: Rc::new(vec![]),
+                                properties: crate::v1_std_core::empty_node_list(),
                                 type_annotation: None,
                                 is_self_recursive: false,
                                 has_non_tail_self_call: false,
@@ -11655,15 +11655,15 @@ pub fn build_type_env(
                     name: "Unit".to_string(),
                     span: unit_span.clone(),
                     ident_span: Some(unit_span.clone()),
-                    children: Rc::new(vec![]),
+                    children: crate::v1_std_core::empty_node_list(),
                     connective: Connective::Conj,
-                    params: Rc::new(vec![]),
+                    params: crate::v1_std_core::empty_node_list(),
                     inferred: None,
                     return_cardinality: Cardinality::Required,
-                    uses: Rc::new(vec![]),
+                    uses: crate::v1_std_core::empty_node_list(),
                     body: None,
                     transport: None,
-                    properties: Rc::new(vec![]),
+                    properties: crate::v1_std_core::empty_node_list(),
                     type_annotation: None,
                     is_self_recursive: false,
                     has_non_tail_self_call: false,
@@ -11678,17 +11678,17 @@ pub fn build_type_env(
             name: "value".to_string(),
             span: kernel_span("value".to_string()),
             ident_span: Some(kernel_span("value".to_string())),
-            children: Rc::new(vec![]),
+            children: crate::v1_std_core::empty_node_list(),
             connective: Connective::NoConnective,
-            params: Rc::new(vec![]),
+            params: crate::v1_std_core::empty_node_list(),
             inferred: Some(Rc::new(InferredNode::TypeVariable {
                 id: "present_value".to_string(),
             })),
             return_cardinality: Cardinality::Required,
-            uses: Rc::new(vec![]),
+            uses: crate::v1_std_core::empty_node_list(),
             body: None,
             transport: None,
-            properties: Rc::new(vec![]),
+            properties: crate::v1_std_core::empty_node_list(),
             type_annotation: None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
@@ -11702,13 +11702,13 @@ pub fn build_type_env(
             ident_span: Some(kernel_span("Present".to_string())),
             children: Rc::new(vec![present_value_field]),
             connective: Connective::NoConnective,
-            params: Rc::new(vec![]),
+            params: crate::v1_std_core::empty_node_list(),
             inferred: None,
             return_cardinality: Cardinality::Required,
-            uses: Rc::new(vec![]),
+            uses: crate::v1_std_core::empty_node_list(),
             body: None,
             transport: None,
-            properties: Rc::new(vec![]),
+            properties: crate::v1_std_core::empty_node_list(),
             type_annotation: None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
@@ -11720,15 +11720,15 @@ pub fn build_type_env(
             name: "Absent".to_string(),
             span: kernel_span("Absent".to_string()),
             ident_span: Some(kernel_span("Absent".to_string())),
-            children: Rc::new(vec![]),
+            children: crate::v1_std_core::empty_node_list(),
             connective: Connective::NoConnective,
-            params: Rc::new(vec![]),
+            params: crate::v1_std_core::empty_node_list(),
             inferred: None,
             return_cardinality: Cardinality::Required,
-            uses: Rc::new(vec![]),
+            uses: crate::v1_std_core::empty_node_list(),
             body: None,
             transport: None,
-            properties: Rc::new(vec![]),
+            properties: crate::v1_std_core::empty_node_list(),
             type_annotation: None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
@@ -11742,13 +11742,13 @@ pub fn build_type_env(
             ident_span: Some(kernel_span("Optional".to_string())),
             children: Rc::new(vec![present_variant, absent_variant]),
             connective: Connective::Disj,
-            params: Rc::new(vec![]),
+            params: crate::v1_std_core::empty_node_list(),
             inferred: None,
             return_cardinality: Cardinality::Required,
-            uses: Rc::new(vec![]),
+            uses: crate::v1_std_core::empty_node_list(),
             body: None,
             transport: None,
-            properties: Rc::new(vec![]),
+            properties: crate::v1_std_core::empty_node_list(),
             type_annotation: None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
@@ -11942,7 +11942,7 @@ pub fn build_type_env(
                             params: item.params.clone(),
                             inferred: None,
                             return_cardinality: item.return_cardinality.clone(),
-                            uses: Rc::new(vec![]),
+                            uses: crate::v1_std_core::empty_node_list(),
                             body: None,
                             transport: None,
                             properties: item.properties.clone(),
@@ -11973,15 +11973,15 @@ pub fn build_type_env(
                                 name: item.name.clone(),
                                 span: item.span.clone(),
                                 ident_span: item.ident_span.clone(),
-                                children: Rc::new(vec![]),
+                                children: crate::v1_std_core::empty_node_list(),
                                 connective: Connective::NoConnective,
-                                params: Rc::new(vec![]),
+                                params: crate::v1_std_core::empty_node_list(),
                                 inferred: item.inferred.clone(),
                                 return_cardinality: item.return_cardinality.clone(),
-                                uses: Rc::new(vec![]),
+                                uses: crate::v1_std_core::empty_node_list(),
                                 body: None,
                                 transport: None,
-                                properties: Rc::new(vec![]),
+                                properties: crate::v1_std_core::empty_node_list(),
                                 type_annotation: None,
                                 is_self_recursive: false,
                                 has_non_tail_self_call: false,
@@ -12033,15 +12033,15 @@ pub fn build_type_env(
                                         name: item.name.clone(),
                                         span: item.span.clone(),
                                         ident_span: item.ident_span.clone(),
-                                        children: Rc::new(vec![]),
+                                        children: crate::v1_std_core::empty_node_list(),
                                         connective: Connective::NoConnective,
                                         params: item.params.clone(),
                                         inferred: item.inferred.clone(),
                                         return_cardinality: item.return_cardinality.clone(),
-                                        uses: Rc::new(vec![]),
+                                        uses: crate::v1_std_core::empty_node_list(),
                                         body: None,
                                         transport: None,
-                                        properties: Rc::new(vec![]),
+                                        properties: crate::v1_std_core::empty_node_list(),
                                         type_annotation: None,
                                         is_self_recursive: false,
                                         has_non_tail_self_call: false,
@@ -12271,15 +12271,15 @@ pub fn build_type_env_unresolved(
                                 name: name.clone(),
                                 span: kernel_span(name.clone()),
                                 ident_span: Some(kernel_span(name.clone())),
-                                children: Rc::new(vec![]),
+                                children: crate::v1_std_core::empty_node_list(),
                                 connective: Connective::NoConnective,
-                                params: Rc::new(vec![]),
+                                params: crate::v1_std_core::empty_node_list(),
                                 inferred: None,
                                 return_cardinality: Cardinality::Required,
-                                uses: Rc::new(vec![]),
+                                uses: crate::v1_std_core::empty_node_list(),
                                 body: None,
                                 transport: None,
-                                properties: Rc::new(vec![]),
+                                properties: crate::v1_std_core::empty_node_list(),
                                 type_annotation: None,
                                 is_self_recursive: false,
                                 has_non_tail_self_call: false,
@@ -12296,17 +12296,17 @@ pub fn build_type_env_unresolved(
             name: "value".to_string(),
             span: kernel_span("value".to_string()),
             ident_span: Some(kernel_span("value".to_string())),
-            children: Rc::new(vec![]),
+            children: crate::v1_std_core::empty_node_list(),
             connective: Connective::NoConnective,
-            params: Rc::new(vec![]),
+            params: crate::v1_std_core::empty_node_list(),
             inferred: Some(Rc::new(InferredNode::TypeVariable {
                 id: "present_value".to_string(),
             })),
             return_cardinality: Cardinality::Required,
-            uses: Rc::new(vec![]),
+            uses: crate::v1_std_core::empty_node_list(),
             body: None,
             transport: None,
-            properties: Rc::new(vec![]),
+            properties: crate::v1_std_core::empty_node_list(),
             type_annotation: None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
@@ -12320,13 +12320,13 @@ pub fn build_type_env_unresolved(
             ident_span: Some(kernel_span("Present".to_string())),
             children: Rc::new(vec![present_value_field]),
             connective: Connective::NoConnective,
-            params: Rc::new(vec![]),
+            params: crate::v1_std_core::empty_node_list(),
             inferred: None,
             return_cardinality: Cardinality::Required,
-            uses: Rc::new(vec![]),
+            uses: crate::v1_std_core::empty_node_list(),
             body: None,
             transport: None,
-            properties: Rc::new(vec![]),
+            properties: crate::v1_std_core::empty_node_list(),
             type_annotation: None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
@@ -12338,15 +12338,15 @@ pub fn build_type_env_unresolved(
             name: "Absent".to_string(),
             span: kernel_span("Absent".to_string()),
             ident_span: Some(kernel_span("Absent".to_string())),
-            children: Rc::new(vec![]),
+            children: crate::v1_std_core::empty_node_list(),
             connective: Connective::NoConnective,
-            params: Rc::new(vec![]),
+            params: crate::v1_std_core::empty_node_list(),
             inferred: None,
             return_cardinality: Cardinality::Required,
-            uses: Rc::new(vec![]),
+            uses: crate::v1_std_core::empty_node_list(),
             body: None,
             transport: None,
-            properties: Rc::new(vec![]),
+            properties: crate::v1_std_core::empty_node_list(),
             type_annotation: None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
@@ -12360,13 +12360,13 @@ pub fn build_type_env_unresolved(
             ident_span: Some(kernel_span("Optional".to_string())),
             children: Rc::new(vec![present_variant, absent_variant]),
             connective: Connective::Disj,
-            params: Rc::new(vec![]),
+            params: crate::v1_std_core::empty_node_list(),
             inferred: None,
             return_cardinality: Cardinality::Required,
-            uses: Rc::new(vec![]),
+            uses: crate::v1_std_core::empty_node_list(),
             body: None,
             transport: None,
-            properties: Rc::new(vec![]),
+            properties: crate::v1_std_core::empty_node_list(),
             type_annotation: None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
@@ -12500,13 +12500,13 @@ pub fn build_type_env_unresolved(
                             ident_span: item.ident_span.clone(),
                             children: item.children.clone(),
                             connective: item.connective.clone(),
-                            params: Rc::new(vec![]),
+                            params: crate::v1_std_core::empty_node_list(),
                             inferred: None,
                             return_cardinality: item.return_cardinality.clone(),
-                            uses: Rc::new(vec![]),
+                            uses: crate::v1_std_core::empty_node_list(),
                             body: None,
                             transport: None,
-                            properties: Rc::new(vec![]),
+                            properties: crate::v1_std_core::empty_node_list(),
                             type_annotation: None,
                             is_self_recursive: false,
                             has_non_tail_self_call: false,
@@ -12534,15 +12534,15 @@ pub fn build_type_env_unresolved(
                                 name: item.name.clone(),
                                 span: item.span.clone(),
                                 ident_span: item.ident_span.clone(),
-                                children: Rc::new(vec![]),
+                                children: crate::v1_std_core::empty_node_list(),
                                 connective: Connective::NoConnective,
-                                params: Rc::new(vec![]),
+                                params: crate::v1_std_core::empty_node_list(),
                                 inferred: item.inferred.clone(),
                                 return_cardinality: item.return_cardinality.clone(),
-                                uses: Rc::new(vec![]),
+                                uses: crate::v1_std_core::empty_node_list(),
                                 body: None,
                                 transport: None,
-                                properties: Rc::new(vec![]),
+                                properties: crate::v1_std_core::empty_node_list(),
                                 type_annotation: None,
                                 is_self_recursive: false,
                                 has_non_tail_self_call: false,
@@ -12936,67 +12936,138 @@ pub fn build_module_context(
             Rc::new(vec![]),
             env.source_indices.clone(),
         );
-        let imported_enum_names = resolved_imports.clone().iter().cloned().fold(
-            v1_rt::rc_empty_map::<String, bool>(),
-            |acc: Rc<HashMap<String, bool>>, imp: Rc<ResolvedImport>| {
-                imp.specific_names.clone().iter().cloned().fold(
-                    acc,
-                    |inner: Rc<HashMap<String, bool>>, n: String| {
-                        v1_rt::rc_map_insert(inner, n.clone(), true)
-                    },
-                )
+        // Build per-variant disambiguation: variant_name → Some(unique parent enum in source
+        // module) when the import unambiguously identifies the owning coproduct, else None.
+        // Uses the SOURCE module's LOCALLY-DEFINED items (not the transitive type_env.bindings)
+        // so that transitive imports don't pollute the lookup. E.g.:
+        //   `import std.cache_interface { ApiKey }` → AuthScope (local to cache_interface),
+        //     not AuthScheme (from std.types which transits in via std.cache_interface).
+        //   `import v2.std.collection { Absent, Present }` → Optional (local to collection),
+        //     not NamedEdgeTargetLookup (from v2.std.node which transits in).
+        let imported_variants: HashMap<String, Option<String>> = {
+            let mut map: HashMap<String, Option<String>> = HashMap::new();
+            for imp in resolved_imports.iter().cloned() {
+                let source_items: Vec<Rc<Node>> =
+                    match v1_rt::map_get(&parent_index, imp.module_path.clone()) {
+                        Some(parent_tm) => (*parent_tm.items).clone(),
+                        None => vec![],
+                    };
+                for variant_name in imp.specific_names.iter().cloned() {
+                    if map.contains_key(&variant_name) {
+                        continue;
+                    }
+                    let parents: Vec<String> = source_items
+                        .iter()
+                        .filter(|item| item.connective == Connective::Disj)
+                        .filter_map(|item| {
+                            let has_child = item.children.iter().any(|c| {
+                                authored_name_at(env.source_indices.clone(), c.clone())
+                                    == variant_name
+                            });
+                            if has_child {
+                                Some(authored_name_at(
+                                    env.source_indices.clone(),
+                                    (*item).clone(),
+                                ))
+                            } else {
+                                None
+                            }
+                        })
+                        .collect();
+                    let unique = if parents.len() == 1 {
+                        Some(parents.into_iter().next().unwrap())
+                    } else {
+                        None
+                    };
+                    map.insert(variant_name, unique);
+                }
+            }
+            map
+        };
+        let variant_fold = {
+            let mut bindings_sorted = v1_rt::map_values(&env.bindings.clone());
+            bindings_sorted.sort_by(|a, b| a.name.cmp(&b.name));
+            bindings_sorted
+        }
+        .iter()
+        .cloned()
+        .fold(
+            Rc::new(VariantFoldState {
+                locals: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
+                collision_errors: Rc::new(vec![]),
+            }),
+            |acc: Rc<VariantFoldState>, binding: Rc<TypeBinding>| {
+                let is_coproduct =
+                    (binding.resolved.clone().connective.clone() == Connective::Disj);
+                if is_coproduct.clone() {
+                    {
+                        let binding_enum_name =
+                            authored_name_at(env.source_indices.clone(), binding.resolved.clone());
+                        binding
+                            .resolved
+                            .clone()
+                            .children
+                            .clone()
+                            .iter()
+                            .cloned()
+                            .fold(
+                                acc.clone(),
+                                |vacc: Rc<VariantFoldState>, child: Rc<Node>| {
+                                    let child_name =
+                                        authored_name_at(env.source_indices.clone(), child.clone());
+                                    // Per-child check: is this enum the unambiguous owner of
+                                    // this specific variant name in its source module?
+                                    let curr_child_is_imported = imported_variants
+                                        .get(&child_name)
+                                        .and_then(|opt| opt.as_ref())
+                                        .map(|unique_parent| {
+                                            unique_parent.as_str() == binding_enum_name.as_str()
+                                        })
+                                        .unwrap_or(false);
+                                    match v1_rt::map_get(&vacc.locals.clone(), child_name.clone()) {
+                                        Some(_prev) => {
+                                            if curr_child_is_imported {
+                                                Rc::new(VariantFoldState {
+                                                    locals: v1_rt::rc_map_insert(
+                                                        vacc.locals.clone(),
+                                                        child_name.clone(),
+                                                        Rc::new(TypeBinding {
+                                                            name: child_name.clone(),
+                                                            resolved: binding.resolved.clone(),
+                                                            provenance: Rc::new(
+                                                                SubValueRelation::SubValueUnknown,
+                                                            ),
+                                                        }),
+                                                    ),
+                                                    collision_errors: vacc.collision_errors.clone(),
+                                                })
+                                            } else {
+                                                vacc.clone()
+                                            }
+                                        }
+                                        None => Rc::new(VariantFoldState {
+                                            locals: v1_rt::rc_map_insert(
+                                                vacc.locals.clone(),
+                                                child_name.clone(),
+                                                Rc::new(TypeBinding {
+                                                    name: child_name.clone(),
+                                                    resolved: binding.resolved.clone(),
+                                                    provenance: Rc::new(
+                                                        SubValueRelation::SubValueUnknown,
+                                                    ),
+                                                }),
+                                            ),
+                                            collision_errors: vacc.collision_errors.clone(),
+                                        }),
+                                    }
+                                },
+                            )
+                    }
+                } else {
+                    acc.clone()
+                }
             },
         );
-        let variant_fold = Rc::new(v1_rt::map_values(&env.bindings.clone())).iter().cloned().fold(Rc::new(VariantFoldState {
-    locals: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
-    collision_errors: Rc::new(vec![]),
-}), |acc: Rc<VariantFoldState>, binding: Rc<TypeBinding>| {
-            let is_coproduct = (binding.resolved.clone().connective.clone() == Connective::Disj);
-if is_coproduct.clone() {
-                {
-                    let curr_is_imported = (v1_rt::map_get(&imported_enum_names, authored_name_at(env.source_indices.clone(), binding.resolved.clone())) != None);
-binding.resolved.clone().children.clone().iter().cloned().fold(acc.clone(), |vacc: Rc<VariantFoldState>, child: Rc<Node>| match v1_rt::map_get(&vacc.locals.clone(), authored_name_at(env.source_indices.clone(), child.clone())) {
-    Some(prev) => {
-                        let prev_is_imported = (v1_rt::map_get(&imported_enum_names, authored_name_at(env.source_indices.clone(), prev.resolved.clone())) != None);
-if (curr_is_imported.clone() && prev_is_imported.clone()) {
-                            Rc::new(VariantFoldState {
-    locals: vacc.locals.clone(),
-    collision_errors: v1_rt::rc_list_push(vacc.collision_errors.clone(), make_error_node(Rc::new(CompilerDiagnostic::VariantCollision {
-    variant: authored_name_at(env.source_indices.clone(), child.clone()),
-    enum1: authored_name_at(env.source_indices.clone(), prev.resolved.clone()),
-    enum2: authored_name_at(env.source_indices.clone(), binding.resolved.clone()),
-    span: no_span(),
-}), module_name.clone())),
-})
-                        } else {
-                            if curr_is_imported.clone() {
-                                Rc::new(VariantFoldState {
-    locals: v1_rt::rc_map_insert(vacc.locals.clone(), authored_name_at(env.source_indices.clone(), child.clone()), Rc::new(TypeBinding {
-    name: authored_name_at(env.source_indices.clone(), child.clone()),
-    resolved: binding.resolved.clone(),
-    provenance: Rc::new(SubValueRelation::SubValueUnknown),
-})),
-    collision_errors: vacc.collision_errors.clone(),
-})
-                            } else {
-                                vacc.clone()
-                            }
-                        }
-},
-    None => Rc::new(VariantFoldState {
-    locals: v1_rt::rc_map_insert(vacc.locals.clone(), authored_name_at(env.source_indices.clone(), child.clone()), Rc::new(TypeBinding {
-    name: authored_name_at(env.source_indices.clone(), child.clone()),
-    resolved: binding.resolved.clone(),
-    provenance: Rc::new(SubValueRelation::SubValueUnknown),
-})),
-    collision_errors: vacc.collision_errors.clone(),
-}),
-})
-}
-            } else {
-                acc.clone()
-            }
-});
         let imported_variant_locals = variant_fold.locals.clone();
         let variant_collision_errors = variant_fold.collision_errors.clone();
         let env_variant_locals = variant_locals_from_items(

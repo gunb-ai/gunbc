@@ -100,6 +100,8 @@ A flaky or green-but-broken floor means no gate protects anything — so CI is u
 
 **The <1min lever is resolve-phase incrementality, NOT cross-run resolve-cache** — CI is cold-dominated (the exe-hash re-colds on every code change), so §2 P3 resolve-cache is the *warm* ~18% lever and was measured net-negative as the cold-CI path. Incrementality (don't resolve what didn't change) is upstream of caching (memoize what repeats); the <1min target rides the former. **This re-frames the §2 "core ask" — operator review.**
 
+→ [resolved-graph representation minimization](docs/plans/representation-minimization.md) — operator-funded root-first leanness after the #5867 InternTable fix (whole-tree resolve 14.2 to 5.5 GiB): emitter-determinism gate, stream/evict (Lever C — converges with resolve-incrementality above), variant-Node minimal representation, func_env.sigs single-authority. Gated on the root-vs-doomed-seed discriminator (v1 is going away).
+
 **What's on `.dag` today (the gap map — detail in the charter §2/§4):**
 
 - [x] **execution = a dependency-graph walk** — `claim_executor` interprets `ci_floor_plan.dag`; one fold, batches from dependency edges (the realest layer)
