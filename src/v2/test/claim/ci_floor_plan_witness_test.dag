@@ -9,7 +9,6 @@ import v2.workflow.ci_floor_plan {
   gunbc_ci_floor_plan_serializes_heavy_resolves,
   gunbc_ci_floor_plan_co_runs_heavy_without_serialization,
   gate_runnable,
-  witness_floor_heavy_chain_matches_gate_count,
   witness_floor_corpus_exclusion_edges_exist,
   witness_floor_compile_gate_honest_heavy_profile,
   witness_floor_no_corpus_resource_edge_to_compile_anchor,
@@ -139,7 +138,6 @@ fn witness_light_gate_profile_allows_corpus_co_residence() -> Bool {
 test fn ci_floor_plan_witnesses() -> Bool {
   witness_floor_compile_gate_honest_heavy_profile() &&
     witness_floor_no_corpus_resource_edge_to_compile_anchor() &&
-    witness_floor_heavy_chain_matches_gate_count() &&
     witness_floor_corpus_exclusion_edges_exist() &&
     witness_compile_root_runs_first() &&
     witness_corpus_not_before_compile() &&

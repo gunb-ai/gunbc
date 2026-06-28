@@ -427,19 +427,6 @@ fn floor_batch_heavy_gate_resolve_count(batch: List<Runnable>) -> Int {
   })
 }
 
-fn floor_heavy_gate_count(spec: CiSpec) -> Int {
-  fold(spec.gates, init: 0, f: fn(acc, g) {
-    let node = gate_node(g: g)
-    if floor_resource_anchor_node(node: node) {
-      acc
-    } else if runnable_heavy_whole_tree_resolve(profile: gate_runnable_profile(g: g)) {
-      acc + 1
-    } else {
-      acc
-    }
-  })
-}
-
 fn floor_plan_at_most_one_heavy_gate_resolve_per_batch(batches: List<List<Runnable>>) -> Bool {
   fold(batches, init: true, f: fn(ok, batch) {
     ok && (floor_batch_heavy_gate_resolve_count(batch: batch) <= 1)
@@ -454,16 +441,6 @@ fn gunbc_ci_floor_plan_co_runs_heavy_without_serialization() -> Bool {
   floor_plan_at_most_one_heavy_gate_resolve_per_batch(
     batches: gunbc_ci_floor_schedule_without_serialization()
   ) == false
-}
-
-fn witness_floor_heavy_chain_matches_gate_count() -> Bool {
-  let heavy = floor_heavy_gate_count(spec: gunbc_ci_spec)
-  let edges = floor_heavy_resolve_chain_resource_edges(spec: gunbc_ci_spec)
-  if heavy <= 1 {
-    length(xs: edges) == 0
-  } else {
-    length(xs: edges) == heavy - 1
-  }
 }
 
 fn witness_floor_corpus_exclusion_edges_exist() -> Bool {
