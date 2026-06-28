@@ -3503,7 +3503,10 @@ fn eval_service_call(
             return crate::recorded_fixture::value_from_fixture_json(&fixture.response, ctx)
                 .map_err(|e| InterpError::TypeError { msg: e.to_string() });
         }
-        eprintln!("[hermetic:mock] {}.{}", service_name, op_name);
+        trace_emit(
+            OutputChannel::Instrumentation,
+            &format!("[hermetic:mock] {}.{}", service_name, op_name),
+        );
         return eval_mock_response(op_node, ctx);
     }
 
@@ -3802,15 +3805,71 @@ pub fn cli_verbosity() -> Verbosity {
     })
 }
 
-// The funnel for the ShellTrace channel. Applies the `gunbc.output_policy`
-// ShellTrace row: Quiet => Suppressed, Normal => Condensed (one concise line),
-// Verbose => Full (the verbatim multiline argv). Keeps CI logs readable instead
-// of dumping every `sh -c` script.
+/// The output channels of `gunbc.output_policy.OutputChannel`, as a carrier so
+/// host-effect trace sites can name which channel they belong to. The *decision*
+/// for each channel is NOT computed here — it is evaluated from the .dag authority
+/// (`channel_decision` via `resolve_channel_policy`) by the entry binary and
+/// installed with `set_output_policy`. Order matches the index used in the policy
+/// array below.
+#[derive(Clone, Copy, PartialEq)]
+pub enum OutputChannel {
+    Diagnostic = 0,
+    ClaimResult = 1,
+    Progress = 2,
+    ShellTrace = 3,
+    Instrumentation = 4,
+}
+
+/// Carrier for `gunbc.output_policy.OutputDecision`. The mapping from a channel +
+/// verbosity to one of these lives entirely in the .dag authority; this enum only
+/// transports the evaluated verdict across the seed↔.dag boundary.
+#[derive(Clone, Copy, PartialEq)]
+pub enum OutputDecision {
+    Suppressed,
+    Condensed,
+    Full,
+}
+
+static OUTPUT_POLICY: std::sync::OnceLock<[OutputDecision; 5]> = std::sync::OnceLock::new();
+
+/// Install the per-channel decisions the entry binary evaluated from
+/// `gunbc.output_policy.resolve_channel_policy`. Set once at startup (before
+/// discovery threads spawn), read process-wide. Idempotent: a second call is a
+/// no-op (the first install wins).
+pub fn set_output_policy(decisions: [OutputDecision; 5]) {
+    let _ = OUTPUT_POLICY.set(decisions);
+}
+
+/// The installed decision for a channel. Falls back to `Full` (emit everything —
+/// the pre-funnel behavior) when no entry binary has installed a policy, so bins
+/// that don't opt in are unaffected.
+pub fn output_decision(channel: OutputChannel) -> OutputDecision {
+    match OUTPUT_POLICY.get() {
+        Some(p) => p[channel as usize],
+        None => OutputDecision::Full,
+    }
+}
+
+/// Emit a host-effect trace line under its channel's installed decision:
+/// Suppressed drops it, Condensed prints a dim indented summary, Full prints it
+/// verbatim. The decision is the .dag authority's, not a Rust re-derivation.
+fn trace_emit(channel: OutputChannel, line: &str) {
+    match output_decision(channel) {
+        OutputDecision::Suppressed => {}
+        OutputDecision::Condensed => eprintln!("{}", paint(&format!("  {line}"), sgr::DIM)),
+        OutputDecision::Full => eprintln!("{}", line),
+    }
+}
+
+// The funnel for the ShellTrace channel. Consumes the installed
+// `gunbc.output_policy` ShellTrace decision (Suppressed / Condensed / Full)
+// rather than re-deriving it from verbosity — keeps CI logs readable instead of
+// dumping every `sh -c` script.
 fn render_shell_trace(argv: &[String]) {
-    match cli_verbosity() {
-        Verbosity::Quiet => {}
-        Verbosity::Verbose => eprintln!("[shell] {}", argv.join(" ")),
-        Verbosity::Normal => {
+    match output_decision(OutputChannel::ShellTrace) {
+        OutputDecision::Suppressed => {}
+        OutputDecision::Full => eprintln!("[shell] {}", argv.join(" ")),
+        OutputDecision::Condensed => {
             // Collapse newlines/runs of whitespace into a single readable line,
             // then truncate so a multiline `sh -c` script is one tidy summary.
             let collapsed: String = argv
@@ -3993,7 +4052,10 @@ fn dispatch_file(
             }
         };
         let byte_count = content.len() as i64;
-        eprintln!("[file] write {} ({} bytes)", path, byte_count);
+        trace_emit(
+            OutputChannel::ShellTrace,
+            &format!("[file] write {} ({} bytes)", path, byte_count),
+        );
         match std::fs::write(&path, content.as_bytes()) {
             Ok(()) => Ok(FileResult {
                 success: true,
@@ -4011,7 +4073,10 @@ fn dispatch_file(
             }),
         }
     } else {
-        eprintln!("[file] read {}", path);
+        trace_emit(
+            OutputChannel::Instrumentation,
+            &format!("[file] read {}", path),
+        );
         match std::fs::read_to_string(&path) {
             Ok(s) => Ok(FileResult {
                 success: true,
@@ -4184,7 +4249,10 @@ fn dispatch_rest(
     )
     .unwrap_or_else(|| "Json".to_string());
 
-    eprintln!("[rest] {} {}", method, url);
+    trace_emit(
+        OutputChannel::ShellTrace,
+        &format!("[rest] {} {}", method, url),
+    );
 
     let mut request = match method.as_str() {
         "GET" => ureq::get(&url),

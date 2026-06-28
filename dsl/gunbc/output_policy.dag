@@ -64,6 +64,28 @@ fn channel_decision(channel: OutputChannel, verbosity: Verbosity) -> OutputDecis
   }
 }
 
+type ChannelPolicy {
+  diagnostic: OutputDecision
+  claim_result: OutputDecision
+  progress: OutputDecision
+  shell_trace: OutputDecision
+  instrumentation: OutputDecision
+}
+
+fn channel_policy(verbosity: Verbosity) -> ChannelPolicy {
+  ChannelPolicy {
+    diagnostic: channel_decision(channel: Diagnostic, verbosity: verbosity)
+    claim_result: channel_decision(channel: ClaimResult, verbosity: verbosity)
+    progress: channel_decision(channel: Progress, verbosity: verbosity)
+    shell_trace: channel_decision(channel: ShellTrace, verbosity: verbosity)
+    instrumentation: channel_decision(channel: Instrumentation, verbosity: verbosity)
+  }
+}
+
+fn resolve_channel_policy(verbose: Bool, quiet: Bool) -> ChannelPolicy {
+  channel_policy(verbosity: resolve_verbosity(env: VerbosityEnv { verbose: verbose, quiet: quiet }))
+}
+
 fn is_emitted(channel: OutputChannel, verbosity: Verbosity) -> Bool {
   match channel_decision(channel: channel, verbosity: verbosity) {
     Suppressed => false
