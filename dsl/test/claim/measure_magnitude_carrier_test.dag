@@ -9,8 +9,6 @@ import std.measure {
   Micro,
   celsius,
   celsius_count,
-}
-import product.compute_fabric {
   money_micros,
   money_micros_count,
 }

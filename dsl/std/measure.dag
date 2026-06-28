@@ -289,3 +289,15 @@ fn percent(count: Nat) -> Percent {
 fn percent_count(p: Percent) -> Nat {
   measure_count(p)
 }
+
+type MoneyMicros = MoneyAmount<Micro>
+
+fn money_micros(count: Nat) -> MoneyMicros {
+  MoneyMicros { count: count }
+}
+
+fn money_micros_count(m: MoneyMicros) -> Nat {
+  measure_count(m)
+}
+
+type Duration = Measure<Time, One, Nat>

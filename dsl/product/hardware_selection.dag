@@ -16,8 +16,6 @@ import std.measure {
   watt,
   watt_count,
   Bandwidth,
-}
-import product.compute_fabric {
   MoneyMicros,
   money_micros,
   money_micros_count,
