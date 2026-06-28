@@ -36,7 +36,6 @@ import v2.std.compilers.lexing {
 }
 import v2.std.compilers.target_model {
   TargetModel,
-  target_model_emit_transforms_empty,
   target_model_make_with_emit_transforms
 }
 import v2.std.diagnostic {
@@ -518,6 +517,8 @@ fn bash_fold_lex() -> LexRules {
   ModeledLexRules { root: bash_fold_lex_rules() }
 }
 
+data bash_fold_word_kind_marker_dissolution_trigger: String = "🟡 dissolve-on: phantom \\u{0000}/\\u{0001} kind-marker lex bytes and zero-width bash_fold_kind_emit_transform are replaced by real bash word-class lexing that disambiguates lit vs var without sentinel bytes"
+
 fn bash_fold_kind_emit_transform(spelling: String) -> String {
   ""
 }
@@ -608,67 +609,6 @@ fn bash_fold_target_model_for_stmt_witness(stmt: ShellStmt) -> Witness<TargetMod
   }
 }
 
-fn bash_fold_fixture_target_model(
-  emitted: Node,
-  source_literal: Symbol,
-  source_text: String,
-  production_binding: Symbol,
-  rule_name: Symbol
-) -> TargetModel {
-  match bash_fold_target_model_for_emitted_witness(
-    emitted: emitted,
-    source_literal: source_literal,
-    source_text: source_text,
-    production_binding: production_binding,
-    rule_name: rule_name
-  ) {
-    Holds { value: target } => target
-    Violates { diagnostic: _ } =>
-      target_model_make_with_emit_transforms(
-        bundle: Node {
-          kind: TypeNode { connective: Conj },
-          children: [],
-          occurrence_id: SyntheticOccurrence
-        },
-        lex: bash_fold_lex(),
-        binding_spellings: empty_map(),
-        token_class_emit_transforms: target_model_emit_transforms_empty,
-        authority_source_text: "",
-        runtime_row: target_emit_host_runtime_row_unconfigured
-      )
-  }
-}
-
-fn bash_fold_cmd_true_target_model() -> TargetModel {
-  bash_fold_fixture_target_model(
-    emitted: bash_fold_cmd_true_emitted,
-    source_literal: ^bash_fold_cmd_true_source_literal,
-    source_text: "'true'",
-    production_binding: ^bash_production_fold_command,
-    rule_name: ^bash_relation_rule_fold_command
-  )
-}
-
-fn bash_fold_cmd_echo_hi_target_model() -> TargetModel {
-  bash_fold_fixture_target_model(
-    emitted: bash_fold_cmd_echo_hi_emitted,
-    source_literal: ^bash_fold_cmd_echo_hi_source_literal,
-    source_text: "'echo' 'hi'",
-    production_binding: ^bash_production_fold_command,
-    rule_name: ^bash_relation_rule_fold_command
-  )
-}
-
-fn bash_fold_cmd_var_x_target_model() -> TargetModel {
-  bash_fold_fixture_target_model(
-    emitted: bash_fold_cmd_var_x_emitted,
-    source_literal: ^bash_fold_cmd_var_x_source_literal,
-    source_text: "\"$X\"",
-    production_binding: ^bash_production_fold_command,
-    rule_name: ^bash_relation_rule_fold_command
-  )
-}
-
 data bash_fold_cmd_true_wrong_emitted: Node = bash_fold_command_emitted(
   words: bash_fold_command_words_single_emitted(
     word: bash_fold_word_lit_emitted(text: "echo")
@@ -736,8 +676,8 @@ data bash_fold_assign_wrong_emitted: Node = Node {
   occurrence_id: SyntheticOccurrence
 }
 
-fn bash_fold_cmd_true_wrong_target_model() -> TargetModel {
-  bash_fold_fixture_target_model(
+fn bash_fold_cmd_true_wrong_target_model_witness() -> Witness<TargetModel> {
+  bash_fold_target_model_for_emitted_witness(
     emitted: bash_fold_cmd_true_wrong_emitted,
     source_literal: ^bash_fold_cmd_true_wrong_source_literal,
     source_text: "'echo'",
@@ -746,8 +686,8 @@ fn bash_fold_cmd_true_wrong_target_model() -> TargetModel {
   )
 }
 
-fn bash_fold_exit_wrong_target_model() -> TargetModel {
-  bash_fold_fixture_target_model(
+fn bash_fold_exit_wrong_target_model_witness() -> Witness<TargetModel> {
+  bash_fold_target_model_for_emitted_witness(
     emitted: bash_fold_exit_wrong_emitted,
     source_literal: ^bash_fold_exit_wrong_source_literal,
     source_text: "exit 0",
@@ -756,8 +696,8 @@ fn bash_fold_exit_wrong_target_model() -> TargetModel {
   )
 }
 
-fn bash_fold_assign_wrong_target_model() -> TargetModel {
-  bash_fold_fixture_target_model(
+fn bash_fold_assign_wrong_target_model_witness() -> Witness<TargetModel> {
+  bash_fold_target_model_for_emitted_witness(
     emitted: bash_fold_assign_wrong_emitted,
     source_literal: ^bash_fold_assign_wrong_source_literal,
     source_text: "FOO='baz'",

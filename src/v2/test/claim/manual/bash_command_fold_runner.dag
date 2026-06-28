@@ -3,7 +3,7 @@ module v2.test.manual.bash_command_fold_runner
 import std.realization_schedule { Runnable, RunnableSingleClaim }
 import v2.std.collection { List }
 
-data bash_fold_test_entry: String = "src/v2/test/claim/manual/bash_command_fold_test.dag"
+data bash_fold_test_entry: String = "src/v2/test/claim/bash_command_fold_test.dag"
 
 fn bash_command_fold_plan() -> List<List<Runnable>> {
   [

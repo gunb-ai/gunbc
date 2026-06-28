@@ -1,4 +1,4 @@
-module v2.test.manual.bash_command_fold
+module v2.test.claim.bash_command_fold
 
 import extdeps.languages.bash.program {
   Assign,
@@ -13,13 +13,13 @@ import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import v2.compiler.translate { target_serialize_source_from_model }
 import v2.extdeps.languages.bash_command_fold {
-  bash_fold_assign_wrong_target_model,
+  bash_fold_assign_wrong_target_model_witness,
   bash_fold_cmd_echo_hi_emitted,
   bash_fold_cmd_true_emitted,
   bash_fold_cmd_true_wrong_emitted,
-  bash_fold_cmd_true_wrong_target_model,
+  bash_fold_cmd_true_wrong_target_model_witness,
   bash_fold_cmd_var_x_emitted,
-  bash_fold_exit_wrong_target_model,
+  bash_fold_exit_wrong_target_model_witness,
   bash_fold_relation_row_witness,
   bash_fold_stmt_emitted_witness,
   bash_fold_target_model_for_stmt_witness
@@ -135,12 +135,13 @@ test fn bash_fold_command_arbitrary_lit_quote_escape_holds() -> Bool {
 
 fn bash_fold_wrong_production_oracle_mismatch_holds() -> Bool {
   let stmt = Command { words: [Lit { text: "true" }] }
-  match bash_fold_fold_serialize(
-    stmt: stmt,
-    target: bash_fold_cmd_true_wrong_target_model()
-  ) {
-    Accepted { value: folded, diagnostics: _ } => folded != serialize_stmt(s: stmt)
-    Rejected { diagnostics: _ } => true
+  match bash_fold_cmd_true_wrong_target_model_witness() {
+    Holds { value: target } =>
+      match bash_fold_fold_serialize(stmt: stmt, target: target) {
+        Accepted { value: folded, diagnostics: _ } => folded != serialize_stmt(s: stmt)
+        Rejected { diagnostics: _ } => true
+      }
+    Violates { diagnostic: _ } => false
   }
 }
 
@@ -201,11 +202,15 @@ test fn bash_fold_emitted_tree_differs_on_wrong_fixture_holds() -> Bool {
 
 fn bash_fold_wrong_production_mismatch_holds(
   stmt: ShellStmt,
-  wrong_target: TargetModel
+  wrong_target_witness: Witness<TargetModel>
 ) -> Bool {
-  match bash_fold_fold_serialize(stmt: stmt, target: wrong_target) {
-    Accepted { value: folded, diagnostics: _ } => folded != serialize_stmt(s: stmt)
-    Rejected { diagnostics: _ } => true
+  match wrong_target_witness {
+    Holds { value: target } =>
+      match bash_fold_fold_serialize(stmt: stmt, target: target) {
+        Accepted { value: folded, diagnostics: _ } => folded != serialize_stmt(s: stmt)
+        Rejected { diagnostics: _ } => true
+      }
+    Violates { diagnostic: _ } => false
   }
 }
 
@@ -220,7 +225,7 @@ test fn bash_fold_exit_code_0_holds() -> Bool {
 test fn bash_fold_exit_wrong_production_rejects_oracle_holds() -> Bool {
   bash_fold_wrong_production_mismatch_holds(
     stmt: Exit { code: 42 },
-    wrong_target: bash_fold_exit_wrong_target_model()
+    wrong_target_witness: bash_fold_exit_wrong_target_model_witness()
   )
 }
 
@@ -245,6 +250,6 @@ test fn bash_fold_assign_lit_quote_escape_holds() -> Bool {
 test fn bash_fold_assign_wrong_production_rejects_oracle_holds() -> Bool {
   bash_fold_wrong_production_mismatch_holds(
     stmt: Assign { name: "FOO", value: Lit { text: "bar" } },
-    wrong_target: bash_fold_assign_wrong_target_model()
+    wrong_target_witness: bash_fold_assign_wrong_target_model_witness()
   )
 }
