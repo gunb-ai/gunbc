@@ -1,0 +1,78 @@
+module extdeps.render.surface
+
+import std.render { Document, Block, Frame, RenderCapability }
+import extdeps.render.terminal { serialize_frame }
+import extdeps.github.log_annotations { annotation_group_prefix, annotation_endgroup }
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/actions/using-workflows/workflow-commands-for-github-actions#grouping-log-lines"
+  }
+}
+
+type RenderTarget = PlainTerminal | GithubActions
+
+type SurfaceEnv {
+  github_actions: Bool
+}
+
+fn detect_target(env: SurfaceEnv) -> RenderTarget {
+  if env.github_actions {
+    GithubActions
+  } else {
+    PlainTerminal
+  }
+}
+
+type GroupSyntax {
+  open_prefix: String
+  open_suffix: String
+  close_line: String?
+}
+
+fn group_syntax(target: RenderTarget) -> GroupSyntax {
+  match target {
+    GithubActions => GroupSyntax {
+      open_prefix: annotation_group_prefix
+      open_suffix: ""
+      close_line: Present { value: annotation_endgroup }
+    }
+    PlainTerminal => GroupSyntax {
+      open_prefix: "── "
+      open_suffix: " ──"
+      close_line: none
+    }
+  }
+}
+
+fn resolve_group_syntax(github_actions: Bool) -> GroupSyntax {
+  group_syntax(target: detect_target(env: SurfaceEnv { github_actions: github_actions }))
+}
+
+fn group_open_line(syntax: GroupSyntax, title: String) -> String {
+  concat(syntax.open_prefix, concat(title, syntax.open_suffix))
+}
+
+fn serialize_block(block: Block, target: RenderTarget, cap: RenderCapability) -> String {
+  match block {
+    Leaf { frame: f } => serialize_frame(frame: f, cap: cap)
+    Group { title: t, frame: f } => {
+      let syntax = group_syntax(target: target)
+      let open = group_open_line(syntax: syntax, title: t)
+      let body = serialize_frame(frame: f, cap: cap)
+      match syntax.close_line {
+        Present { value: close } => concat(open, concat("\n", concat(body, concat("\n", close))))
+        Absent => concat(open, concat("\n", body))
+      }
+    }
+  }
+}
+
+fn serialize_document(doc: Document, target: RenderTarget, cap: RenderCapability) -> String {
+  let rendered = map(doc.blocks, b => serialize_block(block: b, target: target, cap: cap))
+  join(rendered, "\n")
+}
