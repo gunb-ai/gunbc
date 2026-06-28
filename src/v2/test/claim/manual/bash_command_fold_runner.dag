@@ -83,6 +83,26 @@ fn bash_command_fold_plan() -> List<List<Runnable>> {
       RunnableSingleClaim {
         entry: bash_fold_test_entry,
         function: "bash_fold_assign_wrong_production_rejects_oracle_holds"
+      },
+      RunnableSingleClaim {
+        entry: bash_fold_test_entry,
+        function: "bash_fold_and_then_true_false_holds"
+      },
+      RunnableSingleClaim {
+        entry: bash_fold_test_entry,
+        function: "bash_fold_or_else_true_false_holds"
+      },
+      RunnableSingleClaim {
+        entry: bash_fold_test_entry,
+        function: "bash_fold_pipe_echo_hi_wc_holds"
+      },
+      RunnableSingleClaim {
+        entry: bash_fold_test_entry,
+        function: "bash_fold_and_then_wrong_production_rejects_oracle_holds"
+      },
+      RunnableSingleClaim {
+        entry: bash_fold_test_entry,
+        function: "bash_fold_pipe_wrong_production_rejects_oracle_holds"
       }
     ]
   ]

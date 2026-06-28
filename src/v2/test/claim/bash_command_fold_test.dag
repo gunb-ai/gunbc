@@ -1,10 +1,14 @@
 module v2.test.claim.bash_command_fold
 
 import extdeps.languages.bash.program {
+  AndOr,
+  AndThen,
   Assign,
   Command,
   Exit,
   Lit,
+  OrElse,
+  Pipe,
   ShellStmt,
   VarRef,
   serialize_stmt
@@ -13,6 +17,7 @@ import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import v2.compiler.translate { target_serialize_source_from_model }
 import v2.extdeps.languages.bash_command_fold {
+  bash_fold_and_then_wrong_target_model_witness,
   bash_fold_assign_wrong_target_model_witness,
   bash_fold_cmd_echo_hi_emitted,
   bash_fold_cmd_true_emitted,
@@ -20,6 +25,7 @@ import v2.extdeps.languages.bash_command_fold {
   bash_fold_cmd_true_wrong_target_model_witness,
   bash_fold_cmd_var_x_emitted,
   bash_fold_exit_wrong_target_model_witness,
+  bash_fold_pipe_wrong_target_model_witness,
   bash_fold_relation_row_witness,
   bash_fold_stmt_emitted_witness,
   bash_fold_target_model_for_stmt_witness
@@ -251,5 +257,63 @@ test fn bash_fold_assign_wrong_production_rejects_oracle_holds() -> Bool {
   bash_fold_wrong_production_mismatch_holds(
     stmt: Assign { name: "FOO", value: Lit { text: "bar" } },
     wrong_target_witness: bash_fold_assign_wrong_target_model_witness()
+  )
+}
+
+fn bash_fold_cmd_true_stmt() -> ShellStmt {
+  Command { words: [Lit { text: "true" }] }
+}
+
+fn bash_fold_cmd_false_stmt() -> ShellStmt {
+  Command { words: [Lit { text: "false" }] }
+}
+
+test fn bash_fold_and_then_true_false_holds() -> Bool {
+  bash_fold_fold_matches_oracle(
+    stmt: AndOr {
+      left: bash_fold_cmd_true_stmt(),
+      op: AndThen,
+      right: bash_fold_cmd_false_stmt()
+    }
+  )
+}
+
+test fn bash_fold_or_else_true_false_holds() -> Bool {
+  bash_fold_fold_matches_oracle(
+    stmt: AndOr {
+      left: bash_fold_cmd_true_stmt(),
+      op: OrElse,
+      right: bash_fold_cmd_false_stmt()
+    }
+  )
+}
+
+test fn bash_fold_pipe_echo_hi_wc_holds() -> Bool {
+  bash_fold_fold_matches_oracle(
+    stmt: Pipe {
+      left: Command { words: [Lit { text: "echo" }, Lit { text: "hi" }] },
+      right: Command { words: [Lit { text: "wc" }, Lit { text: "-c" }] }
+    }
+  )
+}
+
+test fn bash_fold_and_then_wrong_production_rejects_oracle_holds() -> Bool {
+  bash_fold_wrong_production_mismatch_holds(
+    stmt: AndOr {
+      left: bash_fold_cmd_true_stmt(),
+      op: AndThen,
+      right: bash_fold_cmd_false_stmt()
+    },
+    wrong_target_witness: bash_fold_and_then_wrong_target_model_witness()
+  )
+}
+
+test fn bash_fold_pipe_wrong_production_rejects_oracle_holds() -> Bool {
+  bash_fold_wrong_production_mismatch_holds(
+    stmt: Pipe {
+      left: Command { words: [Lit { text: "echo" }, Lit { text: "hi" }] },
+      right: Command { words: [Lit { text: "wc" }, Lit { text: "-c" }] }
+    },
+    wrong_target_witness: bash_fold_pipe_wrong_target_model_witness()
   )
 }
