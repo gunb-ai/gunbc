@@ -7,7 +7,7 @@ import gunbc.ci_spec {
   ExtdepsExternalAuthorityGate, DslCompileCleanGate, GeneratedArtifactDriftGate,
   SourceRootIngestGate, RegenVerifyGate
 }
-import v2.std.algebra { length, list_snoc_item }
+import v2.std.algebra { length, list_snoc_item, skip, zip_map }
 import v2.std.collection { List }
 import v2.std.dependency { DataDependsOn, ResourceDependsOn, DependencyView }
 import v2.std.node { Atom, Node, TypeNode }
@@ -171,13 +171,39 @@ fn floor_node_is_heavy_resolve(node: Node, spec: CiSpec) -> Bool {
   }
 }
 
-fn floor_corpus_serializes(dependent: Node) -> DependencyView {
+fn floor_serialize_after(source: Node, dependent: Node) -> DependencyView {
   DependencyView {
-    source: floor_corpus_node,
+    source: source,
     dependent: dependent,
     kind: ResourceDependsOn,
     usage_site: dependent
   }
+}
+
+fn floor_corpus_serializes(dependent: Node) -> DependencyView {
+  floor_serialize_after(source: floor_corpus_node, dependent: dependent)
+}
+
+fn floor_heavy_resolve_gate_nodes(spec: CiSpec) -> List<Node> {
+  fold(spec.gates, init: [], f: fn(acc, g) {
+    match g {
+      DslCompileCleanGate => acc
+      _ => if gate_is_heavy_resolve(g: g) {
+        list_snoc_item(xs: acc, item: gate_node(g: g))
+      } else {
+        acc
+      }
+    }
+  })
+}
+
+fn floor_heavy_resolve_chain(spec: CiSpec) -> List<DependencyView> {
+  let heavy = floor_heavy_resolve_gate_nodes(spec: spec)
+  zip_map(
+    a: heavy,
+    b: skip(xs: heavy, n: 1),
+    f: fn(prev, next) { floor_serialize_after(source: prev, dependent: next) }
+  )
 }
 
 fn floor_dependencies_with(spec: CiSpec, serialize_heavy: Bool) -> List<DependencyView> {
