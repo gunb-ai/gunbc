@@ -14,13 +14,13 @@ import extdeps.cache.types {
   catalog_has_vendor_only_key_inputs,
   RustcInvocation,
   ToolchainSpec,
+  UpsertSubject,
 }
 import extdeps.cache.cache { cache_catalog }
 import extdeps.realization.resolved_graph { resolved_graph_cache_facts }
 import std.cache_interface {
   ToolchainChange,
   ManualPurge,
-  UpsertSubject,
   Org,
 }
 import std.lens_verdict { Holds, Violation }
