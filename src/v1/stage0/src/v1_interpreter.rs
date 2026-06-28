@@ -996,12 +996,10 @@ fn evict_module_envs(modules: &[Rc<TypedModule>]) -> Rc<Vec<Rc<TypedModule>>> {
             .map(|m| {
                 Rc::new(TypedModule {
                     module: m.module.clone(),
-                    // LEVER_C_TEETH_PERTURB: temporarily evict items+item_registry too
-                    // to prove the reflection witness depends on them (must go RED).
-                    items: Rc::new(Vec::new()),
+                    items: m.items.clone(),
                     type_env: empty_type_env.clone(),
                     func_env: empty_func_env.clone(),
-                    item_registry: Rc::new(HashMap::new()),
+                    item_registry: m.item_registry.clone(),
                 })
             })
             .collect(),
