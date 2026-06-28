@@ -1344,6 +1344,39 @@ fn ct_sole_constructor_fieldless_witness_test() -> String {
     "    }\n\n")
 }
 
+fn ct_contracts_sidecar_witness_test() -> String {
+  concat(
+    "    #[test]\n",
+    "    fn contracts_sidecar_wired_into_emit_scope() {\n",
+    "        // Discriminating witness: AnthropicChatMessage is declared in\n",
+    "        // extdeps.llm.anthropic; its tag = \"role\" wire_contract lives in the\n",
+    "        // anthropic_contracts.dag sidecar. This proves contracts_items_for_module\n",
+    "        // and the wire_contract alias-resolution scope merge the sidecar into the\n",
+    "        // emitted module -- red if the sidecar wiring or alias scope regresses.\n",
+    "        let result = std::thread::Builder::new()\n",
+    "            .stack_size(64 * 1024 * 1024)\n",
+    "            .spawn(|| {\n",
+    "                let entry_pairs = discover_dag_files(\"dsl/extdeps/llm\");\n",
+    "                let sources = std::rc::Rc::new(resolve_source_closure(entry_pairs, &[\"dsl\"]));\n",
+    "                let result = crate::v1_compiler_compile::compile_sources(\n",
+    "                    sources,\n",
+    "                    crate::v1_compiler_artifact::RenderTarget::Rust,\n",
+    "                );\n",
+    "                let anthropic_file = result.files.iter()\n",
+    "                    .find(|f| f.path.ends_with(\"extdeps_llm_anthropic.rs\"))\n",
+    "                    .expect(\"emitted file for extdeps.llm.anthropic not found in source closure\");\n",
+    "                assert!(\n",
+    "                    anthropic_file.content.contains(\"#[serde(tag = \\\"role\\\"\"),\n",
+    "                    \"AnthropicChatMessage serde tag = role must be present in emitted Rust (contracts_items_for_module merged into emit scope); missing from: {}\",\n",
+    "                    anthropic_file.path\n",
+    "                );\n",
+    "            })\n",
+    "            .expect(\"failed to spawn thread\")\n",
+    "            .join();\n",
+    "        result.expect(\"contracts_sidecar_wired_into_emit_scope panicked\");\n",
+    "    }\n\n")
+}
+
 fn compiler_tests_source() -> String {
   concat(
     ct_module_header(),
@@ -1355,6 +1388,7 @@ fn compiler_tests_source() -> String {
     ct_pipeline_test(),
     ct_sole_constructor_test(),
     ct_sole_constructor_fieldless_witness_test(),
+    ct_contracts_sidecar_witness_test(),
     ct_self_parse_all_test(),
     ct_self_resolve_test(),
     ct_self_compile_test(),

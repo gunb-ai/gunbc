@@ -1058,7 +1058,7 @@ fn resolve_wire_serde_policy(wire_item: Node, source_indices: Map<String, Newlin
       match wire_item.expr_data {
         ExprRecordLit { parent_enum: _ } =>
           resolve_wire_serde_policy_from_encoding_node(ve: wire_item, source_indices: source_indices)
-        _ => rust_tagged_object_policy()
+        _ => rust_serde_error_policy(message: "wire_contract: VariantEncoding could not be resolved (no initializer body and not a record literal)")
       }
   }
 }
@@ -1344,6 +1344,26 @@ fn build_scoped_data_item_index(typed_module: TypedModule, data_items: Map<Strin
         acc
       } else {
         import_specific_names_at(n: imp, source_indices: typed_module.type_env.source_indices)
+          |> fold(init: acc, f: (inner, imported_name) =>
+            let qualified = concat(import_path, ".", imported_name)
+            match map_get(data_items, qualified) {
+              Present { value: imported_item } =>
+                insert_scoped_data_item(scoped: inner, name: imported_name, item: imported_item)
+              Absent => inner
+            }
+          )
+      }
+    )
+}
+
+fn augment_scoped_data_item_index_with_imports(scoped: Map<String, List<Node>>, imports: List<Node>, source_indices: Map<String, NewlineIndex>, data_items: Map<String, Node>) -> Map<String, List<Node>> {
+  imports
+    |> fold(init: scoped, f: (acc, imp) =>
+      let import_path = authored_name_at(source_indices: source_indices, node: imp)
+      if import_is_all(imp) {
+        acc
+      } else {
+        import_specific_names_at(n: imp, source_indices: source_indices)
           |> fold(init: acc, f: (inner, imported_name) =>
             let qualified = concat(import_path, ".", imported_name)
             match map_get(data_items, qualified) {
@@ -1716,7 +1736,12 @@ fn build_module_export_sets(modules: List<TypedModule>) -> Map<String, Map<Strin
 fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, shared_types: Set<String>, svc_module_map: Map<String, String>, data_items: Map<String, Node>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, module_index: ModuleIndex) -> TextFile {
   let m = typed_module.module
   let scope = module_emit_scope(typed_module: typed_module)
-  let scoped_data_items = build_scoped_data_item_index(typed_module: typed_module, data_items: data_items)
+  let scoped_data_items = augment_scoped_data_item_index_with_imports(
+    scoped: build_scoped_data_item_index(typed_module: typed_module, data_items: data_items),
+    imports: contracts_imports_for_module(module_name: authored_name(env: scope.type_env, node: m), typed_modules: typed_modules, source_indices: scope.type_env.source_indices, module_index: module_index),
+    source_indices: scope.type_env.source_indices,
+    data_items: data_items
+  )
   let prelude_imported_names = module_imports(n: m)
     |> flat_map(imp => import_specific_names_at(n: imp, source_indices: scope.type_env.source_indices))
   let prelude = emit_prelude(imported_names: prelude_imported_names)
