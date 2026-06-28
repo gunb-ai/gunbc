@@ -124,9 +124,7 @@ pub fn runnable_predicted_space(r: Rc<Runnable>) -> ByteSize {
 pub fn runnable_forbids_corpus_co_residence(r: Rc<Runnable>) -> bool {
     match (*r).clone() {
         Runnable::RunnableDiscoveryBatch { .. } => false,
-        Runnable::RunnableSingleClaim { cost: c, .. } => {
-            !runnable_space_cost_negligible(c.clone())
-        }
+        Runnable::RunnableSingleClaim { cost: c, .. } => !runnable_space_cost_negligible(c.clone()),
     }
 }
 
