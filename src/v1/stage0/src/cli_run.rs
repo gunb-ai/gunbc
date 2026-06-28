@@ -324,6 +324,7 @@ pub struct MultiEntryIndex {
     typed_module_cache: RefCell<HashMap<String, Rc<v1_compiler_infer::TypecheckModuleResult>>>,
 }
 
+// SCAFFOLD: delete once func_env.sigs Rc-sharing dedup lands; dissolution trigger = func_env.sig sharing > 1.0× in corpus.
 pub struct CacheWalkReport {
     pub typed_module_count: usize,
     pub parse_cache_entry_count: usize,

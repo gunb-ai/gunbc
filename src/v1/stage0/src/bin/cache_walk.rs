@@ -1,3 +1,5 @@
+// SCAFFOLD: diagnostic bin for typed_module_cache retention measurement; delete once func_env.sigs
+// Rc-sharing dedup lands. Dissolution trigger = func_env.sig sharing > 1.0× in corpus.
 #![allow(clippy::disallowed_macros)]
 
 use std::process::ExitCode;
