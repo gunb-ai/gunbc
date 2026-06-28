@@ -740,7 +740,6 @@ fn bash_fold_binding_spellings() -> Map<Symbol, String> {
 fn bash_fold_target_model_bundle_witness(
   emitted: Node,
   source_literal: Symbol,
-  source_text: String,
   production_binding: Symbol,
   rule_name: Symbol
 ) -> Witness<Node> {
@@ -774,7 +773,6 @@ fn bash_fold_target_model_for_emitted_witness(
   match bash_fold_target_model_bundle_witness(
     emitted: emitted,
     source_literal: source_literal,
-    source_text: source_text,
     production_binding: production_binding,
     rule_name: rule_name
   ) {
