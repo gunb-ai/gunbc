@@ -9,6 +9,7 @@ import std.realization_schedule {
   RunnableSingleClaim,
   CostAccount,
   cost_account_predicted_zero,
+  runnable_space_cost_zero,
 }
 import std.realization {
   bounded_host_spawn_width,
@@ -47,9 +48,9 @@ fn synthetic_plan() -> RealizationPlan<Nano> {
     target: "width-witness-target"
     objective: RealizationObjective { goals: [] }
     schedule: [
-      [RunnableSingleClaim { entry: gate_entry, function: compile_gate_fn }],
+      [RunnableSingleClaim { entry: gate_entry, function: compile_gate_fn, cost: runnable_space_cost_zero() }],
       [
-        RunnableSingleClaim { entry: gate_entry, function: "rust_monolith_gate_passes" }
+        RunnableSingleClaim { entry: gate_entry, function: "rust_monolith_gate_passes", cost: runnable_space_cost_zero() }
       ]
     ]
     total: synthetic_plan_total()

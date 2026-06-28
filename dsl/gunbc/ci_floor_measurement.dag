@@ -27,6 +27,12 @@ data gunbc_ci_floor_per_shard_rss_source: Disposition = Terminal {
   reason: "Measured local floor, post-#5860 corpus, main HEAD 6461042c64 at spawn_width=2 (pinned): floor peak VmHWM=6.0GiB => per-shard = VmHWM/width = 6.0GiB/2 = 3.0GiB (3226056704 bytes). Supersedes the stale 2.1GiB@width4 (CI run 27893441091) which the corpus outgrew: at the stale value the formula picked width=3 and 3 concurrent shards exceeded the 8GiB runner cap => exit-137 (run 28296782925). VESTIGIAL IN WIDTH FORMULA as of gunbc_ci_floor_confirmed_safe_width: spawn_width is now min(cpu_bound, confirmed_safe_width), not floor(budget/per_shard). per_shard_committed is retained as (a) width=1 guard (if budget < per_shard, even one shard may not fit) and (b) ResourceEnvelope memory estimate. It is a [calibration] receipt, not a live scheduler input. Durable fix: resource-aware-scheduler Node B/C (docs/plans/resource-aware-scheduler.md)."
 }
 
+data gunbc_ci_floor_host_compiler_spawn_peak: ByteSize = byte_size(1610612736)
+
+data gunbc_ci_floor_host_compiler_spawn_peak_source: Disposition = Terminal {
+  reason: "emit_host_gate_passes / regen_verify_gate_passes spawn child cargo/rustc processes; ~1.5 GiB per docs/plans/emit-host-batch-isolation.md. Grounds RunnableSpaceCost on EmitHostGate and the host-compiler arm of RegenVerifyGate; feeds runnable_forbids_corpus_co_residence in std.realization_schedule."
+}
+
 fn gunbc_ci_floor_per_shard_peak_rss_bytes() -> ByteSize {
   match gunbc_ci_floor_per_shard_rss_measurement {
     PerShardRssPeakMeasured { per_shard_peak: p, sample_width: _ } => p

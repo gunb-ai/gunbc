@@ -9,6 +9,7 @@ import v2.workflow.ci_floor_plan {
   gunbc_ci_floor_plan_serializes_heavy_resolves,
   gunbc_ci_floor_plan_co_runs_heavy_without_serialization,
   floor_expected_readiness_layers,
+  gate_runnable,
   witness_floor_tight_budget_backs_off_envelope,
   witness_floor_fail_open_would_exceed_budget,
   witness_floor_unreadable_budget_uses_conservative_envelope,
@@ -20,7 +21,8 @@ import v2.workflow.ci_floor_plan {
   witness_floor_ceiling_clamps_stale_per_shard,
 }
 import gunbc.ci_layer_roots { witness_discovery_scan_dirs, witness_layer_roots }
-import gunbc.ci_spec { gunbc_ci_spec }
+import gunbc.ci_spec { gunbc_ci_spec, EmitHostGate, LayeringImportsGate }
+import std.realization_schedule { runnable_forbids_corpus_co_residence }
 import v2.std.algebra { length, list_snoc_item }
 import v2.std.collection { List }
 
@@ -127,6 +129,14 @@ fn witness_emit_host_co_runs_corpus_without_serialization() -> Bool {
   })
 }
 
+fn witness_emit_host_cost_forbids_corpus_co_residence() -> Bool {
+  runnable_forbids_corpus_co_residence(r: gate_runnable(g: EmitHostGate))
+}
+
+fn witness_light_gate_cost_allows_corpus_co_residence() -> Bool {
+  !runnable_forbids_corpus_co_residence(r: gate_runnable(g: LayeringImportsGate))
+}
+
 test fn ci_floor_plan_witnesses() -> Bool {
   witness_readiness_layers_match_heavy_chain() &&
     witness_compile_root_runs_first() &&
@@ -139,7 +149,9 @@ test fn ci_floor_plan_witnesses() -> Bool {
     witness_source_ingest_serialized_after_corpus() &&
     witness_plan_serializes_heavy_resolves() &&
     witness_emit_host_isolated_from_corpus() &&
-    witness_emit_host_co_runs_corpus_without_serialization()
+    witness_emit_host_co_runs_corpus_without_serialization() &&
+    witness_emit_host_cost_forbids_corpus_co_residence() &&
+    witness_light_gate_cost_allows_corpus_co_residence()
 }
 
 test fn ci_floor_run_envelope_witnesses() -> Bool {

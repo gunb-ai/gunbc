@@ -4,7 +4,7 @@ import std.types { ContentHash, Bool, String, List, Int }
 import std.nat { Nat }
 import std.measure {
   Measure, Time, ByteSize, Watt,
-  byte_size, watt, time_measure, measure_count
+  byte_size, byte_size_count, watt, time_measure, measure_count
 }
 import std.pareto { AxisGoal }
 import std.lens_verdict {
@@ -57,13 +57,56 @@ type ScheduleWitnessEntry {
   function: String
 }
 
+type RunnableSpaceCost {
+  predicted_peak: ByteSize
+}
+
+fn runnable_space_cost_zero() -> RunnableSpaceCost {
+  RunnableSpaceCost { predicted_peak: byte_size(count: 0) }
+}
+
+fn runnable_space_cost(predicted_peak: ByteSize) -> RunnableSpaceCost {
+  RunnableSpaceCost { predicted_peak: predicted_peak }
+}
+
+fn runnable_space_cost_sum(left: RunnableSpaceCost, right: RunnableSpaceCost) -> RunnableSpaceCost {
+  RunnableSpaceCost {
+    predicted_peak: byte_size(
+      count: byte_size_count(b: left.predicted_peak) + byte_size_count(b: right.predicted_peak)
+    )
+  }
+}
+
+fn runnable_space_cost_eq(left: RunnableSpaceCost, right: RunnableSpaceCost) -> Bool {
+  byte_size_count(b: left.predicted_peak) == byte_size_count(b: right.predicted_peak)
+}
+
+fn runnable_space_cost_negligible(cost: RunnableSpaceCost) -> Bool {
+  byte_size_count(b: cost.predicted_peak) == 0
+}
+
+fn runnable_predicted_space(r: Runnable) -> ByteSize {
+  match r {
+    RunnableSingleClaim { entry: _, function: _, cost: c } => c.predicted_peak
+    RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, skip_unaffected_node_frontier: _, cost: c } => c.predicted_peak
+  }
+}
+
+fn runnable_forbids_corpus_co_residence(r: Runnable) -> Bool {
+  match r {
+    RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, skip_unaffected_node_frontier: _, cost: _ } => false
+    RunnableSingleClaim { entry: _, function: _, cost: c } => !runnable_space_cost_negligible(cost: c)
+  }
+}
+
 type Runnable
-  = RunnableSingleClaim { entry: String, function: String }
+  = RunnableSingleClaim { entry: String, function: String, cost: RunnableSpaceCost }
   | RunnableDiscoveryBatch {
       source_roots: List<String>
       scan_dirs: List<String>
       explicit_entries: List<ScheduleWitnessEntry>
       skip_unaffected_node_frontier: Bool
+      cost: RunnableSpaceCost
     }
 
 type Schedule = List<List<Runnable>>
@@ -78,8 +121,8 @@ type RealizationPlan<S> {
 
 fn runnable_step_label(r: Runnable) -> String {
   match r {
-    RunnableSingleClaim { entry: _, function: f } => f
-    RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, skip_unaffected_node_frontier: _ } => "__discovery_corpus__"
+    RunnableSingleClaim { entry: _, function: f, cost: _ } => f
+    RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, skip_unaffected_node_frontier: _, cost: _ } => "__discovery_corpus__"
   }
 }
 
@@ -205,17 +248,19 @@ fn schedule_witness_entry_list_eq(left: List<ScheduleWitnessEntry>, right: List<
 
 fn runnable_eq(left: Runnable, right: Runnable) -> Bool {
   match left {
-    RunnableSingleClaim { entry: le, function: lf } => match right {
-      RunnableSingleClaim { entry: re, function: rf } => (le == re) && (lf == rf)
-      RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, skip_unaffected_node_frontier: _ } => false
+    RunnableSingleClaim { entry: le, function: lf, cost: lc } => match right {
+      RunnableSingleClaim { entry: re, function: rf, cost: rc } =>
+        (le == re) && (lf == rf) && runnable_space_cost_eq(left: lc, right: rc)
+      RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, skip_unaffected_node_frontier: _, cost: _ } => false
     }
-    RunnableDiscoveryBatch { source_roots: lsr, scan_dirs: lsd, explicit_entries: lex, skip_unaffected_node_frontier: lskip } => match right {
-      RunnableSingleClaim { entry: _, function: _ } => false
-      RunnableDiscoveryBatch { source_roots: rsr, scan_dirs: rsd, explicit_entries: rex, skip_unaffected_node_frontier: rskip } =>
+    RunnableDiscoveryBatch { source_roots: lsr, scan_dirs: lsd, explicit_entries: lex, skip_unaffected_node_frontier: lskip, cost: lc } => match right {
+      RunnableSingleClaim { entry: _, function: _, cost: _ } => false
+      RunnableDiscoveryBatch { source_roots: rsr, scan_dirs: rsd, explicit_entries: rex, skip_unaffected_node_frontier: rskip, cost: rc } =>
         string_list_eq(left: lsr, right: rsr)
           && string_list_eq(left: lsd, right: rsd)
           && schedule_witness_entry_list_eq(left: lex, right: rex)
           && (lskip == rskip)
+          && runnable_space_cost_eq(left: lc, right: rc)
     }
   }
 }

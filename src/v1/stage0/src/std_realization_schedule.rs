@@ -8,7 +8,7 @@ use crate::std_lens_verdict::LensVerdict::{Holds, Violation};
 use crate::std_lens_verdict::LensVerdictLocus::ModuleWholeFile;
 pub use crate::std_lens_verdict::{LensVerdict, LensVerdictDiagnostic, LensVerdictLocus};
 use crate::std_measure::Quantity::Time;
-pub use crate::std_measure::{byte_size, measure_count, time_measure, watt};
+pub use crate::std_measure::{byte_size, byte_size_count, measure_count, time_measure, watt};
 pub use crate::std_measure::{ByteSize, Measure, Quantity, Watt};
 pub use crate::std_nat::Nat;
 pub use crate::std_pareto::AxisGoal;
@@ -77,17 +77,73 @@ pub struct ScheduleWitnessEntry {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct RunnableSpaceCost {
+    pub predicted_peak: Box<ByteSize>,
+}
+
+pub fn runnable_space_cost_zero() -> Rc<RunnableSpaceCost> {
+    Rc::new(RunnableSpaceCost {
+        predicted_peak: Box::new(byte_size(0)),
+    })
+}
+
+pub fn runnable_space_cost(predicted_peak: ByteSize) -> Rc<RunnableSpaceCost> {
+    Rc::new(RunnableSpaceCost {
+        predicted_peak: Box::new(predicted_peak),
+    })
+}
+
+pub fn runnable_space_cost_sum(
+    left: Rc<RunnableSpaceCost>,
+    right: Rc<RunnableSpaceCost>,
+) -> Rc<RunnableSpaceCost> {
+    Rc::new(RunnableSpaceCost {
+        predicted_peak: Box::new(byte_size(
+            byte_size_count((*left.predicted_peak).clone())
+                + byte_size_count((*right.predicted_peak).clone()),
+        )),
+    })
+}
+
+pub fn runnable_space_cost_eq(left: Rc<RunnableSpaceCost>, right: Rc<RunnableSpaceCost>) -> bool {
+    byte_size_count((*left.predicted_peak).clone())
+        == byte_size_count((*right.predicted_peak).clone())
+}
+
+pub fn runnable_space_cost_negligible(cost: Rc<RunnableSpaceCost>) -> bool {
+    byte_size_count((*cost.predicted_peak).clone()) == 0
+}
+
+pub fn runnable_predicted_space(r: Rc<Runnable>) -> ByteSize {
+    match (*r).clone() {
+        Runnable::RunnableSingleClaim { cost: c, .. } => (*c.predicted_peak).clone(),
+        Runnable::RunnableDiscoveryBatch { cost: c, .. } => (*c.predicted_peak).clone(),
+    }
+}
+
+pub fn runnable_forbids_corpus_co_residence(r: Rc<Runnable>) -> bool {
+    match (*r).clone() {
+        Runnable::RunnableDiscoveryBatch { .. } => false,
+        Runnable::RunnableSingleClaim { cost: c, .. } => {
+            !runnable_space_cost_negligible(c.clone())
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum Runnable {
     RunnableSingleClaim {
         entry: String,
         function: String,
+        cost: Rc<RunnableSpaceCost>,
     },
     RunnableDiscoveryBatch {
         source_roots: Rc<Vec<String>>,
         scan_dirs: Rc<Vec<String>>,
         explicit_entries: Rc<Vec<Rc<ScheduleWitnessEntry>>>,
         skip_unaffected_node_frontier: bool,
+        cost: Rc<RunnableSpaceCost>,
     },
 }
 
@@ -309,13 +365,16 @@ pub fn runnable_eq(left: Rc<Runnable>, right: Rc<Runnable>) -> bool {
         Runnable::RunnableSingleClaim {
             entry: le,
             function: lf,
-            ..
+            cost: lc,
         } => match (*right).clone() {
             Runnable::RunnableSingleClaim {
                 entry: re,
                 function: rf,
-                ..
-            } => ((le.clone() == re.clone()) && (lf.clone() == rf.clone())),
+                cost: rc,
+            } => {
+                ((le.clone() == re.clone()) && (lf.clone() == rf.clone()))
+                    && runnable_space_cost_eq(lc.clone(), rc.clone())
+            }
             Runnable::RunnableDiscoveryBatch { .. } => false,
         },
         Runnable::RunnableDiscoveryBatch {
@@ -323,7 +382,7 @@ pub fn runnable_eq(left: Rc<Runnable>, right: Rc<Runnable>) -> bool {
             scan_dirs: lsd,
             explicit_entries: lex,
             skip_unaffected_node_frontier: lskip,
-            ..
+            cost: lc,
         } => match (*right).clone() {
             Runnable::RunnableSingleClaim { .. } => false,
             Runnable::RunnableDiscoveryBatch {
@@ -331,12 +390,13 @@ pub fn runnable_eq(left: Rc<Runnable>, right: Rc<Runnable>) -> bool {
                 scan_dirs: rsd,
                 explicit_entries: rex,
                 skip_unaffected_node_frontier: rskip,
-                ..
+                cost: rc,
             } => {
                 (((string_list_eq(lsr.clone(), rsr.clone())
                     && string_list_eq(lsd.clone(), rsd.clone()))
                     && schedule_witness_entry_list_eq(lex.clone(), rex.clone()))
                     && (lskip.clone() == rskip.clone()))
+                    && runnable_space_cost_eq(lc.clone(), rc.clone())
             }
         },
     }
