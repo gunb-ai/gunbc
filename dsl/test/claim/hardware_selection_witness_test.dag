@@ -2,7 +2,7 @@ module test.claim.hardware_selection
 
 import std.logic { Bool }
 import std.types { Int, List }
-import std.measure { byte_size, byte_size_count, bit_width, watt, watt_count, hardware_thread_count, hertz, money_micros }
+import std.measure { byte_size, byte_size_count, bit_width, watt, watt_count, hardware_thread_count, hertz, money_amount_micro }
 import product.hardware_selection { milliwatt }
 import extdeps.cpu.types { CpuModelCatalogRow, CpuSocket }
 import extdeps.memory.types { DramModuleCatalogRow, dram_module_is_realizable, dram_module_required_die_density, dram_generation_ddr4 }
@@ -87,13 +87,13 @@ data mod_1rx8_32g_impossible: DramModuleCatalogRow = DramModuleCatalogRow {
 }
 
 data mem_1rx8_2dpc: MemoryConfig = MemoryConfig {
-  module: mod_1rx8_16g, jedec: ddr4_generation_catalog, dimms_per_channel: 2, power_per_chip: milliwatt(count: 400), price_per_stick: money_micros(count: 120000000)
+  module: mod_1rx8_16g, jedec: ddr4_generation_catalog, dimms_per_channel: 2, power_per_chip: milliwatt(count: 400), price_per_stick: money_amount_micro(count: 120000000)
 }
 data mem_2rx8_2dpc: MemoryConfig = MemoryConfig {
-  module: mod_2rx8_16g, jedec: ddr4_generation_catalog, dimms_per_channel: 2, power_per_chip: milliwatt(count: 400), price_per_stick: money_micros(count: 120000000)
+  module: mod_2rx8_16g, jedec: ddr4_generation_catalog, dimms_per_channel: 2, power_per_chip: milliwatt(count: 400), price_per_stick: money_amount_micro(count: 120000000)
 }
 data mem_1rx8_1dpc: MemoryConfig = MemoryConfig {
-  module: mod_1rx8_16g, jedec: ddr4_generation_catalog, dimms_per_channel: 1, power_per_chip: milliwatt(count: 400), price_per_stick: money_micros(count: 120000000)
+  module: mod_1rx8_16g, jedec: ddr4_generation_catalog, dimms_per_channel: 1, power_per_chip: milliwatt(count: 400), price_per_stick: money_amount_micro(count: 120000000)
 }
 
 data cpu_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
@@ -109,10 +109,10 @@ data cpu_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
 }
 
 data cpu_fast: CpuCandidate = CpuCandidate {
-  catalog: cpu_catalog, typical_draw: watt(count: 166), price: money_micros(count: 400000000), aggregate_throughput: 700
+  catalog: cpu_catalog, typical_draw: watt(count: 166), price: money_amount_micro(count: 400000000), aggregate_throughput: 700
 }
 data cpu_slow: CpuCandidate = CpuCandidate {
-  catalog: cpu_catalog, typical_draw: watt(count: 166), price: money_micros(count: 400000000), aggregate_throughput: 400
+  catalog: cpu_catalog, typical_draw: watt(count: 166), price: money_amount_micro(count: 400000000), aggregate_throughput: 400
 }
 
 data board1: Motherboard = Motherboard {
@@ -121,14 +121,14 @@ data board1: Motherboard = Motherboard {
   memory_channels: 8,
   max_dimms_per_channel: 2,
   idle_draw: watt(count: 30),
-  price: money_micros(count: 300000000)
+  price: money_amount_micro(count: 300000000)
 }
 
 data psu_gold_550: PsuModel = PsuModel {
   label: "GENERIC-550W-GOLD",
   max_output: watt(count: 550),
   efficiency: Gold,
-  price: money_micros(count: 90000000)
+  price: money_amount_micro(count: 90000000)
 }
 
 fn sys(cpu: CpuCandidate, mem: MemoryConfig) -> SystemConfig {
