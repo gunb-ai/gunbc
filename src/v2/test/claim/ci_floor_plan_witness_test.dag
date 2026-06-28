@@ -11,7 +11,8 @@ import v2.workflow.ci_floor_plan {
   gate_runnable,
   witness_floor_heavy_chain_matches_gate_count,
   witness_floor_corpus_exclusion_edges_exist,
-  witness_floor_compile_gate_not_heavy_resolve,
+  witness_floor_compile_gate_honest_heavy_profile,
+  witness_floor_no_corpus_resource_edge_to_compile_anchor,
   witness_floor_tight_budget_backs_off_envelope,
   witness_floor_fail_open_would_exceed_budget,
   witness_floor_unreadable_budget_uses_conservative_envelope,
@@ -136,7 +137,8 @@ fn witness_light_gate_profile_allows_corpus_co_residence() -> Bool {
 }
 
 test fn ci_floor_plan_witnesses() -> Bool {
-  witness_floor_compile_gate_not_heavy_resolve() &&
+  witness_floor_compile_gate_honest_heavy_profile() &&
+    witness_floor_no_corpus_resource_edge_to_compile_anchor() &&
     witness_floor_heavy_chain_matches_gate_count() &&
     witness_floor_corpus_exclusion_edges_exist() &&
     witness_compile_root_runs_first() &&
