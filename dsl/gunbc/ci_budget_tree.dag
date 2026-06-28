@@ -10,8 +10,8 @@ import product.budget_tree {
   BudgetChild,
   budget_child_named
 }
-import product.compute_fabric { ComputeOffer, compute_host_ram_bytes_total }
-import gunbc.fleet_intent { srv1_offer, srv2_offer }
+import gunbc.ci_fleet { ComputeOffer, srv1_offer, srv2_offer }
+import gunbc.fleet_intent { compute_host_ram_bytes_total }
 import gunbc.ci_floor_measurement {
   HostFixedOverhead, HostFixedOverheadMeasured, HostFixedOverheadUnmeasured,
   gunbc_ci_host_fixed_overhead,

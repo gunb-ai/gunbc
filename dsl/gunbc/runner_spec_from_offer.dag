@@ -1,7 +1,8 @@
 module gunbc.runner_spec_from_offer
 
 import extdeps.github.actions { RunnerSpec, SelfHosted }
-import product.compute_fabric { ComputeOffer, compute_host_primary_cpu }
+import gunbc.ci_fleet { ComputeOffer }
+import gunbc.fleet_intent { compute_host_primary_cpu }
 import extdeps.cpu { cpu_facts_architecture }
 import extdeps.toolchain.types { Architecture }
 import std.os.types { KernelFamily }
