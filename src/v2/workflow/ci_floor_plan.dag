@@ -206,6 +206,10 @@ fn floor_heavy_resolve_chain(spec: CiSpec) -> List<DependencyView> {
   )
 }
 
+fn floor_expected_readiness_layers(spec: CiSpec) -> Int {
+  2 + length(xs: floor_heavy_resolve_gate_nodes(spec: spec))
+}
+
 fn floor_dependencies_with(spec: CiSpec, serialize_heavy: Bool) -> List<DependencyView> {
   let corpus_serialized = fold(spec.gates, init: [floor_depends_on_compile(dependent: floor_corpus_node)], f: fn(acc, g) {
     match g {
