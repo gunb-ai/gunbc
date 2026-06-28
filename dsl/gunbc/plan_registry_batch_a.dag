@@ -1,8 +1,0 @@
-module gunbc.plan_registry_batch_a
-
-import gunbc.plan { Plan }
-import gunbc.plans.regen_verify_gate { regen_verify_gate_plan }
-
-data batch_a_plans: List<Plan> = [
-  regen_verify_gate_plan
-]
