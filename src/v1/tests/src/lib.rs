@@ -169,6 +169,8 @@ mod v1_compiler_lib_test;
 #[cfg(test)]
 mod value_carrier_swap_test;
 #[cfg(test)]
+mod variant_owner_disambiguation_test;
+#[cfg(test)]
 mod wet_hermetic_equivalence_test;
 #[cfg(test)]
 mod whole_tree_wiring_enum_test;

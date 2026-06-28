@@ -1776,12 +1776,14 @@ mod compiler_tests {
                     sources,
                     crate::v1_compiler_artifact::RenderTarget::Rust,
                 );
+                // AnthropicChatMessage is declared in extdeps.llm.anthropic, so its `tag = "role"`
+                // contract must merge into THAT module's emitted file. Match it exactly: the loose
+                // `contains("extdeps_llm_anthropic")` glob also matched the sibling `_errors`/`_rest`
+                // split-out modules (which don't declare it), and `.find()` grabbed the wrong one.
                 let anthropic_file = result
                     .files
                     .iter()
-                    .find(|f| {
-                        f.path.contains("extdeps_llm_anthropic") && !f.path.contains("_contracts")
-                    })
+                    .find(|f| f.path.ends_with("extdeps_llm_anthropic.rs"))
                     .expect(
                         "emitted file for extdeps.llm.anthropic not found — \
                          module must be present in dsl/extdeps/llm source closure",
