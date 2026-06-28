@@ -1,28 +1,25 @@
 module gunbc.fleet_container
 
 import std.types { String, Bool, List }
-import std.measure { ByteSize, byte_size, HardwareThreadCount }
-import extdeps.toolchain.types { Architecture }
-import extdeps.gpu.types { GpuRuntime }
-import extdeps.storage.types { PersistenceKind }
-import product.network_topology { NetworkEgressClass }
-
-type IsolationBoundary = SharedHostHome | PerJobFilesystem | ContainerHermetic | Vm
-
-type ContainerRuntime = Docker | Podman | Gvisor | Ubicloud | GcloudRun
-
-type CpuRequirement { min_threads: HardwareThreadCount, architecture: Architecture? }
-type GpuRequirement { min_vram: ByteSize, runtimes: List<GpuRuntime> }
-type MemoryRequirement { min_bytes: ByteSize }
-type StorageRequirement { min_bytes: ByteSize, persistence: PersistenceKind }
-type NetworkRequirement { egress: NetworkEgressClass?, ambient_allowed: Bool }
-
-type ResourceEnvelope {
-  cpu: CpuRequirement?
-  gpu: GpuRequirement?
-  memory: MemoryRequirement?
-  storage: StorageRequirement?
-  network: NetworkRequirement?
+import std.measure { ByteSize, byte_size }
+import product.compute_fabric {
+  IsolationBoundary,
+  SharedHostHome,
+  PerJobFilesystem,
+  ContainerHermetic,
+  Vm,
+  ContainerRuntime,
+  Docker,
+  Podman,
+  Gvisor,
+  Ubicloud,
+  GcloudRun,
+  CpuRequirement,
+  GpuRequirement,
+  MemoryRequirement,
+  StorageRequirement,
+  NetworkRequirement,
+  ResourceEnvelope,
 }
 
 type ContainerBaseline
