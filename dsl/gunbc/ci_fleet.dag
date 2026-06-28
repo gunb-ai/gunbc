@@ -21,8 +21,6 @@ import std.measure { byte_size, hertz, MoneyAmountMicro, money_amount_micro_coun
 import std.nat { Nat }
 import std.types { NonEmptyStr, List, LogicalTime }
 import std.os.types { OperatingSystemSurface, Linux, Posix, PosixProcess }
-import extdeps.github.actions { RunnerSpec }
-import gunbc.runner_spec_from_offer { runner_spec_from_offer }
 
 type CostClass = OwnedMarginalZero | PerSecondBilled | Metered | DeveloperAttention
 
@@ -131,6 +129,3 @@ data gunbc_ci_fleet_offer: ComputeOffer = ComputeOffer {
   cost_quote: none,
 }
 
-fn gunbc_ci_runner_spec() -> RunnerSpec {
-  runner_spec_from_offer(offer: gunbc_ci_fleet_offer)
-}
