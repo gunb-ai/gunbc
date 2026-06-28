@@ -1,0 +1,28 @@
+module test.claim.variant_owner_expected_type
+
+import std.logic { Bool }
+
+type AEarlyOwner = SharedVariant | AOnlyVariant
+type ZLaterOwner = SharedVariant | ZOnlyVariant
+
+fn make_z_variant() -> ZLaterOwner { SharedVariant }
+
+fn make_a_variant() -> AEarlyOwner { SharedVariant }
+
+fn is_shared_in_z(v: ZLaterOwner) -> Bool {
+  match v {
+    SharedVariant => true
+    ZOnlyVariant => false
+  }
+}
+
+fn is_shared_in_a(v: AEarlyOwner) -> Bool {
+  match v {
+    SharedVariant => true
+    AOnlyVariant => false
+  }
+}
+
+test fn expected_type_picks_variant_owner_not_alpha_order() -> Bool {
+  is_shared_in_z(v: make_z_variant()) && is_shared_in_a(v: make_a_variant())
+}
