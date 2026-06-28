@@ -10,6 +10,32 @@ fn bash_command_fold_plan() -> List<List<Runnable>> {
     [
       RunnableSingleClaim {
         entry: bash_fold_test_entry,
+        function: "bash_fold_structural_witness_holds"
+      },
+      RunnableSingleClaim {
+        entry: bash_fold_test_entry,
+        function: "bash_fold_command_oracle_holds"
+      },
+      RunnableSingleClaim {
+        entry: bash_fold_test_entry,
+        function: "bash_fold_direct_serialize_holds"
+      },
+      RunnableSingleClaim {
+        entry: bash_fold_test_entry,
+        function: "bash_fold_exit_assign_oracle_holds"
+      },
+      RunnableSingleClaim {
+        entry: bash_fold_test_entry,
+        function: "bash_fold_andor_pipe_oracle_holds"
+      },
+      RunnableSingleClaim {
+        entry: bash_fold_test_entry,
+        function: "bash_fold_subshell_if_oracle_holds"
+      }
+    ],
+    [
+      RunnableSingleClaim {
+        entry: bash_fold_test_entry,
         function: "bash_fold_relation_row_true_witness_holds"
       },
       RunnableSingleClaim {
@@ -38,7 +64,7 @@ fn bash_command_fold_plan() -> List<List<Runnable>> {
       },
       RunnableSingleClaim {
         entry: bash_fold_test_entry,
-        function: "bash_fold_wrong_production_rejects_oracle_holds"
+        function: "bash_fold_wrong_production_oracle_mismatch_holds"
       },
       RunnableSingleClaim {
         entry: bash_fold_test_entry,

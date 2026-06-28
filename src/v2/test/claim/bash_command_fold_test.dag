@@ -29,6 +29,7 @@ import v2.extdeps.languages.bash_command_fold {
   bash_fold_exit_wrong_target_model_witness,
   bash_fold_pipe_echo_hi_wc_emitted,
   bash_fold_relation_row_witness,
+  bash_fold_stmt_bundle_witness,
   bash_fold_stmt_emitted_witness,
   bash_fold_target_model_for_stmt_witness
 }
@@ -89,7 +90,7 @@ fn bash_fold_fold_matches_oracle(stmt: ShellStmt) -> Bool {
   }
 }
 
-test fn bash_fold_relation_row_true_witness_holds() -> Bool {
+fn bash_fold_relation_row_true_witness_holds() -> Bool {
   match bash_fold_relation_row_witness(
     emitted: bash_fold_cmd_true_emitted,
     lhs: ^bash_production_fold_command
@@ -99,25 +100,25 @@ test fn bash_fold_relation_row_true_witness_holds() -> Bool {
   }
 }
 
-test fn bash_fold_command_single_lit_true_holds() -> Bool {
+fn bash_fold_command_single_lit_true_holds() -> Bool {
   bash_fold_fold_matches_oracle(
     stmt: Command { words: [Lit { text: "true" }] }
   )
 }
 
-test fn bash_fold_command_multi_lit_echo_hi_holds() -> Bool {
+fn bash_fold_command_multi_lit_echo_hi_holds() -> Bool {
   bash_fold_fold_matches_oracle(
     stmt: Command { words: [Lit { text: "echo" }, Lit { text: "hi" }] }
   )
 }
 
-test fn bash_fold_command_var_ref_x_holds() -> Bool {
+fn bash_fold_command_var_ref_x_holds() -> Bool {
   bash_fold_fold_matches_oracle(
     stmt: Command { words: [VarRef { name: "X" }] }
   )
 }
 
-test fn bash_fold_command_arbitrary_grep_triple_holds() -> Bool {
+fn bash_fold_command_arbitrary_grep_triple_holds() -> Bool {
   bash_fold_fold_matches_oracle(
     stmt: Command {
       words: [
@@ -129,13 +130,13 @@ test fn bash_fold_command_arbitrary_grep_triple_holds() -> Bool {
   )
 }
 
-test fn bash_fold_command_arbitrary_var_home_holds() -> Bool {
+fn bash_fold_command_arbitrary_var_home_holds() -> Bool {
   bash_fold_fold_matches_oracle(
     stmt: Command { words: [VarRef { name: "HOME" }] }
   )
 }
 
-test fn bash_fold_command_arbitrary_lit_quote_escape_holds() -> Bool {
+fn bash_fold_command_arbitrary_lit_quote_escape_holds() -> Bool {
   bash_fold_fold_matches_oracle(
     stmt: Command { words: [Lit { text: "a'b" }] }
   )
@@ -153,10 +154,6 @@ fn bash_fold_wrong_production_oracle_mismatch_holds() -> Bool {
   }
 }
 
-test fn bash_fold_wrong_production_rejects_oracle_holds() -> Bool {
-  bash_fold_wrong_production_oracle_mismatch_holds()
-}
-
 fn bash_fold_direct_serialize_matches_oracle(emitted: Node, target: TargetModel, stmt: ShellStmt) -> Bool {
   match target_serialize_source_from_model(target: target, emitted: emitted) {
     Accepted { value: source, diagnostics: d } =>
@@ -165,7 +162,7 @@ fn bash_fold_direct_serialize_matches_oracle(emitted: Node, target: TargetModel,
   }
 }
 
-test fn bash_fold_direct_serialize_single_lit_true_holds() -> Bool {
+fn bash_fold_direct_serialize_single_lit_true_holds() -> Bool {
   let stmt = Command { words: [Lit { text: "true" }] }
   match bash_fold_target_model_for_stmt_witness(stmt: stmt) {
     Holds { value: target } =>
@@ -178,7 +175,7 @@ test fn bash_fold_direct_serialize_single_lit_true_holds() -> Bool {
   }
 }
 
-test fn bash_fold_direct_serialize_multi_lit_echo_hi_holds() -> Bool {
+fn bash_fold_direct_serialize_multi_lit_echo_hi_holds() -> Bool {
   let stmt = Command { words: [Lit { text: "echo" }, Lit { text: "hi" }] }
   match bash_fold_target_model_for_stmt_witness(stmt: stmt) {
     Holds { value: target } =>
@@ -191,7 +188,7 @@ test fn bash_fold_direct_serialize_multi_lit_echo_hi_holds() -> Bool {
   }
 }
 
-test fn bash_fold_direct_serialize_var_ref_x_holds() -> Bool {
+fn bash_fold_direct_serialize_var_ref_x_holds() -> Bool {
   let stmt = Command { words: [VarRef { name: "X" }] }
   match bash_fold_target_model_for_stmt_witness(stmt: stmt) {
     Holds { value: target } =>
@@ -204,7 +201,7 @@ test fn bash_fold_direct_serialize_var_ref_x_holds() -> Bool {
   }
 }
 
-test fn bash_fold_emitted_tree_differs_on_wrong_fixture_holds() -> Bool {
+fn bash_fold_emitted_tree_differs_on_wrong_fixture_holds() -> Bool {
   bash_fold_cmd_true_emitted != bash_fold_cmd_true_wrong_emitted
 }
 
@@ -222,40 +219,40 @@ fn bash_fold_wrong_production_mismatch_holds(
   }
 }
 
-test fn bash_fold_exit_code_42_holds() -> Bool {
+fn bash_fold_exit_code_42_holds() -> Bool {
   bash_fold_fold_matches_oracle(stmt: Exit { code: 42 })
 }
 
-test fn bash_fold_exit_code_0_holds() -> Bool {
+fn bash_fold_exit_code_0_holds() -> Bool {
   bash_fold_fold_matches_oracle(stmt: Exit { code: 0 })
 }
 
-test fn bash_fold_exit_wrong_production_rejects_oracle_holds() -> Bool {
+fn bash_fold_exit_wrong_production_rejects_oracle_holds() -> Bool {
   bash_fold_wrong_production_mismatch_holds(
     stmt: Exit { code: 42 },
     wrong_target_witness: bash_fold_exit_wrong_target_model_witness()
   )
 }
 
-test fn bash_fold_assign_lit_foo_bar_holds() -> Bool {
+fn bash_fold_assign_lit_foo_bar_holds() -> Bool {
   bash_fold_fold_matches_oracle(
     stmt: Assign { name: "FOO", value: Lit { text: "bar" } }
   )
 }
 
-test fn bash_fold_assign_var_x_home_holds() -> Bool {
+fn bash_fold_assign_var_x_home_holds() -> Bool {
   bash_fold_fold_matches_oracle(
     stmt: Assign { name: "X", value: VarRef { name: "HOME" } }
   )
 }
 
-test fn bash_fold_assign_lit_quote_escape_holds() -> Bool {
+fn bash_fold_assign_lit_quote_escape_holds() -> Bool {
   bash_fold_fold_matches_oracle(
     stmt: Assign { name: "VAR", value: Lit { text: "a'b" } }
   )
 }
 
-test fn bash_fold_assign_wrong_production_rejects_oracle_holds() -> Bool {
+fn bash_fold_assign_wrong_production_rejects_oracle_holds() -> Bool {
   bash_fold_wrong_production_mismatch_holds(
     stmt: Assign { name: "FOO", value: Lit { text: "bar" } },
     wrong_target_witness: bash_fold_assign_wrong_target_model_witness()
@@ -270,7 +267,7 @@ fn bash_fold_cmd_false_stmt() -> ShellStmt {
   Command { words: [Lit { text: "false" }] }
 }
 
-test fn bash_fold_and_then_true_false_holds() -> Bool {
+fn bash_fold_and_then_true_false_holds() -> Bool {
   bash_fold_fold_matches_oracle(
     stmt: AndOr {
       left: bash_fold_cmd_true_stmt(),
@@ -280,7 +277,7 @@ test fn bash_fold_and_then_true_false_holds() -> Bool {
   )
 }
 
-test fn bash_fold_or_else_true_false_holds() -> Bool {
+fn bash_fold_or_else_true_false_holds() -> Bool {
   bash_fold_fold_matches_oracle(
     stmt: AndOr {
       left: bash_fold_cmd_true_stmt(),
@@ -290,7 +287,7 @@ test fn bash_fold_or_else_true_false_holds() -> Bool {
   )
 }
 
-test fn bash_fold_pipe_echo_hi_wc_holds() -> Bool {
+fn bash_fold_pipe_echo_hi_wc_holds() -> Bool {
   bash_fold_fold_matches_oracle(
     stmt: Pipe {
       left: Command { words: [Lit { text: "echo" }, Lit { text: "hi" }] },
@@ -299,7 +296,7 @@ test fn bash_fold_pipe_echo_hi_wc_holds() -> Bool {
   )
 }
 
-test fn bash_fold_and_then_wrong_production_rejects_oracle_holds() -> Bool {
+fn bash_fold_and_then_wrong_production_rejects_oracle_holds() -> Bool {
   match bash_fold_relation_row_witness(
     emitted: bash_fold_and_then_true_false_emitted,
     lhs: ^bash_production_fold_or_else
@@ -309,7 +306,7 @@ test fn bash_fold_and_then_wrong_production_rejects_oracle_holds() -> Bool {
   }
 }
 
-test fn bash_fold_pipe_wrong_production_rejects_oracle_holds() -> Bool {
+fn bash_fold_pipe_wrong_production_rejects_oracle_holds() -> Bool {
   match bash_fold_relation_row_witness(
     emitted: bash_fold_pipe_echo_hi_wc_emitted,
     lhs: ^bash_production_fold_and_then
@@ -319,7 +316,7 @@ test fn bash_fold_pipe_wrong_production_rejects_oracle_holds() -> Bool {
   }
 }
 
-test fn bash_fold_pipe_and_then_left_holds() -> Bool {
+fn bash_fold_pipe_and_then_left_holds() -> Bool {
   bash_fold_fold_matches_oracle(
     stmt: Pipe {
       left: AndOr {
@@ -332,7 +329,7 @@ test fn bash_fold_pipe_and_then_left_holds() -> Bool {
   )
 }
 
-test fn bash_fold_pipe_three_stage_holds() -> Bool {
+fn bash_fold_pipe_three_stage_holds() -> Bool {
   bash_fold_fold_matches_oracle(
     stmt: Pipe {
       left: Pipe {
@@ -344,13 +341,13 @@ test fn bash_fold_pipe_three_stage_holds() -> Bool {
   )
 }
 
-test fn bash_fold_subshell_true_holds() -> Bool {
+fn bash_fold_subshell_true_holds() -> Bool {
   bash_fold_fold_matches_oracle(
     stmt: Subshell { body: [Command { words: [Lit { text: "true" }] }] }
   )
 }
 
-test fn bash_fold_subshell_multi_stmt_holds() -> Bool {
+fn bash_fold_subshell_multi_stmt_holds() -> Bool {
   bash_fold_fold_matches_oracle(
     stmt: Subshell {
       body: [
@@ -361,7 +358,7 @@ test fn bash_fold_subshell_multi_stmt_holds() -> Bool {
   )
 }
 
-test fn bash_fold_subshell_nested_and_then_holds() -> Bool {
+fn bash_fold_subshell_nested_and_then_holds() -> Bool {
   bash_fold_fold_matches_oracle(
     stmt: Subshell {
       body: [
@@ -375,7 +372,7 @@ test fn bash_fold_subshell_nested_and_then_holds() -> Bool {
   )
 }
 
-test fn bash_fold_if_true_then_echo_holds() -> Bool {
+fn bash_fold_if_true_then_echo_holds() -> Bool {
   bash_fold_fold_matches_oracle(
     stmt: If {
       cond: Command { words: [Lit { text: "true" }] },
@@ -384,7 +381,7 @@ test fn bash_fold_if_true_then_echo_holds() -> Bool {
   )
 }
 
-test fn bash_fold_if_multi_then_holds() -> Bool {
+fn bash_fold_if_multi_then_holds() -> Bool {
   bash_fold_fold_matches_oracle(
     stmt: If {
       cond: Command { words: [Lit { text: "true" }] },
@@ -396,7 +393,7 @@ test fn bash_fold_if_multi_then_holds() -> Bool {
   )
 }
 
-test fn bash_fold_subshell_wrong_production_rejects_oracle_holds() -> Bool {
+fn bash_fold_subshell_wrong_production_rejects_oracle_holds() -> Bool {
   match bash_fold_stmt_bundle_witness(
     stmt: Subshell { body: [Command { words: [Lit { text: "true" }] }] }
   ) {
@@ -412,7 +409,7 @@ test fn bash_fold_subshell_wrong_production_rejects_oracle_holds() -> Bool {
   }
 }
 
-test fn bash_fold_if_wrong_production_rejects_oracle_holds() -> Bool {
+fn bash_fold_if_wrong_production_rejects_oracle_holds() -> Bool {
   match bash_fold_stmt_bundle_witness(
     stmt: If {
       cond: Command { words: [Lit { text: "true" }] },
@@ -429,4 +426,55 @@ test fn bash_fold_if_wrong_production_rejects_oracle_holds() -> Bool {
       }
     Violates { diagnostic: _ } => false
   }
+}
+
+test fn bash_fold_structural_witness_holds() -> Bool {
+  bash_fold_relation_row_true_witness_holds()
+    && bash_fold_emitted_tree_differs_on_wrong_fixture_holds()
+}
+
+test fn bash_fold_command_oracle_holds() -> Bool {
+  bash_fold_command_single_lit_true_holds()
+    && bash_fold_command_multi_lit_echo_hi_holds()
+    && bash_fold_command_var_ref_x_holds()
+    && bash_fold_command_arbitrary_grep_triple_holds()
+    && bash_fold_command_arbitrary_var_home_holds()
+    && bash_fold_command_arbitrary_lit_quote_escape_holds()
+    && bash_fold_wrong_production_oracle_mismatch_holds()
+}
+
+test fn bash_fold_direct_serialize_holds() -> Bool {
+  bash_fold_direct_serialize_single_lit_true_holds()
+    && bash_fold_direct_serialize_multi_lit_echo_hi_holds()
+    && bash_fold_direct_serialize_var_ref_x_holds()
+}
+
+test fn bash_fold_exit_assign_oracle_holds() -> Bool {
+  bash_fold_exit_code_42_holds()
+    && bash_fold_exit_code_0_holds()
+    && bash_fold_exit_wrong_production_rejects_oracle_holds()
+    && bash_fold_assign_lit_foo_bar_holds()
+    && bash_fold_assign_var_x_home_holds()
+    && bash_fold_assign_lit_quote_escape_holds()
+    && bash_fold_assign_wrong_production_rejects_oracle_holds()
+}
+
+test fn bash_fold_andor_pipe_oracle_holds() -> Bool {
+  bash_fold_and_then_true_false_holds()
+    && bash_fold_or_else_true_false_holds()
+    && bash_fold_pipe_echo_hi_wc_holds()
+    && bash_fold_and_then_wrong_production_rejects_oracle_holds()
+    && bash_fold_pipe_wrong_production_rejects_oracle_holds()
+    && bash_fold_pipe_and_then_left_holds()
+    && bash_fold_pipe_three_stage_holds()
+}
+
+test fn bash_fold_subshell_if_oracle_holds() -> Bool {
+  bash_fold_subshell_true_holds()
+    && bash_fold_subshell_multi_stmt_holds()
+    && bash_fold_subshell_nested_and_then_holds()
+    && bash_fold_if_true_then_echo_holds()
+    && bash_fold_if_multi_then_holds()
+    && bash_fold_subshell_wrong_production_rejects_oracle_holds()
+    && bash_fold_if_wrong_production_rejects_oracle_holds()
 }
