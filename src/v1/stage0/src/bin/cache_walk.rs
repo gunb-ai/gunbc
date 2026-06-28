@@ -2,9 +2,7 @@
 
 use std::process::ExitCode;
 
-use v1_compiler::cli_run::{
-    build_multi_entry_index, resolve_entry_with_index,
-};
+use v1_compiler::cli_run::{build_multi_entry_index, resolve_entry_with_index};
 
 fn usage() -> ! {
     eprintln!("cache_walk: measure MultiEntryIndex cache structure after resolving an entry");
@@ -21,15 +19,22 @@ fn main() -> ExitCode {
         match args[i].as_str() {
             "--source-root" => {
                 i += 1;
-                if i >= args.len() { usage(); }
+                if i >= args.len() {
+                    usage();
+                }
                 source_roots.push(args[i].clone());
             }
             "--entry" => {
                 i += 1;
-                if i >= args.len() { usage(); }
+                if i >= args.len() {
+                    usage();
+                }
                 entry = Some(args[i].clone());
             }
-            _ => { eprintln!("unknown arg: {}", args[i]); usage(); }
+            _ => {
+                eprintln!("unknown arg: {}", args[i]);
+                usage();
+            }
         }
         i += 1;
     }

@@ -352,7 +352,9 @@ pub struct CacheWalkReport {
 impl CacheWalkReport {
     pub fn format(&self) -> String {
         let sharing = |total: usize, distinct: usize| -> String {
-            if distinct == 0 { return "n/a".to_string(); }
+            if distinct == 0 {
+                return "n/a".to_string();
+            }
             format!("{:.1}×", total as f64 / distinct as f64)
         };
         format!(
@@ -383,18 +385,34 @@ impl CacheWalkReport {
             self.typed_module_count,
             self.parse_cache_entry_count,
             self.total_bindings,
-            self.distinct_binding_ptrs, sharing(self.total_bindings, self.distinct_binding_ptrs),
+            self.distinct_binding_ptrs,
+            sharing(self.total_bindings, self.distinct_binding_ptrs),
             self.total_source_index_entries,
-            self.distinct_source_index_ptrs, sharing(self.total_source_index_entries, self.distinct_source_index_ptrs),
+            self.distinct_source_index_ptrs,
+            sharing(
+                self.total_source_index_entries,
+                self.distinct_source_index_ptrs
+            ),
             self.total_inductive_field_entries,
-            self.distinct_inductive_field_vec_ptrs, sharing(self.total_inductive_field_entries, self.distinct_inductive_field_vec_ptrs),
-            self.distinct_intern_table_ptrs, sharing(self.typed_module_count, self.distinct_intern_table_ptrs),
+            self.distinct_inductive_field_vec_ptrs,
+            sharing(
+                self.total_inductive_field_entries,
+                self.distinct_inductive_field_vec_ptrs
+            ),
+            self.distinct_intern_table_ptrs,
+            sharing(self.typed_module_count, self.distinct_intern_table_ptrs),
             self.total_func_sigs,
-            self.distinct_func_sig_ptrs, sharing(self.total_func_sigs, self.distinct_func_sig_ptrs),
+            self.distinct_func_sig_ptrs,
+            sharing(self.total_func_sigs, self.distinct_func_sig_ptrs),
             self.total_typed_items,
-            self.distinct_typed_item_node_ptrs, sharing(self.total_typed_items, self.distinct_typed_item_node_ptrs),
+            self.distinct_typed_item_node_ptrs,
+            sharing(self.total_typed_items, self.distinct_typed_item_node_ptrs),
             self.total_parse_module_nodes,
-            self.distinct_parse_module_node_ptrs, sharing(self.total_parse_module_nodes, self.distinct_parse_module_node_ptrs),
+            self.distinct_parse_module_node_ptrs,
+            sharing(
+                self.total_parse_module_nodes,
+                self.distinct_parse_module_node_ptrs
+            ),
         )
     }
 }
@@ -408,14 +426,16 @@ impl MultiEntryIndex {
         let parse_cache_ref = self.parse_cache.borrow();
 
         let mut total_bindings = 0usize;
-        let mut binding_ptrs: HashSet<*const crate::v1_compiler_infer_env::TypeBinding> = HashSet::new();
+        let mut binding_ptrs: HashSet<*const crate::v1_compiler_infer_env::TypeBinding> =
+            HashSet::new();
         let mut total_si_entries = 0usize;
         let mut si_ptrs: HashSet<*const NewlineIndex> = HashSet::new();
         let mut total_if_entries = 0usize;
         let mut if_vec_ptrs: HashSet<usize> = HashSet::new();
         let mut intern_ptrs: HashSet<*const InternTable> = HashSet::new();
         let mut total_func_sigs = 0usize;
-        let mut sig_ptrs: HashSet<*const crate::v1_compiler_infer_sigs::ResolvedFuncSig> = HashSet::new();
+        let mut sig_ptrs: HashSet<*const crate::v1_compiler_infer_sigs::ResolvedFuncSig> =
+            HashSet::new();
         let mut total_typed_items = 0usize;
         let mut typed_item_ptrs: HashSet<*const Node> = HashSet::new();
 
