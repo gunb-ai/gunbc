@@ -25,7 +25,8 @@ import gunbc.ci_floor_measurement {
   gunbc_ci_floor_per_shard_peak_rss_bytes,
   gunbc_ci_floor_host_compiler_spawn_peak,
   gunbc_ci_floor_conservative_fallback_width,
-  gunbc_ci_floor_confirmed_safe_width
+  gunbc_ci_floor_memory_derived_width,
+  gunbc_ci_runner_cgroup_memory_cap,
 }
 import gunbc.ci_budget_tree { srv1_floor_memory_budget }
 import extdeps.cpu.ampere { altra_max_m12830_catalog }
@@ -339,14 +340,12 @@ fn gunbc_ci_floor_spawn_width_for_budget(memory_budget: ByteSize) -> HardwareThr
   let budget_count = byte_size_count(b: memory_budget)
   if budget_count <= 0 {
     hardware_thread_count(count: gunbc_ci_floor_conservative_fallback_width)
-  } else if budget_count < byte_size_count(b: gunbc_ci_floor_per_shard_peak_rss_bytes()) {
-    hardware_thread_count(count: 1)
   } else {
     let cpu_bound = hardware_thread_count_value(t: bounded_host_spawn_width(
       shard_count: gunbc_ci_floor_breadth(),
       hardware_threads: gunbc_ci_floor_hardware_threads()
     ))
-    hardware_thread_count(count: int_min(a: cpu_bound, b: gunbc_ci_floor_confirmed_safe_width))
+    hardware_thread_count(count: gunbc_ci_floor_memory_derived_width(cap: memory_budget, cpu_bound: cpu_bound))
   }
 }
 
@@ -482,17 +481,14 @@ fn witness_floor_no_corpus_resource_edge_to_compile_anchor() -> Bool {
   })
 }
 
-fn witness_floor_confirmed_safe_width_bounds_actual_width() -> Bool {
-  let cap_budget = 8589934592
+fn witness_floor_derived_width_at_runner_cap() -> Bool {
+  let cap_budget = byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap)
   let actual_width = hardware_thread_count_value(t: gunbc_ci_floor_spawn_width(memory_budget_bytes: cap_budget))
-  actual_width <= gunbc_ci_floor_confirmed_safe_width
+  actual_width == gunbc_ci_floor_memory_derived_width(cap: gunbc_ci_runner_cgroup_memory_cap, cpu_bound: 128)
 }
 
-fn witness_floor_ceiling_clamps_stale_per_shard() -> Bool {
-  let runner_cap_bytes = 8589934592
-  let stale_bytes = 2254857830
-  let confirmed_safe = gunbc_ci_floor_confirmed_safe_width
-  let raw_width_without_ceiling = runner_cap_bytes / stale_bytes
-  let capped_width = if raw_width_without_ceiling <= confirmed_safe { raw_width_without_ceiling } else { confirmed_safe }
-  raw_width_without_ceiling > confirmed_safe && capped_width <= confirmed_safe
+fn witness_floor_derived_width_leaves_headroom_at_cap() -> Bool {
+  let width = gunbc_ci_floor_memory_derived_width(cap: gunbc_ci_runner_cgroup_memory_cap, cpu_bound: 128)
+  let committed = byte_size_count(b: gunbc_ci_floor_per_shard_peak_rss_bytes()) * width
+  committed < byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap)
 }

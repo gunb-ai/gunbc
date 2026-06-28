@@ -1,8 +1,31 @@
 module product.network_topology
 
-import product.compute_fabric { NetworkLocality, Lan, DockerBridge, TailscaleOverlay }
 import product.placement_supply { HostIdentity }
+import std.measure { Bandwidth }
 import std.types { NonEmptyStr, Bool, List }
+
+type NetworkLocality =
+    Loopback
+  | Lan
+  | Internet
+  | WslNat
+  | WslBridged
+  | DockerBridge
+  | TailscaleOverlay
+type NetworkAddressability = Unicast | Multicast | Broadcast
+type NetworkEgressClass =
+    None
+  | CratesIo
+  | InternalMirror
+  | Unrestricted
+type LatencyClass = UltraLow | Low | Medium | High
+
+type NetworkInterface {
+  addressability: NetworkAddressability
+  bandwidth: Bandwidth?
+  latency_class: LatencyClass?
+  locality: NetworkLocality
+}
 
 type NetworkAttachmentRole =
     HostOperatingSystem
