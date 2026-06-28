@@ -6,18 +6,38 @@ import extdeps.languages.bash.program {
   Assign,
   Command,
   Exit,
+  Heredoc,
   If,
   Lit,
   OrElse,
   Pipe,
+  Redir,
+  RedirToFile,
   ShellStmt,
+  ShellWord,
+  StderrToNull,
+  StdoutAndStderrToNull,
+  StdoutToStderr,
   Subshell,
   VarRef,
+  WithRedir,
   serialize_stmt
 }
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import v2.compiler.translate { target_serialize_source_from_model }
+import v2.extdeps.languages.bash {
+  bash_redir_stderr_null_emitted,
+  bash_redir_stderr_null_target_model,
+  bash_redir_stdout_and_stderr_null_emitted,
+  bash_redir_stdout_and_stderr_null_target_model,
+  bash_redir_stdout_to_stderr_emitted,
+  bash_redir_stdout_to_stderr_target_model,
+  bash_redir_to_file_emitted,
+  bash_redir_to_file_target_model,
+  bash_stmt_heredoc_emitted,
+  bash_stmt_with_redir_emitted
+}
 import v2.extdeps.languages.bash_command_fold {
   bash_fold_and_then_true_false_emitted,
   bash_fold_assign_wrong_target_model_witness,
@@ -27,11 +47,16 @@ import v2.extdeps.languages.bash_command_fold {
   bash_fold_cmd_true_wrong_target_model_witness,
   bash_fold_cmd_var_x_emitted,
   bash_fold_exit_wrong_target_model_witness,
+  bash_fold_heredoc_target_model,
+  bash_fold_heredoc_wrong_target_model_witness,
   bash_fold_pipe_echo_hi_wc_emitted,
   bash_fold_relation_row_witness,
   bash_fold_stmt_bundle_witness,
   bash_fold_stmt_emitted_witness,
-  bash_fold_target_model_for_stmt_witness
+  bash_fold_stmt_uses_delegated_grammar,
+  bash_fold_target_model_for_stmt_witness,
+  bash_fold_with_redir_target_model,
+  bash_fold_with_redir_wrong_target_model_witness
 }
 import v2.std.compilers.target_model { TargetModel }
 import v2.std.collection { Map }
@@ -47,7 +72,7 @@ import v2.std.diagnostic {
   node_locus
 }
 import v2.std.logic { Bool }
-import v2.std.node { Node }
+import v2.std.node { Conj, Node, SyntheticOccurrence, TypeNode }
 import v2.std.witness { Holds, Violates, Witness }
 
 fn bash_fold_facts_lookup(key: Node) -> Witness<InferredFacts> {
@@ -57,6 +82,117 @@ fn bash_fold_facts_lookup(key: Node) -> Witness<InferredFacts> {
       at: node_locus(node: key),
       correction: Unavailable { reason: ExternalContractUnknown }
     }
+  }
+}
+
+fn bash_fold_emit_from_emitted(emitted: Node, target: TargetModel) -> Outcome<String> {
+  let tree = InferredTree {
+    root: emitted,
+    facts: Map { lookup: bash_fold_facts_lookup }
+  }
+  match emit(tree: tree, target: target) {
+    Accepted { value: source, diagnostics: d } =>
+      match d {
+        None => Accepted { value: source.carried, diagnostics: None }
+        Some { diagnostics: r } => Rejected { diagnostics: r }
+      }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+fn bash_fold_emit_word_spelling(w: ShellWord) -> Outcome<String> {
+  bash_fold_emit_inner_stmt_spelling(
+    stmt: Command { words: [w] }
+  )
+}
+
+fn bash_fold_emit_redir_spelling(r: Redir) -> Outcome<String> {
+  match r {
+    StderrToNull =>
+      bash_fold_emit_from_emitted(
+        emitted: bash_redir_stderr_null_emitted,
+        target: bash_redir_stderr_null_target_model()
+      )
+    StdoutAndStderrToNull =>
+      bash_fold_emit_from_emitted(
+        emitted: bash_redir_stdout_and_stderr_null_emitted,
+        target: bash_redir_stdout_and_stderr_null_target_model()
+      )
+    StdoutToStderr =>
+      bash_fold_emit_from_emitted(
+        emitted: bash_redir_stdout_to_stderr_emitted,
+        target: bash_redir_stdout_to_stderr_target_model()
+      )
+    RedirToFile { path: p } =>
+      match bash_fold_emit_word_spelling(w: p) {
+        Accepted { value: path_spelling, diagnostics: d } =>
+          bash_fold_emit_from_emitted(
+            emitted: bash_redir_to_file_emitted,
+            target: bash_redir_to_file_target_model(path: path_spelling)
+          )
+        Rejected { diagnostics: rd } => Rejected { diagnostics: rd }
+      }
+  }
+}
+
+fn bash_fold_emit_inner_stmt_spelling(stmt: ShellStmt) -> Outcome<String> {
+  if bash_fold_stmt_uses_delegated_grammar(stmt: stmt) {
+    bash_fold_delegated_fold_serialize(stmt: stmt)
+  } else {
+    match bash_fold_target_model_for_stmt_witness(stmt: stmt) {
+      Holds { value: target } => bash_fold_fold_serialize(stmt: stmt, target: target)
+      Violates { diagnostic: d } => Rejected { diagnostics: Some { diagnostics: [d] } }
+    }
+  }
+}
+
+fn bash_fold_delegated_fold_serialize(stmt: ShellStmt) -> Outcome<String> {
+  match stmt {
+    WithRedir { stmt: st, redir: rd } =>
+      match bash_fold_emit_inner_stmt_spelling(stmt: st) {
+        Accepted { value: stmt_spelling, diagnostics: d } =>
+          match bash_fold_emit_redir_spelling(r: rd) {
+            Accepted { value: redir_spelling, diagnostics: rd2 } =>
+              bash_fold_emit_from_emitted(
+                emitted: bash_stmt_with_redir_emitted,
+                target: bash_fold_with_redir_target_model(
+                  stmt_spelling: stmt_spelling,
+                  redir_spelling: redir_spelling
+                )
+              )
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+          }
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      }
+    Heredoc { path: p, delimiter: d, body: b } =>
+      match bash_fold_emit_word_spelling(w: p) {
+        Accepted { value: path_spelling, diagnostics: d } =>
+          bash_fold_emit_from_emitted(
+            emitted: bash_stmt_heredoc_emitted,
+            target: bash_fold_heredoc_target_model(
+              path_spelling: path_spelling,
+              delimiter: d,
+              body: b
+            )
+          )
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      }
+    _ =>
+      Rejected {
+        diagnostics: Some {
+          diagnostics: [
+            Diagnostic {
+              reason: ^bash_fold_delegated_fold_unexpected_stmt,
+              at: node_locus(node: Node {
+                kind: TypeNode { connective: Conj },
+                children: [],
+                occurrence_id: SyntheticOccurrence
+              }),
+              correction: Unavailable { reason: ExternalContractUnknown }
+            }
+          ]
+        }
+      }
   }
 }
 
@@ -80,13 +216,20 @@ fn bash_fold_fold_serialize(stmt: ShellStmt, target: TargetModel) -> Outcome<Str
 }
 
 fn bash_fold_fold_matches_oracle(stmt: ShellStmt) -> Bool {
-  match bash_fold_target_model_for_stmt_witness(stmt: stmt) {
-    Holds { value: target } =>
-      match bash_fold_fold_serialize(stmt: stmt, target: target) {
-        Accepted { value: folded, diagnostics: _ } => folded == serialize_stmt(s: stmt)
-        Rejected { diagnostics: _ } => false
-      }
-    Violates { diagnostic: _ } => false
+  if bash_fold_stmt_uses_delegated_grammar(stmt: stmt) {
+    match bash_fold_delegated_fold_serialize(stmt: stmt) {
+      Accepted { value: folded, diagnostics: _ } => folded == serialize_stmt(s: stmt)
+      Rejected { diagnostics: _ } => false
+    }
+  } else {
+    match bash_fold_target_model_for_stmt_witness(stmt: stmt) {
+      Holds { value: target } =>
+        match bash_fold_fold_serialize(stmt: stmt, target: target) {
+          Accepted { value: folded, diagnostics: _ } => folded == serialize_stmt(s: stmt)
+          Rejected { diagnostics: _ } => false
+        }
+      Violates { diagnostic: _ } => false
+    }
   }
 }
 
@@ -444,4 +587,122 @@ test fn bash_fold_if_wrong_production_rejects_oracle_holds() -> Bool {
       }
     Violates { diagnostic: _ } => false
   }
+}
+
+test fn bash_fold_with_redir_stderr_null_holds() -> Bool {
+  bash_fold_fold_matches_oracle(
+    stmt: WithRedir {
+      stmt: Command { words: [Lit { text: "true" }] },
+      redir: StderrToNull
+    }
+  )
+}
+
+test fn bash_fold_with_redir_stdout_and_stderr_null_holds() -> Bool {
+  bash_fold_fold_matches_oracle(
+    stmt: WithRedir {
+      stmt: Command { words: [Lit { text: "true" }] },
+      redir: StdoutAndStderrToNull
+    }
+  )
+}
+
+test fn bash_fold_with_redir_stdout_to_stderr_holds() -> Bool {
+  bash_fold_fold_matches_oracle(
+    stmt: WithRedir {
+      stmt: Command { words: [Lit { text: "true" }] },
+      redir: StdoutToStderr
+    }
+  )
+}
+
+test fn bash_fold_with_redir_redir_to_file_var_holds() -> Bool {
+  bash_fold_fold_matches_oracle(
+    stmt: WithRedir {
+      stmt: Command { words: [Lit { text: "true" }] },
+      redir: RedirToFile { path: VarRef { name: "PROBE_BIN" } }
+    }
+  )
+}
+
+test fn bash_fold_heredoc_holds() -> Bool {
+  bash_fold_fold_matches_oracle(
+    stmt: Heredoc {
+      path: Lit { text: "out" },
+      delimiter: "EOF",
+      body: "hello"
+    }
+  )
+}
+
+test fn bash_fold_with_redir_wrong_spellings_rejects_oracle_holds() -> Bool {
+  bash_fold_wrong_production_mismatch_holds(
+    stmt: WithRedir {
+      stmt: Command { words: [Lit { text: "true" }] },
+      redir: StderrToNull
+    },
+    wrong_target_witness: bash_fold_with_redir_wrong_target_model_witness()
+  )
+}
+
+test fn bash_fold_heredoc_wrong_spellings_rejects_oracle_holds() -> Bool {
+  bash_fold_wrong_production_mismatch_holds(
+    stmt: Heredoc {
+      path: Lit { text: "out" },
+      delimiter: "EOF",
+      body: "hello"
+    },
+    wrong_target_witness: bash_fold_heredoc_wrong_target_model_witness()
+  )
+}
+
+test fn bash_fold_with_redir_wrong_production_rejects_oracle_holds() -> Bool {
+  match bash_fold_stmt_bundle_witness(
+    stmt: WithRedir {
+      stmt: Command { words: [Lit { text: "true" }] },
+      redir: StderrToNull
+    }
+  ) {
+    Holds { value: bundle } =>
+      match bash_fold_relation_row_witness(
+        emitted: bundle.emitted,
+        lhs: ^bash_production_fold_command
+      ) {
+        Holds { value: _ } => false
+        Violates { diagnostic: _ } => true
+      }
+    Violates { diagnostic: _ } => false
+  }
+}
+
+test fn bash_fold_heredoc_wrong_production_rejects_oracle_holds() -> Bool {
+  match bash_fold_stmt_bundle_witness(
+    stmt: Heredoc {
+      path: Lit { text: "out" },
+      delimiter: "EOF",
+      body: "hello"
+    }
+  ) {
+    Holds { value: bundle } =>
+      match bash_fold_relation_row_witness(
+        emitted: bundle.emitted,
+        lhs: ^bash_production_fold_command
+      ) {
+        Holds { value: _ } => false
+        Violates { diagnostic: _ } => true
+      }
+    Violates { diagnostic: _ } => false
+  }
+}
+
+test fn bash_fold_with_redir_pipe_soundness_holds() -> Bool {
+  bash_fold_fold_matches_oracle(
+    stmt: WithRedir {
+      stmt: Pipe {
+        left: Command { words: [Lit { text: "echo" }, Lit { text: "hi" }] },
+        right: Command { words: [Lit { text: "wc" }, Lit { text: "-c" }] }
+      },
+      redir: StderrToNull
+    }
+  )
 }
