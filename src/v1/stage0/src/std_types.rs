@@ -209,13 +209,13 @@ pub struct Bytes(pub std::marker::PhantomData<()>);
 
 pub type Char = i64;
 
-pub type List<element> = Vec<element>;
+pub type List<Element> = Vec<Element>;
 
-pub type Set<element> = Rc<crate::std_algebra::BooleanAlgebra<element>>;
+pub type Set<Element> = Rc<crate::std_algebra::BooleanAlgebra<Element>>;
 
-pub type Map<key, value> = Rc<crate::std_algebra::PartialFunction<key, value>>;
+pub type Map<Key, Value> = Rc<crate::std_algebra::PartialFunction<Key, Value>>;
 
-pub fn list_length<T>(items: Rc<List<T>>) -> i64 {
+pub fn list_length<T>(items: Rc<Vec<T>>) -> i64 {
     items.iter().fold(0, |acc: i64, _: _| (acc + 1))
 }
 

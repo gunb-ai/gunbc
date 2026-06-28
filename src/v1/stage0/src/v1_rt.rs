@@ -7,14 +7,6 @@ use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-// TRANSITIONAL BOOTSTRAP PATCH (throwaway): main's stale compiled emitter does not emit
-// these three runtime string fns, but runtime_rust.dag's rust_runtime_source DOES. This
-// lets the gen-1 seed compile so the rebuilt emitter can re-emit v1_rt.rs fresh; the next
-// emit pass overwrites this file and removes these.
-pub fn starts_with(s: String, prefix: String) -> bool { s.starts_with(&*prefix) }
-pub fn ends_with(s: String, suffix: String) -> bool { s.ends_with(&*suffix) }
-pub fn trim(s: String) -> String { s.trim().to_string() }
-
 #[cfg(feature = "text_lookup_work_counter")]
 use std::cell::Cell;
 
@@ -146,6 +138,18 @@ pub fn string_contains(s: &str, sub: String) -> bool {
 
 pub fn contains(s: String, sub: String) -> bool {
     string_contains(&s, sub)
+}
+
+pub fn starts_with(s: String, prefix: String) -> bool {
+    s.starts_with(&*prefix)
+}
+
+pub fn ends_with(s: String, suffix: String) -> bool {
+    s.ends_with(&*suffix)
+}
+
+pub fn trim(s: String) -> String {
+    s.trim().to_string()
 }
 
 pub fn count<T>(items: Rc<Vec<T>>) -> i64 {

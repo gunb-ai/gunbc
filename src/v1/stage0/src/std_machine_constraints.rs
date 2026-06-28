@@ -12,7 +12,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct MachineWidth<bits>(pub std::marker::PhantomData<bits>);
+pub struct MachineWidth<Bits>(pub std::marker::PhantomData<Bits>);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct PointerWidth(pub std::marker::PhantomData<()>);
