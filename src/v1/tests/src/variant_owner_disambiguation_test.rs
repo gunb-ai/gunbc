@@ -166,10 +166,7 @@ fn shared_variant_resolves_per_site_independently() {
         .map(|d| v1_compiler::v1_std_core::diagnostic_to_message(d.diagnostic.clone()))
         .filter(|m| !m.starts_with("complexity: "))
         .collect();
-    assert!(
-        diags.is_empty(),
-        "expected no diagnostics, got: {diags:?}"
-    );
+    assert!(diags.is_empty(), "expected no diagnostics, got: {diags:?}");
 
     let emitted: String = result
         .files

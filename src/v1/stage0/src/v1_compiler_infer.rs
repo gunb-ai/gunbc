@@ -2631,8 +2631,7 @@ pub fn infer_expr(
                         // THIS site is the authoritative discriminant (§3 single authority).
                         // E.g. WriteThenCommit ∈ {AtomicityModel, CacheWriteSemantics}:
                         // each field site declares which enum is expected, so we follow it.
-                        let (effective_parent_opt, effective_resolved) = match scope_parent
-                            .clone()
+                        let (effective_parent_opt, effective_resolved) = match scope_parent.clone()
                         {
                             Some(scope_enum) => {
                                 let override_owner = match expected.clone() {
@@ -2677,9 +2676,7 @@ pub fn infer_expr(
                                 };
                                 match override_owner {
                                     Some((exp_enum, exp_type)) => (Some(exp_enum), exp_type),
-                                    None => {
-                                        (Some(scope_enum), binding.resolved.clone())
-                                    }
+                                    None => (Some(scope_enum), binding.resolved.clone()),
                                 }
                             }
                             None => (None, binding.resolved.clone()),
