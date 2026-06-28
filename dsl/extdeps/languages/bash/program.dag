@@ -39,7 +39,6 @@ type ShellStmt
   | Pipe { left: ShellStmt, right: ShellStmt }
 
   | EnvPrefixed { name: String, value: ShellWord, command: ShellStmt }
-  | EnvUnsetCmd { name: String, command: ShellStmt }
   | WithRedir { stmt: ShellStmt, redir: Redir }
 
   | Heredoc { path: ShellWord, delimiter: String, body: String }
@@ -137,8 +136,6 @@ fn serialize_stmt(s: ShellStmt) -> String {
       concat(serialize_stmt(s: l), concat(" | ", serialize_stmt(s: r)))
     EnvPrefixed { name: n, value: v, command: c } =>
       concat(n, concat("=", concat(serialize_word(w: v), concat(" ", serialize_stmt(s: c)))))
-    EnvUnsetCmd { name: n, command: c } =>
-      concat("env -u ", concat(n, concat(" ", serialize_stmt(s: c))))
     WithRedir { stmt: st, redir: rd } =>
       concat(serialize_stmt(s: st), concat(" ", serialize_redir(r: rd)))
     Exit { code: c } => concat("exit ", to_string(c))

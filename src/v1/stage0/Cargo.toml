@@ -92,10 +92,3 @@ path = "src/bin/v1_src_dag_parse.rs"
 [[bin]]
 name = "wiring_liveness_whole_tree"
 path = "src/bin/wiring_liveness_whole_tree.rs"
-
-# Measurement binary: walks MultiEntryIndex caches after a resolve and reports
-# shared-vs-distinct Rc<> pointer stats for typed_module_cache, parse_cache.
-# Used to diagnose ~4 GiB retention root cause before cutting a fix.
-[[bin]]
-name = "cache_walk"
-path = "src/bin/cache_walk.rs"

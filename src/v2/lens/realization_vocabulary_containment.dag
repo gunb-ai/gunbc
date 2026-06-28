@@ -30,8 +30,7 @@ data realization_edge_path_prefixes: List<String> = [
   "src/v2/workflow/shell_emit",
   "src/v2/workflow/orchestration_emit",
   "src/v2/workflow/orchestration_stmt_emit",
-  "src/v2/workflow/orchestration_word_emit",
-  "src/v2/workflow/orch_env_lower"
+  "src/v2/workflow/orchestration_word_emit"
 ]
 
 data realization_vocab_exception_roster: List<String> = [
