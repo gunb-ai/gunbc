@@ -1,7 +1,9 @@
 module v2.test.manual.bash_command_fold
 
 import extdeps.languages.bash.program {
+  Assign,
   Command,
+  Exit,
   Lit,
   ShellStmt,
   VarRef,
@@ -11,11 +13,13 @@ import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import v2.compiler.translate { target_serialize_source_from_model }
 import v2.extdeps.languages.bash_command_fold {
+  bash_fold_assign_wrong_target_model,
   bash_fold_cmd_echo_hi_emitted,
   bash_fold_cmd_true_emitted,
   bash_fold_cmd_true_wrong_emitted,
   bash_fold_cmd_true_wrong_target_model,
   bash_fold_cmd_var_x_emitted,
+  bash_fold_exit_wrong_target_model,
   bash_fold_relation_row_witness,
   bash_fold_stmt_emitted_witness,
   bash_fold_target_model_for_stmt_witness
@@ -35,7 +39,7 @@ import v2.std.diagnostic {
 }
 import v2.std.logic { Bool }
 import v2.std.node { Node }
-import v2.std.witness { Violates, Witness }
+import v2.std.witness { Holds, Violates, Witness }
 
 fn bash_fold_facts_lookup(key: Node) -> Witness<InferredFacts> {
   Violates {
@@ -78,7 +82,10 @@ fn bash_fold_fold_matches_oracle(stmt: ShellStmt) -> Bool {
 }
 
 test fn bash_fold_relation_row_true_witness_holds() -> Bool {
-  match bash_fold_relation_row_witness(emitted: bash_fold_cmd_true_emitted) {
+  match bash_fold_relation_row_witness(
+    emitted: bash_fold_cmd_true_emitted,
+    lhs: ^bash_production_fold_command
+  ) {
     Holds { value: _ } => true
     Violates { diagnostic: _ } => false
   }
@@ -190,4 +197,54 @@ test fn bash_fold_direct_serialize_var_ref_x_holds() -> Bool {
 
 test fn bash_fold_emitted_tree_differs_on_wrong_fixture_holds() -> Bool {
   bash_fold_cmd_true_emitted != bash_fold_cmd_true_wrong_emitted
+}
+
+fn bash_fold_wrong_production_mismatch_holds(
+  stmt: ShellStmt,
+  wrong_target: TargetModel
+) -> Bool {
+  match bash_fold_fold_serialize(stmt: stmt, target: wrong_target) {
+    Accepted { value: folded, diagnostics: _ } => folded != serialize_stmt(s: stmt)
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+test fn bash_fold_exit_code_42_holds() -> Bool {
+  bash_fold_fold_matches_oracle(stmt: Exit { code: 42 })
+}
+
+test fn bash_fold_exit_code_0_holds() -> Bool {
+  bash_fold_fold_matches_oracle(stmt: Exit { code: 0 })
+}
+
+test fn bash_fold_exit_wrong_production_rejects_oracle_holds() -> Bool {
+  bash_fold_wrong_production_mismatch_holds(
+    stmt: Exit { code: 42 },
+    wrong_target: bash_fold_exit_wrong_target_model()
+  )
+}
+
+test fn bash_fold_assign_lit_foo_bar_holds() -> Bool {
+  bash_fold_fold_matches_oracle(
+    stmt: Assign { name: "FOO", value: Lit { text: "bar" } }
+  )
+}
+
+test fn bash_fold_assign_var_x_home_holds() -> Bool {
+  bash_fold_fold_matches_oracle(
+    stmt: Assign { name: "X", value: VarRef { name: "HOME" } }
+  )
+}
+
+test fn bash_fold_assign_lit_quote_escape_holds() -> Bool {
+  bash_fold_fold_matches_oracle(
+    stmt: Assign { name: "VAR", value: Lit { text: "a'b" } }
+  )
+}
+
+test fn bash_fold_assign_wrong_production_rejects_oracle_holds() -> Bool {
+  bash_fold_wrong_production_mismatch_holds(
+    stmt: Assign { name: "FOO", value: Lit { text: "bar" } },
+    wrong_target: bash_fold_assign_wrong_target_model()
+  )
 }

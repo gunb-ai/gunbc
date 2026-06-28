@@ -55,6 +55,34 @@ fn bash_command_fold_plan() -> List<List<Runnable>> {
       RunnableSingleClaim {
         entry: bash_fold_test_entry,
         function: "bash_fold_emitted_tree_differs_on_wrong_fixture_holds"
+      },
+      RunnableSingleClaim {
+        entry: bash_fold_test_entry,
+        function: "bash_fold_exit_code_42_holds"
+      },
+      RunnableSingleClaim {
+        entry: bash_fold_test_entry,
+        function: "bash_fold_exit_code_0_holds"
+      },
+      RunnableSingleClaim {
+        entry: bash_fold_test_entry,
+        function: "bash_fold_exit_wrong_production_rejects_oracle_holds"
+      },
+      RunnableSingleClaim {
+        entry: bash_fold_test_entry,
+        function: "bash_fold_assign_lit_foo_bar_holds"
+      },
+      RunnableSingleClaim {
+        entry: bash_fold_test_entry,
+        function: "bash_fold_assign_var_x_home_holds"
+      },
+      RunnableSingleClaim {
+        entry: bash_fold_test_entry,
+        function: "bash_fold_assign_lit_quote_escape_holds"
+      },
+      RunnableSingleClaim {
+        entry: bash_fold_test_entry,
+        function: "bash_fold_assign_wrong_production_rejects_oracle_holds"
       }
     ]
   ]
