@@ -512,6 +512,23 @@ fn infer_var_binding_kind(scope: InferScope, name: String) -> VarBindingKind {
   }
 }
 
+fn expected_type_override_enum(scope: InferScope, name: String, scope_enum: String, expected: Node?) -> String? {
+  match expected {
+    Present { value: exp_node } =>
+      let exp_name = authored_name_at(source_indices: scope.type_env.source_indices, node: exp_node)
+      if exp_name != "" && exp_name != scope_enum && exp_name != name {
+        match lookup_type_by_name(env: scope.type_env, name: exp_name) {
+          Present { value: exp_type } =>
+            if exp_type.connective == Disj && has_child_named(n: exp_type, name: name, source_indices: scope.type_env.source_indices) {
+              Present { value: exp_name }
+            } else { none }
+          Absent => none
+        }
+      } else { none }
+    Absent => none
+  }
+}
+
 fn inference_error(message: String, span: SourceSpan, module_name: String) -> ErrorNode {
   make_error_node(diagnostic: InternalError { message: message, span: span }, module_name: module_name)
 }
@@ -1338,15 +1355,41 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       let span = texpr.span
       match map_get(scope.locals, name) {
         Present { value: binding } =>
-          let binding_kind = infer_var_binding_kind(scope: scope, name: name)
-          ok_infer(texpr: make_named_expr_node(
-            name: name,
-            expr_data: ExprVar { binding_kind: Present { value: binding_kind } },
-            children: [],
-            inferred: Present { value: Resolved { node: binding.resolved } },
-            span: span,
-            name_span: span
-          ))
+          let scope_parent = lookup_variant_parent_enum(scope: scope, name: name)
+          match scope_parent {
+            Present { value: scope_enum } =>
+              let override_enum = expected_type_override_enum(scope: scope, name: name, scope_enum: scope_enum, expected: expected)
+              let effective_enum = match override_enum {
+                Present { value: ov } => ov
+                Absent => scope_enum
+              }
+              let effective_resolved = match override_enum {
+                Present { value: ov } =>
+                  match lookup_type_by_name(env: scope.type_env, name: ov) {
+                    Present { value: t } => t
+                    Absent => binding.resolved
+                  }
+                Absent => binding.resolved
+              }
+              ok_infer(texpr: make_named_expr_node(
+                name: name,
+                expr_data: ExprVar { binding_kind: Present { value: VariantValueBinding { parent_enum: effective_enum } } },
+                children: [],
+                inferred: Present { value: Resolved { node: effective_resolved } },
+                span: span,
+                name_span: span
+              ))
+            Absent =>
+              let binding_kind = infer_var_binding_kind(scope: scope, name: name)
+              ok_infer(texpr: make_named_expr_node(
+                name: name,
+                expr_data: ExprVar { binding_kind: Present { value: binding_kind } },
+                children: [],
+                inferred: Present { value: Resolved { node: binding.resolved } },
+                span: span,
+                name_span: span
+              ))
+          }
         Absent =>
           match lookup_func_sig(func_env: scope.func_env, name: name) {
             Present { value: fsig } =>
