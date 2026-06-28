@@ -2,6 +2,8 @@ module tools.emit_determinism_transport
 
 import extdeps.shell
 import gunbc.ci_layer_roots { witness_layer_roots }
+import std.disposition { Disposition, Scaffold, RealizationDispatch }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.languages.bash.program {
   ShellProgram, ShellStmt, ShellWord,
   Command, Assign, If, WithRedir, Exit,
@@ -45,6 +47,15 @@ fn emit_corpus_x2_diff_zero_program() -> ShellProgram {
       command(words: [lit(text: "diff"), lit(text: "-r"), out1, out2]),
       command(words: [lit(text: "rm"), lit(text: "-rf"), out1, out2])
     ])
+  }
+}
+
+data emit_determinism_transport_disposition: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "extdeps.languages.bash.program",
+    decl_name: "serialize_bash",
+    field: WholeDeclaration
   }
 }
 
