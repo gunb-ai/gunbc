@@ -1,10 +1,20 @@
 module gunbc.ci_floor_measurement
 
-import std.measure { ByteSize, byte_size }
+import std.measure {
+  ByteSize, byte_size, byte_size_count,
+  measure_scale_fraction_floor,
+  measure_fit_count_floor,
+}
 import std.types { Int, List, String, Bool }
+import std.nat { nat_max }
 import std.realization_measurement {
   ConcurrentMemoryPeakSample,
   concurrent_memory_peak_per_share,
+}
+import std.realization_width {
+  measure_max,
+  byte_size_saturating_sub,
+  int_min,
 }
 import std.disposition { Disposition, Scaffold, SingleAuthority, Terminal }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -19,35 +29,96 @@ type PerShardRssPeakMeasurement
   | PerShardRssPeakUnmeasured
 
 data gunbc_ci_floor_per_shard_rss_measurement: PerShardRssPeakMeasurement = PerShardRssPeakMeasured {
-  per_shard_peak: byte_size(3226056704)
+  per_shard_peak: byte_size(3489660928)
   sample_width: 2
 }
 
 data gunbc_ci_floor_per_shard_rss_source: Disposition = Terminal {
-  reason: "Measured local floor, post-#5860 corpus, main HEAD 6461042c64 at spawn_width=2 (pinned): floor peak VmHWM=6.0GiB => per-shard = VmHWM/width = 6.0GiB/2 = 3.0GiB (3226056704 bytes). Supersedes the stale 2.1GiB@width4 (CI run 27893441091) which the corpus outgrew: at the stale value the formula picked width=3 and 3 concurrent shards exceeded the 8GiB runner cap => exit-137 (run 28296782925). VESTIGIAL IN WIDTH FORMULA as of gunbc_ci_floor_confirmed_safe_width: spawn_width is now min(cpu_bound, confirmed_safe_width), not floor(budget/per_shard). per_shard_committed is retained as (a) width=1 guard (if budget < per_shard, even one shard may not fit) and (b) ResourceEnvelope memory estimate. It is a [calibration] receipt, not a live scheduler input. Durable fix: resource-aware-scheduler Node B/C (docs/plans/resource-aware-scheduler.md)."
+  reason: "per_shard authority = max(gunbc_ci_floor_per_shard_peak_samples), not a single-run mean. Samples: 3226056704 (run 6461042c64 width=2), 3489660928 (run 28331500155 width=2), 4556861440 (run 28332256178 width=1 co-shard peak). Width fold reads gunbc_ci_floor_per_shard_peak_max()."
+}
+
+data gunbc_ci_floor_per_shard_peak_samples: List<ByteSize> = [
+  byte_size(3226056704),
+  byte_size(3489660928),
+  byte_size(4556861440),
+]
+
+fn gunbc_ci_floor_per_shard_peak_max() -> ByteSize {
+  fold(gunbc_ci_floor_per_shard_peak_samples, init: byte_size(0), f: fn(acc, s) {
+    measure_max(a: acc, b: s)
+  })
 }
 
 fn gunbc_ci_floor_per_shard_peak_rss_bytes() -> ByteSize {
-  match gunbc_ci_floor_per_shard_rss_measurement {
-    PerShardRssPeakMeasured { per_shard_peak: p, sample_width: _ } => p
-    PerShardRssPeakUnmeasured => concurrent_memory_peak_per_share(sample: gunbc_ci_floor_measured_peak)
+  gunbc_ci_floor_per_shard_peak_max()
+}
+
+data gunbc_ci_runner_cgroup_memory_cap: ByteSize = byte_size(8589934592)
+
+data gunbc_ci_dashboard_session_container_cap: ByteSize = byte_size(33578549248)
+
+data gunbc_ci_cap_split_disposition: Disposition = Terminal {
+  reason: "DESIGN §3 de-conflation (PR-A): gunbc_ci_runner_cgroup_memory_cap (8GiB, actions-runner@ MemoryMax, within-run OOM authority) vs gunbc_ci_dashboard_session_container_cap (31.27GiB, dashboard session pool, inter-run). Retired gunbc_ci_host_container_memory_cap nickname that fused both."
+}
+
+type ExecutorBaseOverhead
+  = ExecutorBaseOverheadMeasured { bytes: ByteSize }
+  | ExecutorBaseOverheadUnmeasured
+
+data gunbc_ci_floor_executor_base_overhead: ExecutorBaseOverhead = ExecutorBaseOverheadMeasured {
+  bytes: byte_size(1610612736)
+}
+
+data gunbc_ci_floor_executor_base_overhead_source: Disposition = Terminal {
+  reason: "Measured derivation run 28331500155 width=2: cgroup_peak_at_memory_max(8589934592) - width(2) * per_shard(3489660928) = 1610612736 bytes (~1.5GiB executor+children base before shard RSS scales)."
+}
+
+data gunbc_ci_floor_width_usable_fraction_num: Int = 17
+data gunbc_ci_floor_width_usable_fraction_den: Int = 20
+
+data gunbc_ci_floor_width_fold_disposition: Disposition = Terminal {
+  reason: "PR-B honest width fold: usable = runner_cap * 17/20 - executor_base_overhead; width = min(cpu_bound, floor(usable / per_shard_max)). Retired confirmed_safe_width Scaffold. Dissolves to resource-aware-scheduler Node B/C."
+}
+
+fn gunbc_ci_floor_executor_base_overhead_bytes() -> ByteSize {
+  match gunbc_ci_floor_executor_base_overhead {
+    ExecutorBaseOverheadMeasured { bytes: b } => b
+    ExecutorBaseOverheadUnmeasured => byte_size(0)
   }
 }
 
-data gunbc_ci_host_container_memory_cap: ByteSize = byte_size(33578549248)
+fn gunbc_ci_floor_usable_shard_budget(cap: ByteSize) -> ByteSize {
+  byte_size_saturating_sub(
+    total: measure_scale_fraction_floor(
+      m: cap,
+      num: gunbc_ci_floor_width_usable_fraction_num,
+      den: gunbc_ci_floor_width_usable_fraction_den
+    ),
+    reserved: gunbc_ci_floor_executor_base_overhead_bytes()
+  )
+}
+
+fn gunbc_ci_floor_memory_derived_width(cap: ByteSize, cpu_bound: Int) -> Int {
+  let mem_fit = measure_fit_count_floor(
+    capacity: gunbc_ci_floor_usable_shard_budget(cap: cap),
+    each: gunbc_ci_floor_per_shard_peak_max()
+  )
+  let mem_width = nat_max(a: mem_fit, b: 1)
+  int_min(a: cpu_bound, b: mem_width)
+}
+
+fn witness_runner_cgroup_cap_lt_dashboard_session_cap() -> Bool {
+  byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap) < byte_size_count(b: gunbc_ci_dashboard_session_container_cap)
+}
+
+fn witness_derived_width_committed_fits_with_margin() -> Bool {
+  let cap = gunbc_ci_runner_cgroup_memory_cap
+  let width = gunbc_ci_floor_memory_derived_width(cap: cap, cpu_bound: 128)
+  let committed = byte_size_count(b: gunbc_ci_floor_executor_base_overhead_bytes()) + width * byte_size_count(b: gunbc_ci_floor_per_shard_peak_max())
+  committed <= byte_size_count(b: measure_scale_fraction_floor(m: cap, num: gunbc_ci_floor_width_usable_fraction_num, den: gunbc_ci_floor_width_usable_fraction_den))
+}
 
 data gunbc_ci_floor_conservative_fallback_width: Int = 4
-
-data gunbc_ci_floor_confirmed_safe_width: Int = 2
-
-data gunbc_ci_floor_confirmed_safe_width_disposition: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "std.realization_schedule",
-    decl_name: "Runnable",
-    field: WholeDeclaration
-  }
-}
 
 type JobCgroupPeakMeasurement
   = JobCgroupPeakMeasured { cgroup_peak: ByteSize }
@@ -128,7 +199,7 @@ data gunbc_ci_regime2_aggregate_dissolution_marker: Disposition = Scaffold {
 
 
 
-data gunbc_ci_footprint_granularity_disposition: Disposition = Terminal { reason: "DESIGN §3 deliberate two-concerns split: INTER-run whole-run cgroup peak (gunbc_ci_job_peaks, ~24GiB) governs co-residence - how many runs share a host, feeding the conserving budget tree; WITHIN-run per-shard peak (gunbc_ci_floor_per_shard_peak_rss_bytes, ~3.0GiB directly measured) governs parallelism inside one run against its container cap, feeding memory_aware_spawn_width. Different granularity, different scheduling decision, different consumer. Do not consolidate them into one authority." }
+data gunbc_ci_footprint_granularity_disposition: Disposition = Terminal { reason: "DESIGN §3 deliberate two-concerns split: INTER-run whole-run cgroup peak (gunbc_ci_job_peaks, ~24GiB) governs co-residence - how many runs share a host, feeding the conserving budget tree; WITHIN-run per-shard peak (gunbc_ci_floor_per_shard_peak_max) governs parallelism inside one run against gunbc_ci_runner_cgroup_memory_cap, feeding the honest width fold. Different granularity, different scheduling decision, different consumer. Do not consolidate them into one authority." }
 
 data gunbc_ci_footprint_bridge_disposition: Disposition = Terminal { reason: "Deferred unification path (acknowledged, not attempted): INTER-run whole-run peak is plausibly within-run-width x per-shard-peak + base, so the INTER-run footprint could eventually derive from the WITHIN-run model once both are measured - the real single authority. Held back deliberately: re-coupling the two carriers risks zeroing the live floor width before per-type baseline measurement data exists." }
 

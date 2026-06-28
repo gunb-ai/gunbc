@@ -2,62 +2,46 @@ module test.claim.ci_floor_measurement_per_shard
 
 import std.logic { Bool }
 import std.measure { byte_size_count }
-import std.realization_measurement { concurrent_memory_peak_per_share }
 import gunbc.ci_floor_measurement {
   gunbc_ci_floor_per_shard_peak_rss_bytes,
-  gunbc_ci_floor_per_shard_rss_measurement,
-  gunbc_ci_floor_measured_peak,
-  gunbc_ci_floor_confirmed_safe_width,
-  PerShardRssPeakMeasurement,
-  PerShardRssPeakMeasured,
-  PerShardRssPeakUnmeasured,
+  gunbc_ci_floor_per_shard_peak_max,
+  gunbc_ci_floor_per_shard_peak_samples,
+  gunbc_ci_floor_executor_base_overhead_bytes,
+  gunbc_ci_floor_memory_derived_width,
+  gunbc_ci_runner_cgroup_memory_cap,
+  gunbc_ci_dashboard_session_container_cap,
+  witness_runner_cgroup_cap_lt_dashboard_session_cap,
+  witness_derived_width_committed_fits_with_margin,
 }
 
-fn per_shard_peak_bytes_for(m: PerShardRssPeakMeasurement) -> Int {
-  match m {
-    PerShardRssPeakMeasured { per_shard_peak: p, sample_width: _ } => byte_size_count(b: p)
-    PerShardRssPeakUnmeasured => byte_size_count(b: concurrent_memory_peak_per_share(sample: gunbc_ci_floor_measured_peak))
-  }
+fn witness_per_shard_is_max_observed_sample() -> Bool {
+  byte_size_count(b: gunbc_ci_floor_per_shard_peak_rss_bytes()) == 4556861440
+    && byte_size_count(b: gunbc_ci_floor_per_shard_peak_max()) == 4556861440
 }
 
-fn witness_per_shard_uses_direct_measurement() -> Bool {
-  byte_size_count(b: gunbc_ci_floor_per_shard_peak_rss_bytes()) == 3226056704
+fn witness_per_shard_max_is_at_least_every_sample() -> Bool {
+  fold(gunbc_ci_floor_per_shard_peak_samples, init: true, f: fn(ok, s) {
+    ok && byte_size_count(b: s) <= byte_size_count(b: gunbc_ci_floor_per_shard_peak_max())
+  })
 }
 
-fn witness_direct_is_at_most_derived() -> Bool {
-  let direct = byte_size_count(b: gunbc_ci_floor_per_shard_peak_rss_bytes())
-  let derived = byte_size_count(b: concurrent_memory_peak_per_share(sample: gunbc_ci_floor_measured_peak))
-  direct <= derived
+fn witness_executor_base_overhead_is_measured_positive() -> Bool {
+  byte_size_count(b: gunbc_ci_floor_executor_base_overhead_bytes()) == 1610612736
 }
 
-fn witness_unmeasured_arm_falls_back_to_derived() -> Bool {
-  let fallback = per_shard_peak_bytes_for(m: PerShardRssPeakUnmeasured)
-  let derived = byte_size_count(b: concurrent_memory_peak_per_share(sample: gunbc_ci_floor_measured_peak))
-  fallback == derived
+fn witness_derived_width_at_runner_cap_is_one() -> Bool {
+  gunbc_ci_floor_memory_derived_width(cap: gunbc_ci_runner_cgroup_memory_cap, cpu_bound: 128) == 1
 }
 
-fn witness_measured_arm_sample_width_is_two() -> Bool {
-  match gunbc_ci_floor_per_shard_rss_measurement {
-    PerShardRssPeakMeasured { per_shard_peak: _, sample_width: w } => w == 2
-    PerShardRssPeakUnmeasured => false
-  }
-}
-
-fn witness_confirmed_safe_width_is_positive_and_small() -> Bool {
-  gunbc_ci_floor_confirmed_safe_width > 0 && gunbc_ci_floor_confirmed_safe_width <= 4
-}
-
-fn witness_per_shard_fits_within_confirmed_safe_shards() -> Bool {
-  let committed_count = byte_size_count(b: gunbc_ci_floor_per_shard_peak_rss_bytes())
-  let runner_cap_count = 8589934592
-  committed_count * gunbc_ci_floor_confirmed_safe_width <= runner_cap_count
+fn witness_runner_cap_lt_session_cap() -> Bool {
+  witness_runner_cgroup_cap_lt_dashboard_session_cap()
 }
 
 test fn ci_floor_measurement_per_shard_rss_witnesses() -> Bool {
-  witness_per_shard_uses_direct_measurement()
-    && witness_direct_is_at_most_derived()
-    && witness_unmeasured_arm_falls_back_to_derived()
-    && witness_measured_arm_sample_width_is_two()
-    && witness_confirmed_safe_width_is_positive_and_small()
-    && witness_per_shard_fits_within_confirmed_safe_shards()
+  witness_per_shard_is_max_observed_sample()
+    && witness_per_shard_max_is_at_least_every_sample()
+    && witness_executor_base_overhead_is_measured_positive()
+    && witness_derived_width_at_runner_cap_is_one()
+    && witness_runner_cap_lt_session_cap()
+    && witness_derived_width_committed_fits_with_margin()
 }
