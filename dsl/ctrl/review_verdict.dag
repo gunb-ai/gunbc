@@ -11,17 +11,6 @@ type ReviewProvider
   | HumanReviewer
   | ProviderOther { name: NonEmptyStr }
 
-fn is_llm_review_provider(provider: ReviewProvider) -> Bool {
-  match provider {
-    OpenaiPro => true
-    Codex => true
-    Claude => true
-    Cursor => true
-    HumanReviewer => false
-    ProviderOther { name: _ } => false
-  }
-}
-
 type ReviewSource
   = Llm
   | Human
@@ -33,8 +22,14 @@ type PolicyRef {
   version: NonEmptyStr
 }
 
+type LlmReviewProvider
+  = OpenaiPro
+  | Codex
+  | Claude
+  | Cursor
+
 type Reviewer
-  = AgentReviewer { provider: ReviewProvider }
+  = AgentReviewer { provider: LlmReviewProvider }
   | HumanSeatReviewer
   | PolicyReviewer { policy: PolicyRef }
   | UnattributedReviewer { provider_name: NonEmptyStr }
