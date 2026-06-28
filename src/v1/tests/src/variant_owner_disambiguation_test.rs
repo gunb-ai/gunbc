@@ -1,13 +1,15 @@
 /// Discriminating witness for variant owner-selection correctness.
 ///
-/// Root: when a variant name appears in two coproducts and one of those coproducts
-/// is transitively imported into the source module (not locally defined), the emitter
-/// must resolve the variant to the LOCALLY-DEFINED owner — not the transitive one.
+/// Two grounding axes, one test each:
 ///
-/// Designed so the wrong owner (ATransitiveOwner) sorts BEFORE the correct owner
-/// (ZLocalOwner) alphabetically; the buggy transitive-type_env path emits
-/// `ATransitiveOwner::SharedV`, which would type-mismatch against the declared return
-/// type `ZLocalOwner`.  The correct local-items path emits `ZLocalOwner::SharedV`.
+/// §1 — local-vs-transitive: when one owner is locally defined and another is transitively
+///   imported, the locally-defined owner wins (PR #5879).
+///
+/// §2 — expected-type-at-site (this PR): when BOTH owners are locally defined (or both
+///   imported) in the same scope, the EXPECTED/FIELD type at each individual call site
+///   is the authoritative discriminant — not scope-order or alpha-sort. This is the
+///   deeper §3 grounding: the single authority for which enum owns the variant at a
+///   given site is the declared type of that site.
 use v1_compiler::v1_compiler_artifact::RenderTarget;
 
 use crate::helpers::compile_multi_target;
@@ -70,5 +72,122 @@ fn shared_variant_resolves_to_locally_defined_owner_not_transitive() {
     assert!(
         !emitted.contains("ATransitiveOwner::SharedV"),
         "emitted code must NOT use the transitive owner ATransitiveOwner:\n{emitted}"
+    );
+}
+
+/// §2 — expected-type-at-site grounding.
+///
+/// `SharedVarAmbig` belongs to TWO locally-defined enums in the same module:
+///   `AEarlyEnum` (sorts first alphabetically — the wrong default)
+///   `ZLaterEnum` (sorts last)
+///
+/// The function return type is `ZLaterEnum`, so at the call site the expected type is
+/// `ZLaterEnum`.  The correct emit is `ZLaterEnum::SharedVarAmbig`.
+/// The alpha-sort fallback would emit `AEarlyEnum::SharedVarAmbig` — wrong.
+///
+/// Negative control: `AEarlyEnum` MUST NOT appear in the emitted return expression.
+#[test]
+fn shared_variant_resolves_by_expected_type_not_alpha_order() {
+    // Module defines both enums locally: AEarlyEnum (alpha-first, wrong) and ZLaterEnum
+    // (alpha-last, correct for the declared return type).
+    let owner_mod = (
+        "dsl/test/disc_ambig_owner.dag",
+        "module test.disc_ambig_owner\n\
+         type AEarlyEnum = SharedVarAmbig | AEarlyOnly\n\
+         type ZLaterEnum = SharedVarAmbig | ZLaterOnly",
+    );
+    // Consumer: imports SharedVarAmbig from the owner module.
+    // Return type is ZLaterEnum — the expected type at this site must pick ZLaterEnum.
+    let consumer = (
+        "dsl/test/disc_ambig_consumer.dag",
+        "module test.disc_ambig_consumer\n\
+         import test.disc_ambig_owner { SharedVarAmbig, AEarlyEnum, ZLaterEnum }\n\
+         fn make_z() -> ZLaterEnum { SharedVarAmbig }",
+    );
+
+    let result = compile_multi_target(&[owner_mod, consumer], RenderTarget::Rust);
+    let diags: Vec<String> = result
+        .diagnostics
+        .iter()
+        .map(|d| v1_compiler::v1_std_core::diagnostic_to_message(d.diagnostic.clone()))
+        .filter(|m| !m.starts_with("complexity: "))
+        .collect();
+    assert!(
+        diags.is_empty(),
+        "expected no diagnostics — wrong owner causes type mismatch, got: {diags:?}"
+    );
+
+    let emitted: String = result
+        .files
+        .iter()
+        .filter(|f| f.path.contains("disc_ambig_consumer"))
+        .map(|f| f.content.clone())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        emitted.contains("ZLaterEnum::SharedVarAmbig"),
+        "emitted code must use the expected-type owner ZLaterEnum:\n{emitted}"
+    );
+    assert!(
+        !emitted.contains("AEarlyEnum::SharedVarAmbig"),
+        "emitted code must NOT use the alpha-order owner AEarlyEnum:\n{emitted}"
+    );
+}
+
+/// §2 — field-level expected-type grounding (struct literal site).
+///
+/// A struct has two fields with DIFFERENT enum types, both sharing the same variant name.
+/// The emitter must pick the correct owner for each field independently.
+///
+///   struct TwoFields { first: AEarlyEnum, second: ZLaterEnum }
+///
+/// A constructor `{ first: SharedVarField, second: SharedVarField }` must emit:
+///   first: AEarlyEnum::SharedVarField
+///   second: ZLaterEnum::SharedVarField
+///
+/// If the emitter uses a single corpus-global owner for SharedVarField it would emit
+/// the same qualifier for both fields — one will be wrong.
+#[test]
+fn shared_variant_resolves_per_field_by_expected_type() {
+    let types_mod = (
+        "dsl/test/disc_field_types.dag",
+        "module test.disc_field_types\n\
+         type AEarlyEnum = SharedVarField | AEarlyOnlyF\n\
+         type ZLaterEnum = SharedVarField | ZLaterOnlyF\n\
+         type TwoFields = { first: AEarlyEnum, second: ZLaterEnum }",
+    );
+    let consumer = (
+        "dsl/test/disc_field_consumer.dag",
+        "module test.disc_field_consumer\n\
+         import test.disc_field_types { SharedVarField, AEarlyEnum, ZLaterEnum, TwoFields }\n\
+         fn make_two() -> TwoFields { { first: SharedVarField, second: SharedVarField } }",
+    );
+
+    let result = compile_multi_target(&[types_mod, consumer], RenderTarget::Rust);
+    let diags: Vec<String> = result
+        .diagnostics
+        .iter()
+        .map(|d| v1_compiler::v1_std_core::diagnostic_to_message(d.diagnostic.clone()))
+        .filter(|m| !m.starts_with("complexity: "))
+        .collect();
+    assert!(
+        diags.is_empty(),
+        "expected no diagnostics, got: {diags:?}"
+    );
+
+    let emitted: String = result
+        .files
+        .iter()
+        .filter(|f| f.path.contains("disc_field_consumer"))
+        .map(|f| f.content.clone())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        emitted.contains("AEarlyEnum::SharedVarField"),
+        "first field must emit AEarlyEnum::SharedVarField:\n{emitted}"
+    );
+    assert!(
+        emitted.contains("ZLaterEnum::SharedVarField"),
+        "second field must emit ZLaterEnum::SharedVarField:\n{emitted}"
     );
 }
