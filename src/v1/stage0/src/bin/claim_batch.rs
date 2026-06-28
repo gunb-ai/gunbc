@@ -45,6 +45,35 @@ fn peak_rss_bytes() -> Option<u64> {
     Some(kb.saturating_mul(1024))
 }
 
+/// Peak RSS of terminated child processes (Linux `getrusage(RUSAGE_CHILDREN)`).
+#[cfg(target_os = "linux")]
+fn children_max_rss_bytes() -> Option<u64> {
+    // `struct rusage` is 144 bytes on Linux lp64; a short struct would corrupt the stack.
+    extern "C" {
+        fn getrusage(who: i32, usage: *mut std::ffi::c_void) -> i32;
+    }
+    const RUSAGE_CHILDREN: i32 = -1;
+    const RU_MAXRSS_OFFSET: usize = 32; // after two struct timeval (16 bytes each)
+    let mut buf = [0u8; 144];
+    if unsafe { getrusage(RUSAGE_CHILDREN, buf.as_mut_ptr().cast()) } != 0 {
+        return None;
+    }
+    let ru_maxrss = i64::from_ne_bytes(buf[RU_MAXRSS_OFFSET..RU_MAXRSS_OFFSET + 8].try_into().ok()?);
+    Some(ru_maxrss as u64 * 1024)
+}
+
+#[cfg(not(target_os = "linux"))]
+fn children_max_rss_bytes() -> Option<u64> {
+    None
+}
+
+fn emit_rss_measurement(label: &str) {
+    match peak_rss_bytes() {
+        Some(bytes) => eprintln!("[measurement] {label}: {bytes} bytes (VmHWM)"),
+        None => eprintln!("[measurement] {label}: unavailable (no /proc/self/status)"),
+    }
+}
+
 fn print_interp_stats(ctx: &InterpContext, flatten_baseline: (u64, u64)) {
     eprintln!("[interp-stats] mutation-primitive copy work (this context):");
     eprint!("{}", ctx.mutation_counters_snapshot());
@@ -270,6 +299,9 @@ fn resolve_timed(
             );
             timings.resolves += 1;
             timings.resolve_ms += ms;
+            if timings.resolves == 1 {
+                emit_rss_measurement("post-first-entry-resolve-rss");
+            }
             Ok((graph, source_indices))
         }
         Err(msg) => {
@@ -482,6 +514,10 @@ fn run() -> Result<ExitCode, ExitCode> {
 
     let whole_tree_published_keys = match precompute_whole_tree_published_mock_keys(&source_roots) {
         Ok(keys) => {
+            emit_rss_measurement("post-mock-precompute-rss");
+            if let Some(bytes) = children_max_rss_bytes() {
+                eprintln!("[measurement] post-mock-precompute-children-max-rss: {bytes} bytes (getrusage RUSAGE_CHILDREN)");
+            }
             if keys.is_empty() {
                 eprintln!(
                     "claim_batch: whole-tree published mock corpus — no dsl/ corpora precomputed; \
@@ -566,9 +602,11 @@ fn run() -> Result<ExitCode, ExitCode> {
         timings.resolves, timings.resolve_ms, timings.witnesses, timings.witness_ms,
     );
 
-    match peak_rss_bytes() {
-        Some(bytes) => eprintln!("[measurement] per-shard-peak-rss: {bytes} bytes"),
-        None => eprintln!("[measurement] per-shard-peak-rss: unavailable (no /proc/self/status)"),
+    emit_rss_measurement("per-shard-peak-rss");
+    if let Some(bytes) = children_max_rss_bytes() {
+        eprintln!(
+            "[measurement] children-max-rss: {bytes} bytes (getrusage RUSAGE_CHILDREN)"
+        );
     }
 
     if any_failed {

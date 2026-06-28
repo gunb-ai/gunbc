@@ -38,6 +38,13 @@ use v1_compiler::v1_interpreter::{self, ExecutionMode, Value};
 
 const DEAD_WIRES_FN: &str = "wiring_liveness_corpus_dead_wires";
 
+fn peak_rss_bytes() -> Option<u64> {
+    let status = std::fs::read_to_string("/proc/self/status").ok()?;
+    let line = status.lines().find(|l| l.starts_with("VmHWM"))?;
+    let kb: u64 = line.split_whitespace().nth(1)?.parse().ok()?;
+    Some(kb.saturating_mul(1024))
+}
+
 fn require_value(args: &[String], idx: usize, flag: &str) -> Result<String, ExitCode> {
     match args.get(idx) {
         Some(v) => Ok(v.clone()),
@@ -98,6 +105,14 @@ fn run() -> Result<ExitCode, ExitCode> {
         modules_excluded,
         exclude_subpaths
     );
+    match peak_rss_bytes() {
+        Some(bytes) => eprintln!(
+            "[measurement] whole-tree resolve peak RSS: {bytes} bytes (VmHWM) modules={modules_resolved}"
+        ),
+        None => eprintln!(
+            "[measurement] whole-tree resolve peak RSS: unavailable (no /proc/self/status) modules={modules_resolved}"
+        ),
+    }
 
     let dead = v1_interpreter::run_in_context(&ctx, DEAD_WIRES_FN, false).map_err(|e| {
         eprintln!("wiring_liveness_whole_tree: interpreter error running {DEAD_WIRES_FN}: {e}");
