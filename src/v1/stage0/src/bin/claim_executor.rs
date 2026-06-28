@@ -1395,6 +1395,11 @@ fn run() -> Result<ExitCode, ExitCode> {
         }
     };
 
+    // Install the host-effect trace policy from the .dag authority once, before
+    // discovery threads spawn, so `[file] read` / `[rest]` / `[hermetic:mock]` etc.
+    // are funnelled per `gunbc.output_policy` instead of flooding the floor log.
+    v1_compiler::cli_run::install_output_policy(&source_roots);
+
     if perturb_check {
         return run_perturb_check(&source_roots, &plan_entry, &plan_function);
     }
