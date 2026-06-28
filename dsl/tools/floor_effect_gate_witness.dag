@@ -3,7 +3,7 @@ module tools.floor_effect_gate_witness
 import gunbc.ci_spec {
   RustMonolithGate, EmitHostGate, LayeringImportsGate,
   ExtdepsExternalAuthorityGate, DslCompileCleanGate, GeneratedArtifactDriftGate,
-  RegenVerifyGate
+  RegenVerifyGate, EmitDeterminismGate
 }
 import tools.ci_gates { exit_ok, run_spec_gate }
 

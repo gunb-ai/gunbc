@@ -5,7 +5,7 @@ import gunbc.ci_spec {
   gunbc_ci_spec, CiSpec,
   Gate, RustMonolithGate, EmitHostGate, LayeringImportsGate,
   ExtdepsExternalAuthorityGate, DslCompileCleanGate, GeneratedArtifactDriftGate,
-  SourceRootIngestGate, RegenVerifyGate
+  SourceRootIngestGate, RegenVerifyGate, EmitDeterminismGate
 }
 import v2.std.algebra { length, list_snoc_item, skip, zip_map }
 import v2.std.collection { List }
@@ -72,6 +72,7 @@ fn gate_node(g: Gate) -> Node {
     GeneratedArtifactDriftGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_generated_artifact } }, children: [] }
     SourceRootIngestGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_sourceingest } }, children: [] }
     RegenVerifyGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_regen_verify } }, children: [] }
+    EmitDeterminismGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_emit_determinism } }, children: [] }
   }
 }
 
@@ -88,6 +89,7 @@ fn gate_runnable(g: Gate) -> Runnable {
       function: "source_root_ingest_gate_passes"
     }
     RegenVerifyGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "regen_verify_gate_passes" }
+    EmitDeterminismGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "emit_determinism_gate_passes" }
   }
 }
 
@@ -133,6 +135,7 @@ fn gate_is_heavy_resolve(g: Gate) -> Bool {
     LayeringImportsGate => false
     ExtdepsExternalAuthorityGate => false
     GeneratedArtifactDriftGate => false
+    EmitDeterminismGate => true
   }
 }
 
@@ -146,6 +149,7 @@ fn gate_spawns_host_compiler(g: Gate) -> Bool {
     ExtdepsExternalAuthorityGate => false
     GeneratedArtifactDriftGate => false
     RegenVerifyGate => true
+    EmitDeterminismGate => false
   }
 }
 
