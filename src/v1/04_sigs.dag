@@ -189,17 +189,17 @@ fn resolve_func_sigs(
     declared_sigs: Map<String, DeclaredFuncSig>,
     items: List<Node>,
     module_name: String,
-    source_indices: Map<String, NewlineIndex>
+    source_indices: Map<String, NewlineIndex>,
+    parent_sigs: Map<String, ResolvedFuncSig>
 ) -> ResolveFuncSigsResult {
   let local_func_names = items
     |> filter(item => item.params |> count > 0 && item.body != none)
     |> map(item => authored_name_at(source_indices: source_indices, node: item))
   let local_func_set = build_name_set(names: local_func_names)
   let call_edges = collect_func_call_edges(items: items, local_func_set: local_func_set, source_indices: source_indices)
-  let parent_resolved = collect_parent_resolved_sigs(declared_sigs: declared_sigs, local_func_set: local_func_set)
   topo_resolve_loop(
     remaining: local_func_names,
-    resolved: parent_resolved,
+    resolved: parent_sigs,
     declared_sigs: declared_sigs,
     call_edges: call_edges,
     local_func_set: local_func_set,

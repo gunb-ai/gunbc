@@ -474,6 +474,7 @@ pub fn resolve_func_sigs(
     items: Rc<Vec<Rc<Node>>>,
     module_name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    parent_sigs: Rc<HashMap<String, Rc<ResolvedFuncSig>>>,
 ) -> Rc<ResolveFuncSigsResult> {
     {
         let local_func_names = Rc::new({
@@ -500,11 +501,9 @@ pub fn resolve_func_sigs(
             local_func_set.clone(),
             source_indices.clone(),
         );
-        let parent_resolved =
-            collect_parent_resolved_sigs(declared_sigs.clone(), local_func_set.clone());
         topo_resolve_loop(
             local_func_names.clone(),
-            parent_resolved,
+            parent_sigs,
             declared_sigs.clone(),
             call_edges,
             local_func_set.clone(),

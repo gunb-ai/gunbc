@@ -353,7 +353,7 @@ pub fn merge_scope_from_imports(
     mut remaining: Rc<Vec<Rc<ResolvedImport>>>,
     mut parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
     mut env: Rc<TypeEnv>,
-    mut func_sigs: Rc<HashMap<String, Rc<DeclaredFuncSig>>>,
+    mut imported_sigs: Rc<HashMap<String, Rc<ResolvedFuncSig>>>,
     mut svc_registry: Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>,
     mut svc_locals: Rc<HashMap<String, Rc<TypeBinding>>>,
 ) -> Rc<InferScopeComponents> {
@@ -361,43 +361,20 @@ pub fn merge_scope_from_imports(
         match remaining.clone().first().cloned() {
             None => {
                 break Rc::new(InferScopeComponents {
-                    func_sigs: func_sigs,
+                    imported_sigs: imported_sigs,
                     svc_registry: svc_registry,
                     svc_locals: svc_locals,
                 });
             }
             Some(imp) => match v1_rt::map_get(&parent_index, imp.module_path.clone()) {
                 Some(typed_parent) => {
-                    let next_func_sigs = Rc::new(v1_rt::map_values(
-                        &typed_parent.func_env.clone().signatures.clone(),
-                    ))
-                    .iter()
-                    .cloned()
-                    .fold(
-                        func_sigs,
-                        |acc: Rc<HashMap<String, Rc<DeclaredFuncSig>>>,
-                         rsig: Rc<ResolvedFuncSig>| {
-                            let sig_key = rsig.name.clone();
-                            let sig_params = rsig.params.clone();
-                            let sig_rt = rsig.inferred.clone();
-                            let sig_async = rsig.is_async.clone();
-                            v1_rt::rc_map_insert(
-                                acc,
-                                sig_key.clone(),
-                                Rc::new(DeclaredFuncSig {
-                                    name: sig_key.clone(),
-                                    params: sig_params.clone(),
-                                    inferred: Some(sig_rt.clone()),
-                                    is_async: sig_async.clone(),
-                                    output_provenance: rsig.output_provenance.clone(),
-                                    variant_provenance: rsig.variant_provenance.clone(),
-                                }),
-                            )
-                        },
+                    let next_imported_sigs = v1_rt::rc_map_merge(
+                        imported_sigs,
+                        typed_parent.func_env.clone().signatures.clone(),
                     );
                     let parent_result = typed_parent.items.clone().iter().cloned().fold(
                         Rc::new(InferScopeComponents {
-                            func_sigs: next_func_sigs,
+                            imported_sigs: next_imported_sigs,
                             svc_registry: svc_registry,
                             svc_locals: svc_locals,
                         }),
@@ -430,7 +407,7 @@ pub fn merge_scope_from_imports(
                                         env.source_indices.clone(),
                                     );
                                     Rc::new(InferScopeComponents {
-                                        func_sigs: acc.func_sigs.clone(),
+                                        imported_sigs: acc.imported_sigs.clone(),
                                         svc_registry: v1_rt::rc_map_insert(
                                             acc.svc_registry.clone(),
                                             authored_name_at(
@@ -454,7 +431,7 @@ pub fn merge_scope_from_imports(
                                     && (titem.inferred.clone() != None))
                                 {
                                     Rc::new(InferScopeComponents {
-                                        func_sigs: acc.func_sigs.clone(),
+                                        imported_sigs: acc.imported_sigs.clone(),
                                         svc_registry: acc.svc_registry.clone(),
                                         svc_locals: v1_rt::rc_map_insert(
                                             acc.svc_locals.clone(),
@@ -488,11 +465,11 @@ pub fn merge_scope_from_imports(
                                 .skip(1 as usize)
                                 .collect::<Vec<_>>(),
                         );
-                        let __tco_1 = parent_result.func_sigs.clone();
+                        let __tco_1 = parent_result.imported_sigs.clone();
                         let __tco_2 = parent_result.svc_registry.clone();
                         let __tco_3 = parent_result.svc_locals.clone();
                         remaining = __tco_0;
-                        func_sigs = __tco_1;
+                        imported_sigs = __tco_1;
                         svc_registry = __tco_2;
                         svc_locals = __tco_3;
                         continue;
@@ -13045,17 +13022,16 @@ pub fn build_module_context(
             resolved_imports.clone(),
             parent_index,
             env.clone(),
-            v1_rt::rc_empty_map::<String, Rc<DeclaredFuncSig>>(),
+            v1_rt::rc_empty_map::<String, Rc<ResolvedFuncSig>>(),
             local.svc_registry.clone(),
             local.svc_locals.clone(),
         );
-        let all_declared_sigs =
-            v1_rt::rc_map_merge(merged_scope.func_sigs.clone(), local.func_sigs.clone());
         let resolve_result = resolve_func_sigs(
-            all_declared_sigs,
+            local.func_sigs.clone(),
             local.resolved_items.clone(),
             module_name.clone(),
             env.source_indices.clone(),
+            merged_scope.imported_sigs.clone(),
         );
         let all_locals = Rc::new(v1_rt::map_values(&merged_scope.svc_locals.clone()))
             .iter()
