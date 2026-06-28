@@ -1365,11 +1365,15 @@ fn augment_scoped_data_item_index_with_imports(scoped: Map<String, List<Node>>, 
       } else {
         import_specific_names_at(n: imp, source_indices: source_indices)
           |> fold(init: acc, f: (inner, imported_name) =>
-            let qualified = concat(import_path, ".", imported_name)
-            match map_get(data_items, qualified) {
-              Present { value: imported_item } =>
-                insert_scoped_data_item(scoped: inner, name: imported_name, item: imported_item)
-              Absent => inner
+            match map_get(inner, imported_name) {
+              Present { value: _ } => inner
+              Absent =>
+                let qualified = concat(import_path, ".", imported_name)
+                match map_get(data_items, qualified) {
+                  Present { value: imported_item } =>
+                    insert_scoped_data_item(scoped: inner, name: imported_name, item: imported_item)
+                  Absent => inner
+                }
             }
           )
       }
