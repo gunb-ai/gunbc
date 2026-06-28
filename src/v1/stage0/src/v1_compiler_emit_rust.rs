@@ -2737,17 +2737,22 @@ pub fn augment_scoped_data_item_index_with_imports(
                     .fold(
                         acc.clone(),
                         |inner: Rc<HashMap<String, Rc<Vec<Rc<Node>>>>>, imported_name: String| {
-                            let qualified = v1_rt::concat(
-                                v1_rt::concat(import_path.clone(), ".".to_string()),
-                                imported_name.clone(),
-                            );
-                            match v1_rt::map_get(&data_items, qualified.clone()) {
-                                Some(imported_item) => insert_scoped_data_item(
-                                    inner.clone(),
-                                    imported_name.clone(),
-                                    imported_item.clone(),
-                                ),
-                                None => inner.clone(),
+                            match v1_rt::map_get(&inner, imported_name.clone()) {
+                                Some(_) => inner.clone(),
+                                None => {
+                                    let qualified = v1_rt::concat(
+                                        v1_rt::concat(import_path.clone(), ".".to_string()),
+                                        imported_name.clone(),
+                                    );
+                                    match v1_rt::map_get(&data_items, qualified.clone()) {
+                                        Some(imported_item) => insert_scoped_data_item(
+                                            inner.clone(),
+                                            imported_name.clone(),
+                                            imported_item.clone(),
+                                        ),
+                                        None => inner.clone(),
+                                    }
+                                }
                             }
                         },
                     )
