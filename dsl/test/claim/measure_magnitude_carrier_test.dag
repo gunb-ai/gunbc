@@ -9,10 +9,8 @@ import std.measure {
   Micro,
   celsius,
   celsius_count,
-}
-import product.compute_fabric {
-  money_micros,
-  money_micros_count,
+  money_amount_micro,
+  money_amount_micro_count,
 }
 import std.types { Int }
 import std.logic { Bool }
@@ -38,5 +36,5 @@ test fn celsius_subzero_absolute_roundtrip_holds() -> Bool {
 }
 
 test fn measure_two_hop_alias_count_roundtrip_holds() -> Bool {
-  money_micros_count(money_micros(99)) == 99
+  money_amount_micro_count(money_amount_micro(99)) == 99
 }

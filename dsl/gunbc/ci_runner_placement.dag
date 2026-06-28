@@ -13,7 +13,6 @@ import gunbc.runner_spec_from_offer { runner_spec_from_offer }
 import gunbc.fleet_host_budget {
   gunbc_fleet_oomd_evidence,
   gunbc_runner_pool_budget,
-  gunbc_per_runner_memory_cap,
   host_allocation_conserves,
   declared_runner_count,
   oomd_actuation_floor,
@@ -38,6 +37,7 @@ import gunbc.ci_floor_measurement {
   gunbc_ci_host_fixed_overhead,
   gunbc_ci_per_session_peak_samples,
   gunbc_ci_session_reservation_mode,
+  gunbc_ci_runner_cgroup_memory_cap,
 }
 import gunbc.ci_fleet { fleet_intent_offers }
 
@@ -157,7 +157,7 @@ fn conservation_host_deployment(offer: ComputeOffer, nproc: HardwareThreadCount)
     identity: offer.supply.physical.identity,
     runner_count: declared_runner_count(),
     runner_slice_cap: gunbc_runner_pool_budget,
-    per_runner_memory_cap: gunbc_per_runner_memory_cap,
+    per_runner_memory_cap: gunbc_ci_runner_cgroup_memory_cap,
     build_tokens: nproc,
     runner: runner_spec_from_offer(offer: offer),
     workload_class: BatchLatencyTolerant,

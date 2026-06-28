@@ -16,11 +16,9 @@ import std.measure {
   watt,
   watt_count,
   Bandwidth,
-}
-import product.compute_fabric {
-  MoneyMicros,
-  money_micros,
-  money_micros_count,
+  MoneyAmountMicro,
+  money_amount_micro,
+  money_amount_micro_count,
 }
 import extdeps.cpu.types { CpuModelCatalogRow, CpuSocket }
 import extdeps.memory.types { DramModuleCatalogRow, dram_chips_per_rank, dram_module_is_realizable, dram_data_word_width, JedecDdrGenerationCatalogRow }
@@ -50,7 +48,7 @@ type HardwareAxes {
   capacity: ByteSize
   bandwidth: Bandwidth
   power: Watt
-  cost: MoneyMicros
+  cost: MoneyAmountMicro
 }
 
 type Platform {
@@ -89,7 +87,7 @@ type MemoryConfig {
   jedec: JedecDdrGenerationCatalogRow
   dimms_per_channel: Int
   power_per_chip: Milliwatt
-  price_per_stick: MoneyMicros
+  price_per_stick: MoneyAmountMicro
 }
 
 fn memory_stick_count(platform: Platform, cfg: MemoryConfig) -> Int {
@@ -123,14 +121,14 @@ fn memory_power(platform: Platform, cfg: MemoryConfig) -> Watt {
   watt(count: total_mw / 1000)
 }
 
-fn memory_cost(platform: Platform, cfg: MemoryConfig) -> MoneyMicros {
-  money_micros(count: money_micros_count(m: cfg.price_per_stick) * memory_stick_count(platform: platform, cfg: cfg))
+fn memory_cost(platform: Platform, cfg: MemoryConfig) -> MoneyAmountMicro {
+  money_amount_micro(count: money_amount_micro_count(m: cfg.price_per_stick) * memory_stick_count(platform: platform, cfg: cfg))
 }
 
 type CpuCandidate {
   catalog: CpuModelCatalogRow
   typical_draw: Watt
-  price: MoneyMicros
+  price: MoneyAmountMicro
   aggregate_throughput: Int
 }
 
@@ -140,7 +138,7 @@ type Motherboard {
   memory_channels: Int
   max_dimms_per_channel: Int
   idle_draw: Watt
-  price: MoneyMicros
+  price: MoneyAmountMicro
 }
 
 type EfficiencyRating = Plus80 | Bronze | Silver | Gold | Platinum | Titanium
@@ -149,7 +147,7 @@ type PsuModel {
   label: NonEmptyStr
   max_output: Watt
   efficiency: EfficiencyRating
-  price: MoneyMicros
+  price: MoneyAmountMicro
 }
 
 fn efficiency_percent(e: EfficiencyRating) -> Int {
@@ -186,10 +184,10 @@ fn psu_is_adequate(cfg: SystemConfig) -> Bool {
   dc_load_watts(cfg: cfg) <= watt_count(w: cfg.psu.max_output)
 }
 
-fn config_total_cost(cfg: SystemConfig) -> MoneyMicros {
-  let mem_cost = money_micros_count(m: memory_cost(platform: cfg.platform, cfg: cfg.memory))
-  let total = money_micros_count(m: cfg.cpu.price) + mem_cost + money_micros_count(m: cfg.board.price) + money_micros_count(m: cfg.psu.price)
-  money_micros(count: total)
+fn config_total_cost(cfg: SystemConfig) -> MoneyAmountMicro {
+  let mem_cost = money_amount_micro_count(m: memory_cost(platform: cfg.platform, cfg: cfg.memory))
+  let total = money_amount_micro_count(m: cfg.cpu.price) + mem_cost + money_amount_micro_count(m: cfg.board.price) + money_amount_micro_count(m: cfg.psu.price)
+  money_amount_micro(count: total)
 }
 
 fn config_axes(cfg: SystemConfig) -> HardwareAxes {
@@ -216,7 +214,7 @@ fn axes_comparisons(a: HardwareAxes, b: HardwareAxes) -> List<AxisComparison> {
     axis_comparison_int(goal: HigherIsBetter, a: byte_size_count(b: a.capacity), b: byte_size_count(b: b.capacity)),
     axis_comparison_int(goal: HigherIsBetter, a: bandwidth_count(bw: a.bandwidth), b: bandwidth_count(bw: b.bandwidth)),
     axis_comparison_int(goal: LowerIsBetter, a: watt_count(w: a.power), b: watt_count(w: b.power)),
-    axis_comparison_int(goal: LowerIsBetter, a: money_micros_count(m: a.cost), b: money_micros_count(m: b.cost))
+    axis_comparison_int(goal: LowerIsBetter, a: money_amount_micro_count(m: a.cost), b: money_amount_micro_count(m: b.cost))
   ]
 }
 
@@ -239,7 +237,7 @@ fn gib(bytes: Int) -> Int {
 fn cost_micros_per_gib(a: HardwareAxes) -> Int {
   let cap_gib = gib(bytes: byte_size_count(b: a.capacity))
   let denom = if cap_gib <= 0 { 1 } else { cap_gib }
-  as_int(n: money_micros_count(m: a.cost)) / denom
+  as_int(n: money_amount_micro_count(m: a.cost)) / denom
 }
 
 fn bandwidth_per_watt(a: HardwareAxes) -> Int {
