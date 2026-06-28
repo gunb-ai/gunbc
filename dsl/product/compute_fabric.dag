@@ -13,12 +13,9 @@ fn shape_covers(offered: Shape, needed: Shape) -> Bool {
   measure_le(a: needed.hard.threads, b: offered.hard.threads)
 }
 
-type ProgramPreference { preferred_tag: NonEmptyStr? }
-
 type Program {
   id: NonEmptyStr
   hard: HardRequirements
-  prefers: ProgramPreference
 }
 
 fn derive_shape(p: Program) -> Shape {
@@ -65,13 +62,11 @@ data example_fabric: Fabric = "ci-fleet"
 data example_small_program: Program = Program {
   id: "small-prog",
   hard: HardRequirements { threads: hardware_thread_count(4) },
-  prefers: ProgramPreference { preferred_tag: none },
 }
 
 data example_large_program: Program = Program {
   id: "large-prog",
   hard: HardRequirements { threads: hardware_thread_count(64) },
-  prefers: ProgramPreference { preferred_tag: none },
 }
 
 data example_opportunity: Opportunity = Opportunity {
@@ -84,18 +79,6 @@ data example_small_opportunity: Opportunity = Opportunity {
   fabric: example_fabric,
   offers: Shape { hard: HardRequirements { threads: hardware_thread_count(8) } },
   tag: "srv1",
-}
-
-data example_pref_program: Program = Program {
-  id: "pref-prog",
-  hard: HardRequirements { threads: hardware_thread_count(2) },
-  prefers: ProgramPreference { preferred_tag: Present { value: "srv1" } },
-}
-
-data example_pref_miss_opportunity: Opportunity = Opportunity {
-  fabric: example_fabric,
-  offers: Shape { hard: HardRequirements { threads: hardware_thread_count(64) } },
-  tag: "srv2",
 }
 
 fn witness_need_is_only_fabric_plus_program() -> Bool {
@@ -122,12 +105,10 @@ fn witness_exec_and_ci_are_just_programs() -> Bool {
   let exec_prog = Program {
     id: "exec-cmd",
     hard: HardRequirements { threads: hardware_thread_count(4) },
-    prefers: ProgramPreference { preferred_tag: none },
   }
   let ci_job = Program {
     id: "ci-job",
     hard: HardRequirements { threads: hardware_thread_count(4) },
-    prefers: ProgramPreference { preferred_tag: none },
   }
   let need_exec = ComputeNeed { fabric: example_fabric, program: exec_prog }
   let need_ci = ComputeNeed { fabric: example_fabric, program: ci_job }
@@ -145,16 +126,8 @@ fn witness_exec_and_ci_are_just_programs() -> Bool {
 
 fn witness_hard_requirement_unmet_is_unmet() -> Bool {
   let big_need = ComputeNeed { fabric: example_fabric, program: example_large_program }
-  let hard_unmet = connect(need: big_need, opportunities: [example_small_opportunity])
-  let pref_need = ComputeNeed { fabric: example_fabric, program: example_pref_program }
-  let pref_bound = connect(need: pref_need, opportunities: [example_pref_miss_opportunity])
-  match hard_unmet {
-    Unmet { reason: _ } =>
-      match pref_bound {
-        Bound { opportunity: _ } => true
-        Pending => false
-        Unmet { reason: _ } => false
-      }
+  match connect(need: big_need, opportunities: [example_small_opportunity]) {
+    Unmet { reason: _ } => true
     Bound { opportunity: _ } => false
     Pending => false
   }
