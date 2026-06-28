@@ -3,12 +3,13 @@
 
 use self::CostBasis::*;
 use self::Runnable::*;
+use self::RunnableMemoryClass::*;
 use self::ScheduleLensViolation::*;
 use crate::std_lens_verdict::LensVerdict::{Holds, Violation};
 use crate::std_lens_verdict::LensVerdictLocus::ModuleWholeFile;
 pub use crate::std_lens_verdict::{LensVerdict, LensVerdictDiagnostic, LensVerdictLocus};
 use crate::std_measure::Quantity::Time;
-pub use crate::std_measure::{byte_size, measure_count, time_measure, watt};
+pub use crate::std_measure::{byte_size, byte_size_count, measure_count, time_measure, watt};
 pub use crate::std_measure::{ByteSize, Measure, Quantity, Watt};
 pub use crate::std_nat::Nat;
 pub use crate::std_pareto::AxisGoal;
@@ -77,18 +78,172 @@ pub struct ScheduleWitnessEntry {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct RunnableMemoryPeak {
+    pub predicted_peak: Box<ByteSize>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum RunnableMemoryClass {
+    RunnableMemoryNegligible,
+    RunnableMemorySubstantial { peak: Rc<RunnableMemoryPeak> },
+}
+impl RunnableMemoryClass {
+    pub fn peak(&self) -> Rc<RunnableMemoryPeak> {
+        match self {
+            RunnableMemoryClass::RunnableMemoryNegligible => panic!("no peak on unit variant"),
+            RunnableMemoryClass::RunnableMemorySubstantial { peak: __val, .. } => __val.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct RunnableResourceProfile {
+    pub heavy_whole_tree_resolve: bool,
+    pub spawns_host_compiler: bool,
+    pub memory: Rc<RunnableMemoryClass>,
+}
+
+pub fn runnable_memory_negligible() -> Rc<RunnableMemoryClass> {
+    Rc::new(RunnableMemoryClass::RunnableMemoryNegligible)
+}
+
+pub fn runnable_memory_substantial(predicted_peak: ByteSize) -> Rc<RunnableMemoryClass> {
+    Rc::new(RunnableMemoryClass::RunnableMemorySubstantial {
+        peak: Rc::new(RunnableMemoryPeak {
+            predicted_peak: Box::new(predicted_peak),
+        }),
+    })
+}
+
+pub fn runnable_memory_class_eq(
+    left: Rc<RunnableMemoryClass>,
+    right: Rc<RunnableMemoryClass>,
+) -> bool {
+    match (*left).clone() {
+        RunnableMemoryClass::RunnableMemoryNegligible => match (*right).clone() {
+            RunnableMemoryClass::RunnableMemoryNegligible => true,
+            RunnableMemoryClass::RunnableMemorySubstantial { peak: _, .. } => false,
+        },
+        RunnableMemoryClass::RunnableMemorySubstantial { peak: lp, .. } => match (*right).clone() {
+            RunnableMemoryClass::RunnableMemoryNegligible => false,
+            RunnableMemoryClass::RunnableMemorySubstantial { peak: rp, .. } => {
+                (byte_size_count((*lp.predicted_peak).clone())
+                    == byte_size_count((*rp.predicted_peak).clone()))
+            }
+        },
+    }
+}
+
+pub fn runnable_memory_substantial_sum(
+    left: Rc<RunnableMemoryClass>,
+    right: Rc<RunnableMemoryClass>,
+) -> Rc<RunnableMemoryClass> {
+    {
+        let left_count = match (*left).clone() {
+            RunnableMemoryClass::RunnableMemoryNegligible => 0,
+            RunnableMemoryClass::RunnableMemorySubstantial { peak: p, .. } => {
+                byte_size_count((*p.predicted_peak).clone())
+            }
+        };
+        let right_count = match (*right).clone() {
+            RunnableMemoryClass::RunnableMemoryNegligible => 0,
+            RunnableMemoryClass::RunnableMemorySubstantial { peak: p, .. } => {
+                byte_size_count((*p.predicted_peak).clone())
+            }
+        };
+        runnable_memory_substantial(byte_size((left_count + right_count)))
+    }
+}
+
+pub fn runnable_resource_profile_eq(
+    left: Rc<RunnableResourceProfile>,
+    right: Rc<RunnableResourceProfile>,
+) -> bool {
+    (((left.heavy_whole_tree_resolve.clone() == right.heavy_whole_tree_resolve.clone())
+        && (left.spawns_host_compiler.clone() == right.spawns_host_compiler.clone()))
+        && runnable_memory_class_eq(left.memory.clone(), right.memory.clone()))
+}
+
+pub fn runnable_resource_profile_negligible() -> Rc<RunnableResourceProfile> {
+    Rc::new(RunnableResourceProfile {
+        heavy_whole_tree_resolve: false,
+        spawns_host_compiler: false,
+        memory: runnable_memory_negligible(),
+    })
+}
+
+pub fn runnable_resource_profile(
+    heavy_whole_tree_resolve: bool,
+    spawns_host_compiler: bool,
+    memory: Rc<RunnableMemoryClass>,
+) -> Rc<RunnableResourceProfile> {
+    Rc::new(RunnableResourceProfile {
+        heavy_whole_tree_resolve: heavy_whole_tree_resolve,
+        spawns_host_compiler: spawns_host_compiler,
+        memory: memory,
+    })
+}
+
+pub fn runnable_excludes_corpus_co_residence(profile: Rc<RunnableResourceProfile>) -> bool {
+    match (*profile.memory.clone()).clone() {
+        RunnableMemoryClass::RunnableMemoryNegligible => false,
+        RunnableMemoryClass::RunnableMemorySubstantial { peak: _, .. } => true,
+    }
+}
+
+pub fn runnable_heavy_whole_tree_resolve(profile: Rc<RunnableResourceProfile>) -> bool {
+    profile.heavy_whole_tree_resolve.clone()
+}
+
+pub fn runnable_predicted_space(profile: Rc<RunnableResourceProfile>) -> ByteSize {
+    match (*profile.memory.clone()).clone() {
+        RunnableMemoryClass::RunnableMemoryNegligible => byte_size(0),
+        RunnableMemoryClass::RunnableMemorySubstantial { peak: p, .. } => {
+            (*p.predicted_peak).clone()
+        }
+    }
+}
+
+pub fn runnable_profile(r: Rc<Runnable>) -> Rc<RunnableResourceProfile> {
+    match (*r).clone() {
+        Runnable::RunnableSingleClaim { profile: p, .. } => p.clone(),
+        Runnable::RunnableDiscoveryBatch { profile: p, .. } => p.clone(),
+    }
+}
+
+pub fn runnable_forbids_corpus_co_residence(r: Rc<Runnable>) -> bool {
+    match (*r).clone() {
+        Runnable::RunnableDiscoveryBatch { .. } => false,
+        Runnable::RunnableSingleClaim { profile: p, .. } => {
+            runnable_excludes_corpus_co_residence(p.clone())
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum Runnable {
     RunnableSingleClaim {
         entry: String,
         function: String,
+        profile: Rc<RunnableResourceProfile>,
     },
     RunnableDiscoveryBatch {
         source_roots: Rc<Vec<String>>,
         scan_dirs: Rc<Vec<String>>,
         explicit_entries: Rc<Vec<Rc<ScheduleWitnessEntry>>>,
         skip_unaffected_node_frontier: bool,
+        profile: Rc<RunnableResourceProfile>,
     },
+}
+impl Runnable {
+    pub fn profile(&self) -> Rc<RunnableResourceProfile> {
+        match self {
+            Runnable::RunnableSingleClaim { profile: __val, .. } => __val.clone(),
+            Runnable::RunnableDiscoveryBatch { profile: __val, .. } => __val.clone(),
+        }
+    }
 }
 
 pub type Schedule = Rc<Vec<Rc<Vec<Rc<Runnable>>>>>;
@@ -309,13 +464,18 @@ pub fn runnable_eq(left: Rc<Runnable>, right: Rc<Runnable>) -> bool {
         Runnable::RunnableSingleClaim {
             entry: le,
             function: lf,
+            profile: lp,
             ..
         } => match (*right).clone() {
             Runnable::RunnableSingleClaim {
                 entry: re,
                 function: rf,
+                profile: rp,
                 ..
-            } => ((le.clone() == re.clone()) && (lf.clone() == rf.clone())),
+            } => {
+                (((le.clone() == re.clone()) && (lf.clone() == rf.clone()))
+                    && runnable_resource_profile_eq(lp.clone(), rp.clone()))
+            }
             Runnable::RunnableDiscoveryBatch { .. } => false,
         },
         Runnable::RunnableDiscoveryBatch {
@@ -323,6 +483,7 @@ pub fn runnable_eq(left: Rc<Runnable>, right: Rc<Runnable>) -> bool {
             scan_dirs: lsd,
             explicit_entries: lex,
             skip_unaffected_node_frontier: lskip,
+            profile: lp,
             ..
         } => match (*right).clone() {
             Runnable::RunnableSingleClaim { .. } => false,
@@ -331,12 +492,14 @@ pub fn runnable_eq(left: Rc<Runnable>, right: Rc<Runnable>) -> bool {
                 scan_dirs: rsd,
                 explicit_entries: rex,
                 skip_unaffected_node_frontier: rskip,
+                profile: rp,
                 ..
             } => {
-                (((string_list_eq(lsr.clone(), rsr.clone())
+                ((((string_list_eq(lsr.clone(), rsr.clone())
                     && string_list_eq(lsd.clone(), rsd.clone()))
                     && schedule_witness_entry_list_eq(lex.clone(), rex.clone()))
                     && (lskip.clone() == rskip.clone()))
+                    && runnable_resource_profile_eq(lp.clone(), rp.clone()))
             }
         },
     }
