@@ -291,6 +291,10 @@ fn node_name_span(n: Node) -> SourceSpan {
   match n.ident_span { Present { value: s } => s  Absent => n.span }
 }
 
+fn empty_node_list() -> List<Node> {
+  []
+}
+
 fn make_expr_node(expr_data: ExprData, children: List<Node>, inferred: InferredNode?, span: SourceSpan) -> Node {
   Node {
     name: "", span: span, ident_span: none, children: children,

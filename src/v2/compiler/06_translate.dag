@@ -3998,7 +3998,7 @@ fn translate_diagnostic_reason_symbol(reason: TranslateDiagnosticReason) -> Symb
   }
 }
 
-fn translate_diagnostic_reason_from_symbol_go(
+fn translate_diagnostic_reason_find_by_symbol(
   sym: Symbol,
   variants: List<TranslateDiagnosticReason>
 ) -> Optional<TranslateDiagnosticReason> {
@@ -4016,7 +4016,7 @@ fn translate_diagnostic_reason_from_symbol_go(
 }
 
 fn translate_diagnostic_reason_from_symbol(sym: Symbol) -> Optional<TranslateDiagnosticReason> {
-  translate_diagnostic_reason_from_symbol_go(
+  translate_diagnostic_reason_find_by_symbol(
     sym: sym,
     variants: translate_diagnostic_reason_variants()
   )
