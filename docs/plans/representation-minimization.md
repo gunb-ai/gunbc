@@ -46,20 +46,20 @@ Decisive structural fact: the Node graph is an ACYCLIC downward-only DAG — no 
 
 Proposed replacement: a `u32` index into one `Vec<Node>` arena (4 B, no ctrl block, no per-node malloc header). Four child-Vecs become `(u32 start, u32 len)` slices into a shared edge-arena. This erases the 16 B ctrl/node plus per-node allocator overhead, and halves all 12 pointer fields (8 B ptr to 4 B index). Structural sharing is preserved for free: two u32 values pointing to the same slot share the subgraph without reference counting. Estimated node-graph memory cut: ~40 to 55%. Composes with struct-of-arrays layout (columnar, recovers alignment padding ~10 to 15%) and spans-as-side-table (file path stored once per file, span encoded as 2 x u32 = saves ~20 B/span vs per-span String).
 
-### Cheap recoverables (independent of emitter gate, .dag-first)
+### Cheap recoverables (gating varies per item — see plan discriminator)
 
-These are correctness-by-construction wins that can land without the arena rewrite and without hand-editing the seed:
+Smaller wins. Per the plan's root-authority discriminator: fixes that live in the `.dag` authority are root items; fixes that hand-edit the v1 seed are bank-if-cheap and die with v1. The gating varies per item below — none of these is unconditionally independent of the emitter gate:
 
-- Wire `empty_node_list()` singleton in the seed path — the win is already recorded as landed (~43.7 MiB, #5878). Verify whether all call sites use the singleton; if any still inline `Rc::new(vec![])` on the seed path, that is recoverable .dag-first, NOT a seed hand-edit.
-- `Option<i64> ident` to u32 with 0-sentinel (table seeds id 0 = empty string) = 4 B vs 16 B, saving ~12 B/node. `Node.ident` is a live ident-keyed fast-path on module and import nodes — u32-shrink is fine; deletion is refuted by execution.
-- `SourceSpan.file: String` to a u32 file-id into a side table — saves ~20 B/span (single-authority: file path stored once per file).
-- Kernel-bindings/source-index slice shared across modules — analogous to #5867 shared `InternTable` (~61% win at that layer). `seed_kernel_intern_table` at `src/v1/stage0/src/v1_compiler_infer.rs:13998` and `kernel_bindings_base` at `v1_compiler_infer.rs:11695` are rebuilt inside `build_type_env` for every module; the intern TABLE is shared (#5867, `v1_compiler_infer.rs:11641`) but the kernel SLICE of bindings/source_indices is not. These sites touch load-bearing `build_type_env` — escalate before editing.
-- `Node.name: String` interning (item 5, bank-if-cheap) lives in the v1 seed and dies with v1; it is NOT a pillar. Keep it in item 5 and do not migrate it separately.
+- Empty-Vec singleton — already recorded as landed (~43.7 MiB, #5878). Verify all call sites use the singleton; if any still inline `Rc::new(vec![])` on the seed path, that is bank-if-cheap v1-seed work (dies with v1, not a root item).
+- `Option<i64> ident` to u32 with 0-sentinel — saves ~12 B/node. As a Node representation change, the `.dag`-authority path is gated on #5879 (same as Lever B); the v1-seed path is bank-if-cheap. `Node.ident` is a live ident-keyed fast-path on module/import nodes — u32-shrink is fine; deletion is refuted by execution.
+- `SourceSpan.file: String` to a u32 file-id side table — saves ~20 B/span. Same gating note as ident: the `.dag`-authority path is gated on #5879; the v1-seed path is bank-if-cheap.
+- Kernel-bindings/source-index slice shared across modules — analogous to #5867 shared `InternTable`. Targets `src/v1/stage0/src/v1_compiler_infer.rs:13998` (`seed_kernel_intern_table`) and `:11695` (`kernel_bindings_base`) inside `build_type_env` (intern TABLE already shared, `:11641`). This is v1-seed work and bank-if-cheap under the plan's discriminator (load-bearing: escalate before editing `build_type_env`).
+- `Node.name: String` interning (item 5, bank-if-cheap) — lives in the v1 seed and dies with v1; keep it in item 5 and do not migrate it separately.
 
 ### Decidability framing (DESIGN §5/§6)
 
-- Empty-Vec singleton wiring, ident u32-shrink, file-id side table, and kernel-slice sharing are WALL-NOW: decidable and structural, can be made unwritable by single authority in .dag.
-- Sub-move ii (arena/u32 container) is a RATCHET priced in displaced cost (~3 GiB resident at width=1, DESIGN §6), NOT elegance. Guard the purity trap: the arena is the right call because it erases ~3 GiB of retained memory, not because it is elegant.
+- Sub-moves i and ii are both RATCHETS gated on #5879 and landing in the v2/.dag realization. Ident u32-shrink and file-id side table are decidable representation changes; their `.dag`-authority path is gated on #5879, not independent of it. Kernel-slice sharing and empty-Vec verification are v1-seed work (bank-if-cheap, not root items).
+- Sub-move ii (arena/u32 container) is priced in displaced cost (~3 GiB resident at width=1, DESIGN §6), NOT elegance. Guard the purity trap: the arena is the right call because it erases ~3 GiB of retained memory, not because it is elegant.
 - Sub-move ii touches a load-bearing substrate type (the v2 Node model) and is operator-gated. It lands in the v2/.dag realization — not as a v1 seed rewrite. Caveat: field counts above are from the v1 .rs seed; confirm v2 representation at `src/v2/std/node.dag` before authoring the arena model there.
 
 ## Provenance
