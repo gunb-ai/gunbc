@@ -1,11 +1,14 @@
 module extdeps.cache.github_actions
 
-import extdeps.cache.types { CacheInterfaceCatalogFacts, HandAuthored }
+import extdeps.cache.types {
+  CacheInterfaceCatalogFacts,
+  HandAuthored,
+  UpsertSubject,
+  FilePaths,
+}
 import std.cache_identity { CacheInterfaceId }
 import std.cache_interface {
   OpaqueStringEncoding,
-  UpsertSubject,
-  FilePaths,
   PrefixFallback,
   OverwriteAllowed,
   WriteThenCommit,

@@ -6,6 +6,7 @@ import std.realization_schedule {
   Runnable,
   RunnableSingleClaim,
   RunnableDiscoveryBatch,
+  runnable_resource_profile_negligible,
   schedule_lens_verdict_for_ci_floor,
   cost_account_predicted_zero,
 }
@@ -17,15 +18,16 @@ data gate_entry: String = "dsl/tools/floor_effect_gate_witness.dag"
 
 fn synthetic_correct_schedule() -> List<List<Runnable>> {
   [
-    [RunnableSingleClaim { entry: gate_entry, function: compile_gate_fn }],
+    [RunnableSingleClaim { entry: gate_entry, function: compile_gate_fn, profile: runnable_resource_profile_negligible() }],
     [
       RunnableDiscoveryBatch {
         source_roots: ["dsl"]
         scan_dirs: []
         explicit_entries: []
         skip_unaffected_node_frontier: false
+        profile: runnable_resource_profile_negligible()
       },
-      RunnableSingleClaim { entry: gate_entry, function: "rust_monolith_gate_passes" }
+      RunnableSingleClaim { entry: gate_entry, function: "rust_monolith_gate_passes", profile: runnable_resource_profile_negligible() }
     ]
   ]
 }
