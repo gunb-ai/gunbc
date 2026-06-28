@@ -24,7 +24,7 @@ data gunbc_ci_floor_per_shard_rss_measurement: PerShardRssPeakMeasurement = PerS
 }
 
 data gunbc_ci_floor_per_shard_rss_source: Disposition = Terminal {
-  reason: "Measured local floor, post-#5860 corpus, main HEAD 6461042c64 at spawn_width=2 (pinned): floor peak VmHWM=6.0GiB => per-shard = VmHWM/width = 6.0GiB/2 = 3.0GiB (3226056704 bytes). Supersedes the stale 2.1GiB@width4 (CI run 27893441091) which the corpus outgrew: at the stale value the formula picked width=3 and 3 concurrent shards exceeded the 8GiB runner cap => exit-137 (run 28296782925). VESTIGIAL IN WIDTH FORMULA as of gunbc_ci_floor_confirmed_safe_width: spawn_width is now min(cpu_bound, confirmed_safe_width), not floor(budget/per_shard). per_shard_committed is retained as (a) width=1 guard (if budget < per_shard, even one shard may not fit) and (b) ResourceEnvelope memory estimate. It is a [calibration] receipt, not a live scheduler input. Durable fix: resource-aware-scheduler Node B/C (docs/plans/resource-aware-scheduler.md)."
+  reason: "Measured local floor, post-#5860 corpus, main HEAD 6461042c64 at spawn_width=2 (pinned): floor peak VmHWM=6.0GiB => per-shard = VmHWM/width = 6.0GiB/2 = 3.0GiB (3226056704 bytes). Supersedes the stale 2.1GiB@width4 (CI run 27893441091) which the corpus outgrew: at the stale value the formula picked width=3 and 3 concurrent shards exceeded the 8GiB runner cap => exit-137 (run 28296782925). VESTIGIAL IN WIDTH FORMULA as of gunbc_ci_floor_confirmed_safe_width: spawn_width is now min(cpu_bound, confirmed_safe_width), not floor(budget/per_shard). per_shard_committed is retained as (a) width=1 guard (if budget < per_shard, even one shard may not fit) and (b) ResourceEnvelope memory estimate. It is a [calibration] receipt, not a live scheduler input. confirmed_safe_width lowered 2→1 (2026-06-28, run 28330097093): spawn_width=2 still exit-137 on 8GiB runner cgroup despite 6.0GiB measured co-resident peak — tail variance + gate-batch rustc children exceed the uniform per-shard model; width=1 is the construction wall until resource-aware-scheduler Node B/C lands (docs/plans/resource-aware-scheduler.md)."
 }
 
 fn gunbc_ci_floor_per_shard_peak_rss_bytes() -> ByteSize {
@@ -38,7 +38,7 @@ data gunbc_ci_host_container_memory_cap: ByteSize = byte_size(33578549248)
 
 data gunbc_ci_floor_conservative_fallback_width: Int = 4
 
-data gunbc_ci_floor_confirmed_safe_width: Int = 2
+data gunbc_ci_floor_confirmed_safe_width: Int = 1
 
 data gunbc_ci_floor_confirmed_safe_width_disposition: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
