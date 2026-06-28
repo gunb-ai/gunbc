@@ -2085,3 +2085,169 @@ fn bash_stmt_negation_target_model(inner: String) -> TargetModel {
     binding_spellings: bash_stmt_negation_binding_spellings(inner: inner)
   )
 }
+
+fn bash_redir_stderr_null_phrase() -> LexicalPhrase {
+  phrase([
+    span(text: "2>/dev/null", class: ^bash_token_redir_stderr_null_freestanding)
+  ])
+}
+
+fn bash_redir_stderr_null_concrete_tokens() -> List<ConcreteSyntaxToken> {
+  phrase_to_fixed_concrete_tokens(p: bash_redir_stderr_null_phrase())
+}
+
+data bash_redir_stderr_null_emitted: Node = bash_conj_emitted_from_tokens(
+  tokens: bash_redir_stderr_null_concrete_tokens()
+)
+
+data bash_redir_stderr_null_source_text: String = phrase_to_source_text(p: bash_redir_stderr_null_phrase())
+
+fn bash_redir_stderr_null_translation_rules_node() -> Node {
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_redir_stderr_null,
+    lhs: ^bash_production_redir_stderr_null,
+    tokens: bash_redir_stderr_null_concrete_tokens(),
+    emitted: bash_redir_stderr_null_emitted
+  )
+}
+
+fn bash_redir_stderr_null_lex() -> LexRules {
+  phrase_to_lex_rules(p: bash_redir_stderr_null_phrase())
+}
+
+fn bash_redir_stderr_null_target_model() -> TargetModel {
+  bash_make_fixed_tokens_target_model(
+    rules: bash_redir_stderr_null_translation_rules_node(),
+    source_literal: ^bash_redir_stderr_null_source_literal,
+    production_name: ^bash_production_redir_stderr_null,
+    tokens: bash_redir_stderr_null_concrete_tokens(),
+    source_text: bash_redir_stderr_null_source_text,
+    lex: bash_redir_stderr_null_lex()
+  )
+}
+
+fn bash_redir_stdout_and_stderr_null_phrase() -> LexicalPhrase {
+  phrase([
+    span(text: ">/dev/null 2>&1", class: ^bash_token_redir_stdout_and_stderr_null)
+  ])
+}
+
+fn bash_redir_stdout_and_stderr_null_concrete_tokens() -> List<ConcreteSyntaxToken> {
+  phrase_to_fixed_concrete_tokens(p: bash_redir_stdout_and_stderr_null_phrase())
+}
+
+data bash_redir_stdout_and_stderr_null_emitted: Node = bash_conj_emitted_from_tokens(
+  tokens: bash_redir_stdout_and_stderr_null_concrete_tokens()
+)
+
+data bash_redir_stdout_and_stderr_null_source_text: String = phrase_to_source_text(p: bash_redir_stdout_and_stderr_null_phrase())
+
+fn bash_redir_stdout_and_stderr_null_translation_rules_node() -> Node {
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_redir_stdout_and_stderr_null,
+    lhs: ^bash_production_redir_stdout_and_stderr_null,
+    tokens: bash_redir_stdout_and_stderr_null_concrete_tokens(),
+    emitted: bash_redir_stdout_and_stderr_null_emitted
+  )
+}
+
+fn bash_redir_stdout_and_stderr_null_lex() -> LexRules {
+  phrase_to_lex_rules(p: bash_redir_stdout_and_stderr_null_phrase())
+}
+
+fn bash_redir_stdout_and_stderr_null_target_model() -> TargetModel {
+  bash_make_fixed_tokens_target_model(
+    rules: bash_redir_stdout_and_stderr_null_translation_rules_node(),
+    source_literal: ^bash_redir_stdout_and_stderr_null_source_literal,
+    production_name: ^bash_production_redir_stdout_and_stderr_null,
+    tokens: bash_redir_stdout_and_stderr_null_concrete_tokens(),
+    source_text: bash_redir_stdout_and_stderr_null_source_text,
+    lex: bash_redir_stdout_and_stderr_null_lex()
+  )
+}
+
+fn bash_redir_stdout_to_stderr_phrase() -> LexicalPhrase {
+  phrase([
+    span(text: ">&2", class: ^bash_token_redir_stdout_to_stderr_freestanding)
+  ])
+}
+
+fn bash_redir_stdout_to_stderr_concrete_tokens() -> List<ConcreteSyntaxToken> {
+  phrase_to_fixed_concrete_tokens(p: bash_redir_stdout_to_stderr_phrase())
+}
+
+data bash_redir_stdout_to_stderr_emitted: Node = bash_conj_emitted_from_tokens(
+  tokens: bash_redir_stdout_to_stderr_concrete_tokens()
+)
+
+data bash_redir_stdout_to_stderr_source_text: String = phrase_to_source_text(p: bash_redir_stdout_to_stderr_phrase())
+
+fn bash_redir_stdout_to_stderr_translation_rules_node() -> Node {
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_redir_stdout_to_stderr,
+    lhs: ^bash_production_redir_stdout_to_stderr,
+    tokens: bash_redir_stdout_to_stderr_concrete_tokens(),
+    emitted: bash_redir_stdout_to_stderr_emitted
+  )
+}
+
+fn bash_redir_stdout_to_stderr_lex() -> LexRules {
+  phrase_to_lex_rules(p: bash_redir_stdout_to_stderr_phrase())
+}
+
+fn bash_redir_stdout_to_stderr_target_model() -> TargetModel {
+  bash_make_fixed_tokens_target_model(
+    rules: bash_redir_stdout_to_stderr_translation_rules_node(),
+    source_literal: ^bash_redir_stdout_to_stderr_source_literal,
+    production_name: ^bash_production_redir_stdout_to_stderr,
+    tokens: bash_redir_stdout_to_stderr_concrete_tokens(),
+    source_text: bash_redir_stdout_to_stderr_source_text,
+    lex: bash_redir_stdout_to_stderr_lex()
+  )
+}
+
+fn bash_redir_to_file_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: ^bash_token_redir_to_file_prefix },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_redir_to_file_path }
+  ]
+}
+
+data bash_redir_to_file_emitted: Node = bash_conj_emitted_from_tokens(
+  tokens: bash_redir_to_file_tokens()
+)
+
+fn bash_redir_to_file_source_text(path: String) -> String {
+  concat("> ", path)
+}
+
+fn bash_redir_to_file_lex() -> LexRules {
+  phrase_to_lex_rules(p: phrase([
+    span(text: "> ", class: ^bash_token_redir_to_file_prefix)
+  ]))
+}
+
+fn bash_redir_to_file_translation_rules_node() -> Node {
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_redir_to_file,
+    lhs: ^bash_production_redir_to_file,
+    tokens: bash_redir_to_file_tokens(),
+    emitted: bash_redir_to_file_emitted
+  )
+}
+
+fn bash_redir_to_file_binding_spellings(path: String) -> Map<Symbol, String> {
+  map_insert(empty_map(), ^bash_redir_to_file_path, path)
+}
+
+fn bash_redir_to_file_target_model(path: String) -> TargetModel {
+  bash_make_bound_tokens_target_model(
+    rules: bash_redir_to_file_translation_rules_node(),
+    source_literal: ^bash_redir_to_file_source_literal,
+    production_name: ^bash_production_redir_to_file,
+    tokens: bash_redir_to_file_tokens(),
+    source_text: bash_redir_to_file_source_text(path: path),
+    lex: bash_redir_to_file_lex(),
+    binding_spellings: bash_redir_to_file_binding_spellings(path: path)
+  )
+}
