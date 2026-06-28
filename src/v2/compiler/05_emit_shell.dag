@@ -32,7 +32,15 @@ import v2.extdeps.languages.bash {
   bash_stmt_negation_emitted,
   bash_stmt_negation_target_model,
   bash_single_quote,
-  bash_var_ref_spelling
+  bash_var_ref_spelling,
+  bash_redir_stderr_null_emitted,
+  bash_redir_stderr_null_target_model,
+  bash_redir_stdout_and_stderr_null_emitted,
+  bash_redir_stdout_and_stderr_null_target_model,
+  bash_redir_stdout_to_stderr_emitted,
+  bash_redir_stdout_to_stderr_target_model,
+  bash_redir_to_file_emitted,
+  bash_redir_to_file_target_model
 }
 import extdeps.languages.bash.program {
   ShellWord,
@@ -259,12 +267,27 @@ fn emit_and_or_op_spelling(op: AndOrOp) -> String {
 
 fn emit_redir(r: Redir) -> Outcome<Medium<String>> {
   match r {
-    StderrToNull => outcome_accepted(lossless_source(text: "2>/dev/null"))
-    StdoutAndStderrToNull => outcome_accepted(lossless_source(text: ">/dev/null 2>&1"))
-    StdoutToStderr => outcome_accepted(lossless_source(text: ">&2"))
+    StderrToNull =>
+      emit(
+        tree: InferredTree { root: bash_redir_stderr_null_emitted, facts: Map { lookup: shell_emit_facts_lookup } },
+        target: bash_redir_stderr_null_target_model()
+      )
+    StdoutAndStderrToNull =>
+      emit(
+        tree: InferredTree { root: bash_redir_stdout_and_stderr_null_emitted, facts: Map { lookup: shell_emit_facts_lookup } },
+        target: bash_redir_stdout_and_stderr_null_target_model()
+      )
+    StdoutToStderr =>
+      emit(
+        tree: InferredTree { root: bash_redir_stdout_to_stderr_emitted, facts: Map { lookup: shell_emit_facts_lookup } },
+        target: bash_redir_stdout_to_stderr_target_model()
+      )
     RedirToFile { path: p } =>
       bind_outcome(o: emit_shell_word(w: p), f: fn(mp) {
-        outcome_accepted(lossless_source(text: concat("> ", mp.carried)))
+        emit(
+          tree: InferredTree { root: bash_redir_to_file_emitted, facts: Map { lookup: shell_emit_facts_lookup } },
+          target: bash_redir_to_file_target_model(path: mp.carried)
+        )
       })
   }
 }

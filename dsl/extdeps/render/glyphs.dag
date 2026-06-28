@@ -67,7 +67,14 @@ data standard_symbols: List<SymbolEntry> = [
   { id: ConnectorTeeDown,         glyphs: glyphs_for_tiers(emoji: glyph(text: "┬"),  unicode: glyph(text: "┬"),  ascii: glyph(text: "+")),  color: Dim },
   { id: ConnectorTeeUp,           glyphs: glyphs_for_tiers(emoji: glyph(text: "┴"),  unicode: glyph(text: "┴"),  ascii: glyph(text: "+")),  color: Dim },
   { id: ConnectorCornerBottomLeft, glyphs: glyphs_for_tiers(emoji: glyph(text: "╰"),  unicode: glyph(text: "╰"),  ascii: glyph(text: "+")), color: Dim },
-  { id: ConnectorCornerTopLeft,    glyphs: glyphs_for_tiers(emoji: glyph(text: "╭"),  unicode: glyph(text: "╭"),  ascii: glyph(text: "+")), color: Dim }
+  { id: ConnectorCornerTopLeft,    glyphs: glyphs_for_tiers(emoji: glyph(text: "╭"),  unicode: glyph(text: "╭"),  ascii: glyph(text: "+")), color: Dim },
+
+  { id: BoxHorizontal,          glyphs: glyphs_for_tiers(emoji: glyph(text: "─"), unicode: glyph(text: "─"), ascii: glyph(text: "-")), color: Dim },
+  { id: BoxVertical,            glyphs: glyphs_for_tiers(emoji: glyph(text: "│"), unicode: glyph(text: "│"), ascii: glyph(text: "|")), color: Dim },
+  { id: BoxCornerTopLeft,       glyphs: glyphs_for_tiers(emoji: glyph(text: "┌"), unicode: glyph(text: "┌"), ascii: glyph(text: "+")), color: Dim },
+  { id: BoxCornerTopRight,      glyphs: glyphs_for_tiers(emoji: glyph(text: "┐"), unicode: glyph(text: "┐"), ascii: glyph(text: "+")), color: Dim },
+  { id: BoxCornerBottomLeft,    glyphs: glyphs_for_tiers(emoji: glyph(text: "└"), unicode: glyph(text: "└"), ascii: glyph(text: "+")), color: Dim },
+  { id: BoxCornerBottomRight,   glyphs: glyphs_for_tiers(emoji: glyph(text: "┘"), unicode: glyph(text: "┘"), ascii: glyph(text: "+")), color: Dim }
 ]
 
 fn lookup_symbol_entry(id: SymbolId) -> SymbolEntry? {
