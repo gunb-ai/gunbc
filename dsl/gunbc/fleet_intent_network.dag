@@ -11,8 +11,10 @@ import product.network_topology {
   ContainerBridgeSecondary,
   TailscaleEndpoint,
   LanGateway,
+  Lan,
+  DockerBridge,
+  TailscaleOverlay,
 }
-import product.compute_fabric { Lan, DockerBridge, TailscaleOverlay }
 import product.placement_supply { HostIdentity }
 
 data operator_host_srv1: HostIdentity = "srv1"
