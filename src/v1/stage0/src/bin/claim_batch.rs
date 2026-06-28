@@ -48,7 +48,9 @@ fn peak_rss_bytes() -> Option<u64> {
 /// Peak RSS of terminated child processes (Linux `getrusage(RUSAGE_CHILDREN)`).
 #[cfg(target_os = "linux")]
 fn children_max_rss_bytes() -> Option<u64> {
-    // `struct rusage` is 144 bytes on Linux lp64; a short struct would corrupt the stack.
+    // Hand-decoded `struct rusage` (no libc dep): layout assumes Linux lp64
+    // (x86_64 / aarch64) — 144-byte buffer, `ru_maxrss` at byte offset 32 after
+    // two 16-byte `timeval`s. Misreads on other ABIs; returns None on syscall failure.
     extern "C" {
         fn getrusage(who: i32, usage: *mut std::ffi::c_void) -> i32;
     }

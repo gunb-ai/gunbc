@@ -9,7 +9,7 @@
 
 use std::process::ExitCode;
 
-use v1_compiler::cli_run::{whole_tree_resolved_ctx, WholeTreeCtx};
+use v1_compiler::cli_run::{whole_tree_resolved_ctx, WholeTreeCtx, FLOOR_DISCOVERY_EXCLUDES};
 use v1_compiler::v1_interpreter::ExecutionMode;
 
 fn peak_rss_bytes() -> Option<u64> {
@@ -32,23 +32,19 @@ fn require_value(args: &[String], idx: usize, flag: &str) -> Result<String, Exit
 fn run() -> Result<ExitCode, ExitCode> {
     let args: Vec<String> = std::env::args().collect();
     let mut source_roots: Vec<String> = Vec::new();
-    let mut exclude_subpaths: Vec<String> = vec![
+    let mut exclude_subpaths: Vec<String> = FLOOR_DISCOVERY_EXCLUDES
+        .iter()
+        .map(|sub| (*sub).to_string())
+        .collect();
+    // Probe-specific extras beyond `FLOOR_DISCOVERY_EXCLUDES` (whole-tree resolve
+    // cannot strict-resolve test trees or eval-only workflow scaffolds).
+    exclude_subpaths.extend([
         "test/fixture/".to_string(),
         "/test/".to_string(),
-        "impossible_bug".to_string(),
-        "test/manual/".to_string(),
-        "glob_discovery.dag".to_string(),
-        "glob_discovery_law.dag".to_string(),
-        "host_discovered_owned_data_manifest.dag".to_string(),
-        "host_source_root_ingest_manifest.dag".to_string(),
-        "program_assembly/real_ingest_test.dag".to_string(),
-        "self_host/compiler_closure_emit_from_ingest_test.dag".to_string(),
-        "unified_test_claim_substrate_equivalence.dag".to_string(),
-        // Eval-only workflow scaffolds that import closure-local rung symbols.
         "nat_semiring_rung".to_string(),
         "lens/application/empty_required_lenses_skip_gate.dag".to_string(),
         "lens/application/rejecting_lens_blocks_before_compile.dag".to_string(),
-    ];
+    ]);
 
     let mut i = 1;
     while i < args.len() {
