@@ -10,9 +10,9 @@ import std.types {
 }
 import extdeps.cloud.gcp.gcp { GcpProjectId, ServiceAccountEmail }
 import extdeps.uri { Uri }
+import ctrl.review_verdict { ReviewSource }
 
 type ArtifactKind = Design | Review | Plan | CiReport
-type AuthorSource = Llm | Human
 type SeverityLevel = Blocking | Suggestion | Info
 
 type ReviewDimension = Coherence | Quality | Requirements | Aspirational
@@ -59,7 +59,7 @@ type TrackedIssue {
 type DesignOutput {
   content: String
   summary: String
-  source: AuthorSource
+  source: ReviewSource
   sections: DesignSections?
 }
 
