@@ -961,51 +961,6 @@ pub struct InterpContext {
     governed_services: RefCell<Option<Rc<std::collections::HashSet<String>>>>,
 }
 
-/// Lever C (resolved-graph representation minimization, plan item 2): evict the
-/// per-module resolution working set the interpreter never consults.
-///
-/// `with_runtime_options` builds `fn_nodes` / `service_ops` / the global
-/// `item_registry` up front and thereafter reads the stored `modules` only for
-/// `module` / `items` / per-module `item_registry` (v1_interpreter.rs:2686,
-/// coproduct_reflection.rs, wire_value_serialize.rs). The heavy `type_env`
-/// (per-symbol resolved type Nodes + provenance) and `func_env` (signature map) are
-/// never read again. Holding them resident for the whole claim-execution phase is
-/// the sustained floor RSS this lever attacks.
-///
-/// We project each `TypedModule` into a fresh one that keeps `module` / `items` /
-/// `item_registry` (same Rcs — cheap refcount bumps) but points the two env fields
-/// at shared empty singletons. Once the caller drops its `Rc<ResolvedGraph>` (the
-/// floor path `whole_tree_resolved_ctx` drops `graph` at return), the real env
-/// payloads are released. Behaviour-identical: the only mutated fields are provably
-/// never read by the interpreter or its external module readers.
-fn evict_module_envs(modules: &[Rc<TypedModule>]) -> Rc<Vec<Rc<TypedModule>>> {
-    let empty_type_env = Rc::new(crate::v1_compiler_infer_env::TypeEnv {
-        bindings: Rc::new(HashMap::new()),
-        recursive_types: Rc::new(Vec::new()),
-        recursive_type_set: Rc::new(HashMap::new()),
-        inductive_fields: Rc::new(HashMap::new()),
-        source_indices: Rc::new(HashMap::new()),
-        intern_table: crate::v1_std_core::empty_intern_table(),
-    });
-    let empty_func_env = Rc::new(crate::v1_compiler_infer_sigs::ResolvedFuncEnv {
-        signatures: Rc::new(HashMap::new()),
-    });
-    Rc::new(
-        modules
-            .iter()
-            .map(|m| {
-                Rc::new(TypedModule {
-                    module: m.module.clone(),
-                    items: m.items.clone(),
-                    type_env: empty_type_env.clone(),
-                    func_env: empty_func_env.clone(),
-                    item_registry: m.item_registry.clone(),
-                })
-            })
-            .collect(),
-    )
-}
-
 impl InterpContext {
     pub fn sym(&self, s: &str) -> Symbol {
         self.symbols.borrow_mut().intern(s)
@@ -1129,7 +1084,7 @@ impl InterpContext {
             }
         }
         InterpContext {
-            modules: evict_module_envs(&graph.modules),
+            modules: graph.modules.clone(),
             item_registry: graph.item_registry.clone(),
             source_indices,
             fn_nodes,
