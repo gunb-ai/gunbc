@@ -1,6 +1,7 @@
 module test.claim.output_policy_witness
 
 import gunbc.output_policy {
+  ChannelPolicy,
   ClaimResult,
   Condensed,
   Diagnostic,
@@ -17,6 +18,7 @@ import gunbc.output_policy {
   VerbosityEnv,
   channel_decision,
   env_var_for,
+  resolve_channel_policy,
   resolve_verbosity,
   shell_trace_summary_max_columns
 }
@@ -84,6 +86,22 @@ fn w_shell_trace_cap_is_authority() -> Bool {
   shell_trace_summary_max_columns == 100
 }
 
+fn w_resolve_channel_policy_normal_bundles_decisions() -> Bool {
+  let p = resolve_channel_policy(verbose: false, quiet: false)
+  dec_is(d: p.diagnostic, suppressed: false, condensed: false, full: true) &&
+  dec_is(d: p.claim_result, suppressed: false, condensed: false, full: true) &&
+  dec_is(d: p.progress, suppressed: false, condensed: true, full: false) &&
+  dec_is(d: p.shell_trace, suppressed: false, condensed: true, full: false) &&
+  dec_is(d: p.instrumentation, suppressed: true, condensed: false, full: false)
+}
+
+fn w_resolve_channel_policy_verbose_all_full() -> Bool {
+  let p = resolve_channel_policy(verbose: true, quiet: false)
+  dec_is(d: p.shell_trace, suppressed: false, condensed: false, full: true) &&
+  dec_is(d: p.instrumentation, suppressed: false, condensed: false, full: true) &&
+  dec_is(d: p.progress, suppressed: false, condensed: false, full: true)
+}
+
 test fn output_policy_witnesses() -> Bool {
   w_diagnostic_never_hidden() &&
   w_instrumentation_is_debug_only() &&
@@ -92,5 +110,7 @@ test fn output_policy_witnesses() -> Bool {
   w_progress_condenses_at_normal() &&
   w_verbose_wins_over_quiet() &&
   w_env_var_dispatch_names_grounded() &&
-  w_shell_trace_cap_is_authority()
+  w_shell_trace_cap_is_authority() &&
+  w_resolve_channel_policy_normal_bundles_decisions() &&
+  w_resolve_channel_policy_verbose_all_full()
 }
