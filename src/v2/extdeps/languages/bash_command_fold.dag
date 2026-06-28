@@ -11,6 +11,7 @@ import extdeps.languages.bash.program {
   Lit,
   OrElse,
   Pipe,
+  Redir,
   ShellStmt,
   ShellWord,
   Subshell,
@@ -19,6 +20,10 @@ import extdeps.languages.bash.program {
 }
 import v2.extdeps.languages.bash {
   bash_named_edge,
+  bash_stmt_heredoc_emitted,
+  bash_stmt_heredoc_target_model,
+  bash_stmt_with_redir_emitted,
+  bash_stmt_with_redir_target_model,
   bash_token_class_emit_transforms,
   bash_target_model_bundle,
   bash_word_atom
@@ -531,9 +536,21 @@ fn bash_fold_stmt_bundle_witness(stmt: ShellStmt) -> Witness<BashFoldStmtBundle>
     EnvPrefixed { name: _, value: _, command: _ } =>
       Violates { diagnostic: bash_fold_unsupported_variant_diagnostic(variant: ^bash_fold_stmt_env_prefixed) }
     WithRedir { stmt: _, redir: _ } =>
-      Violates { diagnostic: bash_fold_unsupported_variant_diagnostic(variant: ^bash_fold_stmt_with_redir) }
+      Holds {
+        value: BashFoldStmtBundle {
+          production_binding: ^bash_production_stmt_with_redir,
+          relation_rule: ^bash_relation_rule_stmt_with_redir,
+          emitted: bash_stmt_with_redir_emitted
+        }
+      }
     Heredoc { path: _, delimiter: _, body: _ } =>
-      Violates { diagnostic: bash_fold_unsupported_variant_diagnostic(variant: ^bash_fold_stmt_heredoc) }
+      Holds {
+        value: BashFoldStmtBundle {
+          production_binding: ^bash_production_stmt_heredoc,
+          relation_rule: ^bash_relation_rule_stmt_heredoc,
+          emitted: bash_stmt_heredoc_emitted
+        }
+      }
     Negation { stmt: _ } =>
       Violates { diagnostic: bash_fold_unsupported_variant_diagnostic(variant: ^bash_fold_stmt_negation) }
     RawLine { text: _ } =>
@@ -1227,17 +1244,62 @@ fn bash_fold_target_model_for_emitted_witness(
   }
 }
 
+fn bash_fold_stmt_uses_delegated_grammar(stmt: ShellStmt) -> Bool {
+  match stmt {
+    WithRedir { stmt: _, redir: _ } => true
+    Heredoc { path: _, delimiter: _, body: _ } => true
+    _ => false
+  }
+}
+
+fn bash_fold_with_redir_target_model(stmt_spelling: String, redir_spelling: String) -> TargetModel {
+  bash_stmt_with_redir_target_model(stmt: stmt_spelling, redir: redir_spelling)
+}
+
+fn bash_fold_heredoc_target_model(path_spelling: String, delimiter: String, body: String) -> TargetModel {
+  bash_stmt_heredoc_target_model(path: path_spelling, delimiter: delimiter, body: body)
+}
+
 fn bash_fold_target_model_for_stmt_witness(stmt: ShellStmt) -> Witness<TargetModel> {
-  match bash_fold_stmt_bundle_witness(stmt: stmt) {
-    Holds { value: bundle } =>
-      bash_fold_target_model_for_emitted_witness(
-        emitted: bundle.emitted,
-        source_literal: ^bash_fold_dynamic_source_literal,
-        source_text: serialize_stmt(s: stmt),
-        production_binding: bundle.production_binding,
-        rule_name: bundle.relation_rule
-      )
-    Violates { diagnostic: d } => Violates { diagnostic: d }
+  if bash_fold_stmt_uses_delegated_grammar(stmt: stmt) {
+    Violates {
+      diagnostic: Diagnostic {
+        reason: ^bash_fold_delegated_target_needs_component_spellings,
+        at: node_locus(node: bash_fold_diagnostic_anchor),
+        correction: Unavailable { reason: ExternalContractUnknown }
+      }
+    }
+  } else {
+    match bash_fold_stmt_bundle_witness(stmt: stmt) {
+      Holds { value: bundle } =>
+        bash_fold_target_model_for_emitted_witness(
+          emitted: bundle.emitted,
+          source_literal: ^bash_fold_dynamic_source_literal,
+          source_text: serialize_stmt(s: stmt),
+          production_binding: bundle.production_binding,
+          rule_name: bundle.relation_rule
+        )
+      Violates { diagnostic: d } => Violates { diagnostic: d }
+    }
+  }
+}
+
+fn bash_fold_with_redir_wrong_target_model_witness() -> Witness<TargetModel> {
+  Holds {
+    value: bash_fold_with_redir_target_model(
+      stmt_spelling: "'true'",
+      redir_spelling: ">/dev/null 2>&1"
+    )
+  }
+}
+
+fn bash_fold_heredoc_wrong_target_model_witness() -> Witness<TargetModel> {
+  Holds {
+    value: bash_fold_heredoc_target_model(
+      path_spelling: "'out'",
+      delimiter: "EOF",
+      body: "world"
+    )
   }
 }
 
