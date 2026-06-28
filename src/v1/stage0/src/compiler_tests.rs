@@ -340,15 +340,8 @@ mod compiler_tests {
                     std::rc::Rc::new(vec![module_a, module_b]),
                     crate::v1_compiler_artifact::RenderTarget::Rust,
                 );
-                let sole_ctor_errors: Vec<_> = result
-                    .diagnostics
-                    .iter()
-                    .filter(|d| {
-                        matches!(
-                            *d.diagnostic,
-                            crate::v1_std_core::CompilerDiagnostic::SoleConstructorViolation { .. }
-                        )
-                    })
+                let sole_ctor_errors: Vec<_> = result.diagnostics.iter()
+                    .filter(|d| matches!(*d.diagnostic, crate::v1_std_core::CompilerDiagnostic::SoleConstructorViolation { .. }))
                     .collect();
                 assert!(
                     !sole_ctor_errors.is_empty(),
@@ -361,17 +354,10 @@ mod compiler_tests {
                     "SoleConstructorViolation should be reported in module_b, got: {:?}",
                     sole_ctor_errors
                 );
-                let all_errors_in_a: Vec<_> = result
-                    .diagnostics
-                    .iter()
+                let all_errors_in_a: Vec<_> = result.diagnostics.iter()
                     .filter(|d| {
-                        d.module_name == "module_a"
-                            && matches!(
-                                *d.diagnostic,
-                                crate::v1_std_core::CompilerDiagnostic::SoleConstructorViolation {
-                                    ..
-                                }
-                            )
+                        d.module_name == "module_a" &&
+                        matches!(*d.diagnostic, crate::v1_std_core::CompilerDiagnostic::SoleConstructorViolation { .. })
                     })
                     .collect();
                 assert!(
@@ -397,7 +383,6 @@ mod compiler_tests {
             .spawn(|| {
                 let module_a = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
                     path: "module_a.dag".to_string(),
-                    // field-less sole_constructor record; factory + identity fn to exercise type-equality
                     content: "module module_a\ntype FieldlessFoo sole_constructor { }\nfn make_fieldless() -> FieldlessFoo { FieldlessFoo { } }\nfn identity(f: FieldlessFoo) -> FieldlessFoo { f }\n".to_string(),
                 });
                 let module_b = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
@@ -408,45 +393,60 @@ mod compiler_tests {
                     std::rc::Rc::new(vec![module_a, module_b]),
                     crate::v1_compiler_artifact::RenderTarget::Rust,
                 );
-                // enforcement check: cross-module construction must produce SoleConstructorViolation
-                let sole_ctor_errors: Vec<_> = result
-                    .diagnostics
-                    .iter()
-                    .filter(|d| {
-                        matches!(
-                            *d.diagnostic,
-                            crate::v1_std_core::CompilerDiagnostic::SoleConstructorViolation { .. }
-                        )
-                    })
+                let sole_ctor_errors: Vec<_> = result.diagnostics.iter()
+                    .filter(|d| matches!(*d.diagnostic, crate::v1_std_core::CompilerDiagnostic::SoleConstructorViolation { .. }))
                     .collect();
                 let violation_in_b = sole_ctor_errors.iter().any(|e| e.module_name == "module_b");
-                // enforcement check result
                 assert!(
                     violation_in_b,
                     "FieldlessFoo: expected SoleConstructorViolation in module_b, got: {:?}",
                     result.diagnostics
                 );
-                // leaf-classification check: no TypeMismatch on the identity fn in module_a
-                let type_mismatch_in_a: Vec<_> = result
-                    .diagnostics
-                    .iter()
+                let type_mismatch_in_a: Vec<_> = result.diagnostics.iter()
                     .filter(|d| {
-                        d.module_name == "module_a"
-                            && matches!(
-                                *d.diagnostic,
-                                crate::v1_std_core::CompilerDiagnostic::TypeMismatch { .. }
-                            )
+                        d.module_name == "module_a" &&
+                        matches!(*d.diagnostic, crate::v1_std_core::CompilerDiagnostic::TypeMismatch { .. })
                     })
                     .collect();
                 assert!(
                     type_mismatch_in_a.is_empty(),
-                    "FieldlessFoo: TypeMismatch in module_a identity fn — leaf mis-classified by phantom property, got: {:?}",
+                    "FieldlessFoo: TypeMismatch in module_a identity fn -- leaf mis-classified by phantom property, got: {:?}",
                     type_mismatch_in_a
                 );
             })
             .expect("failed to spawn thread")
             .join();
         result.expect("sole_constructor_fieldless_newtype_witness panicked");
+    }
+
+    #[test]
+    fn contracts_sidecar_wired_into_emit_scope() {
+        // Discriminating witness: AnthropicChatMessage is declared in
+        // extdeps.llm.anthropic; its tag = "role" wire_contract lives in the
+        // anthropic_contracts.dag sidecar. This proves contracts_items_for_module
+        // and the wire_contract alias-resolution scope merge the sidecar into the
+        // emitted module -- red if the sidecar wiring or alias scope regresses.
+        let result = std::thread::Builder::new()
+            .stack_size(64 * 1024 * 1024)
+            .spawn(|| {
+                let entry_pairs = discover_dag_files("dsl/extdeps/llm");
+                let sources = std::rc::Rc::new(resolve_source_closure(entry_pairs, &["dsl"]));
+                let result = crate::v1_compiler_compile::compile_sources(
+                    sources,
+                    crate::v1_compiler_artifact::RenderTarget::Rust,
+                );
+                let anthropic_file = result.files.iter()
+                    .find(|f| f.path.ends_with("extdeps_llm_anthropic.rs"))
+                    .expect("emitted file for extdeps.llm.anthropic not found in source closure");
+                assert!(
+                    anthropic_file.content.contains("#[serde(tag = \"role\""),
+                    "AnthropicChatMessage serde tag = role must be present in emitted Rust (contracts_items_for_module merged into emit scope); missing from: {}",
+                    anthropic_file.path
+                );
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result.expect("contracts_sidecar_wired_into_emit_scope panicked");
     }
 
     #[test]
@@ -1763,42 +1763,5 @@ mod compiler_tests {
             .expect("failed to spawn thread")
             .join();
         result.expect("profile_reconcile_per_module panicked");
-    }
-
-    #[test]
-    fn contracts_sidecar_wired_into_emit_scope() {
-        let result = std::thread::Builder::new()
-            .stack_size(64 * 1024 * 1024)
-            .spawn(|| {
-                let entry_pairs = discover_dag_files("dsl/extdeps/llm");
-                let sources = std::rc::Rc::new(resolve_source_closure(entry_pairs, &["dsl"]));
-                let result = crate::v1_compiler_compile::compile_sources(
-                    sources,
-                    crate::v1_compiler_artifact::RenderTarget::Rust,
-                );
-                // AnthropicChatMessage is declared in extdeps.llm.anthropic, so its `tag = "role"`
-                // contract must merge into THAT module's emitted file. Match it exactly: the loose
-                // `contains("extdeps_llm_anthropic")` glob also matched the sibling `_errors`/`_rest`
-                // split-out modules (which don't declare it), and `.find()` grabbed the wrong one.
-                let anthropic_file = result
-                    .files
-                    .iter()
-                    .find(|f| f.path.ends_with("extdeps_llm_anthropic.rs"))
-                    .expect(
-                        "emitted file for extdeps.llm.anthropic not found — \
-                         module must be present in dsl/extdeps/llm source closure",
-                    );
-                assert!(
-                    anthropic_file.content.contains("#[serde(tag = \"role\""),
-                    "AnthropicChatMessage serde tag annotation must be present in emitted Rust — \
-                     contracts_items_for_module must be merged into emit scope; \
-                     missing from: {}\nfile content (first 2000 chars):\n{}",
-                    anthropic_file.path,
-                    &anthropic_file.content[..anthropic_file.content.len().min(2000)]
-                );
-            })
-            .expect("failed to spawn thread")
-            .join();
-        result.expect("contracts_sidecar_wired_into_emit_scope panicked");
     }
 }

@@ -35,10 +35,10 @@ const GENERATED_STAGE0_FILES: &[&str] = &[
     "extdeps_languages_rust_syntax.rs",
     "extdeps_languages_rust_types.rs",
     "extdeps_uri.rs",
+    "extdeps_uri_path.rs",
     "extdeps_version.rs",
     "extdeps_version_semver.rs",
     "lib.rs",
-    "main.rs",
     "std_algebra.rs",
     "std_coercion.rs",
     "std_computation.rs",
@@ -93,7 +93,6 @@ const GENERATED_STAGE0_FILES: &[&str] = &[
     "v1_compiler_languages.rs",
     "v1_compiler_normalize.rs",
     "v1_compiler_ownership.rs",
-    "v1_compiler_parse.rs",
     "v1_compiler_resolve.rs",
     "v1_compiler_runtime_go.rs",
     "v1_compiler_runtime_rust.rs",
@@ -132,6 +131,21 @@ const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
     "rest_transport_facts.rs",
     "transport_script_position_project.rs",
     "wire_value_serialize.rs",
+    // Un-dissolved bootstrap CLI seed: --dependency-pool-index +
+    // DependencyPoolIndex(Strict|PrimaryPrecedence) + parse_dependency_pool_index +
+    // collision-aware index_source_root + multi-root build_module_index live in this
+    // hand-maintained file, NOT grounded in 05_emit_rust.dag's main-emit template (a
+    // hardcoded string today). A faithful regen drops them. Dissolution: model the
+    // gunbc CLI + dependency-pool indexing in the emitter, then move this file back to
+    // GENERATED_STAGE0_FILES.
+    "main.rs",
+    // Un-dissolved bootstrap parser seed: #5864's O(N) cursor optimization lives in
+    // this hand-maintained file, NOT in src/v1/02_parse.dag (which still models the
+    // O(N^2) baseline). A faithful regen from 02_parse.dag would revert #5864, so
+    // parse.rs is copy-preserved here (operator ruling Path B). Dissolution: ground
+    // the TokenStream cursor into 02_parse.dag, then move this file back to
+    // GENERATED_STAGE0_FILES.
+    "v1_compiler_parse.rs",
     "v1_compiler_dag_collect.rs",
     "v1_compiler_dag_collect_support.rs",
     "v1_interpreter.rs",
