@@ -15,6 +15,11 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
+data memory_types_compute_fabric_parallel_copy_debt: List<NonEmptyStr> = [
+  "SCAFFOLD: byte-identical MemoryKind/MemoryFacts still declared in product.compute_fabric until the connector PR removes them",
+  "dissolve-on: product.compute_fabric connector PR deletes local MemoryKind/MemoryFacts and imports from extdeps.memory.types",
+]
+
 type MemoryKind = Dram | Hbm | UnifiedShared
 
 type MemoryFacts {
