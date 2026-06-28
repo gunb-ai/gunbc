@@ -334,7 +334,7 @@ pub struct CycleDetectState {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct InferScopeComponents {
-    pub func_sigs: Rc<HashMap<String, Rc<DeclaredFuncSig>>>,
+    pub imported_sigs: Rc<HashMap<String, Rc<ResolvedFuncSig>>>,
     pub svc_registry: Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>,
     pub svc_locals: Rc<HashMap<String, Rc<TypeBinding>>>,
 }
