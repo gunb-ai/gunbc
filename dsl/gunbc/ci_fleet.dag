@@ -11,7 +11,7 @@ import gunbc.fleet_intent {
   srv1_host,
   srv2_host,
 }
-import gunbc.fleet_container { IsolationBoundary, PerJobFilesystem }
+import product.compute_fabric { IsolationBoundary, PerJobFilesystem }
 import extdeps.cpu.ampere { altra_q6430_catalog }
 import extdeps.cpu.types { CpuFacts, CpuDeploymentFacts }
 import extdeps.memory.types { MemoryKind, Dram }
