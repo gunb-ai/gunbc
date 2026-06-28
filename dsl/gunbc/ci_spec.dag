@@ -7,9 +7,6 @@ import gunbc.ci_layer_roots {
 import tools.build_step { BuildArtifact }
 import extdeps.languages.bash.program { Concat, lit, var_ref }
 import gunbc.ci_failure_class { infra_retry_grep_alternation }
-import gunbc.ci_fleet { gunbc_ci_fleet_offer }
-import gunbc.runner_spec_from_offer { runner_spec_from_offer }
-import extdeps.github.actions { RunnerSpec }
 
 type Gate
   = RustMonolithGate
@@ -235,6 +232,3 @@ fn gunbc_ci_rust_job_run() -> String {
   )
 }
 
-fn gunbc_ci_runner_spec() -> RunnerSpec {
-  runner_spec_from_offer(offer: gunbc_ci_fleet_offer)
-}
