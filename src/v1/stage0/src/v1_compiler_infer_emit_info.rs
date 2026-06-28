@@ -136,7 +136,7 @@ pub fn lookup_emit_type_summary(
 pub fn derive_variant_to_enum(
     type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
 ) -> Rc<HashMap<String, String>> {
-    let result = Rc::new(v1_rt::map_values(&type_summaries))
+    Rc::new(v1_rt::map_values(&type_summaries))
         .iter()
         .cloned()
         .fold(
@@ -169,8 +169,7 @@ pub fn derive_variant_to_enum(
                 }
                 _ => acc.clone(),
             },
-        );
-    result
+        )
 }
 
 pub fn is_known_variant(

@@ -4724,9 +4724,16 @@ pub fn import_module_enum_scope(
                     for n in Rc::new({
                         let mut __result = Vec::new();
                         for n in Rc::new({
-                            let mut __keys = v1_rt::map_keys(&exported);
-                            __keys.sort();
-                            __keys
+                            let mut __sorted: Vec<_> = Rc::new(v1_rt::map_keys(&exported))
+                                .iter()
+                                .cloned()
+                                .collect();
+                            __sorted.sort_by(|a: &String, b: &String| {
+                                let __ka = (|k: String| k.clone())(a.clone());
+                                let __kb = (|k: String| k.clone())(b.clone());
+                                __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal)
+                            });
+                            __sorted
                         })
                         .iter()
                         .cloned()
@@ -4899,9 +4906,18 @@ pub fn wildcard_import_pool_surface_names(
                                 let src_mod = authored_name_at(source_indices.clone(), imp.clone());
                                 let direct = match v1_rt::map_get(&export_sets, src_mod.clone()) {
                                     Some(exported) => Rc::new({
-                                        let mut __keys = v1_rt::map_keys(&exported);
-                                        __keys.sort();
-                                        __keys
+                                        let mut __sorted: Vec<_> =
+                                            Rc::new(v1_rt::map_keys(&exported))
+                                                .iter()
+                                                .cloned()
+                                                .collect();
+                                        __sorted.sort_by(|a: &String, b: &String| {
+                                            let __ka = (|k: String| k.clone())(a.clone());
+                                            let __kb = (|k: String| k.clone())(b.clone());
+                                            __ka.partial_cmp(&__kb)
+                                                .unwrap_or(std::cmp::Ordering::Equal)
+                                        });
+                                        __sorted
                                     }),
                                     None => Rc::new(vec![]),
                                 };
@@ -4941,9 +4957,16 @@ pub fn wildcard_reexport_surface_names(
     {
         let local_candidates = match v1_rt::map_get(&export_sets, import_module.clone()) {
             Some(exported) => Rc::new({
-                let mut __keys = v1_rt::map_keys(&exported);
-                __keys.sort();
-                __keys
+                let mut __sorted: Vec<_> = Rc::new(v1_rt::map_keys(&exported))
+                    .iter()
+                    .cloned()
+                    .collect();
+                __sorted.sort_by(|a: &String, b: &String| {
+                    let __ka = (|k: String| k.clone())(a.clone());
+                    let __kb = (|k: String| k.clone())(b.clone());
+                    __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal)
+                });
+                __sorted
             }),
             None => Rc::new(vec![]),
         };
@@ -12127,7 +12150,7 @@ pub fn effective_variant_parent(
             }
             None => None,
         };
-        let result = match cached {
+        match cached {
             Some(parent) => Some(parent.clone()),
             None => match resolved_type.as_deref().cloned() {
                 Some(InferredNode::Resolved { node: rt, .. }) => {
@@ -12146,8 +12169,7 @@ pub fn effective_variant_parent(
                 }
                 _ => variant_parent_from_binding_kind(binding_kind),
             },
-        };
-        result
+        }
     }
 }
 
@@ -17801,17 +17823,16 @@ pub fn emit_field_value_with_context(
     }
 }
 
-pub fn find_struct_name_by_fields(
+pub fn struct_candidates_by_field_names(
     field_names: Rc<Vec<String>>,
-    field_type_hints: Rc<HashMap<String, String>>,
     type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
-) -> Option<String> {
+) -> Rc<Vec<Rc<TypeSummary>>> {
     {
         let n_fields = (field_names.clone().len() as i64);
         if (n_fields.clone() == 0) {
-            return None;
+            return Rc::new(vec![]);
         }
-        let candidates = Rc::new({
+        Rc::new({
             let mut __result = Vec::new();
             for summary in Rc::new(v1_rt::map_values(&type_summaries)).iter().cloned() {
                 if match (*summary.repr.clone()).clone() {
@@ -17841,30 +17862,76 @@ pub fn find_struct_name_by_fields(
                 }
             }
             __result
-        });
-        if candidates.len() <= 1 {
-            return candidates.first().map(|s| s.name.clone());
-        }
-        // Multiple candidates share the same field names; disambiguate by field types.
-        // field_type_hints maps field_name → inferred value type name at the call site.
-        let typed_candidates: Vec<_> = candidates
-            .iter()
-            .filter(|cand| {
-                field_type_hints.iter().all(|(fname, hint_type)| {
-                    match v1_rt::map_get(&cand.field_type_map, fname.clone()) {
-                        Some(cand_type) => *cand_type == *hint_type,
-                        None => true,
+        })
+    }
+}
+
+pub fn find_struct_name_by_fields(
+    field_names: Rc<Vec<String>>,
+    field_type_hints: Rc<HashMap<String, String>>,
+    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+) -> Option<String> {
+    {
+        let candidates = struct_candidates_by_field_names(field_names, type_summaries);
+        if ((candidates.clone().len() as i64) <= 1) {
+            match candidates.clone().first().cloned() {
+                Some(s) => Some(s.name.clone()),
+                None => None,
+            }
+        } else {
+            {
+                let typed_candidates = Rc::new({
+                    let mut __result = Vec::new();
+                    for cand in candidates.clone().iter().cloned() {
+                        if {
+                            let mut __all = true;
+                            for fname in Rc::new(v1_rt::map_keys(&field_type_hints)).iter().cloned()
+                            {
+                                if !(match v1_rt::map_get(&field_type_hints, fname.clone()) {
+                                    Some(hint_type) => match v1_rt::map_get(
+                                        &cand.field_type_map.clone(),
+                                        fname.clone(),
+                                    ) {
+                                        Some(cand_type) => (cand_type.clone() == hint_type.clone()),
+                                        None => true,
+                                    },
+                                    None => true,
+                                }) {
+                                    __all = false;
+                                    break;
+                                }
+                            }
+                            __all
+                        } {
+                            __result.push(cand);
+                        }
                     }
-                })
-            })
-            .collect();
-        if typed_candidates.len() == 1 {
-            return typed_candidates.first().map(|s| s.name.clone());
+                    __result
+                });
+                if ((typed_candidates.clone().len() as i64) == 1) {
+                    match typed_candidates.clone().first().cloned() {
+                        Some(s) => Some(s.name.clone()),
+                        None => None,
+                    }
+                } else {
+                    match Rc::new({
+                        let mut __sorted: Vec<_> = candidates.clone().iter().cloned().collect();
+                        __sorted.sort_by(|a: &Rc<TypeSummary>, b: &Rc<TypeSummary>| {
+                            let __ka = (|c: Rc<TypeSummary>| c.name.clone())(a.clone());
+                            let __kb = (|c: Rc<TypeSummary>| c.name.clone())(b.clone());
+                            __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal)
+                        });
+                        __sorted
+                    })
+                    .first()
+                    .cloned()
+                    {
+                        Some(s) => Some(s.name.clone()),
+                        None => None,
+                    }
+                }
+            }
         }
-        // Still ambiguous: deterministic fallback — sort by name.
-        let mut candidates_sorted = (*candidates).clone();
-        candidates_sorted.sort_by(|a, b| a.name.cmp(&b.name));
-        candidates_sorted.first().map(|s| s.name.clone())
     }
 }
 
@@ -17873,41 +17940,7 @@ pub fn find_unique_struct_name_by_fields(
     type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
 ) -> Option<String> {
     {
-        let n_fields = (field_names.clone().len() as i64);
-        if (n_fields.clone() == 0) {
-            return None;
-        }
-        let candidates = Rc::new({
-            let mut __result = Vec::new();
-            for summary in Rc::new(v1_rt::map_values(&type_summaries)).iter().cloned() {
-                if match (*summary.repr.clone()).clone() {
-                    TypeRepr::StructRepr => {
-                        let ftm_keys = Rc::new(v1_rt::map_keys(&summary.field_type_map.clone()));
-                        if ((ftm_keys.clone().len() as i64) == n_fields.clone()) {
-                            {
-                                let mut __all = true;
-                                for fn_name in field_names.clone().iter().cloned() {
-                                    if !(v1_rt::map_contains_key(
-                                        &summary.field_type_map.clone(),
-                                        fn_name.clone(),
-                                    )) {
-                                        __all = false;
-                                        break;
-                                    }
-                                }
-                                __all
-                            }
-                        } else {
-                            false
-                        }
-                    }
-                    _ => false,
-                } {
-                    __result.push(summary);
-                }
-            }
-            __result
-        });
+        let candidates = struct_candidates_by_field_names(field_names, type_summaries);
         if ((candidates.clone().len() as i64) == 1) {
             match candidates.clone().first().cloned() {
                 Some(s) => Some(s.name.clone()),
@@ -18057,26 +18090,29 @@ pub fn emit_typed_record_lit(
                                 }
                                 __result
                             });
-                            let field_type_hints: Rc<HashMap<String, String>> = Rc::new({
-                                let mut __hints: HashMap<String, String> = HashMap::new();
-                                for f in fields.clone().iter().cloned() {
+                            let field_type_hints = fields.clone().iter().cloned().fold(
+                                v1_rt::rc_empty_map::<String, String>(),
+                                |acc: Rc<HashMap<String, String>>, f: Rc<Node>| {
                                     let fname = field_init_node_name_at(
                                         f.clone(),
                                         scope.type_env.clone().source_indices.clone(),
                                     );
                                     let fval = field_init_node_value(f.clone());
-                                    if let Some(inf) = fval.inferred.clone() {
-                                        if let Resolved { node: type_node } = (*inf).clone() {
-                                            let tname = authored_name_at(
+                                    match fval.inferred.clone().as_deref().cloned() {
+                                        Some(InferredNode::Resolved {
+                                            node: type_node, ..
+                                        }) => v1_rt::rc_map_insert(
+                                            acc.clone(),
+                                            fname.clone(),
+                                            authored_name_at(
                                                 scope.type_env.clone().source_indices.clone(),
-                                                type_node,
-                                            );
-                                            __hints.insert(fname, tname);
-                                        }
+                                                type_node.clone(),
+                                            ),
+                                        ),
+                                        _ => acc.clone(),
                                     }
-                                }
-                                __hints
-                            });
+                                },
+                            );
                             match find_struct_name_by_fields(
                                 lit_field_names,
                                 field_type_hints,

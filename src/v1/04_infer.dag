@@ -5797,14 +5797,14 @@ fn unique_imported_variant_owner(variant_name: String, items: List<Node>, source
   } else { none }
 }
 
-fn is_imported_variant_owned_by(imported_variants: Map<String, String?>, variant_name: String, enum_name: String) -> Bool {
+fn is_imported_variant_owned_by(imported_variants: Map<String, String>, variant_name: String, enum_name: String) -> Bool {
   match map_get(imported_variants, variant_name) {
-    Present { value: Present { value: unique_parent } } => unique_parent == enum_name
-    _ => false
+    Present { value: unique_parent } => unique_parent == enum_name
+    Absent => false
   }
 }
 
-fn build_imported_variants(resolved_imports: List<ResolvedImport>, parent_index: Map<String, TypedModule>, source_indices: Map<String, NewlineIndex>) -> Map<String, String?> {
+fn build_imported_variants(resolved_imports: List<ResolvedImport>, parent_index: Map<String, TypedModule>, source_indices: Map<String, NewlineIndex>) -> Map<String, String> {
   fold(resolved_imports, init: empty_map(), f: (acc, imp) =>
     fold(imp.specific_names, init: acc, f: (inner, variant_name) =>
       if map_contains_key(inner, variant_name) {
@@ -5814,7 +5814,10 @@ fn build_imported_variants(resolved_imports: List<ResolvedImport>, parent_index:
           Present { value: parent_tm } => parent_tm.items
           Absent => []
         }
-        map_insert(inner, variant_name, unique_imported_variant_owner(variant_name: variant_name, items: source_items, source_indices: source_indices))
+        match unique_imported_variant_owner(variant_name: variant_name, items: source_items, source_indices: source_indices) {
+          Present { value: parent } => map_insert(inner, variant_name, parent)
+          Absent => inner
+        }
       }
     )
   )
