@@ -990,20 +990,31 @@ fn evict_module_envs(modules: &[Rc<TypedModule>]) -> Rc<Vec<Rc<TypedModule>>> {
     let empty_func_env = Rc::new(crate::v1_compiler_infer_sigs::ResolvedFuncEnv {
         signatures: Rc::new(HashMap::new()),
     });
-    Rc::new(
-        modules
-            .iter()
-            .map(|m| {
-                Rc::new(TypedModule {
-                    module: m.module.clone(),
-                    items: m.items.clone(),
-                    type_env: empty_type_env.clone(),
-                    func_env: empty_func_env.clone(),
-                    item_registry: m.item_registry.clone(),
-                })
+    let projected: Vec<Rc<TypedModule>> = modules
+        .iter()
+        .map(|m| {
+            Rc::new(TypedModule {
+                module: m.module.clone(),
+                items: m.items.clone(),
+                type_env: empty_type_env.clone(),
+                func_env: empty_func_env.clone(),
+                item_registry: m.item_registry.clone(),
             })
-            .collect(),
-    )
+        })
+        .collect();
+    if std::env::var("LEVER_C_PROBE").is_ok() {
+        let full = serde_json::to_vec(&modules.to_vec()).map(|v| v.len()).unwrap_or(0);
+        let kept = serde_json::to_vec(&projected).map(|v| v.len()).unwrap_or(0);
+        eprintln!(
+            "LEVER_C_PROBE modules={} full_repr_bytes={} retained_repr_bytes={} evicted_bytes={} evicted_pct={:.1}",
+            modules.len(),
+            full,
+            kept,
+            full.saturating_sub(kept),
+            if full > 0 { 100.0 * (full - kept) as f64 / full as f64 } else { 0.0 }
+        );
+    }
+    Rc::new(projected)
 }
 
 impl InterpContext {
