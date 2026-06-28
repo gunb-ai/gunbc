@@ -4723,7 +4723,21 @@ pub fn import_module_enum_scope(
                     let mut __result = Vec::new();
                     for n in Rc::new({
                         let mut __result = Vec::new();
-                        for n in Rc::new(v1_rt::map_keys(&exported)).iter().cloned() {
+                        for n in Rc::new({
+                            let mut __sorted: Vec<_> = Rc::new(v1_rt::map_keys(&exported))
+                                .iter()
+                                .cloned()
+                                .collect();
+                            __sorted.sort_by(|a: &String, b: &String| {
+                                let __ka = (|k: String| k.clone())(a.clone());
+                                let __kb = (|k: String| k.clone())(b.clone());
+                                __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal)
+                            });
+                            __sorted
+                        })
+                        .iter()
+                        .cloned()
+                        {
                             if (is_known_variant(type_summaries.clone(), n.clone())
                                 && (is_enum_in_summaries(type_summaries.clone(), n.clone())
                                     == false))
@@ -4891,7 +4905,20 @@ pub fn wildcard_import_pool_surface_names(
                             (*{
                                 let src_mod = authored_name_at(source_indices.clone(), imp.clone());
                                 let direct = match v1_rt::map_get(&export_sets, src_mod.clone()) {
-                                    Some(exported) => Rc::new(v1_rt::map_keys(&exported)),
+                                    Some(exported) => Rc::new({
+                                        let mut __sorted: Vec<_> =
+                                            Rc::new(v1_rt::map_keys(&exported))
+                                                .iter()
+                                                .cloned()
+                                                .collect();
+                                        __sorted.sort_by(|a: &String, b: &String| {
+                                            let __ka = (|k: String| k.clone())(a.clone());
+                                            let __kb = (|k: String| k.clone())(b.clone());
+                                            __ka.partial_cmp(&__kb)
+                                                .unwrap_or(std::cmp::Ordering::Equal)
+                                        });
+                                        __sorted
+                                    }),
                                     None => Rc::new(vec![]),
                                 };
                                 v1_rt::concat(
@@ -4929,7 +4956,18 @@ pub fn wildcard_reexport_surface_names(
 ) -> Rc<Vec<String>> {
     {
         let local_candidates = match v1_rt::map_get(&export_sets, import_module.clone()) {
-            Some(exported) => Rc::new(v1_rt::map_keys(&exported)),
+            Some(exported) => Rc::new({
+                let mut __sorted: Vec<_> = Rc::new(v1_rt::map_keys(&exported))
+                    .iter()
+                    .cloned()
+                    .collect();
+                __sorted.sort_by(|a: &String, b: &String| {
+                    let __ka = (|k: String| k.clone())(a.clone());
+                    let __kb = (|k: String| k.clone())(b.clone());
+                    __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal)
+                });
+                __sorted
+            }),
             None => Rc::new(vec![]),
         };
         let wildcard_pool_candidates = wildcard_import_pool_surface_names(
@@ -17785,16 +17823,16 @@ pub fn emit_field_value_with_context(
     }
 }
 
-pub fn find_struct_name_by_fields(
+pub fn struct_candidates_by_field_names(
     field_names: Rc<Vec<String>>,
     type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
-) -> Option<String> {
+) -> Rc<Vec<Rc<TypeSummary>>> {
     {
         let n_fields = (field_names.clone().len() as i64);
         if (n_fields.clone() == 0) {
-            return None;
+            return Rc::new(vec![]);
         }
-        let candidates = Rc::new({
+        Rc::new({
             let mut __result = Vec::new();
             for summary in Rc::new(v1_rt::map_values(&type_summaries)).iter().cloned() {
                 if match (*summary.repr.clone()).clone() {
@@ -17824,10 +17862,75 @@ pub fn find_struct_name_by_fields(
                 }
             }
             __result
-        });
-        match candidates.first().cloned() {
-            Some(s) => Some(s.name.clone()),
-            None => None,
+        })
+    }
+}
+
+pub fn find_struct_name_by_fields(
+    field_names: Rc<Vec<String>>,
+    field_type_hints: Rc<HashMap<String, String>>,
+    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+) -> Option<String> {
+    {
+        let candidates = struct_candidates_by_field_names(field_names, type_summaries);
+        if ((candidates.clone().len() as i64) <= 1) {
+            match candidates.clone().first().cloned() {
+                Some(s) => Some(s.name.clone()),
+                None => None,
+            }
+        } else {
+            {
+                let typed_candidates = Rc::new({
+                    let mut __result = Vec::new();
+                    for cand in candidates.clone().iter().cloned() {
+                        if {
+                            let mut __all = true;
+                            for fname in Rc::new(v1_rt::map_keys(&field_type_hints)).iter().cloned()
+                            {
+                                if !(match v1_rt::map_get(&field_type_hints, fname.clone()) {
+                                    Some(hint_type) => match v1_rt::map_get(
+                                        &cand.field_type_map.clone(),
+                                        fname.clone(),
+                                    ) {
+                                        Some(cand_type) => (cand_type.clone() == hint_type.clone()),
+                                        None => true,
+                                    },
+                                    None => true,
+                                }) {
+                                    __all = false;
+                                    break;
+                                }
+                            }
+                            __all
+                        } {
+                            __result.push(cand);
+                        }
+                    }
+                    __result
+                });
+                if ((typed_candidates.clone().len() as i64) == 1) {
+                    match typed_candidates.clone().first().cloned() {
+                        Some(s) => Some(s.name.clone()),
+                        None => None,
+                    }
+                } else {
+                    match Rc::new({
+                        let mut __sorted: Vec<_> = candidates.clone().iter().cloned().collect();
+                        __sorted.sort_by(|a: &Rc<TypeSummary>, b: &Rc<TypeSummary>| {
+                            let __ka = (|c: Rc<TypeSummary>| c.name.clone())(a.clone());
+                            let __kb = (|c: Rc<TypeSummary>| c.name.clone())(b.clone());
+                            __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal)
+                        });
+                        __sorted
+                    })
+                    .first()
+                    .cloned()
+                    {
+                        Some(s) => Some(s.name.clone()),
+                        None => None,
+                    }
+                }
+            }
         }
     }
 }
@@ -17837,41 +17940,7 @@ pub fn find_unique_struct_name_by_fields(
     type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
 ) -> Option<String> {
     {
-        let n_fields = (field_names.clone().len() as i64);
-        if (n_fields.clone() == 0) {
-            return None;
-        }
-        let candidates = Rc::new({
-            let mut __result = Vec::new();
-            for summary in Rc::new(v1_rt::map_values(&type_summaries)).iter().cloned() {
-                if match (*summary.repr.clone()).clone() {
-                    TypeRepr::StructRepr => {
-                        let ftm_keys = Rc::new(v1_rt::map_keys(&summary.field_type_map.clone()));
-                        if ((ftm_keys.clone().len() as i64) == n_fields.clone()) {
-                            {
-                                let mut __all = true;
-                                for fn_name in field_names.clone().iter().cloned() {
-                                    if !(v1_rt::map_contains_key(
-                                        &summary.field_type_map.clone(),
-                                        fn_name.clone(),
-                                    )) {
-                                        __all = false;
-                                        break;
-                                    }
-                                }
-                                __all
-                            }
-                        } else {
-                            false
-                        }
-                    }
-                    _ => false,
-                } {
-                    __result.push(summary);
-                }
-            }
-            __result
-        });
+        let candidates = struct_candidates_by_field_names(field_names, type_summaries);
         if ((candidates.clone().len() as i64) == 1) {
             match candidates.clone().first().cloned() {
                 Some(s) => Some(s.name.clone()),
@@ -18021,8 +18090,32 @@ pub fn emit_typed_record_lit(
                                 }
                                 __result
                             });
+                            let field_type_hints = fields.clone().iter().cloned().fold(
+                                v1_rt::rc_empty_map::<String, String>(),
+                                |acc: Rc<HashMap<String, String>>, f: Rc<Node>| {
+                                    let fname = field_init_node_name_at(
+                                        f.clone(),
+                                        scope.type_env.clone().source_indices.clone(),
+                                    );
+                                    let fval = field_init_node_value(f.clone());
+                                    match fval.inferred.clone().as_deref().cloned() {
+                                        Some(InferredNode::Resolved {
+                                            node: type_node, ..
+                                        }) => v1_rt::rc_map_insert(
+                                            acc.clone(),
+                                            fname.clone(),
+                                            authored_name_at(
+                                                scope.type_env.clone().source_indices.clone(),
+                                                type_node.clone(),
+                                            ),
+                                        ),
+                                        _ => acc.clone(),
+                                    }
+                                },
+                            );
                             match find_struct_name_by_fields(
                                 lit_field_names,
+                                field_type_hints,
                                 emit_info.type_summaries.clone(),
                             ) {
                                 Some(resolved_sn) => {

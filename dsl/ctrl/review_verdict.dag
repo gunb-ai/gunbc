@@ -1,12 +1,16 @@
 module ctrl.review_verdict
 
 import std.types { ArtifactId, CommitSha, ContentHash, NonEmptyStr, Timestamp }
+import extdeps.github.pulls { ReviewState }
 
-type ReviewProvider
+type LlmReviewProvider
   = OpenaiPro
   | Codex
   | Claude
   | Cursor
+
+type ReviewProvider
+  = Llm { provider: LlmReviewProvider }
   | HumanReviewer
   | ProviderOther { name: NonEmptyStr }
 
@@ -20,12 +24,6 @@ type PolicyRef {
   id: NonEmptyStr
   version: NonEmptyStr
 }
-
-type LlmReviewProvider
-  = OpenaiPro
-  | Codex
-  | Claude
-  | Cursor
 
 type Reviewer
   = AgentReviewer { provider: LlmReviewProvider }
@@ -43,17 +41,10 @@ fn reviewer_source(reviewer: Reviewer) -> ReviewSource {
 }
 
 type ReviewArtifactKind
-  = GitHubReview { state: GitHubReviewState }
+  = GitHubReview { state: ReviewState }
   | GitHubReviewComment
   | GitHubIssueComment
   | DashboardReviewArtifact
-
-type GitHubReviewState
-  = Approved
-  | ChangesRequested
-  | Commented
-  | Dismissed
-  | Pending
 
 type ReviewVerdict
   = Approve
@@ -76,7 +67,7 @@ type FindingPriority
 
 type VerdictEvidence
   = ExplicitVerdictLine { verdict: ReviewVerdict }
-  | GitHubReviewStateEvidence { state: GitHubReviewState }
+  | GitHubReviewStateEvidence { state: ReviewState }
   | BlockingFindingPresent
   | NoBlockingConcernsText
   | HumanOverride { reason: String }

@@ -10,6 +10,7 @@ import extdeps.cache.types {
 import std.cache_identity { CacheInterfaceId }
 import std.cache_interface {
   NativeInternalLookup,
+  OverwriteAllowed,
   WriteThenRename,
   MissThenCreate,
   RawBytes,
@@ -53,7 +54,7 @@ data sccache_local_facts: CacheInterfaceCatalogFacts = {
   }
   io: {
     lookup_semantics: NativeInternalLookup
-    write_semantics: WriteThenRename
+    write_semantics: OverwriteAllowed
     miss_semantics: MissThenCreate
   }
   placement: {

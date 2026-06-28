@@ -30,8 +30,10 @@ import gunbc.ci_runner_placement {
 }
 import gunbc.fleet_host_budget {
   declared_runner_count,
-  gunbc_per_runner_memory_cap,
   gunbc_runner_pool_budget,
+}
+import gunbc.ci_floor_measurement {
+  gunbc_ci_runner_cgroup_memory_cap,
 }
 import gunbc.ci_floor_measurement {
   SessionOperatingPointSet,
@@ -68,7 +70,7 @@ fn witness_live_plan_is_conservation_sound() -> Bool {
         && total == declared_runner_count() * fleet_intent_offers.length()
         && all(hosts, h =>
             h.runner_count == declared_runner_count()
-              && byte_size_count(b: h.per_runner_memory_cap) == byte_size_count(b: gunbc_per_runner_memory_cap)
+              && byte_size_count(b: h.per_runner_memory_cap) == byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap)
               && byte_size_count(b: h.runner_slice_cap) == byte_size_count(b: gunbc_runner_pool_budget)
               && hardware_thread_count_value(t: h.build_tokens) > 0
           )
