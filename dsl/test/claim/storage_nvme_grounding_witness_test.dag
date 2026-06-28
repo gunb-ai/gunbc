@@ -6,10 +6,6 @@ import extdeps.storage.types {
   NvmeDeviceCatalogRow,
   pcie_link_bandwidth,
   pcie_generation_per_lane_bandwidth,
-}
-import extdeps.storage.samsung { samsung_970_evo_plus_2tb_catalog }
-import extdeps.storage.western_digital { wd_black_sn850x_2tb_catalog }
-import product.compute_fabric {
   nvme_storage_device,
   StorageDevice,
   Persistent,
@@ -19,6 +15,8 @@ import product.compute_fabric {
   storage_device_read_bandwidth,
   storage_device_pcie_link,
 }
+import extdeps.storage.samsung { samsung_970_evo_plus_2tb_catalog }
+import extdeps.storage.western_digital { wd_black_sn850x_2tb_catalog }
 
 data sample_wd_device: StorageDevice = nvme_storage_device(
   catalog: wd_black_sn850x_2tb_catalog,
