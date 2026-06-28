@@ -127,32 +127,31 @@ fn shared_variant_resolves_by_expected_type_not_alpha_order() {
     );
 }
 
-/// §2b — per-function expected-type grounding: two functions with DIFFERENT declared
-/// return types, both returning the same shared variant.  Each must emit the enum
-/// matching ITS OWN declared return type, proving the fix is per-site not per-module.
+/// §2b — per-site independence: two functions with DIFFERENT declared return types in the
+/// same module, both returning the same shared variant.
 ///
-/// `make_early() -> AEarlyEnum` → must emit `AEarlyEnum::SharedVarField`
-/// `make_late()  -> ZLaterEnum` → must emit `ZLaterEnum::SharedVarField`
+/// `make_early() -> AEarlyEnum` → scope already picks AEarlyEnum (last-write wins) → no
+///   override needed → must emit `AEarlyEnum::SharedVarField`
+/// `make_late()  -> ZLaterEnum` → scope picks AEarlyEnum (wrong) → expected-type override
+///   fires → must emit `ZLaterEnum::SharedVarField`
 ///
-/// Both variants live in the same scope (same import list), so without expected-type
-/// grounding both would collapse to `AEarlyEnum` (alpha-first).
+/// Both functions in the same scope prove the fix is per-site not per-module.
+/// Single-module (no imports): no VariantCollision possible.
 #[test]
 fn shared_variant_resolves_per_site_independently() {
-    let owner_mod = (
-        "dsl/test/disc_per_site_owner.dag",
-        "module test.disc_per_site_owner\n\
+    // ZLaterEnum defined first, AEarlyEnum second → AEarlyEnum wins scope (last-write).
+    // make_early return type matches scope winner → no override, correct trivially.
+    // make_late return type is ZLaterEnum → override fires for that site only.
+    let source = (
+        "dsl/test/disc_per_site.dag",
+        "module test.disc_per_site\n\
+         type ZLaterEnum = SharedVarField | ZLaterOnlyF\n\
          type AEarlyEnum = SharedVarField | AEarlyOnlyF\n\
-         type ZLaterEnum = SharedVarField | ZLaterOnlyF",
-    );
-    let consumer = (
-        "dsl/test/disc_per_site_consumer.dag",
-        "module test.disc_per_site_consumer\n\
-         import test.disc_per_site_owner { SharedVarField, AEarlyEnum, ZLaterEnum }\n\
          fn make_early() -> AEarlyEnum { SharedVarField }\n\
          fn make_late() -> ZLaterEnum { SharedVarField }",
     );
 
-    let result = compile_multi_target(&[owner_mod, consumer], RenderTarget::Rust);
+    let result = compile_multi_target(&[source], RenderTarget::Rust);
     let diags: Vec<String> = result
         .diagnostics
         .iter()
@@ -164,7 +163,7 @@ fn shared_variant_resolves_per_site_independently() {
     let emitted: String = result
         .files
         .iter()
-        .filter(|f| f.path.contains("disc_per_site_consumer"))
+        .filter(|f| f.path.contains("disc_per_site"))
         .map(|f| f.content.clone())
         .collect::<Vec<_>>()
         .join("\n");
