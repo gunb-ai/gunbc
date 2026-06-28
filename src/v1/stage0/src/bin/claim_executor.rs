@@ -1415,6 +1415,10 @@ fn run() -> Result<ExitCode, ExitCode> {
     // discovery threads spawn, so `[file] read` / `[rest]` / `[hermetic:mock]` etc.
     // are funnelled per `gunbc.output_policy` instead of flooding the floor log.
     v1_compiler::cli_run::install_output_policy(&source_roots);
+    // Install the per-target group-marker syntax (GitHub Actions `::group::` vs a
+    // plain-terminal header) from the .dag authority, so the parallel walk folds each
+    // batch's host-effect traces into a collapsible group.
+    v1_compiler::cli_run::install_group_syntax(&source_roots);
 
     if perturb_check {
         return run_perturb_check(&source_roots, &plan_entry, &plan_function);

@@ -7,7 +7,7 @@ import std.render {
 import std.symbols { Ascii }
 import extdeps.render.surface {
   RenderTarget, PlainTerminal, GithubActions, SurfaceEnv,
-  detect_target, group_syntax, serialize_document,
+  detect_target, group_syntax, resolve_group_syntax, serialize_document,
 }
 
 data plain_cap: RenderCapability = RenderCapability {
@@ -75,10 +75,18 @@ fn w_close_line_is_explicit_only_on_github() -> Bool {
   }
 }
 
+fn w_resolve_group_syntax_keys_off_github_flag() -> Bool {
+  let gha = resolve_group_syntax(github_actions: true)
+  let term = resolve_group_syntax(github_actions: false)
+  gha.open_prefix == "::group::" &&
+  term.open_prefix == "── "
+}
+
 test fn render_surface_witnesses() -> Bool {
   w_detect_github() &&
   w_detect_plain() &&
   w_github_wraps_group_in_workflow_commands() &&
   w_plain_terminal_uses_header_not_commands() &&
-  w_close_line_is_explicit_only_on_github()
+  w_close_line_is_explicit_only_on_github() &&
+  w_resolve_group_syntax_keys_off_github_flag()
 }
