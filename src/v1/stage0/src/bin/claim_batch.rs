@@ -48,6 +48,7 @@ fn children_max_rss_bytes() -> Option<u64> {
     // Hand-decoded `struct rusage` (no libc dep): layout assumes Linux lp64
     // (x86_64 / aarch64) — 144-byte buffer, `ru_maxrss` at byte offset 32 after
     // two 16-byte `timeval`s. Non-lp64 Linux is gated out below; syscall failure → None.
+    // If this probe survives phase-0, replace with `libc::rusage` (dissolves with PerformanceReceipt).
     extern "C" {
         fn getrusage(who: i32, usage: *mut std::ffi::c_void) -> i32;
     }
