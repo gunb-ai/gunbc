@@ -1,0 +1,29 @@
+module v2.test.manual.bash_command_fold_smoke_runner
+
+import std.realization_schedule { Runnable, RunnableSingleClaim }
+import v2.std.collection { List }
+
+data bash_fold_smoke_entry: String = "src/v2/test/claim/bash_command_fold_test.dag"
+
+fn bash_command_fold_smoke_plan() -> List<List<Runnable>> {
+  [
+    [
+      RunnableSingleClaim {
+        entry: bash_fold_smoke_entry,
+        function: "bash_fold_command_single_lit_true_holds"
+      },
+      RunnableSingleClaim {
+        entry: bash_fold_smoke_entry,
+        function: "bash_fold_and_then_relation_row_holds"
+      },
+      RunnableSingleClaim {
+        entry: bash_fold_smoke_entry,
+        function: "bash_fold_and_then_true_false_holds"
+      },
+      RunnableSingleClaim {
+        entry: bash_fold_smoke_entry,
+        function: "bash_fold_subshell_true_holds"
+      }
+    ]
+  ]
+}

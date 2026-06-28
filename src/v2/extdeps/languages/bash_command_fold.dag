@@ -1008,8 +1008,11 @@ fn bash_fold_formal_productions() -> List<FormalProduction> {
 
 fn bash_fold_productions_for_lhs(lhs: Symbol) -> List<FormalProduction> {
   list_append(
-    bash_fold_leaf_stmt_productions(),
-    bash_fold_list_production_for_lhs(lhs: lhs)
+    list_append(
+      bash_fold_leaf_stmt_productions(),
+      bash_fold_list_production_for_lhs(lhs: lhs)
+    ),
+    bash_fold_operand_productions()
   )
 }
 

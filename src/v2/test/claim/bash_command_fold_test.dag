@@ -19,6 +19,7 @@ import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import v2.compiler.translate { target_serialize_source_from_model }
 import v2.extdeps.languages.bash_command_fold {
+  bash_fold_and_then_true_false_emitted,
   bash_fold_and_then_wrong_target_model_witness,
   bash_fold_assign_wrong_target_model_witness,
   bash_fold_cmd_echo_hi_emitted,
@@ -270,6 +271,16 @@ fn bash_fold_cmd_true_stmt() -> ShellStmt {
 
 fn bash_fold_cmd_false_stmt() -> ShellStmt {
   Command { words: [Lit { text: "false" }] }
+}
+
+test fn bash_fold_and_then_relation_row_holds() -> Bool {
+  match bash_fold_relation_row_witness(
+    emitted: bash_fold_and_then_true_false_emitted,
+    lhs: ^bash_production_fold_and_then
+  ) {
+    Holds { value: _ } => true
+    Violates { diagnostic: _ } => false
+  }
 }
 
 test fn bash_fold_and_then_true_false_holds() -> Bool {
