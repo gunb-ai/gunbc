@@ -17,7 +17,7 @@ import v2.extdeps.languages.bash_command_fold {
   bash_fold_cmd_true_wrong_target_model,
   bash_fold_cmd_var_x_emitted,
   bash_fold_relation_row_witness,
-  bash_fold_stmt_emitted,
+  bash_fold_stmt_emitted_witness,
   bash_fold_target_model_for_stmt
 }
 import v2.std.compilers.target_model { TargetModel }
@@ -48,18 +48,21 @@ fn bash_fold_facts_lookup(key: Node) -> Witness<InferredFacts> {
 }
 
 fn bash_fold_fold_serialize(stmt: ShellStmt, target: TargetModel) -> Outcome<String> {
-  let emitted = bash_fold_stmt_emitted(stmt: stmt)
-  let tree = InferredTree {
-    root: emitted,
-    facts: Map { lookup: bash_fold_facts_lookup }
-  }
-  match emit(tree: tree, target: target) {
-    Accepted { value: source, diagnostics: d } =>
-      match d {
-        None => Accepted { value: source.carried, diagnostics: None }
-        Some { diagnostics: r } => Rejected { diagnostics: r }
+  match bash_fold_stmt_emitted_witness(stmt: stmt) {
+    Holds { value: emitted } =>
+      let tree = InferredTree {
+        root: emitted,
+        facts: Map { lookup: bash_fold_facts_lookup }
       }
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      match emit(tree: tree, target: target) {
+        Accepted { value: source, diagnostics: d } =>
+          match d {
+            None => Accepted { value: source.carried, diagnostics: None }
+            Some { diagnostics: r } => Rejected { diagnostics: r }
+          }
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      }
+    Violates { diagnostic: d } => Rejected { diagnostics: Some { diagnostics: [d] } }
   }
 }
 

@@ -71,14 +71,14 @@ import v2.std.node {
 }
 import v2.std.witness { Holds, Violates, Witness }
 
-fn bash_fold_word_lit_emitted(text: String) -> Node {
+fn bash_fold_word_kinded_emitted(kind: Symbol, value: String) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
       Edge {
         label: Positional,
         target: Node {
-          kind: TypeNode { connective: Atom { identity: ^bash_fold_word_kind_lit } },
+          kind: TypeNode { connective: Atom { identity: kind } },
           children: [],
           occurrence_id: SyntheticOccurrence
         }
@@ -86,7 +86,7 @@ fn bash_fold_word_lit_emitted(text: String) -> Node {
       Edge {
         label: Positional,
         target: Node {
-          kind: TypeNode { connective: Atom { identity: text } },
+          kind: TypeNode { connective: Atom { identity: value } },
           children: [],
           occurrence_id: SyntheticOccurrence
         }
@@ -96,28 +96,46 @@ fn bash_fold_word_lit_emitted(text: String) -> Node {
   }
 }
 
+fn bash_fold_word_lit_emitted(text: String) -> Node {
+  bash_fold_word_kinded_emitted(kind: ^bash_fold_word_kind_lit, value: text)
+}
+
 fn bash_fold_word_var_emitted(name: String) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      Edge {
-        label: Positional,
-        target: Node {
-          kind: TypeNode { connective: Atom { identity: ^bash_fold_word_kind_var } },
-          children: [],
-          occurrence_id: SyntheticOccurrence
-        }
-      },
-      Edge {
-        label: Positional,
-        target: Node {
-          kind: TypeNode { connective: Atom { identity: name } },
-          children: [],
-          occurrence_id: SyntheticOccurrence
-        }
-      }
-    ],
-    occurrence_id: SyntheticOccurrence
+  bash_fold_word_kinded_emitted(kind: ^bash_fold_word_kind_var, value: name)
+}
+
+data bash_fold_diagnostic_anchor: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+fn bash_fold_unsupported_word_diagnostic(variant: Symbol) -> Diagnostic {
+  Diagnostic {
+    reason: variant,
+    at: node_locus(node: bash_fold_diagnostic_anchor),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn bash_fold_unsupported_stmt_diagnostic(variant: Symbol) -> Diagnostic {
+  Diagnostic {
+    reason: variant,
+    at: node_locus(node: bash_fold_diagnostic_anchor),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn bash_fold_word_emitted_witness(w: ShellWord) -> Witness<Node> {
+  match w {
+    Lit { text: t } => Holds { value: bash_fold_word_lit_emitted(text: t) }
+    VarRef { name: n } => Holds { value: bash_fold_word_var_emitted(name: n) }
+    Concat { parts: _ } =>
+      Violates { diagnostic: bash_fold_unsupported_word_diagnostic(variant: ^bash_fold_word_concat) }
+    CmdSubst { body: _ } =>
+      Violates { diagnostic: bash_fold_unsupported_word_diagnostic(variant: ^bash_fold_word_cmdsubst) }
+    Raw { text: _ } =>
+      Violates { diagnostic: bash_fold_unsupported_word_diagnostic(variant: ^bash_fold_word_raw) }
   }
 }
 
@@ -152,84 +170,107 @@ fn bash_fold_command_emitted(words: Node) -> Node {
   }
 }
 
-fn bash_fold_word_emitted(w: ShellWord) -> Node {
-  match w {
-    Lit { text: t } => bash_fold_word_lit_emitted(text: t)
-    VarRef { name: n } => bash_fold_word_var_emitted(name: n)
-    _ => bash_fold_word_lit_emitted(text: "")
-  }
-}
-
-fn bash_fold_invalid_words_emitted() -> Node {
-  bash_fold_command_words_single_emitted(
-    word: bash_fold_word_lit_emitted(text: "")
-  )
-}
-
 fn bash_fold_words_absent_diagnostic() -> Diagnostic {
   Diagnostic {
     reason: ^bash_fold_words_empty,
-    at: node_locus(node: bash_fold_invalid_words_emitted()),
+    at: node_locus(node: bash_fold_diagnostic_anchor),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 
-fn bash_fold_command_words_emitted_from_list_suffix(
+fn bash_fold_command_words_emitted_from_list_suffix_witness(
   words: List<ShellWord>,
   accumulated: Node,
   index: Int
-) -> Node {
+) -> Witness<Node> {
   match list_at_optional(xs: words, index: index) {
     Present { value: w } =>
-      bash_fold_command_words_emitted_from_list_suffix(
-        words: words,
-        accumulated: bash_fold_command_words_pair_emitted(
-          left: accumulated,
-          right: bash_fold_word_emitted(w: w)
-        ),
-        index: index + 1
-      )
-    Absent => accumulated
+      match bash_fold_word_emitted_witness(w: w) {
+        Holds { value: word_node } =>
+          bash_fold_command_words_emitted_from_list_suffix_witness(
+            words: words,
+            accumulated: bash_fold_command_words_pair_emitted(
+              left: accumulated,
+              right: word_node
+            ),
+            index: index + 1
+          )
+        Violates { diagnostic: d } => Violates { diagnostic: d }
+      }
+    Absent => Holds { value: accumulated }
   }
 }
 
-fn bash_fold_command_words_emitted_from_list(words: List<ShellWord>) -> Node {
+fn bash_fold_command_words_emitted_witness(words: List<ShellWord>) -> Witness<Node> {
   match list_nth(xs: words, wanted: 0, absent: bash_fold_words_absent_diagnostic()) {
     Holds { value: w0 } =>
-      bash_fold_command_words_emitted_from_list_suffix(
-        words: words,
-        accumulated: bash_fold_command_words_single_emitted(word: bash_fold_word_emitted(w: w0)),
-        index: 1
-      )
-    Violates { diagnostic: _ } => bash_fold_invalid_words_emitted()
+      match bash_fold_word_emitted_witness(w: w0) {
+        Holds { value: word0 } =>
+          bash_fold_command_words_emitted_from_list_suffix_witness(
+            words: words,
+            accumulated: bash_fold_command_words_single_emitted(word: word0),
+            index: 1
+          )
+        Violates { diagnostic: d } => Violates { diagnostic: d }
+      }
+    Violates { diagnostic: d } => Violates { diagnostic: d }
   }
 }
 
-fn bash_fold_stmt_emitted(stmt: ShellStmt) -> Node {
+fn bash_fold_stmt_emitted_witness(stmt: ShellStmt) -> Witness<Node> {
   match stmt {
     Command { words: ws } =>
-      bash_fold_command_emitted(
-        words: bash_fold_command_words_emitted_from_list(words: ws)
-      )
-    _ =>
-      bash_fold_command_emitted(
-        words: bash_fold_command_words_single_emitted(
-          word: bash_fold_word_lit_emitted(text: "")
-        )
-      )
+      match bash_fold_command_words_emitted_witness(words: ws) {
+        Holds { value: words_node } =>
+          Holds { value: bash_fold_command_emitted(words: words_node) }
+        Violates { diagnostic: d } => Violates { diagnostic: d }
+      }
+    Assign { name: _, value: _ } =>
+      Violates { diagnostic: bash_fold_unsupported_stmt_diagnostic(variant: ^bash_fold_stmt_assign) }
+    If { cond: _, then: _ } =>
+      Violates { diagnostic: bash_fold_unsupported_stmt_diagnostic(variant: ^bash_fold_stmt_if) }
+    Subshell { body: _ } =>
+      Violates { diagnostic: bash_fold_unsupported_stmt_diagnostic(variant: ^bash_fold_stmt_subshell) }
+    BraceGroup { body: _ } =>
+      Violates { diagnostic: bash_fold_unsupported_stmt_diagnostic(variant: ^bash_fold_stmt_brace_group) }
+    AndOr { left: _, op: _, right: _ } =>
+      Violates { diagnostic: bash_fold_unsupported_stmt_diagnostic(variant: ^bash_fold_stmt_and_or) }
+    Pipe { left: _, right: _ } =>
+      Violates { diagnostic: bash_fold_unsupported_stmt_diagnostic(variant: ^bash_fold_stmt_pipe) }
+    EnvPrefixed { name: _, value: _, command: _ } =>
+      Violates { diagnostic: bash_fold_unsupported_stmt_diagnostic(variant: ^bash_fold_stmt_env_prefixed) }
+    WithRedir { stmt: _, redir: _ } =>
+      Violates { diagnostic: bash_fold_unsupported_stmt_diagnostic(variant: ^bash_fold_stmt_with_redir) }
+    Heredoc { path: _, delimiter: _, body: _ } =>
+      Violates { diagnostic: bash_fold_unsupported_stmt_diagnostic(variant: ^bash_fold_stmt_heredoc) }
+    Exit { code: _ } =>
+      Violates { diagnostic: bash_fold_unsupported_stmt_diagnostic(variant: ^bash_fold_stmt_exit) }
+    Negation { stmt: _ } =>
+      Violates { diagnostic: bash_fold_unsupported_stmt_diagnostic(variant: ^bash_fold_stmt_negation) }
+    RawLine { text: _ } =>
+      Violates { diagnostic: bash_fold_unsupported_stmt_diagnostic(variant: ^bash_fold_stmt_raw_line) }
   }
 }
 
-data bash_fold_cmd_true_emitted: Node = bash_fold_stmt_emitted(
-  stmt: Command { words: [Lit { text: "true" }] }
+data bash_fold_cmd_true_emitted: Node = bash_fold_command_emitted(
+  words: bash_fold_command_words_single_emitted(
+    word: bash_fold_word_lit_emitted(text: "true")
+  )
 )
 
-data bash_fold_cmd_echo_hi_emitted: Node = bash_fold_stmt_emitted(
-  stmt: Command { words: [Lit { text: "echo" }, Lit { text: "hi" }] }
+data bash_fold_cmd_echo_hi_emitted: Node = bash_fold_command_emitted(
+  words: bash_fold_command_words_pair_emitted(
+    left: bash_fold_command_words_single_emitted(
+      word: bash_fold_word_lit_emitted(text: "echo")
+    ),
+    right: bash_fold_word_lit_emitted(text: "hi")
+  )
 )
 
-data bash_fold_cmd_var_x_emitted: Node = bash_fold_stmt_emitted(
-  stmt: Command { words: [VarRef { name: "X" }] }
+data bash_fold_cmd_var_x_emitted: Node = bash_fold_command_emitted(
+  words: bash_fold_command_words_single_emitted(
+    word: bash_fold_word_var_emitted(name: "X")
+  )
 )
 
 fn bash_fold_formal_productions() -> List<FormalProduction> {
@@ -451,12 +492,27 @@ fn bash_fold_target_model_for_emitted(
 }
 
 fn bash_fold_target_model_for_stmt(stmt: ShellStmt) -> TargetModel {
-  let emitted = bash_fold_stmt_emitted(stmt: stmt)
-  bash_fold_target_model_for_emitted(
-    emitted: emitted,
-    source_literal: ^bash_fold_dynamic_source_literal,
-    source_text: serialize_stmt(s: stmt)
-  )
+  match bash_fold_stmt_emitted_witness(stmt: stmt) {
+    Holds { value: emitted } =>
+      bash_fold_target_model_for_emitted(
+        emitted: emitted,
+        source_literal: ^bash_fold_dynamic_source_literal,
+        source_text: serialize_stmt(s: stmt)
+      )
+    Violates { diagnostic: _ } =>
+      target_model_make_with_emit_transforms(
+        bundle: Node {
+          kind: TypeNode { connective: Conj },
+          children: [],
+          occurrence_id: SyntheticOccurrence
+        },
+        lex: bash_fold_lex(),
+        binding_spellings: empty_map(),
+        token_class_emit_transforms: target_model_emit_transforms_empty,
+        authority_source_text: "",
+        runtime_row: target_emit_host_runtime_row_unconfigured
+      )
+  }
 }
 
 fn bash_fold_cmd_true_target_model() -> TargetModel {
