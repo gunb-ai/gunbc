@@ -10,6 +10,10 @@ fn bash_command_fold_plan() -> List<List<Runnable>> {
     [
       RunnableSingleClaim {
         entry: bash_fold_test_entry,
+        function: "bash_fold_relation_row_true_witness_holds"
+      },
+      RunnableSingleClaim {
+        entry: bash_fold_test_entry,
         function: "bash_fold_command_single_lit_true_holds"
       },
       RunnableSingleClaim {
@@ -19,6 +23,18 @@ fn bash_command_fold_plan() -> List<List<Runnable>> {
       RunnableSingleClaim {
         entry: bash_fold_test_entry,
         function: "bash_fold_command_var_ref_x_holds"
+      },
+      RunnableSingleClaim {
+        entry: bash_fold_test_entry,
+        function: "bash_fold_command_arbitrary_grep_triple_holds"
+      },
+      RunnableSingleClaim {
+        entry: bash_fold_test_entry,
+        function: "bash_fold_command_arbitrary_var_home_holds"
+      },
+      RunnableSingleClaim {
+        entry: bash_fold_test_entry,
+        function: "bash_fold_command_arbitrary_lit_quote_escape_holds"
       },
       RunnableSingleClaim {
         entry: bash_fold_test_entry,

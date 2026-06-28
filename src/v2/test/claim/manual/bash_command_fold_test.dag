@@ -12,14 +12,13 @@ import v2.compiler.infer { InferredFacts, InferredTree }
 import v2.compiler.translate { target_serialize_source_from_model }
 import v2.extdeps.languages.bash_command_fold {
   bash_fold_cmd_echo_hi_emitted,
-  bash_fold_cmd_echo_hi_target_model,
   bash_fold_cmd_true_emitted,
-  bash_fold_cmd_true_target_model,
   bash_fold_cmd_true_wrong_emitted,
   bash_fold_cmd_true_wrong_target_model,
   bash_fold_cmd_var_x_emitted,
-  bash_fold_cmd_var_x_target_model,
-  bash_fold_stmt_emitted
+  bash_fold_relation_row_witness,
+  bash_fold_stmt_emitted,
+  bash_fold_target_model_for_stmt
 }
 import v2.std.compilers.target_model { TargetModel }
 import v2.std.collection { Map }
@@ -71,25 +70,47 @@ fn bash_fold_fold_matches_oracle(stmt: ShellStmt, target: TargetModel) -> Bool {
   }
 }
 
+test fn bash_fold_relation_row_true_witness_holds() -> Bool {
+  match bash_fold_relation_row_witness(emitted: bash_fold_cmd_true_emitted) {
+    Holds { value: _ } => true
+    Violates { diagnostic: _ } => false
+  }
+}
+
 test fn bash_fold_command_single_lit_true_holds() -> Bool {
-  bash_fold_fold_matches_oracle(
-    stmt: Command { words: [Lit { text: "true" }] },
-    target: bash_fold_cmd_true_target_model()
-  )
+  let stmt = Command { words: [Lit { text: "true" }] }
+  bash_fold_fold_matches_oracle(stmt: stmt, target: bash_fold_target_model_for_stmt(stmt: stmt))
 }
 
 test fn bash_fold_command_multi_lit_echo_hi_holds() -> Bool {
-  bash_fold_fold_matches_oracle(
-    stmt: Command { words: [Lit { text: "echo" }, Lit { text: "hi" }] },
-    target: bash_fold_cmd_echo_hi_target_model()
-  )
+  let stmt = Command { words: [Lit { text: "echo" }, Lit { text: "hi" }] }
+  bash_fold_fold_matches_oracle(stmt: stmt, target: bash_fold_target_model_for_stmt(stmt: stmt))
 }
 
 test fn bash_fold_command_var_ref_x_holds() -> Bool {
-  bash_fold_fold_matches_oracle(
-    stmt: Command { words: [VarRef { name: "X" }] },
-    target: bash_fold_cmd_var_x_target_model()
-  )
+  let stmt = Command { words: [VarRef { name: "X" }] }
+  bash_fold_fold_matches_oracle(stmt: stmt, target: bash_fold_target_model_for_stmt(stmt: stmt))
+}
+
+test fn bash_fold_command_arbitrary_grep_triple_holds() -> Bool {
+  let stmt = Command {
+    words: [
+      Lit { text: "grep" },
+      Lit { text: "-rn" },
+      Lit { text: "foo_bar.baz" }
+    ]
+  }
+  bash_fold_fold_matches_oracle(stmt: stmt, target: bash_fold_target_model_for_stmt(stmt: stmt))
+}
+
+test fn bash_fold_command_arbitrary_var_home_holds() -> Bool {
+  let stmt = Command { words: [VarRef { name: "HOME" }] }
+  bash_fold_fold_matches_oracle(stmt: stmt, target: bash_fold_target_model_for_stmt(stmt: stmt))
+}
+
+test fn bash_fold_command_arbitrary_lit_quote_escape_holds() -> Bool {
+  let stmt = Command { words: [Lit { text: "a'b" }] }
+  bash_fold_fold_matches_oracle(stmt: stmt, target: bash_fold_target_model_for_stmt(stmt: stmt))
 }
 
 fn bash_fold_wrong_production_oracle_mismatch_holds() -> Bool {
@@ -116,26 +137,29 @@ fn bash_fold_direct_serialize_matches_oracle(emitted: Node, target: TargetModel,
 }
 
 test fn bash_fold_direct_serialize_single_lit_true_holds() -> Bool {
+  let stmt = Command { words: [Lit { text: "true" }] }
   bash_fold_direct_serialize_matches_oracle(
     emitted: bash_fold_cmd_true_emitted,
-    target: bash_fold_cmd_true_target_model(),
-    stmt: Command { words: [Lit { text: "true" }] }
+    target: bash_fold_target_model_for_stmt(stmt: stmt),
+    stmt: stmt
   )
 }
 
 test fn bash_fold_direct_serialize_multi_lit_echo_hi_holds() -> Bool {
+  let stmt = Command { words: [Lit { text: "echo" }, Lit { text: "hi" }] }
   bash_fold_direct_serialize_matches_oracle(
     emitted: bash_fold_cmd_echo_hi_emitted,
-    target: bash_fold_cmd_echo_hi_target_model(),
-    stmt: Command { words: [Lit { text: "echo" }, Lit { text: "hi" }] }
+    target: bash_fold_target_model_for_stmt(stmt: stmt),
+    stmt: stmt
   )
 }
 
 test fn bash_fold_direct_serialize_var_ref_x_holds() -> Bool {
+  let stmt = Command { words: [VarRef { name: "X" }] }
   bash_fold_direct_serialize_matches_oracle(
     emitted: bash_fold_cmd_var_x_emitted,
-    target: bash_fold_cmd_var_x_target_model(),
-    stmt: Command { words: [VarRef { name: "X" }] }
+    target: bash_fold_target_model_for_stmt(stmt: stmt),
+    stmt: stmt
   )
 }
 
