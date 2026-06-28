@@ -185,6 +185,33 @@ pub fn build_name_set(names: Rc<Vec<String>>) -> Rc<HashMap<String, bool>> {
     )
 }
 
+pub fn collect_parent_resolved_sigs(
+    declared_sigs: Rc<HashMap<String, Rc<DeclaredFuncSig>>>,
+    local_func_set: Rc<HashMap<String, bool>>,
+) -> Rc<HashMap<String, Rc<ResolvedFuncSig>>> {
+    Rc::new(v1_rt::map_values(&declared_sigs))
+        .iter()
+        .cloned()
+        .fold(
+            v1_rt::rc_empty_map::<String, Rc<ResolvedFuncSig>>(),
+            |acc: Rc<HashMap<String, Rc<ResolvedFuncSig>>>, dsig: Rc<DeclaredFuncSig>| {
+                if emit_map_has(local_func_set.clone(), dsig.name.clone()) {
+                    acc.clone()
+                } else {
+                    if (dsig.inferred.clone() != None) {
+                        v1_rt::rc_map_insert(
+                            acc.clone(),
+                            dsig.name.clone(),
+                            declared_to_resolved(dsig.clone()),
+                        )
+                    } else {
+                        acc.clone()
+                    }
+                }
+            },
+        )
+}
+
 pub fn declared_to_resolved(dsig: Rc<DeclaredFuncSig>) -> Rc<ResolvedFuncSig> {
     Rc::new(ResolvedFuncSig {
         name: dsig.name.clone(),
@@ -450,7 +477,6 @@ pub fn resolve_func_sigs(
     items: Rc<Vec<Rc<Node>>>,
     module_name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    parent_sigs: Rc<HashMap<String, Rc<ResolvedFuncSig>>>,
 ) -> Rc<ResolveFuncSigsResult> {
     {
         let local_func_names = Rc::new({
@@ -477,22 +503,11 @@ pub fn resolve_func_sigs(
             local_func_set.clone(),
             source_indices.clone(),
         );
-        let parent_sigs_filtered = Rc::new(v1_rt::map_values(&parent_sigs))
-            .iter()
-            .cloned()
-            .fold(
-                v1_rt::rc_empty_map::<String, Rc<ResolvedFuncSig>>(),
-                |acc: Rc<HashMap<String, Rc<ResolvedFuncSig>>>, rsig: Rc<ResolvedFuncSig>| {
-                    if emit_map_has(local_func_set.clone(), rsig.name.clone()) {
-                        acc.clone()
-                    } else {
-                        v1_rt::rc_map_insert(acc.clone(), rsig.name.clone(), rsig.clone())
-                    }
-                },
-            );
+        let parent_resolved =
+            collect_parent_resolved_sigs(declared_sigs.clone(), local_func_set.clone());
         topo_resolve_loop(
             local_func_names.clone(),
-            parent_sigs_filtered,
+            parent_resolved,
             declared_sigs.clone(),
             call_edges,
             local_func_set.clone(),
