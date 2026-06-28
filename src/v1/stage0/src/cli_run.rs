@@ -418,6 +418,10 @@ impl CacheWalkReport {
 }
 
 impl MultiEntryIndex {
+    pub fn typed_module_count(&self) -> usize {
+        self.typed_module_cache.borrow().len()
+    }
+
     pub fn measure_caches(&self) -> CacheWalkReport {
         use crate::v1_compiler_infer_env::TypeEnv;
         use std::collections::HashSet;
