@@ -1,0 +1,143 @@
+#!/usr/bin/env bash
+# Pre-commit tidy hook: fast local checks before the ~19m CI floor.
+#
+# Invokes the same single-authority floor gates as CI, scoped to whether
+# staged files can affect each gate:
+#   - orphan-doc lens (doc_reachability_witness_test.dag)
+#   - generated-artifact drift (generated_artifact_gate.dag)
+#
+# On generated-artifact drift, auto-regenerates via main_wet and re-stages
+# the affected projection paths so the commit picks up the regen.
+#
+# Enable via: git config core.hooksPath .githooks
+
+set -euo pipefail
+
+ROOT="$(git rev-parse --show-toplevel)"
+cd "$ROOT"
+
+# Staged paths only (pre-commit runs before the commit object exists).
+mapfile -t STAGED < <(git diff --cached --name-only --diff-filter=ACMR 2>/dev/null || true)
+
+if [[ ${#STAGED[@]} -eq 0 ]]; then
+  exit 0
+fi
+
+# --- scoping helpers -------------------------------------------------------
+
+needs_doc_reachability_gate() {
+  local path
+  for path in "${STAGED[@]}"; do
+    case "$path" in
+      docs/*|ROADMAP.md|DESIGN.md) return 0 ;;
+      *.dag|*.md) return 0 ;;
+    esac
+  done
+  return 1
+}
+
+needs_generated_artifact_gate() {
+  local path
+  for path in "${STAGED[@]}"; do
+    case "$path" in
+      .github/workflows/ci.yml|.gitignore|ROADMAP.md|DESIGN.md|.github/fleet-converge.sh)
+        return 0
+        ;;
+      docs/plans/*.md) return 0 ;;
+      dsl/gunbc/*|dsl/tools/*) return 0 ;;
+      src/v2/workflow/ci_floor_plan.dag|src/v2/workflow/ci_spec.dag) return 0 ;;
+    esac
+  done
+  return 1
+}
+
+# --- gunbc binary (reuse release if present; else debug; build debug once) -
+
+ensure_gunbc() {
+  if [[ -n "${GUNBC_BIN:-}" ]] && [[ -x "$GUNBC_BIN" ]]; then
+    return 0
+  fi
+  if [[ -x "$ROOT/target/release/gunbc" ]]; then
+    GUNBC_BIN="$ROOT/target/release/gunbc"
+    return 0
+  fi
+  if [[ -x "$ROOT/target/debug/gunbc" ]]; then
+    GUNBC_BIN="$ROOT/target/debug/gunbc"
+    return 0
+  fi
+  echo "[pre-commit] gunbc not built; compiling debug (one-time)..."
+  CTRL_BUILD_WRAP_CARGO=0 cargo build -p v1-compiler --bin gunbc
+  GUNBC_BIN="$ROOT/target/debug/gunbc"
+}
+
+gunbc_claim() {
+  local entry="$1"
+  local function="$2"
+  "$GUNBC_BIN" run --source-root dsl --entry "$entry" --function "$function" --claim-run
+}
+
+gunbc_process_exit() {
+  local entry="$1"
+  local function="$2"
+  "$GUNBC_BIN" run --source-root dsl --entry "$entry" --function "$function"
+}
+
+# Committed generated-artifact projection paths (mirrors gunbc.generated_artifact
+# committed subset; plan docs are dynamic — stage any docs/plans/*.md drift).
+stage_generated_artifact_paths() {
+  git add -u -- \
+    .github/workflows/ci.yml \
+    .gitignore \
+    ROADMAP.md \
+    DESIGN.md \
+    .github/fleet-converge.sh \
+    2>/dev/null || true
+  # Plan artifacts: stage any tracked plan markdown that main_wet may have touched.
+  while IFS= read -r plan_md; do
+    [[ -n "$plan_md" ]] && git add -u -- "$plan_md"
+  done < <(git ls-files 'docs/plans/*.md' 2>/dev/null || true)
+}
+
+run_doc_reachability_gate() {
+  echo "[pre-commit] doc reachability (orphan-doc + dangling-link lens)"
+  gunbc_claim dsl/test/claim/doc_reachability_witness_test.dag doc_graph_has_no_orphan_docs
+  gunbc_claim dsl/test/claim/doc_reachability_witness_test.dag doc_graph_has_no_dangling_links
+}
+
+run_generated_artifact_gate() {
+  echo "[pre-commit] generated-artifact drift gate"
+  if gunbc_process_exit dsl/tools/generated_artifact_gate.dag run_generated_artifact_drift_gate_body; then
+    return 0
+  fi
+
+  echo "[pre-commit] generated-artifact drift detected; running main_wet regen"
+  gunbc_process_exit dsl/tools/generated_artifact_gate.dag main_wet
+  stage_generated_artifact_paths
+
+  # Fail closed if regen did not fix drift.
+  echo "[pre-commit] re-checking generated-artifact drift after regen"
+  gunbc_process_exit dsl/tools/generated_artifact_gate.dag run_generated_artifact_drift_gate_body
+}
+
+# --- main ------------------------------------------------------------------
+
+DOC_GATE=0
+ARTIFACT_GATE=0
+if needs_doc_reachability_gate; then DOC_GATE=1; fi
+if needs_generated_artifact_gate; then ARTIFACT_GATE=1; fi
+
+if [[ "$DOC_GATE" == "0" && "$ARTIFACT_GATE" == "0" ]]; then
+  exit 0
+fi
+
+ensure_gunbc
+
+if [[ "$DOC_GATE" == "1" ]]; then
+  run_doc_reachability_gate
+fi
+
+if [[ "$ARTIFACT_GATE" == "1" ]]; then
+  run_generated_artifact_gate
+fi
+
+exit 0
