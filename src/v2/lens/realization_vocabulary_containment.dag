@@ -30,7 +30,8 @@ data realization_edge_path_prefixes: List<String> = [
   "src/v2/workflow/shell_emit",
   "src/v2/workflow/orchestration_emit",
   "src/v2/workflow/orchestration_stmt_emit",
-  "src/v2/workflow/orchestration_word_emit"
+  "src/v2/workflow/orchestration_word_emit",
+  "src/v2/workflow/orch_env_lower"
 ]
 
 data realization_vocab_exception_roster: List<String> = [
@@ -43,6 +44,7 @@ data realization_vocab_exception_roster: List<String> = [
   "dsl/tools/extdeps_external_authority_transport.dag",
   "dsl/tools/host_prelude.dag",
   "dsl/tools/layering_imports_transport.dag",
+  "dsl/tools/regen_verify_transport.dag",
   "dsl/tools/v1_dag_parse_transport.dag",
   "src/v2/workflow/compiler_closure_ingest_transport.dag",
   "src/v2/workflow/source_root_ingest_transport.dag"

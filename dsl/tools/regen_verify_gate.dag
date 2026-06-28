@@ -1,0 +1,22 @@
+module tools.regen_verify_gate
+
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import tools.regen_verify_transport { run_regen_verify }
+
+func run_regen_verify_gate_body() -> ProcessExit {
+  return if run_regen_verify() {
+    ExitSuccess
+  } else {
+    exit_failure(
+      reason: "regen-verify gate failed: committed stage0 does not match a fresh single-pass regen (the §7 self-host fixed-point wall)"
+    )
+  }
+}
+
+func run_regen_verify_gate() -> ProcessExit {
+  run_regen_verify_gate_body()
+}
+
+func main() -> ProcessExit {
+  run_regen_verify_gate_body()
+}
