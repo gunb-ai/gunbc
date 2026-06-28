@@ -143,7 +143,7 @@ pub fn qualified_name_value_to_module_path(value: &Value) -> String {
             if variant == "QnCons" {
                 let head = fields
                     .iter()
-                    .find(|(k, _)| resolve_sym(**k) == "head")
+                    .find(|(k, _)| resolve_sym(*k) == "head")
                     .and_then(|(_, v)| match v {
                         Value::Str(s) => Some(s.clone()),
                         Value::Variant {
@@ -155,7 +155,7 @@ pub fn qualified_name_value_to_module_path(value: &Value) -> String {
                             if variant == "Symbol" || variant == "Atom" {
                                 sym_fields
                                     .iter()
-                                    .find(|(k, _)| resolve_sym(**k) == "identity")
+                                    .find(|(k, _)| resolve_sym(*k) == "identity")
                                     .and_then(|(_, v)| match v {
                                         Value::Str(s) => Some(s.clone()),
                                         _ => None,
@@ -171,7 +171,7 @@ pub fn qualified_name_value_to_module_path(value: &Value) -> String {
                     });
                 let tail = fields
                     .iter()
-                    .find(|(k, _)| resolve_sym(**k) == "tail")
+                    .find(|(k, _)| resolve_sym(*k) == "tail")
                     .map(|(_, v)| v)
                     .expect("qualified_name_to_module_path: QnCons.tail missing");
                 let rest = qualified_name_value_to_module_path(tail);
@@ -299,7 +299,7 @@ fn value_hash(v: &Value) -> u64 {
     h.finish()
 }
 
-fn hash_fields_commutative(fields: &HashMap<Symbol, Value>) -> u64 {
+fn hash_fields_commutative(fields: &[(Symbol, Value)]) -> u64 {
     use std::collections::hash_map::DefaultHasher;
     let mut acc: u64 = 0;
     for (sym, val) in fields.iter() {
@@ -309,6 +309,18 @@ fn hash_fields_commutative(fields: &HashMap<Symbol, Value>) -> u64 {
         acc = acc.wrapping_add(fh.finish());
     }
     acc
+}
+
+pub fn fields_get(fields: &[(Symbol, Value)], sym: Symbol) -> Option<&Value> {
+    fields
+        .binary_search_by_key(&sym.0, |(s, _)| s.0)
+        .ok()
+        .map(|i| &fields[i].1)
+}
+
+pub fn sorted_fields(mut v: Vec<(Symbol, Value)>) -> Vec<(Symbol, Value)> {
+    v.sort_unstable_by_key(|(sym, _)| sym.0);
+    v
 }
 
 #[derive(Debug, Clone)]
@@ -323,12 +335,12 @@ pub enum Value {
     Set(Rc<BTreeSet<String>>),
     Record {
         type_name: Symbol,
-        fields: Rc<HashMap<Symbol, Value>>,
+        fields: Rc<Vec<(Symbol, Value)>>,
     },
     Variant {
         type_name: Symbol,
         variant_name: Symbol,
-        fields: Rc<HashMap<Symbol, Value>>,
+        fields: Rc<Vec<(Symbol, Value)>>,
     },
     Closure {
         params: Vec<Symbol>,
@@ -350,12 +362,10 @@ fn map_value(entries: HamtMap<CanonKey, Value>) -> Value {
 }
 
 fn optional_present(value: Value, ctx: &InterpContext) -> Value {
-    let mut fields = HashMap::new();
-    fields.insert(ctx.sym("value"), value);
     Value::Variant {
         type_name: ctx.sym("Optional"),
         variant_name: ctx.sym("Present"),
-        fields: Rc::new(fields),
+        fields: Rc::new(vec![(ctx.sym("value"), value)]),
     }
 }
 
@@ -363,7 +373,7 @@ fn optional_absent(ctx: &InterpContext) -> Value {
     Value::Variant {
         type_name: ctx.sym("Optional"),
         variant_name: ctx.sym("Absent"),
-        fields: Rc::new(HashMap::new()),
+        fields: Rc::new(vec![]),
     }
 }
 
@@ -575,6 +585,7 @@ pub enum InterpError {
     NoSuchField { type_name: String, field: String },
     TypeError { msg: String },
     CrossRepresentationEquality { detail: String },
+    StringRealizationStraddle { detail: String },
     PatternMatchFailure { value: String },
     DivisionByZero,
     Unimplemented { what: String },
@@ -594,6 +605,9 @@ impl fmt::Display for InterpError {
             InterpError::TypeError { msg } => write!(f, "type error: {}", msg),
             InterpError::CrossRepresentationEquality { detail } => {
                 write!(f, "cross-representation equality: {}", detail)
+            }
+            InterpError::StringRealizationStraddle { detail } => {
+                write!(f, "string realization straddle: {}", detail)
             }
             InterpError::PatternMatchFailure { value } => {
                 write!(f, "non-exhaustive pattern match on: {}", value)
@@ -804,16 +818,16 @@ fn account_env(
 
 fn account_named_fields(
     label: &'static str,
-    fields: &Rc<HashMap<Symbol, Value>>,
+    fields: &Rc<Vec<(Symbol, Value)>>,
     visited: &mut std::collections::HashSet<usize>,
     acc: &mut MemoryAccounting,
 ) {
     if !accounting_first_visit(Rc::as_ptr(fields) as usize, label, visited, acc) {
         return;
     }
-    let mut bytes = (fields.len() * std::mem::size_of::<(Symbol, Value)>()) as u64;
+    let bytes = (fields.len() * std::mem::size_of::<(Symbol, Value)>()) as u64;
     acc.add_unique(label, bytes);
-    for value in fields.values() {
+    for (_, value) in fields.iter() {
         account_value(value, visited, acc);
     }
 }
@@ -922,6 +936,22 @@ pub struct InterpContext {
     pub execution_mode: ExecutionMode,
     pub fixture_store: Option<Rc<crate::recorded_fixture::RecordedFixtureStore>>,
     data_cache: std::cell::RefCell<HashMap<usize, Value>>,
+    // Per-call parameter-name derivation is invariant per fn_node but was re-sliced from
+    // source spans on every call (authored_name_at). Memoize it per ctx, keyed by fn_node
+    // pointer identity — sound because the ctx owns fn_nodes, so pointers are stable for the
+    // cache's lifetime and the cache dies with the ctx (same discipline as data_cache above).
+    // Value = (filtered named-param list, all-param list), matching call_function's two uses.
+    param_name_cache: std::cell::RefCell<HashMap<usize, Rc<(Vec<String>, Vec<String>)>>>,
+    // Same chokepoint, ExprVar arm: eval_var rebuilt the variable name String from its source
+    // span (expr_var_name_at) and re-interned it (ctx.sym) on every read. Memoize the interned
+    // Symbol per ExprVar node — keyed by node pointer, sound for the ctx lifetime exactly as
+    // data_cache/param_name_cache above. Eval then skips the slice + re-intern and goes straight
+    // to env.lookup(sym); the name String is materialized lazily only on the registry slow path.
+    var_sym_cache: std::cell::RefCell<HashMap<usize, Symbol>>,
+    // Same chokepoint, ExprCall callee name: eval_call re-sliced the callee name from its source
+    // span (expr_call_func_at -> authored_name_at) on every call. Memoize the decoded name per
+    // call node — keyed by node pointer, sound for the ctx lifetime as the caches above.
+    call_func_name_cache: std::cell::RefCell<HashMap<usize, String>>,
     pure_call_memo: std::cell::RefCell<PureCallMemo>,
     parse_table_memo: std::cell::RefCell<ParseTableMemo>,
     mutation_counters: std::cell::RefCell<MutationCounters>,
@@ -944,8 +974,8 @@ impl InterpContext {
         self.symbols.borrow().resolve(sym) == name
     }
 
-    pub fn field<'a>(&self, fields: &'a HashMap<Symbol, Value>, name: &str) -> Option<&'a Value> {
-        fields.get(&self.sym(name))
+    pub fn field<'a>(&self, fields: &'a [(Symbol, Value)], name: &str) -> Option<&'a Value> {
+        fields_get(fields, self.sym(name))
     }
 
     pub fn format_value(&self, val: &Value) -> String {
@@ -1062,6 +1092,9 @@ impl InterpContext {
             execution_mode,
             fixture_store,
             data_cache: std::cell::RefCell::new(HashMap::new()),
+            param_name_cache: std::cell::RefCell::new(HashMap::new()),
+            var_sym_cache: std::cell::RefCell::new(HashMap::new()),
+            call_func_name_cache: std::cell::RefCell::new(HashMap::new()),
             pure_call_memo: std::cell::RefCell::new(PureCallMemo::default()),
             parse_table_memo: std::cell::RefCell::new(ParseTableMemo::default()),
             mutation_counters: std::cell::RefCell::new(MutationCounters::default()),
@@ -1238,18 +1271,38 @@ fn call_function(
             msg: format!("'{}' has no body", fn_node.name),
         })?;
 
-    let param_names: Vec<String> = fn_node
-        .params
-        .iter()
-        .filter(|p| {
-            let name = authored_name_at(ctx.si(), (*p).clone());
-            match p.children.first() {
-                Some(type_expr) => authored_name_at(ctx.si(), type_expr.clone()) != name,
-                None => false,
-            }
-        })
-        .map(|p| authored_name_at(ctx.si(), p.clone()))
-        .collect();
+    let cached_params = {
+        let key = Rc::as_ptr(fn_node) as usize;
+        // Bind the lookup to a local so the immutable borrow is released before the
+        // None branch takes a mutable borrow (an `if let ...borrow()` would hold it through `else`).
+        let hit = ctx.param_name_cache.borrow().get(&key).cloned();
+        if let Some(c) = hit {
+            c
+        } else {
+            // Each param's authored name is sliced once into `all`; `filtered` reuses it
+            // (only the type-expr side is sliced again) rather than re-slicing the param name.
+            let all: Vec<String> = fn_node
+                .params
+                .iter()
+                .map(|p| authored_name_at(ctx.si(), p.clone()))
+                .collect();
+            let filtered: Vec<String> = fn_node
+                .params
+                .iter()
+                .enumerate()
+                .filter(|(i, p)| match p.children.first() {
+                    Some(type_expr) => authored_name_at(ctx.si(), type_expr.clone()) != all[*i],
+                    None => false,
+                })
+                .map(|(i, _)| all[i].clone())
+                .collect();
+            let c = Rc::new((filtered, all));
+            ctx.param_name_cache.borrow_mut().insert(key, c.clone());
+            c
+        }
+    };
+    let param_names: &Vec<String> = &cached_params.0;
+    let all_param_names: &Vec<String> = &cached_params.1;
 
     let mut bindings = HashMap::new();
     if !args.is_empty() {
@@ -1264,12 +1317,12 @@ fn call_function(
         }
     }
 
-    for param in fn_node.params.iter() {
-        let pname = authored_name_at(ctx.si(), param.clone());
-        if !bindings.contains_key(&ctx.sym(&pname)) {
+    for (i, param) in fn_node.params.iter().enumerate() {
+        let pname = &all_param_names[i];
+        if !bindings.contains_key(&ctx.sym(pname)) {
             if let Some(default_node) = param_node_default_value(param.clone()) {
                 let default_val = eval_expr(&default_node, env, ctx)?;
-                bindings.insert(ctx.sym(&pname), default_val);
+                bindings.insert(ctx.sym(pname), default_val);
             }
         }
     }
@@ -1404,33 +1457,49 @@ fn eval_var(
     env: &Rc<Env>,
     ctx: &InterpContext,
 ) -> InterpResult<Value> {
-    let name = expr_var_name_at(node.clone(), ctx.si());
+    // Resolve and intern this ExprVar's name once, then reuse the Symbol on every eval
+    // (skips the per-eval source-span slice in expr_var_name_at and the ctx.sym re-intern).
+    let key = Rc::as_ptr(node) as usize;
+    let sym = {
+        let hit = ctx.var_sym_cache.borrow().get(&key).copied();
+        match hit {
+            Some(s) => s,
+            None => {
+                let name = expr_var_name_at(node.clone(), ctx.si());
+                let s = ctx.sym(&name);
+                ctx.var_sym_cache.borrow_mut().insert(key, s);
+                s
+            }
+        }
+    };
 
-    if name == "none" || name == "None" {
+    if ctx.sym_eq(sym, "none") || ctx.sym_eq(sym, "None") {
         return Ok(Value::Null);
     }
-    if name == "true" {
+    if ctx.sym_eq(sym, "true") {
         return Ok(Value::Bool(true));
     }
-    if name == "false" {
+    if ctx.sym_eq(sym, "false") {
         return Ok(Value::Bool(false));
     }
 
     if let Some(VarBindingKind::VariantValueBinding { parent_enum }) = binding_kind {
-        if name == "Zero" {
+        if ctx.sym_eq(sym, "Zero") {
             return Ok(Value::Int(0));
         }
         return Ok(Value::Variant {
             type_name: ctx.sym(parent_enum),
-            variant_name: ctx.sym(&name),
-            fields: Rc::new(HashMap::new()),
+            variant_name: sym,
+            fields: Rc::new(vec![]),
         });
     }
 
-    if let Some(val) = env.lookup(ctx.sym(&name)) {
+    if let Some(val) = env.lookup(sym) {
         return Ok(val.clone());
     }
 
+    // Slow path (not a bound variable): materialize the name string for the registry lookup.
+    let name = ctx.resolve(sym);
     if let Some(info) = v1_rt::map_get(&ctx.item_registry, name.clone()) {
         if info.kind == ItemKind::DataItem {
             if let Some(fn_node) = ctx.lookup_fn(&name) {
@@ -1485,14 +1554,29 @@ fn eval_binop(op: &BinOp, left: Value, right: Value, ctx: &InterpContext) -> Int
         };
         match (&left, &right) {
             (l, Value::Str(s)) => {
+                // String grounding: a string-like left operand concatenated with
+                // a native String realizes as a native `Value::Str`, never a
+                // mixed `[codepoint.., Str]` list (model↔realization).
+                if let Some(ls) = free_monoid_to_string(l) {
+                    return Ok(Value::Str(format!("{}{}", ls, s)));
+                }
                 if let Some(mut result) = free_monoid_to_vec(l) {
+                    if let Some(detail) = string_realization_straddle_detail(l, &result) {
+                        return Err(InterpError::StringRealizationStraddle { detail });
+                    }
                     record_push(result.len());
                     result.push(Value::Str(s.clone()));
                     return Ok(list_value((result)));
                 }
             }
             (Value::Str(s), r) => {
+                if let Some(rs) = free_monoid_to_string(r) {
+                    return Ok(Value::Str(format!("{}{}", s, rs)));
+                }
                 if let Some(result) = free_monoid_to_vec(r) {
+                    if let Some(detail) = string_realization_straddle_detail(r, &result) {
+                        return Err(InterpError::StringRealizationStraddle { detail });
+                    }
                     record_push(result.len());
                     let mut out = vec![Value::Str(s.clone())];
                     out.extend(result);
@@ -1621,12 +1705,9 @@ fn cross_representation_numeric_straddle(a: &Value, b: &Value) -> Option<String>
     }
 }
 
-fn fields_numeric_straddle(
-    af: &HashMap<Symbol, Value>,
-    bf: &HashMap<Symbol, Value>,
-) -> Option<String> {
+fn fields_numeric_straddle(af: &[(Symbol, Value)], bf: &[(Symbol, Value)]) -> Option<String> {
     af.iter()
-        .filter_map(|(k, av)| bf.get(k).map(|bv| (av, bv)))
+        .filter_map(|(k, av)| fields_get(bf, *k).map(|bv| (av, bv)))
         .filter(|(av, bv)| av != bv)
         .find_map(|(av, bv)| cross_representation_numeric_straddle(av, bv))
 }
@@ -1775,50 +1856,37 @@ fn char_value(c: char) -> Value {
 }
 
 fn native_map_absent_diagnostic_value(ctx: &InterpContext) -> Value {
-    let mut anchor_fields = HashMap::new();
-    anchor_fields.insert(ctx.sym("at"), Value::Str("map_lookup_port".to_string()));
-
-    let mut locus_fields = HashMap::new();
-    locus_fields.insert(
-        ctx.sym("anchor"),
-        Value::Record {
-            type_name: ctx.sym("LocusAnchor"),
-            fields: Rc::new(anchor_fields),
-        },
-    );
-
-    let mut correction_fields = HashMap::new();
-    correction_fields.insert(
-        ctx.sym("reason"),
-        Value::Variant {
-            type_name: ctx.sym("NoCorrectionReason"),
-            variant_name: ctx.sym("ExternalContractUnknown"),
-            fields: Rc::new(HashMap::new()),
-        },
-    );
-
-    let mut diagnostic_fields = HashMap::new();
-    diagnostic_fields.insert(ctx.sym("reason"), Value::Str("map_key_absent".to_string()));
-    diagnostic_fields.insert(
-        ctx.sym("at"),
-        Value::Variant {
-            type_name: ctx.sym("Locus"),
-            variant_name: ctx.sym("PortLocus"),
-            fields: Rc::new(locus_fields),
-        },
-    );
-    diagnostic_fields.insert(
-        ctx.sym("correction"),
-        Value::Variant {
-            type_name: ctx.sym("Correction"),
-            variant_name: ctx.sym("Unavailable"),
-            fields: Rc::new(correction_fields),
-        },
-    );
-
+    let anchor = Value::Record {
+        type_name: ctx.sym("LocusAnchor"),
+        fields: Rc::new(vec![(
+            ctx.sym("at"),
+            Value::Str("map_lookup_port".to_string()),
+        )]),
+    };
+    let locus = Value::Variant {
+        type_name: ctx.sym("Locus"),
+        variant_name: ctx.sym("PortLocus"),
+        fields: Rc::new(vec![(ctx.sym("anchor"), anchor)]),
+    };
+    let correction = Value::Variant {
+        type_name: ctx.sym("Correction"),
+        variant_name: ctx.sym("Unavailable"),
+        fields: Rc::new(vec![(
+            ctx.sym("reason"),
+            Value::Variant {
+                type_name: ctx.sym("NoCorrectionReason"),
+                variant_name: ctx.sym("ExternalContractUnknown"),
+                fields: Rc::new(vec![]),
+            },
+        )]),
+    };
     Value::Record {
         type_name: ctx.sym("Diagnostic"),
-        fields: Rc::new(diagnostic_fields),
+        fields: Rc::new(sorted_fields(vec![
+            (ctx.sym("at"), locus),
+            (ctx.sym("correction"), correction),
+            (ctx.sym("reason"), Value::Str("map_key_absent".to_string())),
+        ])),
     }
 }
 
@@ -1888,8 +1956,7 @@ fn match_pattern(
                 for fb in field_bindings.iter() {
                     let field_name = field_binding_name_at(fb.clone(), ctx.source_indices.clone());
                     let fb_pat = field_binding_pattern(fb.clone());
-                    let field_val = fields
-                        .get(&ctx.sym(&field_name))
+                    let field_val = fields_get(fields, ctx.sym(&field_name))
                         .cloned()
                         .unwrap_or(Value::Null);
                     let sub_bindings = match_pattern(&fb_pat, &field_val, ctx)?;
@@ -1905,8 +1972,7 @@ fn match_pattern(
                 for fb in field_bindings.iter() {
                     let field_name = field_binding_name_at(fb.clone(), ctx.source_indices.clone());
                     let fb_pat = field_binding_pattern(fb.clone());
-                    let field_val = fields
-                        .get(&ctx.sym(&field_name))
+                    let field_val = fields_get(fields, ctx.sym(&field_name))
                         .cloned()
                         .unwrap_or(Value::Null);
                     let sub_bindings = match_pattern(&fb_pat, &field_val, ctx)?;
@@ -2073,6 +2139,8 @@ pub(crate) const STD_NODE_QUERY_BRIDGE_FNS: &[&str] = &["coproduct_nullary_inhab
 
 pub(crate) const STD_CONCEPT_INDEX_BRIDGE_FNS: &[&str] = &["concept_decl_facts_live"];
 
+pub(crate) const STD_FN_INDEX_BRIDGE_FNS: &[&str] = &["fn_arrow_decl_facts_live"];
+
 pub fn std_node_bridge_fn_names() -> &'static [&'static str] {
     STD_NODE_BRIDGE_FNS
 }
@@ -2083,6 +2151,10 @@ pub fn std_node_query_bridge_fn_names() -> &'static [&'static str] {
 
 pub fn std_concept_index_bridge_fn_names() -> &'static [&'static str] {
     STD_CONCEPT_INDEX_BRIDGE_FNS
+}
+
+pub fn std_fn_index_bridge_fn_names() -> &'static [&'static str] {
+    STD_FN_INDEX_BRIDGE_FNS
 }
 
 fn is_v4_std_node_bridge_call(ctx: &InterpContext, func_name: &str) -> bool {
@@ -2112,6 +2184,15 @@ fn is_v4_std_concept_index_bridge_call(ctx: &InterpContext, func_name: &str) -> 
         .is_some_and(|info| info.module_name == "v2.std.concept_index")
 }
 
+fn is_v4_std_fn_index_bridge_call(ctx: &InterpContext, func_name: &str) -> bool {
+    if !STD_FN_INDEX_BRIDGE_FNS.contains(&func_name) {
+        return false;
+    }
+    ctx.item_registry
+        .get(func_name)
+        .is_some_and(|info| info.module_name == "v2.std.fn_index")
+}
+
 fn is_v4_std_lexing_bridge_call(ctx: &InterpContext, func_name: &str) -> bool {
     if !STD_LEXING_BRIDGE_FNS.contains(&func_name) {
         return false;
@@ -2122,7 +2203,18 @@ fn is_v4_std_lexing_bridge_call(ctx: &InterpContext, func_name: &str) -> bool {
 }
 
 fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
-    let func_name = expr_call_func_at(node.clone(), ctx.si());
+    let func_name = {
+        let key = Rc::as_ptr(node) as usize;
+        let hit = ctx.call_func_name_cache.borrow().get(&key).cloned();
+        match hit {
+            Some(s) => s,
+            None => {
+                let s = expr_call_func_at(node.clone(), ctx.si());
+                ctx.call_func_name_cache.borrow_mut().insert(key, s.clone());
+                s
+            }
+        }
+    };
     let arg_nodes = &node.children;
 
     let args: Vec<(Option<String>, Value)> = arg_nodes
@@ -2172,6 +2264,15 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
                 crate::coproduct_reflection::eval_concept_decl_facts_live(ctx, &args)
             }
             _ => unreachable!("concept_index bridge fn set mismatch"),
+        };
+    }
+
+    if is_v4_std_fn_index_bridge_call(ctx, &func_name) {
+        return match func_name.as_str() {
+            "fn_arrow_decl_facts_live" => {
+                crate::coproduct_reflection::eval_fn_arrow_decl_facts_live(ctx, &args)
+            }
+            _ => unreachable!("fn_index bridge fn set mismatch"),
         };
     }
 
@@ -2267,12 +2368,10 @@ fn eval_fold_list_right_native(
 }
 
 fn witness_holds(value: Value, ctx: &InterpContext) -> Value {
-    let mut fields = HashMap::new();
-    fields.insert(ctx.sym("value"), value);
     Value::Variant {
         type_name: ctx.sym("Witness"),
         variant_name: ctx.sym("Holds"),
-        fields: Rc::new(fields),
+        fields: Rc::new(vec![(ctx.sym("value"), value)]),
     }
 }
 
@@ -2297,11 +2396,11 @@ fn parse_table_memo_scope_and_key(
         Value::Record { fields, .. } | Value::Variant { fields, .. } => fields,
         _ => return None,
     };
-    let position = match key_fields.get(&ctx.sym("position")) {
+    let position = match fields_get(key_fields, ctx.sym("position")) {
         Some(Value::Int(n)) => *n,
         _ => return None,
     };
-    let production = match key_fields.get(&ctx.sym("production")) {
+    let production = match fields_get(key_fields, ctx.sym("production")) {
         Some(Value::Str(s)) => ctx.sym(s),
         _ => return None,
     };
@@ -2444,7 +2543,7 @@ fn eval_method_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> Inte
     }
 
     if let Value::Record { fields, .. } | Value::Variant { fields, .. } = &receiver_val {
-        if let Some(field_val) = fields.get(&ctx.sym(&method_name)) {
+        if let Some(field_val) = fields_get(fields, ctx.sym(&method_name)) {
             match field_val {
                 Value::Closure { .. } => {
                     let f = field_val.clone();
@@ -2508,8 +2607,7 @@ fn extract_field(
     let field_sym = ctx.sym(field);
     match value {
         Value::Record { type_name, fields } => {
-            fields
-                .get(&field_sym)
+            fields_get(fields, field_sym)
                 .cloned()
                 .ok_or_else(|| InterpError::NoSuchField {
                     type_name: ctx.resolve(*type_name).to_string(),
@@ -2518,8 +2616,7 @@ fn extract_field(
         }
         Value::Variant {
             type_name, fields, ..
-        } => fields
-            .get(&field_sym)
+        } => fields_get(fields, field_sym)
             .cloned()
             .ok_or_else(|| InterpError::NoSuchField {
                 type_name: ctx.resolve(*type_name).to_string(),
@@ -2540,16 +2637,17 @@ fn eval_record_lit(
 ) -> InterpResult<Value> {
     let type_name = record_lit_type_name_at(node.clone(), ctx.si()).unwrap_or_default();
 
-    let mut fields = HashMap::new();
+    let mut fields: Vec<(Symbol, Value)> = Vec::new();
     for child in node.children.iter() {
         let fname = field_init_node_name_at(child.clone(), ctx.si());
         let fval = eval_expr(&field_init_node_value(child.clone()), env, ctx)?;
-        fields.insert(ctx.sym(&fname), fval);
+        fields.push((ctx.sym(&fname), fval));
     }
+    fields.sort_unstable_by_key(|(k, _)| k.0);
 
     if let Some(pe) = parent_enum {
         if type_name == "Succ" {
-            if let Some(Value::Int(p)) = fields.get(&ctx.sym("prev")) {
+            if let Some(Value::Int(p)) = fields_get(&fields, ctx.sym("prev")) {
                 if *p >= 0 {
                     return Ok(Value::Int(p + 1));
                 }
@@ -2915,7 +3013,38 @@ fn eval_algebra_method(
                 }
                 return Ok(Value::Str(result));
             }
+            // String grounding (model↔realization): when a native String arg
+            // participates, the whole `concat` is a String and realizes as one
+            // native `Value::Str` — provided the receiver is itself string-like
+            // (all-codepoint). A `List<String>` receiver (`Str` *elements*) is
+            // rejected by `free_monoid_to_string` and falls through to the list
+            // path below, so `["a","b"].concat("c")` stays a list.
+            if method == "concat" && args.iter().any(|a| matches!(a, Value::Str(_))) {
+                if let Some(base) = free_monoid_to_string(&receiver) {
+                    if let Some(rest) = args
+                        .iter()
+                        .map(free_monoid_to_string)
+                        .collect::<Option<Vec<_>>>()
+                    {
+                        return Ok(Value::Str(format!("{}{}", base, rest.concat())));
+                    }
+                }
+            }
             if let Ok(items) = expect_list(&receiver, "concat") {
+                // Fail-closed backstop (DESIGN §5): a native String arg meeting a
+                // codepoint-bearing `Cons`-chain receiver here is the
+                // model↔realization straddle that grounding above did not
+                // dissolve — refuse loudly rather than push the `Str` into a
+                // mixed `[codepoint.., Str]` list. A `Value::List` receiver is a
+                // generic collection (`[1].append("ab")` is a legitimate
+                // two-element list), and a homogeneous `List<String>` carries no
+                // codepoint — both pass (the `orig` representation guard).
+                if args.iter().any(|a| matches!(a, Value::Str(_))) {
+                    let snapshot: Vec<Value> = items.iter().cloned().collect();
+                    if let Some(detail) = string_realization_straddle_detail(&receiver, &snapshot) {
+                        return Err(InterpError::StringRealizationStraddle { detail });
+                    }
+                }
                 let mut result = (*items).clone();
                 let mut merged_items = 0usize;
                 let mut copied_items = 0usize;
@@ -2994,14 +3123,12 @@ fn eval_algebra_method(
             let result: Vec<Value> = items
                 .iter()
                 .enumerate()
-                .map(|(i, v)| {
-                    let mut fields = HashMap::new();
-                    fields.insert(ctx.sym("first"), Value::Int(i as i64));
-                    fields.insert(ctx.sym("second"), v.clone());
-                    Value::Record {
-                        type_name: ctx.sym("Pair"),
-                        fields: Rc::new(fields),
-                    }
+                .map(|(i, v)| Value::Record {
+                    type_name: ctx.sym("Pair"),
+                    fields: Rc::new(sorted_fields(vec![
+                        (ctx.sym("first"), Value::Int(i as i64)),
+                        (ctx.sym("second"), v.clone()),
+                    ])),
                 })
                 .collect();
             Ok(list_value((result)))
@@ -3040,6 +3167,12 @@ fn eval_algebra_method(
         }
 
         "chars" => {
+            // §6 residue: this materializes a string as a `Value::List` of
+            // codepoint `Int`s, indistinguishable at the Value level from a
+            // generic `Int` list. That is the named hole in the String-straddle
+            // wall — see `string_realization_straddle_detail`'s `Value::List`
+            // exemption. Closed by regrounding `Char`/codepoint-sequence so the
+            // realization is distinguishable (grounding root, sibling #5428).
             let s = expect_str(Some(&receiver), "chars")?;
             let items: Vec<Value> = s.chars().map(|c| Value::Int(c as i64)).collect();
             Ok(list_value(items))
@@ -3370,7 +3503,10 @@ fn eval_service_call(
             return crate::recorded_fixture::value_from_fixture_json(&fixture.response, ctx)
                 .map_err(|e| InterpError::TypeError { msg: e.to_string() });
         }
-        eprintln!("[hermetic:mock] {}.{}", service_name, op_name);
+        trace_emit(
+            OutputChannel::Instrumentation,
+            &format!("[hermetic:mock] {}.{}", service_name, op_name),
+        );
         return eval_mock_response(op_node, ctx);
     }
 
@@ -3582,6 +3718,231 @@ pub fn materialize_shell_argv_for_operation(
     Ok(argv)
 }
 
+/// SGR foreground parameters per `SemanticColor`, mirroring the
+/// `extdeps.render.ansi` authority (`ansi_mappings` in `dsl/extdeps/render/ansi.dag`).
+/// Seed realization until the interpreter consumes that table directly; the
+/// dissolution is the single checkable receipt ROADMAP §1 "interpreter
+/// terminal-output de-fork" (`dsl/gunbc/roadmap_authority.dag`).
+pub mod sgr {
+    pub const SUCCESS: &str = "38;5;34";
+    pub const ERROR: &str = "38;5;196";
+    pub const WARNING: &str = "38;5;208";
+    pub const INFO: &str = "38;5;39";
+    pub const DIM: &str = "2";
+}
+
+/// Whether the CLI should emit ANSI color, mirroring the `color` arm of
+/// `extdeps.render.terminal_capability.detect_capability`: NO_COLOR (no-color
+/// convention) and TERM=dumb force it off; otherwise color is on for an
+/// interactive TTY or a CI log viewer (which renders SGR). CI keeps color even
+/// though it loses cursor addressing — the CI/interactive split this PR models.
+pub fn color_enabled() -> bool {
+    use std::io::IsTerminal;
+    thread_local! {
+        static ENABLED: Cell<Option<bool>> = const { Cell::new(None) };
+    }
+    ENABLED.with(|c| match c.get() {
+        Some(b) => b,
+        None => {
+            let no_color = std::env::var_os("NO_COLOR").is_some_and(|v| !v.is_empty());
+            let dumb = std::env::var("TERM").map(|t| t == "dumb").unwrap_or(false);
+            let ci = std::env::var_os("CI").is_some_and(|v| v != "0" && !v.is_empty());
+            let is_tty = std::io::stderr().is_terminal() || std::io::stdout().is_terminal();
+            let b = !no_color && !dumb && (is_tty || ci);
+            c.set(Some(b));
+            b
+        }
+    })
+}
+
+/// Wrap `text` in the given SGR parameters when color is enabled, else return it
+/// plain — the single funnel so a NO_COLOR/redirected run never leaks escapes.
+pub fn paint(text: &str, sgr_params: &str) -> String {
+    if color_enabled() {
+        format!("\x1b[{sgr_params}m{text}\x1b[0m")
+    } else {
+        text.to_string()
+    }
+}
+
+/// CLI output verbosity. Seed realization of the `gunbc.output_policy.Verbosity`
+/// authority (`dsl/gunbc/output_policy.dag`); resolution precedence mirrors that
+/// module's `resolve_verbosity` (verbose wins over quiet, default Normal). When
+/// the interpreter self-hosts, this dissolves into consuming the .dag policy.
+#[derive(Clone, Copy, PartialEq)]
+pub enum Verbosity {
+    Quiet,
+    Normal,
+    Verbose,
+}
+
+/// Read the CLI verbosity once. The env-var names are the dispatch grounded by
+/// `gunbc.output_policy.env_var_for` (verbose=`GUNBC_VERBOSE`,
+/// quiet=`GUNBC_QUIET`); the precedence mirrors `resolve_verbosity`.
+pub fn cli_verbosity() -> Verbosity {
+    thread_local! {
+        static POLICY: Cell<Option<Verbosity>> = const { Cell::new(None) };
+    }
+    POLICY.with(|c| match c.get() {
+        Some(p) => p,
+        None => {
+            let p = if std::env::var("GUNBC_VERBOSE")
+                .map(|v| v == "1")
+                .unwrap_or(false)
+            {
+                Verbosity::Verbose
+            } else if std::env::var("GUNBC_QUIET")
+                .map(|v| v == "1")
+                .unwrap_or(false)
+            {
+                Verbosity::Quiet
+            } else {
+                Verbosity::Normal
+            };
+            c.set(Some(p));
+            p
+        }
+    })
+}
+
+/// The output channels of `gunbc.output_policy.OutputChannel`, as a carrier so
+/// host-effect trace sites can name which channel they belong to. The *decision*
+/// for each channel is NOT computed here — it is evaluated from the .dag authority
+/// (`channel_decision` via `resolve_channel_policy`) by the entry binary and
+/// installed with `set_output_policy`. Order matches the index used in the policy
+/// array below.
+#[derive(Clone, Copy, PartialEq)]
+pub enum OutputChannel {
+    Diagnostic = 0,
+    ClaimResult = 1,
+    Progress = 2,
+    ShellTrace = 3,
+    Instrumentation = 4,
+}
+
+/// Carrier for `gunbc.output_policy.OutputDecision`. The mapping from a channel +
+/// verbosity to one of these lives entirely in the .dag authority; this enum only
+/// transports the evaluated verdict across the seed↔.dag boundary.
+#[derive(Clone, Copy, PartialEq)]
+pub enum OutputDecision {
+    Suppressed,
+    Condensed,
+    Full,
+}
+
+static OUTPUT_POLICY: std::sync::OnceLock<[OutputDecision; 5]> = std::sync::OnceLock::new();
+
+/// Install the per-channel decisions the entry binary evaluated from
+/// `gunbc.output_policy.resolve_channel_policy`. Set once at startup (before
+/// discovery threads spawn), read process-wide. Idempotent: a second call is a
+/// no-op (the first install wins).
+pub fn set_output_policy(decisions: [OutputDecision; 5]) {
+    let _ = OUTPUT_POLICY.set(decisions);
+}
+
+/// The installed decision for a channel. Falls back to `Full` (emit everything —
+/// the pre-funnel behavior) when no entry binary has installed a policy, so bins
+/// that don't opt in are unaffected.
+pub fn output_decision(channel: OutputChannel) -> OutputDecision {
+    match OUTPUT_POLICY.get() {
+        Some(p) => p[channel as usize],
+        None => OutputDecision::Full,
+    }
+}
+
+/// Carrier for `extdeps.render.surface.GroupSyntax` — the per-target group-marker
+/// strings the entry binary evaluated from `resolve_group_syntax(github_actions)`.
+/// `close_line` is `None` for a plain terminal (a section closes implicitly) and
+/// `Some("::endgroup::")` under GitHub Actions. The seed only TRANSPORTS these
+/// literals; the choice of syntax per target stays the .dag authority's.
+#[derive(Clone)]
+pub struct InstalledGroupSyntax {
+    pub open_prefix: String,
+    pub open_suffix: String,
+    pub close_line: Option<String>,
+}
+
+static GROUP_SYNTAX: std::sync::OnceLock<InstalledGroupSyntax> = std::sync::OnceLock::new();
+
+/// Install the group-marker syntax evaluated from the .dag authority. Set once at
+/// startup, before the parallel walk spawns. Without it, `group_begin`/`group_end`
+/// are no-ops (bins that don't opt in emit ungrouped, as before).
+pub fn set_group_syntax(syntax: InstalledGroupSyntax) {
+    let _ = GROUP_SYNTAX.set(syntax);
+}
+
+/// Whether grouping should bracket host-effect output: a syntax is installed AND at
+/// least one trace-bearing channel is actually visible. When every host-effect
+/// channel is Suppressed (e.g. Quiet) there is nothing to group, so callers skip the
+/// brackets and leave empty groups out of the log.
+pub fn host_trace_grouping_active() -> bool {
+    GROUP_SYNTAX.get().is_some()
+        && (output_decision(OutputChannel::ShellTrace) != OutputDecision::Suppressed
+            || output_decision(OutputChannel::Instrumentation) != OutputDecision::Suppressed)
+}
+
+/// Open a titled group on stderr — the same stream the host-effect trace lines use,
+/// so the runner folds those lines under the marker. No-op when no syntax is
+/// installed. Pair with `group_end`; the caller must keep the bracket tight (open →
+/// run+join the effectful work → close) and defer non-trace output (PASS/FAIL) until
+/// after `group_end` so it stays OUTSIDE the collapsed section.
+pub fn group_begin(title: &str) {
+    if let Some(s) = GROUP_SYNTAX.get() {
+        eprintln!("{}{}{}", s.open_prefix, title, s.open_suffix);
+    }
+}
+
+/// Close the current group. Emits the close line only when the target defines one
+/// (GitHub Actions); a plain terminal closes implicitly and prints nothing.
+pub fn group_end() {
+    if let Some(s) = GROUP_SYNTAX.get() {
+        if let Some(close) = &s.close_line {
+            eprintln!("{close}");
+        }
+    }
+}
+
+/// Emit a host-effect trace line under its channel's installed decision:
+/// Suppressed drops it, Condensed prints a dim indented summary, Full prints it
+/// verbatim. The decision is the .dag authority's, not a Rust re-derivation.
+fn trace_emit(channel: OutputChannel, line: &str) {
+    match output_decision(channel) {
+        OutputDecision::Suppressed => {}
+        OutputDecision::Condensed => eprintln!("{}", paint(&format!("  {line}"), sgr::DIM)),
+        OutputDecision::Full => eprintln!("{}", line),
+    }
+}
+
+// The funnel for the ShellTrace channel. Consumes the installed
+// `gunbc.output_policy` ShellTrace decision (Suppressed / Condensed / Full)
+// rather than re-deriving it from verbosity — keeps CI logs readable instead of
+// dumping every `sh -c` script.
+fn render_shell_trace(argv: &[String]) {
+    match output_decision(OutputChannel::ShellTrace) {
+        OutputDecision::Suppressed => {}
+        OutputDecision::Full => eprintln!("[shell] {}", argv.join(" ")),
+        OutputDecision::Condensed => {
+            // Collapse newlines/runs of whitespace into a single readable line,
+            // then truncate so a multiline `sh -c` script is one tidy summary.
+            let collapsed: String = argv
+                .join(" ")
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ");
+            // Fallback column bound (no Viewport at the trace site); the single
+            // authority is `gunbc.output_policy.shell_trace_summary_max_columns`.
+            const MAX: usize = 100;
+            let summary = if collapsed.chars().count() > MAX {
+                let head: String = collapsed.chars().take(MAX).collect();
+                format!("{head}…")
+            } else {
+                collapsed
+            };
+            eprintln!("{}", paint(&format!("  $ {summary}"), sgr::DIM));
+        }
+    }
+}
+
 fn dispatch_shell(
     transport: &Rc<Node>,
     param_env: &Rc<Env>,
@@ -3600,7 +3961,7 @@ fn dispatch_shell(
         });
     }
 
-    eprintln!("[shell] {}", argv.join(" "));
+    render_shell_trace(&argv);
 
     let output = std::process::Command::new(&argv[0])
         .args(&argv[1..])
@@ -3637,7 +3998,7 @@ fn map_shell_outputs(
         return Ok(Value::Unit);
     }
 
-    let mut fields = HashMap::new();
+    let mut fields: Vec<(Symbol, Value)> = Vec::new();
     for child in children.iter() {
         let field_name = authored_name_at(ctx.si(), child.clone());
         let from_key = extract_from_key(child, ctx);
@@ -3663,8 +4024,9 @@ fn map_shell_outputs(
                 _ => Value::Null,
             },
         };
-        fields.insert(ctx.sym(&field_name), value);
+        fields.push((ctx.sym(&field_name), value));
     }
+    fields.sort_unstable_by_key(|(k, _)| k.0);
 
     Ok(Value::Record {
         type_name: ctx.sym(&authored_name_at(ctx.si(), op_node.clone())),
@@ -3742,7 +4104,10 @@ fn dispatch_file(
             }
         };
         let byte_count = content.len() as i64;
-        eprintln!("[file] write {} ({} bytes)", path, byte_count);
+        trace_emit(
+            OutputChannel::ShellTrace,
+            &format!("[file] write {} ({} bytes)", path, byte_count),
+        );
         match std::fs::write(&path, content.as_bytes()) {
             Ok(()) => Ok(FileResult {
                 success: true,
@@ -3760,7 +4125,10 @@ fn dispatch_file(
             }),
         }
     } else {
-        eprintln!("[file] read {}", path);
+        trace_emit(
+            OutputChannel::Instrumentation,
+            &format!("[file] read {}", path),
+        );
         match std::fs::read_to_string(&path) {
             Ok(s) => Ok(FileResult {
                 success: true,
@@ -3800,7 +4168,7 @@ fn map_file_outputs(
         return Ok(Value::Unit);
     }
 
-    let mut fields = HashMap::new();
+    let mut fields: Vec<(Symbol, Value)> = Vec::new();
     for child in children.iter() {
         let field_name = authored_name_at(ctx.si(), child.clone());
         let from_key = extract_from_key(child, ctx);
@@ -3813,8 +4181,9 @@ fn map_file_outputs(
             "content" => Value::Str(result.content.clone()),
             _ => Value::Null,
         };
-        fields.insert(ctx.sym(&field_name), value);
+        fields.push((ctx.sym(&field_name), value));
     }
+    fields.sort_unstable_by_key(|(k, _)| k.0);
 
     Ok(Value::Record {
         type_name: ctx.sym(&authored_name_at(ctx.si(), op_node.clone())),
@@ -3932,7 +4301,10 @@ fn dispatch_rest(
     )
     .unwrap_or_else(|| "Json".to_string());
 
-    eprintln!("[rest] {} {}", method, url);
+    trace_emit(
+        OutputChannel::ShellTrace,
+        &format!("[rest] {} {}", method, url),
+    );
 
     let mut request = match method.as_str() {
         "GET" => ureq::get(&url),
@@ -4250,11 +4622,12 @@ fn map_response_to_value(
     if children.len() == 1 {
         return Ok(Value::Str(text.to_string()));
     }
-    let mut fields = HashMap::new();
+    let mut fields: Vec<(Symbol, Value)> = Vec::new();
     for child in children.iter() {
         let field_name = authored_name_at(ctx.si(), child.clone());
-        fields.insert(ctx.sym(&field_name), Value::Str(text.to_string()));
+        fields.push((ctx.sym(&field_name), Value::Str(text.to_string())));
     }
+    fields.sort_unstable_by_key(|(k, _)| k.0);
     Ok(Value::Record {
         type_name: ctx.sym(&authored_name_at(ctx.si(), op_node.clone())),
         fields: Rc::new(fields),
@@ -4281,16 +4654,14 @@ fn map_response_to_value_json(
     }
 
     if json.is_array() && !children.is_empty() {
-        let mut fields = HashMap::new();
         let first_field = authored_name_at(ctx.si(), children[0].clone());
-        fields.insert(ctx.sym(&first_field), json_to_value(json));
         return Ok(Value::Record {
             type_name: ctx.sym(&authored_name_at(ctx.si(), op_node.clone())),
-            fields: Rc::new(fields),
+            fields: Rc::new(vec![(ctx.sym(&first_field), json_to_value(json))]),
         });
     }
 
-    let mut fields = HashMap::new();
+    let mut fields: Vec<(Symbol, Value)> = Vec::new();
     for child in children.iter() {
         let field_name = authored_name_at(ctx.si(), child.clone());
         let from_key = extract_from_key(child, ctx);
@@ -4313,8 +4684,9 @@ fn map_response_to_value_json(
                 }
             },
         };
-        fields.insert(ctx.sym(&field_name), val);
+        fields.push((ctx.sym(&field_name), val));
     }
+    fields.sort_unstable_by_key(|(k, _)| k.0);
 
     Ok(Value::Record {
         type_name: ctx.sym(&authored_name_at(ctx.si(), op_node.clone())),
@@ -4399,10 +4771,7 @@ pub(crate) fn resolve_published_mock_keys(
     Ok(keys)
 }
 
-fn published_case_operation_key(
-    ctx: &InterpContext,
-    fields: &HashMap<Symbol, Value>,
-) -> Option<String> {
+fn published_case_operation_key(ctx: &InterpContext, fields: &[(Symbol, Value)]) -> Option<String> {
     if let (Some(Value::Str(svc)), Some(Value::Str(op))) =
         (ctx.field(fields, "service"), ctx.field(fields, "operation"))
     {
@@ -4483,11 +4852,9 @@ fn eval_filesystem_read_builtin(path: String, ctx: &InterpContext) -> InterpResu
         });
     }
 
-    let mut out_fields = HashMap::new();
-    out_fields.insert(ctx.sym("content"), Value::Str(content));
     Ok(Value::Record {
         type_name: ctx.sym("FilesystemReadResult"),
-        fields: Rc::new(out_fields),
+        fields: Rc::new(vec![(ctx.sym("content"), Value::Str(content))]),
     })
 }
 
@@ -4912,15 +5279,15 @@ fn eval_builtin(
                 let layer = Value::Variant {
                     type_name: ctx.sym("LayerPrefix"),
                     variant_name: ctx.sym(f.layer),
-                    fields: Rc::new(HashMap::new()),
+                    fields: Rc::new(vec![]),
                 };
-                let mut fields = HashMap::new();
-                fields.insert(ctx.sym("layer"), layer);
-                fields.insert(ctx.sym("path"), Value::Str(f.path));
-                fields.insert(ctx.sym("import_module"), Value::Str(f.import_module));
                 items.push(Value::Record {
                     type_name: ctx.sym("LayerImportFact"),
-                    fields: Rc::new(fields),
+                    fields: Rc::new(sorted_fields(vec![
+                        (ctx.sym("import_module"), Value::Str(f.import_module)),
+                        (ctx.sym("layer"), layer),
+                        (ctx.sym("path"), Value::Str(f.path)),
+                    ])),
                 });
             }
             Ok(Some(list_value(items)))
@@ -4940,13 +5307,13 @@ fn eval_builtin(
             );
             let mut items: Vec<Value> = Vec::new();
             for f in facts {
-                let mut fields = HashMap::new();
-                fields.insert(ctx.sym("path"), Value::Str(f.path));
-                fields.insert(ctx.sym("import_module"), Value::Str(f.import_module));
-                fields.insert(ctx.sym("target_declared"), Value::Bool(f.target_declared));
                 items.push(Value::Record {
                     type_name: ctx.sym("ImportResolutionFact"),
-                    fields: Rc::new(fields),
+                    fields: Rc::new(sorted_fields(vec![
+                        (ctx.sym("import_module"), Value::Str(f.import_module)),
+                        (ctx.sym("path"), Value::Str(f.path)),
+                        (ctx.sym("target_declared"), Value::Bool(f.target_declared)),
+                    ])),
                 });
             }
             Ok(Some(list_value(items)))
@@ -4958,12 +5325,12 @@ fn eval_builtin(
             let facts = crate::import_resolution_project::module_declaration_facts(&pool_roots);
             let mut items: Vec<Value> = Vec::new();
             for f in facts {
-                let mut fields = HashMap::new();
-                fields.insert(ctx.sym("module"), Value::Str(f.module));
-                fields.insert(ctx.sym("path"), Value::Str(f.path));
                 items.push(Value::Record {
                     type_name: ctx.sym("ModuleDeclarationFact"),
-                    fields: Rc::new(fields),
+                    fields: Rc::new(sorted_fields(vec![
+                        (ctx.sym("module"), Value::Str(f.module)),
+                        (ctx.sym("path"), Value::Str(f.path)),
+                    ])),
                 });
             }
             Ok(Some(list_value(items)))
@@ -4992,15 +5359,15 @@ fn eval_builtin(
                 let face = Value::Variant {
                     type_name: ctx.sym("MediumLeakFace"),
                     variant_name: ctx.sym(f.face),
-                    fields: Rc::new(HashMap::new()),
+                    fields: Rc::new(vec![]),
                 };
-                let mut fields = HashMap::new();
-                fields.insert(ctx.sym("path"), Value::Str(f.path));
-                fields.insert(ctx.sym("face"), face);
-                fields.insert(ctx.sym("detail"), Value::Str(f.detail));
                 items.push(Value::Record {
                     type_name: ctx.sym("MediumStructureLeakFact"),
-                    fields: Rc::new(fields),
+                    fields: Rc::new(sorted_fields(vec![
+                        (ctx.sym("detail"), Value::Str(f.detail)),
+                        (ctx.sym("face"), face),
+                        (ctx.sym("path"), Value::Str(f.path)),
+                    ])),
                 });
             }
             Ok(Some(list_value(items)))
@@ -5679,7 +6046,7 @@ pub(crate) fn free_monoid_to_vec(val: &Value) -> Option<Vec<Value>> {
                     return Some(out);
                 }
                 if *variant_name == cons_sym {
-                    match (fields.get(&head_sym), fields.get(&tail_sym)) {
+                    match (fields_get(fields, head_sym), fields_get(fields, tail_sym)) {
                         (Some(head), Some(tail)) => {
                             out.push(head.clone());
                             cur = tail.clone();
@@ -5693,6 +6060,90 @@ pub(crate) fn free_monoid_to_vec(val: &Value) -> Option<Vec<Value>> {
             _ => return None,
         }
     }
+}
+
+/// Fail-closed backstop for the model↔realization String straddle (DESIGN §5).
+/// At a String-meeting point (a free monoid concatenated with a native
+/// `Value::Str`), grounding (`free_monoid_to_string`) has already consumed every
+/// well-typed String (all-codepoint, rendered to a native `Value::Str`).
+/// Reaching the list path therefore means the operand is *not* a pure codepoint
+/// list — and if it nonetheless contains a `Char` codepoint (`Value::Int`), it
+/// is a *mixed* `[codepoint.., non-codepoint]` value: the straddle this
+/// grounding exists to dissolve. We refuse LOUDLY (turning the prior §5
+/// fail-open — `Accepted` carrying a wrong-type mixed list — into a typed error)
+/// rather than fabricate it. A homogeneous `List<String>` (all `Value::Str`)
+/// carries no codepoint and is legitimate, so it passes. This is the
+/// completeness insurance for grounding the known sites: any future un-grounded
+/// `FreeMonoid<Char>` × `Str` meeting point surfaces here as a loud error
+/// instead of silently straddling again.
+fn string_realization_straddle_detail(orig: &Value, items: &[Value]) -> Option<String> {
+    // A `Value::List` is a generic collection, never a straddled String (see
+    // `free_monoid_to_string`); its `Int` elements are genuine data, so a `Str`
+    // appended to it is a legitimate heterogeneous element, not a straddle. Only
+    // a `Cons`-chain / `Str`-derived flattening carries codepoint semantics.
+    //
+    // OPEN THREAD (DESIGN §6 residue — named, not silently shipped): this
+    // `Value::List` exemption makes the wall a RATCHET WITH A NAMED HOLE, not a
+    // universal value-level wall. The `"chars"` method (this file) materializes
+    // a string as a `Value::List` of codepoint `Int`s, structurally identical to
+    // a generic `Int` list — so a `.chars()`-result straddled with a native
+    // `Str` would be exempted here and fail open (the original bug, uncaught).
+    // This is undecidable at the Value level (a codepoint list and a generic
+    // `Int` list are element-identical), so it is honest §6 residue, the
+    // `Value::Null` pattern. LATENT today: no `.dag` program evaluates the
+    // interpreter `chars` method into a concat/`+` with a `Str` (the two
+    // `.chars()` rows in `languages.dag` / `rust/emit.dag` are emit *templates*,
+    // not interpreter calls). DISSOLVES WHEN `.chars()` / `Char` is regrounded so
+    // a codepoint-sequence is distinguishable from a generic `Int` list at the
+    // realization level (the grounding root, sibling to Int↔Nat #5428).
+    if matches!(orig, Value::List(_)) {
+        return None;
+    }
+    if items.iter().any(|x| matches!(x, Value::Int(_))) {
+        Some(format!(
+            "free monoid mixing Char codepoints with a native String at a concat/`+` meeting point ({} elements); a String must realize as a single native Value::Str, never a mixed [codepoint.., Str] list",
+            items.len()
+        ))
+    } else {
+        None
+    }
+}
+
+/// String grounding (DESIGN §1/§2/§7, model↔realization fork): render a
+/// string-like free monoid (`String = FreeMonoid<Char>`, `Char = Nat`) to its
+/// native realization. A native `Value::Str` is already grounded; a modeled
+/// `Empty`/`Cons` chain or `List` is a String **only** when every element is a
+/// `Char` codepoint (`Value::Int`). A `Value::Str` *element* (not the whole
+/// value) means `List<String>`, not `String`, so it returns `None` — that
+/// discriminator is what keeps `List<String>` push/concat from collapsing into
+/// one string. Used so a folded String concatenation realizes as a single
+/// `Value::Str` instead of straddling as a mixed `[codepoint.., Str]` list that
+/// fails `==` against a native String oracle (the held emit-weld debt).
+pub(crate) fn free_monoid_to_string(val: &Value) -> Option<String> {
+    if let Value::Str(s) = val {
+        return Some(s.clone());
+    }
+    // A `Value::List` is a generic ordered collection (the `[1]`/`[1,2,3]` list
+    // literal representation), NEVER a modeled `String`. A modeled
+    // `FreeMonoid<Char>` realizes as an `Empty`/`Cons` `Value::Variant` chain.
+    // Treating a `List` as string-like would collapse `List<Int>` append/`+`/
+    // concat into one string — exactly what the `list_free_monoid_chokepoint`
+    // tests forbid (`[1] + "ab"` stays length 2). Only a native `Str` or a
+    // `Cons`-chain is a String candidate; representation is the discriminator
+    // the Value level affords (a `List<Int>` and a codepoint `Cons`-chain are
+    // otherwise element-identical).
+    if matches!(val, Value::List(_)) {
+        return None;
+    }
+    let items = free_monoid_to_vec(val)?;
+    let mut out = String::new();
+    for it in items {
+        match it {
+            Value::Int(n) => out.push(u32::try_from(n).ok().and_then(char::from_u32)?),
+            _ => return None,
+        }
+    }
+    Some(out)
 }
 
 fn value_to_list_carrier(val: &Value) -> Option<(Rc<RrbVector<Value>>, u64)> {
@@ -5721,7 +6172,7 @@ fn is_map_lookup_receiver(val: &Value) -> bool {
     match val {
         Value::Map(_) => true,
         Value::Record { fields, .. } | Value::Variant { fields, .. } => active_ctx()
-            .map(|ctx| fields.contains_key(&ctx.sym("lookup")))
+            .map(|ctx| fields_get(fields, ctx.sym("lookup")).is_some())
             .unwrap_or(false),
         _ => false,
     }
@@ -5740,7 +6191,7 @@ fn raw_map_lookup(
         },
         Value::Record { fields, .. } | Value::Variant { fields, .. } => {
             let lookup_sym = ctx.sym("lookup");
-            match fields.get(&lookup_sym) {
+            match fields_get(fields, lookup_sym) {
                 Some(lookup @ Value::Closure { .. }) => {
                     apply_closure(lookup, &[key.clone()], env, ctx)
                 }
@@ -5754,7 +6205,7 @@ fn raw_map_lookup(
                 None => match key {
                     Value::Str(s) => {
                         let k = ctx.sym(s);
-                        Ok(fields.get(&k).cloned().unwrap_or(Value::Null))
+                        Ok(fields_get(fields, k).cloned().unwrap_or(Value::Null))
                     }
                     _ => Ok(Value::Null),
                 },

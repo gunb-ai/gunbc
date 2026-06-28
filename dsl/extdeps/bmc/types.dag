@@ -9,7 +9,7 @@ import std.measure {
   byte_size,
   watt,
 }
-import std.types { NonEmptyStr, Int, List }
+import std.types { NonEmptyStr, Int, List, Secret }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -122,10 +122,6 @@ type RedfishPrivilege =
   | PrivilegeConfigureComponents
   | PrivilegeConfigureSelf
 
-type RedfishVirtualMediaSupport =
-    VirtualMediaSupported
-  | VirtualMediaUnsupported
-
 fn redfish_boot_target_wire(t: RedfishBootSourceOverrideTarget) -> NonEmptyStr {
   match t {
     BootTargetNone => "None"
@@ -174,3 +170,9 @@ fn redfish_privilege_wire(p: RedfishPrivilege) -> NonEmptyStr {
     PrivilegeConfigureSelf => "ConfigureSelf"
   }
 }
+
+type RedfishSystemAction =
+    SetBootSourceOverride { target: RedfishBootSourceOverrideTarget, enabled: RedfishBootSourceOverrideEnabled }
+  | ResetSystem { reset_type: RedfishResetType }
+  | SetAccountPassword { account_id: NonEmptyStr, new_password: Secret }
+  | GetSystem

@@ -1,6 +1,5 @@
 module extdeps.github.errors
 
-import std.types { Url }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -13,7 +12,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 type GitHubErrorShape {
   message: String
-  documentation_url: Url?
+  documentation_url: String?
 }
 
 data github_error_example: GitHubErrorShape = {

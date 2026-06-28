@@ -12,12 +12,18 @@ import gunbc.ci_budget_tree {
   srv1_gha_runner_pool_budget,
   srv1_dashboard_session_pool_budget,
   srv1_floor_memory_budget,
-  within_run_spawn_budget,
+  srv1_ci_run_container_hard_cap,
   host_allocatable_bytes,
   host_budget_tree_at,
   budget_tree_gha_runner_pool_node,
   budget_tree_dashboard_session_pool_node,
-  gunbc_ci_budget_tree_deconfliction_note,
+  witness_floor_budget_equals_runner_cgroup_cap,
+}
+import gunbc.fleet_host_budget { gunbc_per_runner_memory_cap }
+import gunbc.ci_floor_measurement {
+  gunbc_ci_runner_cgroup_memory_cap,
+  gunbc_ci_dashboard_session_container_cap,
+  witness_runner_cgroup_cap_lt_dashboard_session_cap,
 }
 
 fn fitting_slice() -> Int {
@@ -96,10 +102,24 @@ fn witness_unknown_child_is_absent() -> Bool {
   }
 }
 
-fn witness_spawn_width_budget_deconflated() -> Bool {
+fn witness_spawn_width_budget_is_per_runner_cap() -> Bool {
   byte_size_count(b: srv1_floor_memory_budget()) > 0
-    && byte_size_count(b: srv1_floor_memory_budget()) == byte_size_count(b: within_run_spawn_budget())
+    && byte_size_count(b: srv1_floor_memory_budget()) == byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap)
+    && byte_size_count(b: srv1_floor_memory_budget()) == byte_size_count(b: gunbc_per_runner_memory_cap)
     && byte_size_count(b: srv1_floor_memory_budget()) < byte_size_count(b: srv1_host_ram())
+}
+
+fn witness_hard_cap_is_runner_cgroup_cap() -> Bool {
+  byte_size_count(b: srv1_ci_run_container_hard_cap()) == byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap)
+}
+
+fn witness_cap_split_runner_lt_session() -> Bool {
+  witness_runner_cgroup_cap_lt_dashboard_session_cap()
+    && byte_size_count(b: gunbc_ci_dashboard_session_container_cap) > byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap)
+}
+
+fn witness_floor_budget_equals_runner_cgroup_cap_holds() -> Bool {
+  witness_floor_budget_equals_runner_cgroup_cap()
 }
 
 test fn ci_budget_tree_holds() -> Bool {
@@ -111,5 +131,8 @@ test fn ci_budget_tree_holds() -> Bool {
     && witness_srv2_symmetric_to_srv1()
     && witness_two_pools_present()
     && witness_unknown_child_is_absent()
-    && witness_spawn_width_budget_deconflated()
+    && witness_spawn_width_budget_is_per_runner_cap()
+    && witness_hard_cap_is_runner_cgroup_cap()
+    && witness_cap_split_runner_lt_session()
+    && witness_floor_budget_equals_runner_cgroup_cap_holds()
 }

@@ -1,6 +1,6 @@
 module extdeps.git
 
-import std.types { CommitSha, Email, FilePath, GitRef, Timestamp, Url }
+import std.types { CommitSha, Email, FilePath, GitRef, NonEmptyStr, Timestamp }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -28,7 +28,7 @@ type GitBranch {
 
 type GitRemote {
   name: String
-  url: Url
+  url: NonEmptyStr
   fetch_refspec: String
 }
 
@@ -71,6 +71,20 @@ service git.Core {
     output { branch: String from "stdout" }
     readonly
     transport shell { argv: ["git", "rev-parse", "--abbrev-ref", "HEAD"] }
+    exit {
+      0 => Unit
+      128 => String "Not a git repository"
+    }
+  }
+
+  operation HeadCommit {
+    input {}
+    output {
+      sha: CommitSha from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["git", "rev-parse", "HEAD"] }
     exit {
       0 => Unit
       128 => String "Not a git repository"

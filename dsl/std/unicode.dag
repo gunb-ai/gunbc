@@ -82,7 +82,7 @@ fn in_block(cp: Int, block: UnicodeBlock) -> Bool {
 }
 
 fn char_display_width(c: Char) -> DisplayWidth {
-  let cp = code_point(c: c)
+  let cp = c
   let is_zero_width = contains(zero_width_codepoints, item: cp) || any(zero_width_blocks, predicate: b => in_block(cp: cp, block: b))
   if is_zero_width { return ZeroWidth }
   if any(wide_blocks, predicate: b => in_block(cp: cp, block: b)) { return Wide }

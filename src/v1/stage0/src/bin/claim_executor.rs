@@ -4,12 +4,16 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::thread;
+use std::time::Instant;
 
 use v1_compiler::cli_run::{
-    make_eval_context, resolve_entry_graph, run_claim, run_discovery_corpus_with_options,
-    run_value, ClaimOutcome, DiscoveryCorpusOptions,
+    compute_histogram_data, make_eval_context, resolve_entry_graph, run_claim,
+    run_discovery_corpus_with_options, run_value, ClaimOutcome, DiscoveryCorpusOptions,
+    HistogramData, TimingPercentiles,
 };
-use v1_compiler::v1_interpreter::{run_in_context_with_args, ExecutionMode, InterpContext, Value};
+use v1_compiler::v1_interpreter::{
+    color_enabled, paint, run_in_context_with_args, sgr, ExecutionMode, InterpContext, Value,
+};
 
 #[derive(Clone)]
 enum Runnable {
@@ -87,7 +91,7 @@ fn str_list_from_value(value: &Value, ctx: &InterpContext) -> Result<Vec<String>
 }
 
 fn str_field(
-    fields: &std::collections::HashMap<v1_compiler::v1_interpreter::Symbol, Value>,
+    fields: &[(v1_compiler::v1_interpreter::Symbol, Value)],
     name: &str,
     owner: &str,
     ctx: &InterpContext,
@@ -201,6 +205,17 @@ struct ClaimResult {
     function: String,
     ok: bool,
     detail: String,
+    /// Wall-clock eval time for this single claim (0 for discovery aggregate).
+    wall_nanos: u128,
+    /// Resolve time charged to this result; non-zero only on the first claim in a
+    /// SharedClaims group (the group resolves once, cost attributed to first claim).
+    resolve_nanos: u128,
+    /// For discovery batch nodes: sum of per-file resolve times (serial sum, not wall).
+    corpus_resolve_nanos: u128,
+    /// For discovery batch nodes: sum of per-witness eval times (serial sum, not wall).
+    corpus_eval_nanos: u128,
+    /// Number of discovery witnesses (non-zero only for discovery batch nodes).
+    corpus_witnesses: usize,
 }
 
 /// A batch is partitioned into resolve-groups before scheduling. SingleClaims that share one
@@ -272,27 +287,52 @@ fn group_batch_units(batch: &[Runnable]) -> Vec<BatchUnit> {
     units
 }
 
-fn claim_result_for_outcome(function: String, outcome: ClaimOutcome) -> ClaimResult {
+fn claim_result_for_outcome(
+    function: String,
+    outcome: ClaimOutcome,
+    wall_nanos: u128,
+    resolve_nanos: u128,
+) -> ClaimResult {
     match outcome {
         ClaimOutcome::Pass => ClaimResult {
             function,
             ok: true,
             detail: String::new(),
+            wall_nanos,
+            resolve_nanos,
+            corpus_resolve_nanos: 0,
+            corpus_eval_nanos: 0,
+            corpus_witnesses: 0,
         },
         ClaimOutcome::Fail => ClaimResult {
             function,
             ok: false,
             detail: "returned Bool(false)".to_string(),
+            wall_nanos,
+            resolve_nanos,
+            corpus_resolve_nanos: 0,
+            corpus_eval_nanos: 0,
+            corpus_witnesses: 0,
         },
         ClaimOutcome::NotBool { got } => ClaimResult {
             function,
             ok: false,
             detail: format!("returned `{}`, not Bool", got),
+            wall_nanos,
+            resolve_nanos,
+            corpus_resolve_nanos: 0,
+            corpus_eval_nanos: 0,
+            corpus_witnesses: 0,
         },
         ClaimOutcome::RuntimeError { message } => ClaimResult {
             function,
             ok: false,
             detail: format!("runtime error: {}", message),
+            wall_nanos,
+            resolve_nanos,
+            corpus_resolve_nanos: 0,
+            corpus_eval_nanos: 0,
+            corpus_witnesses: 0,
         },
     }
 }
@@ -308,6 +348,11 @@ fn run_batch_unit(
             ok: false,
             detail: "unrunnable sentinel (unmapped node or non-complete plan) — failing closed"
                 .to_string(),
+            wall_nanos: 0,
+            resolve_nanos: 0,
+            corpus_resolve_nanos: 0,
+            corpus_eval_nanos: 0,
+            corpus_witnesses: 0,
         }],
         BatchUnit::Discovery {
             source_roots: roots,
@@ -332,6 +377,7 @@ fn run_shared_entry_claims(
     entry: &str,
     functions: &[String],
 ) -> Vec<ClaimResult> {
+    let resolve_start = Instant::now();
     let (graph, source_indices) = match resolve_entry_graph(source_roots, entry) {
         Ok(pair) => pair,
         Err(msg) => {
@@ -341,15 +387,120 @@ fn run_shared_entry_claims(
                     function: function.clone(),
                     ok: false,
                     detail: format!("resolve failed for {}: {}", entry, msg),
+                    wall_nanos: 0,
+                    resolve_nanos: 0,
+                    corpus_resolve_nanos: 0,
+                    corpus_eval_nanos: 0,
+                    corpus_witnesses: 0,
                 })
                 .collect();
         }
     };
+    let resolve_nanos = resolve_start.elapsed().as_nanos();
     let ctx = make_eval_context(&graph, source_indices, ExecutionMode::Wet);
+    let mut first = true;
     functions
         .iter()
-        .map(|function| claim_result_for_outcome(function.clone(), run_claim(&ctx, function)))
+        .map(|function| {
+            let claim_start = Instant::now();
+            let outcome = run_claim(&ctx, function);
+            let wall_nanos = claim_start.elapsed().as_nanos();
+            let rn = if first {
+                first = false;
+                resolve_nanos
+            } else {
+                0
+            };
+            claim_result_for_outcome(function.clone(), outcome, wall_nanos, rn)
+        })
         .collect()
+}
+
+/// The medium's `Viewport.width` for boxed output. The seed sources the runtime value from the host
+/// (`COLUMNS` when present) and passes it into the `.dag` render model; the model owns how width
+/// shapes the box. Conservative 88-col default fits common CI-log and chat viewers; clamped so a
+/// hostile `COLUMNS` cannot produce a degenerate box.
+fn histogram_output_width() -> i64 {
+    std::env::var("COLUMNS")
+        .ok()
+        .and_then(|v| v.trim().parse::<i64>().ok())
+        .filter(|w| *w >= 48)
+        .unwrap_or(88)
+        .min(120)
+}
+
+fn clamp_nanos_to_i64(n: u128) -> i64 {
+    i64::try_from(n).unwrap_or(i64::MAX)
+}
+
+/// Render the timing histogram boxes through `dsl/gunbc/ci_render.dag` (`render_percentile_box`),
+/// the single authority for boxed-Frame width. The seed only supplies measured data + the host
+/// viewport width; all layout (borders, padding, duration formatting) lives in `.dag`.
+fn render_timing_histogram(
+    source_roots: &[String],
+    data: &HistogramData,
+) -> Result<String, String> {
+    let entry = "dsl/gunbc/ci_render.dag";
+    let (graph, indices) = resolve_entry_graph(source_roots, entry)
+        .map_err(|m| format!("resolve failed for {entry}:\n{m}"))?;
+    let ctx = make_eval_context(&graph, indices, ExecutionMode::Wet);
+    let width = histogram_output_width();
+    let color = color_enabled();
+
+    let render_box = |title: &str, p: &TimingPercentiles| -> Result<String, String> {
+        let value = run_in_context_with_args(
+            &ctx,
+            "render_percentile_box",
+            &[
+                (Some("title".to_string()), Value::Str(title.to_string())),
+                (
+                    Some("p50".to_string()),
+                    Value::Int(clamp_nanos_to_i64(p.p50)),
+                ),
+                (
+                    Some("p90".to_string()),
+                    Value::Int(clamp_nanos_to_i64(p.p90)),
+                ),
+                (
+                    Some("p95".to_string()),
+                    Value::Int(clamp_nanos_to_i64(p.p95)),
+                ),
+                (
+                    Some("p99".to_string()),
+                    Value::Int(clamp_nanos_to_i64(p.p99)),
+                ),
+                (
+                    Some("p100".to_string()),
+                    Value::Int(clamp_nanos_to_i64(p.p100)),
+                ),
+                (Some("width".to_string()), Value::Int(width)),
+                (Some("color".to_string()), Value::Bool(color)),
+            ],
+            false,
+        )
+        .map_err(|e| format!("render_percentile_box eval failed: {e}"))?;
+        match value {
+            Value::Str(s) => Ok(s),
+            other => Err(format!(
+                "render_percentile_box returned non-string: {other}"
+            )),
+        }
+    };
+
+    let mut out = String::new();
+    out.push_str(&format!(
+        "Total witnesses: {} (included in histogram); {} skipped (no entry-resolve timing)\n",
+        data.included, data.skipped
+    ));
+    out.push_str(
+        "Note: Resolve times are per-entry-amortized (witnesses in an entry share its resolve cost); eval times are per-witness.\n\n",
+    );
+    out.push_str(&render_box("TOTAL TIME (Resolve + Eval)", &data.total)?);
+    out.push('\n');
+    out.push_str(&render_box("RESOLVE TIME", &data.resolve)?);
+    out.push('\n');
+    out.push_str(&render_box("EVAL TIME", &data.eval)?);
+    Ok(out)
 }
 
 fn run_discovery_batch_node(
@@ -385,10 +536,22 @@ fn run_discovery_batch_node(
                 summary.total_measured_nanos as f64 / 1.0e6,
                 summary.total_measured_nanos,
             );
+            match compute_histogram_data(&summary) {
+                Ok(data) => match render_timing_histogram(&source_roots, &data) {
+                    Ok(histogram) => eprintln!("{histogram}"),
+                    Err(e) => eprintln!("[histogram] render failed (timings unaffected): {e}"),
+                },
+                Err(msg) => eprintln!("{msg}"),
+            }
             ClaimResult {
                 function: format!("{label} ({} witnesses)", summary.total),
                 ok: true,
                 detail: String::new(),
+                wall_nanos: 0,
+                resolve_nanos: 0,
+                corpus_resolve_nanos: summary.total_resolve_nanos,
+                corpus_eval_nanos: summary.total_measured_nanos,
+                corpus_witnesses: summary.total,
             }
         }
         Ok(summary) => ClaimResult {
@@ -400,11 +563,21 @@ fn run_discovery_batch_node(
                 summary.total,
                 summary.failures.join("; ")
             ),
+            wall_nanos: 0,
+            resolve_nanos: 0,
+            corpus_resolve_nanos: summary.total_resolve_nanos,
+            corpus_eval_nanos: summary.total_measured_nanos,
+            corpus_witnesses: summary.total,
         },
         Err(msg) => ClaimResult {
             function: label,
             ok: false,
             detail: format!("discovery corpus failed: {msg}"),
+            wall_nanos: 0,
+            resolve_nanos: 0,
+            corpus_resolve_nanos: 0,
+            corpus_eval_nanos: 0,
+            corpus_witnesses: 0,
         },
     }
 }
@@ -670,6 +843,61 @@ fn cgroup_job_measurement() -> Option<CgroupMeasurement> {
     })
 }
 
+/// Verify each declared release artifact exists, is executable, and is non-empty — failing CLOSED
+/// (exit 1) with the GitHub-Actions `::error::` annotation on the first violation. This is the
+/// in-binary home of what was previously inline `[ -x ]` / `[ -s ]` shell in the generated ci.yml
+/// (DESIGN §5 fail-open guard: an sccache-served truncated/empty cached artifact after a
+/// `successful` build). The artifact paths are authored by the .dag spec and passed positionally.
+fn verify_build_artifacts(paths: &[String]) -> Result<ExitCode, ExitCode> {
+    use std::os::unix::fs::PermissionsExt;
+    if paths.is_empty() {
+        eprintln!("claim_executor: --verify-build-artifacts requires at least one artifact path");
+        return Err(ExitCode::from(2));
+    }
+    for path in paths {
+        let name = std::path::Path::new(path)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or(path.as_str());
+        match std::fs::metadata(path) {
+            Ok(meta) => {
+                let executable = meta.permissions().mode() & 0o111 != 0;
+                if !meta.is_file() || !executable {
+                    eprintln!(
+                        "::error::build verification: declared artifact '{name}' absent or not \
+                         executable after a 'successful' build (sccache/cache corruption — DESIGN \
+                         §5 fail-open); failing closed: {path}"
+                    );
+                    return Err(ExitCode::from(1));
+                }
+                if meta.len() == 0 {
+                    eprintln!(
+                        "::error::build verification: declared artifact '{name}' is zero-byte after \
+                         a 'successful' build (sccache served a truncated/empty cached artifact — \
+                         DESIGN §5 fail-open); failing closed: {path}"
+                    );
+                    return Err(ExitCode::from(1));
+                }
+            }
+            Err(_) => {
+                eprintln!(
+                    "::error::build verification: declared artifact '{name}' absent or not \
+                     executable after a 'successful' build (sccache/cache corruption — DESIGN §5 \
+                     fail-open); failing closed: {path}"
+                );
+                return Err(ExitCode::from(1));
+            }
+        }
+    }
+    eprintln!(
+        "claim_executor: build-artifact verification passed ({} declared release binar{} present \
+         + non-empty)",
+        paths.len(),
+        if paths.len() == 1 { "y" } else { "ies" }
+    );
+    Ok(ExitCode::SUCCESS)
+}
+
 /// Single authority for the one-line whole-tree cgroup measurement, shared by the floor run and the
 /// standalone `--measure-cgroup-peak` mode so the `ci` and `rust_tests` jobs report an
 /// identically-shaped line. `context` distinguishes the call site.
@@ -735,10 +963,92 @@ fn sccache_server_cgroup_rel() -> Option<String> {
     None
 }
 
+/// Per-batch timing record collected during run_walk for Gantt emission.
+struct BatchRecord {
+    batch_index: usize,
+    wall_nanos: u128,
+    /// Flattened results from all units in this batch (order: unit by unit).
+    results: Vec<ClaimResult>,
+}
+
+/// Emit a fractal Gantt tree to stderr when GUNBC_FLOOR_GANTT=1.
+fn emit_gantt(batch_records: &[BatchRecord], total_wall_nanos: u128) {
+    let gantt_enabled = std::env::var("GUNBC_FLOOR_GANTT")
+        .map(|v| v == "1")
+        .unwrap_or(false);
+    if !gantt_enabled {
+        return;
+    }
+    let total_ms = total_wall_nanos / 1_000_000;
+    eprintln!("[gantt] claim_executor wall: {}ms", total_ms);
+    for rec in batch_records {
+        let batch_ms = rec.wall_nanos / 1_000_000;
+        let pct = if total_ms == 0 {
+            0.0
+        } else {
+            100.0 * batch_ms as f64 / total_ms as f64
+        };
+        eprintln!(
+            "[gantt]   batch {} wall: {}ms ({:.1}%)",
+            rec.batch_index + 1,
+            batch_ms,
+            pct,
+        );
+        for result in &rec.results {
+            let batch_pct = |ns: u128| -> f64 {
+                if rec.wall_nanos == 0 {
+                    0.0
+                } else {
+                    100.0 * ns as f64 / rec.wall_nanos as f64
+                }
+            };
+            if result.corpus_witnesses > 0 {
+                // Discovery batch: show serial-sum breakdown.
+                let corpus_resolve_ms = result.corpus_resolve_nanos / 1_000_000;
+                let corpus_eval_ms = result.corpus_eval_nanos / 1_000_000;
+                eprintln!(
+                    "[gantt]     {} ({} witnesses)",
+                    result.function, result.corpus_witnesses
+                );
+                eprintln!(
+                    "[gantt]       resolve (serial sum): {}ms  ({:.1}% of batch wall)",
+                    corpus_resolve_ms,
+                    batch_pct(result.corpus_resolve_nanos),
+                );
+                eprintln!(
+                    "[gantt]       eval    (serial sum): {}ms  ({:.1}% of batch wall)",
+                    corpus_eval_ms,
+                    batch_pct(result.corpus_eval_nanos),
+                );
+            } else {
+                // Single claim: show resolve (if charged) + eval.
+                if result.resolve_nanos > 0 {
+                    let resolve_ms = result.resolve_nanos / 1_000_000;
+                    eprintln!(
+                        "[gantt]     resolve (entry): {}ms  ({:.1}% of batch wall)",
+                        resolve_ms,
+                        batch_pct(result.resolve_nanos),
+                    );
+                }
+                let wall_ms = result.wall_nanos / 1_000_000;
+                let ok = if result.ok { "PASS" } else { "FAIL" };
+                eprintln!(
+                    "[gantt]     {}: {}ms  [{ok}]  ({:.1}% of batch wall)",
+                    result.function,
+                    wall_ms,
+                    batch_pct(result.wall_nanos),
+                );
+            }
+        }
+    }
+}
+
 fn run_walk(source_roots: &[String], batches: &[Vec<Runnable>], spawn_width: usize) -> WalkOutcome {
     let width = spawn_width.max(1);
     let mut any_failed = false;
     let mut batches_run = 0usize;
+    let walk_start = Instant::now();
+    let mut batch_records: Vec<BatchRecord> = Vec::new();
     for (bi, batch) in batches.iter().enumerate() {
         batches_run = bi + 1;
         let units = group_batch_units(batch);
@@ -749,6 +1059,18 @@ fn run_walk(source_roots: &[String], batches: &[Vec<Runnable>], spawn_width: usi
             units.len(),
             width
         );
+        let batch_start = Instant::now();
+        // Bracket the parallel walk in a host-effect group: the `[file]`/`[rest]`/
+        // `[shell]` trace lines stream to stderr from the worker threads INSIDE the
+        // group, while the scannable PASS/FAIL summary is deferred to AFTER the group
+        // closes (below) so it stays outside the collapsed section. GitHub Actions
+        // renders this as a collapsible `::group::`; a plain terminal as a header.
+        // Threads can't interleave group markers (one open/close on the main thread
+        // spans the whole batch), so it is sound under `spawn_width > 1`.
+        let grouped = v1_compiler::v1_interpreter::host_trace_grouping_active();
+        if grouped {
+            v1_compiler::v1_interpreter::group_begin(&format!("batch {} host-effects", bi + 1));
+        }
         let handles: Vec<_> = units
             .into_iter()
             .map(|unit| {
@@ -756,29 +1078,60 @@ fn run_walk(source_roots: &[String], batches: &[Vec<Runnable>], spawn_width: usi
                 thread::spawn(move || run_batch_unit(roots, unit, width))
             })
             .collect();
+        // Collect all results before printing any PASS/FAIL — the prints must land
+        // after `group_end`, and a thread panic still has to close the group.
+        let mut batch_results: Vec<ClaimResult> = Vec::new();
+        let mut thread_panicked = false;
         for handle in handles {
             match handle.join() {
-                Ok(results) => {
-                    for result in results {
-                        if result.ok {
-                            println!("PASS [batch {}] {}", bi + 1, result.function);
-                        } else {
-                            println!(
-                                "FAIL [batch {}] {} ({})",
-                                bi + 1,
-                                result.function,
-                                result.detail
-                            );
-                            any_failed = true;
-                        }
-                    }
-                }
-                Err(_) => {
-                    println!("FAIL [batch {}] <claim thread panicked>", bi + 1);
-                    any_failed = true;
-                }
+                Ok(results) => batch_results.extend(results),
+                Err(_) => thread_panicked = true,
             }
         }
+        if grouped {
+            v1_compiler::v1_interpreter::group_end();
+        }
+        for result in &batch_results {
+            if result.ok {
+                println!(
+                    "{}",
+                    paint(
+                        &format!("✓ PASS [batch {}] {}", bi + 1, result.function),
+                        sgr::SUCCESS
+                    )
+                );
+            } else {
+                println!(
+                    "{}",
+                    paint(
+                        &format!(
+                            "✗ FAIL [batch {}] {} ({})",
+                            bi + 1,
+                            result.function,
+                            result.detail
+                        ),
+                        sgr::ERROR
+                    )
+                );
+                any_failed = true;
+            }
+        }
+        if thread_panicked {
+            println!(
+                "{}",
+                paint(
+                    &format!("✗ FAIL [batch {}] <claim thread panicked>", bi + 1),
+                    sgr::ERROR
+                )
+            );
+            any_failed = true;
+        }
+        let batch_wall_nanos = batch_start.elapsed().as_nanos();
+        batch_records.push(BatchRecord {
+            batch_index: bi,
+            wall_nanos: batch_wall_nanos,
+            results: batch_results,
+        });
         if any_failed {
             eprintln!(
                 "claim_executor: batch {} had failures — stopping before dependent batches",
@@ -787,6 +1140,8 @@ fn run_walk(source_roots: &[String], batches: &[Vec<Runnable>], spawn_width: usi
             break;
         }
     }
+    let total_wall_nanos = walk_start.elapsed().as_nanos();
+    emit_gantt(&batch_records, total_wall_nanos);
     WalkOutcome {
         any_failed,
         batches_run,
@@ -982,10 +1337,22 @@ fn run() -> Result<ExitCode, ExitCode> {
     let mut notice_title: Option<String> = None;
     let mut perturb_check = false;
     let mut measure_cgroup_peak = false;
+    let mut verify_artifacts: Vec<String> = Vec::new();
+    let mut verify_artifacts_mode = false;
 
     let mut i = 1;
     while i < args.len() {
         match args[i].as_str() {
+            "--verify-build-artifacts" => {
+                // All remaining positional args are declared release-artifact paths to verify.
+                verify_artifacts_mode = true;
+                i += 1;
+                while i < args.len() {
+                    verify_artifacts.push(args[i].clone());
+                    i += 1;
+                }
+                break;
+            }
             "--source-root" => {
                 i += 1;
                 source_roots.push(require_value(&args, i, "--source-root")?);
@@ -1012,6 +1379,16 @@ fn run() -> Result<ExitCode, ExitCode> {
         i += 1;
     }
 
+    // Build-artifact verification (no plan run): the floor's bootstrap `cargo build` is followed by
+    // this check so a `successful` build that nonetheless produced a missing/zero-byte binary
+    // (sccache serving a truncated/empty cached artifact — DESIGN §5 fail-open) fails CLOSED before
+    // the floor runs. The LOGIC lives here (the floor binary) instead of inline shell in ci.yml; the
+    // declared artifact paths are still authored by the .dag spec and passed as positional args.
+    // Short-circuits before the plan-arg requirements so it needs no `--plan-entry`.
+    if verify_artifacts_mode {
+        return verify_build_artifacts(&verify_artifacts);
+    }
+
     // Standalone whole-tree cgroup measurement (no plan run): the `rust_tests` job invokes this
     // after its gate to emit ITS leaf cgroup peak (a separate ephemeral runner cgroup from the `ci`
     // job's), reusing the same single-authority walk/emit. Short-circuits before the plan-arg
@@ -1033,6 +1410,15 @@ fn run() -> Result<ExitCode, ExitCode> {
             return Err(ExitCode::from(2));
         }
     };
+
+    // Install the host-effect trace policy from the .dag authority once, before
+    // discovery threads spawn, so `[file] read` / `[rest]` / `[hermetic:mock]` etc.
+    // are funnelled per `gunbc.output_policy` instead of flooding the floor log.
+    v1_compiler::cli_run::install_output_policy(&source_roots);
+    // Install the per-target group-marker syntax (GitHub Actions `::group::` vs a
+    // plain-terminal header) from the .dag authority, so the parallel walk folds each
+    // batch's host-effect traces into a collapsible group.
+    v1_compiler::cli_run::install_group_syntax(&source_roots);
 
     if perturb_check {
         return run_perturb_check(&source_roots, &plan_entry, &plan_function);
@@ -1077,9 +1463,16 @@ fn run() -> Result<ExitCode, ExitCode> {
 
     let outcome = run_walk(&source_roots, &batches, spawn_width);
     match peak_rss_bytes() {
-        Some(bytes) => eprintln!(
-            "[measurement] floor peak RSS: {bytes} bytes (VmHWM) at spawn_width={spawn_width}"
-        ),
+        Some(bytes) => {
+            eprintln!(
+                "[measurement] floor peak RSS: {bytes} bytes (VmHWM) at spawn_width={spawn_width}"
+            );
+            let width = spawn_width.max(1) as u64;
+            let per_shard = bytes.div_ceil(width);
+            eprintln!(
+                "[calibration] max-per-shard-peak-rss: {per_shard} bytes at spawn_width={spawn_width}"
+            );
+        }
         None => eprintln!(
             "[measurement] floor peak RSS: unavailable (no /proc/self/status) at spawn_width={spawn_width}"
         ),
@@ -1252,5 +1645,67 @@ mod tests {
             })
             .expect("gate group present");
         assert_eq!(gate, &["g1", "g2"], "both gate claims kept in one group");
+    }
+
+    // --- build-artifact verification teeth (DESIGN §5 fail-open guard) ---
+
+    fn write_exec(dir: &std::path::Path, name: &str, bytes: &[u8]) -> String {
+        use std::os::unix::fs::PermissionsExt;
+        let p = dir.join(name);
+        std::fs::write(&p, bytes).expect("write artifact");
+        let mut perms = std::fs::metadata(&p).unwrap().permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&p, perms).expect("chmod");
+        p.to_string_lossy().into_owned()
+    }
+
+    #[test]
+    fn verify_build_artifacts_accepts_nonempty_executables() {
+        let dir = std::env::temp_dir().join(format!("cev-ok-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let a = write_exec(&dir, "claim_executor", b"\x7fELF-not-really-but-nonempty");
+        let b = write_exec(&dir, "gunbc", b"binary");
+        let r = verify_build_artifacts(&[a, b]);
+        std::fs::remove_dir_all(&dir).ok();
+        assert!(
+            matches!(r, Ok(c) if c == ExitCode::SUCCESS),
+            "real bins pass"
+        );
+    }
+
+    #[test]
+    fn verify_build_artifacts_reds_on_zero_byte() {
+        let dir = std::env::temp_dir().join(format!("cev-zero-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let a = write_exec(&dir, "claim_executor", b"ok");
+        let b = write_exec(&dir, "gunbc", b""); // sccache served a truncated/empty cached artifact
+        let r = verify_build_artifacts(&[a, b]);
+        std::fs::remove_dir_all(&dir).ok();
+        assert!(
+            matches!(r, Err(c) if c == ExitCode::from(1)),
+            "zero-byte artifact fails closed"
+        );
+    }
+
+    #[test]
+    fn verify_build_artifacts_reds_on_missing() {
+        let missing = std::env::temp_dir()
+            .join(format!("cev-missing-{}/gunbc", std::process::id()))
+            .to_string_lossy()
+            .into_owned();
+        let r = verify_build_artifacts(&[missing]);
+        assert!(
+            matches!(r, Err(c) if c == ExitCode::from(1)),
+            "absent artifact fails closed"
+        );
+    }
+
+    #[test]
+    fn verify_build_artifacts_reds_on_empty_arglist() {
+        let r = verify_build_artifacts(&[]);
+        assert!(
+            matches!(r, Err(c) if c == ExitCode::from(2)),
+            "no declared artifacts is a usage error, fail closed"
+        );
     }
 }

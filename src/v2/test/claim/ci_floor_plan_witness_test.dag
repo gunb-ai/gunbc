@@ -5,15 +5,22 @@ import std.realization {
 }
 import v2.workflow.ci_floor_plan {
   gunbc_ci_floor_batches, corpus_runnable,
+  gunbc_ci_floor_schedule_without_serialization,
   gunbc_ci_floor_plan_serializes_heavy_resolves,
   gunbc_ci_floor_plan_co_runs_heavy_without_serialization,
+  floor_expected_readiness_layers,
   witness_floor_tight_budget_backs_off_envelope,
   witness_floor_fail_open_would_exceed_budget,
   witness_floor_unreadable_budget_uses_conservative_envelope,
   witness_floor_width_governed_by_budget_tree,
   witness_floor_width_derived_from_tree_is_positive,
+  witness_floor_spawn_width_tight_budget_backs_off,
+  witness_floor_spawn_width_zero_budget_falls_back,
+  witness_floor_derived_width_at_runner_cap,
+  witness_floor_derived_width_leaves_headroom_at_cap,
 }
 import gunbc.ci_layer_roots { witness_discovery_scan_dirs, witness_layer_roots }
+import gunbc.ci_spec { gunbc_ci_spec }
 import v2.std.algebra { length, list_snoc_item }
 import v2.std.collection { List }
 
@@ -34,8 +41,8 @@ fn list_contains_str(xs: List<String>, target: String) -> Bool {
   fold(xs, init: false, f: fn(acc, x) { acc || (x == target) })
 }
 
-fn witness_three_readiness_layers() -> Bool {
-  gunbc_ci_floor_batches().length() == 3
+fn witness_readiness_layers_match_heavy_chain() -> Bool {
+  gunbc_ci_floor_batches().length() == floor_expected_readiness_layers(spec: gunbc_ci_spec)
 }
 
 fn witness_compile_root_runs_first() -> Bool {
@@ -102,8 +109,26 @@ fn witness_plan_serializes_heavy_resolves() -> Bool {
     gunbc_ci_floor_plan_co_runs_heavy_without_serialization()
 }
 
+fn batch_has_both_emit_and_corpus(b: List<Runnable>) -> Bool {
+  let fns = batch_functions(b: b)
+  list_contains_str(xs: fns, target: "emit_host_gate_passes") &&
+    list_contains_str(xs: fns, target: corpus_sentinel)
+}
+
+fn witness_emit_host_isolated_from_corpus() -> Bool {
+  fold(gunbc_ci_floor_batches(), init: true, f: fn(ok, b) {
+    ok && !batch_has_both_emit_and_corpus(b: b)
+  })
+}
+
+fn witness_emit_host_co_runs_corpus_without_serialization() -> Bool {
+  fold(gunbc_ci_floor_schedule_without_serialization(), init: false, f: fn(found, b) {
+    found || batch_has_both_emit_and_corpus(b: b)
+  })
+}
+
 test fn ci_floor_plan_witnesses() -> Bool {
-  witness_three_readiness_layers() &&
+  witness_readiness_layers_match_heavy_chain() &&
     witness_compile_root_runs_first() &&
     witness_corpus_not_before_compile() &&
     witness_independent_jobs_parallelize() &&
@@ -112,7 +137,9 @@ test fn ci_floor_plan_witnesses() -> Bool {
     witness_corpus_has_no_explicit_entries() &&
     witness_corpus_skip_node_frontier_enabled() &&
     witness_source_ingest_serialized_after_corpus() &&
-    witness_plan_serializes_heavy_resolves()
+    witness_plan_serializes_heavy_resolves() &&
+    witness_emit_host_isolated_from_corpus() &&
+    witness_emit_host_co_runs_corpus_without_serialization()
 }
 
 test fn ci_floor_run_envelope_witnesses() -> Bool {
@@ -124,4 +151,14 @@ test fn ci_floor_run_envelope_witnesses() -> Bool {
 test fn ci_floor_spawn_width_from_budget_tree_witnesses() -> Bool {
   witness_floor_width_governed_by_budget_tree() &&
     witness_floor_width_derived_from_tree_is_positive()
+}
+
+test fn ci_floor_spawn_width_live_budget_witnesses() -> Bool {
+  witness_floor_spawn_width_tight_budget_backs_off() &&
+    witness_floor_spawn_width_zero_budget_falls_back()
+}
+
+test fn ci_floor_honest_width_fold_witnesses() -> Bool {
+  witness_floor_derived_width_at_runner_cap() &&
+    witness_floor_derived_width_leaves_headroom_at_cap()
 }

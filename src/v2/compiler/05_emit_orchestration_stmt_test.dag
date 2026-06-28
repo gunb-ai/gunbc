@@ -1,0 +1,357 @@
+module v2.compiler.emit_orchestration_stmt_test
+
+import v2.compiler.emit_shell { emit_shell_stmt, emit_shell_program }
+import extdeps.languages.bash.program {
+  ShellStmt,
+  Command,
+  Subshell,
+  Exit,
+  RawLine,
+  Assign,
+  If,
+  AndOr,
+  Pipe,
+  EnvPrefixed,
+  WithRedir,
+  Heredoc,
+  AndThen,
+  OrElse,
+  StderrToNull,
+  StdoutAndStderrToNull,
+  StdoutToStderr,
+  RedirToFile,
+  Negation,
+  ShellProgram,
+  ShellWord,
+  Lit,
+  VarRef,
+  Concat,
+  CmdSubst,
+  serialize_stmt,
+  serialize_bash
+}
+import v2.std.diagnostic { Accepted, None, Rejected }
+
+fn stmt_emits_oracle(s: ShellStmt) -> Bool {
+  match emit_shell_stmt(s: s) {
+    Accepted { value: src, diagnostics: dg } =>
+      (src.carried == serialize_stmt(s: s)) && (dg == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn stmt_differs_from_oracle_of(s: ShellStmt, other: ShellStmt) -> Bool {
+  match emit_shell_stmt(s: s) {
+    Accepted { value: src, diagnostics: _ } => src.carried != serialize_stmt(s: other)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn cmd_echo_hi() -> ShellStmt {
+  Command { words: [Lit { text: "echo" }, Lit { text: "hi" }] }
+}
+
+fn cmd_true() -> ShellStmt {
+  Command { words: [Lit { text: "true" }] }
+}
+
+test fn stmt_command_byte_identical_holds() -> Bool {
+  stmt_emits_oracle(s: cmd_echo_hi())
+}
+
+test fn stmt_command_has_teeth_holds() -> Bool {
+  stmt_differs_from_oracle_of(s: cmd_echo_hi(), other: Command { words: [Lit { text: "echo" }, Lit { text: "bye" }] })
+}
+
+test fn stmt_exit_byte_identical_holds() -> Bool {
+  stmt_emits_oracle(s: Exit { code: 0 })
+}
+
+test fn stmt_exit_has_teeth_holds() -> Bool {
+  stmt_differs_from_oracle_of(s: Exit { code: 0 }, other: Exit { code: 1 })
+}
+
+test fn stmt_rawline_byte_identical_holds() -> Bool {
+  stmt_emits_oracle(s: RawLine { text: "! ( foo )" })
+}
+
+test fn stmt_subshell_of_command_byte_identical_holds() -> Bool {
+  stmt_emits_oracle(s: Subshell { body: [cmd_true()] })
+}
+
+test fn stmt_subshell_of_command_has_teeth_holds() -> Bool {
+  stmt_differs_from_oracle_of(s: Subshell { body: [cmd_true()] }, other: Subshell { body: [cmd_echo_hi()] })
+}
+
+test fn stmt_subshell_of_subshell_byte_identical_holds() -> Bool {
+  stmt_emits_oracle(s: Subshell { body: [Subshell { body: [cmd_true()] }] })
+}
+
+fn assign_root() -> ShellStmt {
+  Assign { name: "ROOT", value: VarRef { name: "PWD" } }
+}
+
+test fn stmt_assign_byte_identical_holds() -> Bool {
+  stmt_emits_oracle(s: assign_root())
+}
+
+test fn stmt_assign_has_teeth_holds() -> Bool {
+  stmt_differs_from_oracle_of(s: assign_root(), other: Assign { name: "ROOT", value: Lit { text: "x" } })
+}
+
+fn if_true_echo() -> ShellStmt {
+  If { cond: cmd_true(), then: [cmd_echo_hi()] }
+}
+
+test fn stmt_if_byte_identical_holds() -> Bool {
+  stmt_emits_oracle(s: if_true_echo())
+}
+
+test fn stmt_if_has_teeth_holds() -> Bool {
+  stmt_differs_from_oracle_of(s: if_true_echo(), other: If { cond: cmd_true(), then: [cmd_true()] })
+}
+
+fn andor_t_e() -> ShellStmt {
+  AndOr { left: cmd_true(), op: AndThen, right: cmd_echo_hi() }
+}
+
+test fn stmt_andor_byte_identical_holds() -> Bool {
+  stmt_emits_oracle(s: andor_t_e())
+}
+
+test fn stmt_andor_op_has_teeth_holds() -> Bool {
+  stmt_differs_from_oracle_of(s: andor_t_e(), other: AndOr { left: cmd_true(), op: OrElse, right: cmd_echo_hi() })
+}
+
+fn pipe_t_e() -> ShellStmt {
+  Pipe { left: cmd_true(), right: cmd_echo_hi() }
+}
+
+test fn stmt_pipe_byte_identical_holds() -> Bool {
+  stmt_emits_oracle(s: pipe_t_e())
+}
+
+test fn stmt_pipe_has_teeth_holds() -> Bool {
+  stmt_differs_from_oracle_of(s: pipe_t_e(), other: Pipe { left: cmd_echo_hi(), right: cmd_true() })
+}
+
+fn withredir_t() -> ShellStmt {
+  WithRedir { stmt: cmd_true(), redir: StderrToNull }
+}
+
+test fn stmt_with_redir_byte_identical_holds() -> Bool {
+  stmt_emits_oracle(s: withredir_t())
+}
+
+test fn stmt_with_redir_has_teeth_holds() -> Bool {
+  stmt_differs_from_oracle_of(s: withredir_t(), other: cmd_true())
+}
+
+fn envp_t() -> ShellStmt {
+  EnvPrefixed { name: "TMPDIR", value: Lit { text: "/t" }, command: cmd_true() }
+}
+
+test fn stmt_env_prefixed_byte_identical_holds() -> Bool {
+  stmt_emits_oracle(s: envp_t())
+}
+
+test fn stmt_env_prefixed_has_teeth_holds() -> Bool {
+  stmt_differs_from_oracle_of(s: envp_t(), other: EnvPrefixed { name: "TMPDIR", value: Lit { text: "/x" }, command: cmd_true() })
+}
+
+fn heredoc_t() -> ShellStmt {
+  Heredoc { path: Lit { text: "out" }, delimiter: "EOF", body: "hello" }
+}
+
+test fn stmt_heredoc_byte_identical_holds() -> Bool {
+  stmt_emits_oracle(s: heredoc_t())
+}
+
+test fn stmt_heredoc_has_teeth_holds() -> Bool {
+  stmt_differs_from_oracle_of(s: heredoc_t(), other: Heredoc { path: Lit { text: "out" }, delimiter: "EOF", body: "world" })
+}
+
+fn program_emits_oracle(p: ShellProgram) -> Bool {
+  match emit_shell_program(p: p) {
+    Accepted { value: src, diagnostics: dg } =>
+      (src.carried == serialize_bash(p: p)) && (dg == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn program_differs_from_oracle_of(p: ShellProgram, other: ShellProgram) -> Bool {
+  match emit_shell_program(p: p) {
+    Accepted { value: src, diagnostics: _ } => src.carried != serialize_bash(p: other)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn prog_plain() -> ShellProgram {
+  ShellProgram { set_e: false, statements: [cmd_true(), cmd_echo_hi()] }
+}
+
+fn prog_set_e() -> ShellProgram {
+  ShellProgram { set_e: true, statements: [cmd_true(), cmd_echo_hi()] }
+}
+
+test fn program_plain_byte_identical_holds() -> Bool {
+  program_emits_oracle(p: prog_plain())
+}
+
+test fn program_set_e_byte_identical_holds() -> Bool {
+  program_emits_oracle(p: prog_set_e())
+}
+
+test fn program_set_e_has_teeth_holds() -> Bool {
+  program_differs_from_oracle_of(p: prog_set_e(), other: prog_plain())
+}
+fn prog_multi_orch_raw() -> ShellProgram {
+  ShellProgram {
+    set_e: true,
+    statements: [
+      Assign {
+        name: "PROBE_BIN",
+        value: Concat { parts: [VarRef { name: "TMPDIR" }, Lit { text: "/probe_bin" }] }
+      },
+      Assign {
+        name: "TMPDIR",
+        value: CmdSubst { body: Command { words: [Lit { text: "mktemp" }, Lit { text: "-d" }] } }
+      },
+      cmd_true()
+    ]
+  }
+}
+
+test fn program_multi_orch_raw_byte_identical_holds() -> Bool {
+  program_emits_oracle(p: prog_multi_orch_raw())
+}
+
+test fn program_multi_orch_raw_has_teeth_holds() -> Bool {
+  program_differs_from_oracle_of(p: prog_multi_orch_raw(), other: prog_set_e())
+}
+
+fn stmt_emits_literal(s: ShellStmt, expected: String) -> Bool {
+  match emit_shell_stmt(s: s) {
+    Accepted { value: src, diagnostics: dg } => (src.carried == expected) && (dg == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn stmt_emit_carried(s: ShellStmt) -> String {
+  match emit_shell_stmt(s: s) {
+    Accepted { value: src, diagnostics: _ } => src.carried
+    Rejected { diagnostics: _ } => ""
+  }
+}
+
+fn redir_to_probe() -> ShellStmt {
+  WithRedir { stmt: Command { words: [Lit { text: "true" }] }, redir: RedirToFile { path: VarRef { name: "PROBE_BIN" } } }
+}
+
+test fn stmt_redir_to_file_matches_real_fragment_holds() -> Bool {
+  stmt_emits_literal(s: redir_to_probe(), expected: "'true' > \"$PROBE_BIN\"")
+}
+
+test fn stmt_redir_to_file_has_teeth_holds() -> Bool {
+  stmt_emit_carried(s: redir_to_probe()) !=
+    stmt_emit_carried(s: WithRedir { stmt: Command { words: [Lit { text: "true" }] }, redir: RedirToFile { path: VarRef { name: "OTHER" } } })
+}
+
+fn negation_of_subshell() -> ShellStmt {
+  Negation { stmt: Subshell { body: [Command { words: [Lit { text: "false" }] }] } }
+}
+
+test fn stmt_negation_matches_real_prefix_holds() -> Bool {
+  stmt_emits_literal(s: negation_of_subshell(), expected: "! ('false')")
+}
+
+test fn stmt_negation_has_teeth_holds() -> Bool {
+  stmt_emit_carried(s: negation_of_subshell()) !=
+    stmt_emit_carried(s: Subshell { body: [Command { words: [Lit { text: "false" }] }] })
+}
+
+test fn loc_assign_cmdsubst_oracle_holds() -> Bool {
+  stmt_emits_oracle(s: Assign { name: "TMPDIR", value: CmdSubst { body: Command { words: [Lit { text: "mktemp" }, Lit { text: "-d" }] } } })
+}
+
+test fn loc_assign_concat_oracle_holds() -> Bool {
+  stmt_emits_oracle(s: Assign { name: "PROBE_BIN", value: Concat { parts: [VarRef { name: "TMPDIR" }, Lit { text: "/probe_bin" }] } })
+}
+
+test fn loc_negation_subshell_rawline_oracle_holds() -> Bool {
+  stmt_emits_oracle(s: Negation { stmt: Subshell { body: [RawLine { text: "do_verify\nmore" }] } })
+}
+
+test fn loc_withredir_redirtofile_oracle_holds() -> Bool {
+  stmt_emits_oracle(s: WithRedir { stmt: Command { words: [Lit { text: "printf" }, Lit { text: "x" }] }, redir: RedirToFile { path: VarRef { name: "PROBE_BIN" } } })
+}
+
+test fn loc_raw_eq_holds() -> Bool {
+  stmt_emits_oracle(s: RawLine { text: "x=y" })
+}
+
+test fn loc_raw_cmdsubst_holds() -> Bool {
+  stmt_emits_oracle(s: RawLine { text: "$(a)" })
+}
+
+test fn loc_raw_paren_holds() -> Bool {
+  stmt_emits_oracle(s: RawLine { text: "a)b" })
+}
+
+test fn loc_raw_squote_holds() -> Bool {
+  stmt_emits_oracle(s: RawLine { text: "'q'" })
+}
+
+test fn loc_raw_full_assign_holds() -> Bool {
+  stmt_emits_oracle(s: RawLine { text: "TMPDIR=$('mktemp' '-d')" })
+}
+
+test fn loc_raw_trailing_nl_holds() -> Bool {
+  stmt_emits_oracle(s: RawLine { text: "ab\n" })
+}
+
+test fn loc_andor_withredir_oracle_holds() -> Bool {
+  stmt_emits_oracle(s: AndOr {
+    left: WithRedir { stmt: Command { words: [Lit { text: "printf" }, Lit { text: "x" }] }, redir: RedirToFile { path: VarRef { name: "PROBE_BIN" } } },
+    op: AndThen,
+    right: Command { words: [Lit { text: "chmod" }, Lit { text: "+x" }, VarRef { name: "PROBE_BIN" }] }
+  })
+}
+
+test fn stmt_exit_code_unquoted_matches_real_holds() -> Bool {
+  stmt_emits_literal(s: Exit { code: 1 }, expected: "exit 1")
+}
+
+test fn stmt_exit_code_not_quoted_has_teeth_holds() -> Bool {
+  stmt_emit_carried(s: Exit { code: 1 }) != "exit '1'"
+}
+
+fn withredir_stdout_and_stderr_null() -> ShellStmt {
+  WithRedir { stmt: cmd_true(), redir: StdoutAndStderrToNull }
+}
+
+test fn redir_stdout_and_stderr_null_byte_identical_holds() -> Bool {
+  stmt_emits_oracle(s: withredir_stdout_and_stderr_null())
+}
+
+test fn redir_stdout_and_stderr_null_has_teeth_holds() -> Bool {
+  stmt_emit_carried(s: withredir_stdout_and_stderr_null()) !=
+    stmt_emit_carried(s: WithRedir { stmt: cmd_true(), redir: StderrToNull })
+}
+
+fn withredir_stdout_to_stderr() -> ShellStmt {
+  WithRedir { stmt: cmd_true(), redir: StdoutToStderr }
+}
+
+test fn redir_stdout_to_stderr_byte_identical_holds() -> Bool {
+  stmt_emits_oracle(s: withredir_stdout_to_stderr())
+}
+
+test fn redir_stdout_to_stderr_literal_holds() -> Bool {
+  stmt_emits_literal(s: withredir_stdout_to_stderr(), expected: "'true' >&2")
+}
+
+test fn redir_stdout_to_stderr_has_teeth_holds() -> Bool {
+  stmt_emit_carried(s: withredir_stdout_to_stderr()) !=
+    stmt_emit_carried(s: WithRedir { stmt: cmd_true(), redir: StderrToNull })
+}

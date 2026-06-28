@@ -2,9 +2,12 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use crate::v1_compiler_infer_items::ItemKind;
-use crate::v1_interpreter::{InterpContext, InterpError, InterpResult, Value};
+use crate::v1_interpreter::{
+    fields_get, sorted_fields, InterpContext, InterpError, InterpResult, Value,
+};
 use crate::v1_std_core::{
-    authored_name_at, field_node_type_expr, inferred_to_node, Connective, Node,
+    authored_name_at, expr_var_name_at, field_node_type_expr, inferred_to_node, param_node_name_at,
+    Connective, ExprData, NewlineIndex, Node, VarBindingKind,
 };
 
 pub(crate) const NULLARY_PAYLOAD_TYPE_NAME: &str = "coproduct_nullary_payload";
@@ -93,7 +96,7 @@ fn nullary_connective_variant(ctx: &InterpContext, name: &str) -> Value {
     Value::Variant {
         type_name: ctx.sym("Connective"),
         variant_name: ctx.sym(name),
-        fields: Rc::new(HashMap::new()),
+        fields: Rc::new(vec![]),
     }
 }
 
@@ -101,10 +104,10 @@ fn atom_connective_variant(ctx: &InterpContext, identity: &str) -> Value {
     Value::Variant {
         type_name: ctx.sym("Connective"),
         variant_name: ctx.sym("Atom"),
-        fields: Rc::new(HashMap::from([(
+        fields: Rc::new(vec![(
             ctx.sym("identity"),
             Value::Str(identity.to_string()),
-        )])),
+        )]),
     }
 }
 
@@ -112,7 +115,7 @@ fn node_kind_type_node(ctx: &InterpContext, connective: Value) -> Value {
     Value::Variant {
         type_name: ctx.sym("NodeKind"),
         variant_name: ctx.sym("TypeNode"),
-        fields: Rc::new(HashMap::from([(ctx.sym("connective"), connective)])),
+        fields: Rc::new(vec![(ctx.sym("connective"), connective)]),
     }
 }
 
@@ -120,14 +123,14 @@ fn synthetic_occurrence(ctx: &InterpContext) -> Value {
     Value::Variant {
         type_name: ctx.sym("NodeOccurrenceId"),
         variant_name: ctx.sym("SyntheticOccurrence"),
-        fields: Rc::new(HashMap::new()),
+        fields: Rc::new(vec![]),
     }
 }
 
 fn node_record(ctx: &InterpContext, kind: Value, children: Vec<Value>) -> Value {
     Value::Record {
         type_name: ctx.sym("Node"),
-        fields: Rc::new(HashMap::from([
+        fields: Rc::new(sorted_fields(vec![
             (ctx.sym("kind"), kind),
             (
                 ctx.sym("children"),
@@ -141,16 +144,13 @@ fn node_record(ctx: &InterpContext, kind: Value, children: Vec<Value>) -> Value 
 fn edge_named(ctx: &InterpContext, name: &str, target: Value) -> Value {
     Value::Record {
         type_name: ctx.sym("Edge"),
-        fields: Rc::new(HashMap::from([
+        fields: Rc::new(sorted_fields(vec![
             (
                 ctx.sym("label"),
                 Value::Variant {
                     type_name: ctx.sym("EdgeLabel"),
                     variant_name: ctx.sym("Named"),
-                    fields: Rc::new(HashMap::from([(
-                        ctx.sym("name"),
-                        Value::Str(name.to_string()),
-                    )])),
+                    fields: Rc::new(vec![(ctx.sym("name"), Value::Str(name.to_string()))]),
                 },
             ),
             (ctx.sym("target"), target),
@@ -481,10 +481,333 @@ pub fn eval_concept_decl_facts_live(
             let node = concept_decl_node(ctx, item)?;
             rows.push(Value::Record {
                 type_name: ctx.sym("ConceptDecl"),
-                fields: Rc::new(HashMap::from([
+                fields: Rc::new(sorted_fields(vec![
                     (ctx.sym("qualified_name"), Value::Str(qualified_name)),
                     (ctx.sym("name"), Value::Str(name.clone())),
                     (ctx.sym("node"), node),
+                ])),
+            });
+        }
+    }
+    Ok(crate::v1_interpreter::list_value(rows))
+}
+
+fn edge_positional(ctx: &InterpContext, target: Value) -> Value {
+    Value::Record {
+        type_name: ctx.sym("Edge"),
+        fields: Rc::new(sorted_fields(vec![
+            (
+                ctx.sym("label"),
+                Value::Variant {
+                    type_name: ctx.sym("EdgeLabel"),
+                    variant_name: ctx.sym("Positional"),
+                    fields: Rc::new(vec![]),
+                },
+            ),
+            (ctx.sym("target"), target),
+        ])),
+    }
+}
+
+fn atom_identity_node(ctx: &InterpContext, identity: &str) -> Value {
+    node_record(
+        ctx,
+        node_kind_type_node(ctx, atom_connective_variant(ctx, identity)),
+        vec![],
+    )
+}
+
+fn node_authored_name(node: &Rc<Node>, si: &Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
+    if !node.name.is_empty() {
+        node.name.clone()
+    } else {
+        expr_var_name_at(node.clone(), si.clone())
+    }
+}
+
+// Does this node REFERENCE a declared parameter `name`? Two body forms reference a value
+// parameter: an `ExprVar` value read (`x`) -- resolved to a `LocalValueBinding`, so a
+// `FunctionValueBinding` global or `VariantValueBinding` constructor sharing the name is
+// excluded; and an `ExprCall` whose callee IS the parameter (a fn-valued param applied:
+// `predicate(x)`) -- the callee is the call node's own name, not a child, so it is invisible
+// to a children-only walk. Both are genuine uses of a value parameter.
+fn node_references_param(node: &Rc<Node>, name: &str, param_names: &[String]) -> bool {
+    if name.is_empty() || !param_names.iter().any(|p| p.as_str() == name) {
+        return false;
+    }
+    match node.expr_data.as_ref() {
+        ExprData::ExprVar {
+            binding_kind: Some(bk),
+        } => {
+            matches!(bk.as_ref(), VarBindingKind::LocalValueBinding)
+        }
+        ExprData::ExprCall { .. } => true,
+        _ => false,
+    }
+}
+
+// Does this node REFERENCE some local binding (param OR let/lambda-local), by name? This is
+// the PERMISSIVE companion of `node_references_param`: it captures every value read
+// (`ExprVar`, any binding kind) and call-callee name, used ONLY to thread the data-flow
+// reference set that decides let-liveness (below). It is deliberately over-inclusive --
+// counting a name that is actually a global as "referenced" can only keep a `let` LIVE
+// (graft its RHS), so it can never manufacture a false dead-wire RED; it merely forgoes a
+// dead-wire it cannot prove. Atom EMISSION stays on the strict `node_references_param`
+// (LocalValueBinding-only), so the reachability query itself is unchanged.
+fn node_local_reference_name(node: &Rc<Node>, name: &str) -> Option<String> {
+    if name.is_empty() {
+        return None;
+    }
+    match node.expr_data.as_ref() {
+        ExprData::ExprVar { .. } | ExprData::ExprCall { .. } => Some(name.to_string()),
+        _ => None,
+    }
+}
+
+// The lambda's own parameters (children[1..]; child 0 is the body) are bound WITHIN it, so a
+// reference to one of them is not a free reference of the enclosing scope -- subtract them
+// from a lambda subtree's reference set so a `let` named like a lambda param is not kept
+// spuriously live by the lambda's shadowing use.
+fn lambda_param_names_of(
+    node: &Rc<Node>,
+    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Vec<String> {
+    node.children
+        .iter()
+        .skip(1)
+        .map(|c| authored_name_at(si.clone(), c.clone()))
+        .filter(|s| !s.is_empty())
+        .collect()
+}
+
+// Project a fn body's internal expression tree onto a substrate Node skeleton AND return the
+// set of local names the projected skeleton actually references. Each node becomes a neutral
+// `Conj` container whose positional children are the marshaled sub-expressions, and a node
+// that references a declared parameter additionally carries an identity-bearing `Atom` leaf
+// -- byte-identical to the declared-input atom `eval_fn_arrow_decl_facts_live` emits, so
+// `v2.lens.wiring_liveness` matches it under Node equality. Identity lives ONLY on genuine
+// parameter-reference sites, so a declared parameter is structurally reachable from the body
+// output iff it is genuinely used.
+//
+// DATA-FLOW DIRECTED AT THE RETURN (closes the wiring_liveness construction_justification
+// HONEST BOUNDARY (2)): statement sequences (blocks, and the let-continuation chain) are
+// projected so a `let b = rhs` grafts `rhs`'s skeleton ONLY when `b` is referenced
+// downstream of the binding in code that itself reaches the return -- the reverse-fold over
+// statements in `marshal_stmt_sequence` carries the live reference set toward the binding.
+// A param referenced ONLY inside a DEAD let RHS (its bound name never reaches the return,
+// possibly transitively through a chain of dead lets) is therefore absent from the grafted
+// skeleton and correctly flagged as a dead wire. (Residue: a `let`/lambda local, or a global
+// fn called as `name(..)`, that shadows a parameter name; see the lens
+// construction_justification boundary (3).)
+fn marshal_fn_body_skeleton(
+    ctx: &InterpContext,
+    node: &Rc<Node>,
+    param_names: &[String],
+    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Value {
+    marshal_skeleton(ctx, node, param_names, si).0
+}
+
+fn conj_record(ctx: &InterpContext, edges: Vec<Value>) -> Value {
+    node_record(
+        ctx,
+        node_kind_type_node(ctx, nullary_connective_variant(ctx, "Conj")),
+        edges,
+    )
+}
+
+fn marshal_skeleton(
+    ctx: &InterpContext,
+    node: &Rc<Node>,
+    param_names: &[String],
+    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> (Value, std::collections::BTreeSet<String>) {
+    match node.expr_data.as_ref() {
+        ExprData::ExprBlock => marshal_stmt_sequence(ctx, &node.children, param_names, si),
+        ExprData::ExprLet => {
+            marshal_stmt_sequence(ctx, std::slice::from_ref(node), param_names, si)
+        }
+        _ => marshal_generic(ctx, node, param_names, si),
+    }
+}
+
+fn marshal_generic(
+    ctx: &InterpContext,
+    node: &Rc<Node>,
+    param_names: &[String],
+    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> (Value, std::collections::BTreeSet<String>) {
+    let name = node_authored_name(node, si);
+    let mut edges: Vec<Value> = Vec::with_capacity(node.children.len() + 1);
+    let mut refs: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    if node_references_param(node, &name, param_names) {
+        edges.push(edge_positional(ctx, atom_identity_node(ctx, &name)));
+    }
+    if let Some(ref_name) = node_local_reference_name(node, &name) {
+        refs.insert(ref_name);
+    }
+    for child in node.children.iter() {
+        let (child_skel, child_refs) = marshal_skeleton(ctx, child, param_names, si);
+        edges.push(edge_positional(ctx, child_skel));
+        refs.extend(child_refs);
+    }
+    if let Some(inner) = node.body.as_ref() {
+        let (inner_skel, inner_refs) = marshal_skeleton(ctx, inner, param_names, si);
+        edges.push(edge_positional(ctx, inner_skel));
+        refs.extend(inner_refs);
+    }
+    if matches!(node.expr_data.as_ref(), ExprData::ExprLambda) {
+        for pname in lambda_param_names_of(node, si) {
+            refs.remove(&pname);
+        }
+    }
+    (conj_record(ctx, edges), refs)
+}
+
+// A statement sequence -- a block's children, or a single standalone `let` (whose optional
+// children[1] is its continuation) -- folded RIGHT-TO-LEFT so the live reference set flows
+// from the return (the last statement) back toward each binding. A `let b = rhs` grafts
+// `rhs` iff `b` is in the live set accumulated from the statements that follow it (the
+// downstream that reaches the return); a dead `let` drops its `rhs`, and because its bound
+// name's references are dropped with it, deadness propagates transitively to earlier lets
+// that fed only the dead one. A terminal `let` with no continuation is the result position,
+// so its value is always grafted (never a false RED on a degenerate body).
+fn marshal_stmt_sequence(
+    ctx: &InterpContext,
+    stmts: &[Rc<Node>],
+    param_names: &[String],
+    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> (Value, std::collections::BTreeSet<String>) {
+    let mut edges: Vec<Value> = Vec::new();
+    let mut live_refs: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    for (rev_idx, stmt) in stmts.iter().rev().enumerate() {
+        let is_terminal = rev_idx == 0;
+        match stmt.expr_data.as_ref() {
+            ExprData::ExprLet => {
+                let bound = node_authored_name(stmt, si);
+                let cont = stmt.children.get(1);
+                if let Some(c) = cont {
+                    let (cont_skel, cont_refs) = marshal_skeleton(ctx, c, param_names, si);
+                    edges.push(edge_positional(ctx, cont_skel));
+                    live_refs.extend(cont_refs);
+                }
+                let bound_is_live = !bound.is_empty() && live_refs.contains(&bound);
+                // A `_`-prefixed binding (`let _width = width`) is the established declared-inert
+                // convention (boundary (4)) applied to a local: the author DELIBERATELY consumes
+                // and discards the RHS, so it is a sink, not an accidental dead wire. Graft it so
+                // a param flowing only into a `_`-sink stays GREEN, while a normally-named dead
+                // `let` (accidental) still drops its RHS and flags its sole-feeding param. A
+                // terminal `let` with no continuation is the result position, always grafted.
+                let force_live = (is_terminal && cont.is_none()) || bound.starts_with('_');
+                if bound_is_live || force_live {
+                    if let Some(value) = stmt.children.first() {
+                        let (value_skel, value_refs) =
+                            marshal_skeleton(ctx, value, param_names, si);
+                        edges.push(edge_positional(ctx, value_skel));
+                        live_refs.extend(value_refs);
+                    }
+                }
+                if !bound.is_empty() {
+                    live_refs.remove(&bound);
+                }
+            }
+            _ => {
+                let (stmt_skel, stmt_refs) = marshal_skeleton(ctx, stmt, param_names, si);
+                edges.push(edge_positional(ctx, stmt_skel));
+                live_refs.extend(stmt_refs);
+            }
+        }
+    }
+    (conj_record(ctx, edges), live_refs)
+}
+
+// A generic type parameter (`<T>`) and a value parameter (`(xs: List<T>)`) both land in the
+// runtime item's `params` (parser: `all_params = concat(type_params, value_params)`). They
+// are NOT value inputs and never appear as body value-expressions, so they must be excluded
+// from the wiring check. A type parameter is built as `make_param_node(name,
+// leaf_type_node(name), ..)` -- its sole type-expr child is a leaf named after the parameter
+// itself (`T : T`) -- whereas a value parameter's type-expr names a different type
+// (`xs : List`). So: a parameter is a type parameter iff its first child's authored name
+// equals its own.
+fn param_is_type_param(p: &Rc<Node>, si: &Rc<HashMap<String, Rc<NewlineIndex>>>) -> bool {
+    let pname = authored_name_at(si.clone(), p.clone());
+    if pname.is_empty() {
+        return false;
+    }
+    match p.children.first() {
+        Some(child0) => authored_name_at(si.clone(), child0.clone()) == pname,
+        None => false,
+    }
+}
+
+fn fn_arrow_param_record(ctx: &InterpContext, param_name: &str) -> Value {
+    Value::Record {
+        type_name: ctx.sym("FnArrowParam"),
+        fields: Rc::new(sorted_fields(vec![
+            (ctx.sym("name"), Value::Str(param_name.to_string())),
+            (ctx.sym("node"), atom_identity_node(ctx, param_name)),
+        ])),
+    }
+}
+
+// Corpus-wide fn/arrow reflection: the gunbc#5364 widen trigger named in
+// `v2.lens.wiring_liveness`'s construction_justification. Sibling of
+// `eval_concept_decl_facts_live` (which filters to `ItemKind::TypeItem`); this yields
+// one `FnArrowDecl` per declared function across every loaded module -- the body
+// projected to a reachability skeleton (`output`) plus its declared parameter atoms
+// (`params`) -- so the wiring lens folds over REAL fn params corpus-wide, not synthetic
+// arrows. Host SOURCE half; dissolves with `concept_decl_facts_live` on the same #5364
+// corpus-as-node accessor.
+pub fn eval_fn_arrow_decl_facts_live(
+    ctx: &InterpContext,
+    _args: &[(Option<String>, Value)],
+) -> InterpResult<Value> {
+    let si = ctx.source_indices();
+    let mut rows: Vec<Value> = Vec::new();
+    for module in ctx.modules.iter() {
+        for item in module.items.iter() {
+            let name = authored_name_at(si.clone(), item.clone());
+            if name.is_empty() {
+                continue;
+            }
+            let info = module
+                .item_registry
+                .get(&name)
+                .or_else(|| module.item_registry.get(&item.name));
+            let Some(info) = info else { continue };
+            if info.kind != ItemKind::FnItem && info.kind != ItemKind::FuncItem {
+                continue;
+            }
+            let Some(body) = item.body.as_ref() else {
+                continue;
+            };
+            let mut param_names: Vec<String> = Vec::new();
+            for p in item.params.iter() {
+                if param_is_type_param(p, &si) {
+                    continue;
+                }
+                let pn = param_node_name_at(p.clone(), si.clone());
+                // A `_`-prefixed name is the established declared-inert convention (e.g.
+                // node.dag `step: fn(acc, _edge, sub)`): the author has declared the input
+                // genuinely irrelevant, so it is not a dead wire (plan section 4). Skip it.
+                if pn.is_empty() || pn.starts_with('_') || param_names.iter().any(|q| q == &pn) {
+                    continue;
+                }
+                param_names.push(pn);
+            }
+            let output = marshal_fn_body_skeleton(ctx, body, &param_names, &si);
+            let params: Vec<Value> = param_names
+                .iter()
+                .map(|pn| fn_arrow_param_record(ctx, pn))
+                .collect();
+            let qualified_name = logical_qualified_name(&info.module_name, &name);
+            rows.push(Value::Record {
+                type_name: ctx.sym("FnArrowDecl"),
+                fields: Rc::new(sorted_fields(vec![
+                    (ctx.sym("qualified_name"), Value::Str(qualified_name)),
+                    (ctx.sym("name"), Value::Str(name.clone())),
+                    (ctx.sym("output"), output),
+                    (ctx.sym("params"), crate::v1_interpreter::list_value(params)),
                 ])),
             });
         }
@@ -520,7 +843,7 @@ pub fn eval_syntactic_coproduct_arm_pairs(
         .iter()
         .map(|pair| Value::Record {
             type_name: ctx.sym("CoproductArmPayloadPair"),
-            fields: Rc::new(HashMap::from([
+            fields: Rc::new(sorted_fields(vec![
                 (ctx.sym("label"), Value::Str(pair.label.clone())),
                 (
                     ctx.sym("payload_type_name"),
@@ -541,9 +864,8 @@ pub fn arm_payload_pairs_from_marshaled_node(
             msg: "expected Node record".to_string(),
         });
     };
-    let children = fields
-        .get(&ctx.sym("children"))
-        .ok_or_else(|| InterpError::TypeError {
+    let children =
+        fields_get(fields, ctx.sym("children")).ok_or_else(|| InterpError::TypeError {
             msg: "Node missing children".to_string(),
         })?;
     let edges = crate::v1_interpreter::free_monoid_to_vec(children).ok_or_else(|| {
@@ -558,16 +880,12 @@ pub fn arm_payload_pairs_from_marshaled_node(
                 msg: "expected Edge record".to_string(),
             });
         };
-        let label_v = ef
-            .get(&ctx.sym("label"))
-            .ok_or_else(|| InterpError::TypeError {
-                msg: "Edge missing label".to_string(),
-            })?;
-        let target = ef
-            .get(&ctx.sym("target"))
-            .ok_or_else(|| InterpError::TypeError {
-                msg: "Edge missing target".to_string(),
-            })?;
+        let label_v = fields_get(&ef, ctx.sym("label")).ok_or_else(|| InterpError::TypeError {
+            msg: "Edge missing label".to_string(),
+        })?;
+        let target = fields_get(&ef, ctx.sym("target")).ok_or_else(|| InterpError::TypeError {
+            msg: "Edge missing target".to_string(),
+        })?;
         let Value::Variant {
             variant_name,
             fields: lf,
@@ -579,7 +897,7 @@ pub fn arm_payload_pairs_from_marshaled_node(
         if ctx.resolve(*variant_name) != "Named" {
             continue;
         }
-        let Some(Value::Str(label)) = lf.get(&ctx.sym("name")) else {
+        let Some(Value::Str(label)) = fields_get(&lf, ctx.sym("name")) else {
             continue;
         };
         let payload_type_name = payload_type_name_from_target_node(ctx, target)?;
@@ -597,14 +915,11 @@ fn payload_type_name_from_target_node(ctx: &InterpContext, target: &Value) -> In
             msg: "expected Node target record".to_string(),
         });
     };
-    let kind = fields
-        .get(&ctx.sym("kind"))
-        .ok_or_else(|| InterpError::TypeError {
-            msg: "target missing kind".to_string(),
-        })?;
-    let children = fields
-        .get(&ctx.sym("children"))
-        .ok_or_else(|| InterpError::TypeError {
+    let kind = fields_get(fields, ctx.sym("kind")).ok_or_else(|| InterpError::TypeError {
+        msg: "target missing kind".to_string(),
+    })?;
+    let children =
+        fields_get(fields, ctx.sym("children")).ok_or_else(|| InterpError::TypeError {
             msg: "target missing children".to_string(),
         })?;
     let Value::Variant {
@@ -622,9 +937,8 @@ fn payload_type_name_from_target_node(ctx: &InterpContext, target: &Value) -> In
             msg: "expected TypeNode".to_string(),
         });
     }
-    let connective = kf
-        .get(&ctx.sym("connective"))
-        .ok_or_else(|| InterpError::TypeError {
+    let connective =
+        fields_get(&kf, ctx.sym("connective")).ok_or_else(|| InterpError::TypeError {
             msg: "TypeNode missing connective".to_string(),
         })?;
     match connective {
@@ -645,13 +959,12 @@ fn payload_type_name_from_target_node(ctx: &InterpContext, target: &Value) -> In
                 let Value::Record { fields: ef, .. } = edge else {
                     continue;
                 };
-                let field_name = ef
-                    .get(&ctx.sym("label"))
+                let field_name = fields_get(&ef, ctx.sym("label"))
                     .and_then(|label| {
                         let Value::Variant { fields: lf, .. } = label else {
                             return None;
                         };
-                        lf.get(&ctx.sym("name")).and_then(|v| match v {
+                        fields_get(&lf, ctx.sym("name")).and_then(|v| match v {
                             Value::Str(s) => Some(s.clone()),
                             _ => None,
                         })
@@ -660,10 +973,9 @@ fn payload_type_name_from_target_node(ctx: &InterpContext, target: &Value) -> In
                         msg: "named edge missing label".to_string(),
                     })?;
                 let field_target =
-                    ef.get(&ctx.sym("target"))
-                        .ok_or_else(|| InterpError::TypeError {
-                            msg: "edge missing target".to_string(),
-                        })?;
+                    fields_get(&ef, ctx.sym("target")).ok_or_else(|| InterpError::TypeError {
+                        msg: "edge missing target".to_string(),
+                    })?;
                 let type_name = payload_type_name_from_target_node(ctx, field_target)?;
                 parts.push(format!("{field_name}: {type_name}"));
             }
@@ -674,7 +986,7 @@ fn payload_type_name_from_target_node(ctx: &InterpContext, target: &Value) -> In
             fields: cf,
             ..
         } if ctx.resolve(*conn) == "Atom" => {
-            let Some(Value::Str(name)) = cf.get(&ctx.sym("identity")) else {
+            let Some(Value::Str(name)) = fields_get(&cf, ctx.sym("identity")) else {
                 return Err(InterpError::TypeError {
                     msg: "Atom missing identity".to_string(),
                 });
@@ -696,9 +1008,8 @@ pub fn arm_labels_from_marshaled_node(
             msg: "expected Node record".to_string(),
         });
     };
-    let children = fields
-        .get(&ctx.sym("children"))
-        .ok_or_else(|| InterpError::TypeError {
+    let children =
+        fields_get(fields, ctx.sym("children")).ok_or_else(|| InterpError::TypeError {
             msg: "Node missing children".to_string(),
         })?;
     let edges = crate::v1_interpreter::free_monoid_to_vec(children).ok_or_else(|| {
@@ -713,11 +1024,9 @@ pub fn arm_labels_from_marshaled_node(
                 msg: "expected Edge record".to_string(),
             });
         };
-        let label = ef
-            .get(&ctx.sym("label"))
-            .ok_or_else(|| InterpError::TypeError {
-                msg: "Edge missing label".to_string(),
-            })?;
+        let label = fields_get(&ef, ctx.sym("label")).ok_or_else(|| InterpError::TypeError {
+            msg: "Edge missing label".to_string(),
+        })?;
         let Value::Variant {
             variant_name,
             fields: lf,
@@ -729,7 +1038,7 @@ pub fn arm_labels_from_marshaled_node(
         if ctx.resolve(*variant_name) != "Named" {
             continue;
         }
-        let Some(Value::Str(name)) = lf.get(&ctx.sym("name")) else {
+        let Some(Value::Str(name)) = fields_get(&lf, ctx.sym("name")) else {
             continue;
         };
         labels.push(name.clone());
@@ -748,9 +1057,8 @@ pub fn eval_resolve_type_node_with_dropped_last_arm(
             msg: "resolve_type_node: expected Node record".to_string(),
         });
     };
-    let children = fields
-        .get(&ctx.sym("children"))
-        .ok_or_else(|| InterpError::TypeError {
+    let children =
+        fields_get(&fields, ctx.sym("children")).ok_or_else(|| InterpError::TypeError {
             msg: "resolve_type_node: Node missing children".to_string(),
         })?;
     let Some(items) = crate::v1_interpreter::free_monoid_to_vec(children) else {
@@ -769,11 +1077,10 @@ pub fn eval_resolve_type_node_with_dropped_last_arm(
     }
     Ok(Value::Record {
         type_name: ctx.sym("Node"),
-        fields: Rc::new(HashMap::from([
+        fields: Rc::new(sorted_fields(vec![
             (
                 ctx.sym("kind"),
-                fields
-                    .get(&ctx.sym("kind"))
+                fields_get(&fields, ctx.sym("kind"))
                     .cloned()
                     .ok_or_else(|| InterpError::TypeError {
                         msg: "resolve_type_node: Node missing kind".to_string(),
@@ -785,8 +1092,7 @@ pub fn eval_resolve_type_node_with_dropped_last_arm(
             ),
             (
                 ctx.sym("occurrence_id"),
-                fields
-                    .get(&ctx.sym("occurrence_id"))
+                fields_get(&fields, ctx.sym("occurrence_id"))
                     .cloned()
                     .ok_or_else(|| InterpError::TypeError {
                         msg: "resolve_type_node: Node missing occurrence_id".to_string(),
@@ -808,7 +1114,7 @@ fn nullary_coproduct_variant_value(
     Value::Variant {
         type_name: ctx.sym(type_name),
         variant_name: ctx.sym(variant_label),
-        fields: Rc::new(HashMap::new()),
+        fields: Rc::new(vec![]),
     }
 }
 
@@ -862,7 +1168,7 @@ fn outcome_accepted_list(ctx: &InterpContext, values: Vec<Value>) -> Value {
     Value::Variant {
         type_name: ctx.sym("Outcome"),
         variant_name: ctx.sym("Accepted"),
-        fields: Rc::new(HashMap::from([
+        fields: Rc::new(sorted_fields(vec![
             (ctx.sym("value"), crate::v1_interpreter::list_value(values)),
             (
                 ctx.sym("diagnostics"),
@@ -876,16 +1182,13 @@ fn outcome_rejected_value(ctx: &InterpContext, reason: &str) -> Value {
     Value::Variant {
         type_name: ctx.sym("Outcome"),
         variant_name: ctx.sym("Rejected"),
-        fields: Rc::new(HashMap::from([(
+        fields: Rc::new(vec![(
             ctx.sym("diagnostics"),
             crate::v1_interpreter::list_value(vec![Value::Record {
                 type_name: ctx.sym("Diagnostic"),
-                fields: Rc::new(HashMap::from([(
-                    ctx.sym("reason"),
-                    Value::Str(reason.to_string()),
-                )])),
+                fields: Rc::new(vec![(ctx.sym("reason"), Value::Str(reason.to_string()))]),
             }]),
-        )])),
+        )]),
     }
 }
 

@@ -53,3 +53,10 @@ type SymbolId
   | ConnectorTeeUp
   | ConnectorCornerBottomLeft
   | ConnectorCornerTopLeft
+
+  | BoxHorizontal
+  | BoxVertical
+  | BoxCornerTopLeft
+  | BoxCornerTopRight
+  | BoxCornerBottomLeft
+  | BoxCornerBottomRight

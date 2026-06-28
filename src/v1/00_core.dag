@@ -152,6 +152,7 @@ type CompilerDiagnostic
   | ComplexityUnknown  { func_name: String, reason: String, span: SourceSpan }
   | OwnershipViolation   { binding: String, fn_name: String, consumers: Int, span: SourceSpan }
   | VariantCollision { variant: String, enum1: String, enum2: String, span: SourceSpan }
+  | SoleConstructorViolation { type_name: String, span: SourceSpan }
 
 type ErrorNode {
   diagnostic: CompilerDiagnostic
@@ -180,6 +181,7 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
     ComplexityUnknown  { func_name: _, reason: _, span: s }    => s
     OwnershipViolation   { binding: _, fn_name: _, consumers: _, span: s } => s
     VariantCollision { variant: _, enum1: _, enum2: _, span: s } => s
+    SoleConstructorViolation { type_name: _, span: s } => s
   }
 }
 
@@ -201,6 +203,7 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
     ComplexityUnknown  { func_name: f, reason: r, span: _ }      => concat("complexity: ", f, ": ", r)
     OwnershipViolation   { binding: b, fn_name: f, consumers: c, span: _ } => concat("ownership: binding '", b, "' in '", f, "' has ", to_string(value: c), " consumers")
     VariantCollision { variant: v, enum1: e1, enum2: e2, span: _ } => concat("variant '", v, "' appears in both '", e1, "' and '", e2, "'")
+    SoleConstructorViolation { type_name: t, span: _ } => concat("sole_constructor type '", t, "' cannot be constructed outside its defining module")
   }
 }
 
@@ -225,6 +228,7 @@ fn is_discovery_corpus_advisory_typecheck_diagnostic(d: CompilerDiagnostic) -> B
     NonExhaustiveMatch { missing: _, span: _ } => true
     MissingAnnotation { fn_name: _, what: _, span: _ } => true
     VariantCollision { variant: _, enum1: _, enum2: _, span: _ } => true
+    SoleConstructorViolation { type_name: _, span: _ } => true
     _ => false
   }
 }
@@ -285,6 +289,10 @@ fn default_ident_span(name: String, span: SourceSpan) -> SourceSpan? {
 
 fn node_name_span(n: Node) -> SourceSpan {
   match n.ident_span { Present { value: s } => s  Absent => n.span }
+}
+
+fn empty_node_list() -> List<Node> {
+  []
 }
 
 fn make_expr_node(expr_data: ExprData, children: List<Node>, inferred: InferredNode?, span: SourceSpan) -> Node {

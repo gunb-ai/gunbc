@@ -1243,7 +1243,7 @@ fn parse_resilience_unmasked_typecheck_debt_receipt() {
     ];
     let scan_dirs = vec![
         "dsl/test/claim".to_string(),
-        "src/v2/compiler/manual".to_string(),
+        "src/v2/test/claim/manual".to_string(),
     ];
     let rows = discover_floor_corpus_rows(&roots, &scan_dirs).expect("discover roster");
     let unique_entries: BTreeSet<String> = rows.into_iter().map(|r| r.entry).collect();
@@ -1310,7 +1310,46 @@ fn compile_sources_filters_none_parse_diagnostics() {
     );
     assert!(
         !has_file(&result, "src/good.rs"),
-        "fail-closed front_end_sources must not emit good.dag when bad.dag fails parse"
+        "fail-closed emit: good.dag must not be emitted while bad.dag carries a blocking parse diagnostic (the EmittableGraph constructor gate, not a whole-tree graph collapse)"
+    );
+}
+
+#[test]
+fn front_end_resilience_partial_graph_excludes_only_the_broken_module() {
+    // Per-module fail-closed grounding: a parse error in one module no longer
+    // collapses the whole graph to None. The clean module still resolves into a
+    // partial graph; the broken module is excluded and its parse error stays a
+    // loud diagnostic. Pre-grounding baseline returned graph: None for the whole
+    // tree (this `expect` would have panicked).
+    use v1_compiler::v1_compiler_compile::{compile_to_resolved, SourceFile};
+    let sources = vec![
+        Rc::new(SourceFile {
+            path: "clean.dag".to_string(),
+            content: "module test.clean\nfn ok() -> Int { 42 }\n".to_string(),
+        }),
+        Rc::new(SourceFile {
+            path: "broken.dag".to_string(),
+            content: "module test.broken\nfn bad( -> Int\n".to_string(),
+        }),
+    ];
+    let resolved = compile_to_resolved(Rc::new(sources));
+    let graph = resolved
+        .graph
+        .as_ref()
+        .expect("partial graph must be Present despite the broken module's parse error");
+    assert_eq!(
+        graph.modules.len(),
+        1,
+        "exactly the clean module resolves into the partial graph (broken module excluded)"
+    );
+    let msgs: Vec<String> = resolved
+        .diagnostics
+        .iter()
+        .map(|d| v1_compiler::v1_std_core::diagnostic_to_message(d.diagnostic.clone()))
+        .collect();
+    assert!(
+        !msgs.is_empty(),
+        "the broken module's parse error must remain a loud diagnostic"
     );
 }
 

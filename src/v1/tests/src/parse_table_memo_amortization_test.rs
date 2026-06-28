@@ -8,8 +8,8 @@ use v1_compiler::v1_std_core::NewlineIndex;
 
 use crate::helpers::{resolve_imports_transitively_with_source_roots, workspace_root};
 
-const AMORT_ENTRY: &str = "src/v2/compiler/parse/parse_table_memo_amortization_test.dag";
-const BISECT_ENTRY: &str = "src/v2/compiler/manual/validate_ingest_staging_stage_bisect_test.dag";
+const AMORT_ENTRY: &str = "src/v2/test/claim/parse/parse_table_memo_amortization_test.dag";
+const BISECT_ENTRY: &str = "src/v2/test/claim/manual/validate_ingest_staging_stage_bisect_test.dag";
 
 const LEGACY_COLD_PARSE_FLOOR: Duration = Duration::from_secs(63);
 

@@ -1,0 +1,205 @@
+module test.claim.fleet_converge_emit
+
+import std.types { Bool, String, List, Int }
+import std.measure { byte_size, hardware_thread_count }
+import extdeps.github.actions { RunnerSpec, SelfHosted }
+import gunbc.ci_runner_placement {
+  RunnerDeploymentPlan,
+  PlanDerived,
+  PlanUnsound,
+  RunnerHostDeployment,
+  BatchLatencyTolerant,
+}
+import gunbc.ci_floor_measurement {
+  SessionReservationMode,
+  Regime2AggregateOomd,
+  SessionAggregateMeasured,
+}
+import gunbc.host_converge {
+  ConvergePolicy,
+  ConvergePolicyDerived,
+  ConvergePolicyUnsound,
+  ConvergeVerdict,
+  Converged,
+  Drifted,
+  Absent,
+  ConvergeKnob,
+  ConvergeSlice,
+  RunnerSlice,
+  SessionsSlice,
+  HostConverge,
+  converge_verdict,
+  converge_verdict_label,
+  fleet_converge_policy_from,
+  fleet_converge_policy,
+}
+import gunbc.fleet_converge_emit {
+  expected_fleet_converge_sh,
+  fleet_converge_sh_for,
+  fleet_converge_drifted,
+}
+
+fn fixture_runner_host() -> RunnerHostDeployment {
+  RunnerHostDeployment {
+    identity: "srv1",
+    runner_count: 7,
+    runner_slice_cap: byte_size(70391285350),
+    per_runner_memory_cap: byte_size(30000000000),
+    build_tokens: hardware_thread_count(count: 12),
+    runner: SelfHosted { labels: ["self-hosted", "linux", "arm64"] },
+    workload_class: BatchLatencyTolerant,
+  }
+}
+
+fn fixture_sound_plan() -> RunnerDeploymentPlan {
+  PlanDerived { hosts: [fixture_runner_host()], fleet_concurrent_runs: 7 }
+}
+
+fn fixture_regime2_mode() -> SessionReservationMode {
+  Regime2AggregateOomd {
+    oomd_eviction_ceiling: byte_size(10737418240),
+    session_concurrency: 16,
+    aggregate_reservation: SessionAggregateMeasured { bytes: byte_size(21474836480) },
+  }
+}
+
+fn fixture_sound_policy() -> ConvergePolicy {
+  fleet_converge_policy_from(plan: fixture_sound_plan(), mode: fixture_regime2_mode())
+}
+
+fn fixture_sound_sh() -> String {
+  fleet_converge_sh_for(policy: fixture_sound_policy())
+}
+
+fn has(s: String, p: String) -> Bool {
+  string_contains(s: s, pattern: p)
+}
+
+fn witness_live_converge_is_conservation_sound() -> Bool {
+  let sh = expected_fleet_converge_sh()
+  !has(s: sh, p: "fleet-converge UNSOUND:")
+    && has(s: sh, p: "converge-receipt")
+    && has(s: sh, p: "converge_slice_property \"srv1\" \"runner\" \"runner_slice_cap_bytes\" \"system-actions-runner.slice\" \"MemoryMax\" \"85899345920\" \"85899345920\" \"85899345920\"")
+    && has(s: sh, p: "converge_per_slot_cap \"srv1\" \"runner\" \"per_slot_memory_max_bytes\" \"/etc/systemd/system/actions-runner@.service.d/20-fleet-width.conf\" \"actions-runner@srv1-*.service\" \"MemoryMax\" \"8589934592\"")
+    && has(s: sh, p: "converge_per_slot_cap \"srv1\" \"runner\" \"per_slot_memory_swap_max_bytes\" \"/etc/systemd/system/actions-runner@.service.d/30-fleet-swap.conf\" \"actions-runner@srv1-*.service\" \"MemorySwapMax\" \"0\"")
+    && has(s: sh, p: "converge_runner_width \"srv1\" \"runner\" \"runner_count\" \"actions-runner@srv1-*.service\" \"10\"")
+}
+
+fn witness_drift_red_receipt() -> Bool {
+  !fleet_converge_drifted(committed: expected_fleet_converge_sh())
+    && fleet_converge_drifted(committed: concat(expected_fleet_converge_sh(), "x"))
+}
+
+fn witness_sound_emits_header_and_helpers() -> Bool {
+  let sh = fixture_sound_sh()
+  has(s: sh, p: "#!/usr/bin/env bash")
+    && has(s: sh, p: "set -euo pipefail")
+    && has(s: sh, p: "emit_receipt()")
+    && has(s: sh, p: "decide_verdict()")
+    && has(s: sh, p: "exit \"$host_failed\"")
+    && has(s: sh, p: "printf 'converge-receipt host=%s slice=%s knob=%s desired=%s effective=%s verdict=%s")
+    && has(s: sh, p: "printf 'converge-receipt host=%s applied=%s drifted=%s verdict=%s")
+}
+
+fn witness_sound_emits_runner_knobs() -> Bool {
+  let sh = fixture_sound_sh()
+  has(s: sh, p: "converge_slice_property \"srv1\" \"runner\" \"runner_slice_cap_bytes\" \"system-actions-runner.slice\" \"MemoryMax\" \"70391285350\" \"70391285350\" \"70391285350\"")
+    && has(s: sh, p: "converge_per_slot_cap \"srv1\" \"runner\" \"per_slot_memory_max_bytes\" \"/etc/systemd/system/actions-runner@.service.d/20-fleet-width.conf\" \"actions-runner@srv1-*.service\" \"MemoryMax\" \"30000000000\"")
+    && has(s: sh, p: "converge_per_slot_cap \"srv1\" \"runner\" \"per_slot_memory_swap_max_bytes\" \"/etc/systemd/system/actions-runner@.service.d/30-fleet-swap.conf\" \"actions-runner@srv1-*.service\" \"MemorySwapMax\" \"0\"")
+    && has(s: sh, p: "converge_runner_width \"srv1\" \"runner\" \"runner_count\" \"actions-runner@srv1-*.service\" \"7\"")
+}
+
+fn witness_fold_cpu_weight_and_build_tokens_as_rows() -> Bool {
+  let sh = fixture_sound_sh()
+  has(s: sh, p: "converge_slice_property \"srv1\" \"runner\" \"cpu_weight\" \"system-actions-runner.slice\" \"CPUWeight\" \"100\" \"100\" \"100\"")
+    && has(s: sh, p: "converge_slice_property \"srv1\" \"sessions\" \"cpu_weight\" \"sessions.slice\" \"CPUWeight\" \"1000\" \"1000\" \"1000\"")
+    && has(s: sh, p: "converge_jobserver_tokens \"srv1\" \"runner\" \"build_tokens\" \"/etc/default/ctrl-jobserver\" \"CTRL_JOBSERVER_TOKENS\" \"ctrl-jobserver.service\" \"12\"")
+}
+
+fn last_runner_knob_name(knobs: List<ConvergeKnob>) -> String {
+  fold(knobs, init: "", f: (acc, k) => match k.slice {
+    RunnerSlice => k.name
+    SessionsSlice => acc
+  })
+}
+
+fn witness_caps_before_widen_order() -> Bool {
+  match fixture_sound_policy() {
+    ConvergePolicyDerived { hosts: hosts } =>
+      hosts.length() > 0 && all(hosts, h => last_runner_knob_name(knobs: h.knobs) == "runner_count")
+    ConvergePolicyUnsound { reason: _ } => false
+  }
+}
+
+fn witness_per_session_is_verify_only() -> Bool {
+  let sh = fixture_sound_sh()
+  has(s: sh, p: "converge_verify_only_cap \"srv1\" \"sessions\" \"per_session_max_bytes\" \"sessions.slice\" \"MemoryMax\" \"10737418240\"")
+    && has(s: sh, p: "CARRY+VERIFY ONLY: NEVER set-property")
+}
+
+fn witness_oom_pressure_kill_desired_true() -> Bool {
+  let sh = fixture_sound_sh()
+  has(s: sh, p: "converge_slice_property \"srv1\" \"sessions\" \"oom_pressure_kill\" \"sessions.slice\" \"ManagedOOMMemoryPressure\" \"kill\" \"kill\" \"true\"")
+    && has(s: sh, p: "converge_slice_property \"srv1\" \"sessions\" \"oom_pressure_limit_pct\" \"sessions.slice\" \"ManagedOOMMemoryPressureLimit\" \"60%\" \"2576980377\" \"60\"")
+    && has(s: sh, p: "converge_slice_property \"srv1\" \"sessions\" \"slice_max_bytes\" \"sessions.slice\" \"MemoryMax\" \"21474836480\" \"21474836480\" \"21474836480\"")
+}
+
+fn vlabel(effective: String, expected: String) -> String {
+  converge_verdict_label(v: converge_verdict(effective: effective, expected: expected))
+}
+
+fn witness_verdict_discriminating() -> Bool {
+  vlabel(effective: "kill", expected: "kill") == "converged"
+    && vlabel(effective: "auto", expected: "kill") == "drifted"
+    && vlabel(effective: "", expected: "kill") == "absent"
+    && vlabel(effective: "70391285350", expected: "70391285350") == "converged"
+    && vlabel(effective: "123", expected: "70391285350") == "drifted"
+}
+
+fn witness_emitted_bash_realizes_verdict() -> Bool {
+  let sh = fixture_sound_sh()
+  has(s: sh, p: "if [ -z \"$1\" ]; then verdict=absent")
+    && has(s: sh, p: "elif [ \"$1\" = \"$2\" ]; then verdict=converged")
+    && has(s: sh, p: "else verdict=drifted; fi")
+}
+
+fn witness_drift_perturbed_desired_flips_emit() -> Bool {
+  let perturbed = PlanDerived {
+    hosts: [RunnerHostDeployment {
+      identity: "srv1",
+      runner_count: 99,
+      runner_slice_cap: byte_size(70391285350),
+      per_runner_memory_cap: byte_size(30000000000),
+      build_tokens: hardware_thread_count(count: 12),
+      runner: SelfHosted { labels: ["self-hosted"] },
+      workload_class: BatchLatencyTolerant,
+    }],
+    fleet_concurrent_runs: 99,
+  }
+  let perturbed_sh = fleet_converge_sh_for(policy: fleet_converge_policy_from(plan: perturbed, mode: fixture_regime2_mode()))
+  !(perturbed_sh == fixture_sound_sh())
+    && has(s: perturbed_sh, p: "converge_runner_width \"srv1\" \"runner\" \"runner_count\" \"actions-runner@srv1-*.service\" \"99\"")
+}
+
+fn witness_sessions_membership_line_emitted() -> Bool {
+  let sh = fixture_sound_sh()
+  has(s: sh, p: "emit_sessions_membership \"srv1\" \"/sys/fs/cgroup/sessions.slice\" \"/sys/fs/cgroup/system.slice\"")
+    && has(s: sh, p: "printf 'converge-receipt host=%s slice=sessions sessions_in_slice=%s sessions_legacy_flat=%s verdict=%s")
+    && has(s: sh, p: "if [ \"$in_slice\" -gt 0 ]; then verdict=converged; else verdict=absent; fi")
+    && has(s: sh, p: "ls -d \"$2\"/docker-*.scope 2>/dev/null | wc -l | tr -d ' ' || true")
+}
+
+test fn fleet_converge_emit_holds() -> Bool {
+  witness_live_converge_is_conservation_sound()
+    && witness_drift_red_receipt()
+    && witness_sound_emits_header_and_helpers()
+    && witness_sound_emits_runner_knobs()
+    && witness_fold_cpu_weight_and_build_tokens_as_rows()
+    && witness_caps_before_widen_order()
+    && witness_per_session_is_verify_only()
+    && witness_oom_pressure_kill_desired_true()
+    && witness_verdict_discriminating()
+    && witness_emitted_bash_realizes_verdict()
+    && witness_drift_perturbed_desired_flips_emit()
+    && witness_sessions_membership_line_emitted()
+}

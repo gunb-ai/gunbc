@@ -60,7 +60,6 @@ fn browse_root_serves_200() -> Bool {
   }
 }
 
-data honest_deferral: String = "gunbhub serves the modeled HTTP response by execution (gunbc-run, exit-checked on served bytes); binds a real socket when Lane C emits the server to a host language"
 
 func main() -> ProcessExit {
   if wa_unknown_path_is_not_found()

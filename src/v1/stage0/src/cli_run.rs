@@ -686,6 +686,126 @@ pub fn make_eval_context(
     make_eval_context_with_fixture_store(graph, source_indices, execution_mode, None)
 }
 
+/// Evaluate `gunbc.output_policy.resolve_channel_policy` from the .dag authority at
+/// the current CLI verbosity and install the per-channel decisions for the
+/// interpreter's host-effect trace funnel (`v1_interpreter::output_decision`). The
+/// decision logic lives entirely in .dag; this only transports the evaluated
+/// verdicts across the seed↔.dag boundary. Best-effort: if the policy module can't
+/// be resolved/evaluated, the funnel keeps its `Full` fallback (pre-funnel behavior).
+pub fn install_output_policy(source_roots: &[String]) {
+    use v1_interpreter::{OutputDecision, Value};
+    let (verbose, quiet) = match v1_interpreter::cli_verbosity() {
+        v1_interpreter::Verbosity::Verbose => (true, false),
+        v1_interpreter::Verbosity::Quiet => (false, true),
+        v1_interpreter::Verbosity::Normal => (false, false),
+    };
+    let entry = "dsl/gunbc/output_policy.dag";
+    let (graph, indices) = match resolve_entry_graph(source_roots, entry) {
+        Ok(g) => g,
+        Err(_) => return,
+    };
+    let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
+    let policy = match v1_interpreter::run_in_context_with_args(
+        &ctx,
+        "resolve_channel_policy",
+        &[
+            (Some("verbose".to_string()), Value::Bool(verbose)),
+            (Some("quiet".to_string()), Value::Bool(quiet)),
+        ],
+        false,
+    ) {
+        Ok(v) => v,
+        Err(_) => return,
+    };
+    let Value::Record { fields, .. } = &policy else {
+        return;
+    };
+    let decision = |name: &str| -> OutputDecision {
+        match ctx.field(fields, name) {
+            Some(Value::Variant { variant_name, .. }) => {
+                if ctx.sym_eq(*variant_name, "Suppressed") {
+                    OutputDecision::Suppressed
+                } else if ctx.sym_eq(*variant_name, "Condensed") {
+                    OutputDecision::Condensed
+                } else {
+                    OutputDecision::Full
+                }
+            }
+            _ => OutputDecision::Full,
+        }
+    };
+    v1_interpreter::set_output_policy([
+        decision("diagnostic"),
+        decision("claim_result"),
+        decision("progress"),
+        decision("shell_trace"),
+        decision("instrumentation"),
+    ]);
+}
+
+/// Evaluate `extdeps.render.surface.resolve_group_syntax(github_actions)` from the
+/// .dag authority and install the per-target group-marker strings for the host-effect
+/// trace grouping (`v1_interpreter::group_begin`/`group_end`). `github_actions` is
+/// read from the environment (`GITHUB_ACTIONS=true`, the runner's own signal) — the
+/// ONLY seed-side fact; which markers that target implies stays the .dag authority's.
+/// Best-effort: if the module can't resolve/evaluate, grouping stays off (ungrouped,
+/// pre-grouping behavior).
+pub fn install_group_syntax(source_roots: &[String]) {
+    use v1_interpreter::{InstalledGroupSyntax, Value};
+    let github_actions = std::env::var("GITHUB_ACTIONS")
+        .map(|v| v == "true")
+        .unwrap_or(false);
+    let entry = "dsl/extdeps/render/surface.dag";
+    let (graph, indices) = match resolve_entry_graph(source_roots, entry) {
+        Ok(g) => g,
+        Err(_) => return,
+    };
+    let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
+    let syntax = match v1_interpreter::run_in_context_with_args(
+        &ctx,
+        "resolve_group_syntax",
+        &[(
+            Some("github_actions".to_string()),
+            Value::Bool(github_actions),
+        )],
+        false,
+    ) {
+        Ok(v) => v,
+        Err(_) => return,
+    };
+    let Value::Record { fields, .. } = &syntax else {
+        return;
+    };
+    let str_field = |name: &str| -> Option<String> {
+        match ctx.field(fields, name) {
+            Some(Value::Str(s)) => Some(s.clone()),
+            _ => None,
+        }
+    };
+    let (Some(open_prefix), Some(open_suffix)) =
+        (str_field("open_prefix"), str_field("open_suffix"))
+    else {
+        return;
+    };
+    // close_line is an Optional: Present { value: "::endgroup::" } | Absent (none).
+    let close_line = match ctx.field(fields, "close_line") {
+        Some(Value::Variant {
+            variant_name,
+            fields: vf,
+            ..
+        }) if ctx.sym_eq(*variant_name, "Present") => match ctx.field(vf, "value") {
+            Some(Value::Str(s)) => Some(s.clone()),
+            _ => None,
+        },
+        _ => None,
+    };
+    v1_interpreter::set_group_syntax(InstalledGroupSyntax {
+        open_prefix,
+        open_suffix,
+        close_line,
+    });
+}
+
 pub fn make_eval_context_with_fixture_store(
     graph: &v1_compiler_compile::ResolvedGraph,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -745,7 +865,31 @@ pub fn precompute_whole_tree_published_mock_keys(
         return Ok(std::collections::HashSet::new());
     }
     let index = build_module_index(&dsl_roots);
-    let all_sources: Vec<Rc<v1_compiler_compile::SourceFile>> = index.values().cloned().collect();
+    // Only modules that DECLARE a `PublishedMockCase` corpus can contribute keys —
+    // `resolve_published_mock_keys` reads them by exact type annotation. Strict-
+    // resolving the whole 600+ module tree to find the ~13 declarers is §2
+    // irrelevant work, and that transient whole-tree `ResolvedGraph` is the floor's
+    // dominant RSS (measured ~1.46 GiB to produce ~58 strings). Select the
+    // declarers and resolve only their transitive import closures. The `.contains`
+    // prefilter is a safe over-inclusive candidate set: `.dag` has no comment
+    // syntax (a string match is structural), and the downstream
+    // `type_annotation_names(.., "PublishedMockCase")` check is exact, so a
+    // false-positive file only widens the closure slightly — it cannot fabricate a key.
+    let declarers: Vec<Rc<v1_compiler_compile::SourceFile>> = index
+        .values()
+        .filter(|sf| sf.content.contains("PublishedMockCase"))
+        .cloned()
+        .collect();
+    if declarers.is_empty() {
+        return Ok(std::collections::HashSet::new());
+    }
+    let mut seen: HashMap<String, Rc<v1_compiler_compile::SourceFile>> = HashMap::new();
+    for d in &declarers {
+        if let Some(mp) = extract_module_path(&d.content) {
+            seen.insert(mp, d.clone());
+        }
+    }
+    let all_sources = resolve_transitively(declarers, &index, seen);
     if all_sources.is_empty() {
         return Ok(std::collections::HashSet::new());
     }
@@ -760,6 +904,70 @@ pub fn precompute_whole_tree_published_mock_keys(
     );
     v1_interpreter::resolve_published_mock_keys(&ctx)
         .map_err(|e| format!("whole-tree published mock corpus precompute: {e}"))
+}
+
+/// Build an interpreter context over the WHOLE source-root corpus (every `.dag`
+/// module under `source_roots`), resolved in one pass under the Strict gate — the
+/// same whole-tree resolve `precompute_whole_tree_published_mock_keys` performs,
+/// but retaining the context so a `.dag` reflection accessor (e.g.
+/// `fn_arrow_decl_facts_live`) walks `ctx.modules == the whole tree` rather than a
+/// single entry's import closure. This is the #5364 widening substrate: coverage
+/// goes from per-entry resolve-closure to whole-tree-in-one-pass. The marshaling
+/// runs in THIS context's interner, so reflected `Node` values are self-consistent
+/// (no cross-context Symbol mismatch).
+/// `exclude_substrings` drop modules whose source path contains any listed
+/// substring BEFORE the resolve. This is required, not optional: the corpus
+/// contains intentionally-malformed scanner fixture inputs (e.g.
+/// `src/v2/test/fixture/layering_scan/**/plant.dag` declaring imports of modules
+/// that do not exist) which are test DATA referenced by string path, not live
+/// code — a Strict whole-tree resolve over them fails on the deliberate
+/// `unresolved import`. Excluding them is a coverage decision, so the count of
+/// dropped modules is returned for the caller to log (DESIGN §6 — no silent cap).
+pub struct WholeTreeCtx {
+    pub ctx: v1_interpreter::InterpContext,
+    pub modules_resolved: usize,
+    pub modules_excluded: usize,
+}
+
+pub fn whole_tree_resolved_ctx(
+    source_roots: &[String],
+    exclude_substrings: &[String],
+    execution_mode: v1_interpreter::ExecutionMode,
+) -> Result<WholeTreeCtx, String> {
+    let index = build_module_index(source_roots);
+    let total = index.len();
+    // Drop a module if EITHER its source path OR its declared module path contains
+    // an excluded substring. Module-path matching is required because the corpus's
+    // unresolvable test scaffolds are keyed by module NAME (`v2.test.*` importing
+    // `v2.test.rung_3_4_common` / `v2.test.fixture.*`), not by a shared file path —
+    // many live physically under `compiler/` and `extdeps/` dirs.
+    let all_sources: Vec<Rc<v1_compiler_compile::SourceFile>> = index
+        .iter()
+        .filter(|(module_path, sf)| {
+            let p = sf.path.replace('\\', "/");
+            !exclude_substrings
+                .iter()
+                .any(|sub| p.contains(sub.as_str()) || module_path.contains(sub.as_str()))
+        })
+        .map(|(_, sf)| sf.clone())
+        .collect();
+    if all_sources.is_empty() {
+        return Err("whole-tree corpus is empty (no .dag modules under source roots)".to_string());
+    }
+    let modules_excluded = total - all_sources.len();
+    let (graph, source_indices) =
+        resolved_graph_from_sources(all_sources, ResolveTypecheckGate::Strict)?;
+    Ok(WholeTreeCtx {
+        ctx: v1_interpreter::InterpContext::with_runtime_options(
+            graph.as_ref(),
+            source_indices,
+            execution_mode,
+            None,
+            None,
+        ),
+        modules_resolved: total - modules_excluded,
+        modules_excluded,
+    })
 }
 
 pub fn closure_subject_for_entry(index: &MultiEntryIndex, entry: &str) -> Result<String, String> {
@@ -1863,6 +2071,106 @@ pub struct DiscoverySummary {
     pub total_measured_nanos: u128,
 }
 
+#[derive(Debug, Clone)]
+pub struct TimingPercentiles {
+    pub p50: u128,
+    pub p90: u128,
+    pub p95: u128,
+    pub p99: u128,
+    pub p100: u128,
+}
+
+pub fn compute_percentiles(mut values: Vec<u128>) -> TimingPercentiles {
+    if values.is_empty() {
+        return TimingPercentiles {
+            p50: 0,
+            p90: 0,
+            p95: 0,
+            p99: 0,
+            p100: 0,
+        };
+    }
+    values.sort_unstable();
+    let len = values.len();
+    let clamp_idx = |f: f64| {
+        let idx = (len as f64 * f) as usize;
+        idx.min(len - 1)
+    };
+
+    TimingPercentiles {
+        p50: values[clamp_idx(0.50)],
+        p90: values[clamp_idx(0.90)],
+        p95: values[clamp_idx(0.95)],
+        p99: values[clamp_idx(0.99)],
+        p100: values[len - 1],
+    }
+}
+
+// SCAFFOLD (§7 hand-Rust shrink-to-zero, dissolution named): the v1 evaluator measures its own
+// per-witness resolve+eval percentiles here — seed-side justified (the evaluator cannot measure
+// itself without circularity). The *rendering* of these timings now lives in `dsl/gunbc/ci_render.dag`
+// (boxed Frames over `std.render`, width-parameterized by the medium's `Viewport.width`); this Rust
+// only produces the measured data. Full dissolution: ROADMAP lane "CI observability" emits the
+// `TimingPercentiles` rows as a substrate value so a .dag witness measures + histograms natively,
+// at which point this measurement struct collapses too.
+pub struct HistogramData {
+    pub included: usize,
+    pub skipped: usize,
+    pub total: TimingPercentiles,
+    pub resolve: TimingPercentiles,
+    pub eval: TimingPercentiles,
+}
+
+pub fn compute_histogram_data(summary: &DiscoverySummary) -> Result<HistogramData, String> {
+    if summary.performance_receipts.len() != summary.witness_outcomes.len() {
+        return Err(format!(
+            "[histogram] SKIPPED: mismatched vector lengths (performance_receipts={}, witness_outcomes={}) — timings unreliable",
+            summary.performance_receipts.len(),
+            summary.witness_outcomes.len()
+        ));
+    }
+
+    let mut entry_resolve_map: HashMap<String, u128> = HashMap::new();
+    for receipt in &summary.entry_resolve_receipts {
+        entry_resolve_map.insert(receipt.entry.clone(), receipt.resolve_nanos);
+    }
+
+    let mut total_times: Vec<u128> = Vec::new();
+    let mut resolve_times: Vec<u128> = Vec::new();
+    let mut eval_times: Vec<u128> = Vec::new();
+    let mut skipped_missing_entry_resolve = 0;
+
+    // performance_receipts and witness_outcomes are both generated in the same discovery pass
+    // with matching cardinality and order, so positional matching is stable across discovery runs.
+    for (perf, outcome) in summary
+        .performance_receipts
+        .iter()
+        .zip(summary.witness_outcomes.iter())
+    {
+        let resolve_nanos = match entry_resolve_map.get(&outcome.entry).copied() {
+            Some(nanos) => nanos,
+            None => {
+                skipped_missing_entry_resolve += 1;
+                continue;
+            }
+        };
+        let eval_nanos = perf.wall_nanos;
+        let total_nanos = resolve_nanos + eval_nanos;
+
+        total_times.push(total_nanos);
+        resolve_times.push(resolve_nanos);
+        eval_times.push(eval_nanos);
+    }
+
+    Ok(HistogramData {
+        included: total_times.len(),
+        skipped: skipped_missing_entry_resolve,
+        total: compute_percentiles(total_times),
+        resolve: compute_percentiles(resolve_times),
+        eval: compute_percentiles(eval_times),
+    })
+}
+
 pub const WET_HERMETIC_EQUIVALENCE_WITNESS_ENTRY: &str =
     "dsl/test/claim/wet_hermetic_equivalence_witness_test.dag";
 pub const WET_HERMETIC_SCAFFOLD_ROSTER_PREFIX_DATA: &str =
@@ -2479,7 +2787,7 @@ fn collect_node_values(
     match val {
         v1_interpreter::Value::Record { fields, .. }
         | v1_interpreter::Value::Variant { fields, .. } => {
-            for v in fields.values() {
+            for (_, v) in fields.iter() {
                 collect_node_values(v, ctx, out);
             }
         }
@@ -3680,7 +3988,7 @@ mod inert_lens_hygiene_tests {
         ];
         let scan_dirs = vec![
             "dsl/test/claim".to_string(),
-            "src/v2/compiler/manual".to_string(),
+            "src/v2/test/claim/manual".to_string(),
         ];
         let result = discover_floor_corpus_rows(&roots, &scan_dirs);
         assert!(
@@ -3763,7 +4071,7 @@ mod construction_justification_hygiene_tests {
         ];
         let scan_dirs = vec![
             "dsl/test/claim".to_string(),
-            "src/v2/compiler/manual".to_string(),
+            "src/v2/test/claim/manual".to_string(),
         ];
         let result = discover_floor_corpus_rows(&roots, &scan_dirs);
         assert!(

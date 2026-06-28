@@ -5,7 +5,7 @@ use v1_compiler::v1_interpreter::{self, ExecutionMode, InterpContext, Value};
 
 use crate::helpers::{resolve_imports_transitively_with_source_roots, workspace_root};
 
-const WITNESS_ENTRY: &str = "src/v2/compiler/manual/typescript_program_emit_run_test.dag";
+const WITNESS_ENTRY: &str = "src/v2/test/claim/manual/typescript_program_emit_run_test.dag";
 const ADD_FN: &str = "ts_program_emit_add_source";
 const CHAR_REALIZATION_FN: &str = "ts_atom_catalog_realizes_char_to_string_holds";
 

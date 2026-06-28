@@ -3,17 +3,17 @@ module tools.ci_gates
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import gunbc.ci_spec {
   gunbc_ci_gates, CiSpec, Gate,
-  RustMonolithGate, EmitHostGate, LayeringImportsGate, ResolvedImportsGate,
+  RustMonolithGate, EmitHostGate, LayeringImportsGate,
   ExtdepsExternalAuthorityGate, DslCompileCleanGate, GeneratedArtifactDriftGate,
-  SourceRootIngestGate
+  SourceRootIngestGate, RegenVerifyGate
 }
 import tools.rust_gates_ci { run_rust_monolith_gate }
 import tools.emit_host_gate { run_emit_host_ci_gate }
 import tools.layering_imports_gate { run_layering_imports_ci_gate }
-import tools.resolved_imports_gate { run_resolved_imports_ci_gate }
 import tools.extdeps_external_authority_gate { run_extdeps_external_authority_ci_gate }
 import tools.dsl_compile_clean_gate { run_dsl_compile_clean_gate }
 import tools.generated_artifact_gate { run_generated_artifact_drift_gate }
+import tools.regen_verify_gate { run_regen_verify_gate }
 
 fn exit_ok(e: ProcessExit) -> Bool {
   match e { ExitSuccess => true  _ => false }
@@ -24,13 +24,13 @@ fn run_spec_gate(g: Gate) -> ProcessExit {
     RustMonolithGate => run_rust_monolith_gate()
     EmitHostGate => run_emit_host_ci_gate()
     LayeringImportsGate => run_layering_imports_ci_gate()
-    ResolvedImportsGate => run_resolved_imports_ci_gate()
     ExtdepsExternalAuthorityGate => run_extdeps_external_authority_ci_gate()
     DslCompileCleanGate => run_dsl_compile_clean_gate()
     GeneratedArtifactDriftGate => run_generated_artifact_drift_gate()
     SourceRootIngestGate => exit_failure(
       reason: "SourceRootIngestGate: run via ci_floor_plan v2.workflow.source_root_ingest_gate (slice 3)"
     )
+    RegenVerifyGate => run_regen_verify_gate()
   }
 }
 

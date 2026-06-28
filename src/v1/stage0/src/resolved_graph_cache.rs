@@ -14,6 +14,26 @@ use crate::v1_std_core::NewlineIndex;
 const FORMAT_VERSION: u32 = 1;
 const MAGIC: &[u8; 8] = b"gunbgrpc";
 
+/// Single-authority mirror of the modeled `SizeBounded` cap:
+/// `extdeps.realization.resolved_graph.resolved_graph_cache_cap_bytes`
+/// (`dsl/extdeps/realization/resolved_graph.dag`, eviction = SizeBounded). Kept
+/// in lockstep by `cap_matches_modeled_authority` in the size-bound test.
+const RESOLVED_GRAPH_CACHE_CAP_BYTES: u64 = 10_737_418_240;
+
+/// The byte ceiling the on-disk cache is held under. Defaults to the modeled
+/// cap; `GUNBC_RESOLVED_GRAPH_CACHE_CAP_BYTES` overrides it (operator escape
+/// hatch / test injection). A malformed or zero override falls back to the
+/// modeled default rather than disabling the bound (fail-closed).
+pub fn resolved_graph_cache_cap_bytes() -> u64 {
+    match std::env::var("GUNBC_RESOLVED_GRAPH_CACHE_CAP_BYTES") {
+        Ok(s) => match s.trim().parse::<u64>() {
+            Ok(n) if n > 0 => n,
+            _ => RESOLVED_GRAPH_CACHE_CAP_BYTES,
+        },
+        Err(_) => RESOLVED_GRAPH_CACHE_CAP_BYTES,
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CacheRejectReason {
     ContentDigestMismatch,
@@ -45,6 +65,19 @@ pub enum CacheWriteOutcome {
     AlreadyExists,
 }
 
+/// The cross-process resolved-graph disk cache is **opt-in**: it activates only
+/// when `GUNBC_RESOLVED_GRAPH_CACHE_DIR` names a directory. With it unset the
+/// cache is entirely off (`None` — no read and no write).
+///
+/// Why opt-in and not a `temp_dir()` default: under the CI floor the cache is a
+/// net loss. Every commit changes the compiler binary, which is part of the
+/// content digest, so the floor re-colds each run and is overwhelmingly a miss;
+/// and both paths buffer a whole cache file in memory (a hit `read_to_end`s the
+/// verbose-JSON file, ~11x the packed graph; a miss `to_vec`s the whole JSON),
+/// so multi-GiB entries resolved across concurrent shards OOM the runner. The
+/// cache pays its worst cost exactly where it collects ~no benefit. (#5789 made
+/// it always-on via a `temp_dir()` default; this reverts to opt-in — its IO
+/// realization must stream, not buffer, before it is safe to default on.)
 pub fn resolved_graph_cache_root_from_env() -> Option<PathBuf> {
     std::env::var_os("GUNBC_RESOLVED_GRAPH_CACHE_DIR").map(PathBuf::from)
 }
@@ -249,6 +282,49 @@ pub fn lookup(cache_root: &Path, subject_digest: &str) -> CacheLookupResult {
     read_cached_file(&artifact_path(cache_root, subject_digest), subject_digest)
 }
 
+/// Enforce the modeled `SizeBounded` eviction on the on-disk cache: if the total
+/// footprint of `*.bin` artifacts exceeds `cap_bytes`, evict oldest-by-mtime
+/// first until back under the cap. The cache is content-addressed and write-once,
+/// so every artifact is immutable and an evicted entry simply re-resolves on its
+/// next miss — making mtime-LRU a safe replacement policy. Best-effort and
+/// concurrency-tolerant: a file vanishing under a racing sweep is not an error.
+pub fn enforce_size_bound(cache_root: &Path, cap_bytes: u64) {
+    let mut artifacts: Vec<(PathBuf, u64, SystemTime)> = Vec::new();
+    let mut total: u64 = 0;
+    let mut stack = vec![cache_root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let Ok(entries) = fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let Ok(meta) = entry.metadata() else {
+                continue;
+            };
+            if meta.is_dir() {
+                stack.push(path);
+            } else if path.extension().and_then(|s| s.to_str()) == Some("bin") {
+                let mtime = meta.modified().unwrap_or(UNIX_EPOCH);
+                total += meta.len();
+                artifacts.push((path, meta.len(), mtime));
+            }
+        }
+    }
+    if total <= cap_bytes {
+        return;
+    }
+    // Oldest first; evict until under cap.
+    artifacts.sort_by(|a, b| a.2.cmp(&b.2));
+    for (path, len, _) in artifacts {
+        if total <= cap_bytes {
+            break;
+        }
+        if fs::remove_file(&path).is_ok() {
+            total = total.saturating_sub(len);
+        }
+    }
+}
+
 pub fn write(
     cache_root: &Path,
     subject_digest: &str,
@@ -302,7 +378,10 @@ pub fn write(
             .map_err(|e| format!("cache fsync failed: {e}"))?;
     }
     match fs::rename(&temp_path, &final_path) {
-        Ok(()) => Ok(CacheWriteOutcome::Written),
+        Ok(()) => {
+            enforce_size_bound(cache_root, resolved_graph_cache_cap_bytes());
+            Ok(CacheWriteOutcome::Written)
+        }
         Err(_) if final_path.exists() => {
             let _ = fs::remove_file(&temp_path);
             Ok(CacheWriteOutcome::AlreadyExists)

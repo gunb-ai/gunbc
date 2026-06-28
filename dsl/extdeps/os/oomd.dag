@@ -1,7 +1,8 @@
 module extdeps.os.oomd
 
 import std.types { NonEmptyStr, String, FilePath, Bool }
-import std.measure { Second, second, Percent, percent }
+import std.measure { Second, second, Percent, percent, percent_count }
+import std.types { Int }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -13,7 +14,6 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data oomd_surface_doc: String = "systemd-oomd is the userspace OOM manager: it watches cgroup memory pressure (PSI) and swap usage and kills the worst-offending cgroup BEFORE the kernel OOM killer / OOM livelock fires. That livelock is the srv2-reboot vector. This module models what oomd PROVIDES (the config knobs it reads and the eviction backstop it gives), with the real key names from oomd.conf(5) and systemd.resource-control(5). It sits beside extdeps.os.systemd / extdeps.os.systemctl under the one systemd home. WHICH cgroups to protect at WHICH thresholds is workflow policy (gunbc), not a fact about systemd-oomd."
 
 data systemd_oomd_unit: NonEmptyStr = "systemd-oomd.service"
 data oomd_conf_path: FilePath = "/etc/systemd/oomd.conf"
@@ -49,6 +49,12 @@ data oomd_managed_oom_swap_property: NonEmptyStr = "ManagedOOMSwap"
 
 data oomd_managed_value_kill: NonEmptyStr = "kill"
 data oomd_managed_value_auto: NonEmptyStr = "auto"
+
+data systemd_managed_oom_pressure_limit_show_scale: Int = 4294967295
+
+fn managed_oom_pressure_limit_show_value(p: Percent) -> Int {
+  percent_count(p: p) * systemd_managed_oom_pressure_limit_show_scale / 100
+}
 
 fn managed_oom_action_value(a: ManagedOomAction) -> NonEmptyStr {
   match a {

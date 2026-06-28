@@ -2,7 +2,7 @@ module test.claim.access_iam_validation
 
 import std.types { NonEmptyStr, Bool }
 import std.access { AccessRequest, AccessDecision, Permit, Deny, AccessPolicy }
-import product.compute_fabric {
+import product.network_topology {
   NetworkLocality, Loopback, Lan, Internet, WslNat, WslBridged, DockerBridge, TailscaleOverlay
 }
 

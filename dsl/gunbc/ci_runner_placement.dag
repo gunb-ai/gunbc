@@ -1,34 +1,29 @@
 module gunbc.ci_runner_placement
 
-import product.compute_fabric { ComputeOffer }
+import product.compute_fabric { ComputeOffer, compute_host_ram_bytes_total, compute_host_primary_cpu }
 import product.placement_supply { HostIdentity }
-import std.realization_width { measure_max, int_min }
-import std.measure { ByteSize, byte_size, byte_size_count, measure_scale_fraction_floor, measure_fit_count_floor, measure_le, HardwareThreadCount, hardware_thread_count, hardware_thread_count_value }
+import std.measure { ByteSize, byte_size, byte_size_count, measure_scale_fraction_floor, measure_le, HardwareThreadCount }
 import std.types { Int, List, String, Bool }
+import std.disposition { Disposition, Terminal }
 import extdeps.github.actions { RunnerSpec }
-import extdeps.ctrl.jobserver { CtrlJobserverCitation, ctrl_jobserver_config }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.runner_spec_from_offer { runner_spec_from_offer }
 import gunbc.fleet_host_budget {
-  FleetHostPlan,
-  FleetHostPlanDerived,
-  FleetHostPlanUnsound,
-  HeadroomPolicy,
-  fleet_host_plan_for_offer,
-  gunbc_fleet_headroom_policy,
   gunbc_fleet_oomd_evidence,
+  gunbc_runner_pool_budget,
+  host_allocation_conserves,
+  declared_runner_count,
+  oomd_actuation_floor,
 }
+import extdeps.cpu { cpu_facts_threads }
 import gunbc.ci_floor_measurement {
-  CiJobPeak,
-  JobCgroupPeakMeasurement,
-  JobCgroupPeakMeasured,
-  JobCgroupPeakUnmeasured,
   HostFixedOverhead,
   HostFixedOverheadMeasured,
   HostFixedOverheadUnmeasured,
   SessionOperatingPoint,
   SessionOperatingPointSet,
   SessionOperatingPointUnset,
-  SessionAggregateReservation,
   SessionAggregateMeasured,
   SessionAggregateUnmeasured,
   OomdEnforcementEvidence,
@@ -38,13 +33,10 @@ import gunbc.ci_floor_measurement {
   Regime1WorstCase,
   Regime2AggregateOomd,
   SessionReservationModeUnset,
-  gunbc_ci_job_peaks,
-  gunbc_ci_run_count_divisor,
-  gunbc_ci_runner_unit_cap_safety_margin_num,
-  gunbc_ci_runner_unit_cap_safety_margin_den,
   gunbc_ci_host_fixed_overhead,
   gunbc_ci_per_session_peak_samples,
   gunbc_ci_session_reservation_mode,
+  gunbc_ci_runner_cgroup_memory_cap,
 }
 import gunbc.fleet_intent { fleet_intent_offers }
 
@@ -54,7 +46,14 @@ type WorkloadClass
 
 data gunbc_ci_cpu_weight_workload_class_marker: String = "WorkloadClass grounds the cgroup v2 cpu.weight kernel axis (range 1-10000, kernel default 100). BatchLatencyTolerant=100 (runner slice: CI builds are batch work, latency-tolerant); InteractiveLatencySensitive=1000 (sessions slice: dashboard/agent sessions are interactive, latency-sensitive, 10x weight). cgroup v2 cpu.weight is WORK-CONSERVING: raising sessions above runners costs zero CI throughput when sessions are idle; under contention the scheduler gives interactive sessions 10x the time slices of runner builds. This is the grounded fix for dashboard slowness under CI load on srv2. dissolve-on: replace the coarse 10x ratio with a weight derived from a measured CPU-PSI/contention curve once contention data is collected."
 
-data gunbc_ci_cpu_weight_unit_modeling_marker: String = "dissolve-on feature:M12-cardinal-count-value-measure-sweep -- workload_class_cpu_weight returns a bare Int for the cgroup v2 cpu.weight kernel scheduler weight (dimensionless range 1-10000). Carrier: Measure<Dimensionless, One, Nat> (same pattern as HardwareThreadCount, Percent). Defer to the M12 value-Measure sweep: convert the full cpu.weight cluster atomically (workload_class_cpu_weight fn + emit down-projection) so the unit modeling stays single-authority -- do NOT peel this field alone (the forked-logic trap). The dissolve-on replaces the bare Int return with a named type (e.g. CpuSchedulerWeight) and updates the manifest emit to extract the count."
+data gunbc_ci_cpu_weight_unit_modeling_marker: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "std.measure",
+    decl_name: "Measure",
+    field: WholeDeclaration
+  }
+}
 
 fn workload_class_cpu_weight(wc: WorkloadClass) -> Int {
   match wc {
@@ -77,67 +76,12 @@ type RunnerDeploymentPlan
   = PlanDerived { hosts: List<RunnerHostDeployment>, fleet_concurrent_runs: Int }
   | PlanUnsound { reason: String }
 
-data gunbc_ci_runner_slot_enforcement_marker: String = "RunnerSlotEnforcement is the §5 LIVE-enforcement gate distinct from model soundness: fleet_host_plan can be model-sound (all inputs cited) yet the live runner-slice MemoryMax drop-in stays INERT (effective MemoryMax=INFINITY, see gunbc_fleet_runner_slice_dropin_marker). Deriving a governing runner count while the conserving runner_slice_cap is unenforced live would over-commit runners against the sessions/sccache pool the cap reserves. Committed RunnerSlotUnenforced (fail closed). Flips to RunnerSlotEnforced ONLY when ctrl runner_host_reconcile makes disk==live (runner_slice_cap_drifted == false) and the design authority signs off — never to make a test go green."
-
-type RunnerSlotEnforcement
-  = RunnerSlotEnforced
-  | RunnerSlotUnenforced { reason: String }
-
-data gunbc_ci_runner_slot_enforcement: RunnerSlotEnforcement = RunnerSlotUnenforced {
-  reason: "runner-slot conserving cap not enforced live: the runner-slice MemoryMax drop-in is inert (effective MemoryMax=INFINITY); refuse to derive a governing runner count that assumes a cap the host does not enforce (fail closed until ctrl runner_host_reconcile makes disk==live and the design authority flips it)"
-}
-
-type JobPeakResolution
-  = JobPeaksResolved { run_unit_peak: ByteSize }
-  | JobPeaksUnresolved { reason: String }
-
-type PeakFold {
-  max_peak: ByteSize
-  any_unmeasured: Bool
-  count: Int
-}
 
 type DeploymentAccumulator {
   deployments: List<RunnerHostDeployment>
   unsound_reason: String
   any_unfit: Bool
   total: Int
-}
-
-fn fold_job_peak(acc: PeakFold, job_peak: CiJobPeak) -> PeakFold {
-  match job_peak.peak {
-    JobCgroupPeakUnmeasured =>
-      PeakFold { max_peak: acc.max_peak, any_unmeasured: true, count: acc.count + 1 }
-    JobCgroupPeakMeasured { cgroup_peak: p } =>
-      PeakFold {
-        max_peak: measure_max(a: acc.max_peak, b: p),
-        any_unmeasured: acc.any_unmeasured,
-        count: acc.count + 1,
-      }
-  }
-}
-
-fn resolve_run_unit_peak(job_peaks: List<CiJobPeak>) -> JobPeakResolution {
-  let folded = fold(
-    job_peaks,
-    init: PeakFold { max_peak: byte_size(0), any_unmeasured: false, count: 0 },
-    f: (a, j) => fold_job_peak(acc: a, job_peak: j)
-  )
-  if folded.count == 0 {
-    JobPeaksUnresolved {
-      reason: "no CI jobs declared: cannot derive runner capacity without a per-job peak"
-    }
-  } else if folded.any_unmeasured {
-    JobPeaksUnresolved {
-      reason: "at least one CI job has an unmeasured cgroup whole-tree peak: refuse to derive runner capacity on a missing per-job measurement (self-RSS undercounts child rustc/sccache, an over-commit risk)"
-    }
-  } else if byte_size_count(b: folded.max_peak) == 0 {
-    JobPeaksUnresolved {
-      reason: "measured per-job peak is zero bytes: refuse to divide host RAM by a zero peak"
-    }
-  } else {
-    JobPeaksResolved { run_unit_peak: folded.max_peak }
-  }
 }
 
 type SessionSliceResolution
@@ -198,142 +142,79 @@ fn resolve_session_slice(mode: SessionReservationMode, oomd: OomdEnforcementEvid
   }
 }
 
-data gunbc_ci_runner_count_from_budget_marker: String = "the runner-slot count divides the CONSERVING fleet_host_budget.runner_slice_cap = host - overhead - session_worst_case_slice - headroom (build_pool is NOT subtracted -- the GHA build lives INSIDE the slice, counted once via the per-job peak; see gunbc_fleet_build_pool_counted_once_marker). This is the §3 single-authority fix: the runner slice had two homes (this module's old host_runner_slice and fleet_host_budget's runner_slice_cap) that decomposed host RAM differently; runner_slice_cap is now the single authority and this module is its count CONSUMER. THE SAME resolve_session_slice worst-case figure is subtracted by the runner budget AND drives the dashboard session reservation -- one figure, not a fork -- passed DOWN (here -> fleet_host_plan_for_offer as session_slice: ByteSize), never imported up (no cycle). So the runner count DOES depend on the session operating point (more session reservation -> smaller runner slice -> fewer runners): that runner-vs-session split is the real co-residence tension on 125GiB, surfaced honestly, not hidden. ci_budget_tree.runner_pool_bytes_at remains a parallel non-conserving slice (separate memory-budget-tree consumer) — its convergence is the named follow-up."
+data gunbc_ci_runner_count_from_budget_disposition: Disposition = Terminal { reason: "DESIGN conservation model: the runner count divides the DECLARED runner_pool_budget by the DECLARED per_runner_memory_cap (gunbc.fleet_host_budget). Soundness is host_allocation_conserves (node_conserves over runner_pool + session_pool + fixed_overhead + headroom <= host RAM); it replaces the old chicken-and-egg RunnerSlotUnenforced gate (which refused to derive a count premised on a cap not yet enforced live). 'Is the cap live on the host' is no longer a plan-soundness question - it is a converge-receipt question. Session pool is the uniform 1 GiB demand class shared with the ctrl session dashboard." }
 
-data gunbc_ci_runner_cpu_cap_marker: String = "runner_count = min(memory_fit, cpu_cores_available, effective_build_tokens) -- §2 min-over-constraints, three axes: (1) memory = runner_slice_cap / MEAN whole-run peak (gunbc_ci_run_count_divisor) -- runners are MEAN-packed, not worst-packed: the aggregate is held by a three-part RUNNER belt = ctrl-jobserver (bounds coincident heavy compiles, so the tail cannot all burst at once) + hard runner-slice MemoryMax (aggregate ceiling; breach is a kernel kill+retry of one runner job, recoverable, NOT host OOM) + per-runner memory.max (no single runaway). NOT oomd -- oomd caps the SESSIONS slice (an indirect guard of the runner budget), it does not manage runners. Dividing by the worst would strand the slice at ~2 runners. The per-runner cap is a SEPARATE quantity: per_runner_memory_cap = WORST whole-run peak (gunbc_ci_job_peaks max) * safety_margin (5/4) -- it bounds a single runaway, it is NOT the divisor. A host whose per-runner cap exceeds the whole slice cannot safely host even one runner -> count 0 -> any_unfit -> PlanUnsound (the over-commit refusal, now on unit_cap > slice rather than worst > slice); (2) cpu = cpu_cores_available(nproc, margin), the SAME authority the ctrl jobserver cpu_bound reads (one CPU-core authority, §3) -- same min-over-cores shape as std.realization_width.bounded_host_spawn_width but WITHOUT its >=1 floor (a runner COUNT of 0 on a too-small host is valid and must fail closed, unlike a spawn WIDTH which is always >= 1); (3) build = effective_build_tokens (= derive_jobserver_tokens = how many concurrent compiles the shared jobserver pool admits) -- the build pool's CONCURRENCY survives as this bound rather than as a memory subtraction (its memory is inside the runner cgroup, counted in the per-run peak)."
-
-fn host_runner_count_from_cap(runner_slice_cap: ByteSize, run_unit_peak: ByteSize, cpu_cap: HardwareThreadCount, build_tokens: HardwareThreadCount) -> Int {
-  let mem_count = measure_fit_count_floor(capacity: runner_slice_cap, each: run_unit_peak)
-  if mem_count <= 0 {
-    0
-  } else {
-    int_min(
-      a: int_min(a: mem_count, b: hardware_thread_count_value(t: cpu_cap)),
-      b: hardware_thread_count_value(t: build_tokens)
-    )
+fn host_fixed_overhead_bytes(o: HostFixedOverhead) -> ByteSize {
+  match o {
+    HostFixedOverheadMeasured { bytes: b } => b
+    HostFixedOverheadUnmeasured => byte_size(0)
   }
 }
 
-fn host_deployment_from_plan(offer: ComputeOffer, cap: ByteSize, tokens: HardwareThreadCount, cpu_cap: HardwareThreadCount, run_unit_peak: ByteSize) -> RunnerHostDeployment {
-  let unit_cap = measure_scale_fraction_floor(m: run_unit_peak, num: gunbc_ci_runner_unit_cap_safety_margin_num, den: gunbc_ci_runner_unit_cap_safety_margin_den)
-  let count = if measure_le(a: unit_cap, b: cap) {
-    host_runner_count_from_cap(runner_slice_cap: cap, run_unit_peak: gunbc_ci_run_count_divisor, cpu_cap: cpu_cap, build_tokens: tokens)
-  } else {
-    0
-  }
+fn conservation_host_deployment(offer: ComputeOffer, nproc: HardwareThreadCount) -> RunnerHostDeployment {
   RunnerHostDeployment {
     identity: offer.supply.physical.identity,
-    runner_count: count,
-    runner_slice_cap: cap,
-    per_runner_memory_cap: unit_cap,
-    build_tokens: tokens,
+    runner_count: declared_runner_count(),
+    runner_slice_cap: gunbc_runner_pool_budget,
+    per_runner_memory_cap: gunbc_ci_runner_cgroup_memory_cap,
+    build_tokens: nproc,
     runner: runner_spec_from_offer(offer: offer),
     workload_class: BatchLatencyTolerant,
   }
 }
 
-fn empty_deployment_accumulator() -> DeploymentAccumulator {
-  DeploymentAccumulator { deployments: [], unsound_reason: "", any_unfit: false, total: 0 }
-}
-
-fn accumulate_host_deployment(
-  acc: DeploymentAccumulator,
-  offer: ComputeOffer,
-  overhead: ByteSize,
-  session_slice: ByteSize,
-  citation: CtrlJobserverCitation,
-  policy: HeadroomPolicy,
-  oomd: OomdEnforcementEvidence,
-  run_unit_peak: ByteSize
-) -> DeploymentAccumulator {
-  match fleet_host_plan_for_offer(offer: offer, overhead: overhead, session_slice: session_slice, citation: citation, policy: policy, oomd: oomd) {
-    FleetHostPlanUnsound { reason: r } =>
+fn accumulate_conservation_deployment(acc: DeploymentAccumulator, offer: ComputeOffer) -> DeploymentAccumulator {
+  match compute_host_primary_cpu(host: offer.supply.physical) {
+    Absent =>
       DeploymentAccumulator {
         deployments: acc.deployments,
-        unsound_reason: if acc.unsound_reason == "" { r } else { acc.unsound_reason },
+        unsound_reason: if acc.unsound_reason == "" { concat("compute offer has no primary CPU facts: ", offer.supply.physical.identity) } else { acc.unsound_reason },
         any_unfit: acc.any_unfit,
         total: acc.total,
       }
-    FleetHostPlanDerived { name: _, tree: _, runner_slice_cap: cap, effective_build_tokens: tokens, effective_runner_cpu_cap: cpu_cap, build_step: _ } => {
-      let dep = host_deployment_from_plan(offer: offer, cap: cap, tokens: tokens, cpu_cap: cpu_cap, run_unit_peak: run_unit_peak)
-      DeploymentAccumulator {
-        deployments: concat(acc.deployments, [dep]),
-        unsound_reason: acc.unsound_reason,
-        any_unfit: acc.any_unfit || (dep.runner_count == 0),
-        total: acc.total + dep.runner_count,
+    Present { value: cpu } => {
+      let host_ram = compute_host_ram_bytes_total(host: offer.supply.physical)
+      let overhead = host_fixed_overhead_bytes(o: gunbc_ci_host_fixed_overhead)
+      let headroom = oomd_actuation_floor(host: host_ram)
+      if host_allocation_conserves(
+        host: host_ram,
+        overhead: overhead,
+        headroom: headroom,
+        runner_pool: gunbc_runner_pool_budget,
+        session_pool: byte_size(0)
+      ) {
+        let dep = conservation_host_deployment(offer: offer, nproc: cpu_facts_threads(cpu: cpu))
+        DeploymentAccumulator {
+          deployments: concat(acc.deployments, [dep]),
+          unsound_reason: acc.unsound_reason,
+          any_unfit: acc.any_unfit || (dep.runner_count == 0),
+          total: acc.total + dep.runner_count,
+        }
+      } else {
+        DeploymentAccumulator {
+          deployments: acc.deployments,
+          unsound_reason: if acc.unsound_reason == "" { concat("host allocation over-committed (runner_pool + session_pool + overhead + headroom exceeds host RAM): ", offer.supply.physical.identity) } else { acc.unsound_reason },
+          any_unfit: acc.any_unfit,
+          total: acc.total,
+        }
       }
     }
-  }
-}
-
-fn derive_plan_with_budget(
-  offers: List<ComputeOffer>,
-  overhead: ByteSize,
-  session_slice: ByteSize,
-  citation: CtrlJobserverCitation,
-  policy: HeadroomPolicy,
-  oomd: OomdEnforcementEvidence,
-  run_unit_peak: ByteSize
-) -> RunnerDeploymentPlan {
-  let acc = fold(
-    offers,
-    init: empty_deployment_accumulator(),
-    f: (a, o) => accumulate_host_deployment(acc: a, offer: o, overhead: overhead, session_slice: session_slice, citation: citation, policy: policy, oomd: oomd, run_unit_peak: run_unit_peak)
-  )
-  if acc.unsound_reason != "" {
-    PlanUnsound { reason: concat("fleet host budget unsound: ", acc.unsound_reason) }
-  } else if acc.any_unfit {
-    PlanUnsound {
-      reason: "at least one fleet host cannot host a single runner: the per-runner memory.max (worst whole-run peak * safety margin) exceeds the conserving runner_slice_cap, or the slice admits zero runners at the mean divisor; raise the host, lower the headroom/sccache reservation, or re-measure the per-run peaks"
-    }
-  } else {
-    PlanDerived { hosts: acc.deployments, fleet_concurrent_runs: acc.total }
-  }
-}
-
-fn runner_deployment_plan_for(
-  enforcement: RunnerSlotEnforcement,
-  mode: SessionReservationMode,
-  job_peaks: List<CiJobPeak>,
-  overhead: HostFixedOverhead,
-  citation: CtrlJobserverCitation,
-  policy: HeadroomPolicy,
-  oomd: OomdEnforcementEvidence,
-  offers: List<ComputeOffer>
-) -> RunnerDeploymentPlan {
-  match enforcement {
-    RunnerSlotUnenforced { reason: r } => PlanUnsound { reason: r }
-    RunnerSlotEnforced =>
-      match resolve_session_slice(mode: mode, oomd: oomd) {
-        SessionSliceUnresolved { reason: r } => PlanUnsound { reason: r }
-        SessionSliceResolved { bytes: session_slice, per_session_cap: _, concurrency: _ } =>
-          match resolve_run_unit_peak(job_peaks: job_peaks) {
-            JobPeaksUnresolved { reason: r } => PlanUnsound { reason: r }
-            JobPeaksResolved { run_unit_peak: peak } =>
-              match overhead {
-                HostFixedOverheadUnmeasured =>
-                  PlanUnsound {
-                    reason: "host fixed overhead unmeasured: the sccache server daemon may live in a sibling host cgroup outside every per-job cgroup, so it is counted by no per-job peak; refuse to derive runner capacity until it is classified and reserved exactly once"
-                  }
-                HostFixedOverheadMeasured { bytes: oh } =>
-                  derive_plan_with_budget(offers: offers, overhead: oh, session_slice: session_slice, citation: citation, policy: policy, oomd: oomd, run_unit_peak: peak)
-              }
-          }
-      }
   }
 }
 
 fn runner_deployment_plan() -> RunnerDeploymentPlan {
-  runner_deployment_plan_for(
-    enforcement: gunbc_ci_runner_slot_enforcement,
-    mode: gunbc_ci_session_reservation_mode,
-    job_peaks: gunbc_ci_job_peaks,
-    overhead: gunbc_ci_host_fixed_overhead,
-    citation: ctrl_jobserver_config,
-    policy: gunbc_fleet_headroom_policy,
-    oomd: gunbc_fleet_oomd_evidence,
-    offers: fleet_intent_offers
+  let acc = fold(
+    fleet_intent_offers,
+    init: DeploymentAccumulator { deployments: [], unsound_reason: "", any_unfit: false, total: 0 },
+    f: (a, o) => accumulate_conservation_deployment(acc: a, offer: o)
   )
+  if acc.unsound_reason != "" {
+    PlanUnsound { reason: acc.unsound_reason }
+  } else if acc.any_unfit {
+    PlanUnsound { reason: "declared runner_pool_budget admits zero runners at the declared per_runner_memory_cap: raise runner_pool_budget or lower per_runner_memory_cap" }
+  } else {
+    PlanDerived { hosts: acc.deployments, fleet_concurrent_runs: acc.total }
+  }
 }
 
 type RunnersPerHostResolution
@@ -388,9 +269,15 @@ fn session_reservation_plan() -> SessionReservationPlan {
   }
 }
 
-data gunbc_ci_count_field_measure_followup: String = "dissolve-on feature:M12-cardinal-count-value-measure-sweep -- the M12 / Practice-13 value-Measure sweep for cardinal COUNT fields. The runner/session counts here (OperatingPointRow.session_concurrency, .coverage_count, .sample_count; RunnerHostDeployment.runner_count; SessionHostReservation.session_count; SessionReservationDerived.fleet_concurrent_sessions) are flat Int -- cardinals per DESIGN sec 2, identical in kind to the codebase-wide bare-Int count convention (rank_count, contact_count, processor_count, lane_count, stick_count, approval_count, ...) and to the unit_modeling lens's own cardinal exemptions (index/ordinal/position). The lens is an ADVISORY region-3 RatchetForever (not floor-enrolled, does not gate CI). Disposition for the whole cluster: convert together to a count-Measure carrier (HardwareThreadCount-style) in one M12 sweep so the unit modeling stays single-authority -- do NOT peel one field here (the forked-logic trap)."
+data gunbc_ci_count_field_measure_followup: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "std.measure",
+    decl_name: "HardwareThreadCount",
+    field: WholeDeclaration
+  }
+}
 
-data gunbc_ci_operating_curve_session_only_marker: String = "the operating curve renders the SESSION-side coverage of each candidate operating point (per_session_cap -> measured-peak coverage, sessions_slice = cap*concurrency). The runner count for a CHOSEN operating point is derived by the full budget plan (runner_count = min(slice/peak, tokens, cpu) where slice = host - overhead - sessions_slice - headroom) and reported per-host on the runner-deploy manifest lines. Runner count DOES move inversely with the operating point (bigger sessions_slice -> smaller runner slice -> fewer runners) -- that runner-vs-session split is the real co-residence tension; the curve shows the session axis, the manifest shows the resulting runner count for the committed point. A per-row runner-count column is a clean follow-up (it needs the full gated plan per row, not just the session coverage)."
 
 type OperatingPointRow {
   per_session_cap: ByteSize

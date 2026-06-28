@@ -3,6 +3,10 @@ module gunbc.roadmap_authority
 import gunbc.roadmap_document { RoadmapDocument, RoadmapSection, project_roadmap_to_markdown }
 import gunbc.roadmap_model {
   RoadmapNode, RoadmapEdge, Pointer,
+  Intricacy, IntricacyLow, IntricacyMedium, IntricacyHigh,
+  Volume, VolumeSmall, VolumeMedium, VolumeLarge,
+  Acceptance, PrsMerged, ManualAcceptance,
+  NodeSizing, Unsized, Sized,
   SectionElement, section_prose, section_group,
 }
 import gunbc.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, PlainLine }
@@ -16,29 +20,47 @@ fn ptr(label: String, path: String) -> Pointer { Pointer { label: label, path: p
 fn plan_ptr(path: String) -> List<Pointer> { [Pointer { label: "plan", path: path }] }
 
 fn authored(id: String, done: Bool, content: String) -> RoadmapNode {
-  RoadmapNode { node: nid(s: id), line: AuthoredLine { done: done, content: content }, carriers: [] }
+  RoadmapNode { node: nid(s: id), line: AuthoredLine { done: done, content: content }, carriers: [], sizing: Unsized }
 }
 
 fn authored_doc(id: String, done: Bool, content: String, path: String) -> RoadmapNode {
-  RoadmapNode { node: nid(s: id), line: AuthoredLine { done: done, content: content }, carriers: plan_ptr(path: path) }
+  RoadmapNode { node: nid(s: id), line: AuthoredLine { done: done, content: content }, carriers: plan_ptr(path: path), sizing: Unsized }
 }
 
 fn authored_pp(id: String, done: Bool, content: String, carriers: List<Pointer>) -> RoadmapNode {
-  RoadmapNode { node: nid(s: id), line: AuthoredLine { done: done, content: content }, carriers: carriers }
+  RoadmapNode { node: nid(s: id), line: AuthoredLine { done: done, content: content }, carriers: carriers, sizing: Unsized }
 }
 
 fn plain(id: String, content: String) -> RoadmapNode {
-  RoadmapNode { node: nid(s: id), line: PlainLine { content: content }, carriers: [] }
+  RoadmapNode { node: nid(s: id), line: PlainLine { content: content }, carriers: [], sizing: Unsized }
 }
 
 fn derivable(id: String, prs: List<Int>, title: String, description: String) -> RoadmapNode {
-  RoadmapNode { node: nid(s: id), line: DerivableLine { prs: prs, title: title, description: description }, carriers: [] }
+  RoadmapNode { node: nid(s: id), line: DerivableLine { prs: prs, title: title, description: description }, carriers: [], sizing: Unsized }
 }
 fn derivable_doc(id: String, prs: List<Int>, title: String, description: String, path: String) -> RoadmapNode {
-  RoadmapNode { node: nid(s: id), line: DerivableLine { prs: prs, title: title, description: description }, carriers: plan_ptr(path: path) }
+  RoadmapNode { node: nid(s: id), line: DerivableLine { prs: prs, title: title, description: description }, carriers: plan_ptr(path: path), sizing: Unsized }
 }
 fn derivable_pp(id: String, prs: List<Int>, title: String, description: String, carriers: List<Pointer>) -> RoadmapNode {
-  RoadmapNode { node: nid(s: id), line: DerivableLine { prs: prs, title: title, description: description }, carriers: carriers }
+  RoadmapNode { node: nid(s: id), line: DerivableLine { prs: prs, title: title, description: description }, carriers: carriers, sizing: Unsized }
+}
+
+fn derivable_wi(id: String, prs: List<Int>, title: String, description: String, intricacy: Intricacy, volume: Volume, repo: String) -> RoadmapNode {
+  RoadmapNode {
+    node: nid(s: id),
+    line: DerivableLine { prs: prs, title: title, description: description },
+    carriers: [],
+    sizing: Sized { intricacy: intricacy, volume: volume, repo: repo, acceptance: PrsMerged },
+  }
+}
+
+fn authored_wi(id: String, done: Bool, content: String, intricacy: Intricacy, volume: Volume, repo: String) -> RoadmapNode {
+  RoadmapNode {
+    node: nid(s: id),
+    line: AuthoredLine { done: done, content: content },
+    carriers: [],
+    sizing: Sized { intricacy: intricacy, volume: volume, repo: repo, acceptance: ManualAcceptance },
+  }
 }
 
 fn preamble() -> List<MarkdownBlock> {
@@ -131,10 +153,12 @@ fn section_1() -> RoadmapSection {
           authored_doc(id: "1-resolve-not-pruned", done: false, content: "**resolve is not affected-set-pruned** — discovery is deliberately tree-wide (fail-closed enrol), but EXECUTION still **resolves all 870** every run; #5427 selection shrinks compile/test, not the 518s resolve. The lever: extend the affected-set across discovery→resolve so unchanged witnesses skip (the floor-selection items below, applied to the resolve phase).", path: "docs/plans/ci-selection-vs-scheduling.md"),
           authored(id: "1-double-resolve", done: false, content: "**kill the within-run double-resolve** — the corpus resolves once for discovery and again for execution (~275s second pass); execution should piggyback the discovery resolve. Pure within-run win, no cross-run cache needed."),
           authored(id: "1-resolver-pathology", done: false, content: "**profile the 518s resolve** — ~0.6s/witness average, but a known machine-independent resolver bug resolves `budget_roster` ~450x its structural twin; a few pathological witnesses likely dominate the 518s. Profile which, fix the resolver."),
+          authored_doc(id: "1-gantt-receipt", done: true, content: "**fractal Gantt profiling receipt (#5757 baseline)** — per-claim timing tap (`GUNBC_FLOOR_GANTT=1`) + Batch 1/2/3 breakdown; hot spots: rust gate ~530s (host-effect, architectural sep), discovery eval ~229s (interpreter, `width=3`), cold resolve ~50s (resolve-cache lever).", path: "docs/plans/ci-floor-fractal-gantt.md"),
         ],
         edges: [],
       ),
       section_prose(content: "**The <1min lever is resolve-phase incrementality, NOT cross-run resolve-cache** — CI is cold-dominated (the exe-hash re-colds on every code change), so §2 P3 resolve-cache is the *warm* ~18% lever and was measured net-negative as the cold-CI path. Incrementality (don't resolve what didn't change) is upstream of caching (memoize what repeats); the <1min target rides the former. **This re-frames the §2 \"core ask\" — operator review.**"),
+      section_prose(content: "→ [resolved-graph representation minimization](docs/plans/representation-minimization.md) — operator-funded root-first leanness after the #5867 InternTable fix (whole-tree resolve 14.2 to 5.5 GiB): emitter-determinism gate, stream/evict (Lever C — converges with resolve-incrementality above), variant-Node minimal representation, func_env.sigs single-authority. Gated on the root-vs-doomed-seed discriminator (v1 is going away)."),
       section_group(
         label: "What's on `.dag` today (the gap map — detail in the charter §2/§4)",
         nodes: [
@@ -142,12 +166,16 @@ fn section_1() -> RoadmapSection {
           derivable(id: "1-sched-width", prs: [5444], title: "**scheduling: width axis**", description: "— `memory_aware_spawn_width` consumes the measured envelope; single-host"),
           derivable_doc(id: "1-measure-foundation", prs: [5470, 5478], title: "**Section 1 spawn-width foundation — std.measure expressibility**", description: "— the FLOOR family (measure_scale_fraction_floor + measure_fit_count_floor) and the demand-CEIL family completing the ceil-not-equal-floor money-pair landed, dissolving the measure unwrap→raw-arith→rewrap §3 fork. Authority: the expressibility-frontier spec #5467", path: "docs/plans/expressibility-frontier.md"),
           authored(id: "1-placement-inert", done: false, content: "**scheduling: placement + materialization inert** — `Placement`/`Materialization` modeled + witness-passing, **no live consumer** (same band as the host-ops gap, substrate side)"),
-          authored(id: "1-caching-forked", done: false, content: "**caching forked** — sccache live · resolve-cache **dormant** (pure-proven 616/616, env var unset — biggest dormant lever) · ParseTable memo live · RecordedFixture · BuildBuddy opt-in → converge on `realize(subject)` (§2 P2)"),
+          authored(id: "1-sched-resource-aware", done: false, content: "**scheduling: resource-aware (larger allocation → larger throughput)** — `spawn_width` is a side-channel derived from a static data row (`gunbc_ci_floor_measured_peak`, coarse whole_run÷concurrency estimate); goal: width derived from per-`Runnable` cost in the plan itself, self-calibrating from measured per-shard RSS. Four nodes: (A) measurement plumbing — claim_batch emits `[measurement] per-shard-peak-rss`, claim_executor collects max *(dispatched adhoc-97532cd3-dfe)*; (B) `CostEstimate.space` on `Runnable` in std; (C) scheduler reads cost → derives width, side-channel deleted; (D) calibration loop retires static data rows. Construction invariant: host memory increase → higher width → more throughput, no `.dag` edits required. [plan](docs/plans/resource-aware-scheduler.md)"),
+          authored(id: "1-caching-forked", done: false, content: "**caching forked** — sccache live · resolve-cache **opt-in (`GUNBC_RESOLVED_GRAPH_CACHE_DIR`; #5789 always-on default reverted — its whole-file JSON read/write OOMs the floor, must stream before it can default on)** · ParseTable memo live · RecordedFixture · BuildBuddy opt-in → converge on `realize(subject)` (§2 P2)"),
         ],
         edges: [],
       ),
+      section_prose(content: "**Host-operation band — off-fabric, unmodeled, unenforced (G1–G3, NOW):**"),
+      section_prose(content: "→ [host-effect orchestration plan](docs/plans/host-effect-orchestration.md) — the unifying design: one `apply(target, effect, policy) → Receipt` interface (install · manage · decom on the same fleet authority), the shell→`.dag` migration phasing, and the ctrl-exodus / host-self-converge end-state. G1–G3 below are its consumers."),
+      section_prose(content: "→ [srv3 virtual-media install (design for sign-off)](docs/plans/srv3-webui-kvm-virtual-media.md) — the first *install*-band consumer instance: a BMC `apply` transport `NbdProxyServe` (a direct wss+NBD seed client over OpenBMC's nbd-proxy, no browser/JS), capability-solver-dispatched (`os_install_mechanism`). srv3's cited row stays honestly grounded (PXE today) until an operator-gated ws-upgrade dry-run confirms the nbd-proxy surface; seed client gated on that."),
       section_group(
-        label: "Host-operation band — off-fabric, unmodeled, unenforced (G1–G3, NOW)",
+        label: "",
         nodes: [
           authored_doc(id: "1-g1-placement", done: false, content: "**G1 placement** — which host a job lands on is GitHub-native, demand-blind, first-idle → heavy runs co-reside, other host idles (the underutilization root)", path: "docs/plans/compute-envelope-model.md"),
           authored(id: "1-g2-runner", done: false, content: "**G2 runner deployment + cross-host placement** *(dispatched proud-tern-439: model + drift-gate)* — derive runners/host + registration from `fleet_intent`+envelope; **host-apply RESOLVED (operator-set, CI-humming plan authority): the gunbc-EMITTED converge shell** (`.github/fleet-converge.sh` = a §2 host-effect handler inhabiting the §6 carrier *by emission* — the emitted shell IS the executing consumer, escaping the §5 spec-without-execution trap; ctrl thin-runs it + parses a fail-closed receipt; §7 seed-shrink). In progress: emit (wise-eagle-664) + thin consume/run (fierce-carp)"),
@@ -161,6 +189,7 @@ fn section_1() -> RoadmapSection {
         nodes: [
           authored_pp(id: "1-g4-dispatch", done: false, content: "**G4 dispatch dup** — `workflow_dispatch`+PR fire two same-SHA runs; `run_id` concurrency fallback won't collapse them → OOM", carriers: [ptr(label: "decision record", path: "docs/plans/ci-merge-freshness.md")]),
           authored_doc(id: "1-inline-shell-defork", done: false, content: "**CI inline-shell de-fork** — `RunStep.run` is raw concat'd bash across ~26 sites; #5427 modeled `cargo.Build.Nextest` but bypasses it for the release build (`ci_release_build_script` hand-writes bash) = a model↔realization fork in one file (+ hardcoded `CARGO_BUILD_JOBS`, pinned nextest version, a bash `uname` arch-case we already model as `TargetArchitecture`). Root: `RunStep` carries modeled effects, not a `String`; revive the inline-shell reducibility lens — §3 transport-fusion de-fork (the N×M adapter trap → one shape + N bound handlers). Sequence after #5427/#5546 (same file).", path: "docs/plans/emission-ingestion-inverse.md"),
+          authored_doc(id: "1-interpreter-terminal-output-defork", done: false, content: "**interpreter terminal-output de-fork** — the seed interpreter's CLI rendering (`v1_interpreter.rs` sgr/color_enabled/cli_verbosity/render_shell_trace, `claim_executor.rs` result lines) is a hand-Rust realization of three `.dag` authorities it does not yet consume: `extdeps.render.ansi.ansi_mappings` (SGR codes), `extdeps.render.terminal_capability.detect_capability` (NO_COLOR/CI/TTY to color), and `gunbc.output_policy` (resolve_verbosity precedence, channel_decision, env_var_for dispatch, shell_trace_summary_max_columns cap). §3 single-authority: the parallel representation can drift until the interpreter reads these tables. Dissolve-on: interpreter consumes the .dag render/output-policy tables at runtime (same class as CI inline-shell de-fork — seed forks the modeled authority; one home each).", path: "dsl/gunbc/output_policy.dag"),
           authored_doc(id: "1-g5-rust-selection", done: false, content: "**G5 rust-gate selection** — rust fmt/clippy/run-all is all-or-nothing on `.rs` PRs; no affected-set (the `.dag` floor already has one)", path: "docs/plans/ci-selection-vs-scheduling.md"),
           authored_doc(id: "1-floor-right-things", done: false, content: "**floor runs the right things** — SELECTION (what changed) vs SCHEDULING (by cost); cost never drives selection", path: "docs/plans/ci-selection-vs-scheduling.md"),
 
@@ -214,8 +243,8 @@ fn section_2() -> RoadmapSection {
           authored(id: "2-p1", done: true, content: "P1 honest keys by construction — warm==cold purity oracle **LANDED (#5429)**"),
           authored(id: "2-p2", done: false, content: "P2 one door: `realize(subject)` sole API — kernel inhabits `cache_interface.dag` (#5446); ParseTable dissolution is downstream of the dsl→v2 de-fork (§5)"),
           plain(id: "2-hermetic", content: "hermetic fixtures feed P2: [x] M4.1 universal hermetic corpus governance (#5236, [plan](docs/plans/m4-universal-hermetic-corpus.md)); [ ] M5 fixture-store onto one Realization kernel ([plan](docs/plans/m5-fixture-store-consolidation.md))"),
-          authored(id: "2-p3", done: false, content: "P3 **resolve-cache enable** — purity proven (616/616); **#5429 gate CLEARED (landed)** — unblocked, pending the net-positive measurement (cold-CI re-cold) ← **core ask**"),
-          authored(id: "2-p4", done: false, content: "P4 economic tier (measured cost → `Materialization`) — instrument done (#5431); remaining = the consumer feedback + width-fold"),
+          authored(id: "2-p3", done: false, content: "P3 **resolve-cache enable** — purity proven (616/616); cache is correct but **opt-in** (`GUNBC_RESOLVED_GRAPH_CACHE_DIR`): #5789's always-on `$TMPDIR` default was reverted because the whole-file JSON read (hit) and write (miss) buffer ~11x the packed graph in memory and OOM the concurrent-shard floor. Re-enabling by default is gated on a streaming IO realization (binary + `deserialize_from`/`serialize_into`, no whole-file `Vec<u8>`)"),
+          authored(id: "2-p4", done: false, content: "P4 economic tier (measured cost → `Materialization`) — instrument done (#5431); remaining = (a) space arm: per-shard RSS plumbing → `CostEstimate.space` on `Runnable` (nodes A+B, [plan](docs/plans/resource-aware-scheduler.md)); (b) time arm: consumer feedback → `CostAccount.time = Measured` feeds width-fold (node C+D); dissolves `cost_account_predicted_zero()` on the floor path"),
           authored(id: "2-p5", done: false, content: "P5 native `content(T) = content_hash(subgraph)` — gated on B2"),
           plain(id: "2-blockers", content: "blockers: [ ] B1 #5295 generic-instantiation (gates cross-shard `Share`) · [ ] B2 cross-tree content-hash (gates P5)"),
         ],
@@ -297,7 +326,7 @@ fn section_5() -> RoadmapSection {
       section_prose(content: "Anchor (do not flip-flop): `.dag` = truth; purely self-hosting (v2 emits its own seed, no stage0 hand-edits); emit Rust + TypeScript; then shrink the seed to zero. → [plan](docs/plans/v2-self-hosting.md) · [de-fork audit](docs/plans/dsl-v2-defork-audit.md)"),
       section_prose(content: "Adjacent lane — algorithmic-cost rewrite engine (the §3 construction design; post-stability, natural once `.dag` is the self-hosted truth). → [plan](docs/plans/algebraic-rewrite-optimization.md)"),
 
-      section_prose(content: "**◆ Milestones (critical path):** front-end ✓ · emit-rust well-typed ✓ · de-fork Step 1 ✓ (#5473) · class-3 corpus-coherence + cargo-green seed ✓ (#5481) → **▸ NOW: emitted crate cargo-builds green** → std forks collapsed → real fixed point → **KEYSTONE: `regen --verify` in CI** → seed-honesty → **TERMINAL: `src/v1` deleted** *(§7 regen-fixpoint deferred, #5514; src/v1 NOT yet deletable)*"),
+      section_prose(content: "**◆ Milestones (critical path):** front-end ✓ · emit-rust well-typed ✓ · de-fork Step 1 ✓ (#5473) · class-3 corpus-coherence + cargo-green seed ✓ (#5481) → emitted crate cargo-builds green ✓ (#5777/#5873) → **▸ NOW: real fixed point** → `regen --verify` in CI ✓ (#5873) → seed-honesty → **TERMINAL: `src/v1` deleted** *(§7 regen-fixpoint deferred, #5514; src/v1 NOT yet deletable)*"),
       section_group(
         label: "",
         nodes: [
@@ -309,13 +338,13 @@ fn section_5() -> RoadmapSection {
           authored(id: "5-defork", done: false, content: "de-fork dsl ↔ v2 (one std authority) — **grounding cluster UNPARKED: operator ruled FreeMonoid/algebra single authority** (coproduct = structural authority; dsl record-surface derived-from-inhabitance; grounded-realization wins) → de-fork + self-host fused into one grounding lane ([brief](docs/plans/dsl-v2-defork-audit.md) §3b)"),
 
           derivable(id: "5-defork-step1", prs: [5473], title: "turn on cross-tree import — Step 1 **LANDED**", description: ""),
-          authored(id: "5-root-a", done: false, content: "**Root A — emit-seam grounding** *(build-now)*: String/`FreeMonoid`→host `Vec` via the #5428 `RustCorpusRepr` seam; drives HostNative cargo-green *(jolly-cat #5551)*"),
+          authored(id: "5-root-a", done: true, content: "**Root A — emit-seam grounding ✓ LANDED (#5734)**: String/`FreeMonoid`→host `Vec` via the #5428 `RustCorpusRepr` seam; drove HostNative cargo-green *(jolly-cat)*"),
           authored(id: "5-root-b", done: false, content: "**Root B — generic-inference keystone ✓ MERGED (#5552)** → def-unification (coproduct authority + aliases) → repoints (algebra/nat/integer/float/logic/effects/verification) → 🟡-marker dissolution *(bright-deer-111)*"),
           authored(id: "5-v1coupled", done: false, content: "v1-coupled `coercion`/`node` renames — deferred to v1-delete"),
-          authored(id: "5-cargo-green", done: false, content: "**emitted crate `cargo build`s green (Route-A last mile)** — execution-grounded, **re-measured after unmask** (#5714, deep-wolf, `--emit-fresh` full 108-emitted + 22-periphery closure): the earlier **38 E0308 was an E0433-masked LOWER BOUND** — true ceiling **647 E0308** (the §5-honesty call to re-measure-after-unmask was right, ~17x over the masked bound; *no* green was ever claimed against `38→0`). **Family A (24 map-literal `&str` keys) CLEARED → 0** by #5714 (type-DERIVED key coercion). **Pole = the Optional-on-String-carrier family: 638/647 (98.6%)** — and execution **REFUTED the first-cut 'pipe-first consumer-unwrap' root cause**: the dominant 638 are **signature-rendering** bugs (`expected String, found Option<String>`), the Rust emitter **dropping the `Optional` wrapper on String text-carrier signature/field types** (the carrier path early-returns a bare `String` before the Optional-template renderer; `Int?` rendered `Option<i64>` correctly, only `String?` regressed). The function *body* already emits `Some/None` — only the *type* was unfaithful, so the model was right (`first` IS modeled `OptionalOf`, algebra.dag:295). Fix = **faithful Optional RENDERING** (`rust_carrier_optional_wrap`: wrap iff `return_cardinality == CardOptional`, cardinality-gated + a non-optional-stays-bare control) — #5716, **CONSTRUCTION not a coercion**. Trajectory by `--emit-fresh`: **647 → 9** (the 11-site renderer wrap) **→ 6** (3 fail-closed unwraps at the genuine `T?`-into-`T`-slot model-hole consumers — semver_compare_identifier, schedule_witness_entry_eq, runnable_eq — located `.expect`, never `unwrap_or_default`, the empty-None PANIC proven by catch_unwind against a fabricates-0 control). **E0308 POLE CLEARED: 647 → 0** (the final 6 — fn-item-as-value 1 @ semver.rs:226 · and-str 3 · Box/Rc DescentEvidence 2 — clear in deep-wolf's 6-tail PR; fn-item via a load-bearing record-collapse-fold consistency fix, gated). But **0 E0308 is a MILESTONE, not cargo-green** — execution **REFUTED the '0 E0308 = done' finish-line**: the lane measured E0308-ONLY (its brief said 'categorized E0308 count'), and the FULL cargo build shows **~32 OTHER pre-existing errors never counted**, constant across measures (orthogonal, not unmasked — 41=9+32, 38=6+32, 32=0+32). Categorized: **measure-tower dominant (19/32, ONE `std_measure.rs` root** — E0560×12 'Measure has no field count' + E0614×7 'i64 cannot be dereferenced', a Measure-generic-carrier issue that is **load-bearing + possibly a MODEL gap → its fix GATES on an emitter-vs-model diagnosis**, NOT auto-cleared like the E0308 tail) · E0425 cannot-find-type (5, the unwired-periphery cousin of E0433) · E0573/E0599/singletons (8). So **cargo-green = 0 TOTAL cargo errors** (the real self-host build); measure-tower is the next pole (one root, ~60% IF emitter-faithful). Model hole stays flagged: pipe-first is modeled `OptionalOf`, so a **model-forces-unwrap follow-up is owed UPSTREAM** (the Optional/`Value::Null` runway). **\"done\" = the emitted crate cargo-builds with 0 TOTAL errors (the E0308 milestone + the 32 cleared) + the PRs merged** — measure full-cargo, never a grep of one error family. *(jolly-cat #5705/#5714/#5716 + the 6-tail/32-baseline; supersedes the stale 38-lower-bound, the ~12,600 / ~150-latent estimate, the refuted pipe-first-unwrap root cause, AND the refuted '0 E0308 = cargo-green' finish-line)*"),
+          authored(id: "5-cargo-green", done: true, content: "**emitted crate `cargo build`s green (Route-A last mile) ✓ LANDED (#5777/#5873)** — execution-grounded **re-census CONFIRMED 0 TOTAL errors** (cool-hawk-908: `regen_stage0 --emit-fresh` → `cargo build` debug+release, 2026-06-28). **REFUTED** the stale 'residual 2 = E0091×2' hypothesis: #5777 cleared E0599/E0624 **and** E0091 (`alias_unused_param_names` → `PhantomData` for unused type-alias params; `type_alias_phantom_param_test` witnesses). Trajectory: 647 E0308 → 0 (#5716/#5718/#5717) → ~32 other-family → 5 TOTAL → **0 TOTAL** (#5777). #5873: two-generation regen cutover + `regen --verify` CI gate. Compose emits `PhantomData<(Algebra, MachineConstraint)>`. Model hole stays flagged: pipe-first `OptionalOf` unwrap follow-up owed upstream (`Value::Null` runway). *(jolly-cat #5705/#5716/#5718 + cool-hawk-908 re-census)*"),
           authored(id: "5-real-fixpoint", done: false, content: "real fixed point: `content_hash` stage1==stage2 (dissolve placeholder hashes)"),
-          authored(id: "5-regen-verify", done: false, content: "wire `regen_stage0 --verify` lockstep gate into CI — enforces no stage0 hand-edits ← **keystone**"),
-          authored_pp(id: "5-dissolve-patches", done: false, content: "dissolve seed hand-patches (`patch_*` / `HAND_MAINTAINED_STAGE0_FILES`) — the `emit_rust` hand-sync caveat the gate must reproduce:", carriers: [ptr(label: "required facts", path: "docs/plans/regen-verify-gate-required-facts.md")]),
+          authored(id: "5-regen-verify", done: true, content: "wire `regen_stage0 --verify` lockstep gate into CI — enforces no hand-edits to **generated** stage0 files (`GENERATED_STAGE0_FILES`); `HAND_MAINTAINED_STAGE0_FILES` are copied through, excluded by design ← **keystone**"),
+          authored(id: "5-dissolve-patches", done: false, content: "dissolve seed hand-patches (`patch_*` / `HAND_MAINTAINED_STAGE0_FILES`) — the `emit_rust` hand-sync caveat the gate reproduces (the required-facts plan is dissolved into the executable `RegenVerifyGate`)"),
           authored(id: "5-ts-first-class", done: false, content: "TypeScript to first-class (beyond the `add` slice) — the emit SEED. **In progress: Char atom-realization + green typed-fn emit (#5695), FieldAccess + RecordConstruct + `tsc --noEmit` oracle (#5701), operators by inhabitance (#5704)**"),
           authored(id: "5-ts-selfhost", done: false, content: "**TypeScript self-host (own lane)** — emit the compiler ITSELF as TypeScript and reproduce a per-realization merkle fixed point (the Rust `regen --verify` gate, mirrored for the TS realization). This is what makes \"language design collapses to a row\" real at full scale — §7 medium-agnostic proof, emit Rust *and* TypeScript, fixed point *per realization*. `5-ts-first-class` is the emit seed; this is the self-host. Gated on the Rust fixed point."),
           authored(id: "5-seed-honesty", done: false, content: "seed-honesty discharge (Diverse Double-Compiling)"),
@@ -351,7 +380,7 @@ fn section_6() -> RoadmapSection {
           authored(id: "6-medium-axis", done: true, content: "**medium axis** — `Medium<R>` + `DecodeFidelity`; `LanguageModel` unified (13 forks dissolved); `compile(Eval) → EvalResult\{value: Medium<Node>\}`"),
 
           derivable_doc(id: "6-roundtrip-law", prs: [5525, 5527], title: "**round-trip law (ingest∘emit = id, DecodeFidelity-bounded)**", description: "— established across two structurally-different media: markdown (block-document) and GHA-expr (recursive-expression). v2-TargetModel convergence is the deferred single-authority destination; per-medium round-trips are v1-seed interim. Authority for the law: the round-trip oracle #5513 §5.2", path: "docs/plans/emission-ingestion-inverse.md"),
-          authored_doc(id: "6-ingestion-first-class", done: false, content: "**ingestion as a first-class direction** — fold foreign surface INTO the node tree (the inverse of emit): `Lossless` where decidable, fail-closed `DecodeFidelity` where not, and **emit = ingest⁻¹ over ONE `GrammarRelation`** (§4: one grammar read both directions; the §7 \"any language with a typed honesty boundary\" payoff). Emission is well-covered (round-trip law, language axis); ingest *at large* — beyond the per-medium round-trips — has no lane. (parser-wall #5553 is one corner; the direction needs an owner.)", path: "docs/plans/emission-ingestion-inverse.md"),
+          authored_doc(id: "6-ingestion-first-class", done: false, content: "**ingestion as a first-class direction** — fold foreign surface INTO the node tree (the inverse of emit): `Lossless` where decidable, fail-closed `DecodeFidelity` where not, and **emit = ingest⁻¹ over ONE `GrammarRelation`** (§4: one grammar read both directions; the §7 \"any language with a typed honesty boundary\" payoff). Emission is well-covered (round-trip law, language axis); ingest *at large* — beyond the per-medium round-trips — has no lane. (the comment parser-wall #5579 is one corner of the construction direction; ingest-at-large needs an owner.)", path: "docs/plans/emission-ingestion-inverse.md"),
           authored(id: "6-language-axis", done: false, content: "**language axis** — 15+ targets wave-1; English emit proven"),
           authored(id: "6-cross-media", done: false, content: "**cross-media targets beyond syntax** — JSON / react / diagram as first-class media (not stringified)"),
           authored(id: "6-medium-homo", done: false, content: "`Medium<A> ↔ Medium<B>` homomorphisms"),
@@ -398,11 +427,12 @@ fn section_8() -> RoadmapSection {
   RoadmapSection {
     title: "8. Session dashboard on `.dag` (SHELVED)",
     elements: [
-      section_prose(content: "Product/infra tooling — shelved during the stability window (no `.dag`-correctness leverage right now)."),
+      section_prose(content: "Product/infra tooling — shelved during the stability window (no `.dag`-correctness leverage right now). **One slice un-shelved (operator-directed): the roadmap-as-spawner MVP below** — it earns `.dag`-correctness leverage by making the roadmap the single authority for tracked work (§3) and is the first inhabitant of migrating ctrl onto the substrate (§7)."),
       section_group(
         label: "",
         nodes: [
           authored(id: "8-pipeline", done: false, content: "idea → PR pipeline *(deferred)*"),
+          authored_doc(id: "8-roadmap-spawner", done: false, content: "**roadmap-as-spawner MVP** *(active — operator-directed, un-shelves this slice)* — the gunbc roadmap `.dag` becomes the work-tracking DAG that drives ctrl session spawns. **Structure** (what work exists, deps, sizing, acceptance) lives only in the `.dag` (single authority §3, edited by committing to main); **runtime state** (done/live-session) flows ctrl→gunbc read-only as acceptance evidence — two kinds of fact, one home each, no dual authority. gunbc emits `roadmap-spawn-request/v1` via `roadmap_next_spawnable` (graph readiness = not-done ∧ deps-done); a thin ctrl bridge consumes it, dedups vs live sessions, and reuses the existing auto-spawn poller (zero new spawn code, #1812 merged). **Fail-closed pause kill switch** (§5, default paused — a missing/garbled control file spawns nothing). Stage 2 migrates spawn/session-management onto the `.dag` host-effect `apply()` seam (host-effect-orchestration Phase D/E), shrinking the ctrl realization toward zero (§7).", path: "docs/plans/roadmap-spawner.md"),
         ],
         edges: [],
       ),

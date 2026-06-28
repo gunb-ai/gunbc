@@ -26,7 +26,11 @@ data realization_edge_path_prefixes: List<String> = [
   "src/v2/extdeps/languages/",
   "src/v2/compiler/05_emit",
   "src/v2/compiler/06_translate",
-  "src/v2/compiler/self_host/candidate_generation"
+  "src/v2/compiler/self_host/candidate_generation",
+  "src/v2/workflow/shell_emit",
+  "src/v2/workflow/orchestration_emit",
+  "src/v2/workflow/orchestration_stmt_emit",
+  "src/v2/workflow/orchestration_word_emit"
 ]
 
 data realization_vocab_exception_roster: List<String> = [
@@ -39,7 +43,7 @@ data realization_vocab_exception_roster: List<String> = [
   "dsl/tools/extdeps_external_authority_transport.dag",
   "dsl/tools/host_prelude.dag",
   "dsl/tools/layering_imports_transport.dag",
-  "dsl/tools/resolved_imports_transport.dag",
+  "dsl/tools/regen_verify_transport.dag",
   "dsl/tools/v1_dag_parse_transport.dag",
   "src/v2/workflow/compiler_closure_ingest_transport.dag",
   "src/v2/workflow/source_root_ingest_transport.dag"
@@ -220,5 +224,5 @@ fn realization_vocab_roster_sound_live(scan_roots: List<String>) -> Bool {
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: RealizationDispatch },
-  rationale: "Importing the target-AST sidecar outside the realization edge is a decidable import-graph property; a shrinking-roster ratchet that becomes a pure construction wall once the bash-sidecar arc empties the roster. Grounding authority: the bash-sidecar arc (warm-badger-46) migrating every consumer onto emit(intent, Bash). Dissolves on: the exception roster empties to a pure wall, extdeps.languages.bash.program is deletable, and importing target-AST vocab outside the realization edge is then unwritable"
+  rationale: "Importing the target-AST sidecar outside the realization edge is a decidable import-graph property; a shrinking-roster ratchet that becomes a pure construction wall once the bash-sidecar arc empties the roster. Grounding authority: the bash-sidecar arc (warm-badger-46) migrating every consumer onto emit(intent, Bash). Dissolves on: the exception roster empties to a pure wall, extdeps.languages.bash.program is deletable, and importing target-AST vocab outside the realization edge is then unwritable. Edge permanent members: src/v2/workflow/shell_emit (bash string-level serializer) and src/v2/workflow/orchestration_emit (intent-to-bash emitter) are the bash realization layer parallel to 05_emit/06_translate — they author bash grammar Node values, so importing the target-AST sidecar is definitionally correct; their test siblings (orchestration_stmt_emit, orchestration_word_emit) are edge-adjacent by the same argument"
 }

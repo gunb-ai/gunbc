@@ -1,0 +1,55 @@
+module extdeps.bmc.capability
+
+import std.bmc { BmcFirmwareFamily, OpenBmc }
+import std.types { NonEmptyStr, List }
+import std.logic { Bool }
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.dmtf.org/standards/redfish"
+  }
+}
+
+type BmcCapability
+  = CapabilityPowerControl
+  | CapabilityBootSourceOverride
+  | CapabilityAccountManagement
+  | CapabilityFirmwareUpdate
+  | CapabilityVirtualMedia
+  | CapabilityNbdProxyVirtualMedia
+  | CapabilityBiosAttributeConfig
+
+type BmcFirmwareVersion {
+  family: BmcFirmwareFamily
+  version: NonEmptyStr
+}
+
+type BmcFirmwareCapabilityRow {
+  firmware: BmcFirmwareVersion
+  capabilities: List<BmcCapability>
+}
+
+fn firmware_has_capability(row: BmcFirmwareCapabilityRow, cap: BmcCapability) -> Bool {
+  row.capabilities |> any(c => c == cap)
+}
+
+fn catalog_has_vm_capable_firmware(catalog: List<BmcFirmwareCapabilityRow>) -> Bool {
+  catalog |> any(row => firmware_has_capability(row: row, cap: CapabilityVirtualMedia))
+}
+
+data openbmc_2_07_00_capabilities: BmcFirmwareCapabilityRow = BmcFirmwareCapabilityRow {
+  firmware: BmcFirmwareVersion {
+    family: OpenBmc,
+    version: "2.07.00",
+  },
+  capabilities: [
+    CapabilityPowerControl,
+    CapabilityBootSourceOverride,
+    CapabilityAccountManagement,
+    CapabilityFirmwareUpdate,
+  ],
+}

@@ -3,28 +3,31 @@ module v2.workflow.ci_floor_plan
 import gunbc.ci_layer_roots { witness_layer_roots, witness_discovery_scan_dirs }
 import gunbc.ci_spec {
   gunbc_ci_spec, CiSpec,
-  Gate, RustMonolithGate, EmitHostGate, LayeringImportsGate, ResolvedImportsGate,
+  Gate, RustMonolithGate, EmitHostGate, LayeringImportsGate,
   ExtdepsExternalAuthorityGate, DslCompileCleanGate, GeneratedArtifactDriftGate,
-  SourceRootIngestGate
+  SourceRootIngestGate, RegenVerifyGate
 }
-import v2.std.algebra { length, list_snoc_item }
+import v2.std.algebra { length, list_snoc_item, skip, zip_map }
 import v2.std.collection { List }
 import v2.std.dependency { DataDependsOn, ResourceDependsOn, DependencyView }
 import v2.std.node { Atom, Node, TypeNode }
 import v2.std.text { String }
 import std.types { ContentHash, Int }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.measure { HardwareThreadCount, hardware_thread_count, hardware_thread_count_value, byte_size, ByteSize, byte_size_count }
-import std.realization_width { width_fold_objective_goals, memory_aware_spawn_width, bounded_host_spawn_width }
+import std.realization_width { width_fold_objective_goals, bounded_host_spawn_width, int_min }
 import product.compute_fabric {
   ResourceEnvelope,
-  parallel_run_demand_envelope_from_budget,
   parallel_run_demand_envelope,
   demand_envelope_thread_count,
   demand_envelope_fits_budget
 }
 import gunbc.ci_floor_measurement {
   gunbc_ci_floor_per_shard_peak_rss_bytes,
-  gunbc_ci_floor_conservative_fallback_width
+  gunbc_ci_floor_conservative_fallback_width,
+  gunbc_ci_floor_memory_derived_width,
+  gunbc_ci_runner_cgroup_memory_cap,
 }
 import gunbc.ci_budget_tree { srv1_floor_memory_budget }
 import extdeps.cpu.ampere { altra_max_m12830_catalog }
@@ -64,11 +67,11 @@ fn gate_node(g: Gate) -> Node {
     RustMonolithGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_rust } }, children: [] }
     EmitHostGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_emit } }, children: [] }
     LayeringImportsGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_layering } }, children: [] }
-    ResolvedImportsGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_resolved_imports } }, children: [] }
     ExtdepsExternalAuthorityGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_extdeps_external_authority } }, children: [] }
     DslCompileCleanGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_compile } }, children: [] }
     GeneratedArtifactDriftGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_generated_artifact } }, children: [] }
     SourceRootIngestGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_sourceingest } }, children: [] }
+    RegenVerifyGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_regen_verify } }, children: [] }
   }
 }
 
@@ -77,7 +80,6 @@ fn gate_runnable(g: Gate) -> Runnable {
     RustMonolithGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "rust_monolith_gate_passes" }
     EmitHostGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "emit_host_gate_passes" }
     LayeringImportsGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "layering_imports_gate_passes" }
-    ResolvedImportsGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "resolved_imports_gate_passes" }
     ExtdepsExternalAuthorityGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "extdeps_external_authority_gate_passes" }
     DslCompileCleanGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "dsl_compile_clean_gate_passes" }
     GeneratedArtifactDriftGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "generated_artifact_drift_gate_passes" }
@@ -85,6 +87,7 @@ fn gate_runnable(g: Gate) -> Runnable {
       entry: floor_source_root_ingest_gate_entry,
       function: "source_root_ingest_gate_passes"
     }
+    RegenVerifyGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "regen_verify_gate_passes" }
   }
 }
 
@@ -124,12 +127,38 @@ fn gate_is_heavy_resolve(g: Gate) -> Bool {
   match g {
     SourceRootIngestGate => true
     DslCompileCleanGate => true
+    RegenVerifyGate => true
     RustMonolithGate => false
     EmitHostGate => false
     LayeringImportsGate => false
-    ResolvedImportsGate => false
     ExtdepsExternalAuthorityGate => false
     GeneratedArtifactDriftGate => false
+  }
+}
+
+fn gate_spawns_host_compiler(g: Gate) -> Bool {
+  match g {
+    EmitHostGate => true
+    RustMonolithGate => false
+    SourceRootIngestGate => false
+    DslCompileCleanGate => false
+    LayeringImportsGate => false
+    ExtdepsExternalAuthorityGate => false
+    GeneratedArtifactDriftGate => false
+    RegenVerifyGate => true
+  }
+}
+
+fn gate_serializes_against_corpus(g: Gate) -> Bool {
+  gate_is_heavy_resolve(g: g) || gate_spawns_host_compiler(g: g)
+}
+
+data gate_serializes_against_corpus_disposition: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "std.realization_schedule",
+    decl_name: "Runnable",
+    field: WholeDeclaration
   }
 }
 
@@ -143,17 +172,47 @@ fn floor_node_is_heavy_resolve(node: Node, spec: CiSpec) -> Bool {
   }
 }
 
-fn floor_corpus_serializes(dependent: Node) -> DependencyView {
+fn floor_serialize_after(source: Node, dependent: Node) -> DependencyView {
   DependencyView {
-    source: floor_corpus_node,
+    source: source,
     dependent: dependent,
     kind: ResourceDependsOn,
     usage_site: dependent
   }
 }
 
+fn floor_corpus_serializes(dependent: Node) -> DependencyView {
+  floor_serialize_after(source: floor_corpus_node, dependent: dependent)
+}
+
+fn floor_heavy_resolve_gate_nodes(spec: CiSpec) -> List<Node> {
+  fold(spec.gates, init: [], f: fn(acc, g) {
+    match g {
+      DslCompileCleanGate => acc
+      _ => if gate_is_heavy_resolve(g: g) {
+        list_snoc_item(xs: acc, item: gate_node(g: g))
+      } else {
+        acc
+      }
+    }
+  })
+}
+
+fn floor_heavy_resolve_chain(spec: CiSpec) -> List<DependencyView> {
+  let heavy = floor_heavy_resolve_gate_nodes(spec: spec)
+  zip_map(
+    a: heavy,
+    b: skip(xs: heavy, n: 1),
+    f: fn(prev, next) { floor_serialize_after(source: prev, dependent: next) }
+  )
+}
+
+fn floor_expected_readiness_layers(spec: CiSpec) -> Int {
+  2 + length(xs: floor_heavy_resolve_gate_nodes(spec: spec))
+}
+
 fn floor_dependencies_with(spec: CiSpec, serialize_heavy: Bool) -> List<DependencyView> {
-  fold(spec.gates, init: [floor_depends_on_compile(dependent: floor_corpus_node)], f: fn(acc, g) {
+  let corpus_serialized = fold(spec.gates, init: [floor_depends_on_compile(dependent: floor_corpus_node)], f: fn(acc, g) {
     match g {
       DslCompileCleanGate => acc
       _ => {
@@ -161,7 +220,7 @@ fn floor_dependencies_with(spec: CiSpec, serialize_heavy: Bool) -> List<Dependen
           xs: acc,
           item: floor_depends_on_compile(dependent: gate_node(g: g))
         )
-        if serialize_heavy && gate_is_heavy_resolve(g: g) {
+        if serialize_heavy && gate_serializes_against_corpus(g: g) {
           list_snoc_item(xs: after_compile, item: floor_corpus_serializes(dependent: gate_node(g: g)))
         } else {
           after_compile
@@ -169,6 +228,11 @@ fn floor_dependencies_with(spec: CiSpec, serialize_heavy: Bool) -> List<Dependen
       }
     }
   })
+  if serialize_heavy {
+    concat(corpus_serialized, floor_heavy_resolve_chain(spec: spec))
+  } else {
+    corpus_serialized
+  }
 }
 
 fn floor_dependencies(spec: CiSpec) -> List<DependencyView> {
@@ -195,10 +259,10 @@ fn runnables_for_batch(batch: ExecutorBatch, spec: CiSpec) -> List<Runnable> {
   })
 }
 
-fn gunbc_ci_floor_schedule_inner() -> List<List<Runnable>> {
+fn floor_schedule_for_dependencies(dependencies: List<DependencyView>) -> List<List<Runnable>> {
   match parallel_executor_plan_from_dependencies(
     nodes: floor_nodes(spec: gunbc_ci_spec),
-    dependencies: floor_dependencies(spec: gunbc_ci_spec),
+    dependencies: dependencies,
     scheduled: []
   ) {
     ExecutorRunComplete { batches: batches, scheduled: _ } =>
@@ -208,6 +272,16 @@ fn gunbc_ci_floor_schedule_inner() -> List<List<Runnable>> {
     ExecutorRunRunnable { batch: _, scheduled: _, remaining: _ } => [[floor_unrunnable_sentinel()]]
     ExecutorRunBlocked { evidence: _, batches: _, scheduled: _, remaining: _ } => [[floor_unrunnable_sentinel()]]
   }
+}
+
+fn gunbc_ci_floor_schedule_inner() -> List<List<Runnable>> {
+  floor_schedule_for_dependencies(dependencies: floor_dependencies(spec: gunbc_ci_spec))
+}
+
+fn gunbc_ci_floor_schedule_without_serialization() -> List<List<Runnable>> {
+  floor_schedule_for_dependencies(
+    dependencies: floor_dependencies_with(spec: gunbc_ci_spec, serialize_heavy: false)
+  )
 }
 
 fn gunbc_ci_floor_realization_plan() -> RealizationPlan {
@@ -244,26 +318,30 @@ fn gunbc_ci_floor_hardware_threads() -> HardwareThreadCount {
 }
 
 fn gunbc_ci_floor_spawn_width_for_budget(memory_budget: ByteSize) -> HardwareThreadCount {
-  memory_aware_spawn_width(
-    shard_count: gunbc_ci_floor_breadth(),
-    hardware_threads: gunbc_ci_floor_hardware_threads(),
-    memory_budget: memory_budget,
-    per_shard_peak: gunbc_ci_floor_per_shard_peak_rss_bytes(),
-    conservative_fallback_width: gunbc_ci_floor_conservative_fallback_width
-  )
+  let budget_count = byte_size_count(b: memory_budget)
+  if budget_count <= 0 {
+    hardware_thread_count(count: gunbc_ci_floor_conservative_fallback_width)
+  } else {
+    let cpu_bound = hardware_thread_count_value(t: bounded_host_spawn_width(
+      shard_count: gunbc_ci_floor_breadth(),
+      hardware_threads: gunbc_ci_floor_hardware_threads()
+    ))
+    hardware_thread_count(count: gunbc_ci_floor_memory_derived_width(cap: memory_budget, cpu_bound: cpu_bound))
+  }
 }
 
-fn gunbc_ci_floor_spawn_width() -> HardwareThreadCount {
+fn gunbc_ci_floor_spawn_width_from_tree() -> HardwareThreadCount {
   gunbc_ci_floor_spawn_width_for_budget(memory_budget: srv1_floor_memory_budget())
 }
 
+fn gunbc_ci_floor_spawn_width(memory_budget_bytes: Int) -> HardwareThreadCount {
+  gunbc_ci_floor_spawn_width_for_budget(memory_budget: byte_size(memory_budget_bytes))
+}
+
 fn gunbc_ci_floor_run_envelope(memory_budget_bytes: Int) -> ResourceEnvelope {
-  parallel_run_demand_envelope_from_budget(
-    shard_count: gunbc_ci_floor_breadth(),
-    hardware_threads: gunbc_ci_floor_hardware_threads(),
-    memory_budget: byte_size(memory_budget_bytes),
-    per_shard_peak: gunbc_ci_floor_per_shard_peak_rss_bytes(),
-    conservative_fallback_width: gunbc_ci_floor_conservative_fallback_width
+  parallel_run_demand_envelope(
+    width: gunbc_ci_floor_spawn_width_for_budget(memory_budget: byte_size(memory_budget_bytes)),
+    per_shard_peak: gunbc_ci_floor_per_shard_peak_rss_bytes()
   )
 }
 
@@ -293,14 +371,25 @@ fn witness_floor_unreadable_budget_uses_conservative_envelope() -> Bool {
 }
 
 fn witness_floor_width_governed_by_budget_tree() -> Bool {
-  let tree_width = hardware_thread_count_value(t: gunbc_ci_floor_spawn_width())
+  let tree_width = hardware_thread_count_value(t: gunbc_ci_floor_spawn_width_from_tree())
   let cpu_only_width = hardware_thread_count_value(t: bounded_host_spawn_width(shard_count: gunbc_ci_floor_breadth(), hardware_threads: gunbc_ci_floor_hardware_threads()))
   return tree_width < cpu_only_width
 }
 
 fn witness_floor_width_derived_from_tree_is_positive() -> Bool {
   byte_size_count(b: srv1_floor_memory_budget()) > 0
-    && hardware_thread_count_value(t: gunbc_ci_floor_spawn_width()) > 0
+    && hardware_thread_count_value(t: gunbc_ci_floor_spawn_width_from_tree()) > 0
+}
+
+fn witness_floor_spawn_width_tight_budget_backs_off() -> Bool {
+  let tight = 10000000000
+  let width = hardware_thread_count_value(t: gunbc_ci_floor_spawn_width(memory_budget_bytes: tight))
+  width < gunbc_ci_floor_breadth()
+}
+
+fn witness_floor_spawn_width_zero_budget_falls_back() -> Bool {
+  let width = hardware_thread_count_value(t: gunbc_ci_floor_spawn_width(memory_budget_bytes: 0))
+  width == gunbc_ci_floor_conservative_fallback_width
 }
 
 fn floor_layer_heavy_resolve_count(batch: ExecutorBatch, spec: CiSpec) -> Int {
@@ -333,4 +422,16 @@ fn gunbc_ci_floor_plan_co_runs_heavy_without_serialization() -> Bool {
   floor_plan_serializes_heavy_resolves(
     dependencies: floor_dependencies_with(spec: gunbc_ci_spec, serialize_heavy: false)
   ) == false
+}
+
+fn witness_floor_derived_width_at_runner_cap() -> Bool {
+  let cap_budget = byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap)
+  let actual_width = hardware_thread_count_value(t: gunbc_ci_floor_spawn_width(memory_budget_bytes: cap_budget))
+  actual_width == gunbc_ci_floor_memory_derived_width(cap: gunbc_ci_runner_cgroup_memory_cap, cpu_bound: 128)
+}
+
+fn witness_floor_derived_width_leaves_headroom_at_cap() -> Bool {
+  let width = gunbc_ci_floor_memory_derived_width(cap: gunbc_ci_runner_cgroup_memory_cap, cpu_bound: 128)
+  let committed = byte_size_count(b: gunbc_ci_floor_per_shard_peak_rss_bytes()) * width
+  committed < byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap)
 }

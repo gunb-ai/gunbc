@@ -1,7 +1,8 @@
 module extdeps.render.terminal
 
 import extdeps.render.glyphs { resolve_symbol }
-import std.render { Frame, Line, Span, Viewport }
+import extdeps.render.ansi { ansi_code }
+import std.render { Frame, Line, RenderCapability, Span, Viewport, cursor_action_under, repeat_string }
 import std.symbols { Tier }
 import std.unicode { string_display_width }
 import std.width { truncate_text }
@@ -80,4 +81,47 @@ fn constrain_frame(frame: Frame, viewport: Viewport, tier: Tier) -> Frame? {
     Present { value: lines } => Present { value: Frame { lines: lines, cursor_action: frame.cursor_action } }
     Absent => none
   }
+}
+
+fn project_frame(frame: Frame, viewport: Viewport, cap: RenderCapability) -> Frame? {
+  match constrain_frame(frame: frame, viewport: viewport, tier: cap.tier) {
+    Present { value: f } => Present { value: Frame { lines: f.lines, cursor_action: cursor_action_under(requested: f.cursor_action, cap: cap) } }
+    Absent => none
+  }
+}
+
+fn serialize_span(span: Span, cap: RenderCapability) -> String {
+  let glyph = match span.style.symbol {
+    null => ""
+    sym  => match resolve_symbol(id: sym, tier: cap.tier) {
+      Present { value: s } => s
+      Absent => ""
+    }
+  }
+  let body = concat(glyph, span.text)
+  if cap.color {
+    match span.style.color {
+      null => body
+      c    => match ansi_code(c: c) {
+        Present { value: code } => concat(code, concat(body, "\x1b[0m"))
+        Absent => body
+      }
+    }
+  } else {
+    body
+  }
+}
+
+fn serialize_line(line: Line, cap: RenderCapability) -> String {
+  let pad = repeat_string(s: " ", n: line.indent * 4)
+  let body = fold(line.spans,
+    init: "",
+    f: (acc, span) => concat(acc, serialize_span(span: span, cap: cap))
+  )
+  concat(pad, body)
+}
+
+fn serialize_frame(frame: Frame, cap: RenderCapability) -> String {
+  let rendered = map(frame.lines, line => serialize_line(line: line, cap: cap))
+  join(rendered, "\n")
 }

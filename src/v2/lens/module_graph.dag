@@ -2,7 +2,6 @@ module v2.lens.module_graph
 
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.disposition { SingleAuthority }
-import v2.lens.resolved_imports { ImportResolutionFact, import_resolution_facts_live }
 import v2.std.algebra { FreeMonoid, fold_list, length, contains, list_snoc_item }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
@@ -11,6 +10,24 @@ import v2.std.text { String }
 type ModuleDeclarationFact {
   module: String
   path: String
+}
+
+type ImportResolutionFact {
+  path: String
+  import_module: String
+  target_declared: Bool
+}
+
+fn import_resolution_facts_live(
+  pool_roots: List<String>,
+  importer_roots: List<String>,
+  exclude_substrings: List<String>
+) -> List<ImportResolutionFact> {
+  import_resolution_facts(
+    pool_roots: pool_roots,
+    importer_roots: importer_roots,
+    exclude_substrings: exclude_substrings
+  )
 }
 
 fn module_declaration_facts_live(pool_roots: List<String>) -> List<ModuleDeclarationFact> {
@@ -128,5 +145,5 @@ fn import_closure_live(entry_path: String, pool_roots: List<String>) -> FreeMono
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: SingleAuthority },
-  rationale: "The shared module-graph primitive grounding intent-linearity's ImportGraph axis (and the LayerDAG roster axis) in the substrate. The host emits two node/edge fact tables and does NOT traverse: import_resolution_facts gives the directed edges from importer-path to imported-module-name; module_declaration_facts gives the node-resolution table from module-name to declaring-path (the asymmetric endpoint import edges lack -- a target is a module NAME, a walk needs its declaring PATH). The transitive import closure is then PURE COMPUTATION over those facts, expressed as a fixpoint fold in .dag rather than a host walk, per the seed-shrinks-to-zero discipline (Rust exposes only the irreducible fact-read, never the high-level traversal). import_closure joins each frontier path's edges to declaring paths via paths_of_module and unions unseen paths; close_to_fixpoint iterates expand_once (a monotone, union-only expansion) until the path count is stable -- length-unchanged is a sound fixpoint test exactly because expansion only ever adds, and fuel = node count is the hard termination bound (a closure cannot exceed the total declared modules, so it converges in at most that many steps), so termination and decidability fall out of the bounded-forward substrate. Unresolved or external imports drop out naturally: paths_of_module yields zero paths for a module absent from the node table. SHARED, not Axis-1-only: module_declaration_facts of the roots IS the derived LayerDAG roster, so the LayerDAG axis becomes declared-roster == module_declaration_facts projection over the same node table and the same set-equality oracle, a different derived-side fn rather than a forked second index (DESIGN 2-horizontal: one concept, both breadths). Grounding authority: the parse/resolve module index the v1 resolver already builds (build_module_path_index). Dissolves on: intent_linearity.import_closure_is_clean reading derived from import_closure over live facts rather than a host-projected ClosureFact (the #5669 ImportGraph row promotion), at which point the WallNow.construction String naming the walk is replaced by this live fn. Until then the closure is exercised by its live-corpus witness (the .dag-native twin of the consumed_input_closure_drift Rust oracle): import_closure over the conformance entry equals the declared consumed-input closure, set-for-set, and drift in either direction breaks the equality by execution"
+  rationale: "The shared module-graph primitive grounding intent-linearity's ImportGraph axis (and the LayerDAG roster axis) in the substrate. The host emits two node/edge fact tables and does NOT traverse: import_resolution_facts gives the directed edges from importer-path to imported-module-name; module_declaration_facts gives the node-resolution table from module-name to declaring-path (the asymmetric endpoint import edges lack -- a target is a module NAME, a walk needs its declaring PATH). The transitive import closure is then PURE COMPUTATION over those facts, expressed as a fixpoint fold in .dag rather than a host walk, per the seed-shrinks-to-zero discipline (Rust exposes only the irreducible fact-read, never the high-level traversal). import_closure joins each frontier path's edges to declaring paths via paths_of_module and unions unseen paths; close_to_fixpoint iterates expand_once (a monotone, union-only expansion) until the path count is stable -- length-unchanged is a sound fixpoint test exactly because expansion only ever adds, and fuel = node count is the hard termination bound (a closure cannot exceed the total declared modules, so it converges in at most that many steps), so termination and decidability fall out of the bounded-forward substrate. Unresolved or external imports drop out naturally: paths_of_module yields zero paths for a module absent from the node table. SHARED, not Axis-1-only: module_declaration_facts of the roots IS the derived LayerDAG roster, so the LayerDAG axis becomes declared-roster == module_declaration_facts projection over the same node table and the same set-equality oracle, a different derived-side fn rather than a forked second index (DESIGN 2-horizontal: one concept, both breadths). Grounding authority: the parse/resolve module index the v1 resolver already builds (build_module_path_index). Dissolved (Tier-2 LANDED): intent_linearity.import_closure_is_clean_live reads derived from import_closure over live facts via import_graph_rule.derive (the host-projected ClosureFact carrier removed), and the WallNow.construction String now names this live fn. The closure is also exercised by its live-corpus witness (the .dag-native twin of the consumed_input_closure_drift Rust oracle): import_closure over the conformance entry equals the declared consumed-input closure, set-for-set, and drift in either direction breaks the equality by execution"
 }

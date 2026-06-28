@@ -26,6 +26,7 @@ import std.measure {
   ByteSize,
   MoneyAmount,
   HardwareThreadCount,
+  Count,
   byte_size,
   byte_size_count,
   measure_count,
@@ -37,9 +38,11 @@ import std.measure {
   Bandwidth,
 }
 import std.currency { CurrencyCode }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.verification { NanosecondDuration, nanosecond_duration, nanosecond_duration_count }
 import std.realization_schedule { CostAccount }
-import std.realization_measurement { cost_account_measured_from_time }
+import std.realization_measurement { cost_account_measured_from_time, cost_account_measured_from_time_and_space }
 import std.content_hash {
   content_hash_atom,
   content_hash_combine,
@@ -58,7 +61,7 @@ import extdeps.cpu.types {
   CpuSocket,
   SocketPackage,
 }
-import extdeps.storage.types { NvmeDeviceCatalogRow }
+import extdeps.storage.types { NvmeDeviceCatalogRow, PcieLink }
 import extdeps.ctrl.jobserver { CtrlJobserverConfig }
 import extdeps.toolchain.types {
   Architecture,
@@ -189,25 +192,75 @@ type MemoryDevice {
   bandwidth: Bandwidth?
 }
 
-type StorageDevice {
-  capacity: ByteSize
-  medium: StorageMedium
-  catalog: NvmeDeviceCatalogRow?
-  serial: NonEmptyStr?
-  read_bandwidth: Bandwidth?
-  write_bandwidth: Bandwidth?
-  persistence: PersistenceKind
-}
+type StorageDevice
+  = NvmeDevice {
+      catalog: NvmeDeviceCatalogRow
+      serial: NonEmptyStr?
+      persistence: PersistenceKind
+    }
+  | BareDevice {
+      capacity: ByteSize
+      medium: StorageMedium
+      serial: NonEmptyStr?
+      read_bandwidth: Bandwidth?
+      write_bandwidth: Bandwidth?
+      persistence: PersistenceKind
+    }
 
 fn nvme_storage_device(catalog: NvmeDeviceCatalogRow, persistence: PersistenceKind) -> StorageDevice {
-  StorageDevice {
-    capacity: catalog.capacity_bytes,
-    medium: Nvme,
-    catalog: Present { value: catalog },
+  NvmeDevice {
+    catalog: catalog,
     serial: none,
-    read_bandwidth: Present { value: catalog.sequential_read },
-    write_bandwidth: Present { value: catalog.sequential_write },
     persistence: persistence,
+  }
+}
+
+fn storage_device_capacity(d: StorageDevice) -> ByteSize {
+  match d {
+    NvmeDevice { catalog: c, serial: _, persistence: _ } => c.capacity_bytes
+    BareDevice { capacity: cap, medium: _, serial: _, read_bandwidth: _, write_bandwidth: _, persistence: _ } => cap
+  }
+}
+
+fn storage_device_medium(d: StorageDevice) -> StorageMedium {
+  match d {
+    NvmeDevice { catalog: _, serial: _, persistence: _ } => Nvme
+    BareDevice { capacity: _, medium: m, serial: _, read_bandwidth: _, write_bandwidth: _, persistence: _ } => m
+  }
+}
+
+fn storage_device_read_bandwidth(d: StorageDevice) -> Bandwidth? {
+  match d {
+    NvmeDevice { catalog: c, serial: _, persistence: _ } => Present { value: c.sequential_read }
+    BareDevice { capacity: _, medium: _, serial: _, read_bandwidth: bw, write_bandwidth: _, persistence: _ } => bw
+  }
+}
+
+fn storage_device_write_bandwidth(d: StorageDevice) -> Bandwidth? {
+  match d {
+    NvmeDevice { catalog: c, serial: _, persistence: _ } => Present { value: c.sequential_write }
+    BareDevice { capacity: _, medium: _, serial: _, read_bandwidth: _, write_bandwidth: bw, persistence: _ } => bw
+  }
+}
+
+fn storage_device_pcie_link(d: StorageDevice) -> PcieLink? {
+  match d {
+    NvmeDevice { catalog: c, serial: _, persistence: _ } => Present { value: c.pcie_link }
+    BareDevice { capacity: _, medium: _, serial: _, read_bandwidth: _, write_bandwidth: _, persistence: _ } => none
+  }
+}
+
+fn storage_device_serial(d: StorageDevice) -> NonEmptyStr? {
+  match d {
+    NvmeDevice { catalog: _, serial: s, persistence: _ } => s
+    BareDevice { capacity: _, medium: _, serial: s, read_bandwidth: _, write_bandwidth: _, persistence: _ } => s
+  }
+}
+
+fn storage_device_persistence(d: StorageDevice) -> PersistenceKind {
+  match d {
+    NvmeDevice { catalog: _, serial: _, persistence: p } => p
+    BareDevice { capacity: _, medium: _, serial: _, read_bandwidth: _, write_bandwidth: _, persistence: p } => p
   }
 }
 
@@ -480,6 +533,63 @@ type ToolchainCapability {
   linked_cache_interface: CacheInterfaceId?
 }
 
+type InputSizeAxis
+  = WitnessCount
+  | SourceNodeCount
+  | CorpusNodeCount
+
+type InputBound {
+  axis: InputSizeAxis
+  max: Measure<Count, One, Nat>
+}
+
+type InputEnvelope
+  = BoundedInput { bounds: List<InputBound> }
+  | EnvelopeUnknown
+
+type AdmissionVerdict
+  = Admitted
+  | RefusedOverEnvelope { axis: InputSizeAxis }
+  | RefusedUndeclared
+
+fn find_input_bound_for_axis(declared: List<InputBound>, axis: InputSizeAxis) -> InputBound? {
+  fold(
+    declared,
+    init: none,
+    f: (acc, b) =>
+      match acc {
+        Present { value: _ } => acc
+        Absent => if b.axis == axis { Present { value: b } } else { none }
+      }
+  )
+}
+
+fn input_admitted(envelope: InputEnvelope, actual: List<InputBound>) -> AdmissionVerdict {
+  match envelope {
+    EnvelopeUnknown => RefusedUndeclared
+    BoundedInput { bounds: declared } =>
+      fold(
+        actual,
+        init: Admitted,
+        f: (verdict, actual_bound) =>
+          match verdict {
+            RefusedOverEnvelope { axis: _ } => verdict
+            RefusedUndeclared => verdict
+            Admitted =>
+              match find_input_bound_for_axis(declared: declared, axis: actual_bound.axis) {
+                Absent => RefusedOverEnvelope { axis: actual_bound.axis }
+                Present { value: decl_bound } =>
+                  if actual_bound.max.count > decl_bound.max.count {
+                    RefusedOverEnvelope { axis: actual_bound.axis }
+                  } else {
+                    Admitted
+                  }
+              }
+          }
+      )
+  }
+}
+
 type WorkDemand {
   resources: ResourceEnvelope
   os: OperatingSystemRequirement?
@@ -488,6 +598,7 @@ type WorkDemand {
   parallelism: ParallelismShape
   data_locality: List<ArtifactLocalityRequirement>
   effects: List<EffectBoundary>
+  input_envelope: InputEnvelope
 }
 
 fn projected_concurrent_peak(width: HardwareThreadCount, per_shard_peak: ByteSize) -> ByteSize {
@@ -706,7 +817,7 @@ type MeasurementConfidence
 type PerformanceReceipt {
   provider: ProviderIdentity
   work_shape: WorkUnitId
-  wall_duration: NanosecondDuration
+  cost: CostAccount<Nano>
   cpu_seconds: Float?
   sample_count: Int
   measurement_context: ExecutionSurface
@@ -719,13 +830,20 @@ fn performance_receipts_total_time(receipts: List<PerformanceReceipt>) -> Nanose
     count: fold(
       receipts,
       init: 0,
-      f: (acc, receipt) => acc + nanosecond_duration_count(d: receipt.wall_duration)
+      f: (acc, receipt) => acc + measure_count(m: receipt.cost.time)
     )
   )
 }
 
 fn cost_account_from_performance_receipts(receipts: List<PerformanceReceipt>) -> CostAccount<Nano> {
-  cost_account_measured_from_time(time: performance_receipts_total_time(receipts: receipts))
+  cost_account_measured_from_time_and_space(
+    time: performance_receipts_total_time(receipts: receipts),
+    space: byte_size(count: fold(
+      receipts,
+      init: 0,
+      f: (acc, receipt) => acc + byte_size_count(receipt.cost.space)
+    ))
+  )
 }
 
 data host_v1_interpreter_provider: ProviderIdentity = "host:v1-interpreter"
@@ -748,11 +866,12 @@ data host_v1_interpreter_execution_surface: ExecutionSurface = ExecutionSurface 
 fn performance_receipt_host_single_sample(
   work_shape: WorkUnitId,
   wall_time: NanosecondDuration,
+  space: ByteSize,
 ) -> PerformanceReceipt {
   PerformanceReceipt {
     provider: host_v1_interpreter_provider,
     work_shape: work_shape,
-    wall_duration: wall_time,
+    cost: cost_account_measured_from_time_and_space(time: wall_time, space: space),
     cpu_seconds: none,
     sample_count: 1,
     measurement_context: host_v1_interpreter_execution_surface,
@@ -874,6 +993,7 @@ data vm_isolation_work_demand: WorkDemand = WorkDemand {
   parallelism: SingleWorkItem,
   data_locality: [],
   effects: [],
+  input_envelope: EnvelopeUnknown,
 }
 
 fn witness_shared_host_home_rejects_vm() -> Bool {
@@ -960,6 +1080,7 @@ data example_thread_work_demand: WorkDemand = WorkDemand {
   parallelism: SingleWorkItem,
   data_locality: [],
   effects: [],
+  input_envelope: EnvelopeUnknown,
 }
 
 data example_memory_work_demand: WorkDemand = WorkDemand {
@@ -976,6 +1097,7 @@ data example_memory_work_demand: WorkDemand = WorkDemand {
   parallelism: SingleWorkItem,
   data_locality: [],
   effects: [],
+  input_envelope: EnvelopeUnknown,
 }
 
 data example_feasible_resource_work_demand: WorkDemand = WorkDemand {
@@ -997,6 +1119,7 @@ data example_feasible_resource_work_demand: WorkDemand = WorkDemand {
   parallelism: SingleWorkItem,
   data_locality: [],
   effects: [],
+  input_envelope: EnvelopeUnknown,
 }
 
 fn witness_resource_offer_rejects_insufficient_threads() -> Bool {
@@ -1207,4 +1330,30 @@ fn witness_execution_receipt_digest_differs_by_demand(
   right: WorkDemand,
 ) -> Bool {
   execution_receipt_subject_digest(work_id: work_id, demand: left) != execution_receipt_subject_digest(work_id: work_id, demand: right)
+}
+
+data gunbc_ci_corpus_envelope: InputEnvelope = BoundedInput {
+  bounds: [
+    InputBound {
+      axis: WitnessCount,
+      max: Measure { count: 2000 }
+    },
+    InputBound {
+      axis: SourceNodeCount,
+      max: Measure { count: 500000 }
+    },
+    InputBound {
+      axis: CorpusNodeCount,
+      max: Measure { count: 5000000 }
+    },
+  ]
+}
+
+data gunbc_ci_corpus_envelope_ceiling_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.plans.input_envelope_roadmap",
+    decl_name: "input_envelope_roadmap_plan",
+    field: WholeDeclaration
+  }
 }

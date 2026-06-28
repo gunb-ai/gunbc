@@ -22,7 +22,7 @@ import v1.std.core {
   has_inferred, is_compiler_error, InferredNode, Resolved, CompilerError, TypeVariable,
   Cardinality, Required, CardOptional,
   ErrorNode, make_error_node, is_error_diagnostic,
-  InternalError, TypeMismatch, VariantCollision,
+  InternalError, TypeMismatch, VariantCollision, SoleConstructorViolation,
   resource_use_name_at, resource_use_resource,
   kernel_type_set, is_kernel_type,
   is_child_accessor_in_model, is_tree_size_reducing, is_property_contraction,
@@ -136,7 +136,7 @@ import v1.compiler.infer_patterns {
 }
 import v1.compiler.infer_lookup {
   KnownMethodResolution,
-  resolve_known_method_node, resolve_scrutinee_type_node,
+  resolve_known_method_node, resolve_scrutinee_type_node, resolve_method_receiver_type,
   field_summary_for_type,
   lookup_field_type_node, lookup_coproduct_common_field_node, product_field_result_type,
   map_value_type_in_env, map_key_type_in_env, set_element_type_in_env,
@@ -509,6 +509,23 @@ fn infer_var_binding_kind(scope: InferScope, name: String) -> VarBindingKind {
           else { LocalValueBinding }
         Absent => FunctionValueBinding
       }
+  }
+}
+
+fn expected_type_override_enum(scope: InferScope, name: String, scope_enum: String, expected: Node?) -> String? {
+  match expected {
+    Present { value: exp_node } =>
+      let exp_name = authored_name_at(source_indices: scope.type_env.source_indices, node: exp_node)
+      if exp_name != "" && exp_name != scope_enum && exp_name != name {
+        match lookup_type_by_name(env: scope.type_env, name: exp_name) {
+          Present { value: exp_type } =>
+            if exp_type.connective == Disj && has_child_named(n: exp_type, name: name, source_indices: scope.type_env.source_indices) {
+              Present { value: exp_name }
+            } else { none }
+          Absent => none
+        }
+      } else { none }
+    Absent => none
   }
 }
 
@@ -1338,15 +1355,41 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       let span = texpr.span
       match map_get(scope.locals, name) {
         Present { value: binding } =>
-          let binding_kind = infer_var_binding_kind(scope: scope, name: name)
-          ok_infer(texpr: make_named_expr_node(
-            name: name,
-            expr_data: ExprVar { binding_kind: Present { value: binding_kind } },
-            children: [],
-            inferred: Present { value: Resolved { node: binding.resolved } },
-            span: span,
-            name_span: span
-          ))
+          let scope_parent = lookup_variant_parent_enum(scope: scope, name: name)
+          match scope_parent {
+            Present { value: scope_enum } =>
+              let override_enum = expected_type_override_enum(scope: scope, name: name, scope_enum: scope_enum, expected: expected)
+              let effective_enum = match override_enum {
+                Present { value: ov } => ov
+                Absent => scope_enum
+              }
+              let effective_resolved = match override_enum {
+                Present { value: ov } =>
+                  match lookup_type_by_name(env: scope.type_env, name: ov) {
+                    Present { value: t } => t
+                    Absent => binding.resolved
+                  }
+                Absent => binding.resolved
+              }
+              ok_infer(texpr: make_named_expr_node(
+                name: name,
+                expr_data: ExprVar { binding_kind: Present { value: VariantValueBinding { parent_enum: effective_enum } } },
+                children: [],
+                inferred: Present { value: Resolved { node: effective_resolved } },
+                span: span,
+                name_span: span
+              ))
+            Absent =>
+              let binding_kind = infer_var_binding_kind(scope: scope, name: name)
+              ok_infer(texpr: make_named_expr_node(
+                name: name,
+                expr_data: ExprVar { binding_kind: Present { value: binding_kind } },
+                children: [],
+                inferred: Present { value: Resolved { node: binding.resolved } },
+                span: span,
+                name_span: span
+              ))
+          }
         Absent =>
           match lookup_func_sig(func_env: scope.func_env, name: name) {
             Present { value: fsig } =>
@@ -1874,7 +1917,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       let recv_result = infer_expr(texpr: recv, scope: scope, expected: none)
       let recv_typed = recv_result.typed
       let recv_diags = recv_result.diagnostics
-      let recv_rt = resolved_type(n: recv_typed)
+      let recv_rt = resolve_method_receiver_type(receiver_type: resolved_type(n: recv_typed), env: scope.type_env)
       let recv_elem_type = for_each_element_type_node(n: recv_rt, source_indices: scope.type_env.source_indices)
       let mc_method_name = Present { value: method_name }
       let fold_info = extract_fold_init_info(method_name: mc_method_name, method_args: mc_args, min_args: 2, scope: scope, expected: expected)
@@ -2765,6 +2808,13 @@ fn field_in_any_variant_named(type_name: String, field: String, scope: InferScop
   )
 }
 
+fn type_has_sole_constructor(type_name: String, scope: InferScope) -> Bool {
+  match lookup_type_by_name(env: scope.type_env, name: type_name) {
+    Present { value: decl } => decl.properties |> any(p => p.name == "sole_constructor")
+    Absent => false
+  }
+}
+
 fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpan, name_span: SourceSpan, scope: InferScope, expected: Node?) -> InferResult {
   let struct_fields = match type_name {
     Present { value: tn } =>
@@ -2910,6 +2960,17 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
         module_name: scope.module_name
       )]
     }
+    let sole_ctor_diags = if type_has_sole_constructor(type_name: type_name.value, scope: scope) {
+      match lookup_type_by_name(env: scope.type_env, name: type_name.value) {
+        Present { value: decl } =>
+          if decl.span.file == span.file {
+            []
+          } else {
+            [make_error_node(diagnostic: SoleConstructorViolation { type_name: type_name.value, span: span }, module_name: scope.module_name)]
+          }
+        Absent => []
+      }
+    } else { [] }
     let typed_field_nodes2 = typed_fields
     let rl_name = match type_name { Present { value: tn_val } => tn_val  Absent => "" }
     let texpr = make_named_expr_node(
@@ -2922,7 +2983,7 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
     )
     InferResult {
       typed: texpr,
-      diagnostics: concat(fi_diags, type_diags)
+      diagnostics: concat(concat(fi_diags, type_diags), sole_ctor_diags)
     }
   }
 }
@@ -5374,9 +5435,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   let source_indices = fold(["Optional", "Present", "Absent", "value", "none"], init: source_indices, f: (acc, name) =>
     map_insert(acc, concat("<kernel:", name, ">"), build_newline_index(file: concat("<kernel:", name, ">"), source: name))
   )
-  let intern_table = fold(map_keys(kernel_type_set), init: intern_table, f: (t, name) => intern(table: t, s: name).table)
-  let intern_table = fold(["Optional", "Present", "Absent", "value", "none"], init: intern_table, f: (t, name) => intern(table: t, s: name).table)
-  let intern_table = fold(map_keys(compiler_recursive_types), init: intern_table, f: (t, name) => intern(table: t, s: name).table)
+  let intern_table = seed_kernel_intern_table(intern_table: intern_table)
   let kernel_bindings_base = fold(
     map_keys(kernel_type_set),
     init: empty_map(),
@@ -5438,7 +5497,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
         name: item.name, span: item.span, ident_span: item.ident_span, children: item.children,
         connective: item.connective, params: item.params, inferred: none,
         return_cardinality: item.return_cardinality,
-        uses: [], body: none, transport: none, properties: [],
+        uses: [], body: none, transport: none, properties: item.properties,
         type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
       }
       map_insert(acc, item_ident, TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: type_node, provenance: SubValueUnknown })
@@ -6109,8 +6168,14 @@ fn build_emit_graph_info(modules: List<TypedModule>) -> EmitGraphInfo {
   }
 }
 
-fn typecheck(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>, intern_table: InternTable) -> TypedGraph {
+fn seed_kernel_intern_table(intern_table: InternTable) -> InternTable {
+  let intern_table = fold(map_keys(kernel_type_set), init: intern_table, f: (t, name) => intern(table: t, s: name).table)
+  let intern_table = fold(["Optional", "Present", "Absent", "value", "none"], init: intern_table, f: (t, name) => intern(table: t, s: name).table)
+  fold(map_keys(compiler_recursive_types), init: intern_table, f: (t, name) => intern(table: t, s: name).table)
+}
 
+fn typecheck(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>, intern_table: InternTable) -> TypedGraph {
+  let intern_table = seed_kernel_intern_table(intern_table: intern_table)
   typecheck_modules(
     remaining: graph.modules,
     modules: [],

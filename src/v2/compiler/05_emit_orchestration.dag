@@ -1,0 +1,253 @@
+module v2.compiler.emit_orchestration
+
+import v2.compiler.emit { emit }
+import v2.compiler.infer { InferredFacts, InferredTree }
+import v2.compiler.emit_shell { emit_shell_stmt }
+import extdeps.languages.bash.program { RawLine }
+import extdeps.communication.medium { Medium }
+import v2.extdeps.languages.bash {
+  orch_run_emitted_command,
+  orch_run_target_model,
+  orch_seq2_emitted_command,
+  orch_seq2_target_model,
+  orch_retry_emitted_command,
+  orch_retry_target_model
+}
+import v2.std.orchestration {
+  Run,
+  Step,
+  Do,
+  Pipeline,
+  EscalationLevel,
+  LogMatches,
+  EnvBinding
+}
+import v2.std.algebra { FreeMonoid, list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent }
+import v2.std.collection { List, Map, Optional, Present, Absent }
+import v2.compiler.target_carriers { lossless_source }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  Outcome,
+  Rejected,
+  Unavailable,
+  bind_outcome,
+  node_locus,
+  outcome_accepted,
+  outcome_rejected
+}
+import v2.std.node { Node }
+import v2.std.witness { Violates, Witness }
+
+fn orch_emit_facts_lookup(key: Node) -> Witness<InferredFacts> {
+  Violates {
+    diagnostic: Diagnostic {
+      reason: ^orch_emit_facts_unexpected_consultation,
+      at: node_locus(node: key),
+      correction: Unavailable { reason: ExternalContractUnknown }
+    }
+  }
+}
+
+data orch_run_env_reduction_dissolution_trigger: String = "orchestration_emit Run/Step/Retry path reduces onto emit_shell_stmt: an env-FREE Run lowers to a RawLine carrying the command and is delegated to emit_shell_stmt now (single orch_raw, green path, proven byte-identical by orch_run_empty_env_delegates_to_shell_emit). An env-BEARING Run lowers to an EnvPrefixed over env plus a RawLine command. The emit-kernel String<->List-Int-codepoint straddle that blocked this is now FIXED by grounding String construction into its native realization (free_monoid_to_string in v1_interpreter.rs, sibling to Int<->Nat PR 5428; the held bash multi-orch_raw weld fixtures have been deleted as receipt; program_multi_orch_raw_byte_identical_holds is the green-by-execution proof). The RESIDUAL blocker is a DIFFERENT, modeling-side gap, not the kernel: EnvBinding has EnvUnset (env -u NAME) and FreeMonoid<EnvBinding> is a LIST, but the bash AST EnvPrefixed models only a single name=value prefix with no EnvUnset node, so an env-bearing Run cannot yet be lowered losslessly. It stays on the orch_run_emitted_command single-string render (orch_emit_run_env_welded) until the bash AST grows an env-unset construct and multi-binding nesting. DISSOLVES WHEN the bash EnvPrefixed AST covers EnvUnset + multi-binding env (modeling follow-on landed by gunbc#5846 'Grow bash AST: EnvUnset node + multi-binding env nesting (dissolve orch_emit_run_env_welded)', which depends on this PR's kernel String grounding and dissolves this welded fn outright; no longer kernel-blocked)."
+
+fn orch_emit_run(r: Run) -> Outcome<Medium<String>> {
+  match list_head(xs: r.env) {
+    HeadAbsent => emit_shell_stmt(s: RawLine { text: r.command })
+    HeadFound { value: _ } => orch_emit_run_env_welded(r: r)
+  }
+}
+
+fn orch_emit_run_env_welded(r: Run) -> Outcome<Medium<String>> {
+  emit(
+    tree: InferredTree {
+      root: orch_run_emitted_command,
+      facts: Map { lookup: orch_emit_facts_lookup }
+    },
+    target: orch_run_target_model(r: r)
+  )
+}
+
+fn orch_emit_join2(left: String, right: String) -> Outcome<Medium<String>> {
+  emit(
+    tree: InferredTree {
+      root: orch_seq2_emitted_command,
+      facts: Map { lookup: orch_emit_facts_lookup }
+    },
+    target: orch_seq2_target_model(left: left, right: right)
+  )
+}
+
+fn orch_emit_step(s: Step) -> Outcome<Medium<String>> {
+  match s {
+    Do { run: r } => orch_emit_run(r: r)
+    If { cond: _, then_: _, else_: _ } =>
+      outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_step_if_unsupported))
+    For { binder: _, over: _, body: _ } =>
+      outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_step_for_unsupported))
+    While { cond: _, body: _, bound: _ } =>
+      outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_step_while_unsupported))
+    Retry { body: b, escalations: e, on_exhausted: _ } =>
+      orch_emit_retry(body: b, escalations: e)
+  }
+}
+
+fn orch_retry_step_command(s: Step) -> Optional<String> {
+  match s {
+    Do { run: r } => Present { value: r.command }
+    If { cond: _, then_: _, else_: _ } => Absent
+    For { binder: _, over: _, body: _ } => Absent
+    While { cond: _, body: _, bound: _ } => Absent
+    Retry { body: _, escalations: _, on_exhausted: _ } => Absent
+  }
+}
+
+fn orch_retry_body_command(body: Pipeline) -> Optional<String> {
+  match list_head(xs: body.steps) {
+    HeadFound { value: s } => orch_retry_step_command(s: s)
+    HeadAbsent => Absent
+  }
+}
+
+fn orch_emit_retry_run(command: String, env: FreeMonoid<EnvBinding>) -> Outcome<Medium<String>> {
+  orch_emit_run(r: Run { command: command, env: env, redirect: Absent, capture: Absent })
+}
+
+fn orch_emit_retry_2level(
+  command: String,
+  pattern1: String,
+  pattern2: String,
+  warn1: String,
+  warn2: String,
+  env1: FreeMonoid<EnvBinding>,
+  env2: FreeMonoid<EnvBinding>
+) -> Outcome<Medium<String>> {
+  bind_outcome(
+    o: orch_emit_retry_run(command: command, env: []),
+    f: fn(m1) {
+      bind_outcome(
+        o: orch_emit_retry_run(command: command, env: env1),
+        f: fn(m2) {
+          bind_outcome(
+            o: orch_emit_retry_run(command: command, env: env2),
+            f: fn(m3) {
+              emit(
+                tree: InferredTree {
+                  root: orch_retry_emitted_command,
+                  facts: Map { lookup: orch_emit_facts_lookup }
+                },
+                target: orch_retry_target_model(
+                  occ1: m1.carried,
+                  occ2: m2.carried,
+                  occ3: m3.carried,
+                  pattern1: pattern1,
+                  pattern2: pattern2,
+                  warn1: warn1,
+                  warn2: warn2
+                )
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn orch_emit_retry_levels(
+  command: String,
+  level1: EscalationLevel,
+  level2: EscalationLevel
+) -> Outcome<Medium<String>> {
+  match level1.detect {
+    LogMatches { source: _, pattern: p1 } =>
+      match level2.detect {
+        LogMatches { source: _, pattern: p2 } =>
+          orch_emit_retry_2level(
+            command: command,
+            pattern1: p1,
+            pattern2: p2,
+            warn1: level1.warning.message,
+            warn2: level2.warning.message,
+            env1: level1.env,
+            env2: level2.env
+          )
+        _ => outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_level2_not_logmatches))
+      }
+    _ => outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_level1_not_logmatches))
+  }
+}
+
+fn orch_emit_retry(body: Pipeline, escalations: FreeMonoid<EscalationLevel>) -> Outcome<Medium<String>> {
+  match orch_retry_body_command(body: body) {
+    Present { value: command } =>
+      match list_head(xs: escalations) {
+        HeadFound { value: l1 } =>
+          match list_tail(xs: escalations) {
+            TailFound { tail: t } =>
+              match list_head(xs: t) {
+                HeadFound { value: l2 } =>
+                  orch_emit_retry_levels(command: command, level1: l1, level2: l2)
+                HeadAbsent =>
+                  outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_needs_two_levels))
+              }
+            TailAbsent =>
+              outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_needs_two_levels))
+          }
+        HeadAbsent =>
+          outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_no_escalations))
+      }
+    Absent =>
+      outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_body_not_run))
+  }
+}
+
+fn orch_emit_unsupported_step_diagnostics(reason: Symbol) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: node_locus(node: orch_run_emitted_command),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn orch_emit_steps_from(head_str: String, rest: List<Step>) -> Outcome<Medium<String>> {
+  match list_head(xs: rest) {
+    HeadAbsent =>
+      outcome_accepted(lossless_source(text: head_str))
+    HeadFound { value: next } =>
+      bind_outcome(
+        o: orch_emit_step(s: next),
+        f: fn(next_medium) {
+          bind_outcome(
+            o: orch_emit_join2(left: head_str, right: next_medium.carried),
+            f: fn(joined) {
+              match list_tail(xs: rest) {
+                TailFound { tail: t } => orch_emit_steps_from(head_str: joined.carried, rest: t)
+                TailAbsent => outcome_accepted(joined)
+              }
+            }
+          )
+        }
+      )
+  }
+}
+
+fn orch_emit_pipeline(p: Pipeline) -> Outcome<Medium<String>> {
+  match list_head(xs: p.steps) {
+    HeadAbsent =>
+      outcome_accepted(lossless_source(text: ""))
+    HeadFound { value: first } =>
+      bind_outcome(
+        o: orch_emit_step(s: first),
+        f: fn(first_medium) {
+          match list_tail(xs: p.steps) {
+            TailFound { tail: t } =>
+              orch_emit_steps_from(head_str: first_medium.carried, rest: t)
+            TailAbsent =>
+              outcome_accepted(first_medium)
+          }
+        }
+      )
+  }
+}

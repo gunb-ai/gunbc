@@ -4,7 +4,7 @@ import gunbc.ci_layer_roots {
   witness_layer_roots,
   witness_layer_source_flags
 }
-import tools.build_step { BuildArtifact, verifications_script }
+import tools.build_step { BuildArtifact }
 import extdeps.languages.bash.program { Concat, lit, var_ref }
 import gunbc.ci_failure_class { infra_retry_grep_alternation }
 
@@ -12,11 +12,11 @@ type Gate
   = RustMonolithGate
   | EmitHostGate
   | LayeringImportsGate
-  | ResolvedImportsGate
   | ExtdepsExternalAuthorityGate
   | DslCompileCleanGate
   | GeneratedArtifactDriftGate
   | SourceRootIngestGate
+  | RegenVerifyGate
 
 type DiffMode = DiffMergeBase | DiffTwoDot
 
@@ -35,11 +35,11 @@ type CiSpec {
 data gunbc_ci_floor_gates: List<Gate> = [
   EmitHostGate,
   LayeringImportsGate,
-  ResolvedImportsGate,
   ExtdepsExternalAuthorityGate,
   DslCompileCleanGate,
   GeneratedArtifactDriftGate,
-  SourceRootIngestGate
+  SourceRootIngestGate,
+  RegenVerifyGate
 ]
 
 data gunbc_ci_rust_job_gates: List<Gate> = [
@@ -138,8 +138,18 @@ data ci_floor_required_artifacts: List<BuildArtifact> = [
   ci_release_artifact(name: "gunbc")
 ]
 
+fn artifact_shell_path(a: BuildArtifact) -> String {
+  concat(concat("\"$ROOT/target/release/", a.name), "\"")
+}
+
 fn ci_floor_build_verify_script() -> String {
-  verifications_script(produces: ci_floor_required_artifacts)
+  let bin = claim_executor_bin_shell()
+  let paths = fold(
+    ci_floor_required_artifacts,
+    init: "",
+    f: (acc, a) => concat(acc, concat(" ", artifact_shell_path(a: a)))
+  )
+  concat(concat(concat(bin, " --verify-build-artifacts"), paths), "\n")
 }
 
 fn ci_release_build_script() -> String {

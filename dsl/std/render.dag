@@ -1,6 +1,6 @@
 module std.render
 
-import std.symbols { SemanticColor, SymbolId }
+import std.symbols { SemanticColor, SymbolId, Tier }
 import std.languages { CommentSyntax, ConfigFormat, Language }
 
 type SpanStyle {
@@ -28,6 +28,28 @@ type CursorAction = Overwrite | Append | Clear
 type Frame {
   lines: List<Line>
   cursor_action: CursorAction
+}
+
+type RenderCapability {
+  color: Bool
+  tier: Tier
+  cursor_addressable: Bool
+}
+
+type Block
+  = Leaf { frame: Frame }
+  | Group { title: String, frame: Frame }
+
+type Document {
+  blocks: List<Block>
+}
+
+fn cursor_action_under(requested: CursorAction, cap: RenderCapability) -> CursorAction {
+  if cap.cursor_addressable {
+    requested
+  } else {
+    Append
+  }
 }
 
 type ViewportUnit = Chars | Pixels
