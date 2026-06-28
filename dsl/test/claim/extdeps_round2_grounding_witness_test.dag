@@ -47,7 +47,7 @@ import extdeps.cloud.gcp.gcp {
   GcpSts,
   gcp_service_wire_label,
 }
-import product.compute_fabric {
+import extdeps.gpu.types {
   GpuFacts,
   AcceleratorFacts,
   GpuComputeCapability,
@@ -55,6 +55,8 @@ import product.compute_fabric {
   GpuCapabilityLabelRejected,
   UnsubstantiatedGpuCapabilityLabel,
   gpu_compute_capability_sm_label,
+}
+import extdeps.memory.types {
   MemoryFacts,
   MemoryKind,
   Hbm,

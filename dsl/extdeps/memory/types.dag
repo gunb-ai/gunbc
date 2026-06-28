@@ -15,6 +15,13 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
+type MemoryKind = Dram | Hbm | UnifiedShared
+
+type MemoryFacts {
+  capacity: ByteSize
+  memory_kind: MemoryKind
+}
+
 type SdramSignalingFamily = | DoubleDataRate
 
 type DramGeneration {
