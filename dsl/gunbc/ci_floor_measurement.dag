@@ -30,7 +30,7 @@ data gunbc_ci_floor_per_shard_rss_source: Disposition = Terminal {
 data gunbc_ci_floor_host_compiler_spawn_peak: ByteSize = byte_size(1610612736)
 
 data gunbc_ci_floor_host_compiler_spawn_peak_source: Disposition = Terminal {
-  reason: "emit_host_gate_passes / regen_verify_gate_passes spawn child cargo/rustc processes; ~1.5 GiB per docs/plans/emit-host-batch-isolation.md. Grounds RunnableSpaceCost on EmitHostGate and the host-compiler arm of RegenVerifyGate; feeds runnable_forbids_corpus_co_residence in std.realization_schedule."
+  reason: "emit_host_gate_passes / regen_verify_gate_passes spawn child cargo/rustc processes; ~1.5 GiB per docs/plans/emit-host-batch-isolation.md. Grounds RunnableResourceProfile on EmitHostGate and the host-compiler arm of RegenVerifyGate; feeds runnable_forbids_corpus_co_residence in std.realization_schedule."
 }
 
 fn gunbc_ci_floor_per_shard_peak_rss_bytes() -> ByteSize {

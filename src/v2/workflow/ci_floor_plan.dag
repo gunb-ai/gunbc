@@ -433,6 +433,38 @@ fn gunbc_ci_floor_plan_co_runs_heavy_without_serialization() -> Bool {
   ) == false
 }
 
+fn floor_heavy_gate_count(spec: CiSpec) -> Int {
+  fold(spec.gates, init: 0, f: fn(acc, g) {
+    match g {
+      DslCompileCleanGate => acc
+      _ =>
+        if runnable_heavy_whole_tree_resolve(profile: gate_runnable_profile(g: g)) {
+          acc + 1
+        } else {
+          acc
+        }
+    }
+  })
+}
+
+fn witness_floor_heavy_chain_matches_gate_count() -> Bool {
+  let heavy = floor_heavy_gate_count(spec: gunbc_ci_spec)
+  let edges = floor_heavy_resolve_chain_resource_edges(spec: gunbc_ci_spec)
+  if heavy <= 1 {
+    length(xs: edges) == 0
+  } else {
+    length(xs: edges) == heavy - 1
+  }
+}
+
+fn witness_floor_corpus_exclusion_edges_exist() -> Bool {
+  length(xs: floor_corpus_exclusion_resource_edges(spec: gunbc_ci_spec)) > 0
+}
+
+fn witness_floor_compile_gate_not_heavy_resolve() -> Bool {
+  !runnable_heavy_whole_tree_resolve(profile: gate_runnable_profile(g: DslCompileCleanGate))
+}
+
 fn witness_floor_confirmed_safe_width_bounds_actual_width() -> Bool {
   let cap_budget = 8589934592
   let actual_width = hardware_thread_count_value(t: gunbc_ci_floor_spawn_width(memory_budget_bytes: cap_budget))
