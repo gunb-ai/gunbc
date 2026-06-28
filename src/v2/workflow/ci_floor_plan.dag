@@ -144,7 +144,7 @@ fn gate_spawns_host_compiler(g: Gate) -> Bool {
     LayeringImportsGate => false
     ExtdepsExternalAuthorityGate => false
     GeneratedArtifactDriftGate => false
-    RegenVerifyGate => false
+    RegenVerifyGate => true
   }
 }
 
