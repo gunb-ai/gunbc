@@ -63,6 +63,11 @@ fn witness_c4_selfhost_no_overclaim() -> Bool {
     && string_contains(s: o, pattern: "**TERMINAL: `src/v1` deleted**")
 }
 
+fn witness_c4_cargo_green_landed() -> Bool {
+  string_contains(s: out(),
+    pattern: "- [x] **emitted crate `cargo build`s green (Route-A last mile) ✓ LANDED (#5777/#5873)**")
+}
+
 fn witness_c5_rust_gate_not_greenlit() -> Bool {
   string_contains(s: out(), pattern: "- [ ] **rust-gate coverage** (shared §1)")
 }
@@ -99,6 +104,7 @@ test fn roadmap_authority_witnesses() -> Bool {
     && witness_c2_roundtrip_law()
     && witness_c3_inversion_subrows()
     && witness_c4_selfhost_no_overclaim()
+    && witness_c4_cargo_green_landed()
     && witness_c5_rust_gate_not_greenlit()
     && witness_a_prose_verbatim()
     && witness_b_ordered_interleaving()
