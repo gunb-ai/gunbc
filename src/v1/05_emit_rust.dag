@@ -4,7 +4,7 @@ import v1.std.core {
   Node, InferredNode, Resolved, CompilerError, TypeVariable, is_compiler_error,
   import_is_all, import_specific_names_at, module_imports, module_items,
   param_node_type_expr, param_node_default_value,
-  authored_name_at, NewlineIndex, find_child_named,
+  authored_name_at, NewlineIndex, find_child_named, tuple_type_name,
   expr_var_name_at, expr_call_func_at, field_access_field_at,
   param_node_name_at, resource_use_name_at, field_binding_name_at, field_node_name_at, field_node_type_expr, generic_param_name_at,
   LiteralValue,
@@ -110,7 +110,7 @@ import std.induction { SubValueUnknown, InductiveField }
 import v1.compiler.emit {
   BlockEmitState, TcoFrame, TcoReassignInput, InterpPart,
   rust_literal_for_pattern,
-  emit_literal, emit_bin_op_symbol, emit_keyword, emit_node_type, render_node_type, emit_ident, emit_let_binding, emit_let_binding_annotated, emit_return,
+  emit_literal, emit_bin_op_symbol, emit_keyword, emit_node_type, render_node_type, emit_container, emit_map_type, render_tuple_parts, emit_ident, emit_let_binding, emit_let_binding_annotated, emit_return,
   emit_unary_op, emit_lambda, emit_error_expr, emit_lambda_params, emit_null_coalesce, emit_list_lit_expr, emit_shared_expr, emit_typed_cast_shared,
   emit_string_literal, emit_simple_expr, escape_rust_interp_text,
   module_emit_scope,
@@ -542,7 +542,7 @@ fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_type
         } else {
         let base = rust_applied_type_base(name: name, corpus_repr: corpus_repr)
         let peel = is_parametric_opaque_type_by_name(env: env, type_name: name)
-        let args = n.children |> map(arg =>
+        let arg_list = n.children |> map(arg =>
           if peel {
             render_rust_phantom_opaque_applied_decl_arg(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
           } else if rust_type_arg_renders_as_unit(n: arg, generic_param_names: generic_param_names, variant_to_enum: variant_to_enum, source_indices: source_indices) {
@@ -550,8 +550,25 @@ fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_type
           } else {
             render_rust_decl_type(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
           }
-        ) |> join(separator: ", ")
-        let applied_ty = concat(base, "<", args, ">")
+        )
+        let applied_ty = if name == tuple_type_name {
+          render_tuple_parts(parts: arg_list, target: Rust)
+        } else if node_is_keyed_collection(n: n, source_indices: source_indices) {
+          match arg_list |> first {
+            Present { value: k } => match arg_list |> skip(1) |> first {
+              Present { value: v } => emit_map_type(key_type: k, val_type: v, target: Rust)
+              Absent => concat(base, "<", arg_list |> join(separator: ", "), ">")
+            }
+            Absent => concat(base, "<", arg_list |> join(separator: ", "), ">")
+          }
+        } else if node_is_collection(n: n, source_indices: source_indices) && (arg_list |> count == 1) {
+          match arg_list |> first {
+            Present { value: inner } => emit_container(kind: to_snake(name: name), inner: inner, target: Rust)
+            Absent => concat(base, "<", arg_list |> join(separator: ", "), ">")
+          }
+        } else {
+          concat(base, "<", arg_list |> join(separator: ", "), ">")
+        }
         render_rust_shared_type_if_needed(type_name: name, rendered: applied_ty, shared_types: shared_types)
         }
       } else {
