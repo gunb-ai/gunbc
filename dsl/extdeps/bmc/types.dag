@@ -13,7 +13,6 @@ import std.types { NonEmptyStr, Int, List, Secret }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import extdeps.formats.json { JsonValue, json_kv, json_string, json_object, serialize_json }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -170,44 +169,6 @@ fn redfish_privilege_wire(p: RedfishPrivilege) -> NonEmptyStr {
     PrivilegeConfigureComponents => "ConfigureComponents"
     PrivilegeConfigureSelf => "ConfigureSelf"
   }
-}
-
-type RedfishAccountPasswordBody {
-  Password: String
-}
-
-type RedfishBootOverrideFields {
-  BootSourceOverrideTarget: String
-  BootSourceOverrideEnabled: String
-}
-
-type RedfishBootOverrideEnvelope {
-  Boot: RedfishBootOverrideFields
-}
-
-type RedfishResetRequestBody {
-  ResetType: String
-}
-
-fn redfish_account_password_body_json(body: RedfishAccountPasswordBody) -> String {
-  serialize_json(v: json_object(entries: [
-    json_kv(key: "Password", value: json_string(s: body.Password))
-  ]))
-}
-
-fn redfish_boot_override_body_json(body: RedfishBootOverrideEnvelope) -> String {
-  serialize_json(v: json_object(entries: [
-    json_kv(key: "Boot", value: json_object(entries: [
-      json_kv(key: "BootSourceOverrideTarget", value: json_string(s: body.Boot.BootSourceOverrideTarget)),
-      json_kv(key: "BootSourceOverrideEnabled", value: json_string(s: body.Boot.BootSourceOverrideEnabled)),
-    ]))
-  ]))
-}
-
-fn redfish_reset_request_body_json(body: RedfishResetRequestBody) -> String {
-  serialize_json(v: json_object(entries: [
-    json_kv(key: "ResetType", value: json_string(s: body.ResetType))
-  ]))
 }
 
 type RedfishSystemAction =
