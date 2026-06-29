@@ -27,6 +27,8 @@ enum Runnable {
         explicit_entries: Vec<(String, String)>,
         skip_unaffected_node_frontier: bool,
         exclude_substrings: Vec<String>,
+        discovery_scope_dirs: Vec<String>,
+        spawn_width_cap: usize,
     },
 }
 
@@ -182,12 +184,22 @@ fn runnable_from_value(value: &Value, ctx: &InterpContext) -> Result<Runnable, S
                 // not the Rust constant (the model is the sole authority on the plan path).
                 None => Vec::new(),
             };
+            let discovery_scope_dirs = match ctx.field(fields, "discovery_scope_dirs") {
+                Some(v) => str_list_from_value(v, ctx)?,
+                None => Vec::new(),
+            };
+            let spawn_width_cap = match ctx.field(fields, "spawn_width_cap") {
+                Some(Value::Int(n)) => (*n).max(0) as usize,
+                Some(_) | None => 0,
+            };
             Ok(Runnable::DiscoveryBatch {
                 source_roots,
                 scan_dirs,
                 explicit_entries,
                 skip_unaffected_node_frontier,
                 exclude_substrings,
+                discovery_scope_dirs,
+                spawn_width_cap,
             })
         }
         other => Err(format!(
@@ -250,6 +262,8 @@ enum BatchUnit {
         explicit_entries: Vec<(String, String)>,
         skip_unaffected_node_frontier: bool,
         exclude_substrings: Vec<String>,
+        discovery_scope_dirs: Vec<String>,
+        spawn_width_cap: usize,
     },
 }
 
@@ -286,12 +300,16 @@ fn group_batch_units(batch: &[Runnable]) -> Vec<BatchUnit> {
                 explicit_entries,
                 skip_unaffected_node_frontier,
                 exclude_substrings,
+                discovery_scope_dirs,
+                spawn_width_cap,
             } => units.push(BatchUnit::Discovery {
                 source_roots: source_roots.clone(),
                 scan_dirs: scan_dirs.clone(),
                 explicit_entries: explicit_entries.clone(),
                 skip_unaffected_node_frontier: *skip_unaffected_node_frontier,
                 exclude_substrings: exclude_substrings.clone(),
+                discovery_scope_dirs: discovery_scope_dirs.clone(),
+                spawn_width_cap: *spawn_width_cap,
             }),
         }
     }
@@ -371,13 +389,20 @@ fn run_batch_unit(
             explicit_entries,
             skip_unaffected_node_frontier,
             exclude_substrings,
+            discovery_scope_dirs,
+            spawn_width_cap,
         } => vec![run_discovery_batch_node(
             roots,
             scan_dirs,
             explicit_entries,
             skip_unaffected_node_frontier,
             exclude_substrings,
-            spawn_width,
+            discovery_scope_dirs,
+            if *spawn_width_cap > 0 {
+                spawn_width.min(*spawn_width_cap)
+            } else {
+                spawn_width
+            },
         )],
         BatchUnit::SharedClaims { entry, functions } => {
             run_shared_entry_claims(&source_roots, &entry, &functions)
@@ -522,6 +547,7 @@ fn run_discovery_batch_node(
     explicit_entries: Vec<(String, String)>,
     skip_unaffected_node_frontier: bool,
     exclude_substrings: Vec<String>,
+    discovery_scope_dirs: Vec<String>,
     spawn_width: usize,
 ) -> ClaimResult {
     let label = format!(
@@ -540,6 +566,8 @@ fn run_discovery_batch_node(
             skip_unaffected_node_frontier,
             explicit_roster_only: false,
             exclude_substrings,
+            discovery_scope_dirs,
+            spawn_width_cap: 0,
         },
     ) {
         Ok(summary) if summary.failures.is_empty() => {
@@ -1308,12 +1336,16 @@ fn run_perturb_check(
                         explicit_entries,
                         skip_unaffected_node_frontier,
                         exclude_substrings,
+                        discovery_scope_dirs,
+                        spawn_width_cap,
                     } => Runnable::DiscoveryBatch {
                         source_roots: roots.iter().map(|r| remap_root(r)).collect(),
                         scan_dirs: scan_dirs.iter().map(|d| remap_root(d)).collect(),
                         explicit_entries: explicit_entries.clone(),
                         skip_unaffected_node_frontier: *skip_unaffected_node_frontier,
                         exclude_substrings: exclude_substrings.clone(),
+                        discovery_scope_dirs: discovery_scope_dirs.clone(),
+                        spawn_width_cap: *spawn_width_cap,
                     },
                 })
                 .collect()
@@ -1531,6 +1563,8 @@ mod tests {
             explicit_entries: vec![],
             skip_unaffected_node_frontier: true,
             exclude_substrings: vec![],
+            discovery_scope_dirs: vec![],
+            spawn_width_cap: 0,
         }
     }
 

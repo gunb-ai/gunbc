@@ -2516,6 +2516,7 @@ pub const FLOOR_DISCOVERY_EXCLUDES: &[&str] = &[
     "program_assembly/real_ingest_test.dag",
     "self_host/compiler_closure_emit_from_ingest_test.dag",
     "unified_test_claim_substrate_equivalence.dag",
+    "ci_exclusion_proof_test.dag",
     "test/claim/execution/",
 ];
 
@@ -3308,7 +3309,12 @@ pub fn run_discovery_corpus_with_options(
         if options.explicit_roster_only || (scan_dirs.is_empty() && !explicit_entries.is_empty()) {
             Vec::new()
         } else {
-            discover_floor_corpus_rows(source_roots, scan_dirs, &options.exclude_substrings)?
+            discover_floor_corpus_rows_scoped(
+                source_roots,
+                scan_dirs,
+                &options.exclude_substrings,
+                &options.discovery_scope_dirs,
+            )?
         };
     let mut seen: std::collections::BTreeSet<(String, String)> = rows
         .iter()

@@ -1,4 +1,4 @@
-module v2.test.self_host.candidate_generation
+module v2.test.execution.self_host_candidate_generation
 
 import v2.compiler.self_host.candidate_generation {
   generate_translate_self_emit_candidate
