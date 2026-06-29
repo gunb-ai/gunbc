@@ -5,7 +5,7 @@ import gunbc.ci_spec {
   gunbc_ci_spec, CiSpec,
   Gate, RustMonolithGate, EmitHostGate, LayeringImportsGate,
   ExtdepsExternalAuthorityGate, DslCompileCleanGate, GeneratedArtifactDriftGate,
-  SourceRootIngestGate, RegenVerifyGate
+  SourceRootIngestGate, RegenVerifyGate, EmitDeterminismGate
 }
 import v2.std.algebra { length, list_snoc_item, skip, zip_map }
 import v2.std.collection { List }
@@ -80,6 +80,7 @@ fn gate_node(g: Gate) -> Node {
     GeneratedArtifactDriftGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_generated_artifact } }, children: [] }
     SourceRootIngestGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_sourceingest } }, children: [] }
     RegenVerifyGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_regen_verify } }, children: [] }
+    EmitDeterminismGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_emit_determinism } }, children: [] }
   }
 }
 
@@ -113,6 +114,12 @@ fn gate_runnable_profile(g: Gate) -> RunnableResourceProfile {
         spawns_host_compiler: true,
         memory: runnable_memory_substantial_sum(left: per_shard, right: host_compiler)
       )
+    EmitDeterminismGate =>
+      runnable_resource_profile(
+        heavy_whole_tree_resolve: true,
+        spawns_host_compiler: true,
+        memory: runnable_memory_substantial_sum(left: per_shard, right: host_compiler)
+      )
     EmitHostGate =>
       runnable_resource_profile(
         heavy_whole_tree_resolve: false,
@@ -141,6 +148,7 @@ fn gate_runnable(g: Gate) -> Runnable {
       profile: profile
     }
     RegenVerifyGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "regen_verify_gate_passes", profile: profile }
+    EmitDeterminismGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "emit_determinism_gate_passes", profile: profile }
   }
 }
 
