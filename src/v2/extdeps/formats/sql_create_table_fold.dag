@@ -121,43 +121,11 @@ fn sql_fold_identifier_spelling(id: SqlIdentifier) -> Witness<String> {
   }
 }
 
-fn sql_fold_data_type_supported(dt: SqlDataType) -> Witness<Bool> {
-  match dt {
-    SqlTypeCharacterLargeObject => Holds { value: true }
-    SqlTypeBoolean =>
-      Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_type_unsupported) }
-    SqlTypeSmallInt =>
-      Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_type_unsupported) }
-    SqlTypeInteger =>
-      Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_type_unsupported) }
-    SqlTypeBigInt =>
-      Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_type_unsupported) }
-    SqlTypeReal =>
-      Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_type_unsupported) }
-    SqlTypeDoublePrecision =>
-      Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_type_unsupported) }
-    SqlTypeNumeric { precision: _, scale: _ } =>
-      Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_type_unsupported) }
-    SqlTypeCharacter { length: _ } =>
-      Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_type_unsupported) }
-    SqlTypeCharacterVarying { length: _ } =>
-      Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_type_unsupported) }
-    SqlTypeDate =>
-      Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_type_unsupported) }
-    SqlTypeTime =>
-      Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_type_unsupported) }
-    SqlTypeTimestamp =>
-      Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_type_unsupported) }
-    SqlTypeTimestampWithTimeZone =>
-      Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_type_unsupported) }
-  }
-}
-
 fn sql_fold_column_def_emitted_witness(col: SqlColumnDefinition) -> Witness<Node> {
   match sql_fold_identifier_spelling(id: col.name) {
     Holds { value: name } =>
-      match sql_fold_data_type_supported(dt: col.data_type) {
-        Holds { value: _ } =>
+      match col.data_type {
+        SqlTypeCharacterLargeObject =>
           if col.constraints.not_null {
             Holds {
               value: Node {
@@ -184,7 +152,32 @@ fn sql_fold_column_def_emitted_witness(col: SqlColumnDefinition) -> Witness<Node
               diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_nullable_column)
             }
           }
-        Violates { diagnostic: d } => Violates { diagnostic: d }
+        SqlTypeBoolean =>
+          Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_type_unsupported) }
+        SqlTypeSmallInt =>
+          Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_type_unsupported) }
+        SqlTypeInteger =>
+          Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_type_unsupported) }
+        SqlTypeBigInt =>
+          Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_type_unsupported) }
+        SqlTypeReal =>
+          Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_type_unsupported) }
+        SqlTypeDoublePrecision =>
+          Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_type_unsupported) }
+        SqlTypeNumeric { precision: _, scale: _ } =>
+          Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_type_unsupported) }
+        SqlTypeCharacter { length: _ } =>
+          Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_type_unsupported) }
+        SqlTypeCharacterVarying { length: _ } =>
+          Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_type_unsupported) }
+        SqlTypeDate =>
+          Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_type_unsupported) }
+        SqlTypeTime =>
+          Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_type_unsupported) }
+        SqlTypeTimestamp =>
+          Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_type_unsupported) }
+        SqlTypeTimestampWithTimeZone =>
+          Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_type_unsupported) }
       }
     Violates { diagnostic: d } => Violates { diagnostic: d }
   }
@@ -592,6 +585,8 @@ fn sql_fold_translation_rules_node_for_emitted(
 fn sql_fold_kind_emit_transform(_spelling: String) -> String {
   ""
 }
+
+data sql_fold_stmt_kind_marker_dissolution_trigger: String = "🟡 dissolve-on: phantom \\u{0002} stmt-kind lex byte and zero-width sql_fold_kind_emit_transform are replaced by real SQL production-tag lexing that disambiguates create_table/column_def/primary_key productions without sentinel bytes"
 
 fn sql_fold_emit_transforms() -> Map<Symbol, fn(String) -> String> {
   let m0 = sql_token_class_emit_transforms()
