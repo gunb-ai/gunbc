@@ -731,6 +731,8 @@ fn gha_fold_lex_rule(token_class: Symbol, text: String) -> LexRule {
   }
 }
 
+data gha_fold_fixed_depth_indent_dissolution_trigger: String = "🟡 dissolve-on: gha_fold_yaml_indent — pilot block-sequence LIST STRUCTURE traverses generic per-LHS fold (step_list leaf/pair + derive_grammar_relation_row_node), but YAML indent whitespace is fixed-depth baked terminal spellings (e.g. gha_token_yaml_block_run_head = two-space-dash-run-colon at depth 2; no indent/depth/nest parameter). DISSOLVES WHEN arbitrary-depth nested YAML mapping indentation is modeled: depth-aware fold extension replaces per-depth terminal literals with computed indent from a nesting carrier."
+
 fn gha_fold_lex_rules() -> LexRuleSet {
   LexRuleSet {
     rules: [

@@ -74,6 +74,8 @@ fn gha_pilot_uses_step_non_emit_fields_absent(
   )
 }
 
+data gha_fold_pilot_emit_optional_absent_dissolution_trigger: String = "🟡 dissolve-on: gha_fold_pilot_emit_step Optional Absent — non-pilot RunStep/UsesStep field presence collapses into the same Absent carrier as unsupported step kind; v2 fold maps Absent to gha_fold_unsupported_step_kind Violates at call site. DISSOLVES WHEN production lift returns Witness<GhaPilotStepEmit> with located diagnostic at producer (pilot field rejects vs absent step)."
+
 fn gha_fold_pilot_emit_step(step: Step) -> Optional<GhaPilotStepEmit> {
   match step {
     RunStep { name: n, id: i, run: r, shell: sh, env: e, working_directory: wd, if_condition: ic, continue_on_error: coe, timeout_minutes: tm } =>
