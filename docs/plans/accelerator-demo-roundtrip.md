@@ -70,9 +70,10 @@ Acceptance: the projection is *derived* from the same `RealizationPlan` the kern
 
 ## 2. On-model framing — first live consumer of the inert placement carriers
 
-The substrate **already models** the vocabulary; the roadmap (Ergonomics LANE) flags `Placement` / `Materialization` / `RealizationObjective` as *inert (no live consumer)* — the keystone inert-abstraction-lens's first RED witness. This demo makes them **load-bearing** by being their first real consumer:
+The substrate **already models** the vocabulary; the roadmap (Ergonomics LANE) flags **`Placement` / `Materialization`** as *still inert (no live consumer)* — part of the keystone inert-abstraction-lens's RED set. (`RealizationObjective` / `realization_width` are **already wired** via `ci_floor_plan` — `inert_layer_lens.dag` records the schedule/width arm as live; do **not** treat that arm as greenfield.) This demo makes the *placement/materialization* arm **load-bearing** by being its first real consumer:
 
-- `std/realization.dag`: `Placement = LocalInProcess | LocalFilesystem | RemoteNetwork`, `Materialization = Recompute | Memoize | Share`, `RealizedStep<S> { shape, placement, materialization }`, `DecodeFidelity`, `RealizationPlan`, `RealizationObjective`.
+- `std/realization.dag`: `Placement = LocalInProcess | LocalFilesystem | RemoteNetwork`, `Materialization = Recompute | Memoize | Share`, `RealizedStep<S> { shape, placement, materialization }`, `RealizationPlan`, `RealizationObjective`.
+- `extdeps/communication/medium.dag`: `DecodeFidelity = Lossless | Lossy` (the honesty-boundary type — declared here, an extdeps-layer type, *not* in std; consume it, never re-fork it).
 - `std/realization_schedule.dag`: `RealizationPlan<S>`, `Runnable`, `Schedule = List<List<Runnable>>`, cost accounting.
 - `product/placement_supply.dag`: `PlacementSupplyRow` (host capacity) — literally "shaping for **supply**."
 
@@ -94,7 +95,7 @@ Fixture: a pure elementwise chain — `y = relu(a*b + c)` (mul → add → max).
 | 2. recognize + plan ("shaping for supply") | the elementwise-array-fold subgraph → a `RealizationPlan<S>` value: contiguous SoA buffers, 3 ops fused into one pass, `placement: LocalAccelerator`. **Inspectable, printed.** | `std/realization.dag`, `std/realization_schedule.dag` (first live consumer) |
 | 3. lower → fused kernel (forward fold) | the *same* translate fold run backward → one fused contiguous-loop / SIMD kernel | `target_model` translate + new `extdeps/languages/<accel>` row |
 | 4. differential vs oracle | scalar interpreter on same input = ground truth; assert match on a discriminating input | existing v2 interpreter |
-| 5. fail-closed arm | feed a non-elementwise / effectful subgraph (data-dependent gather, or carries an effect) → **typed located `DecodeFidelity` refusal**, no silent fallback | `std/realization.dag` `DecodeFidelity` |
+| 5. fail-closed arm | feed a non-elementwise / effectful subgraph (data-dependent gather, or carries an effect) → **typed located `DecodeFidelity` refusal**, no silent fallback | `extdeps/communication/medium.dag` `DecodeFidelity` |
 
 ## 4. Acceptance bars (this is what makes it credible to *that* audience)
 
