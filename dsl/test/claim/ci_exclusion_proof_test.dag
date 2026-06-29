@@ -1,0 +1,5 @@
+module test.claim.ci_exclusion_proof
+
+import std.types { Bool }
+
+test fn ci_exclusion_proof_sentinel() -> Bool = false

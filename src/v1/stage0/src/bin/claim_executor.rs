@@ -9,7 +9,7 @@ use std::time::Instant;
 use v1_compiler::cli_run::{
     compute_histogram_data, make_eval_context, resolve_entry_graph, run_claim,
     run_discovery_corpus_with_options, run_value, ClaimOutcome, DiscoveryCorpusOptions,
-    HistogramData, TimingPercentiles, FLOOR_DISCOVERY_EXCLUDES,
+    HistogramData, TimingPercentiles,
 };
 use v1_compiler::v1_interpreter::{
     color_enabled, paint, run_in_context_with_args, sgr, ExecutionMode, InterpContext, Value,
@@ -178,7 +178,9 @@ fn runnable_from_value(value: &Value, ctx: &InterpContext) -> Result<Runnable, S
                 };
             let exclude_substrings = match ctx.field(fields, "exclude_substrings") {
                 Some(v) => str_list_from_value(v, ctx)?,
-                None => FLOOR_DISCOVERY_EXCLUDES.iter().map(|s| s.to_string()).collect(),
+                // Field absent means the plan author specified no exclusions — default is empty,
+                // not the Rust constant (the model is the sole authority on the plan path).
+                None => vec![],
             };
             Ok(Runnable::DiscoveryBatch {
                 source_roots,
