@@ -202,7 +202,7 @@ data host_standup_spine: List<HostStandupStep> = [
     phase: ReachSecretsNetwork,
     label: "P0:reach-secrets-network",
     disposition: DeclaredGap {
-      interim_realization: "ctrl:scripts/session-dashboard/lib/grant_host_reach.mjs;scripts/session-dashboard/lib/spawn_github_token.mjs;scripts/session-dashboard/lib/prepare_host_bind_dirs.mjs",
+      interim_realization: "ctrl:scripts/session-dashboard/lib/grant_host_reach.mjs;scripts/session-dashboard/lib/spawn_github_token.mjs;scripts/session-dashboard/container_runtime.mjs#prepareHostBindDirs",
       refusal: "host_standup:P0:reach-secrets-network:unmodeled — refuse until reach/secrets/bind-dir facts have a .dag authority (interim ctrl .mjs only)"
     },
     effect_policy: OneShotIdempotent
@@ -286,7 +286,7 @@ data host_standup_gap_ledger: List<GapLedgerRow> = [
   GapLedgerRow {
     phase_label: "P0:reach-secrets-network",
     modeling: "gap",
-    authority_or_interim: "ctrl: grant_host_reach.mjs, spawn_github_token.mjs, prepare_host_bind_dirs.mjs"
+    authority_or_interim: "ctrl: grant_host_reach.mjs, spawn_github_token.mjs, container_runtime.mjs#prepareHostBindDirs"
   },
   GapLedgerRow {
     phase_label: "P1:runner-deploy-slot",
@@ -301,7 +301,7 @@ data host_standup_gap_ledger: List<GapLedgerRow> = [
   GapLedgerRow {
     phase_label: "P3:green-place-readiness",
     modeling: "modeled",
-    authority_or_interim: "gunbc AUTHORITY (landed #5948): GunbcPinnedTree/gunbc_pinned_noop_satisfied/gunbc_green_place_marker_spec; ctrl VERIFY/WRITER → plans/reconcile/converge/green_place.dag (#1851); desired pin: read-gunbc-pin.sh"
+    authority_or_interim: "gunbc AUTHORITY (landed #5948): GunbcPinnedTree/gunbc_pinned_noop_satisfied/gunbc_green_place_marker_spec; ctrl VERIFY/WRITER → plans/reconcile/converge/green_place.dag (ctrl #1852); desired pin: read-gunbc-pin.sh"
   },
   GapLedgerRow {
     phase_label: "P4:session-placement-enrollment",
