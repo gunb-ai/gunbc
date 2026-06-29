@@ -140,10 +140,14 @@ test fn ts_flat_map_uses_flatMap() -> Bool {
   }
 }
 
-test fn ts_sort_by_uses_immutable_sort() -> Bool {
+test fn ts_sort_by_is_key_based_not_binary_comparator() -> Bool {
   match map_get(ts_method_templates(), "sort_by") {
     Present { value: tmpl } =>
-      string_contains(tmpl, ".slice()") && string_contains(tmpl, ".sort(")
+      string_contains(tmpl, ".slice()") &&
+      string_contains(tmpl, ".sort(") &&
+      string_contains(tmpl, "(a, b)") &&
+      string_contains(tmpl, "ka") &&
+      string_contains(tmpl, "kb")
     Absent => false
   }
 }

@@ -42,7 +42,7 @@ data ts_simple_method_specs: List<SimpleMethodSpec> = [
   { method_name: "any",             template: "\{recv\}.some(\{arg\})",                       wraps_result: false },
   { method_name: "all",             template: "\{recv\}.every(\{arg\})",                      wraps_result: false },
   { method_name: "flat_map",        template: "\{recv\}.flatMap(\{arg\})",                    wraps_result: false },
-  { method_name: "sort_by",         template: "\{recv\}.slice().sort(\{arg\})",               wraps_result: false },
+  { method_name: "sort_by",         template: "\{recv\}.slice().sort((a, b) => \{ const ka = \{arg\}(a), kb = \{arg\}(b); return ka < kb ? -1 : ka > kb ? 1 : 0; \})", wraps_result: false },
   { method_name: "append",          template: "[...\{recv\}, \{arg\}]",                       wraps_result: false }
 ]
 
