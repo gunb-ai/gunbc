@@ -13,7 +13,6 @@
 )]
 #![recursion_limit = "256"]
 
-pub mod cache_purity_oracle;
 pub mod cli_run;
 pub mod coproduct_reflection;
 pub mod corpus_lex;
