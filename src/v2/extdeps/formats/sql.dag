@@ -1,8 +1,17 @@
 module v2.extdeps.formats.sql
 
 import v2.std.grammar { GrammarSchema }
-import v2.std.algebra { fold_list, list_append }
+import v2.std.algebra { fold_list, list_append, list_intercalate_strings }
 import v2.std.collection { Absent, List, Map, Optional, Present }
+import v2.std.diagnostic {
+  Diagnostic,
+  ExternalContractUnknown,
+  Outcome,
+  Unavailable,
+  node_locus,
+  outcome_accepted,
+  outcome_rejected
+}
 import v2.std.nat { Nat }
 import v2.std.cardinality { NonZeroNat }
 import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence }
@@ -410,13 +419,9 @@ fn sql_serialize_column_definition(col: SqlColumnDefinition) -> String {
 }
 
 fn sql_serialize_column_definitions(cols: List<SqlColumnDefinition>) -> String {
-  fold(
-    cols,
-    init: "",
-    f: fn(acc, col) {
-      let part = sql_serialize_column_definition(col: col)
-      if acc == "" { part } else { concat(acc, concat(", ", part)) }
-    }
+  list_intercalate_strings(
+    separator: ", ",
+    parts: sql_list_map(xs: cols, f: sql_serialize_column_definition)
   )
 }
 
@@ -435,13 +440,9 @@ fn sql_serialize_primary_key_clause(pk: Optional<List<SqlIdentifier>>) -> String
 }
 
 fn sql_serialize_identifier_list(ids: List<SqlIdentifier>) -> String {
-  fold(
-    ids,
-    init: "",
-    f: fn(acc, id) {
-      let part = sql_serialize_identifier(id: id)
-      if acc == "" { part } else { concat(acc, concat(", ", part)) }
-    }
+  list_intercalate_strings(
+    separator: ", ",
+    parts: sql_list_map(xs: ids, f: sql_serialize_identifier)
   )
 }
 
@@ -464,16 +465,39 @@ fn sql_serialize_table_definition(table: SqlTableDefinition) -> String {
   )
 }
 
-fn sql_serialize_schema_operation(op: SqlSchemaOperation) -> String {
+data sql_serialize_diagnostic_anchor: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+fn sql_serialize_unsupported_operation_diagnostic(variant: Symbol) -> Diagnostic {
+  Diagnostic {
+    reason: variant,
+    at: node_locus(node: sql_serialize_diagnostic_anchor),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn sql_serialize_schema_operation(op: SqlSchemaOperation) -> Outcome<String> {
   match op {
-    SqlCreateTable { table: t } => sql_serialize_table_definition(table: t)
-    SqlDropTable { table_name: _ } => ""
-    SqlAddColumn { table_name: _, column: _ } => ""
-    SqlDropColumn { table_name: _, column_name: _ } => ""
-    SqlAlterTableConstraint { table_name: _, constraint: _ } => ""
-    SqlCreateIndex { index_name: _, table_name: _, columns: _ } => ""
-    SqlDropIndex { index_name: _ } => ""
-    SqlAlterTableRaw { table_name: _, alteration: _ } => ""
-    SqlRawStep { statement: s } => s
+    SqlCreateTable { table: t } =>
+      outcome_accepted(value: sql_serialize_table_definition(table: t))
+    SqlRawStep { statement: s } =>
+      outcome_accepted(value: s)
+    SqlDropTable { table_name: _ } =>
+      outcome_rejected(d: sql_serialize_unsupported_operation_diagnostic(variant: ^sql_serialize_op_drop_table))
+    SqlAddColumn { table_name: _, column: _ } =>
+      outcome_rejected(d: sql_serialize_unsupported_operation_diagnostic(variant: ^sql_serialize_op_add_column))
+    SqlDropColumn { table_name: _, column_name: _ } =>
+      outcome_rejected(d: sql_serialize_unsupported_operation_diagnostic(variant: ^sql_serialize_op_drop_column))
+    SqlAlterTableConstraint { table_name: _, constraint: _ } =>
+      outcome_rejected(d: sql_serialize_unsupported_operation_diagnostic(variant: ^sql_serialize_op_alter_table_constraint))
+    SqlCreateIndex { index_name: _, table_name: _, columns: _ } =>
+      outcome_rejected(d: sql_serialize_unsupported_operation_diagnostic(variant: ^sql_serialize_op_create_index))
+    SqlDropIndex { index_name: _ } =>
+      outcome_rejected(d: sql_serialize_unsupported_operation_diagnostic(variant: ^sql_serialize_op_drop_index))
+    SqlAlterTableRaw { table_name: _, alteration: _ } =>
+      outcome_rejected(d: sql_serialize_unsupported_operation_diagnostic(variant: ^sql_serialize_op_alter_table_raw))
   }
 }

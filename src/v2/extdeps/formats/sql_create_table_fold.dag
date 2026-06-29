@@ -705,10 +705,18 @@ fn sql_fold_target_model_from_bundle_witness(
 fn sql_fold_target_model_for_operation_witness(op: SqlSchemaOperation) -> Witness<TargetModel> {
   match sql_fold_schema_operation_bundle_witness(op: op) {
     Holds { value: bundle } =>
-      sql_fold_target_model_from_bundle_witness(
-        bundle: bundle,
-        source_text: sql_serialize_schema_operation(op: op)
-      )
+      match sql_serialize_schema_operation(op: op) {
+        Accepted { value: source_text, diagnostics: d } =>
+          match d {
+            None =>
+              sql_fold_target_model_from_bundle_witness(
+                bundle: bundle,
+                source_text: source_text
+              )
+            Some { diagnostics: nd } => Violates { diagnostic: nd.head }
+          }
+        Rejected { diagnostics: nd } => Violates { diagnostic: nd.head }
+      }
     Violates { diagnostic: d } => Violates { diagnostic: d }
   }
 }

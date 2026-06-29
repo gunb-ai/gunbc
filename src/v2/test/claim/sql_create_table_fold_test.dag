@@ -4,6 +4,7 @@ import v2.extdeps.formats.sql {
   SqlColumnConstraints,
   SqlColumnDefaultAbsent,
   SqlColumnDefinition,
+  SqlDropTable,
   SqlRegularIdentifier,
   SqlSchemaOperation,
   SqlTypeCharacterLargeObject,
@@ -82,7 +83,11 @@ fn sql_fold_fold_serialize_operation(op: SqlSchemaOperation) -> Outcome<String> 
 fn sql_fold_fold_matches_oracle(op: SqlSchemaOperation) -> Bool {
   match sql_fold_fold_serialize_operation(op: op) {
     Accepted { value: folded, diagnostics: _ } =>
-      folded == sql_serialize_schema_operation(op: op)
+      match sql_serialize_schema_operation(op: op) {
+        Accepted { value: oracle, diagnostics: od } =>
+          (folded == oracle) && (od == None)
+        Rejected { diagnostics: _ } => false
+      }
     Rejected { diagnostics: _ } => false
   }
 }
@@ -134,7 +139,11 @@ fn sql_fold_direct_serialize_matches_oracle(
     Holds { value: emitted } =>
       match target_serialize_source_from_model(target: target, emitted: emitted) {
         Accepted { value: source, diagnostics: d } =>
-          (source.carried == sql_serialize_schema_operation(op: op)) && (d == None)
+          match sql_serialize_schema_operation(op: op) {
+            Accepted { value: oracle, diagnostics: od } =>
+              (source.carried == oracle) && (d == None) && (od == None)
+            Rejected { diagnostics: _ } => false
+          }
         Rejected { diagnostics: _ } => false
       }
     Violates { diagnostic: _ } => false
@@ -176,10 +185,20 @@ fn sql_fold_emitted_tree_differs_on_two_col_fixture_holds() -> Bool {
   }
 }
 
+fn sql_fold_oracle_rejects_unsupported_drop_table_holds() -> Bool {
+  match sql_serialize_schema_operation(
+    op: SqlDropTable { table_name: SqlRegularIdentifier { name: "t" } }
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
 test fn sql_fold_structural_tier_holds() -> Bool {
   sql_fold_relation_row_single_col_witness_holds()
   && sql_fold_emitted_tree_differs_on_two_col_fixture_holds()
   && sql_fold_wrong_production_rejects_oracle_holds()
+  && sql_fold_oracle_rejects_unsupported_drop_table_holds()
 }
 
 test fn sql_fold_create_table_tier_holds() -> Bool {

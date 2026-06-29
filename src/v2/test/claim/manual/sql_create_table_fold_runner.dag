@@ -34,7 +34,7 @@ fn sql_create_table_fold_plan() -> List<List<Runnable>> {
       },
       RunnableSingleClaim {
         entry: sql_fold_test_entry,
-        function: "sql_fold_emitted_tree_differs_on_two_col_fixture_holds"
+        function: "sql_fold_oracle_rejects_unsupported_drop_table_holds"
       }
     ]
   ]

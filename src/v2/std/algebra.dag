@@ -706,6 +706,24 @@ fn list_snoc_item<T>(xs: FreeMonoid<T>, item: T) -> FreeMonoid<T> {
   list_append(left: xs, right: Cons { head: item, tail: Empty })
 }
 
+fn list_intercalate_strings(separator: String, parts: FreeMonoid<String>) -> String {
+  match list_head(xs: parts) {
+    HeadAbsent => ""
+    HeadFound { value: first } =>
+      match list_tail(xs: parts) {
+        TailAbsent => first
+        TailFound { tail: rest } =>
+          fold_list(
+            xs: rest,
+            empty: first,
+            cons: fn(acc, part) {
+              concat(acc, concat(separator, part))
+            }
+          )
+      }
+  }
+}
+
 fn bag_eq<T>(xs: FreeMonoid<T>, ys: FreeMonoid<T>, eq: fn(T, T) -> Bool) -> Bool {
   if length(xs: xs) != length(xs: ys) {
     false
