@@ -1,13 +1,17 @@
 module v2.extdeps.formats.sql
 
 import v2.std.grammar { GrammarSchema }
-import v2.std.algebra { fold_list, list_append, list_intercalate_strings }
+import v2.std.algebra { Empty, fold_list, list_append, list_intercalate_strings, list_snoc_item }
 import v2.std.collection { Absent, List, Map, Optional, Present }
 import v2.std.diagnostic {
   Diagnostic,
   ExternalContractUnknown,
   Outcome,
+  ShortCircuit,
+  StageDiagnosticPolicy,
   Unavailable,
+  append_outcome_value,
+  bind_outcome,
   node_locus,
   outcome_accepted,
   outcome_rejected
@@ -382,46 +386,97 @@ fn sql_serialize_identifier(id: SqlIdentifier) -> String {
   }
 }
 
-fn sql_serialize_data_type(dt: SqlDataType) -> String {
-  match dt {
-    SqlTypeBoolean => "BOOLEAN"
-    SqlTypeSmallInt => "SMALLINT"
-    SqlTypeInteger => "INTEGER"
-    SqlTypeBigInt => "BIGINT"
-    SqlTypeReal => "REAL"
-    SqlTypeDoublePrecision => "DOUBLE PRECISION"
-    SqlTypeNumeric { precision: _, scale: _ } => "NUMERIC"
-    SqlTypeCharacter { length: _ } => "CHARACTER"
-    SqlTypeCharacterVarying { length: _ } => "CHARACTER VARYING"
-    SqlTypeCharacterLargeObject => "TEXT"
-    SqlTypeDate => "DATE"
-    SqlTypeTime => "TIME"
-    SqlTypeTimestamp => "TIMESTAMP"
-    SqlTypeTimestampWithTimeZone => "TIMESTAMP WITH TIME ZONE"
+fn sql_serialize_unsupported_operation_diagnostic(variant: Symbol) -> Diagnostic {
+  Diagnostic {
+    reason: variant,
+    at: node_locus(node: sql_serialize_diagnostic_anchor),
+    correction: Unavailable { reason: ExternalContractUnknown }
   }
+}
+
+fn sql_serialize_unsupported_data_type_diagnostic(variant: Symbol) -> Diagnostic {
+  Diagnostic {
+    reason: variant,
+    at: node_locus(node: sql_serialize_diagnostic_anchor),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+data sql_serialize_policy: StageDiagnosticPolicy = StageDiagnosticPolicy {
+  accumulation: ShortCircuit
+}
+
+fn sql_serialize_data_type(dt: SqlDataType) -> Outcome<String> {
+  match dt {
+    SqlTypeBoolean => outcome_accepted(value: "BOOLEAN")
+    SqlTypeSmallInt => outcome_accepted(value: "SMALLINT")
+    SqlTypeInteger => outcome_accepted(value: "INTEGER")
+    SqlTypeBigInt => outcome_accepted(value: "BIGINT")
+    SqlTypeReal => outcome_accepted(value: "REAL")
+    SqlTypeDoublePrecision => outcome_accepted(value: "DOUBLE PRECISION")
+    SqlTypeNumeric { precision: _, scale: _ } =>
+      outcome_rejected(d: sql_serialize_unsupported_data_type_diagnostic(variant: ^sql_serialize_type_numeric))
+    SqlTypeCharacter { length: _ } =>
+      outcome_rejected(d: sql_serialize_unsupported_data_type_diagnostic(variant: ^sql_serialize_type_character))
+    SqlTypeCharacterVarying { length: _ } =>
+      outcome_rejected(d: sql_serialize_unsupported_data_type_diagnostic(variant: ^sql_serialize_type_character_varying))
+    SqlTypeCharacterLargeObject => outcome_accepted(value: "TEXT")
+    SqlTypeDate => outcome_accepted(value: "DATE")
+    SqlTypeTime => outcome_accepted(value: "TIME")
+    SqlTypeTimestamp => outcome_accepted(value: "TIMESTAMP")
+    SqlTypeTimestampWithTimeZone => outcome_accepted(value: "TIMESTAMP WITH TIME ZONE")
+  }
+}
+
+fn sql_serialize_column_definition(col: SqlColumnDefinition) -> Outcome<String> {
+  bind_outcome(
+    o: sql_serialize_data_type(dt: col.data_type),
+    f: fn(type_spelling) {
+      outcome_accepted(value: concat(
+        sql_serialize_identifier(id: col.name),
+        concat(
+          " ",
+          concat(
+            type_spelling,
+            sql_serialize_column_constraints(c: col.constraints)
+          )
+        )
+      ))
+    }
+  )
+}
+
+fn sql_serialize_column_definition_strings(cols: List<SqlColumnDefinition>) -> Outcome<List<String>> {
+  fold(
+    cols,
+    init: outcome_accepted(value: Empty),
+    f: fn(acc, col) {
+      append_outcome_value(
+        acc: acc,
+        child: sql_serialize_column_definition(col: col),
+        policy: sql_serialize_policy
+      )
+    }
+  )
+}
+
+fn sql_serialize_column_definitions(cols: List<SqlColumnDefinition>) -> Outcome<String> {
+  bind_outcome(
+    o: sql_serialize_column_definition_strings(cols: cols),
+    f: fn(parts) {
+      outcome_accepted(value: list_intercalate_strings(separator: ", ", parts: parts))
+    }
+  )
 }
 
 fn sql_serialize_column_constraints(c: SqlColumnConstraints) -> String {
   if c.not_null { " NOT NULL" } else { "" }
 }
 
-fn sql_serialize_column_definition(col: SqlColumnDefinition) -> String {
-  concat(
-    sql_serialize_identifier(id: col.name),
-    concat(
-      " ",
-      concat(
-        sql_serialize_data_type(dt: col.data_type),
-        sql_serialize_column_constraints(c: col.constraints)
-      )
-    )
-  )
-}
-
-fn sql_serialize_column_definitions(cols: List<SqlColumnDefinition>) -> String {
+fn sql_serialize_identifier_list(ids: List<SqlIdentifier>) -> String {
   list_intercalate_strings(
     separator: ", ",
-    parts: sql_list_map(xs: cols, f: sql_serialize_column_definition)
+    parts: sql_list_map(xs: ids, f: sql_serialize_identifier)
   )
 }
 
@@ -439,29 +494,27 @@ fn sql_serialize_primary_key_clause(pk: Optional<List<SqlIdentifier>>) -> String
   }
 }
 
-fn sql_serialize_identifier_list(ids: List<SqlIdentifier>) -> String {
-  list_intercalate_strings(
-    separator: ", ",
-    parts: sql_list_map(xs: ids, f: sql_serialize_identifier)
-  )
-}
-
-fn sql_serialize_table_definition(table: SqlTableDefinition) -> String {
-  concat(
-    "CREATE TABLE ",
-    concat(
-      sql_serialize_identifier(id: table.name),
-      concat(
-        " (",
+fn sql_serialize_table_definition(table: SqlTableDefinition) -> Outcome<String> {
+  bind_outcome(
+    o: sql_serialize_column_definitions(cols: table.columns),
+    f: fn(column_defs) {
+      outcome_accepted(value: concat(
+        "CREATE TABLE ",
         concat(
-          sql_serialize_column_definitions(cols: table.columns),
+          sql_serialize_identifier(id: table.name),
           concat(
-            sql_serialize_primary_key_clause(pk: table.primary_key),
-            ");"
+            " (",
+            concat(
+              column_defs,
+              concat(
+                sql_serialize_primary_key_clause(pk: table.primary_key),
+                ");"
+              )
+            )
           )
         )
-      )
-    )
+      ))
+    }
   )
 }
 
@@ -482,7 +535,7 @@ fn sql_serialize_unsupported_operation_diagnostic(variant: Symbol) -> Diagnostic
 fn sql_serialize_schema_operation(op: SqlSchemaOperation) -> Outcome<String> {
   match op {
     SqlCreateTable { table: t } =>
-      outcome_accepted(value: sql_serialize_table_definition(table: t))
+      sql_serialize_table_definition(table: t)
     SqlRawStep { statement: s } =>
       outcome_accepted(value: s)
     SqlDropTable { table_name: _ } =>

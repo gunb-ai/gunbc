@@ -8,8 +8,12 @@ import v2.extdeps.formats.sql {
   SqlRegularIdentifier,
   SqlSchemaOperation,
   SqlTypeCharacterLargeObject,
+  SqlTypeNumeric,
+  sql_serialize_data_type,
   sql_serialize_schema_operation
 }
+import v2.std.cardinality { NonZeroNat }
+import v2.std.nat { Zero }
 import v2.extdeps.formats.sql_create_table_fold {
   sql_fold_operation_emitted_witness,
   sql_fold_relation_row_witness,

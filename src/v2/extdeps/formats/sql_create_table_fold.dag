@@ -595,6 +595,8 @@ fn sql_fold_emit_transforms() -> Map<Symbol, fn(String) -> String> {
   map_insert(m0, ^sql_fold_stmt_kind_tag, sql_fold_kind_emit_transform)
 }
 
+data sql_fold_whitespace_embedded_lex_dissolution_trigger: String = "🟡 dissolve-on: whitespace-baked sql_token_create_table/sql_token_lparen/sql_token_type_text/sql_token_not_null/sql_token_primary_key lex literals (and sql_token_comma overlap with primary_key prefix) replaced by whitespace-free token classes plus explicit separator emit transforms, so future SQL emit-mediums do not copy longest-match lex hacks"
+
 fn sql_fold_lex_rules() -> LexRuleSet {
   LexRuleSet {
     rules: [
