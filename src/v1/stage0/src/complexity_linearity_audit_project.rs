@@ -13,10 +13,10 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::OnceLock;
 
-use crate::cli_run::collect_dag_files_tolerant;
-use crate::corpus_lex::{is_test_dag, repo_rel};
+use crate::cli_run::{
+    collect_dag_files_tolerant, is_test_dag, repo_rel, witness_layer_roots, workspace_root,
+};
 use crate::medium_structure_project::parse_dag_file;
-use crate::module_path_index::witness_layer_roots;
 use crate::v1_compiler_infer_items::{item_kind, ItemKind};
 use crate::v1_std_core::{
     arm_pattern, authored_name_at, expr_var_name_at, match_arm_nodes, match_scrutinee, ExprData,
@@ -44,7 +44,7 @@ fn rel_path(path: &Path) -> String {
 }
 
 fn corpus_dag_files(roots: &[String]) -> Vec<PathBuf> {
-    let ws = crate::module_path_index::workspace_root();
+    let ws = workspace_root();
     let mut files = Vec::new();
     for root in roots {
         let root_path = ws.join(root);
