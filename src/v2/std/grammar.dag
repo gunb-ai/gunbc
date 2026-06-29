@@ -1285,7 +1285,7 @@ fn formal_production_for_lhs_exact_supported(
   child: Node
 ) -> Witness<FormalProduction> {
   formal_production_unique_lhs_exact_match(
-    productions: productions,
+    productions: formal_productions_for_lhs(productions: productions, lhs: lhs),
     lhs: lhs,
     child: child
   )
