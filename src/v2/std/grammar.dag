@@ -1285,7 +1285,7 @@ fn formal_production_for_lhs_exact_supported(
   child: Node
 ) -> Witness<FormalProduction> {
   formal_production_unique_lhs_exact_match(
-    productions: formal_productions_for_lhs(productions: productions, lhs: lhs),
+    productions: productions,
     lhs: lhs,
     child: child
   )
@@ -2102,8 +2102,9 @@ fn formal_production_unique_lhs_exact_match(
   child: Node
 ) -> Witness<FormalProduction> {
   if emitted_shape_supported_for_lhs_exact(child: child) {
+    let lhs_productions = formal_productions_for_lhs(productions: productions, lhs: lhs)
     match fold_list(
-      xs: productions,
+      xs: lhs_productions,
       empty: LhsExactProductionMatchNone,
       cons: fn(acc, candidate) {
         lhs_exact_production_match_fold_step(
