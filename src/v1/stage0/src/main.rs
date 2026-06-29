@@ -521,7 +521,8 @@ mod tests {
 
     #[test]
     fn extract_module_path_none_for_moduleless_parse_fixture() {
-        let fixture = "data split_brace_sample: SplitBraceSample =\nSplitBraceSample { field: \"x\" }\n";
+        let fixture =
+            "data split_brace_sample: SplitBraceSample =\nSplitBraceSample { field: \"x\" }\n";
         assert!(extract_module_path(fixture).is_none());
     }
 
