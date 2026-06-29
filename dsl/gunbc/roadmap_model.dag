@@ -1,7 +1,7 @@
 module gunbc.roadmap_model
 
 import ctrl.process_algebra { ProcessNodeId }
-import gunbc.roadmap_status { RoadmapItem, DriftVerdict, status_drift }
+import gunbc.roadmap_status { RoadmapItem, DriftVerdict, status_drift, Signoff, Unsigned, signoff_accepts, signoff_drift }
 
 type Pointer { label: String, path: String }
 
@@ -28,6 +28,8 @@ type RoadmapNode {
   line: RoadmapItem
   carriers: List<Pointer>
   sizing: NodeSizing
+  owner: String
+  signoff: Signoff
 }
 
 type RoadmapEdge {
@@ -81,5 +83,9 @@ fn node_carrier_clean(rn: RoadmapNode, existing_docs: List<String>) -> Bool {
 }
 
 fn node_status_drift(rn: RoadmapNode, committed_box: Bool, merged: List<Int>) -> DriftVerdict {
-  status_drift(item: rn.line, committed_box: committed_box, merged: merged)
+  signoff_drift(s: rn.signoff, committed_box: committed_box)
+}
+
+fn node_closed(rn: RoadmapNode) -> Bool {
+  signoff_accepts(s: rn.signoff)
 }
