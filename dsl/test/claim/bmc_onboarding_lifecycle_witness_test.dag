@@ -10,10 +10,27 @@ import gunbc.bmc_onboarding {
   CredentialsRotated,
   OsInstalled,
   FabricJoined,
+  BmcCredentialPosture,
+  FactoryPublished,
+  RotatedSecretManaged,
+  KeylessFederated,
   bmc_onboarding_next_phase,
+  bmc_onboarding_prev_phase,
+  bmc_phase_eq,
+  bmc_onboard_to_steady,
+  bmc_decom_to_factory,
+  bmc_lifecycle_roundtrip,
+  bmc_lifecycle_inverse_fidelity,
+  bmc_phase_credential_posture,
+  bmc_posture_is_keyless,
+  bmc_lifecycle_is_monotone_hardening,
+  bmc_lifecycle_length,
+  bmc_plan_steady_state_is_keyless,
   new_altra_onboarding_plan,
 }
 import extdeps.bmc.types { BootTargetPxe, AccountRoleAdministrator, redfish_boot_target_wire, redfish_account_role_wire }
+import gunbc.assimilate.bmc_token_federation { emit_bmc_token_smoke_workflow_yaml }
+import extdeps.communication.medium { Lossless, Lossy }
 
 fn phase_tag(p: BmcOnboardingPhase) -> Int {
   match p {
@@ -36,6 +53,90 @@ test fn bmc_onboarding_lifecycle_is_linear_dag() -> Bool {
     && next_tag(p: CredentialsRotated) == 2
     && next_tag(p: OsInstalled) == 3
     && next_tag(p: FabricJoined) == -1
+}
+
+fn posture_tag(p: BmcCredentialPosture) -> Int {
+  match p {
+    FactoryPublished => 0
+    RotatedSecretManaged => 1
+    KeylessFederated => 2
+  }
+}
+
+test fn bmc_credential_posture_hardens_to_keyless_steady_state() -> Bool {
+  posture_tag(p: bmc_phase_credential_posture(phase: FactoryDefault)) == 0
+    && posture_tag(p: bmc_phase_credential_posture(phase: CredentialsRotated)) == 1
+    && posture_tag(p: bmc_phase_credential_posture(phase: OsInstalled)) == 1
+    && posture_tag(p: bmc_phase_credential_posture(phase: FabricJoined)) == 2
+    && !bmc_posture_is_keyless(posture: bmc_phase_credential_posture(phase: FactoryDefault))
+    && !bmc_posture_is_keyless(posture: bmc_phase_credential_posture(phase: OsInstalled))
+    && bmc_posture_is_keyless(posture: bmc_phase_credential_posture(phase: FabricJoined))
+}
+
+test fn bmc_lifecycle_fold_is_complete_and_monotone() -> Bool {
+  bmc_lifecycle_length() == 4
+    && bmc_lifecycle_is_monotone_hardening()
+}
+
+test fn bmc_plan_steady_state_is_keyless_wif() -> Bool {
+  bmc_plan_steady_state_is_keyless(plan: new_altra_onboarding_plan)
+    && !string_contains(s: emit_bmc_token_smoke_workflow_yaml(), pattern: "credentials_json")
+    && string_contains(s: emit_bmc_token_smoke_workflow_yaml(), pattern: "id-token: write")
+}
+
+fn prev_next_is_identity(p: BmcOnboardingPhase) -> Bool {
+  match bmc_onboarding_next_phase(phase: p) {
+    Present { value: nxt } =>
+      match bmc_onboarding_prev_phase(phase: nxt) {
+        Present { value: back } => bmc_phase_eq(a: back, b: p)
+        Absent => false
+      }
+    Absent => true
+  }
+}
+
+fn next_prev_is_identity(p: BmcOnboardingPhase) -> Bool {
+  match bmc_onboarding_prev_phase(phase: p) {
+    Present { value: prv } =>
+      match bmc_onboarding_next_phase(phase: prv) {
+        Present { value: fwd } => bmc_phase_eq(a: fwd, b: p)
+        Absent => false
+      }
+    Absent => true
+  }
+}
+
+test fn bmc_decom_is_two_sided_inverse_on_phase_ladder() -> Bool {
+  prev_next_is_identity(p: FactoryDefault)
+    && prev_next_is_identity(p: CredentialsRotated)
+    && prev_next_is_identity(p: OsInstalled)
+    && prev_next_is_identity(p: FabricJoined)
+    && next_prev_is_identity(p: FactoryDefault)
+    && next_prev_is_identity(p: CredentialsRotated)
+    && next_prev_is_identity(p: OsInstalled)
+    && next_prev_is_identity(p: FabricJoined)
+}
+
+test fn bmc_onboard_then_decom_recovers_factory_phase() -> Bool {
+  bmc_phase_eq(a: bmc_decom_to_factory(phase: bmc_onboard_to_steady(phase: FactoryDefault)), b: FactoryDefault)
+    && bmc_phase_eq(a: bmc_onboard_to_steady(phase: bmc_decom_to_factory(phase: FabricJoined)), b: FabricJoined)
+    && match bmc_lifecycle_roundtrip(phase: FactoryDefault).carried {
+      FactoryDefault => true
+      CredentialsRotated => false
+      OsInstalled => false
+      FabricJoined => false
+    }
+}
+
+test fn bmc_lifecycle_inverse_is_lossy_section_not_iso() -> Bool {
+  match bmc_lifecycle_inverse_fidelity() {
+    Lossy => true
+    Lossless => false
+  }
+    && match bmc_lifecycle_roundtrip(phase: FactoryDefault).fidelity {
+      Lossy => true
+      Lossless => false
+    }
 }
 
 test fn new_altra_plan_starts_factory_default_at_192() -> Bool {
