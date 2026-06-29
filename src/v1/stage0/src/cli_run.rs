@@ -99,6 +99,30 @@ fn extract_module_path(content: &str) -> Option<String> {
     None
 }
 
+/// Module-less `.dag` fragments (parse fixtures) are excluded from the compile entry
+/// set. Fail-closed visibility: list every skipped path so a forgotten `module` decl
+/// in real source is surfaced, not silently dropped.
+pub fn report_moduleless_dag_entry_skips(skipped_paths: &[String]) {
+    if skipped_paths.is_empty() {
+        return;
+    }
+    eprintln!(
+        "skipped {} module-less .dag file(s) from compile entry set (no `module` declaration):",
+        skipped_paths.len()
+    );
+    for path in skipped_paths {
+        eprintln!("  {path}");
+    }
+}
+
+pub fn moduleless_dag_entry_paths(entry_files: &[(String, String)]) -> Vec<String> {
+    entry_files
+        .iter()
+        .filter(|(_, content)| extract_module_path(content).is_none())
+        .map(|(path, _)| path.clone())
+        .collect()
+}
+
 pub(crate) fn extract_import_paths(content: &str) -> Vec<String> {
     let mut imports = Vec::new();
     for line in content.lines() {
@@ -273,21 +297,27 @@ fn load_sources(source_roots: &[String]) -> Vec<Rc<v1_compiler_compile::SourceFi
         }
     }
 
+    let skipped_moduleless = moduleless_dag_entry_paths(&entry_files);
+    report_moduleless_dag_entry_skips(&skipped_moduleless);
+
     let mut seen: HashMap<String, Rc<v1_compiler_compile::SourceFile>> = HashMap::new();
     let mut entry_for_queue = Vec::new();
     for (path, content) in &entry_files {
-        let source = Rc::new(v1_compiler_compile::SourceFile {
-            path: path.clone(),
-            content: content.clone(),
-        });
         if let Some(mod_path) = extract_module_path(content) {
+            let source = Rc::new(v1_compiler_compile::SourceFile {
+                path: path.clone(),
+                content: content.clone(),
+            });
             seen.insert(mod_path, source.clone());
+            entry_for_queue.push(source);
         }
-        entry_for_queue.push(source);
     }
 
     let mut sources = resolve_transitively(entry_for_queue, &index, seen);
     for (path, content) in entry_files {
+        if extract_module_path(&content).is_none() {
+            continue;
+        }
         if !sources.iter().any(|s| s.path == path) {
             sources.push(Rc::new(v1_compiler_compile::SourceFile { path, content }));
         }
@@ -4161,5 +4191,41 @@ mod sidecar_placement_hygiene_tests {
             msg.contains("wire-contract decls") && msg.contains("_contracts.dag"),
             "error must name the decl type and required suffix: {msg}"
         );
+    }
+}
+
+#[cfg(test)]
+mod moduleless_entry_skip_tests {
+    use super::{extract_module_path, moduleless_dag_entry_paths};
+
+    #[test]
+    fn moduleless_dag_entry_paths_collects_fixture_like_fragments() {
+        let entries = vec![
+            (
+                "/repo/src/v1/stage0/tests/fixtures/split.dag".to_string(),
+                "data x: Int = 0\n".to_string(),
+            ),
+            (
+                "/repo/src/v1/compile.dag".to_string(),
+                "module v1.compile\n".to_string(),
+            ),
+        ];
+        assert_eq!(
+            moduleless_dag_entry_paths(&entries),
+            vec!["/repo/src/v1/stage0/tests/fixtures/split.dag".to_string()]
+        );
+    }
+
+    #[test]
+    fn moduleless_dag_entry_paths_surfaces_real_source_without_module() {
+        let entries = vec![(
+            "/repo/src/v1/forgot_module.dag".to_string(),
+            "data oops: Int = 0\n".to_string(),
+        )];
+        assert_eq!(
+            moduleless_dag_entry_paths(&entries),
+            vec!["/repo/src/v1/forgot_module.dag".to_string()]
+        );
+        assert!(extract_module_path(&entries[0].1).is_none());
     }
 }
