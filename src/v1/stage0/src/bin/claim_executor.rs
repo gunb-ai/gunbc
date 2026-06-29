@@ -400,11 +400,8 @@ fn run_batch_unit(
             skip_unaffected_node_frontier,
             exclude_substrings,
             discovery_scope_dirs,
-            if spawn_width_cap > 0 {
-                spawn_width.min(spawn_width_cap)
-            } else {
-                spawn_width
-            },
+            spawn_width,
+            spawn_width_cap,
         )],
         BatchUnit::SharedClaims { entry, functions } => {
             run_shared_entry_claims(&source_roots, &entry, &functions)
@@ -668,6 +665,7 @@ fn run_discovery_batch_node(
     exclude_substrings: Vec<String>,
     discovery_scope_dirs: Vec<String>,
     spawn_width: usize,
+    spawn_width_cap: usize,
 ) -> ClaimResult {
     let label = format!(
         "discovery-corpus[{} root(s)+{} explicit, width={}]",
@@ -686,7 +684,7 @@ fn run_discovery_batch_node(
             explicit_roster_only: false,
             exclude_substrings,
             discovery_scope_dirs,
-            spawn_width_cap: 0,
+            spawn_width_cap,
         },
     ) {
         Ok(summary) if summary.failures.is_empty() => {
