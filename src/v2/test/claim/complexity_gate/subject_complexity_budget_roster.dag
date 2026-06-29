@@ -12,17 +12,17 @@ import v2.std.collection { List }
 import v2.std.diagnostic { Outcome }
 import v2.std.node { Node }
 import v2.std.witness { Holds, Violates }
-import v2.test.complexity_gate.comprep_wave1_add_subject_producer {
-  comprep_source_bridged_add_arrow_with_body
+import v2.test.complexity_gate.source_bridged_add_subject_producer {
+  source_bridged_add_arrow_with_body
 }
-import v2.test.complexity_gate.comprep_wave1_bind_subject_producer {
-  comprep_source_bridged_bind_arrow_with_body
+import v2.test.complexity_gate.source_bridged_bind_subject_producer {
+  source_bridged_bind_arrow_with_body
 }
-import v2.test.complexity_gate.comprep_wave1_branch_subject_producer {
-  comprep_source_bridged_pick_if_arrow_with_body
+import v2.test.complexity_gate.source_bridged_branch_subject_producer {
+  source_bridged_pick_if_arrow_with_body
 }
-import v2.test.complexity_gate.comprep_wave1_loop_subject_producer {
-  comprep_source_bridged_loop_arrow_with_body
+import v2.test.complexity_gate.source_bridged_loop_subject_producer {
+  source_bridged_loop_arrow_with_body
 }
 
 type LensSubjectComplexityBudgetRow {
@@ -51,29 +51,29 @@ fn complexity_declared_budget_loop_linear(body: Node) -> ComplexityBound {
   }
 }
 
-data complexity_budget_row_comprep_source_bridged_add: LensSubjectComplexityBudgetRow = LensSubjectComplexityBudgetRow {
-  subject_producer: comprep_source_bridged_add_arrow_with_body,
+data complexity_budget_row_source_bridged_add: LensSubjectComplexityBudgetRow = LensSubjectComplexityBudgetRow {
+  subject_producer: source_bridged_add_arrow_with_body,
   declared_budget: complexity_declared_budget_constant
 }
 
-data complexity_budget_row_comprep_source_bridged_bind: LensSubjectComplexityBudgetRow = LensSubjectComplexityBudgetRow {
-  subject_producer: comprep_source_bridged_bind_arrow_with_body,
+data complexity_budget_row_source_bridged_bind: LensSubjectComplexityBudgetRow = LensSubjectComplexityBudgetRow {
+  subject_producer: source_bridged_bind_arrow_with_body,
   declared_budget: complexity_declared_budget_constant
 }
 
-data complexity_budget_row_comprep_source_bridged_branch: LensSubjectComplexityBudgetRow = LensSubjectComplexityBudgetRow {
-  subject_producer: comprep_source_bridged_pick_if_arrow_with_body,
+data complexity_budget_row_source_bridged_branch: LensSubjectComplexityBudgetRow = LensSubjectComplexityBudgetRow {
+  subject_producer: source_bridged_pick_if_arrow_with_body,
   declared_budget: complexity_declared_budget_constant
 }
 
-data complexity_budget_row_comprep_source_bridged_loop: LensSubjectComplexityBudgetRow = LensSubjectComplexityBudgetRow {
-  subject_producer: comprep_source_bridged_loop_arrow_with_body,
+data complexity_budget_row_source_bridged_loop: LensSubjectComplexityBudgetRow = LensSubjectComplexityBudgetRow {
+  subject_producer: source_bridged_loop_arrow_with_body,
   declared_budget: complexity_declared_budget_loop_linear
 }
 
 data complexity_subject_budget_rows: List<LensSubjectComplexityBudgetRow> = [
-  complexity_budget_row_comprep_source_bridged_add,
-  complexity_budget_row_comprep_source_bridged_bind,
-  complexity_budget_row_comprep_source_bridged_branch,
-  complexity_budget_row_comprep_source_bridged_loop
+  complexity_budget_row_source_bridged_add,
+  complexity_budget_row_source_bridged_bind,
+  complexity_budget_row_source_bridged_branch,
+  complexity_budget_row_source_bridged_loop
 ]

@@ -1,0 +1,92 @@
+module v2.test.claim.gha_workflow_yaml_fold_serialize
+
+import extdeps.formats.yaml { serialize_yaml }
+import extdeps.github.actions { Job }
+import gunbc.gha_yaml_fold_pilot { gha_fold_pilot_job }
+import gunbc.workflow_yaml_project { job_yaml }
+import v2.compiler.translate { target_serialize_source_from_model }
+import v2.extdeps.languages.gha_workflow_yaml_fold {
+  gha_fold_flat_steps_wrong_emitted,
+  gha_fold_flat_steps_wrong_target_model_witness,
+  gha_fold_job_emitted_witness,
+  gha_fold_job_wrong_production_emitted,
+  gha_fold_job_wrong_production_target_model_witness,
+  gha_fold_target_model_for_job_witness
+}
+import v2.std.compilers.target_model { TargetModel }
+import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node { Node }
+import v2.std.witness { Holds, Violates }
+
+fn gha_fold_oracle_job(job: Job) -> String {
+  serialize_yaml(v: job_yaml(job: job))
+}
+
+fn gha_fold_serialize_emitted(target: TargetModel, emitted: Node) -> Outcome<String> {
+  match target_serialize_source_from_model(target: target, emitted: emitted) {
+    Accepted { value: source, diagnostics: d } =>
+      match d {
+        None => Accepted { value: source.carried, diagnostics: None }
+        Some { diagnostics: r } => Rejected { diagnostics: r }
+      }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+fn gha_fold_fold_matches_oracle(job: Job) -> Bool {
+  let oracle = gha_fold_oracle_job(job: job)
+  match gha_fold_target_model_for_job_witness(job: job, source_text: oracle) {
+    Holds { value: target } =>
+      match gha_fold_job_emitted_witness(job: job) {
+        Holds { value: emitted } =>
+          match target_serialize_source_from_model(target: target, emitted: emitted) {
+            Accepted { value: source, diagnostics: d } =>
+              (source.carried == oracle) && (d == None)
+            Rejected { diagnostics: _ } => false
+          }
+        Violates { diagnostic: _ } => false
+      }
+    Violates { diagnostic: _ } => false
+  }
+}
+
+fn gha_fold_pilot_job_byte_identical_holds() -> Bool {
+  gha_fold_fold_matches_oracle(job: gha_fold_pilot_job)
+}
+
+fn gha_fold_wrong_production_rejects_oracle_holds() -> Bool {
+  let oracle = gha_fold_oracle_job(job: gha_fold_pilot_job)
+  match gha_fold_job_wrong_production_target_model_witness(source_text: oracle) {
+    Holds { value: target } =>
+      match gha_fold_serialize_emitted(
+        target: target,
+        emitted: gha_fold_job_wrong_production_emitted
+      ) {
+        Accepted { value: folded, diagnostics: _ } => folded != oracle
+        Rejected { diagnostics: _ } => true
+      }
+    Violates { diagnostic: _ } => true
+  }
+}
+
+fn gha_fold_flat_steps_perturbation_rejects_oracle_holds() -> Bool {
+  let oracle = gha_fold_oracle_job(job: gha_fold_pilot_job)
+  match gha_fold_flat_steps_wrong_target_model_witness(source_text: oracle) {
+    Holds { value: target } =>
+      match gha_fold_serialize_emitted(
+        target: target,
+        emitted: gha_fold_flat_steps_wrong_emitted
+      ) {
+        Accepted { value: folded, diagnostics: _ } => folded != oracle
+        Rejected { diagnostics: _ } => true
+      }
+    Violates { diagnostic: _ } => true
+  }
+}
+
+test fn gha_fold_serialize_tier_holds() -> Bool {
+  gha_fold_pilot_job_byte_identical_holds()
+  && gha_fold_wrong_production_rejects_oracle_holds()
+  && gha_fold_flat_steps_perturbation_rejects_oracle_holds()
+}

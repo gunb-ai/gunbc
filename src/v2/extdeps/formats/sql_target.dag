@@ -1,0 +1,274 @@
+module v2.extdeps.formats.sql_target
+
+import v2.std.algebra { Empty, fold_list, list_snoc_item }
+import v2.std.grammar {
+  FormalGrammarSymbol,
+  FormalProduction,
+  derive_grammar_relation_row_node,
+  formal_production_for_lhs_exact,
+  grammar_formal_production,
+  grammar_formal_terminal,
+  grammar_formal_terminal_bound,
+  grammar_relation_tokens_node
+}
+import v2.std.compilers.lexing {
+  LexRule,
+  LexRuleSet,
+  LexRules,
+  ModeledLexRules,
+  TokenRule,
+  LiteralPattern
+}
+import v2.std.compilers.target_model {
+  BoundToken,
+  ConcreteSyntaxToken,
+  FixedToken,
+  TargetModel,
+  target_model_make_with_emit_transforms,
+  concrete_syntax_token_to_node
+}
+import v2.std.collection { List, Map, empty_map, map_insert }
+import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
+import v2.std.node {
+  Atom,
+  Conj,
+  Edge,
+  Named,
+  Node,
+  Positional,
+  Symbol,
+  SyntheticOccurrence,
+  TypeNode
+}
+import v2.std.witness { Holds, Violates, Witness }
+
+fn sql_atom(id: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: id } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn sql_named_edge(name: Symbol, target: Node) -> Edge {
+  Edge { label: Named { name: name }, target: target }
+}
+
+fn sql_conj_emitted_from_tokens(tokens: List<ConcreteSyntaxToken>) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: fold_list(
+      xs: tokens,
+      empty: Empty,
+      cons: fn(acc, token) {
+        match token {
+          BoundToken { binding: binding, token_class: _ } =>
+            list_snoc_item(
+              xs: acc,
+              item: Edge { label: Positional, target: sql_atom(id: binding) }
+            )
+          FixedToken { token_class: _ } => acc
+        }
+      }
+    ),
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn sql_formal_symbol_from_token(token: ConcreteSyntaxToken) -> FormalGrammarSymbol {
+  match token {
+    FixedToken { token_class: c } => grammar_formal_terminal(identity: c)
+    BoundToken { token_class: c, binding: b } =>
+      grammar_formal_terminal_bound(identity: c, binding: b)
+  }
+}
+
+fn sql_formal_rhs_from_tokens(tokens: List<ConcreteSyntaxToken>) -> List<FormalGrammarSymbol> {
+  fold_list(
+    xs: tokens,
+    empty: Empty,
+    cons: fn(acc, token) {
+      list_snoc_item(xs: acc, item: sql_formal_symbol_from_token(token: token))
+    }
+  )
+}
+
+fn sql_formal_production_from_fixture(
+  lhs: Symbol,
+  tokens: List<ConcreteSyntaxToken>
+) -> FormalProduction {
+  grammar_formal_production(
+    lhs: lhs,
+    rhs: sql_formal_rhs_from_tokens(tokens: tokens)
+  )
+}
+
+fn sql_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
+  concrete_syntax_token_to_node(token: token)
+}
+
+fn sql_empty_translation_rules_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn sql_lhs_exact_relation_row_witness(
+  lhs: Symbol,
+  tokens: List<ConcreteSyntaxToken>,
+  emitted: Node
+) -> Witness<Node> {
+  let production = sql_formal_production_from_fixture(lhs: lhs, tokens: tokens)
+  let productions = [production]
+  match formal_production_for_lhs_exact(
+    productions: productions,
+    lhs: lhs,
+    child: emitted
+  ) {
+    Holds { value: selected } =>
+      derive_grammar_relation_row_node(
+        production: selected,
+        productions: productions,
+        emitted: emitted
+      )
+    Violates { diagnostic: d } => Violates { diagnostic: d }
+  }
+}
+
+fn sql_relation_translation_rules_witness(
+  rule_name: Symbol,
+  lhs: Symbol,
+  tokens: List<ConcreteSyntaxToken>,
+  emitted: Node
+) -> Witness<Node> {
+  match sql_lhs_exact_relation_row_witness(
+    lhs: lhs,
+    tokens: tokens,
+    emitted: emitted
+  ) {
+    Holds { value: row } =>
+      Holds {
+        value: Node {
+          kind: TypeNode { connective: Conj },
+          children: [
+            sql_named_edge(name: rule_name, target: row)
+          ],
+          occurrence_id: SyntheticOccurrence
+        }
+      }
+    Violates { diagnostic: d } => Violates { diagnostic: d }
+  }
+}
+
+fn sql_relation_translation_rules_node(
+  rule_name: Symbol,
+  lhs: Symbol,
+  tokens: List<ConcreteSyntaxToken>,
+  emitted: Node
+) -> Node {
+  match sql_relation_translation_rules_witness(
+    rule_name: rule_name,
+    lhs: lhs,
+    tokens: tokens,
+    emitted: emitted
+  ) {
+    Holds { value: rules } => rules
+    Violates { diagnostic: _ } => sql_empty_translation_rules_node()
+  }
+}
+
+fn sql_identity_emit_transform(spelling: String) -> String {
+  spelling
+}
+
+fn sql_token_class_emit_transforms() -> Map<Symbol, fn(String) -> String> {
+  map_insert(empty_map(), ^sql_token_ident, sql_identity_emit_transform)
+}
+
+fn sql_kind_emit_transform(_spelling: String) -> String {
+  ""
+}
+
+fn sql_serialize_source_node(
+  source_text_binding: Symbol,
+  production_binding: Symbol,
+  tokens: List<ConcreteSyntaxToken>
+) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      sql_named_edge(
+        name: ^serialize_source_field_source_text,
+        target: sql_atom(id: source_text_binding)
+      ),
+      sql_named_edge(
+        name: ^serialize_source_field_source_grammar,
+        target: sql_atom(id: production_binding)
+      ),
+      sql_named_edge(
+        name: ^grammar_relation_field_tokens,
+        target: grammar_relation_tokens_node(
+          tokens: tokens,
+          token_to_node: sql_concrete_token_node
+        )
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn sql_target_model_bundle(rules: Node, serialize_source: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      sql_named_edge(
+        name: ^target_model_edge_translation_rules,
+        target: rules
+      ),
+      sql_named_edge(
+        name: ^target_model_edge_serialize_source,
+        target: serialize_source
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn sql_make_bound_tokens_target_model(
+  rules: Node,
+  source_literal: Symbol,
+  production_name: Symbol,
+  tokens: List<ConcreteSyntaxToken>,
+  source_text: String,
+  lex: LexRules,
+  binding_spellings: Map<Symbol, String>
+) -> TargetModel {
+  target_model_make_with_emit_transforms(
+    bundle: sql_target_model_bundle(
+      rules: rules,
+      serialize_source: sql_serialize_source_node(
+        source_text_binding: source_literal,
+        production_binding: production_name,
+        tokens: tokens
+      )
+    ),
+    lex: lex,
+    binding_spellings: binding_spellings,
+    token_class_emit_transforms: sql_token_class_emit_transforms(),
+    authority_source_text: source_text,
+    runtime_row: target_emit_host_runtime_row_unconfigured
+  )
+}
+
+fn sql_lex_rule(token_class: Symbol, text: String) -> LexRule {
+  TokenRule {
+    token_class: token_class,
+    pattern: LiteralPattern { text: text }
+  }
+}
+
+fn sql_lex_rules_for_tokens(rules: List<LexRule>) -> LexRules {
+  ModeledLexRules { root: LexRuleSet { rules: rules } }
+}

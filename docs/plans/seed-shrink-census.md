@@ -183,8 +183,8 @@ The 88 v1 integration-test modules (~30k LOC, **939 `#[test]` fns**, `pipeline.r
 | **pipeline bulk** | 11,842 | 418 | `dsl_compile_clean_witness_test.dag`, `rust_gates_ci_witness_test.dag`, `generated_conformance_floor_test.dag` — covers compile-clean + gate roster, **not** each of 418 pipeline cases |
 | **infer / resolve** | 4,716 | ~120 | `branch_infer_test.dag`, `match_infer_fail_open_audit_test.dag`, `name_resolve_cross_tree_resolution_test.dag` |
 | **parse / tokenize** | 1,312 | ~60 | `parse_table_claims_test.dag`, `gap4_parse_tokens_remain_test.dag` |
-| **emit / TypeScript** | 2,150 | ~30 | `mvp1_typescript_add_translate_test.dag`, `typescript_enum_union_emit_by_execution_test.dag` |
-| **interpreter / eval** | 2,173 | ~45 | `comprep_bind_eval_by_execution_test.dag`, `hermetic_fixture_realization_test.dag` |
+| **emit / TypeScript** | 2,150 | ~30 | `typescript_add_emit_translate_test.dag`, `typescript_enum_union_emit_by_execution_test.dag` |
+| **interpreter / eval** | 2,173 | ~45 | `bind_eval_by_execution_test.dag`, `hermetic_fixture_realization_test.dag` |
 | **bootstrap / self-host** | 2,808 | ~45 | `compile_source_model_witness_test.dag`, `rust_stage0_gates_witness_test.dag` |
 | **lens / hygiene** | 1,333 | ~25 | `lens_verdict_witness_test.dag`, `construction_justification_hygiene_tests` (in floor discovery) |
 | **cache / fixture** | 916 | ~15 | `cache_purity_verdict_test.dag`, `cache_key_completeness_test.dag` |

@@ -1,0 +1,596 @@
+module v2.test.manual.rust_add_emit_translate
+
+import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
+import v2.compiler.emit { emit }
+import v2.compiler.compile {
+  CompileOutput,
+  TranslateResult,
+  TranslateTo,
+  compile_inferred
+}
+import v2.compiler.eval {
+  TestClaimEvalSubject,
+  TestClaimRun,
+  run_test_claim_assert,
+  test_claim_cache_receipt,
+  test_claim_typed_input_node
+}
+import v2.compiler.translate {
+  coerce_grounded_node,
+  target_serialize_source_from_model,
+  translate,
+}
+import v2.extdeps.languages.rust {
+  rust_inhabitant_i32_node,
+  rust_inhabitant_atom,
+  rust_integer_facts_node,
+  rust_int_kind_node,
+  rust_int_width_node,
+  rust_overflow_node,
+  rust_mvp1_fixture_emitted_add_fn,
+  rust_mvp1_fixture_i32_inhabitant,
+  rust_mvp1_i32_overflow_disposition_node,
+  rust_mvp1_i32_scalar_node,
+  rust_mvp1_binding_spellings,
+  rust_mvp1_source_text,
+  rust_mvp1_target_model,
+  rust_mvp1_target_model_node,
+  rust_wave1_lex,
+  rust_facts_i32,
+  Signed,
+  Bits32,
+  PanicOnOverflow,
+  TwoComplementWrap
+}
+import v2.compiler.infer { InferredFacts, InferredTree }
+import extdeps.communication.medium { Lossless, Medium }
+import v2.std.compilers.target_model { TargetModel, target_model_emit_transforms_empty }
+import v2.test.lens_common.infer_fixture { claim_inferred_facts_witness }
+import v2.test.manual.infer_ground_add_mvp {
+  infer_receipt_context
+}
+import v2.std.cardinality { TerminationProof, termination_proof_witness_for_node }
+import v2.std.collection { Map, empty_map }
+import v2.std.coercion {
+  CoercionQuality,
+  Exact,
+  Identity,
+  Widened
+}
+import v2.std.constraints {
+  CanonicalGrounding,
+  CanonicalGroundingWitness
+}
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  None,
+  Outcome,
+  Rejected,
+  Unavailable,
+  diagnostics_singleton,
+  node_locus
+}
+import v2.std.node {
+  Atom,
+  Arrow,
+  Conj,
+  Edge,
+  Node,
+  Positional,
+  Symbol,
+  TypeNode,
+  SyntheticOccurrence
+}
+import v2.std.verification {
+  DiagnosticClaim,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Unit,
+  CompilesClaim,
+  manual_claim_anchor,
+  BoolWitness,
+  BoolWitnessClaim,
+  UnifiedTestClaim
+}
+import v2.std.witness { Holds, StructuralPropertyWitness, Violates, Witness }
+data rust_add_forbidden_authority_source_text: String = "authority_source_text_fallback_forbidden"
+
+fn mvp_int_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^mvp_add_int_atom } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+data mvp_add_arrow_node: Node = Node {
+  kind: TypeNode { connective: Arrow },
+  children: [
+    Edge { label: Positional, target: mvp_int_node() },
+    Edge { label: Positional, target: mvp_int_node() },
+    Edge { label: Positional, target: mvp_int_node() }
+  ],
+  occurrence_id: SyntheticOccurrence
+}
+
+data rust_add_emitted_root: Node = rust_mvp1_fixture_emitted_add_fn
+
+data rust_add_target_model: TargetModel = rust_mvp1_target_model()
+
+data rust_add_poisoned_authority_target_model: TargetModel = TargetModel {
+  bundle: rust_mvp1_target_model_node(),
+  lex: rust_wave1_lex(),
+  binding_spellings: rust_mvp1_binding_spellings(),
+    token_class_emit_transforms: target_model_emit_transforms_empty,
+  authority_source_text: rust_add_forbidden_authority_source_text,
+  runtime_row: target_emit_host_runtime_row_unconfigured
+}
+
+data rust_add_empty_translation_rules_bundle: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+data rust_add_missing_translation_rules_target: TargetModel = TargetModel {
+  bundle: rust_add_empty_translation_rules_bundle,
+  lex: rust_wave1_lex(),
+  binding_spellings: empty_map(),
+    token_class_emit_transforms: target_model_emit_transforms_empty,
+  authority_source_text: "",
+  runtime_row: target_emit_host_runtime_row_unconfigured
+}
+
+fn anchor_rust_add_serialize_rejects_missing_translation_rules() -> Outcome<Medium<String>> {
+  target_serialize_source_from_model(
+    target: rust_add_missing_translation_rules_target,
+    emitted: rust_add_emitted_root
+  )
+}
+
+data rust_add_serialize_reject_receipt: Outcome<Medium<String>> = anchor_rust_add_serialize_rejects_missing_translation_rules()
+
+fn rust_add_serialize_reject_claim_outcome() -> Outcome<Node> {
+  match rust_add_serialize_reject_receipt {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: _, diagnostics: _ } =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: Diagnostic {
+            reason: ^rust_add_serialize_unexpected_accept,
+            at: node_locus(node: rust_add_emitted_root),
+            correction: Unavailable { reason: ExternalContractUnknown }
+          }
+        )
+      }
+  }
+}
+
+fn rust_add_i32_facts_node() -> Node {
+  rust_integer_facts_node(facts: rust_facts_i32)
+}
+
+fn rust_add_canonical_grounding(
+  node: Node,
+  algebra: Node
+) -> CanonicalGrounding {
+  CanonicalGrounding {
+    node: node,
+    witness: CanonicalGroundingWitness {
+      structural: StructuralPropertyWitness {
+        property: ^constraint_property_being_canonical,
+        evidence: algebra
+      },
+      closedness: StructuralPropertyWitness {
+        property: ^constraint_property_candidate_set_closedness,
+        evidence: node
+      }
+    }
+  }
+}
+
+fn rust_add_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding> {
+  if node == rust_mvp1_fixture_emitted_add_fn {
+    Holds {
+      value: rust_add_canonical_grounding(
+        node: node,
+        algebra: node
+      )
+    }
+  } else if node == rust_mvp1_fixture_i32_inhabitant {
+    Holds {
+      value: rust_add_canonical_grounding(
+        node: node,
+        algebra: rust_add_i32_facts_node()
+      )
+    }
+  } else if node == rust_inhabitant_atom(id: ^rust_inhabitant_i32) {
+    Holds {
+      value: rust_add_canonical_grounding(
+        node: node,
+        algebra: rust_mvp1_fixture_i32_inhabitant
+      )
+    }
+  } else if node == rust_add_i32_facts_node() {
+    Holds {
+      value: rust_add_canonical_grounding(
+        node: node,
+        algebra: node
+      )
+    }
+  } else if node == rust_inhabitant_atom(id: ^rust_surface_spelling_i32) {
+    Holds {
+      value: rust_add_canonical_grounding(
+        node: node,
+        algebra: rust_add_i32_facts_node()
+      )
+    }
+  } else if node == rust_inhabitant_atom(id: ^rust_std_projection_int32) {
+    Holds {
+      value: rust_add_canonical_grounding(
+        node: node,
+        algebra: rust_add_i32_facts_node()
+      )
+    }
+  } else if node == rust_int_kind_node(kind: Signed) {
+    Holds {
+      value: rust_add_canonical_grounding(
+        node: node,
+        algebra: rust_add_i32_facts_node()
+      )
+    }
+  } else if node == rust_int_width_node(width: Bits32) {
+    Holds {
+      value: rust_add_canonical_grounding(
+        node: node,
+        algebra: rust_add_i32_facts_node()
+      )
+    }
+  } else if node == rust_mvp1_i32_overflow_disposition_node() {
+    Holds {
+      value: rust_add_canonical_grounding(
+        node: node,
+        algebra: node
+      )
+    }
+  } else if node == rust_mvp1_i32_scalar_node() {
+    Holds {
+      value: rust_add_canonical_grounding(
+        node: node,
+        algebra: rust_mvp1_i32_overflow_disposition_node()
+      )
+    }
+  } else if node == rust_inhabitant_atom(id: ^rust_tag_scalar_int) {
+    Holds {
+      value: rust_add_canonical_grounding(
+        node: node,
+        algebra: rust_mvp1_i32_scalar_node()
+      )
+    }
+  } else if node == rust_inhabitant_atom(id: ^rust_tag_signed) {
+    Holds {
+      value: rust_add_canonical_grounding(
+        node: node,
+        algebra: rust_mvp1_i32_scalar_node()
+      )
+    }
+  } else if node == rust_inhabitant_atom(id: ^rust_tag_bits32) {
+    Holds {
+      value: rust_add_canonical_grounding(
+        node: node,
+        algebra: rust_mvp1_i32_scalar_node()
+      )
+    }
+  } else if node == rust_overflow_node(overflow: PanicOnOverflow) {
+    Holds {
+      value: rust_add_canonical_grounding(
+        node: node,
+        algebra: rust_mvp1_i32_overflow_disposition_node()
+      )
+    }
+  } else if node == rust_overflow_node(overflow: TwoComplementWrap) {
+    Holds {
+      value: rust_add_canonical_grounding(
+        node: node,
+        algebra: rust_mvp1_i32_overflow_disposition_node()
+      )
+    }
+  } else if node == rust_inhabitant_atom(id: ^rust_tag_panic_on_overflow) {
+    Holds {
+      value: rust_add_canonical_grounding(
+        node: node,
+        algebra: rust_overflow_node(overflow: PanicOnOverflow)
+      )
+    }
+  } else if node == rust_inhabitant_atom(id: ^rust_tag_two_complement_wrap) {
+    Holds {
+      value: rust_add_canonical_grounding(
+        node: node,
+        algebra: rust_overflow_node(overflow: TwoComplementWrap)
+      )
+    }
+  } else {
+    Violates {
+      diagnostic: Diagnostic {
+        reason: ^rust_add_grounding_miss,
+        at: node_locus(node: node),
+        correction: Unavailable { reason: ExternalContractUnknown }
+      }
+    }
+  }
+}
+
+fn rust_add_inferred_facts_for(node: Node) -> Witness<InferredFacts> {
+  match rust_add_canonical_grounding_for(node: node) {
+    Violates { diagnostic: d } => Violates { diagnostic: d }
+    Holds { value: grounding } =>
+      match termination_proof_witness_for_node(n: node) {
+        Violates { diagnostic: d } => Violates { diagnostic: d }
+        Holds { value: proof } =>
+          Holds {
+            value: claim_inferred_facts_witness(
+              grounding: grounding,
+              descent: Holds { value: proof }
+            )
+          }
+      }
+  }
+}
+
+fn rust_add_facts_lookup(key: Node) -> Witness<InferredFacts> {
+  rust_add_inferred_facts_for(node: key)
+}
+
+data rust_add_inferred_tree: InferredTree = InferredTree {
+  root: rust_add_emitted_root,
+  facts: Map {
+    lookup: rust_add_facts_lookup
+  }
+}
+
+fn anchor_rust_add_translate_accepts() -> Outcome<Node> {
+  translate(tree: rust_add_inferred_tree, target: rust_add_target_model)
+}
+
+fn anchor_rust_add_emit_accepts() -> Outcome<Medium<String>> {
+  emit(tree: rust_add_inferred_tree, target: rust_add_target_model)
+}
+
+fn anchor_rust_add_compile_inferred_accepts() -> Outcome<CompileOutput> {
+  compile_inferred(
+    inferred: rust_add_inferred_tree,
+    mode: TranslateTo { target: rust_add_poisoned_authority_target_model }
+  )
+}
+
+data rust_add_emit_receipt: Outcome<Medium<String>> = anchor_rust_add_emit_accepts()
+
+test fn rust_add_emit_add_fn_accepts_holds() -> Bool {
+  match rust_add_emit_receipt {
+    Accepted { value: source, diagnostics: d } =>
+      (source.carried == rust_mvp1_source_text) && (d == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+data rust_add_compile_inferred_receipt: Outcome<CompileOutput> = anchor_rust_add_compile_inferred_accepts()
+
+fn rust_add_emit_claim_outcome() -> Outcome<Node> {
+  match rust_add_emit_receipt {
+    Accepted { value: source, diagnostics: d } =>
+      if (source.carried == rust_mvp1_source_text) && (d == None) {
+        Accepted { value: rust_add_emitted_root, diagnostics: None }
+      } else {
+        Rejected {
+          diagnostics: diagnostics_singleton(
+            d: Diagnostic {
+              reason: ^rust_add_emit_source_mismatch,
+              at: node_locus(node: rust_add_emitted_root),
+              correction: Unavailable { reason: ExternalContractUnknown }
+            }
+          )
+        }
+      }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+fn rust_add_compile_inferred_claim_outcome() -> Outcome<Node> {
+  match rust_add_compile_inferred_receipt {
+    Accepted { value: compile_result, diagnostics: d } =>
+      match compile_result {
+        TranslateResult { source } =>
+          if (source.carried == rust_mvp1_source_text) && (d == None) {
+            Accepted { value: rust_add_emitted_root, diagnostics: None }
+          } else {
+            Rejected {
+              diagnostics: diagnostics_singleton(
+                d: Diagnostic {
+                  reason: ^rust_add_compile_source_mismatch,
+                  at: node_locus(node: rust_add_emitted_root),
+                  correction: Unavailable { reason: ExternalContractUnknown }
+                }
+              )
+            }
+          }
+        _ =>
+          Rejected {
+            diagnostics: diagnostics_singleton(
+              d: Diagnostic {
+                reason: ^rust_add_compile_source_mismatch,
+                at: node_locus(node: rust_add_emitted_root),
+                correction: Unavailable { reason: ExternalContractUnknown }
+              }
+            )
+          }
+      }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+fn rust_add_coercion_quality_is_exact(q: CoercionQuality) -> Bool {
+  match q {
+    Exact => true
+    Identity => false
+    Widened => false
+  }
+}
+
+fn rust_add_coerce_grounded_node_exact_structural_claim_outcome() -> Outcome<Node> {
+  match coerce_grounded_node(
+    source: rust_add_emitted_root,
+    tree: rust_add_inferred_tree,
+    target: rust_add_target_model
+  ) {
+    Accepted { value: r, diagnostics: d } =>
+      if (r.target == rust_mvp1_fixture_emitted_add_fn)
+        && rust_add_coercion_quality_is_exact(q: r.quality) {
+        Accepted { value: r.target, diagnostics: d }
+      } else {
+        Rejected {
+          diagnostics: diagnostics_singleton(
+            d: Diagnostic {
+              reason: ^rust_add_emit_source_mismatch,
+              at: node_locus(node: rust_add_emitted_root),
+              correction: Unavailable { reason: ExternalContractUnknown }
+            }
+          )
+        }
+      }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+data claim_rust_add_emit_add_fn_accepts: TestClaim = CompilesClaim {
+  label: "manual/rust_add_emit: anchor_rust_add_emit_accepts Accepted with canonical rust_mvp1 add-fn source",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: rust_add_emitted_root,
+  expected_value: rust_add_emitted_root,
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_rust_add_compile_inferred_add_fn_accepts: TestClaim = CompilesClaim {
+  label: "manual/rust_add_emit: compile_inferred emits canonical rust_mvp1 add-fn source through grammar inverse",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: rust_add_emitted_root,
+  expected_value: rust_add_emitted_root,
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_rust_add_coerce_grounded_node_exact_structural_accepts: TestClaim = CompilesClaim {
+  label: "manual/rust_add_emit: coerce_grounded_node accepts rust_mvp1 add-fn through exact-structural find_witness",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: rust_add_emitted_root,
+  expected_value: rust_add_emitted_root,
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data subject_rust_add_emit_add_fn_accepts: TestClaimEvalSubject<Node> = TestClaimEvalSubject {
+  claim: claim_rust_add_emit_add_fn_accepts,
+  context: infer_receipt_context(),
+  tree: rust_add_inferred_tree,
+  input: test_claim_typed_input_node(
+    evaluator_input: rust_add_emitted_root,
+    evaluator_pin: ^infer_receipt_input_infer_add_mvp
+  )
+}
+
+data run_rust_add_emit_add_fn_accepts: TestClaimRun<Node, Node> = TestClaimRun {
+  cache: test_claim_cache_receipt(subject: subject_rust_add_emit_add_fn_accepts),
+  verdict: run_test_claim_assert(
+    claim: claim_rust_add_emit_add_fn_accepts,
+    actual: rust_add_emit_claim_outcome(),
+    at: rust_add_emitted_root
+  )
+}
+
+data subject_rust_add_coerce_grounded_node_exact_structural_accepts: TestClaimEvalSubject<Node> = TestClaimEvalSubject {
+  claim: claim_rust_add_coerce_grounded_node_exact_structural_accepts,
+  context: infer_receipt_context(),
+  tree: rust_add_inferred_tree,
+  input: test_claim_typed_input_node(
+    evaluator_input: rust_add_emitted_root,
+    evaluator_pin: ^infer_receipt_input_infer_add_mvp
+  )
+}
+
+data run_rust_add_coerce_grounded_node_exact_structural_accepts: TestClaimRun<Node, Node> = TestClaimRun {
+  cache: test_claim_cache_receipt(subject: subject_rust_add_coerce_grounded_node_exact_structural_accepts),
+  verdict: run_test_claim_assert(
+    claim: claim_rust_add_coerce_grounded_node_exact_structural_accepts,
+    actual: rust_add_coerce_grounded_node_exact_structural_claim_outcome(),
+    at: rust_add_emitted_root
+  )
+}
+
+data subject_rust_add_compile_inferred_add_fn_accepts: TestClaimEvalSubject<Node> = TestClaimEvalSubject {
+  claim: claim_rust_add_compile_inferred_add_fn_accepts,
+  context: infer_receipt_context(),
+  tree: rust_add_inferred_tree,
+  input: test_claim_typed_input_node(
+    evaluator_input: rust_add_emitted_root,
+    evaluator_pin: ^infer_receipt_input_infer_add_mvp
+  )
+}
+
+data run_rust_add_compile_inferred_add_fn_accepts: TestClaimRun<Node, Node> = TestClaimRun {
+  cache: test_claim_cache_receipt(subject: subject_rust_add_compile_inferred_add_fn_accepts),
+  verdict: run_test_claim_assert(
+    claim: claim_rust_add_compile_inferred_add_fn_accepts,
+    actual: rust_add_compile_inferred_claim_outcome(),
+    at: rust_add_emitted_root
+  )
+}
+
+data claim_rust_add_translate_module_compiles: TestClaim = CompilesClaim {
+  label: "manual/rust_add_emit: translate stage module + coercion_fold call-site compiles",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: mvp_add_arrow_node,
+  expected_value: mvp_add_arrow_node,
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_rust_add_emit_module_compiles: TestClaim = CompilesClaim {
+  label: "manual/rust_add_emit: emit stage module (serialize_target o translate) compiles",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: mvp_add_arrow_node,
+  expected_value: mvp_add_arrow_node,
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_rust_add_serialize_rejects_missing_translation_rules: TestClaim = DiagnosticClaim {
+  label: "manual/rust_add_emit: target_serialize_source_from_model rejects bundle missing translation_rules",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: rust_add_emitted_root,
+  expected_rejection: diagnostics_singleton(
+    d: Diagnostic {
+      reason: ^translate_target_bundle_malformed,
+      at: node_locus(node: rust_add_empty_translation_rules_bundle),
+      correction: Unavailable { reason: ExternalContractUnknown }
+    }
+  ),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data subject_rust_add_serialize_rejects_missing_translation_rules: TestClaimEvalSubject<Node> = TestClaimEvalSubject {
+  claim: claim_rust_add_serialize_rejects_missing_translation_rules,
+  context: infer_receipt_context(),
+  tree: rust_add_inferred_tree,
+  input: test_claim_typed_input_node(
+    evaluator_input: rust_add_emitted_root,
+    evaluator_pin: ^infer_receipt_input_infer_add_mvp
+  )
+}
+
+data run_rust_add_serialize_rejects_missing_translation_rules: TestClaimRun<Node, Node> = TestClaimRun {
+  cache: test_claim_cache_receipt(subject: subject_rust_add_serialize_rejects_missing_translation_rules),
+  verdict: run_test_claim_assert(
+    claim: claim_rust_add_serialize_rejects_missing_translation_rules,
+    actual: rust_add_serialize_reject_claim_outcome(),
+    at: rust_add_emitted_root
+  )
+}

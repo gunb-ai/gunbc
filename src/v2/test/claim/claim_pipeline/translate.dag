@@ -15,14 +15,14 @@ import v2.std.verification {
   Unit,
   manual_claim_anchor
 }
-import v2.test.manual.mvp1_rust_add_translate { mvp1_rust_inferred_tree }
+import v2.test.manual.rust_add_emit_translate { rust_add_inferred_tree }
 data spine_translate_module_subject: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^spine_translate_module } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
-fn spine_translate_accepts_mvp1_inferred_tree() -> Bool {
-  match translate(tree: mvp1_rust_inferred_tree, target: rust_mvp1_target_model()) {
+fn spine_translate_accepts_rust_add_inferred_tree() -> Bool {
+  match translate(tree: rust_add_inferred_tree, target: rust_mvp1_target_model()) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
@@ -53,10 +53,10 @@ data claim_pipeline_translate_module_compiles: TestClaim = CompilesClaim {
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_pipeline_translate_accepts_mvp1_inferred_tree: TestClaim = EqualsClaim {
-  label: "claim_pipeline/translate: translate accepts MVP-1 rust add-fn InferredTree on rust_mvp1_target_model",
+data claim_pipeline_translate_accepts_rust_add_inferred_tree: TestClaim = EqualsClaim {
+  label: "claim_pipeline/translate: translate accepts rust add-fn InferredTree on rust_mvp1_target_model",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  lhs: spine_translate_bool_atom(b: spine_translate_accepts_mvp1_inferred_tree()),
+  lhs: spine_translate_bool_atom(b: spine_translate_accepts_rust_add_inferred_tree()),
   rhs: spine_translate_bool_atom(b: true),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
