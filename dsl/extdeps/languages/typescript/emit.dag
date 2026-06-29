@@ -28,15 +28,22 @@ data ts_container_templates: Map<String, String> = {
 }
 
 data ts_simple_method_specs: List<SimpleMethodSpec> = [
-  { method_name: "count",     template: "\{recv\}.length",                                    wraps_result: false },
-  { method_name: "join",      template: "\{recv\}.join(\{arg\})",                            wraps_result: false },
-  { method_name: "split",     template: "\{recv\}.split(\{arg\})",                           wraps_result: false },
-  { method_name: "last",      template: "\{recv\}[\{recv\}.length - 1]",                    wraps_result: false },
-  { method_name: "first",     template: "\{recv\}[0]",                                       wraps_result: false },
-  { method_name: "enumerate", template: "\{recv\}.map((v, i) => [i, v])",                    wraps_result: false },
-  { method_name: "chars",     template: "Array.from(\{recv\}).map(c => c.charCodeAt(0))",   wraps_result: false },
-  { method_name: "skip",      template: "\{recv\}.slice(\{arg\})",                           wraps_result: false },
-  { method_name: "take",      template: "\{recv\}.slice(0, \{arg\})",                        wraps_result: false }
+  { method_name: "count",           template: "\{recv\}.length",                              wraps_result: false },
+  { method_name: "join",            template: "\{recv\}.join(\{arg\})",                       wraps_result: false },
+  { method_name: "split",           template: "\{recv\}.split(\{arg\})",                      wraps_result: false },
+  { method_name: "last",            template: "\{recv\}[\{recv\}.length - 1]",               wraps_result: false },
+  { method_name: "first",           template: "\{recv\}[0]",                                  wraps_result: false },
+  { method_name: "enumerate",       template: "\{recv\}.map((v, i) => [i, v])",               wraps_result: false },
+  { method_name: "chars",           template: "Array.from(\{recv\}).map(c => c.charCodeAt(0))", wraps_result: false },
+  { method_name: "skip",            template: "\{recv\}.slice(\{arg\})",                      wraps_result: false },
+  { method_name: "take",            template: "\{recv\}.slice(0, \{arg\})",                   wraps_result: false },
+  { method_name: "string_contains", template: "\{recv\}.includes(\{arg\})",                   wraps_result: false },
+  { method_name: "filter",          template: "\{recv\}.filter(\{arg\})",                     wraps_result: false },
+  { method_name: "any",             template: "\{recv\}.some(\{arg\})",                       wraps_result: false },
+  { method_name: "all",             template: "\{recv\}.every(\{arg\})",                      wraps_result: false },
+  { method_name: "flat_map",        template: "\{recv\}.flatMap(\{arg\})",                    wraps_result: false },
+  { method_name: "sort_by",         template: "\{recv\}.slice().sort(\{arg\})",               wraps_result: false },
+  { method_name: "append",          template: "[...\{recv\}, \{arg\}]",                       wraps_result: false }
 ]
 
 fn ts_method_templates() -> Map<String, String> {

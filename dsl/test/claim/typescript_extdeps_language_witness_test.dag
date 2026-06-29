@@ -13,7 +13,9 @@ import extdeps.languages.typescript.emit {
   ts_struct_keyword,
   ts_type_arg_open,
   ts_type_arg_close,
-  ts_container_templates
+  ts_container_templates,
+  ts_simple_method_specs,
+  ts_method_templates
 }
 import extdeps.languages.typescript.syntax {
   ts_operators
@@ -101,4 +103,62 @@ test fn ts_freemonoid_inhabitant_is_array() -> Bool {
 
 test fn ts_partialfunction_inhabitant_is_map() -> Bool {
   ts_algebra_inhabitants |> any(d => d.algebra == "PartialFunction" && string_contains(d.template, "Map"))
+}
+
+test fn ts_string_contains_uses_includes() -> Bool {
+  match map_get(ts_method_templates(), "string_contains") {
+    Present { value: tmpl } => string_contains(tmpl, "includes")
+    Absent => false
+  }
+}
+
+test fn ts_filter_uses_array_filter() -> Bool {
+  match map_get(ts_method_templates(), "filter") {
+    Present { value: tmpl } => string_contains(tmpl, ".filter(")
+    Absent => false
+  }
+}
+
+test fn ts_any_uses_some() -> Bool {
+  match map_get(ts_method_templates(), "any") {
+    Present { value: tmpl } => string_contains(tmpl, ".some(")
+    Absent => false
+  }
+}
+
+test fn ts_all_uses_every() -> Bool {
+  match map_get(ts_method_templates(), "all") {
+    Present { value: tmpl } => string_contains(tmpl, ".every(")
+    Absent => false
+  }
+}
+
+test fn ts_flat_map_uses_flatMap() -> Bool {
+  match map_get(ts_method_templates(), "flat_map") {
+    Present { value: tmpl } => string_contains(tmpl, "flatMap")
+    Absent => false
+  }
+}
+
+test fn ts_sort_by_uses_immutable_sort() -> Bool {
+  match map_get(ts_method_templates(), "sort_by") {
+    Present { value: tmpl } =>
+      string_contains(tmpl, ".slice()") && string_contains(tmpl, ".sort(")
+    Absent => false
+  }
+}
+
+test fn ts_append_uses_spread_syntax() -> Bool {
+  match map_get(ts_method_templates(), "append") {
+    Present { value: tmpl } => string_contains(tmpl, "...")
+    Absent => false
+  }
+}
+
+test fn ts_method_spec_count_covers_higher_order() -> Bool {
+  let specs = ts_simple_method_specs
+  let has_filter = specs |> any(s => s.method_name == "filter")
+  let has_any    = specs |> any(s => s.method_name == "any")
+  let has_all    = specs |> any(s => s.method_name == "all")
+  has_filter && has_any && has_all
 }
