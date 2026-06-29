@@ -30,12 +30,23 @@ import gunbc.host_converge {
   SessionsSlice,
   HostConverge,
   gunbc_fleet_pinned_tree_sha,
-  gunbc_host_pinned_tree_path,
+  gunbc_root_env_key,
+  gunbc_host_gunbc_root_path,
+  gunbc_host_ctrl_checkout_path,
+  gunbc_dsl_root_submodule_path,
+  gunbc_fleet_pinned_binary_registry,
+  converge_apply_mode_label,
+  converge_no_op_policy_label,
+  FreshStandup,
+  ExistingHostReConverge,
+  SkipApplyWhenConverged,
+  gunbc_apply_mode_for_host,
   converge_verdict,
   converge_verdict_label,
   fleet_converge_policy_from,
   fleet_converge_policy,
 }
+import gunbc.fleet_intent_network { operator_host_srv3 }
 import gunbc.fleet_converge_emit {
   expected_fleet_converge_sh,
   fleet_converge_sh_for,
@@ -188,19 +199,21 @@ fn witness_drift_perturbed_desired_flips_emit() -> Bool {
 fn witness_gunbc_pinned_tree_emitted() -> Bool {
   let sh = fixture_sound_sh()
   has(s: sh, p: "converge_gunbc_pinned_tree()")
-    && has(
-      s: sh,
-      p: concat(
-        concat(
-          concat(
-            concat("converge_gunbc_pinned_tree \"srv1\" \"gunbc\" \"pinned_tree_sha\" \"", gunbc_host_pinned_tree_path),
-            "\" \""
-          ),
-          gunbc_fleet_pinned_tree_sha
-        ),
-        "\""
-      )
-    )
+    && has(s: sh, p: "skip_when_converged")
+    && has(s: sh, p: "refusing blind apply")
+    && has(s: sh, p: concat("\"", gunbc_root_env_key, "\""))
+    && has(s: sh, p: concat("\"", gunbc_host_gunbc_root_path, "\""))
+    && has(s: sh, p: "defer_submodule")
+    && has(s: sh, p: concat("\"", gunbc_dsl_root_submodule_path, "\""))
+    && has(s: sh, p: "existing_host")
+    && has(s: sh, p: to_string(gunbc_fleet_pinned_tree_sha))
+    && has(s: sh, p: gunbc_fleet_pinned_binary_registry)
+    && has(s: sh, p: "NO-OP-WHEN-ALREADY-CORRECT")
+}
+
+fn witness_gunbc_apply_mode_srv3_fresh_standup() -> Bool {
+  converge_apply_mode_label(m: gunbc_apply_mode_for_host(host: operator_host_srv3)) == "fresh_standup"
+    && converge_apply_mode_label(m: gunbc_apply_mode_for_host(host: "srv1")) == "existing_host"
 }
 
 fn first_host_knob_name(knobs: List<ConvergeKnob>) -> String {
@@ -236,6 +249,7 @@ test fn fleet_converge_emit_holds() -> Bool {
     && witness_emitted_bash_realizes_verdict()
     && witness_drift_perturbed_desired_flips_emit()
     && witness_gunbc_pinned_tree_emitted()
+    && witness_gunbc_apply_mode_srv3_fresh_standup()
     && witness_gunbc_pinned_tree_runs_first()
     && witness_sessions_membership_line_emitted()
 }

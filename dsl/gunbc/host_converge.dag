@@ -26,6 +26,7 @@ import gunbc.ci_floor_measurement {
   gunbc_ci_session_reservation_mode,
 }
 import gunbc.ci_fleet { fleet_intent_offers }
+import gunbc.fleet_intent_network { operator_host_srv3 }
 import gunbc.oomd_install { gunbc_oomd_sessions_policy, gunbc_oomd_sessions_slice }
 import gunbc.runner_slot_enforcement { gunbc_runner_slot_unit_placeholder }
 import extdeps.os.systemd {
@@ -51,9 +52,21 @@ data gunbc_runner_jobserver_env_file: String = "/etc/default/ctrl-jobserver"
 data gunbc_runner_jobserver_env_key: String = "CTRL_JOBSERVER_TOKENS"
 data gunbc_runner_jobserver_service: String = "ctrl-jobserver.service"
 
-data gunbc_host_pinned_tree_path: String = "$HOME/gunbc"
+data gunbc_root_env_key: String = "GUNBC_ROOT"
+
+data gunbc_dsl_root_submodule_path: String = "third_party/gunbc"
+
+data gunbc_host_ctrl_checkout_path: String = "$HOME/ctrl"
+
+data gunbc_host_gunbc_root_path: String = "$HOME/.local/share/gunbc/pinned"
 
 data gunbc_fleet_pinned_tree_sha: CommitSha = "53e066417e00ee56deb084ea75a969a7f3f96592"
+
+data gunbc_fleet_pinned_binary_registry: String = "ghcr.io/gunb-ai/gunbc/bootstrap"
+
+data gunbc_fleet_pinned_binary_digest: String = "sha256:BOOTSTRAP_DIGEST_PLACEHOLDER"
+
+data gunbc_fleet_pinned_binary_name: String = "gunbc"
 
 type ConvergeVerdict
   = Converged
@@ -87,19 +100,58 @@ fn converge_slice_label(s: ConvergeSlice) -> String {
   }
 }
 
+type ConvergeApplyMode
+  = FreshStandup
+  | ExistingHostReConverge
+
+type ConvergeNoOpPolicy
+  = BlindApply
+  | SkipApplyWhenConverged
+
+type DslRootBinding
+  = DeferToSubmodule { submodule_path: String }
+  | HardPin { path: String }
+
+type GunbcBinaryProvenance
+  = PublishedArtifactPull { registry_uri: String, digest: String }
+  | BuildBinIfAbsent { bin_name: String }
+
+type GunbcBinaryProvenancePolicy {
+  steady: GunbcBinaryProvenance
+  bootstrap_fallback: GunbcBinaryProvenance
+}
+
 type ConvergeTarget
   = SliceProperty { unit: String, property: String, apply_value: String, expected_effective: String }
   | PerSlotMemoryCap { dropin_path: String, instance_glob: String, property: String, bytes_value: String }
   | RunnerWidth { instance_glob: String }
   | JobserverTokens { env_file: String, env_key: String, service_unit: String }
   | VerifyOnlyCap { slice_unit: String, property: String }
-  | GunbcPinnedTree { repo_path: String, expected_sha: String }
+  | GunbcPinnedTree {
+      gunbc_root_env_key: String
+      gunbc_root_path: String
+      dsl_root: DslRootBinding
+      ctrl_checkout_path: String
+      expected_sha: String
+      binary: GunbcBinaryProvenancePolicy
+    }
 
 type ConvergeKnob {
   slice: ConvergeSlice
   name: String
   desired: String
   target: ConvergeTarget
+  apply_mode: ConvergeApplyMode
+  no_op: ConvergeNoOpPolicy
+}
+
+data gunbc_host_converge_knob_apply_semantics_marker: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.host_converge",
+    decl_name: "ConvergeKnob",
+    field: WholeDeclaration
+  }
 }
 
 data gunbc_host_converge_runner_sessions_coupling_marker: Disposition = Scaffold {
@@ -129,28 +181,89 @@ fn runner_instance_glob(host: HostIdentity) -> String {
   concat(concat("actions-runner@", host), "-*.service")
 }
 
-fn slice_numeric_knob(slice: ConvergeSlice, name: String, unit: String, property: String, value: Int) -> ConvergeKnob {
-  let v = to_string(value)
-  ConvergeKnob {
-    slice: slice,
-    name: name,
-    desired: v,
-    target: SliceProperty { unit: unit, property: property, apply_value: v, expected_effective: v },
+fn converge_apply_mode_label(m: ConvergeApplyMode) -> String {
+  match m {
+    FreshStandup => "fresh_standup"
+    ExistingHostReConverge => "existing_host"
   }
 }
 
-fn gunbc_pinned_tree_knobs() -> List<ConvergeKnob> {
-  [
-    ConvergeKnob {
-      slice: GunbcSlice,
-      name: "pinned_tree_sha",
-      desired: gunbc_fleet_pinned_tree_sha,
-      target: GunbcPinnedTree {
-        repo_path: gunbc_host_pinned_tree_path,
-        expected_sha: gunbc_fleet_pinned_tree_sha,
-      },
+fn converge_no_op_policy_label(p: ConvergeNoOpPolicy) -> String {
+  match p {
+    BlindApply => "blind_apply"
+    SkipApplyWhenConverged => "skip_when_converged"
+  }
+}
+
+fn dsl_root_binding_mode(binding: DslRootBinding) -> String {
+  match binding {
+    DeferToSubmodule { submodule_path: _ } => "defer_submodule"
+    HardPin { path: _ } => "hard_pin"
+  }
+}
+
+fn dsl_root_binding_path(binding: DslRootBinding) -> String {
+  match binding {
+    DeferToSubmodule { submodule_path: sp } => sp
+    HardPin { path: p } => p
+  }
+}
+
+fn gunbc_pinned_binary_provenance_policy() -> GunbcBinaryProvenancePolicy {
+  GunbcBinaryProvenancePolicy {
+    steady: PublishedArtifactPull {
+      registry_uri: gunbc_fleet_pinned_binary_registry,
+      digest: gunbc_fleet_pinned_binary_digest,
     },
-  ]
+    bootstrap_fallback: BuildBinIfAbsent { bin_name: gunbc_fleet_pinned_binary_name },
+  }
+}
+
+fn gunbc_apply_mode_for_host(host: HostIdentity) -> ConvergeApplyMode {
+  if host == operator_host_srv3 { FreshStandup } else { ExistingHostReConverge }
+}
+
+fn legacy_converge_knob(slice: ConvergeSlice, name: String, desired: String, target: ConvergeTarget) -> ConvergeKnob {
+  ConvergeKnob {
+    slice: slice,
+    name: name,
+    desired: desired,
+    target: target,
+    apply_mode: ExistingHostReConverge,
+    no_op: BlindApply,
+  }
+}
+
+fn slice_numeric_knob(slice: ConvergeSlice, name: String, unit: String, property: String, value: Int) -> ConvergeKnob {
+  let v = to_string(value)
+  legacy_converge_knob(
+    slice: slice,
+    name: name,
+    desired: v,
+    target: SliceProperty { unit: unit, property: property, apply_value: v, expected_effective: v }
+  )
+}
+
+fn gunbc_pinned_tree_knob(host: HostIdentity) -> ConvergeKnob {
+  ConvergeKnob {
+    slice: GunbcSlice,
+    name: "pinned_tree_sha",
+    desired: gunbc_fleet_pinned_tree_sha,
+    target: GunbcPinnedTree {
+      gunbc_root_env_key: gunbc_root_env_key,
+      gunbc_root_path: gunbc_host_gunbc_root_path,
+      dsl_root: DeferToSubmodule { submodule_path: gunbc_dsl_root_submodule_path },
+      ctrl_checkout_path: gunbc_host_ctrl_checkout_path,
+      expected_sha: gunbc_fleet_pinned_tree_sha,
+      binary: gunbc_pinned_binary_provenance_policy(),
+    },
+    apply_mode: gunbc_apply_mode_for_host(host: host),
+    no_op: SkipApplyWhenConverged,
+  }
+}
+
+fn gunbc_pinned_tree_knobs(host: HostIdentity) -> List<ConvergeKnob> {
+  [gunbc_pinned_tree_knob(host: host)]
 }
 
 fn runner_host_knobs(h: RunnerHostDeployment) -> List<ConvergeKnob> {
@@ -163,7 +276,7 @@ fn runner_host_knobs(h: RunnerHostDeployment) -> List<ConvergeKnob> {
       property: systemd_memory_max_property,
       value: byte_size_count(b: h.runner_slice_cap)
     ),
-    ConvergeKnob {
+    legacy_converge_knob(
       slice: RunnerSlice,
       name: "per_slot_memory_max_bytes",
       desired: to_string(byte_size_count(b: h.per_runner_memory_cap)),
@@ -172,9 +285,9 @@ fn runner_host_knobs(h: RunnerHostDeployment) -> List<ConvergeKnob> {
         instance_glob: glob,
         property: systemd_memory_max_property,
         bytes_value: to_string(byte_size_count(b: h.per_runner_memory_cap)),
-      },
-    },
-    ConvergeKnob {
+      }
+    ),
+    legacy_converge_knob(
       slice: RunnerSlice,
       name: "per_slot_memory_swap_max_bytes",
       desired: "0",
@@ -183,8 +296,8 @@ fn runner_host_knobs(h: RunnerHostDeployment) -> List<ConvergeKnob> {
         instance_glob: glob,
         property: systemd_memory_swap_max_property,
         bytes_value: "0",
-      },
-    },
+      }
+    ),
     slice_numeric_knob(
       slice: RunnerSlice,
       name: "cpu_weight",
@@ -192,7 +305,7 @@ fn runner_host_knobs(h: RunnerHostDeployment) -> List<ConvergeKnob> {
       property: systemd_cpu_weight_property,
       value: workload_class_cpu_weight(wc: h.workload_class)
     ),
-    ConvergeKnob {
+    legacy_converge_knob(
       slice: RunnerSlice,
       name: "build_tokens",
       desired: to_string(hardware_thread_count_value(t: h.build_tokens)),
@@ -200,14 +313,14 @@ fn runner_host_knobs(h: RunnerHostDeployment) -> List<ConvergeKnob> {
         env_file: gunbc_runner_jobserver_env_file,
         env_key: gunbc_runner_jobserver_env_key,
         service_unit: gunbc_runner_jobserver_service,
-      },
-    },
-    ConvergeKnob {
+      }
+    ),
+    legacy_converge_knob(
       slice: RunnerSlice,
       name: "runner_count",
       desired: to_string(h.runner_count),
-      target: RunnerWidth { instance_glob: glob },
-    },
+      target: RunnerWidth { instance_glob: glob }
+    ),
   ]
 }
 
@@ -222,16 +335,16 @@ fn session_host_knobs(slice_max: ByteSize, per_session: ByteSize) -> List<Conver
       property: systemd_memory_max_property,
       value: byte_size_count(b: slice_max)
     ),
-    ConvergeKnob {
+    legacy_converge_knob(
       slice: SessionsSlice,
       name: "per_session_max_bytes",
       desired: to_string(byte_size_count(b: per_session)),
       target: VerifyOnlyCap {
         slice_unit: gunbc_oomd_sessions_slice,
         property: systemd_memory_max_property,
-      },
-    },
-    ConvergeKnob {
+      }
+    ),
+    legacy_converge_knob(
       slice: SessionsSlice,
       name: "oom_pressure_kill",
       desired: "true",
@@ -240,9 +353,9 @@ fn session_host_knobs(slice_max: ByteSize, per_session: ByteSize) -> List<Conver
         property: oomd_managed_oom_memory_pressure_property,
         apply_value: kill_value,
         expected_effective: kill_value,
-      },
-    },
-    ConvergeKnob {
+      }
+    ),
+    legacy_converge_knob(
       slice: SessionsSlice,
       name: "oom_pressure_limit_pct",
       desired: pct,
@@ -251,8 +364,8 @@ fn session_host_knobs(slice_max: ByteSize, per_session: ByteSize) -> List<Conver
         property: oomd_managed_oom_memory_pressure_limit_property,
         apply_value: concat(pct, "%"),
         expected_effective: to_string(managed_oom_pressure_limit_show_value(p: gunbc_oomd_sessions_policy.managed_oom_memory_pressure_limit)),
-      },
-    },
+      }
+    ),
     slice_numeric_knob(
       slice: SessionsSlice,
       name: "cpu_weight",
@@ -293,7 +406,7 @@ fn sessions_membership_probe(session_knobs: List<ConvergeKnob>) -> SessionsMembe
 fn host_converge_of(h: RunnerHostDeployment, session_knobs: List<ConvergeKnob>) -> HostConverge {
   HostConverge {
     identity: h.identity,
-    knobs: concat(concat(gunbc_pinned_tree_knobs(), runner_host_knobs(h: h)), session_knobs),
+    knobs: concat(concat(gunbc_pinned_tree_knobs(host: h.identity), runner_host_knobs(h: h)), session_knobs),
     membership: sessions_membership_probe(session_knobs: session_knobs),
   }
 }
