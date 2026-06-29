@@ -172,7 +172,8 @@ fn empty_infer_scope() -> Rc<InferScope> {
     Rc::new(InferScope {
         type_env: empty_type_env(),
         func_env: Rc::new(ResolvedFuncEnv {
-            signatures: Rc::new(std::collections::HashMap::new()),
+            local: Rc::new(std::collections::HashMap::new()),
+            parents: Rc::new(vec![]),
         }),
         locals: Rc::new(std::collections::HashMap::new()),
         match_bound_names: Rc::new(std::collections::HashMap::new()),

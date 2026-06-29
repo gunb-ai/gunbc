@@ -37,6 +37,7 @@ pub use crate::v1_compiler_infer_emit_info::{EmitGraphInfo, TypeSummary};
 pub use crate::v1_compiler_infer_env::authored_name;
 pub use crate::v1_compiler_infer_env::{TypeBinding, TypeEnv};
 pub use crate::v1_compiler_infer_items::{ItemInfo, ResolvedGraph, TypedModule};
+pub use crate::v1_compiler_infer_lookup::lookup_func_sig;
 pub use crate::v1_compiler_infer_service::{
     extract_typed_service_name, is_typed_service_call_receiver,
 };
@@ -576,7 +577,8 @@ pub fn empty_emit_scope() -> Rc<InferScope> {
             intern_table: empty_intern_table(),
         }),
         func_env: Rc::new(ResolvedFuncEnv {
-            signatures: v1_rt::rc_empty_map::<String, Rc<ResolvedFuncSig>>(),
+            local: v1_rt::rc_empty_map::<String, Rc<ResolvedFuncSig>>(),
+            parents: Rc::new(vec![]),
         }),
         locals: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
         match_bound_names: v1_rt::rc_empty_map::<String, bool>(),
@@ -640,7 +642,7 @@ pub fn lookup_func_sig_in_scope(
     scope: Rc<InferScope>,
     name: String,
 ) -> Option<Rc<ResolvedFuncSig>> {
-    v1_rt::map_get(&scope.func_env.clone().signatures.clone(), name)
+    lookup_func_sig(scope.func_env.clone(), name)
 }
 
 pub fn typed_named_arg_matches(
