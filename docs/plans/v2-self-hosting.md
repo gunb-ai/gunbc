@@ -61,7 +61,7 @@ TS is 1 of 14 emit targets, proven only on the `add` slice (`cross_language_add_
 
 ### Track Z — shrink the seed to zero (terminal)
 
-Per-chunk collapse inventory (LOC receipts, HAND_MAINTAINED sign-off queue, survivor roles): [seed-shrink-collapse-census.md](seed-shrink-collapse-census.md).
+Per-chunk collapse inventory (LOC receipts, HAND_MAINTAINED sign-off queue, test-migration sub-lane, terminal harness): [seed-shrink-census.md](seed-shrink-census.md) **(DRAFT — design-for-sign)**.
 
 The clean cutover. **"Shrink to zero" = the ~154k lines of hand-written Rust *compiler logic* go to zero — not literally zero bytes.** Something must still execute the first `.dag` (the substrate is data; v1/Rust is the runner today). The honest end-state (rustc/GCC model; what `SeedHonestyDischarge`/DDC is for) is a **pinned, content-addressed, reproducible-from-`.dag`, v2-emitted bootstrap binary** — itself re-derivable, since v2 even models its own `V4EvaluatorRuntime`.
 

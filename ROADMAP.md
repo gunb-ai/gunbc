@@ -203,7 +203,7 @@ Motivating instance: a prod rotation 401'd `CREDENTIALS_MISSING` because `auth_i
 
 ## 5. Self-host v2 → delete `src/v1` (expansion)
 
-Anchor (do not flip-flop): `.dag` = truth; purely self-hosting (v2 emits its own seed, no stage0 hand-edits); emit Rust + TypeScript; then shrink the seed to zero. → [plan](docs/plans/v2-self-hosting.md) · [de-fork audit](docs/plans/dsl-v2-defork-audit.md) · [seed-shrink census](docs/plans/seed-shrink-collapse-census.md)
+Anchor (do not flip-flop): `.dag` = truth; purely self-hosting (v2 emits its own seed, no stage0 hand-edits); emit Rust + TypeScript; then shrink the seed to zero. → [plan](docs/plans/v2-self-hosting.md) · [de-fork audit](docs/plans/dsl-v2-defork-audit.md) · [seed-shrink census (DRAFT)](docs/plans/seed-shrink-census.md)
 
 Adjacent lane — algorithmic-cost rewrite engine (the §3 construction design; post-stability, natural once `.dag` is the self-hosted truth). → [plan](docs/plans/algebraic-rewrite-optimization.md)
 
