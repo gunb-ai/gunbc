@@ -1,60 +1,76 @@
-# Provider-agnostic code-commit workflow — one gate roster, CI + pre-push as realization handlers
+# [SKETCH] Provider-agnostic commit workflow — unify two existing emitters over one gate roster
 
-> DESIGN refs: §2 (one roster, N realization handlers), §3 (interface shape vs transport vs workflow policy — `Gate`/`LocalTidyCheck` are channel shapes; `ci.yml` and `.githooks/pre-push` are transports), §5 (witnessed lift — the unified roster must project byte-for-byte to the existing authorities before any rewire), §6 (model-before-implement; this doc is the authority frame). **#5924 is frozen** — `local_tidy_spec.dag`, `githooks_pre_push_emit.dag`, `ci_spec.dag`, `ci_gates.dag`, and `floor_effect_gate_witness.dag` are not edited in P1; the lift is additive and witnessed.
+> **Status: design sketch (checkpoint 0)** — model frame for parent review *before* further substrate migration. DESIGN §6: priced in displaced cost, not elegance. **#5924 frozen** — `.githooks/pre-push` / `githooks_pre_push_emit.dag` / `local_tidy_spec.dag` are not edited until this sketch is approved and handler re-expression is witnessed byte-identical.
 
-## 1. Problem — two rosters for one commit workflow
+## 0. Grounded today — two emitters, one gate vocabulary
 
-Gunbc's commit-time checks are modeled twice today:
+This is **not speculative**. Gunbc already has two registered `GeneratedArtifact` rows whose committed bytes are drift-gated:
 
-- **CI floor** — `gunbc.ci_spec.Gate` roster (`gunbc_ci_floor_gates`, `gunbc_ci_rust_job_gates`) realized by GitHub Actions via `gunbc.ci_workflow` → `ci_yaml_emit` → `.github/workflows/ci.yml`.
-- **Local pre-push** — `gunbc.local_tidy_spec.LocalTidyCheck` roster (`local_tidy_checks`) realized by git via `gunbc.githooks_pre_push_emit` → `.githooks/pre-push` (#5924).
+| artifact | consumer (`RepoConsumer`) | emit handler | gate authority imported today |
+| --- | --- | --- | --- |
+| `CiYamlArtifact` → `.github/workflows/ci.yml` | `GithubActionsWorkflow` | `gunbc.ci_yaml_emit` ← `gunbc.ci_workflow` | `gunbc.ci_spec` (`gunbc_ci_floor_gates`, `gunbc_ci_rust_job_gates`, `CiSpec`) |
+| `GithooksPrePushArtifact` → `.githooks/pre-push` | `GitProtocol` (`CommitRequired { consumer: GitProtocol }`) | `gunbc.githooks_pre_push_emit` | `gunbc.ci_spec.Gate` (via `GeneratedArtifactDriftGate`) + `local_tidy_spec` freshness slice (#5924) |
 
-The overlap is real (`GeneratedArtifactDriftGate` appears on both surfaces; `RustMonolithGate` subsumes `cargo fmt` on CI while pre-push carries a dedicated `LocalTidyCargoFmtCheck` slice; doc-reachability witnesses are pre-push-only). Two rosters = §3 nicknaming risk: adding a check means editing two authorities and hoping they stay aligned.
+**Displaced cost:** two parallel emission paths maintain the same commit-time gate facts twice — `ci_workflow` hardwires the CI job graph while `githooks_pre_push_emit` hardwires a overlapping bash slice. Adding a gate today means touching both handlers *and* hoping `local_tidy_checks` stays aligned with `gunbc_ci_*_gates`. The project unifies **two existing emitters**, not a hypothetical Nth provider.
 
-## 2. Authority — `gunbc.code_commit_workflow`
+## 1. §3 spine — three facts, one workflow authority
 
-One workflow model lifts both rosters into `commit_gate_roster: List<CommitCheckEnrollment>` where each row names:
-
-1. **`check: CommitCheckKind`** — reuses existing channel shapes (`CommitSpecGate { gate: Gate }`, `CommitWitnessClaim { entry, check_fns }`, `CommitCargoFmtCheck`) without minting parallel gate enums.
-2. **`surfaces: List<CommitWorkflowSurface>`** — provider-agnostic enrollment (`GithubActionsCiJob`, `GithubActionsRustTestsJob`, `GitPrePushHook`).
-
-Projection functions derive the legacy authorities:
-
-- `project_ci_floor_gates(roster)` → `gunbc_ci_floor_gates`
-- `project_ci_rust_job_gates(roster)` → `gunbc_ci_rust_job_gates`
-- `project_local_tidy_checks(roster)` → `local_tidy_checks`
-
-P1 lands the roster + projections + witnesses (`code_commit_workflow_witness_test.dag`). **No rewire** of `ci_spec` or `local_tidy_spec` until projections are green — then P2 makes those modules thin projections of `commit_gate_roster` (dissolving the dual-authority fork).
-
-## 3. Realization handlers — transport, not policy
-
-Per §3, the *dispatch* that selects a realization is itself realization. `commit_workflow_realization_bindings` records which handler materializes each surface:
-
-| surface | handler | committed artifact |
+| fact | owner (layer) | lives in sketch model as |
 | --- | --- | --- |
-| `GithubActionsCiJob` + `GithubActionsRustTestsJob` | `CiYamlHandler` → `gunbc.ci_workflow` / `ci_yaml_emit` | `.github/workflows/ci.yml` |
-| `GitPrePushHook` | `GitPrePushScriptHandler` → `gunbc.githooks_pre_push_emit` | `.githooks/pre-push` |
+| **(a) Interface shape** — what runs at commit-time: gate identity, witness entry/fn, exit semantics (`ProcessExit` pass/fail), freshness scoping (path globs) | **workflow** (`gunbc.commit_workflow` — new) | `CommitCheckRow { kind, exit_shape, freshness }` reusing `gunbc.ci_spec.Gate` + witness channel (no parallel gate enum) |
+| **(b) Transport** — how the check is invoked on a provider surface | **realization handler** (peripheral) | `CommitWorkflowHandler` arms: `CiYamlHandler` (`ci_yaml_emit`), `GitPrePushScriptHandler` (`githooks_pre_push_emit`); a 3rd provider = **one new handler row**, not a workflow fork |
+| **(c) Business policy** — which checks run on which provider, auto-stage-on-drift, HEAD-branch fmt auto-fix, diff merge-base for CI | **workflow** | `CommitWorkflowEnrollment { row, providers: List<RepoConsumer> }` + policy fields (`auto_stage_on_drift`, `ci_diff_policy`, …) |
 
-Both artifacts are already drift-gated under `gunbc.generated_artifact` (`CiYamlArtifact`, `GithooksPrePushArtifact`). P1 documents the binding; P3 rewires emit modules to walk `commit_gate_roster` per surface instead of importing parallel rosters (the #5924 emit logic becomes a handler arm, not the authority).
+**Reuse, don't re-coin:** `gunbc.ci_spec` keeps `Gate`, `CiSpec`, `DiffPolicy` as the gate vocabulary; `gunbc.local_tidy_spec` keeps path-glob helpers as **freshness policy** projections, not a second roster authority; `gunbc.generated_artifact` keeps `RepoConsumer` / `CommitPolicy` as the provider registry.
 
-### 3.1 Honest channel fork (not collapsed in P1)
+## 2. Model sketch — `gunbc.commit_workflow` (proposed module)
 
-`RustMonolithGate` (fmt+clippy+nextest) and `CommitCargoFmtCheck` (fmt-only, auto-fix on HEAD-branch push) are **different channel shapes** for overlapping policy. The unified roster keeps both rows on their respective surfaces rather than pretending one Gate subsumes the other — collapsing them is a P4 policy decision, not a modeling shortcut.
+Single authority the two handlers project from:
 
-## 4. Sequencing
+- `CommitWorkflowSpec` — the workflow fact bundle: `checks: List<CommitCheckRow>`, `ci_policy: CiSpec` (existing type), `pre_push_policy: PrePushPolicy` (freshness + auto-fix flags extracted from #5924 emit, not the bash).
+- `CommitCheckRow` — one roster line: `kind: CommitCheckKind` = `SpecGate { gate: Gate }` | `WitnessClaim { entry, fns }` | `CargoFmtSlice` (honest fork: CI runs fmt inside `RustMonolithGate`; pre-push runs fmt-only with auto-fix policy).
+- `CommitCheckEnrollment` — policy row: `check: CommitCheckRow` + `providers: List<RepoConsumer>` (`GithubActionsWorkflow` | `GitProtocol`). **No speculative providers** — only the two consumers registered in `generated_artifact.dag` today; adding e.g. Buildkite is `providers += Buildkite` + one handler arm.
 
-1. **P1 (this slice)** — `code_commit_workflow.dag` roster + projections + witnesses; design plan; **zero edits** to #5924 files.
-2. **P2** — `ci_spec.dag` gate lists become `project_ci_*_gates(commit_gate_roster)`; `local_tidy_spec.dag` becomes `project_local_tidy_checks(commit_gate_roster)` + trigger-glob helpers stay (path policy is workflow-layer, not gate identity).
-3. **P3** — `ci_workflow.dag` and `githooks_pre_push_emit.dag` consume per-surface projections from the roster (handler emit, not roster authority).
-4. **P4 (optional)** — unify `CommitWitnessClaim` channel with floor witness discovery (the #5924 parked follow-on: one floor-check concept for gate-dispatch vs discovered-witness).
+**Projections (legacy compatibility, fail-closed):**
 
-## 5. Witness contract
+- `project_ci_floor_gates(spec)` → `gunbc_ci_floor_gates` (GithubActionsWorkflow, floor job)
+- `project_ci_rust_job_gates(spec)` → `gunbc_ci_rust_job_gates`
+- `project_local_tidy_checks(spec)` → `local_tidy_checks` (GitProtocol only; witness→gate→fmt order preserved)
+- `project_freshness_globs(spec, row)` → delegates to existing `local_tidy_trigger_globs` helpers (#5924, untouched)
 
-- `roster_lifts_ci_floor_gates` — ordered gate list matches `gunbc_ci_floor_gates`.
-- `roster_lifts_ci_rust_job_gates` — matches `gunbc_ci_rust_job_gates`.
-- `roster_lifts_local_tidy_checks` — matches `local_tidy_checks` (#5924 roster, untouched).
-- Realization bindings resolve to `artifact_path` for `CiYamlArtifact` and `GithooksPrePushArtifact`.
+## 3. Handler re-expression — same bytes, one workflow feed
+
+Both handlers become **thin realization folds** over `CommitWorkflowSpec` + `RepoConsumer`:
+
+1. **`ci_yaml_emit`** — unchanged public surface (`expected_ci_yml()`). Internals: `ci_workflow` builds `Workflow` from `project_ci_jobs(commit_workflow_spec, GithubActionsWorkflow)` instead of importing gate lists directly from `ci_spec` data rows. Checkpoint: `ci_yml_drifted(committed) == false` (existing `GeneratedArtifactDriftGate` / `ci_yaml_gate`).
+2. **`githooks_pre_push_emit`** — unchanged public surface (`expected_githooks_pre_push_sh()`). Internals: bash emission walks `project_local_tidy_checks` + `project_freshness_globs` for `GitProtocol`. **#5924 hook bytes frozen** until projection wiring is witnessed; then swap authority import, not hand-edit bash.
+
+Dispatch registry (extends `generated_artifact.dag`, no new artifact types):
+
+| `RepoConsumer` | handler module | artifact |
+| --- | --- | --- |
+| `GithubActionsWorkflow` | `ci_yaml_emit` / `ci_workflow` | `CiYamlArtifact` |
+| `GitProtocol` | `githooks_pre_push_emit` | `GithooksPrePushArtifact` |
+
+### 3.1 What we are NOT doing (purity-trap guard)
+
+- No speculative provider handlers (GitLab/Jenkins/…) — a 3rd provider is one `RepoConsumer` row + one handler arm.
+- No new parallel gate enum — `Gate` from `ci_spec` stays the vocabulary.
+- No pre-push rewrite in the same PR as the authority lift — #5924 emit stays byte-frozen until handler re-expression is proven.
+
+## 4. Checkpoint — witnessed before any handler rewire
+
+- **Roster lift:** `project_*` lists match `gunbc_ci_floor_gates`, `gunbc_ci_rust_job_gates`, `local_tidy_checks` (ordered).
+- **Byte identity:** `expected_ci_yml()` and `expected_githooks_pre_push_sh()` unchanged across handler rewire PR (existing drift gates stay green).
+- **Provider registry:** enrollments use only `GithubActionsWorkflow` + `GitProtocol` from `generated_artifact.dag`.
+
+## 5. Sequencing (sketch → implement)
+
+1. **Checkpoint 0 (this sketch)** — parent review; no #5924 edits.
+2. **Checkpoint 1** — land `gunbc.commit_workflow` model + projection witnesses only (additive; `ci_spec`/`local_tidy_spec` still own data rows). *Note: PR #5940 has a provisional `code_commit_workflow.dag` slice awaiting sketch alignment.*
+3. **Checkpoint 2** — `ci_spec` gate lists become projections; `local_tidy_checks` becomes projection.
+4. **Checkpoint 3** — re-express `ci_workflow` + `githooks_pre_push_emit` as handlers; byte-identical drift gates green.
 
 ## Dissolution trigger (DESIGN §6)
 
-Delete when `commit_gate_roster` is the sole roster authority (P2 rewired `ci_spec` + `local_tidy_spec`), both realization handlers emit from per-surface projections (P3), and the lift witnesses are redundant because the legacy projection functions are gone.
+Delete when `gunbc.commit_workflow` is the sole roster authority, both handlers emit from it byte-identically, and this sketch is superseded by the landed model.
