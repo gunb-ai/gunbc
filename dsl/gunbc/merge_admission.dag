@@ -143,9 +143,21 @@ fn policy_admits(
 
 fn merge_strategy_eq(a: MergeStrategy, b: MergeStrategy) -> Bool {
   match a {
-    SquashMerge => match b { SquashMerge => true  _ => false }
-    MergeCommit => match b { MergeCommit => true  _ => false }
-    RebaseMerge => match b { RebaseMerge => true  _ => false }
+    SquashMerge => match b {
+      SquashMerge => true
+      MergeCommit => false
+      RebaseMerge => false
+    }
+    MergeCommit => match b {
+      SquashMerge => false
+      MergeCommit => true
+      RebaseMerge => false
+    }
+    RebaseMerge => match b {
+      SquashMerge => false
+      MergeCommit => false
+      RebaseMerge => true
+    }
   }
 }
 
