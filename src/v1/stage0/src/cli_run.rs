@@ -4181,6 +4181,7 @@ pub fn emit_source_root_ingest_manifest(
 mod inert_lens_hygiene_tests {
     use super::{
         discover_floor_corpus_rows, inert_lens_modules, is_top_level_lens_module, DiscoveryRow,
+        FLOOR_DISCOVERY_EXCLUDES,
     };
     use std::collections::HashMap;
     use std::path::PathBuf;
@@ -4285,6 +4286,7 @@ mod inert_lens_hygiene_tests {
 mod construction_justification_hygiene_tests {
     use super::{
         declares_construction_justification, discover_floor_corpus_rows, unjustified_lens_modules,
+        FLOOR_DISCOVERY_EXCLUDES,
     };
     use std::collections::{BTreeSet, HashMap};
     use std::path::PathBuf;
