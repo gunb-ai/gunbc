@@ -1,0 +1,14 @@
+module v2.test.self_host.fixed_point_transport
+
+import v2.workflow.self_host_fixed_point_transport {
+  self_host_fixpoint_native_runner_disposition
+}
+import std.disposition { RealizationDispatch, Scaffold }
+import std.logic { Bool }
+
+test fn self_host_fixpoint_native_runner_dispatched_to_regen_verify() -> Bool {
+  match self_host_fixpoint_native_runner_disposition {
+    Scaffold { dissolves_to: RealizationDispatch, bind: _ } => true
+    _ => false
+  }
+}

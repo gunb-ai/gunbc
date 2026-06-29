@@ -67,45 +67,63 @@ fn self_host_runner_not_realized_diagnostic() -> Diagnostic {
   }
 }
 
+fn bootstrap_roundtrip_check(
+  produced_stage: CoreNode,
+  expected_stage: CoreNode
+) -> BootstrapRoundtripCheck {
+  match stage_emission_equality(
+    emitted_candidate: produced_stage,
+    reference_stage1: expected_stage
+  ) {
+    Holds { value: eq } =>
+      Holds {
+        value: BootstrapRoundtripEqual {
+          produced_stage: eq.right,
+          expected_stage: eq.left
+        }
+      }
+    Violates { diagnostic: d } => Violates { diagnostic: d }
+  }
+}
+
+fn fixed_point_digest_check(
+  emitted_stage: CoreNode,
+  reference_stage: CoreNode
+) -> FixedPointCheck {
+  if self_host_fixed_point_digests_match(
+    emitted_stage1: emitted_stage,
+    emitted_stage2: reference_stage
+  ) {
+    Holds {
+      value: FixedPointEqual {
+        emitted_stage: emitted_stage,
+        reference_stage: reference_stage
+      }
+    }
+  } else {
+    Violates {
+      diagnostic: Diagnostic {
+        reason: ^fixed_point_digest_mismatch,
+        at: node_locus(node: reference_stage),
+        correction: Unavailable { reason: ExternalContractUnknown }
+      }
+    }
+  }
+}
+
 fn candidate_promotion_witness(
   stage1_candidate: CoreNode,
   reference_stage1: CoreNode
 ) -> PromotionWitness {
   PromotionWitness {
-    candidate_bootstrap_roundtrip_sub_check: bootstrap_roundtrip_scaffold(
+    candidate_bootstrap_roundtrip_sub_check: bootstrap_roundtrip_check(
       produced_stage: stage1_candidate,
       expected_stage: reference_stage1
     ),
-    candidate_fixed_point_sub_check: fixed_point_scaffold(
+    candidate_fixed_point_sub_check: fixed_point_digest_check(
       emitted_stage: stage1_candidate,
       reference_stage: reference_stage1
     )
-  }
-}
-
-fn bootstrap_roundtrip_scaffold(
-  produced_stage: CoreNode,
-  expected_stage: CoreNode
-) -> BootstrapRoundtripCheck {
-  Violates {
-    diagnostic: Diagnostic {
-      reason: ^bootstrap_roundtrip_not_realized,
-      at: node_locus(node: expected_stage),
-      correction: Unavailable { reason: ExternalContractUnknown }
-    }
-  }
-}
-
-fn fixed_point_scaffold(
-  emitted_stage: CoreNode,
-  reference_stage: CoreNode
-) -> FixedPointCheck {
-  Violates {
-    diagnostic: Diagnostic {
-      reason: ^fixed_point_not_realized,
-      at: node_locus(node: reference_stage),
-      correction: Unavailable { reason: ExternalContractUnknown }
-    }
   }
 }
 

@@ -14,6 +14,7 @@ import v2.compiler.self_host {
   self_host_fixed_point_digests_match,
   self_host_fixed_point_validate,
   stage_emission_equality,
+  candidate_promotion_witness,
   SourceModels
 }
 import v2.std.diagnostic { Accepted, Rejected }
@@ -102,5 +103,35 @@ test fn self_host_fixed_point_fails_closed_until_substrate() -> Bool {
   ) {
     Rejected { diagnostics: d } => d.head.reason == ^self_host_runner_not_realized
     Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+test fn candidate_promotion_witness_holds_on_equal_stages() -> Bool {
+  match candidate_promotion_witness(
+    stage1_candidate: stage_candidate_equal_emitted(),
+    reference_stage1: stage_reference_emitted()
+  ).candidate_fixed_point_sub_check {
+    Holds { value: _ } => true
+    Violates { diagnostic: _ } => false
+  }
+}
+
+test fn candidate_promotion_witness_violates_on_perturbed_stages() -> Bool {
+  match candidate_promotion_witness(
+    stage1_candidate: stage_candidate_perturbed_emitted(),
+    reference_stage1: stage_reference_emitted()
+  ).candidate_fixed_point_sub_check {
+    Holds { value: _ } => false
+    Violates { diagnostic: d } => d.reason == ^fixed_point_digest_mismatch
+  }
+}
+
+test fn candidate_promotion_bootstrap_roundtrip_holds_on_equal_stages() -> Bool {
+  match candidate_promotion_witness(
+    stage1_candidate: stage_candidate_equal_emitted(),
+    reference_stage1: stage_reference_emitted()
+  ).candidate_bootstrap_roundtrip_sub_check {
+    Holds { value: _ } => true
+    Violates { diagnostic: _ } => false
   }
 }
