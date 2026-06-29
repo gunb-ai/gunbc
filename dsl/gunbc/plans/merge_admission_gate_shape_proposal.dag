@@ -6,7 +6,7 @@ import gunbc.plans.md_helpers { h2, h3, p, li, ul, cell, row, quote }
 
 fn status_block() -> MarkdownBlock {
   quote(blocks: [
-    p(text: "**Status: enforcement gate-shape PROPOSAL only** — not enrolled, not wired, not gating. Checkpoint 1 model+witnesses live in gunbc.merge_admission. Tidy-badger owns escalation to loyal-bee and operator sign-off BEFORE any actuator lands. Dissolves when the KeyedReceipt actuator is witnessed in force or this proposal is superseded."),
+    p(text: "**Status: enforcement gate-shape APPROVED by loyal-bee-794 (2026-06-29)** — model+witness authored; activation DEFERRED pending operator sign-off. Not enrolled, not wired as a live merge blocker. Checkpoint 1 model lives in gunbc.merge_admission; consumption in gunbc.ci_failure_class.merge_admission_blocks_merge (gated on merge_freshness_gating_status). Dissolves when KeyedReceipt actuator is witnessed in force."),
   ])
 }
 
