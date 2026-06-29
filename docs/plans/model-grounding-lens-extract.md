@@ -27,7 +27,7 @@ The decidable part (`is_bare_string` AND `name_coincides`) is a candidate signal
 | Mechanism | Role |
 | --- | --- |
 | **Name index** | `build_concept_name_index` — O(unique names) lookup vs O(n²) linear scan |
-| **Job A — layer exclusion** | Structural, bidirectional: meta self-coincidence (`FieldRef.field`~`Field` on substrate layers) + layer-DAG inversion (enclosing layer cannot import target layer per `std ← extdeps ← compiler ← workflow`). Replaces the hand-list `is_structural_name` **meta** half. |
+| **Job A — layer exclusion** | Structural, bidirectional: meta self-coincidence (`FieldRef.field`~`Field` on substrate layers — only when the field name is a meta-model name `field` or `name`, not role words) + layer-DAG inversion (enclosing layer cannot import target layer per `std ← extdeps ← compiler ← workflow`). Replaces the hand-list `is_structural_name` **meta** half. |
 | **Job B — role words** | `widget.id` etc. are **not** pre-filtered. Flow to CONFIRM / adjudication ledger (tidy-badger-45). |
 | **Residue evidence** | Sibling coproduct variant names, `Unrecognized*` / `NonExternal*` / `Non*` flags, optional-decode siblings — **surfaced**, not pre-filtered. Verdict is the ledger's. |
 | **CONFIRM judge** | `gunbc.tools.grounding_confirm` — haiku, `GROUND`/`KEEP`, `starts_with` grading. **Enrichment** (`target_kind` + `target_structure`) is the precision lever: bare ~4/6 wrong → enriched 6/6 on the haiku_confirm slice. Eval authority: `src/v2/lens/testdata/anemia_confirm_eval_corpus.json`. |
