@@ -5,8 +5,17 @@ import std.baseboard {
   AsrockRackAltrad8ud1l2t,
 }
 import std.bmc { OpenBmc }
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, List }
 
+import extdeps.bmc.capability {
+  BmcCapability,
+  BmcFirmwareCapabilityRow,
+  BmcFirmwareVersion,
+  CapabilityPowerControl,
+  CapabilityBootSourceOverride,
+  CapabilityAccountManagement,
+  CapabilityFirmwareUpdate,
+}
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -14,6 +23,27 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "download.asrock.com/Manual/ALTRAD8UD-1L2T.pdf"
+  }
+}
+
+data asrock_altrad8ud_download_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.asrockrack.com/general/productdetail.asp?Model=ALTRAD8UD-1L2T"
+  }
+}
+
+data asrock_altrad8ud_bmc_manual_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "download.asrock.com/Manual/BMC/ALTRAD8UD-1L2T.pdf"
+  }
+}
+
+data asrock_altrad8ud_srv3_live_probe_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/gunb-ai/gunbc/blob/main/docs/plans/srv3-webui-kvm-virtual-media.md"
   }
 }
 
@@ -25,3 +55,34 @@ data asrock_altrad8ud_1l2t_catalog: BaseboardCatalogRow = BaseboardCatalogRow {
 
 data asrock_altrad8ud_redfish_system_id: NonEmptyStr = "system"
 data asrock_altrad8ud_redfish_chassis_id: NonEmptyStr = "ALTRAD8UD_1L2T"
+
+data altrad8ud_openbmc_base_capabilities: List<BmcCapability> = [
+  CapabilityPowerControl,
+  CapabilityBootSourceOverride,
+  CapabilityAccountManagement,
+  CapabilityFirmwareUpdate,
+]
+
+data asrock_altrad8ud_openbmc_2_07_00_capabilities: BmcFirmwareCapabilityRow = BmcFirmwareCapabilityRow {
+  firmware: BmcFirmwareVersion {
+    family: OpenBmc,
+    version: "2.07.00",
+  },
+  capabilities: altrad8ud_openbmc_base_capabilities,
+}
+
+data asrock_altrad8ud_openbmc_3_06_00_capabilities: BmcFirmwareCapabilityRow = BmcFirmwareCapabilityRow {
+  firmware: BmcFirmwareVersion {
+    family: OpenBmc,
+    version: "3.06.00",
+  },
+  capabilities: altrad8ud_openbmc_base_capabilities,
+}
+
+data asrock_altrad8ud_1l2t_bmc_firmware_capability_catalog: List<BmcFirmwareCapabilityRow> = [
+  asrock_altrad8ud_openbmc_2_07_00_capabilities,
+  asrock_altrad8ud_openbmc_3_06_00_capabilities,
+]
+
+data asrock_altrad8ud_shipped_bmc_firmware_capabilities: BmcFirmwareCapabilityRow =
+  asrock_altrad8ud_openbmc_2_07_00_capabilities

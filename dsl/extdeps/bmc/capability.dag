@@ -40,16 +40,3 @@ fn firmware_has_capability(row: BmcFirmwareCapabilityRow, cap: BmcCapability) ->
 fn catalog_has_vm_capable_firmware(catalog: List<BmcFirmwareCapabilityRow>) -> Bool {
   catalog |> any(row => firmware_has_capability(row: row, cap: CapabilityVirtualMedia))
 }
-
-data openbmc_2_07_00_capabilities: BmcFirmwareCapabilityRow = BmcFirmwareCapabilityRow {
-  firmware: BmcFirmwareVersion {
-    family: OpenBmc,
-    version: "2.07.00",
-  },
-  capabilities: [
-    CapabilityPowerControl,
-    CapabilityBootSourceOverride,
-    CapabilityAccountManagement,
-    CapabilityFirmwareUpdate,
-  ],
-}
