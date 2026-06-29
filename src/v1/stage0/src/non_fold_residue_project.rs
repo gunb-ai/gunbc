@@ -451,6 +451,10 @@ pub fn non_fold_residue_unrostered_count() -> i64 {
         .count() as i64
 }
 
+pub fn non_fold_residue_site_is_rostered(site: &str) -> bool {
+    NON_FOLD_RESIDUE_ROSTER.contains(&site)
+}
+
 /// The RATCHET: roster entries that are no longer residue (migrated to a fold, or deleted).
 pub fn non_fold_residue_stale_roster_count() -> i64 {
     let live: BTreeSet<&str> = build_report().sites.iter().map(|s| s.as_str()).collect();

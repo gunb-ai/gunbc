@@ -93,6 +93,49 @@ struct FnBodyStats {
     wildcard_scrutinee_names: BTreeSet<String>,
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct RosterFictionReport {
+    pub resolved_residue_sites: i64,
+    pub resolved_unrostered_sites: i64,
+    pub floor_red_if_roster_dropped: i64,
+    pub syntactic_wildcard_total: i64,
+    pub syntactic_wildcard_on_roster: i64,
+    pub syntactic_wildcard_off_roster: i64,
+    pub eval_interpreter_debt: i64,
+    pub grammar_ladder_debt: i64,
+    pub kernel_permanent: i64,
+}
+
+pub fn roster_fiction_report(summary: &AuditSummary) -> RosterFictionReport {
+    let resolved_residue_sites = crate::non_fold_residue_project::non_fold_residue_count();
+    let resolved_unrostered_sites =
+        crate::non_fold_residue_project::non_fold_residue_unrostered_count();
+    let mut report = RosterFictionReport {
+        resolved_residue_sites,
+        resolved_unrostered_sites,
+        floor_red_if_roster_dropped: resolved_residue_sites,
+        ..Default::default()
+    };
+    for f in &summary.findings {
+        if f.rule != "syntactic_match_wildcard_arm" {
+            continue;
+        }
+        report.syntactic_wildcard_total += 1;
+        if crate::non_fold_residue_project::non_fold_residue_site_is_rostered(&f.site) {
+            report.syntactic_wildcard_on_roster += 1;
+        } else {
+            report.syntactic_wildcard_off_roster += 1;
+        }
+        match f.triage {
+            "eval-interpreter-debt" => report.eval_interpreter_debt += 1,
+            "grammar-ladder-debt" => report.grammar_ladder_debt += 1,
+            "kernel-permanent" => report.kernel_permanent += 1,
+            _ => {}
+        }
+    }
+    report
+}
+
 fn triage_wildcard(site: &str, fn_name: &str) -> &'static str {
     if fn_name.ends_with("_eq")
         || fn_name.contains("dominates")
@@ -103,6 +146,21 @@ fn triage_wildcard(site: &str, fn_name: &str) -> &'static str {
         || fn_name.contains("_mode_eq")
     {
         return "kernel-permanent";
+    }
+    if matches!(
+        fn_name,
+        "eval_bind_node_eval"
+            | "eval_branch_node_eval"
+            | "eval_loop_node"
+            | "eval_match_node_eval"
+            | "eval_transform_node"
+            | "eval_value_node"
+    ) && site.contains("src/v2/compiler/05_eval.dag")
+    {
+        return "eval-interpreter-debt";
+    }
+    if site.contains("dag.dag::dag_grammar_terminal_for_mvp1_") {
+        return "grammar-ladder-debt";
     }
     if site.contains("src/v2/compiler/")
         || site.contains("src/v2/extdeps/languages/")
@@ -260,6 +318,23 @@ mod tests {
             "expected wildcard finding; got {:?}",
             summary.findings
         );
+    }
+
+    #[test]
+    fn eval_interpreter_handlers_tagged_eval_interpreter_debt() {
+        let summary = audit_corpus_default_roots();
+        for site in [
+            "src/v2/compiler/05_eval.dag::eval_bind_node_eval",
+            "src/v2/compiler/05_eval.dag::eval_match_node_eval",
+        ] {
+            let finding = summary.findings.iter().find(|f| f.site == site);
+            assert!(finding.is_some(), "expected syntactic finding for {site}");
+            assert_eq!(
+                finding.unwrap().triage,
+                "eval-interpreter-debt",
+                "expected eval-interpreter-debt triage for {site}"
+            );
+        }
     }
 
     #[test]
