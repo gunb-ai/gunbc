@@ -337,8 +337,7 @@ fn func_env_dropped_parent_chain_fails_lookup() {
     assert!(
         diag_msgs.iter().any(|msg| {
             msg.contains("shared_fn")
-                && (msg.contains("undefined variable")
-                    || msg.contains("not found in scope"))
+                && (msg.contains("undefined variable") || msg.contains("not found in scope"))
         }),
         "perturbation must surface lookup failure diagnostic on reinfer, got {diag_msgs:?}"
     );
