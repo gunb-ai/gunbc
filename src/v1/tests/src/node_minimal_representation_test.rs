@@ -18,10 +18,14 @@ fn cert_sources() -> Vec<Rc<SourceFile>> {
         .get_or_init(|| {
             let entry_content = std::fs::read_to_string(workspace_root().join(CERT_ENTRY))
                 .unwrap_or_else(|e| panic!("read {CERT_ENTRY}: {e}"));
-            resolve_imports_transitively_with_source_roots(CERT_ENTRY, &entry_content, &v2_source_roots())
-                .iter()
-                .map(|s| (s.path.clone(), s.content.clone()))
-                .collect()
+            resolve_imports_transitively_with_source_roots(
+                CERT_ENTRY,
+                &entry_content,
+                &v2_source_roots(),
+            )
+            .iter()
+            .map(|s| (s.path.clone(), s.content.clone()))
+            .collect()
         })
         .iter()
         .map(|(path, content)| {
@@ -50,10 +54,7 @@ fn assert_resolved_ok(result: &ResolvedPipelineResult, label: &str) {
 fn run_bool_test(
     graph: &v1_compiler::v1_compiler_infer_items::ResolvedGraph,
     source_indices: std::rc::Rc<
-        std::collections::HashMap<
-            String,
-            std::rc::Rc<v1_compiler::v1_std_core::NewlineIndex>,
-        >,
+        std::collections::HashMap<String, std::rc::Rc<v1_compiler::v1_std_core::NewlineIndex>>,
     >,
     name: &str,
 ) -> bool {
