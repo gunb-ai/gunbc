@@ -515,7 +515,12 @@ fn slowest_witness_attribution_n() -> usize {
 
 fn str_list_value(lines: &[String]) -> Value {
     Value::List(Rc::new(
-        lines.iter().cloned().map(Value::Str).collect::<Vec<_>>(),
+        lines
+            .iter()
+            .cloned()
+            .map(Value::Str)
+            .collect::<Vec<_>>()
+            .into(),
     ))
 }
 
