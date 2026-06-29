@@ -72,8 +72,12 @@ fn gha_target_quotient_decodes_lossless() -> Bool {
 
 fn bmc_roundtrip_fidelity_matches_target_quotient() -> Bool {
   match bmc_lifecycle_roundtrip_fidelity() {
-    Lossy => bmc_target_quotient_decodes_lossy()
-    Lossless => false
+    Accepted { value: fidelity, diagnostics: _ } =>
+      match fidelity {
+        Lossy => bmc_target_quotient_decodes_lossy()
+        Lossless => false
+      }
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -83,13 +87,17 @@ fn gha_roundtrip_fidelity_matches_target_quotient() -> Bool {
 
 fn gha_core_advertises_target_quotient_fidelity() -> Bool {
   match ingest_expression(src: serialize_expression(expression: path_y_core_expr())) {
-    Present { value: v } => {
-      let m = source_medium_carried(carried: v, fidelity: gha_expression_core_roundtrip_fidelity())
-      match m.fidelity {
-        Lossless => m.carried == path_y_core_expr()
-        Lossy => false
+    Present { value: v } =>
+      match gha_expression_core_roundtrip_fidelity() {
+        Accepted { value: fidelity, diagnostics: _ } => {
+          let m = source_medium_carried(carried: v, fidelity: fidelity)
+          match m.fidelity {
+            Lossless => m.carried == path_y_core_expr()
+            Lossy => false
+          }
+        }
+        Rejected { diagnostics: _ } => false
       }
-    }
     Absent => false
   }
 }
@@ -149,9 +157,13 @@ test fn path_y_fidelity_successor_reads_target_model_quotient() -> Bool {
     && bmc_roundtrip_fidelity_matches_target_quotient()
     && gha_roundtrip_fidelity_matches_target_quotient()
     && gha_core_advertises_target_quotient_fidelity()
-    && match bmc_lifecycle_roundtrip(s: bmc_factory_state()).fidelity {
-      Lossy => true
-      Lossless => false
+    && match bmc_lifecycle_roundtrip(s: bmc_factory_state()) {
+      Accepted { value: medium, diagnostics: _ } =>
+        match medium.fidelity {
+          Lossy => true
+          Lossless => false
+        }
+      Rejected { diagnostics: _ } => false
     }
     && bmc_full_state_is_lossy_after_roundtrip(s: bmc_factory_state())
 }
