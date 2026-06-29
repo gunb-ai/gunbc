@@ -1,0 +1,248 @@
+module v2.test.manual.loop_round_trip
+
+import v2.compiler.emit { emit }
+import v2.compiler.infer { InferredFacts, InferredTree }
+import extdeps.communication.medium { Lossless, Medium }
+import v2.compiler.translate {
+  coerce_grounded_node,
+  grammar_inverse_source_validated,
+  target_serialize_source_from_model
+}
+import v2.extdeps.languages.dag {
+  dag_inhabitant_atom,
+  dag_mvp1_fixture_emitted_loop_fn,
+  dag_mvp1_fixture_int_inhabitant,
+  dag_mvp1_loop_body_fixture,
+  dag_mvp1_loop_target_model,
+  dag_mvp1_pick_arrow_domain_conj_node,
+  dag_mvp1_type_atom_node
+}
+import v2.test.lens_common.infer_fixture { claim_inferred_facts_witness }
+import v2.std.cardinality {
+  RankingDimension,
+  TerminationProof,
+  termination_proof_witness_for_node
+}
+import v2.std.collection { Map }
+import v2.std.constraints {
+  CanonicalGrounding,
+  CanonicalGroundingWitness
+}
+import v2.std.coercion { CoercionQuality, Exact, Identity, Widened }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  None,
+  Outcome,
+  Rejected,
+  Unavailable,
+  node_locus
+}
+import v2.std.logic { Bool }
+import v2.std.node { ComputationNode, Node }
+import v2.std.compilers.target_model { TargetModel }
+import v2.std.witness { Holds, StructuralPropertyWitness, Violates, Witness }
+import v2.std.verification {
+  BoolWitness,
+  BoolWitnessClaim,
+  UnifiedTestClaim
+}
+
+data loop_emitted_root: Node = dag_mvp1_fixture_emitted_loop_fn
+data loop_target_model: TargetModel = dag_mvp1_loop_target_model()
+
+fn loop_canonical_grounding(
+  node: Node,
+  algebra: Node
+) -> CanonicalGrounding {
+  CanonicalGrounding {
+    node: node,
+    witness: CanonicalGroundingWitness {
+      structural: StructuralPropertyWitness {
+        property: ^constraint_property_being_canonical,
+        evidence: algebra
+      },
+      closedness: StructuralPropertyWitness {
+        property: ^constraint_property_candidate_set_closedness,
+        evidence: node
+      }
+    }
+  }
+}
+
+fn loop_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding> {
+  if node == dag_mvp1_fixture_emitted_loop_fn {
+    Holds {
+      value: loop_canonical_grounding(node: node, algebra: node)
+    }
+  } else if node == dag_mvp1_fixture_int_inhabitant {
+    Holds {
+      value: loop_canonical_grounding(node: node, algebra: node)
+    }
+  } else if node == dag_inhabitant_atom(id: ^dag_inhabitant_int) {
+    Holds {
+      value: loop_canonical_grounding(
+        node: node,
+        algebra: dag_mvp1_fixture_int_inhabitant
+      )
+    }
+  } else if node == dag_inhabitant_atom(id: ^dag_surface_spelling_int) {
+    Holds {
+      value: loop_canonical_grounding(
+        node: node,
+        algebra: dag_mvp1_fixture_int_inhabitant
+      )
+    }
+  } else if node == dag_mvp1_type_atom_node(identity: ^dag_binding_type_int) {
+    Holds {
+      value: loop_canonical_grounding(
+        node: node,
+        algebra: dag_mvp1_fixture_int_inhabitant
+      )
+    }
+  } else if node == dag_mvp1_type_atom_node(identity: ^dag_mvp1_pick_lit_one) {
+    Holds {
+      value: loop_canonical_grounding(node: node, algebra: node)
+    }
+  } else if node == dag_mvp1_type_atom_node(identity: ^dag_mvp1_pick_lit_two) {
+    Holds {
+      value: loop_canonical_grounding(node: node, algebra: node)
+    }
+  } else if node == dag_mvp1_loop_body_fixture {
+    Holds {
+      value: loop_canonical_grounding(node: node, algebra: node)
+    }
+  } else if node == dag_mvp1_pick_arrow_domain_conj_node() {
+    Holds {
+      value: loop_canonical_grounding(node: node, algebra: node)
+    }
+  } else if node == dag_mvp1_type_atom_node(identity: ^dag_binding_fn_one) {
+    Holds {
+      value: loop_canonical_grounding(node: node, algebra: node)
+    }
+  } else if node == dag_mvp1_type_atom_node(identity: ^dag_mvp1_loop_measure_sym) {
+    Holds {
+      value: loop_canonical_grounding(node: node, algebra: node)
+    }
+  } else {
+    Violates {
+      diagnostic: Diagnostic {
+        reason: ^loop_grounding_miss,
+        at: node_locus(node: node),
+        correction: Unavailable { reason: ExternalContractUnknown }
+      }
+    }
+  }
+}
+
+fn loop_termination_proof() -> TerminationProof {
+  TerminationProof {
+    non_increasing: [],
+    strict: RankingDimension { measured: ^dag_mvp1_loop_measure_sym }
+  }
+}
+
+fn loop_round_trip_node_is_loop(node: Node) -> Bool {
+  match node.kind {
+    ComputationNode { behavior: Loop } => true
+    _ => false
+  }
+}
+
+fn loop_descent_witness_for(node: Node) -> Witness<TerminationProof> {
+  if node == dag_mvp1_fixture_emitted_loop_fn
+    || node == dag_mvp1_loop_body_fixture
+    || loop_round_trip_node_is_loop(node: node) {
+    Holds { value: loop_termination_proof() }
+  } else {
+    termination_proof_witness_for_node(n: node)
+  }
+}
+
+fn loop_round_trip_inferred_facts_for(node: Node) -> Witness<InferredFacts> {
+  match loop_canonical_grounding_for(node: node) {
+    Violates { diagnostic: d } => Violates { diagnostic: d }
+    Holds { value: grounding } =>
+      match loop_descent_witness_for(node: node) {
+        Violates { diagnostic: d } => Violates { diagnostic: d }
+        Holds { value: proof } =>
+          Holds {
+            value: claim_inferred_facts_witness(
+              grounding: grounding,
+              descent: Holds { value: proof }
+            )
+          }
+      }
+  }
+}
+
+fn loop_round_trip_facts_lookup(key: Node) -> Witness<InferredFacts> {
+  loop_round_trip_inferred_facts_for(node: key)
+}
+
+data loop_inferred_tree: InferredTree = InferredTree {
+  root: loop_emitted_root,
+  facts: Map {
+    lookup: loop_round_trip_facts_lookup
+  }
+}
+
+fn loop_emit_accepts() -> Outcome<Medium<String>> {
+  emit(tree: loop_inferred_tree, target: loop_target_model)
+}
+
+data loop_emit_receipt: Outcome<Medium<String>> = loop_emit_accepts()
+
+fn loop_coercion_quality_is_faithful(q: CoercionQuality) -> Bool {
+  match q {
+    Exact => true
+    Identity => true
+    Widened => false
+  }
+}
+
+fn loop_emit_matches_serialize_holds() -> Bool {
+  match target_serialize_source_from_model(
+    target: loop_target_model,
+    emitted: loop_emitted_root
+  ) {
+    Accepted { value: authority, diagnostics: ad } =>
+      match loop_emit_receipt {
+        Accepted { value: source, diagnostics: d } =>
+          (source == authority) && (d == None) && (ad == None)
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn loop_grammar_inverse_holds() -> Bool {
+  match grammar_inverse_source_validated(
+    target: loop_target_model,
+    emitted: loop_emitted_root
+  ) {
+    Accepted { value: _, diagnostics: d } => d == None
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn loop_ingest_via_coerce_matches_canonical() -> Bool {
+  match coerce_grounded_node(
+    source: loop_emitted_root,
+    tree: loop_inferred_tree,
+    target: loop_target_model
+  ) {
+    Accepted { value: result, diagnostics: d } =>
+      (result.target == dag_mvp1_fixture_emitted_loop_fn)
+        && loop_coercion_quality_is_faithful(q: result.quality)
+        && (d == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn loop_round_trip_keystone_holds() -> Bool {
+  loop_emit_matches_serialize_holds()
+    && loop_grammar_inverse_holds()
+    && loop_ingest_via_coerce_matches_canonical()
+}

@@ -4,18 +4,22 @@ import std.process { ProcessExit, ExitSuccess, exit_failure }
 import tools.dsl_compile_clean_transport {
   run_clean_tree_compile,
   run_perturb_optional_skew_red_receipt,
-  run_perturb_unresolved_import_red_receipt
+  run_perturb_unresolved_import_red_receipt,
+  run_cross_tree_import_green_receipt,
+  run_dsl_shell_primary_precedence_receipt
 }
 
 func run_dsl_compile_clean_gate_body() -> ProcessExit {
   let clean = run_clean_tree_compile()
   let perturb = run_perturb_optional_skew_red_receipt()
   let unresolved_perturb = run_perturb_unresolved_import_red_receipt()
-  return if clean && perturb && unresolved_perturb {
+  let cross_tree = run_cross_tree_import_green_receipt()
+  let dsl_shell = run_dsl_shell_primary_precedence_receipt()
+  return if clean && perturb && unresolved_perturb && cross_tree && dsl_shell {
     ExitSuccess
   } else {
     exit_failure(
-      reason: "dsl compile-clean gate failed: clean-tree compile and/or perturb red receipt (optional-skew or unresolved-import)"
+      reason: "dsl compile-clean gate failed: clean-tree compile and/or perturb/cross-tree/dsl-shell receipt"
     )
   }
 }
