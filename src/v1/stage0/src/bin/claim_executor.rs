@@ -180,7 +180,7 @@ fn runnable_from_value(value: &Value, ctx: &InterpContext) -> Result<Runnable, S
                 Some(v) => str_list_from_value(v, ctx)?,
                 // Field absent means the plan author specified no exclusions — default is empty,
                 // not the Rust constant (the model is the sole authority on the plan path).
-                None => vec![],
+                None => Vec::new(),
             };
             Ok(Runnable::DiscoveryBatch {
                 source_roots,

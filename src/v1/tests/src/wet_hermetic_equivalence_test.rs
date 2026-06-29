@@ -81,7 +81,10 @@ fn governed_service_representative_explicit_entries() -> Vec<(String, String)> {
     let prefix = wet_hermetic_scaffold_roster_entry_prefix(&roots)
         .expect("load scaffold roster prefix from witness .dag authority");
     let scan_dirs = ci_witness_scan_dirs();
-    let excludes: Vec<String> = FLOOR_DISCOVERY_EXCLUDES.iter().map(|s| s.to_string()).collect();
+    let excludes: Vec<String> = FLOOR_DISCOVERY_EXCLUDES
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
     let rows = discover_floor_corpus_rows(&roots, &scan_dirs, &excludes)
         .expect("discover floor corpus for governed-service representative roster");
     let rep: Vec<(String, String)> = rows
@@ -106,7 +109,10 @@ fn wet_hermetic_scaffold_roster_filter_uses_dag_prefix_authority() {
         "dag authority prefix must select lens_mock_totality tree: {prefix}"
     );
     let scan_dirs = ci_witness_scan_dirs();
-    let excludes: Vec<String> = FLOOR_DISCOVERY_EXCLUDES.iter().map(|s| s.to_string()).collect();
+    let excludes: Vec<String> = FLOOR_DISCOVERY_EXCLUDES
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
     let rows = discover_floor_corpus_rows(&roots, &scan_dirs, &excludes)
         .expect("discover floor corpus for prefix authority check");
     let rep: Vec<&DiscoveryRow> = rows

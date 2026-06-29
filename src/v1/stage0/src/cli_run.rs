@@ -2498,8 +2498,14 @@ pub fn peak_rss_vhwm_bytes() -> Option<u64> {
 }
 
 /// Mirror of `gunbc.ci_layer_roots.witness_exclusion_substrings` — the .dag model is the
-/// single authority; plan-driven paths read the value from `RunnableDiscoveryBatch.exclude_substrings`.
-/// SCAFFOLD: dissolve this constant when every caller reads from the model-derived value.
+/// single authority; plan-driven paths (`claim_executor` + `ci_floor_plan.dag`) read from
+/// `RunnableDiscoveryBatch.exclude_substrings`. SCAFFOLD — two remaining consumers to migrate:
+/// (a) `claim_batch.rs`: pre-push hook runner reads this constant directly (not plan-driven);
+///     dissolve when pre-push hooks fold over a `RunnableDiscoveryBatch` from the model, or
+///     when `claim_batch` reads `witness_exclusion_substrings` from the v2 evaluator;
+/// (b) `DiscoveryCorpusOptions::default()` + test call sites in `pipeline.rs` /
+///     `wet_hermetic_equivalence_test.rs`: pass explicit excludes from the model authority.
+/// Dissolution trigger: FLOOR_DISCOVERY_EXCLUDES has zero call sites outside this comment.
 pub const FLOOR_DISCOVERY_EXCLUDES: &[&str] = &[
     "impossible_bug",
     "test/manual/",
@@ -4216,7 +4222,10 @@ mod inert_lens_hygiene_tests {
             "dsl/test/claim".to_string(),
             "src/v2/test/claim/manual".to_string(),
         ];
-        let excludes: Vec<String> = FLOOR_DISCOVERY_EXCLUDES.iter().map(|s| s.to_string()).collect();
+        let excludes: Vec<String> = FLOOR_DISCOVERY_EXCLUDES
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
         let result = discover_floor_corpus_rows(&roots, &scan_dirs, &excludes);
         assert!(
             result.is_ok(),
@@ -4299,7 +4308,10 @@ mod construction_justification_hygiene_tests {
             "dsl/test/claim".to_string(),
             "src/v2/test/claim/manual".to_string(),
         ];
-        let excludes: Vec<String> = FLOOR_DISCOVERY_EXCLUDES.iter().map(|s| s.to_string()).collect();
+        let excludes: Vec<String> = FLOOR_DISCOVERY_EXCLUDES
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
         let result = discover_floor_corpus_rows(&roots, &scan_dirs, &excludes);
         assert!(
             result.is_ok(),

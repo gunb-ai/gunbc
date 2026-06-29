@@ -1245,7 +1245,10 @@ fn parse_resilience_unmasked_typecheck_debt_receipt() {
         "dsl/test/claim".to_string(),
         "src/v2/test/claim/manual".to_string(),
     ];
-    let excludes: Vec<String> = FLOOR_DISCOVERY_EXCLUDES.iter().map(|s| s.to_string()).collect();
+    let excludes: Vec<String> = FLOOR_DISCOVERY_EXCLUDES
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
     let rows = discover_floor_corpus_rows(&roots, &scan_dirs, &excludes).expect("discover roster");
     let unique_entries: BTreeSet<String> = rows.into_iter().map(|r| r.entry).collect();
     let index = build_multi_entry_index(&roots);

@@ -462,7 +462,10 @@ fn run() -> Result<ExitCode, ExitCode> {
             eprintln!("claim_batch: {e}");
             return Err(ExitCode::from(2));
         }
-        let excludes: Vec<String> = FLOOR_DISCOVERY_EXCLUDES.iter().map(|s| s.to_string()).collect();
+        let excludes: Vec<String> = FLOOR_DISCOVERY_EXCLUDES
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
         let mut rows = match discover_floor_corpus_rows(&source_roots, &disc.scan_dirs, &excludes) {
             Ok(r) => r,
             Err(e) => {
