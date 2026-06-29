@@ -1,7 +1,7 @@
 module gunbc.roadmap_model
 
 import ctrl.process_algebra { ProcessNodeId }
-import gunbc.roadmap_status { RoadmapItem, DriftVerdict, status_drift, Signoff, Unsigned, signoff_accepts, signoff_drift }
+import gunbc.roadmap_status { RoadmapItem, DriftVerdict, Signoff, signoff_accepts, signoff_drift }
 
 type Pointer { label: String, path: String }
 
