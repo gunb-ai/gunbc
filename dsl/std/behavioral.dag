@@ -1,5 +1,7 @@
 module std.behavioral
 
+data operation_determinism_projection_activation_marker: String = "P5 SERVICE PROJECTION scaffold — std.behavioral Determinism (OperationDeterminism) currently re-declares Deterministic|NonDeterministic alongside EventuallyConsistent; honest §3 fork until projection lands. Core authority: std.determinism DeterminismAxis (two arms only). Activation (P5): project Deterministic/NonDeterministic from v2.std.determinism DeterminismFact/DeterminismClass at OperationBehavior bind time (Deterministic ⇐ every bound realization is Deterministic; NonDeterministic ⇐ ∃ NonDeterministic { source: _ }; EventuallyConsistent has no DeterminismClass/NonDetSource image — D2). Dissolves when: extdeps OperationBehavior contracts consume projected determinism from DeterminismFact without restating the core predicate; contract drift lens gates behavioral↔compiler alignment (determinism-mechanism-design P5)."
+
 type SideEffects = ReadOnly | WritesState | WritesExternal
 
 type Determinism = Deterministic | NonDeterministic | EventuallyConsistent
