@@ -1,5 +1,5 @@
 use std::cell::RefCell;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::rc::Rc;
@@ -962,11 +962,78 @@ pub fn whole_tree_strict_sources(
     })
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct WholeCorpusSemanticOracle {
     pub diagnostic_fingerprint: String,
     pub rust_corpus_repr: String,
+    /// Canonical JSON identity hash of the full `EmitGraphInfo` (resolved emit repr).
+    pub emit_graph_fingerprint: String,
+    /// Aggregate per-module diagnostics + emit-repr rows + graph-level emit metadata.
+    pub corpus_fingerprint: String,
     pub modules_resolved: usize,
+    pub per_module_rows: usize,
+}
+
+fn sort_json_object_keys(value: serde_json::Value) -> serde_json::Value {
+    match value {
+        serde_json::Value::Object(map) => {
+            let mut keys: Vec<String> = map.keys().cloned().collect();
+            keys.sort();
+            let mut out = serde_json::Map::new();
+            for key in keys {
+                if let Some(child) = map.get(&key) {
+                    out.insert(key, sort_json_object_keys(child.clone()));
+                }
+            }
+            serde_json::Value::Object(out)
+        }
+        serde_json::Value::Array(items) => serde_json::Value::Array(
+            items
+                .into_iter()
+                .map(sort_json_object_keys)
+                .collect::<Vec<_>>(),
+        ),
+        other => other,
+    }
+}
+
+fn canonical_json_identity_hash<T: Serialize>(value: &T) -> Result<String, String> {
+    let raw = serde_json::to_value(value).map_err(|e| e.to_string())?;
+    let sorted = sort_json_object_keys(raw);
+    let bytes = serde_json::to_vec(&sorted).map_err(|e| e.to_string())?;
+    Ok(v1_rt::bytes_identity_hash(&bytes))
+}
+
+fn module_defined_type_names(
+    module: &TypedModule,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> BTreeSet<String> {
+    use ItemKind::{DataItem, TypeItem};
+    let mut names = BTreeSet::new();
+    for item in module.items.iter() {
+        if matches!(item_kind(item.clone()), TypeItem | DataItem) {
+            names.insert(authored_name_at(source_indices.clone(), item.clone()));
+        }
+    }
+    names
+}
+
+fn module_emit_repr_fingerprint(
+    module: &TypedModule,
+    emit_info: &crate::v1_compiler_infer_emit_info::EmitGraphInfo,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Result<String, String> {
+    use crate::v1_compiler_infer_emit_info::TypeSummary;
+
+    let type_names = module_defined_type_names(module, source_indices);
+    let mut type_summaries = BTreeMap::<String, TypeSummary>::new();
+    for name in type_names {
+        if let Some(summary) = emit_info.type_summaries.get(&name) {
+            type_summaries.insert(name, summary.as_ref().clone());
+        }
+    }
+
+    canonical_json_identity_hash(&type_summaries)
 }
 
 pub fn whole_corpus_semantic_oracle_snapshot(
@@ -988,6 +1055,7 @@ pub fn whole_corpus_semantic_oracle_snapshot(
             format_error_nodes(&result.diagnostics, &Rc::new(si))
         )
     })?;
+    let source_indices = result.source_indices.clone();
     let mut diag_lines: Vec<String> = graph
         .diagnostics
         .iter()
@@ -999,10 +1067,56 @@ pub fn whole_corpus_semantic_oracle_snapshot(
         HostNative => "HostNative".to_string(),
         FaithfulFreeMonoid => "FaithfulFreeMonoid".to_string(),
     };
+    let emit_graph_fingerprint = canonical_json_identity_hash(graph.emit_graph_info.as_ref())?;
+
+    let mut modules: Vec<Rc<TypedModule>> = graph.modules.iter().cloned().collect();
+    modules.sort_by(|left, right| {
+        let left_path = authored_name_at(source_indices.clone(), left.module.clone());
+        let right_path = authored_name_at(source_indices.clone(), right.module.clone());
+        left_path.cmp(&right_path)
+    });
+
+    let mut per_module_lines = Vec::with_capacity(modules.len());
+    for module in &modules {
+        let module_path = authored_name_at(source_indices.clone(), module.module.clone());
+        let mut module_diag_lines: Vec<String> = graph
+            .diagnostics
+            .iter()
+            .filter(|diag| diag.module_name.as_str() == module_path.as_str())
+            .map(|diag| v1_compiler_compile::serialize_diagnostic(diag.clone()))
+            .collect();
+        module_diag_lines.sort();
+        let module_diag_fingerprint =
+            v1_rt::bytes_identity_hash(module_diag_lines.join("\n").as_bytes());
+        let module_emit_fingerprint = module_emit_repr_fingerprint(
+            module.as_ref(),
+            graph.emit_graph_info.as_ref(),
+            source_indices.clone(),
+        )?;
+        per_module_lines.push(format!(
+            "{module_path}\t{module_diag_fingerprint}\t{module_emit_fingerprint}"
+        ));
+    }
+
+    let per_module_rows = per_module_lines.len();
+    let per_module_blob = per_module_lines.join("\n");
+    let corpus_fingerprint = v1_rt::bytes_identity_hash(
+        format!(
+            "diagnostic_fingerprint={diagnostic_fingerprint}\n\
+             emit_graph_fingerprint={emit_graph_fingerprint}\n\
+             rust_corpus_repr={rust_corpus_repr}\n\
+             per_module:\n{per_module_blob}"
+        )
+        .as_bytes(),
+    );
+
     Ok(WholeCorpusSemanticOracle {
         diagnostic_fingerprint,
         rust_corpus_repr,
+        emit_graph_fingerprint,
+        corpus_fingerprint,
         modules_resolved: picked.modules_resolved,
+        per_module_rows,
     })
 }
 

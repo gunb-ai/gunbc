@@ -1,12 +1,25 @@
 #![allow(clippy::disallowed_macros)]
 
-//! Emit the whole-corpus semantic oracle snapshot (diagnostic fingerprint +
-//! rust_corpus_repr) as JSON on stdout. Used to capture the pre-change baseline
-//! at commit 57223267a2 for func_env scope-chain equivalence testing.
+//! Emit the whole-corpus semantic oracle snapshot (corpus fingerprint,
+//! per-module diagnostics/emit repr, full EmitGraphInfo) as JSON on stdout.
+//! Used to capture the pre-change baseline at commit 57223267a2 for func_env
+//! scope-chain equivalence testing.
 
 use std::process::ExitCode;
 
+use serde::Serialize;
 use v1_compiler::cli_run::{whole_corpus_semantic_oracle_snapshot, FLOOR_DISCOVERY_EXCLUDES};
+
+#[derive(Serialize)]
+struct CaptureOutput<'a> {
+    baseline_commit: &'a str,
+    diagnostic_fingerprint: &'a str,
+    rust_corpus_repr: &'a str,
+    emit_graph_fingerprint: &'a str,
+    corpus_fingerprint: &'a str,
+    modules_resolved: usize,
+    per_module_rows: usize,
+}
 
 fn run() -> Result<ExitCode, ExitCode> {
     let args: Vec<String> = std::env::args().collect();
@@ -61,11 +74,21 @@ fn run() -> Result<ExitCode, ExitCode> {
             ExitCode::from(2)
         })?;
 
+    let output = CaptureOutput {
+        baseline_commit: "57223267a2",
+        diagnostic_fingerprint: &oracle.diagnostic_fingerprint,
+        rust_corpus_repr: &oracle.rust_corpus_repr,
+        emit_graph_fingerprint: &oracle.emit_graph_fingerprint,
+        corpus_fingerprint: &oracle.corpus_fingerprint,
+        modules_resolved: oracle.modules_resolved,
+        per_module_rows: oracle.per_module_rows,
+    };
     println!(
-        "{{\"baseline_commit\":\"57223267a2\",\"diagnostic_fingerprint\":\"{}\",\"rust_corpus_repr\":\"{}\",\"modules_resolved\":{}}}",
-        oracle.diagnostic_fingerprint,
-        oracle.rust_corpus_repr,
-        oracle.modules_resolved,
+        "{}",
+        serde_json::to_string(&output).map_err(|e| {
+            eprintln!("capture_func_env_semantic_oracle: serialize failed: {e}");
+            ExitCode::from(2)
+        })?
     );
     Ok(ExitCode::SUCCESS)
 }

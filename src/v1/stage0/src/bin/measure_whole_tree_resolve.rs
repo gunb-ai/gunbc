@@ -10,7 +10,8 @@
 use std::process::ExitCode;
 
 use v1_compiler::cli_run::{
-    peak_rss_vhwm_bytes, whole_tree_resolved_ctx, WholeTreeCtx, FLOOR_DISCOVERY_EXCLUDES,
+    peak_rss_vhwm_bytes, whole_corpus_semantic_oracle_snapshot, whole_tree_resolved_ctx,
+    WholeTreeCtx, FLOOR_DISCOVERY_EXCLUDES,
 };
 use v1_compiler::v1_interpreter::ExecutionMode;
 
@@ -95,6 +96,18 @@ fn run() -> Result<ExitCode, ExitCode> {
             "[measurement] whole-tree resolve peak RSS: unavailable (no /proc/self/status) modules={modules_resolved}"
         ),
     }
+
+    let oracle =
+        whole_corpus_semantic_oracle_snapshot(&source_roots, &exclude_subpaths).map_err(|e| {
+            eprintln!("measure_whole_tree_resolve: corpus fingerprint failed:\n{e}");
+            ExitCode::from(2)
+        })?;
+    eprintln!(
+        "[measurement] whole-corpus corpus_fingerprint={} emit_graph_fingerprint={} per_module_rows={}",
+        oracle.corpus_fingerprint,
+        oracle.emit_graph_fingerprint,
+        oracle.per_module_rows,
+    );
 
     Ok(ExitCode::SUCCESS)
 }

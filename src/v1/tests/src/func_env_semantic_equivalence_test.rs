@@ -1,16 +1,21 @@
 //! Oracle 4 — whole-corpus semantic equivalence vs pre-scope-chain baseline.
 //!
-//! Proves dsl+src/v1 strict whole-tree typecheck is byte-identical on diagnostic
-//! fingerprint and rust_corpus_repr vs commit 57223267a2 (design sketch, flat
-//! func_env.signatures closure). Fixture captured via capture_func_env_semantic_oracle.
+//! Proves the post-refactor compiler is byte-identical to commit 57223267a2 on
+//! diagnostics, per-module emit repr, and full `EmitGraphInfo` when run over
+//! the frozen baseline corpus (`git archive 57223267a2 dsl src/v1`). Fixture
+//! captured via capture_func_env_semantic_oracle on that tree.
 
 use std::fs;
+use std::io::Write;
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
 
 use serde::Deserialize;
 use v1_compiler::cli_run::{whole_corpus_semantic_oracle_snapshot, FLOOR_DISCOVERY_EXCLUDES};
 
 use crate::helpers::workspace_root;
 
+const BASELINE_COMMIT: &str = "57223267a2";
 const BASELINE_FIXTURE: &str = "src/v1/tests/fixtures/func_env_semantic_baseline.json";
 
 #[derive(Debug, Deserialize)]
@@ -18,7 +23,10 @@ struct SemanticBaseline {
     baseline_commit: String,
     diagnostic_fingerprint: String,
     rust_corpus_repr: String,
+    emit_graph_fingerprint: String,
+    corpus_fingerprint: String,
     modules_resolved: usize,
+    per_module_rows: usize,
 }
 
 fn whole_tree_probe_excludes() -> Vec<String> {
@@ -36,13 +44,47 @@ fn whole_tree_probe_excludes() -> Vec<String> {
     exclude_subpaths
 }
 
-fn whole_tree_probe_roots() -> Vec<String> {
+fn baseline_corpus_dir() -> PathBuf {
+    let dir = workspace_root()
+        .join("target")
+        .join("func_env_semantic_baseline_corpus");
+    if dir.join("dsl").is_dir() && dir.join("src/v1").is_dir() {
+        return dir;
+    }
+    fs::create_dir_all(&dir).unwrap_or_else(|e| panic!("create baseline corpus dir {dir:?}: {e}"));
+    let archive = Command::new("git")
+        .args(["archive", BASELINE_COMMIT, "dsl", "src/v1"])
+        .current_dir(workspace_root())
+        .output()
+        .unwrap_or_else(|e| panic!("git archive {BASELINE_COMMIT}: {e}"));
+    assert!(
+        archive.status.success(),
+        "git archive {BASELINE_COMMIT} failed: {}",
+        String::from_utf8_lossy(&archive.stderr)
+    );
+    let mut tar = Command::new("tar")
+        .args(["-x", "-C"])
+        .arg(&dir)
+        .stdin(Stdio::piped())
+        .spawn()
+        .unwrap_or_else(|e| panic!("spawn tar for baseline corpus: {e}"));
+    {
+        let stdin = tar.stdin.as_mut().expect("tar stdin");
+        stdin
+            .write_all(&archive.stdout)
+            .unwrap_or_else(|e| panic!("write baseline corpus tar: {e}"));
+    }
+    let status = tar
+        .wait()
+        .unwrap_or_else(|e| panic!("wait for baseline corpus tar: {e}"));
+    assert!(status.success(), "tar extract baseline corpus failed");
+    dir
+}
+
+fn baseline_corpus_roots(corpus_dir: &Path) -> Vec<String> {
     vec![
-        workspace_root().join("dsl").to_string_lossy().into_owned(),
-        workspace_root()
-            .join("src/v1")
-            .to_string_lossy()
-            .into_owned(),
+        corpus_dir.join("dsl").to_string_lossy().into_owned(),
+        corpus_dir.join("src/v1").to_string_lossy().into_owned(),
     ]
 }
 
@@ -54,16 +96,27 @@ fn func_env_whole_corpus_semantic_oracle_matches_pre_change_baseline() {
     let baseline: SemanticBaseline =
         serde_json::from_str(&raw).unwrap_or_else(|e| panic!("parse baseline fixture: {e}"));
 
+    let corpus_dir = baseline_corpus_dir();
     let current = whole_corpus_semantic_oracle_snapshot(
-        &whole_tree_probe_roots(),
+        &baseline_corpus_roots(&corpus_dir),
         &whole_tree_probe_excludes(),
     )
     .expect("whole-corpus strict resolve for semantic oracle");
 
     assert_eq!(
+        current.corpus_fingerprint, baseline.corpus_fingerprint,
+        "whole-corpus fingerprint must match pre-change baseline {} \
+         (per-module diagnostics/emit repr or emit-graph regression)",
+        baseline.baseline_commit
+    );
+    assert_eq!(
         current.diagnostic_fingerprint, baseline.diagnostic_fingerprint,
-        "whole-corpus diagnostic fingerprint must match pre-change baseline {} \
-         (shadowing-order or typecheck behavior regression)",
+        "whole-corpus diagnostic fingerprint must match pre-change baseline {}",
+        baseline.baseline_commit
+    );
+    assert_eq!(
+        current.emit_graph_fingerprint, baseline.emit_graph_fingerprint,
+        "emit_graph fingerprint must match pre-change baseline {}",
         baseline.baseline_commit
     );
     assert_eq!(
@@ -74,5 +127,9 @@ fn func_env_whole_corpus_semantic_oracle_matches_pre_change_baseline() {
     assert_eq!(
         current.modules_resolved, baseline.modules_resolved,
         "module count must match baseline capture"
+    );
+    assert_eq!(
+        current.per_module_rows, baseline.per_module_rows,
+        "per-module row count must match baseline capture"
     );
 }
