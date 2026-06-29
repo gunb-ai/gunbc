@@ -1046,31 +1046,28 @@ fn bash_fold_translation_rules_node_for_emitted(
   emitted: Node,
   lhs: Symbol,
   rule_name: Symbol
-) -> Node {
+) -> Witness<Node> {
   match bash_fold_relation_row_witness(emitted: emitted, lhs: lhs) {
     Holds { value: row } =>
-      Node {
-        kind: TypeNode { connective: Conj },
-        children: [
-          bash_named_edge(
-            name: ^grammar_relation_rules_formal_productions,
-            target: formal_productions_catalog_to_node(
-              productions: bash_fold_formal_productions()
+      Holds {
+        value: Node {
+          kind: TypeNode { connective: Conj },
+          children: [
+            bash_named_edge(
+              name: ^grammar_relation_rules_formal_productions,
+              target: formal_productions_catalog_to_node(
+                productions: bash_fold_formal_productions()
+              )
+            ),
+            bash_named_edge(
+              name: rule_name,
+              target: row
             )
-          ),
-          bash_named_edge(
-            name: rule_name,
-            target: row
-          )
-        ],
-        occurrence_id: SyntheticOccurrence
+          ],
+          occurrence_id: SyntheticOccurrence
+        }
       }
-    Violates { diagnostic: _ } =>
-      Node {
-        kind: TypeNode { connective: Conj },
-        children: [],
-        occurrence_id: SyntheticOccurrence
-      }
+    Violates { diagnostic: d } => Violates { diagnostic: d }
   }
 }
 
@@ -1160,9 +1157,7 @@ fn bash_fold_lex() -> LexRules {
   ModeledLexRules { root: bash_fold_lex_rules() }
 }
 
-data bash_fold_word_kind_marker_dissolution_trigger: String = "🟡 dissolve-on: phantom \\u{0000}/\\u{0001} kind-marker lex bytes and zero-width bash_fold_kind_emit_transform are replaced by real bash word-class lexing that disambiguates lit vs var without sentinel bytes"
-
-data bash_fold_stmt_kind_tag_dissolution_trigger: String = "🟡 dissolve-on: phantom \\u{0002} stmt-kind-tag lex byte and zero-width bash_fold_stmt_kind_tag_emit_transform are replaced by real production-discriminating stmt lexing that selects fold production without sentinel bytes"
+data bash_fold_word_kind_marker_dissolution_trigger: String = "🟡 dissolve-on: phantom \\u{0000}/\\u{0001}/\\u{0002} kind-marker lex bytes (kind_lit/kind_var/stmt_kind_tag) and zero-width bash_fold_kind_emit_transform/bash_fold_stmt_kind_tag_emit_transform are replaced by real bash word-class lexing that disambiguates lit vs var and stmt production tags without sentinel bytes"
 
 fn bash_fold_kind_emit_transform(_spelling: String) -> String {
   ""
@@ -1201,15 +1196,19 @@ fn bash_fold_target_model_bundle_witness(
     production_binding: production_binding
   ) {
     Holds { value: serialize_source } =>
-      Holds {
-        value: bash_target_model_bundle(
-          rules: bash_fold_translation_rules_node_for_emitted(
-            emitted: emitted,
-            lhs: production_binding,
-            rule_name: rule_name
-          ),
-          serialize_source: serialize_source
-        )
+      match bash_fold_translation_rules_node_for_emitted(
+        emitted: emitted,
+        lhs: production_binding,
+        rule_name: rule_name
+      ) {
+        Holds { value: rules } =>
+          Holds {
+            value: bash_target_model_bundle(
+              rules: rules,
+              serialize_source: serialize_source
+            )
+          }
+        Violates { diagnostic: d } => Violates { diagnostic: d }
       }
     Violates { diagnostic: d } => Violates { diagnostic: d }
   }
