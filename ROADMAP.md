@@ -260,6 +260,28 @@ Depends on §6 — react/html is a first-class medium (idea-machine.md §3/§4),
 - [ ] react/html rendering stands up (real page, not fixture) — **SERVE page green-by-execution via gunbc-run landed (#5662); real socket the remaining gap (Lane C)**
 - [ ] add to the demo alongside the TypeScript emit (website + language, dogfoodable)
 
+## ✦ Accelerator-kernel demo TANGENT — show the daglang moat in XLA's terms *(expansion · showcase · operator-directed)*
+
+→ [charter: the round-trip](docs/plans/accelerator-demo-roundtrip.md)
+
+A *small, honest subset* chosen because it is the easiest slice to communicate to an accelerator/array-compiler audience (NVIDIA / the XLA team) **in their own vocabulary** — fusion, layout assignment, buffer assignment, numerical-semantics preservation. **Displaced cost (§6): "the architecture is powerful but I can't show it to a hardware/compiler audience in 60 seconds."** NOT "run the compiler on a GPU" (a tree-walk maximizes both SIMT anti-patterns — control + memory divergence; that's a CPU scheduler workload). NOT opcode-bucketing (SIMT width comes from data-parallelism *inside* a node, not task-parallelism *across* nodes). One recognized class only: **pure elementwise array folds.**
+
+**On-model framing — first live consumer of the inert placement carriers.** The substrate already models `Placement`/`Materialization`/`RealizationObjective` (the Ergonomics-lane inert-lens's first RED witness); this lane makes them load-bearing. Net substrate delta is minimal (DESIGN §2): **+1 `Placement` variant** (accelerator, "one concept every breadth"), **+1 `extdeps/languages/<accel>/` target row** (kernel emit via the existing translate fold — N rows not N×M), **+1 numerical contract** on the plan (the float-exactness `DecodeFidelity` boundary). Everything else is *consumption* of existing carriers.
+
+**◆ Milestones:** recognizer + `RealizationPlan` value (shaping for supply) → fused SoA kernel handler (CPU) + **integer bit-exact differential vs the scalar interpreter oracle** → **float exact under a declared numerical contract** (refuse-on-contraction-violation) → fail-closed refusal arm (non-elementwise/effectful → typed located `DecodeFidelity`) → *(optional epilogue)* same plan, one target row → GPU on operator device
+
+**Seam first (buildable today on the v2 interpreter — proves the claim without silicon):**
+
+- [ ] **modeling lane** — `+LocalAccelerator` `Placement` variant · recognizer output as a `RealizationPlan<S>` value · `NumericalContract` type + its `DecodeFidelity` coupling · the refusal diagnostic. In `std/` + `extdeps/languages/<accel>/`; lands consumed-or-marked. DFS the concept DAG before minting the device/contract types (reuse-first — a device is plausibly `Vendor<Hardware>`-adjacent, the contract plausibly a `float.dag`/`approximate_field.dag` refinement). [plan](docs/plans/accelerator-demo-roundtrip.md)
+- [ ] **execution lane** — elementwise-array-fold recognizer pass over the core graph · SoA fused-kernel handler (CPU contiguous loop) in the v2 interpreter · differential harness · **integer bit-exact witness** + **refusal witness**, green-by-execution with a red-on-revert discriminator. [plan](docs/plans/accelerator-demo-roundtrip.md)
+- [ ] **numerical-contract bar** *(most credible artifact to this audience — include in v1)* — float fixture exact under a declared rounding/FMA-contraction contract; a fusion that would change rounding is **refused unless the contract permits it** (the `--xla_allow_excess_precision` headache as a typed property, not a global flag). [plan](docs/plans/accelerator-demo-roundtrip.md)
+
+**Silicon last (optional — proves medium-agnosticism, not the seam):**
+
+- [ ] **GPU epilogue** — swap the target row to a GPU backend (SPIR-V via `wgpu`, or CUDA) on the operator's local device; same bit-identity bar. Epistemically a footnote — *"we don't need the GPU to trust the lowering, that's the point"* — but rhetorically the closer. [plan](docs/plans/accelerator-demo-roundtrip.md)
+
+**Pairs with:** Ergonomics LANE (first live consumer of the inert `Placement`/`Materialization`/`RealizationObjective` carriers) · §5 self-host (emit is the same fold, both directions) · §7 demo (a second sellable showcase beside the TS/website emit).
+
 ## 8. Session dashboard on `.dag` (SHELVED)
 
 Product/infra tooling — shelved during the stability window (no `.dag`-correctness leverage right now). **One slice un-shelved (operator-directed): the roadmap-as-spawner MVP below** — it earns `.dag`-correctness leverage by making the roadmap the single authority for tracked work (§3) and is the first inhabitant of migrating ctrl onto the substrate (§7).

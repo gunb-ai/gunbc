@@ -480,13 +480,43 @@ fn section_ergonomics_lane() -> RoadmapSection {
   }
 }
 
+fn section_accelerator_demo_lane() -> RoadmapSection {
+  RoadmapSection {
+    title: "✦ Accelerator-kernel demo TANGENT — show the daglang moat in XLA's terms *(expansion · showcase · operator-directed)*",
+    elements: [
+      section_prose(content: "→ [charter: the round-trip](docs/plans/accelerator-demo-roundtrip.md)"),
+      section_prose(content: "A *small, honest subset* chosen because it is the easiest slice to communicate to an accelerator/array-compiler audience (NVIDIA / the XLA team) **in their own vocabulary** — fusion, layout assignment, buffer assignment, numerical-semantics preservation. **Displaced cost (§6): \"the architecture is powerful but I can't show it to a hardware/compiler audience in 60 seconds.\"** NOT \"run the compiler on a GPU\" (a tree-walk maximizes both SIMT anti-patterns — control + memory divergence; that's a CPU scheduler workload). NOT opcode-bucketing (SIMT width comes from data-parallelism *inside* a node, not task-parallelism *across* nodes). One recognized class only: **pure elementwise array folds.**"),
+      section_prose(content: "**On-model framing — first live consumer of the inert placement carriers.** The substrate already models `Placement`/`Materialization`/`RealizationObjective` (the Ergonomics-lane inert-lens's first RED witness); this lane makes them load-bearing. Net substrate delta is minimal (DESIGN §2): **+1 `Placement` variant** (accelerator, \"one concept every breadth\"), **+1 `extdeps/languages/<accel>/` target row** (kernel emit via the existing translate fold — N rows not N×M), **+1 numerical contract** on the plan (the float-exactness `DecodeFidelity` boundary). Everything else is *consumption* of existing carriers."),
+      section_prose(content: "**◆ Milestones:** recognizer + `RealizationPlan` value (shaping for supply) → fused SoA kernel handler (CPU) + **integer bit-exact differential vs the scalar interpreter oracle** → **float exact under a declared numerical contract** (refuse-on-contraction-violation) → fail-closed refusal arm (non-elementwise/effectful → typed located `DecodeFidelity`) → *(optional epilogue)* same plan, one target row → GPU on operator device"),
+      section_group(
+        label: "Seam first (buildable today on the v2 interpreter — proves the claim without silicon)",
+        nodes: [
+          authored_doc(id: "accel-model", done: false, content: "**modeling lane** — `+LocalAccelerator` `Placement` variant · recognizer output as a `RealizationPlan<S>` value · `NumericalContract` type + its `DecodeFidelity` coupling · the refusal diagnostic. In `std/` + `extdeps/languages/<accel>/`; lands consumed-or-marked. DFS the concept DAG before minting the device/contract types (reuse-first — a device is plausibly `Vendor<Hardware>`-adjacent, the contract plausibly a `float.dag`/`approximate_field.dag` refinement).", path: "docs/plans/accelerator-demo-roundtrip.md"),
+          authored_doc(id: "accel-exec", done: false, content: "**execution lane** — elementwise-array-fold recognizer pass over the core graph · SoA fused-kernel handler (CPU contiguous loop) in the v2 interpreter · differential harness · **integer bit-exact witness** + **refusal witness**, green-by-execution with a red-on-revert discriminator.", path: "docs/plans/accelerator-demo-roundtrip.md"),
+          authored_doc(id: "accel-numeric", done: false, content: "**numerical-contract bar** *(most credible artifact to this audience — include in v1)* — float fixture exact under a declared rounding/FMA-contraction contract; a fusion that would change rounding is **refused unless the contract permits it** (the `--xla_allow_excess_precision` headache as a typed property, not a global flag).", path: "docs/plans/accelerator-demo-roundtrip.md"),
+        ],
+        edges: [],
+      ),
+      section_group(
+        label: "Silicon last (optional — proves medium-agnosticism, not the seam)",
+        nodes: [
+          authored_doc(id: "accel-gpu", done: false, content: "**GPU epilogue** — swap the target row to a GPU backend (SPIR-V via `wgpu`, or CUDA) on the operator's local device; same bit-identity bar. Epistemically a footnote — *\"we don't need the GPU to trust the lowering, that's the point\"* — but rhetorically the closer.", path: "docs/plans/accelerator-demo-roundtrip.md"),
+        ],
+        edges: [],
+      ),
+      section_prose(content: "**Pairs with:** Ergonomics LANE (first live consumer of the inert `Placement`/`Materialization`/`RealizationObjective` carriers) · §5 self-host (emit is the same fold, both directions) · §7 demo (a second sellable showcase beside the TS/website emit)."),
+    ],
+  }
+}
+
 fn roadmap_authority() -> RoadmapDocument {
   RoadmapDocument {
     preamble: preamble(),
     lead_lanes: [section_ergonomics_lane()],
     sections: [
       section_0(), section_1(), section_2(), section_3(),
-      section_4(), section_5(), section_6(), section_7(), section_8(),
+      section_4(), section_5(), section_6(), section_7(),
+      section_accelerator_demo_lane(), section_8(),
     ],
   }
 }
