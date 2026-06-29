@@ -178,10 +178,10 @@ data execution_corpus_node: Node = Node {
   children: []
 }
 
-data execution_witness_memory_reservation_bytes: Int = 2147483648
+data execution_witness_memory_reservation: ByteSize = byte_size(2147483648)
 
 fn execution_corpus_spawn_width() -> Int {
-  byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap) / execution_witness_memory_reservation_bytes
+  byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap) / byte_size_count(b: execution_witness_memory_reservation)
 }
 
 fn execution_corpus_runnable() -> Runnable {
@@ -196,9 +196,7 @@ fn execution_corpus_runnable() -> Runnable {
     profile: runnable_resource_profile(
       heavy_whole_tree_resolve: true,
       spawns_host_compiler: false,
-      memory: runnable_memory_substantial(
-        predicted_peak: byte_size(execution_witness_memory_reservation_bytes)
-      )
+      memory: runnable_memory_substantial(predicted_peak: execution_witness_memory_reservation)
     )
   }
 }
