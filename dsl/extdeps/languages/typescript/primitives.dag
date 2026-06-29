@@ -1,0 +1,88 @@
+module extdeps.languages.typescript.primitives
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "tc39.es/ecma262/#sec-ecmascript-language-types"
+  }
+}
+
+type TypeScriptNumberSpecAlgebraTag
+  = TypeScriptNumberIeee754Binary64Algebra
+  | TypeScriptNumberSpecAlgebraReserved
+
+type TypeScriptNumberSpecCarrierTag
+  = TypeScriptNumberIeee754Carrier
+  | TypeScriptNumberSpecCarrierReserved
+
+type TypeScriptBooleanSpecAlgebraTag
+  = TypeScriptBooleanTwoElementAlgebra
+  | TypeScriptBooleanSpecAlgebraReserved
+
+type TypeScriptBooleanSpecCarrierTag
+  = TypeScriptBooleanEcmaBooleanCarrier
+  | TypeScriptBooleanSpecCarrierReserved
+
+type TypeScriptStringSpecAlgebraTag
+  = TypeScriptStringUtf16CodeUnitSequenceMonoidAlgebra
+  | TypeScriptStringSpecAlgebraReserved
+
+type TypeScriptStringSpecCarrierTag
+  = TypeScriptStringUtf16CodeUnitSequenceCarrier
+  | TypeScriptStringSpecCarrierReserved
+
+type TypeScriptBigIntSpecAlgebraTag
+  = TypeScriptBigIntExactUnboundedAlgebra
+  | TypeScriptBigIntSpecAlgebraReserved
+
+type TypeScriptBigIntSpecCarrierTag
+  = TypeScriptBigIntExactUnboundedCarrier
+  | TypeScriptBigIntSpecCarrierReserved
+
+type TypeScriptPrimitive
+  = TypeScriptNumberPrimitive {
+      target_name: String
+      algebra: TypeScriptNumberSpecAlgebraTag
+      carrier: TypeScriptNumberSpecCarrierTag
+    }
+  | TypeScriptBigIntPrimitive {
+      target_name: String
+      algebra: TypeScriptBigIntSpecAlgebraTag
+      carrier: TypeScriptBigIntSpecCarrierTag
+    }
+  | TypeScriptStringPrimitive {
+      target_name: String
+      algebra: TypeScriptStringSpecAlgebraTag
+      carrier: TypeScriptStringSpecCarrierTag
+    }
+  | TypeScriptBooleanPrimitive {
+      target_name: String
+      algebra: TypeScriptBooleanSpecAlgebraTag
+      carrier: TypeScriptBooleanSpecCarrierTag
+    }
+
+data typescript_spec_predeclared_primitives: List<TypeScriptPrimitive> = [
+  TypeScriptNumberPrimitive {
+    target_name: "number",
+    algebra: TypeScriptNumberIeee754Binary64Algebra,
+    carrier: TypeScriptNumberIeee754Carrier
+  },
+  TypeScriptBigIntPrimitive {
+    target_name: "bigint",
+    algebra: TypeScriptBigIntExactUnboundedAlgebra,
+    carrier: TypeScriptBigIntExactUnboundedCarrier
+  },
+  TypeScriptBooleanPrimitive {
+    target_name: "boolean",
+    algebra: TypeScriptBooleanTwoElementAlgebra,
+    carrier: TypeScriptBooleanEcmaBooleanCarrier
+  },
+  TypeScriptStringPrimitive {
+    target_name: "string",
+    algebra: TypeScriptStringUtf16CodeUnitSequenceMonoidAlgebra,
+    carrier: TypeScriptStringUtf16CodeUnitSequenceCarrier
+  }
+]

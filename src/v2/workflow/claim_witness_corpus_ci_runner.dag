@@ -56,6 +56,20 @@ data corpus_ci_gate_row_emit_ingest_python_same_language_round_trip: ClaimWitnes
   expected: ExpectPass
 }
 
+data corpus_ci_gate_row_emit_ingest_typescript_same_language_round_trip: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "emit ingest typescript same language selector bijectivity (S4)",
+  entry: "src/v2/test/claim/manual/emit_ingest_typescript_same_language_round_trip_test.dag",
+  function: "emit_ingest_typescript_selector_bijectivity_holds",
+  expected: ExpectPass
+}
+
+data corpus_ci_gate_row_emit_ingest_typescript_source_round_trip: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "emit ingest typescript same language source round trip (S4)",
+  entry: "src/v2/test/claim/manual/emit_ingest_typescript_same_language_round_trip_test.dag",
+  function: "typescript_same_language_source_emit_round_trip_holds",
+  expected: ExpectPass
+}
+
 data corpus_ci_gate_row_comprep_eval_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "comprep eval by execution keystone",
   entry: "src/v2/test/claim/manual/comprep_eval_by_execution_test.dag",
@@ -503,6 +517,8 @@ data claim_witness_corpus_shard_b_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_emit_ingest_grammar_relation_round_trip,
   corpus_ci_gate_row_emit_ingest_type_decl_round_trip,
   corpus_ci_gate_row_emit_ingest_python_same_language_round_trip,
+  corpus_ci_gate_row_emit_ingest_typescript_same_language_round_trip,
+  corpus_ci_gate_row_emit_ingest_typescript_source_round_trip,
   corpus_ci_gate_row_lazy_arm_eval_acceptance_keystone,
   corpus_ci_gate_row_loop_demand_driven_eval_keystone,
   corpus_ci_gate_row_comprep_loop_eval_keystone,

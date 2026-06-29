@@ -1,0 +1,86 @@
+module extdeps.languages.typescript.emit
+
+import std.emit_model { SimpleMethodSpec }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.typescriptlang.org/docs/handbook/2/everyday-types.html"
+  }
+}
+
+data typescript_keywords: Map<String, String> = {
+  "true": "true", "false": "false", "null": "null",
+  "and": "&&", "or": "||", "not": "!",
+  "div": "/"
+}
+
+data typescript_container_templates: Map<String, String> = {
+  "list": "\{0\}[]", "set": "Set<\{0\}>",
+  "optional": "\{0\} | undefined", "map": "Map<\{0\}, \{1\}>",
+  "free_monoid": "\{0\}[]", "partial_function": "Map<\{0\}, \{1\}>",
+  "boolean_algebra": "boolean"
+}
+
+data typescript_reserved: List<String> = [
+  "break", "case", "catch", "class", "const", "continue", "debugger",
+  "default", "delete", "do", "else", "enum", "export", "extends",
+  "false", "finally", "for", "function", "if", "import", "in",
+  "instanceof", "new", "null", "return", "super", "switch", "this",
+  "throw", "true", "try", "typeof", "var", "void", "while", "with",
+  "yield", "let", "static", "implements", "interface", "package",
+  "private", "protected", "public", "as", "type", "from", "of",
+  "async", "await", "readonly", "keyof", "infer", "never", "unknown"
+]
+
+data typescript_reserved_escape_suffix: String = "_"
+
+data typescript_func_keyword: String = "function"
+data typescript_async_prefix: String = "async "
+data typescript_struct_keyword: String = "interface"
+data typescript_enum_keyword: String = "enum"
+data typescript_type_alias_keyword: String = "type"
+data typescript_param_separator: String = ", "
+data typescript_return_arrow: String = ": "
+data typescript_param_type_sep: String = ": "
+data typescript_module_keyword: String = ""
+data typescript_import_keyword: String = "import"
+data typescript_import_from_keyword: String = "from"
+
+data typescript_source_extension: String = ".ts"
+data typescript_module_init: String = "index.ts"
+
+data typescript_string_types: List<String> = ["String", "Secret"]
+
+data typescript_simple_method_specs: List<SimpleMethodSpec> = [
+  { method_name: "count",     template: "\{recv\}.length",                              wraps_result: false },
+  { method_name: "join",      template: "\{recv\}.join(\{arg\})",                      wraps_result: false },
+  { method_name: "split",     template: "\{recv\}.split(\{arg\})",                     wraps_result: false },
+  { method_name: "last",      template: "\{recv\}[\{recv\}.length - 1]",              wraps_result: false },
+  { method_name: "first",     template: "\{recv\}[0]",                                 wraps_result: false },
+  { method_name: "enumerate", template: "\{recv\}.map((v, i) => [i, v])",               wraps_result: false },
+  { method_name: "chars",     template: "Array.from(\{recv\}).map(c => c.charCodeAt(0))", wraps_result: false },
+  { method_name: "skip",      template: "\{recv\}.slice(\{arg\})",                     wraps_result: false },
+  { method_name: "take",      template: "\{recv\}.slice(0, \{arg\})",                  wraps_result: false }
+]
+
+fn typescript_method_templates_flat() -> Map<String, String> {
+  typescript_simple_method_specs
+    |> fold(init: empty_map(), f: (acc, spec) => map_insert(acc, spec.method_name, spec.template))
+}
+
+data typescript_arrow_template: String = "(\{params\}) => \{body\}"
+data typescript_error_expr_template: String = "throw new Error(\{0\})"
+data typescript_array_literal_empty: String = "[]"
+data typescript_array_literal_template: String = "[\{0\}]"
+data typescript_null_coalesce_template: String = "(\{0\} ?? \{1\})"
+data typescript_error_type_template: String = "__EMIT_BUG_\{0\}__"
+data typescript_type_arg_open: String = "<"
+data typescript_type_arg_close: String = ">"
+data typescript_void_type: String = "void"
+data typescript_union_syntax: String = "\{a\} | \{b\}"
+data typescript_optional_syntax: String = "\{type\} | undefined"
+data typescript_type_checker: String = "tsc"
+data typescript_type_checker_strict: String = "tsc --noEmit --strict"

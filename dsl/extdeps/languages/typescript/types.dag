@@ -1,0 +1,84 @@
+module extdeps.languages.typescript.types
+
+import std.coercion {
+  TypeCheckpoint, InhabitantDecl, CallableRepr, CastSyntax
+}
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.typescriptlang.org/docs/handbook/2/everyday-types.html"
+  }
+}
+
+data typescript_type_checkpoints: List<TypeCheckpoint> = [
+  { dag_name: "Int",    target_type: "number",       default_expr: "0",       is_copy: none, literal_suffix: none },
+  { dag_name: "Float",  target_type: "number",       default_expr: "0",       is_copy: none, literal_suffix: none },
+  { dag_name: "Bool",   target_type: "boolean",      default_expr: "false",   is_copy: none, literal_suffix: none },
+  { dag_name: "Unit",   target_type: "void",         default_expr: "undefined", is_copy: none, literal_suffix: none },
+  { dag_name: "String", target_type: "string",       default_expr: "\"\"",    is_copy: none, literal_suffix: none },
+  { dag_name: "Bytes",  target_type: "Uint8Array",   default_expr: "new Uint8Array()", is_copy: none, literal_suffix: none },
+  { dag_name: "Secret", target_type: "string",       default_expr: "\"\"",    is_copy: none, literal_suffix: none },
+  { dag_name: "Json",   target_type: "unknown",      default_expr: "undefined", is_copy: none, literal_suffix: none }
+]
+
+data typescript_algebra_inhabitants: List<InhabitantDecl> = [
+  { algebra: "FreeMonoid",
+    template: "\{0\}[]",
+    arity: 1,
+    identity_expr: "[]",
+    import_path: none,
+    is_copy: none },
+
+  { algebra: "BooleanAlgebra",
+    template: "Set<\{0\}>",
+    arity: 1,
+    identity_expr: "new Set()",
+    import_path: none,
+    is_copy: none },
+
+  { algebra: "PartialFunction",
+    template: "Map<\{0\}, \{1\}>",
+    arity: 2,
+    identity_expr: "new Map()",
+    import_path: none,
+    is_copy: none },
+
+  { algebra: "OrderedRing",
+    template: "number",
+    arity: 0,
+    identity_expr: "0",
+    import_path: none,
+    is_copy: none },
+
+  { algebra: "ApproximateField",
+    template: "number",
+    arity: 0,
+    identity_expr: "0",
+    import_path: none,
+    is_copy: none }
+]
+
+data typescript_optional_template: String = "\{0\} | undefined"
+data typescript_none_expr: String = "undefined"
+data typescript_some_template: String = "\{0\}"
+
+data typescript_callable: CallableRepr = CallableRepr {
+  template: "(\{params\}) => \{return\}",
+  param_separator: ", ",
+  return_separator: " => ",
+  import_path: none
+}
+
+data typescript_cast_syntax: CastSyntax = {
+  template: "\{expr\} as \{type\}",
+  cast_rules: [
+    { from_type: "number", to_type: "number" },
+    { from_type: "number", to_type: "string" },
+    { from_type: "string", to_type: "number" },
+    { from_type: "boolean", to_type: "boolean" },
+    { from_type: "boolean", to_type: "string" }
+  ]
+}
