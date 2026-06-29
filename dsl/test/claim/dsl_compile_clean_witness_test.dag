@@ -4,6 +4,6 @@ import tools.dsl_compile_clean_transport {
   dsl_compile_clean_transport_programs_well_formed
 }
 
-test fn dsl_compile_clean_witnesses() -> Bool {
+test fn dsl_compile_clean_transport_programs_well_formed_holds() -> Bool {
   dsl_compile_clean_transport_programs_well_formed()
 }
