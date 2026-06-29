@@ -1,0 +1,26 @@
+module extdeps.fixture.gist_create_hardcoded_snapshot
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/rest/gists/gists"
+  }
+}
+
+service github.Gist {
+  operation Create {
+    input { description: String, filename: String, content: String, auth_token: Secret }
+    transport rest {
+      method: POST,
+      path: "/gists",
+      body: {
+        description: description,
+        public: false,
+        files: { "snapshot.md": { content: content } }
+      }
+    }
+  }
+}

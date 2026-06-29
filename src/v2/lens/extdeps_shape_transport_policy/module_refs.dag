@@ -73,3 +73,11 @@ data module_source_nickname_literal_local_red_module: QualifiedName = QnCons {
     }
   }
 }
+
+data extdeps_fixture_gist_create_hardcoded_snapshot_module: QualifiedName = QnCons {
+  head: ^extdeps,
+  tail: QnCons {
+    head: ^fixture,
+    tail: QnCons { head: ^gist_create_hardcoded_snapshot, tail: QnEmpty }
+  }
+}

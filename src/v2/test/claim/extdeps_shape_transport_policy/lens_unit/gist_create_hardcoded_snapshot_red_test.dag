@@ -1,0 +1,15 @@
+module v2.test.extdeps_shape_transport_policy.lens_unit.gist_create_hardcoded_snapshot_red
+
+import v2.lens.extdeps_shape_transport_policy {
+  extdeps_live_module_gist_create_files_keyed_by_filename
+}
+import v2.lens.extdeps_shape_transport_policy.module_refs {
+  extdeps_fixture_gist_create_hardcoded_snapshot_module
+}
+import v2.std.logic { Bool }
+
+test fn gist_create_hardcoded_snapshot_is_red_holds() -> Bool {
+  !extdeps_live_module_gist_create_files_keyed_by_filename(
+    module: extdeps_fixture_gist_create_hardcoded_snapshot_module
+  )
+}

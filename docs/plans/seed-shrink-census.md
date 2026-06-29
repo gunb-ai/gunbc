@@ -201,7 +201,7 @@ These v1 modules have **no identified `*_test.dag` witness** (by stem or topic s
 | 1,238 | `source_audit` | 41 | Source-audit / dep-graph witnesses |
 | 733 | `effects` | 36 | Effect-shape / idempotency witnesses |
 | 458 | `resolve_cross_process_cache_test` | 10 | Resolve-cache cross-process witnesses |
-| 364 | `extdeps_shape_transport_policy_lens_test` | 7 | Lens already in `.dag`; needs floor `*_test.dag` consumer |
+| 364 | `extdeps_shape_transport_policy_lens_test` | 7 | **Migrated** — floor `src/v2/test/claim/extdeps_shape_transport_policy/**` (22 witnesses + coverage_domain_equivalence) |
 | 330 | `floor_skip_discovery_host_test` | 9 | Floor-skip discovery witnesses |
 | 296 | `fn_as_value_test` | 10 | Fn-as-value infer witnesses |
 | 274 | `auth_declared_but_unwired_witness_test` | 7 | Auth wiring witnesses |
