@@ -99,7 +99,7 @@ fn nbd_transmission_flag_wire(f: NbdTransmissionFlag) -> Int {
 data nbd_read_only_export_transmission_flags: Int = 3
 
 type NbdExportReply {
-  export_size_bytes: Int
+  export_size: ByteSize
   transmission_flags: Int
 }
 
@@ -202,10 +202,3 @@ data bmcweb_nbd_proxy_ws_upgrade_facts: List<BmcwebNbdProxyWsUpgrade> = [
     redfish_session_auth: true,
   },
 ]
-
-fn bmcweb_nbd_proxy_endpoint_wire_label(variant: BmcwebNbdProxyEndpointVariant) -> NonEmptyStr {
-  match variant {
-    NbdSlotEndpoint => concat("/nbd/", "{", "slot", "}")
-    VmSlotIndexEndpoint => concat("/vm/", "{", "slot", "}", "/", "{", "index", "}")
-  }
-}
