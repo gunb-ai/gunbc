@@ -97,6 +97,8 @@ import v2.std.logic { Bool }
 import v2.std.node { Conj, Node, SyntheticOccurrence, TypeNode }
 import v2.std.witness { Holds, Violates, Witness }
 
+data bash_fold_emit_shell_equivalence_receipt_dissolution_trigger: String = "🟡 dissolve-on: emit_shell_stmt deleted in cutover STEP 2 — bash_fold_emit_shell_equivalence_receipt_holds is a receipt witness until fold cutover"
+
 fn bash_fold_emit_stmt_with_target(stmt: ShellStmt, target: TargetModel) -> Outcome<String> {
   match stmt {
     RawLine { text: _ } =>

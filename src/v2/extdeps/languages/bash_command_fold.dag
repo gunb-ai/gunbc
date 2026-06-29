@@ -141,6 +141,8 @@ data bash_fold_diagnostic_anchor: Node = Node {
   occurrence_id: SyntheticOccurrence
 }
 
+data bash_fold_diagnostic_anchor_dissolution_trigger: String = "🟡 dissolve-on: bash_fold_diagnostic_anchor synthetic placeholder locus (shared across fold reject diagnostics) is replaced by node_locus over the actual ShellWord/ShellStmt/input subtree when fold witnesses gain downstream diagnostic consumers"
+
 fn bash_fold_unsupported_variant_diagnostic(variant: Symbol) -> Diagnostic {
   Diagnostic {
     reason: variant,
