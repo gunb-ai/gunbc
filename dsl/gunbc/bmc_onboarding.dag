@@ -3,10 +3,12 @@ module gunbc.bmc_onboarding
 import std.bmc { BmcEndpoint, Redfish }
 import std.credentials { FactoryLogin, CredentialFlow, Stored }
 import std.os.types { OperatingSystemProduct, UbuntuOs, NobleNumbat2404Lts }
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, Int, List }
+import std.logic { Bool }
 import extdeps.bmc.types { RedfishBootSourceOverrideTarget, BootTargetPxe, RedfishAccountRole, AccountRoleAdministrator }
 import extdeps.bmc.openbmc { openbmc_factory_login }
 import extdeps.boards.asrock_rack { asrock_altrad8ud_redfish_system_id }
+import extdeps.communication.medium { DecodeFidelity, Lossless, Lossy, Medium }
 
 type BmcOnboardingPhase =
     FactoryDefault
@@ -23,6 +25,199 @@ fn bmc_onboarding_next_phase(phase: BmcOnboardingPhase) -> BmcOnboardingPhase? {
   }
 }
 
+fn bmc_phase_chain_from(
+  phase: BmcOnboardingPhase,
+  acc: List<BmcOnboardingPhase>
+) -> List<BmcOnboardingPhase> {
+  let acc2 = acc |> list_push(phase)
+  match bmc_onboarding_next_phase(phase: phase) {
+    Present { value: nxt } => bmc_phase_chain_from(phase: nxt, acc: acc2)
+    Absent => acc2
+  }
+}
+
+data bmc_onboarding_phase_order: List<BmcOnboardingPhase> = bmc_phase_chain_from(phase: FactoryDefault, acc: [])
+
+type BmcCredentialPosture =
+    FactoryPublished
+  | RotatedSecretManaged
+  | KeylessFederated
+
+fn bmc_phase_credential_posture(phase: BmcOnboardingPhase) -> BmcCredentialPosture {
+  match phase {
+    FactoryDefault => FactoryPublished
+    CredentialsRotated => RotatedSecretManaged
+    OsInstalled => RotatedSecretManaged
+    FabricJoined => KeylessFederated
+  }
+}
+
+data bmc_posture_hardening_order: List<BmcCredentialPosture> = [
+  FactoryPublished,
+  RotatedSecretManaged,
+  KeylessFederated
+]
+
+fn bmc_credential_lifecycle() -> List<BmcCredentialPosture> {
+  fold(
+    bmc_onboarding_phase_order,
+    init: [],
+    f: (acc, ph) => acc |> list_push(bmc_phase_credential_posture(phase: ph))
+  )
+}
+
+type BmcPostureDedup {
+  out: List<BmcCredentialPosture>
+  last: BmcCredentialPosture?
+}
+
+fn bmc_distinct_postures(postures: List<BmcCredentialPosture>) -> List<BmcCredentialPosture> {
+  fold(
+    postures,
+    init: BmcPostureDedup { out: [], last: Absent },
+    f: (acc, p) => match acc.last {
+      Absent => BmcPostureDedup { out: acc.out |> list_push(p), last: Present { value: p } }
+      Present { value: lp } =>
+        if (lp == p) { acc } else { BmcPostureDedup { out: acc.out |> list_push(p), last: Present { value: p } } }
+    }
+  ).out
+}
+
+fn bmc_lifecycle_is_monotone_hardening() -> Bool {
+  bmc_distinct_postures(postures: bmc_credential_lifecycle()) == bmc_posture_hardening_order
+}
+
+fn bmc_lifecycle_length() -> Int {
+  bmc_onboarding_phase_order.length()
+}
+
+fn bmc_onboarding_prev_phase(phase: BmcOnboardingPhase) -> BmcOnboardingPhase? {
+  match phase {
+    FactoryDefault => Absent
+    CredentialsRotated => Present { value: FactoryDefault }
+    OsInstalled => Present { value: CredentialsRotated }
+    FabricJoined => Present { value: OsInstalled }
+  }
+}
+
+fn bmc_onboard_to_steady(phase: BmcOnboardingPhase) -> BmcOnboardingPhase {
+  match bmc_onboarding_next_phase(phase: phase) {
+    Present { value: nxt } => bmc_onboard_to_steady(phase: nxt)
+    Absent => phase
+  }
+}
+
+fn bmc_decom_to_factory(phase: BmcOnboardingPhase) -> BmcOnboardingPhase {
+  match bmc_onboarding_prev_phase(phase: phase) {
+    Present { value: prv } => bmc_decom_to_factory(phase: prv)
+    Absent => phase
+  }
+}
+
+type BmcLifecycleState {
+  phase: BmcOnboardingPhase
+  credential: BmcCredentialPosture
+  secret_epoch: Int
+  boot_cleared: Bool
+}
+
+fn bmc_factory_state() -> BmcLifecycleState {
+  BmcLifecycleState {
+    phase: FactoryDefault,
+    credential: FactoryPublished,
+    secret_epoch: 0,
+    boot_cleared: true
+  }
+}
+
+fn bmc_install_step(s: BmcLifecycleState) -> BmcLifecycleState {
+  match bmc_onboarding_next_phase(phase: s.phase) {
+    Present { value: nxt } => BmcLifecycleState {
+      phase: nxt,
+      credential: bmc_phase_credential_posture(phase: nxt),
+      secret_epoch: if (nxt == CredentialsRotated) { s.secret_epoch + 1 } else { s.secret_epoch },
+      boot_cleared: if (nxt == OsInstalled) { false } else { s.boot_cleared }
+    }
+    Absent => s
+  }
+}
+
+fn bmc_decom_step(s: BmcLifecycleState) -> BmcLifecycleState {
+  match bmc_onboarding_prev_phase(phase: s.phase) {
+    Present { value: prv } => BmcLifecycleState {
+      phase: prv,
+      credential: bmc_phase_credential_posture(phase: prv),
+      secret_epoch: if (s.phase == CredentialsRotated) { s.secret_epoch + 1 } else { s.secret_epoch },
+      boot_cleared: if (s.phase == OsInstalled) { true } else { s.boot_cleared }
+    }
+    Absent => s
+  }
+}
+
+type BmcRecoverableInvariant {
+  phase: BmcOnboardingPhase
+  boot_cleared: Bool
+}
+
+fn bmc_recoverable_quotient(s: BmcLifecycleState) -> BmcRecoverableInvariant {
+  BmcRecoverableInvariant {
+    phase: s.phase,
+    boot_cleared: s.boot_cleared
+  }
+}
+
+fn bmc_transition_roundtrips_on_quotient(s: BmcLifecycleState) -> Bool {
+  let recovered = bmc_recoverable_quotient(s: bmc_decom_step(s: bmc_install_step(s: s)))
+  let original = bmc_recoverable_quotient(s: s)
+  recovered == original
+}
+
+fn bmc_full_state_is_lossy_after_roundtrip(s: BmcLifecycleState) -> Bool {
+  let recovered = bmc_decom_step(s: bmc_install_step(s: s))
+  !(recovered == s)
+}
+
+fn bmc_decom_step_fidelity(into_phase: BmcOnboardingPhase) -> DecodeFidelity {
+  match into_phase {
+    FactoryDefault => Lossless
+    CredentialsRotated => Lossy
+    OsInstalled => Lossless
+    FabricJoined => Lossless
+  }
+}
+
+fn bmc_lifecycle_inverse_fidelity() -> DecodeFidelity {
+  fold(
+    bmc_onboarding_phase_order,
+    init: Lossless,
+    f: (acc, ph) => match acc {
+      Lossy => Lossy
+      Lossless => bmc_decom_step_fidelity(into_phase: ph)
+    }
+  )
+}
+
+fn bmc_lifecycle_roundtrip(s: BmcLifecycleState) -> Medium<BmcRecoverableInvariant> {
+  Medium {
+    carried: bmc_recoverable_quotient(s: bmc_decom_to_factory_state(s: bmc_onboard_to_steady_state(s: s))),
+    fidelity: bmc_lifecycle_inverse_fidelity()
+  }
+}
+
+fn bmc_onboard_to_steady_state(s: BmcLifecycleState) -> BmcLifecycleState {
+  match bmc_onboarding_next_phase(phase: s.phase) {
+    Present { value: _ } => bmc_onboard_to_steady_state(s: bmc_install_step(s: s))
+    Absent => s
+  }
+}
+
+fn bmc_decom_to_factory_state(s: BmcLifecycleState) -> BmcLifecycleState {
+  match bmc_onboarding_prev_phase(phase: s.phase) {
+    Present { value: _ } => bmc_decom_to_factory_state(s: bmc_decom_step(s: s))
+    Absent => s
+  }
+}
+
 type BmcOnboardingPlan {
   bmc: BmcEndpoint
   redfish_system_id: NonEmptyStr
@@ -32,6 +227,14 @@ type BmcOnboardingPlan {
   os_target: OperatingSystemProduct
   os_install_boot_target: RedfishBootSourceOverrideTarget
   start_phase: BmcOnboardingPhase
+}
+
+fn bmc_plan_steady_state_phase(plan: BmcOnboardingPlan) -> BmcOnboardingPhase {
+  bmc_onboard_to_steady(phase: plan.start_phase)
+}
+
+fn bmc_plan_steady_state_posture(plan: BmcOnboardingPlan) -> BmcCredentialPosture {
+  bmc_phase_credential_posture(phase: bmc_plan_steady_state_phase(plan: plan))
 }
 
 data new_altra_onboarding_plan: BmcOnboardingPlan = BmcOnboardingPlan {

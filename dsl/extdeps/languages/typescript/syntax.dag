@@ -1,0 +1,76 @@
+module extdeps.languages.typescript.syntax
+
+import std.syntax {
+  ItemForm, ItemFormKind, FuncForm, StructForm, EnumForm, TypeAliasForm, ModuleForm, OtherForm,
+  BodyKind, BlockBody, TypeBody, NoBody,
+  OperatorSpec,
+  BinOp, Add, Sub, Mul, Div, Mod,
+  Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce,
+  LiteralValue, LitBool
+}
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.typescriptlang.org/docs/handbook/2/basic-types.html"
+  }
+}
+
+data ts_item_forms: List<ItemForm> = [
+  ItemForm { kind: FuncForm, keyword: "function", has_type_params: true, has_params: true,
+    has_return_type: true, return_required: false,
+    has_uses: false, body_kind: BlockBody },
+  ItemForm { kind: StructForm, keyword: "interface", has_type_params: true, has_params: false,
+    has_return_type: false, return_required: false,
+    has_uses: false, body_kind: TypeBody },
+  ItemForm { kind: EnumForm, keyword: "enum", has_type_params: false, has_params: false,
+    has_return_type: false, return_required: false,
+    has_uses: false, body_kind: TypeBody },
+  ItemForm { kind: TypeAliasForm, keyword: "type", has_type_params: true, has_params: false,
+    has_return_type: false, return_required: false,
+    has_uses: false, body_kind: NoBody },
+  ItemForm { kind: ModuleForm, keyword: "namespace", has_type_params: false, has_params: false,
+    has_return_type: false, return_required: false,
+    has_uses: false, body_kind: BlockBody }
+]
+
+data ts_keyword_literals: Map<String, LiteralValue> = {
+  "true": LitBool { value: true },
+  "false": LitBool { value: false }
+}
+
+data ts_keyword_set: Map<String, Bool> = {
+  "function": true, "interface": true, "enum": true, "type": true,
+  "namespace": true, "const": true, "let": true, "var": true,
+  "class": true, "extends": true, "implements": true, "import": true,
+  "export": true, "return": true, "if": true, "else": true,
+  "for": true, "while": true, "do": true, "break": true,
+  "continue": true, "switch": true, "case": true, "default": true,
+  "throw": true, "try": true, "catch": true, "finally": true,
+  "new": true, "delete": true, "typeof": true, "instanceof": true,
+  "in": true, "of": true, "async": true, "await": true,
+  "true": true, "false": true, "null": true, "undefined": true,
+  "void": true, "never": true, "any": true, "unknown": true,
+  "readonly": true, "abstract": true, "static": true, "override": true,
+  "private": true, "protected": true, "public": true, "declare": true,
+  "as": true, "from": true, "keyof": true, "is": true
+}
+
+data ts_operators: List<OperatorSpec> = [
+  OperatorSpec { symbol: "??",  left_bp: 3,  right_bp: 4,  binop: NullCoalesce, algebra_field: none },
+  OperatorSpec { symbol: "||",  left_bp: 5,  right_bp: 6,  binop: Or,           algebra_field: none },
+  OperatorSpec { symbol: "&&",  left_bp: 7,  right_bp: 8,  binop: And,          algebra_field: none },
+  OperatorSpec { symbol: "===", left_bp: 9,  right_bp: 10, binop: Eq,           algebra_field: none },
+  OperatorSpec { symbol: "!==", left_bp: 9,  right_bp: 10, binop: Ne,           algebra_field: none },
+  OperatorSpec { symbol: "<",   left_bp: 11, right_bp: 12, binop: Lt,           algebra_field: none },
+  OperatorSpec { symbol: ">",   left_bp: 11, right_bp: 12, binop: Gt,           algebra_field: none },
+  OperatorSpec { symbol: "<=",  left_bp: 11, right_bp: 12, binop: Le,           algebra_field: none },
+  OperatorSpec { symbol: ">=",  left_bp: 11, right_bp: 12, binop: Ge,           algebra_field: none },
+  OperatorSpec { symbol: "+",   left_bp: 13, right_bp: 14, binop: Add,          algebra_field: none },
+  OperatorSpec { symbol: "-",   left_bp: 13, right_bp: 14, binop: Sub,          algebra_field: none },
+  OperatorSpec { symbol: "*",   left_bp: 15, right_bp: 16, binop: Mul,          algebra_field: none },
+  OperatorSpec { symbol: "/",   left_bp: 15, right_bp: 16, binop: Div,          algebra_field: none },
+  OperatorSpec { symbol: "%",   left_bp: 15, right_bp: 16, binop: Mod,          algebra_field: none }
+]

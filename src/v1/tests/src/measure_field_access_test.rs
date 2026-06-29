@@ -114,6 +114,34 @@ fn get_tag(w: IntTagged) -> Nat {
     );
 }
 
+/// G3 (A) stale witness: C=B=A with rebrand on the *intermediate* hop (B). Post-#5925
+/// main must resolve field access without the lookup:188 self-ref-guard mis-fire that
+/// would stop chain-following before reaching the struct. Distinct from G3 (B)
+/// (param-dependent multihop type-arg drop, closed by #5925).
+#[test]
+fn g3_branded_intermediate_alias_chain_field_access() {
+    let src = r#"
+module m
+
+type A {
+  val: Int
+}
+
+type B = A where brand("B")
+type C = B
+
+fn get(x: C) -> Int {
+  x.val
+}
+"#;
+    let msgs = hard_diagnostic_messages(&compile_dag_resolved(src));
+    assert!(
+        msgs.is_empty(),
+        "G3 (A): branded intermediate hop in C=B=A chain should resolve field access, got: \
+         {msgs:?}"
+    );
+}
+
 #[test]
 fn g3_repro_multihop_alias_field_access() {
     let src = r#"
