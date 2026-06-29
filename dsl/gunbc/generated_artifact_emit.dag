@@ -4,7 +4,8 @@ module gunbc.generated_artifact_emit
 import gunbc.generated_artifact {
   GeneratedArtifact,
   CiYamlArtifact, GitignoreArtifact, RoadmapArtifact, DesignArtifact,
-  RunnerDeployArtifact, FleetConvergeArtifact, AutoinstallUserDataArtifact, ProxyDhcpDnsmasqArtifact, PlanArtifact,
+  RunnerDeployArtifact, FleetConvergeArtifact, GithooksPrePushArtifact,
+  AutoinstallUserDataArtifact, ProxyDhcpDnsmasqArtifact, PlanArtifact,
   artifact_path
 }
 import gunbc.ci_yaml_emit { expected_ci_yml }
@@ -14,6 +15,7 @@ import gunbc.roadmap_authority { expected_roadmap_md }
 import gunbc.design_document { expected_design_md }
 import gunbc.runner_deploy_emit { expected_runner_deploy_manifest }
 import gunbc.fleet_converge_emit { expected_fleet_converge_sh }
+import gunbc.githooks_pre_push_emit { expected_githooks_pre_push_sh }
 import gunbc.os_install_emit { autoinstall_user_data }
 import gunbc.install_server_emit { install_server_dnsmasq_conf }
 import gunbc.plan { expected_plan_md }
@@ -24,6 +26,7 @@ fn artifact_generate(a: GeneratedArtifact) -> String {
     GitignoreArtifact => expected_gitignore()
     RoadmapArtifact => expected_roadmap_md()
     DesignArtifact => expected_design_md()
+    GithooksPrePushArtifact => expected_githooks_pre_push_sh()
     RunnerDeployArtifact => expected_runner_deploy_manifest()
     FleetConvergeArtifact => expected_fleet_converge_sh()
     AutoinstallUserDataArtifact { spec } => autoinstall_user_data(payload: spec.payload)
@@ -38,6 +41,7 @@ fn artifact_extra_valid(a: GeneratedArtifact) -> Bool {
     GitignoreArtifact => true
     RoadmapArtifact => true
     DesignArtifact => true
+    GithooksPrePushArtifact => true
     RunnerDeployArtifact => true
     FleetConvergeArtifact => true
     AutoinstallUserDataArtifact { spec: _ } => true
