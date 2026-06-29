@@ -1,0 +1,1157 @@
+module v2.test.claim.bash_command_fold
+
+import extdeps.languages.bash.program {
+  AndOr,
+  AndThen,
+  Assign,
+  Command,
+  EnvPrefixed,
+  Exit,
+  Heredoc,
+  If,
+  Lit,
+  Negation,
+  OrElse,
+  Pipe,
+  Redir,
+  RedirToFile,
+  RawLine,
+  ShellStmt,
+  ShellWord,
+  StderrToNull,
+  StdoutAndStderrToNull,
+  StdoutToStderr,
+  Subshell,
+  VarRef,
+  WithRedir,
+  serialize_stmt
+}
+import v2.compiler.emit { emit }
+import v2.compiler.emit_shell { emit_shell_stmt }
+import v2.compiler.infer { InferredFacts, InferredTree }
+import v2.compiler.translate { target_serialize_source_from_model }
+import v2.extdeps.languages.bash {
+  bash_redir_stderr_null_emitted,
+  bash_redir_stderr_null_target_model,
+  bash_redir_stdout_and_stderr_null_emitted,
+  bash_redir_stdout_and_stderr_null_target_model,
+  bash_redir_stdout_to_stderr_emitted,
+  bash_redir_stdout_to_stderr_target_model,
+  bash_redir_to_file_emitted,
+  bash_redir_to_file_target_model,
+  bash_stmt_env_prefixed_emitted,
+  bash_stmt_heredoc_emitted,
+  bash_stmt_negation_emitted,
+  bash_stmt_subshell_emitted,
+  bash_stmt_subshell_target_model,
+  bash_stmt_with_redir_emitted,
+  bash_word_pass_emitted
+}
+import v2.extdeps.languages.bash_command_fold {
+  bash_fold_and_then_true_false_emitted,
+  bash_fold_assign_wrong_target_model_witness,
+  bash_fold_cmd_echo_hi_emitted,
+  bash_fold_cmd_true_emitted,
+  bash_fold_cmd_true_wrong_emitted,
+  bash_fold_cmd_true_wrong_target_model_witness,
+  bash_fold_cmd_var_x_emitted,
+  bash_fold_env_prefixed_target_model,
+  bash_fold_env_prefixed_wrong_target_model_witness,
+  bash_fold_exit_wrong_target_model_witness,
+  bash_fold_heredoc_target_model,
+  bash_fold_heredoc_wrong_target_model_witness,
+  bash_fold_negation_target_model,
+  bash_fold_negation_wrong_target_model_witness,
+  bash_fold_pipe_echo_hi_wc_emitted,
+  bash_fold_raw_line_target_model,
+  bash_fold_raw_line_wrong_target_model_witness,
+  bash_fold_relation_row_witness,
+  bash_fold_stmt_bundle_witness,
+  bash_fold_stmt_emitted_witness,
+  bash_fold_target_model_for_stmt_witness,
+  bash_fold_with_redir_target_model,
+  bash_fold_with_redir_wrong_target_model_witness
+}
+import v2.std.compilers.target_model { TargetModel }
+import v2.std.algebra {
+  HeadAbsent,
+  HeadFound,
+  TailAbsent,
+  TailFound,
+  list_head,
+  list_tail
+}
+import v2.std.collection { Map }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  None,
+  Outcome,
+  Rejected,
+  Some,
+  Unavailable,
+  node_locus
+}
+import v2.std.logic { Bool }
+import v2.std.node { Conj, Node, SyntheticOccurrence, TypeNode }
+import v2.std.witness { Holds, Violates, Witness }
+
+fn bash_fold_emit_stmt_with_target(stmt: ShellStmt, target: TargetModel) -> Outcome<String> {
+  match stmt {
+    RawLine { text: _ } =>
+      bash_fold_emit_from_emitted(
+        emitted: bash_word_pass_emitted,
+        target: target
+      )
+    WithRedir { stmt: _, redir: _ } =>
+      bash_fold_emit_from_emitted(
+        emitted: bash_stmt_with_redir_emitted,
+        target: target
+      )
+    Heredoc { path: _, delimiter: _, body: _ } =>
+      bash_fold_emit_from_emitted(
+        emitted: bash_stmt_heredoc_emitted,
+        target: target
+      )
+    Negation { stmt: _ } =>
+      bash_fold_emit_from_emitted(
+        emitted: bash_stmt_negation_emitted,
+        target: target
+      )
+    EnvPrefixed { name: _, value: _, command: _ } =>
+      bash_fold_emit_from_emitted(
+        emitted: bash_stmt_env_prefixed_emitted,
+        target: target
+      )
+    _ => bash_fold_fold_serialize(stmt: stmt, target: target)
+  }
+}
+
+fn bash_fold_facts_lookup(key: Node) -> Witness<InferredFacts> {
+  Violates {
+    diagnostic: Diagnostic {
+      reason: ^bash_fold_facts_unexpected_consultation,
+      at: node_locus(node: key),
+      correction: Unavailable { reason: ExternalContractUnknown }
+    }
+  }
+}
+
+fn bash_fold_emit_from_emitted(emitted: Node, target: TargetModel) -> Outcome<String> {
+  let tree = InferredTree {
+    root: emitted,
+    facts: Map { lookup: bash_fold_facts_lookup }
+  }
+  match emit(tree: tree, target: target) {
+    Accepted { value: source, diagnostics: d } =>
+      match d {
+        None => Accepted { value: source.carried, diagnostics: None }
+        Some { diagnostics: r } => Rejected { diagnostics: r }
+      }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+fn bash_fold_emit_word_spelling(w: ShellWord) -> Outcome<String> {
+  bash_fold_emit_inner_stmt_spelling(
+    stmt: Command { words: [w] }
+  )
+}
+
+fn bash_fold_emit_redir_spelling(r: Redir) -> Outcome<String> {
+  match r {
+    StderrToNull =>
+      bash_fold_emit_from_emitted(
+        emitted: bash_redir_stderr_null_emitted,
+        target: bash_redir_stderr_null_target_model()
+      )
+    StdoutAndStderrToNull =>
+      bash_fold_emit_from_emitted(
+        emitted: bash_redir_stdout_and_stderr_null_emitted,
+        target: bash_redir_stdout_and_stderr_null_target_model()
+      )
+    StdoutToStderr =>
+      bash_fold_emit_from_emitted(
+        emitted: bash_redir_stdout_to_stderr_emitted,
+        target: bash_redir_stdout_to_stderr_target_model()
+      )
+    RedirToFile { path: p } =>
+      match bash_fold_emit_word_spelling(w: p) {
+        Accepted { value: path_spelling, diagnostics: d } =>
+          bash_fold_emit_from_emitted(
+            emitted: bash_redir_to_file_emitted,
+            target: bash_redir_to_file_target_model(path: path_spelling)
+          )
+        Rejected { diagnostics: rd } => Rejected { diagnostics: rd }
+      }
+  }
+}
+
+fn bash_fold_stmt_list_has_delegated(stmts: List<ShellStmt>) -> Bool {
+  match list_head(xs: stmts) {
+    HeadAbsent => false
+    HeadFound { value: s } =>
+      match s {
+        WithRedir { stmt: _, redir: _ } => true
+        Heredoc { path: _, delimiter: _, body: _ } => true
+        RawLine { text: _ } => true
+        Negation { stmt: _ } => true
+        EnvPrefixed { name: _, value: _, command: _ } => true
+        Command { words: _ } =>
+          match list_tail(xs: stmts) {
+            TailFound { tail: t } => bash_fold_stmt_list_has_delegated(stmts: t)
+            TailAbsent => false
+          }
+        Assign { name: _, value: _ } =>
+          match list_tail(xs: stmts) {
+            TailFound { tail: t } => bash_fold_stmt_list_has_delegated(stmts: t)
+            TailAbsent => false
+          }
+        If { cond: _, then: _ } =>
+          match list_tail(xs: stmts) {
+            TailFound { tail: t } => bash_fold_stmt_list_has_delegated(stmts: t)
+            TailAbsent => false
+          }
+        Subshell { body: _ } =>
+          match list_tail(xs: stmts) {
+            TailFound { tail: t } => bash_fold_stmt_list_has_delegated(stmts: t)
+            TailAbsent => false
+          }
+        BraceGroup { body: _ } =>
+          match list_tail(xs: stmts) {
+            TailFound { tail: t } => bash_fold_stmt_list_has_delegated(stmts: t)
+            TailAbsent => false
+          }
+        AndOr { left: _, op: _, right: _ } =>
+          match list_tail(xs: stmts) {
+            TailFound { tail: t } => bash_fold_stmt_list_has_delegated(stmts: t)
+            TailAbsent => false
+          }
+        Pipe { left: _, right: _ } =>
+          match list_tail(xs: stmts) {
+            TailFound { tail: t } => bash_fold_stmt_list_has_delegated(stmts: t)
+            TailAbsent => false
+          }
+        Exit { code: _ } =>
+          match list_tail(xs: stmts) {
+            TailFound { tail: t } => bash_fold_stmt_list_has_delegated(stmts: t)
+            TailAbsent => false
+          }
+      }
+  }
+}
+
+fn bash_fold_emit_stmts_semi_step(acc: String, first: Bool, part: String) -> String {
+  if first { part } else { concat(acc, concat("; ", part)) }
+}
+
+fn bash_fold_emit_stmts_semi_spelling_from(
+  acc: String,
+  first: Bool,
+  rest: List<ShellStmt>
+) -> Outcome<String> {
+  match list_head(xs: rest) {
+    HeadAbsent => Accepted { value: acc, diagnostics: None }
+    HeadFound { value: s } =>
+      match bash_fold_emit_inner_stmt_spelling(stmt: s) {
+        Accepted { value: part, diagnostics: d } =>
+          let next = bash_fold_emit_stmts_semi_step(acc: acc, first: first, part: part)
+          match list_tail(xs: rest) {
+            TailFound { tail: t } =>
+              bash_fold_emit_stmts_semi_spelling_from(
+                acc: next,
+                first: false,
+                rest: t
+              )
+            TailAbsent => Accepted { value: next, diagnostics: None }
+          }
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      }
+  }
+}
+
+fn bash_fold_emit_stmts_semi_spelling(stmts: List<ShellStmt>) -> Outcome<String> {
+  bash_fold_emit_stmts_semi_spelling_from(acc: "", first: true, rest: stmts)
+}
+
+fn bash_fold_emit_inner_stmt_spelling(stmt: ShellStmt) -> Outcome<String> {
+  match stmt {
+    Subshell { body: b } =>
+      if bash_fold_stmt_list_has_delegated(stmts: b) {
+        match bash_fold_emit_stmts_semi_spelling(stmts: b) {
+          Accepted { value: body_spelling, diagnostics: d } =>
+            Accepted {
+              value: concat("(", concat(body_spelling, ")")),
+              diagnostics: None
+            }
+          Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        }
+      } else {
+        match bash_fold_target_model_for_stmt_witness(stmt: stmt) {
+          Holds { value: target } =>
+            bash_fold_fold_serialize(stmt: stmt, target: target)
+          Violates { diagnostic: d } =>
+            Rejected { diagnostics: Some { diagnostics: [d] } }
+        }
+      }
+    _ =>
+      if bash_fold_stmt_needs_delegated_fold(stmt: stmt) {
+        bash_fold_delegated_fold_serialize(stmt: stmt)
+      } else {
+        match bash_fold_target_model_for_stmt_witness(stmt: stmt) {
+          Holds { value: target } =>
+            bash_fold_fold_serialize(stmt: stmt, target: target)
+          Violates { diagnostic: d } =>
+            Rejected { diagnostics: Some { diagnostics: [d] } }
+        }
+      }
+  }
+}
+
+fn bash_fold_delegated_fold_serialize(stmt: ShellStmt) -> Outcome<String> {
+  match stmt {
+    RawLine { text: t } =>
+      bash_fold_emit_from_emitted(
+        emitted: bash_word_pass_emitted,
+        target: bash_fold_raw_line_target_model(text: t)
+      )
+    WithRedir { stmt: st, redir: rd } =>
+      match bash_fold_emit_inner_stmt_spelling(stmt: st) {
+        Accepted { value: stmt_spelling, diagnostics: d } =>
+          match bash_fold_emit_redir_spelling(r: rd) {
+            Accepted { value: redir_spelling, diagnostics: rd2 } =>
+              bash_fold_emit_from_emitted(
+                emitted: bash_stmt_with_redir_emitted,
+                target: bash_fold_with_redir_target_model(
+                  stmt_spelling: stmt_spelling,
+                  redir_spelling: redir_spelling
+                )
+              )
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+          }
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      }
+    Heredoc { path: p, delimiter: delim, body: b } =>
+      match bash_fold_emit_word_spelling(w: p) {
+        Accepted { value: path_spelling, diagnostics: dg } =>
+          bash_fold_emit_from_emitted(
+            emitted: bash_stmt_heredoc_emitted,
+            target: bash_fold_heredoc_target_model(
+              path_spelling: path_spelling,
+              delimiter: delim,
+              body: b
+            )
+          )
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      }
+    Negation { stmt: inner } =>
+      match bash_fold_emit_inner_stmt_spelling(stmt: inner) {
+        Accepted { value: inner_spelling, diagnostics: d } =>
+          bash_fold_emit_from_emitted(
+            emitted: bash_stmt_negation_emitted,
+            target: bash_fold_negation_target_model(inner_spelling: inner_spelling)
+          )
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      }
+    EnvPrefixed { name: n, value: v, command: c } =>
+      match bash_fold_emit_word_spelling(w: v) {
+        Accepted { value: value_spelling, diagnostics: d } =>
+          match bash_fold_emit_inner_stmt_spelling(stmt: c) {
+            Accepted { value: command_spelling, diagnostics: dc } =>
+              bash_fold_emit_from_emitted(
+                emitted: bash_stmt_env_prefixed_emitted,
+                target: bash_fold_env_prefixed_target_model(
+                  name: n,
+                  value_spelling: value_spelling,
+                  command_spelling: command_spelling
+                )
+              )
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+          }
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      }
+    _ =>
+      Rejected {
+        diagnostics: Some {
+          diagnostics: [
+            Diagnostic {
+              reason: ^bash_fold_delegated_fold_unexpected_stmt,
+              at: node_locus(node: Node {
+                kind: TypeNode { connective: Conj },
+                children: [],
+                occurrence_id: SyntheticOccurrence
+              }),
+              correction: Unavailable { reason: ExternalContractUnknown }
+            }
+          ]
+        }
+      }
+  }
+}
+
+fn bash_fold_fold_serialize(stmt: ShellStmt, target: TargetModel) -> Outcome<String> {
+  match bash_fold_stmt_emitted_witness(stmt: stmt) {
+    Holds { value: emitted } =>
+      let tree = InferredTree {
+        root: emitted,
+        facts: Map { lookup: bash_fold_facts_lookup }
+      }
+      match emit(tree: tree, target: target) {
+        Accepted { value: source, diagnostics: d } =>
+          match d {
+            None => Accepted { value: source.carried, diagnostics: None }
+            Some { diagnostics: r } => Rejected { diagnostics: r }
+          }
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      }
+    Violates { diagnostic: d } => Rejected { diagnostics: Some { diagnostics: [d] } }
+  }
+}
+
+fn bash_fold_fold_serialize_stmt(stmt: ShellStmt) -> Outcome<String> {
+  match stmt {
+    Subshell { body: b } =>
+      if bash_fold_stmt_list_has_delegated(stmts: b) {
+        match bash_fold_emit_stmts_semi_spelling(stmts: b) {
+          Accepted { value: body_spelling, diagnostics: d } =>
+            match bash_fold_emit_from_emitted(
+              emitted: bash_stmt_subshell_emitted,
+              target: bash_stmt_subshell_target_model(body: body_spelling)
+            ) {
+              Accepted { value: folded, diagnostics: fd } =>
+                match fd {
+                  None => Accepted { value: folded, diagnostics: None }
+                  Some { diagnostics: r } => Rejected { diagnostics: r }
+                }
+              Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            }
+          Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        }
+      } else {
+        match bash_fold_target_model_for_stmt_witness(stmt: stmt) {
+          Holds { value: target } =>
+            bash_fold_fold_serialize(stmt: stmt, target: target)
+          Violates { diagnostic: d } =>
+            Rejected { diagnostics: Some { diagnostics: [d] } }
+        }
+      }
+    _ =>
+      if bash_fold_stmt_needs_delegated_fold(stmt: stmt) {
+        bash_fold_delegated_fold_serialize(stmt: stmt)
+      } else {
+        match bash_fold_target_model_for_stmt_witness(stmt: stmt) {
+          Holds { value: target } =>
+            bash_fold_fold_serialize(stmt: stmt, target: target)
+          Violates { diagnostic: d } =>
+            Rejected { diagnostics: Some { diagnostics: [d] } }
+        }
+      }
+  }
+}
+
+fn bash_fold_fold_matches_oracle(stmt: ShellStmt) -> Bool {
+  match bash_fold_fold_serialize_stmt(stmt: stmt) {
+    Accepted { value: folded, diagnostics: _ } => folded == serialize_stmt(s: stmt)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn bash_fold_fold_matches_emit_shell_stmt(stmt: ShellStmt) -> Bool {
+  match bash_fold_fold_serialize_stmt(stmt: stmt) {
+    Accepted { value: fold_carried, diagnostics: _ } =>
+      match emit_shell_stmt(s: stmt) {
+        Accepted { value: shell_src, diagnostics: d } =>
+          (shell_src.carried == fold_carried) && (d == None)
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn bash_fold_relation_row_true_witness_holds() -> Bool {
+  match bash_fold_relation_row_witness(
+    emitted: bash_fold_cmd_true_emitted,
+    lhs: ^bash_production_fold_command
+  ) {
+    Holds { value: _ } => true
+    Violates { diagnostic: _ } => false
+  }
+}
+
+fn bash_fold_command_single_lit_true_holds() -> Bool {
+  bash_fold_fold_matches_oracle(
+    stmt: Command { words: [Lit { text: "true" }] }
+  )
+}
+
+fn bash_fold_command_multi_lit_echo_hi_holds() -> Bool {
+  bash_fold_fold_matches_oracle(
+    stmt: Command { words: [Lit { text: "echo" }, Lit { text: "hi" }] }
+  )
+}
+
+fn bash_fold_command_var_ref_x_holds() -> Bool {
+  bash_fold_fold_matches_oracle(
+    stmt: Command { words: [VarRef { name: "X" }] }
+  )
+}
+
+fn bash_fold_command_arbitrary_grep_triple_holds() -> Bool {
+  bash_fold_fold_matches_oracle(
+    stmt: Command {
+      words: [
+        Lit { text: "grep" },
+        Lit { text: "-rn" },
+        Lit { text: "foo_bar.baz" }
+      ]
+    }
+  )
+}
+
+fn bash_fold_command_arbitrary_var_home_holds() -> Bool {
+  bash_fold_fold_matches_oracle(
+    stmt: Command { words: [VarRef { name: "HOME" }] }
+  )
+}
+
+fn bash_fold_command_arbitrary_lit_quote_escape_holds() -> Bool {
+  bash_fold_fold_matches_oracle(
+    stmt: Command { words: [Lit { text: "a'b" }] }
+  )
+}
+
+fn bash_fold_wrong_production_rejects_oracle_holds() -> Bool {
+  let stmt = Command { words: [Lit { text: "true" }] }
+  match bash_fold_cmd_true_wrong_target_model_witness() {
+    Holds { value: target } =>
+      match bash_fold_fold_serialize(stmt: stmt, target: target) {
+        Accepted { value: folded, diagnostics: _ } => folded != serialize_stmt(s: stmt)
+        Rejected { diagnostics: _ } => true
+      }
+    Violates { diagnostic: _ } => false
+  }
+}
+
+fn bash_fold_direct_serialize_matches_oracle(emitted: Node, target: TargetModel, stmt: ShellStmt) -> Bool {
+  match target_serialize_source_from_model(target: target, emitted: emitted) {
+    Accepted { value: source, diagnostics: d } =>
+      (source.carried == serialize_stmt(s: stmt)) && (d == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn bash_fold_direct_serialize_single_lit_true_holds() -> Bool {
+  let stmt = Command { words: [Lit { text: "true" }] }
+  match bash_fold_target_model_for_stmt_witness(stmt: stmt) {
+    Holds { value: target } =>
+      bash_fold_direct_serialize_matches_oracle(
+        emitted: bash_fold_cmd_true_emitted,
+        target: target,
+        stmt: stmt
+      )
+    Violates { diagnostic: _ } => false
+  }
+}
+
+fn bash_fold_direct_serialize_multi_lit_echo_hi_holds() -> Bool {
+  let stmt = Command { words: [Lit { text: "echo" }, Lit { text: "hi" }] }
+  match bash_fold_target_model_for_stmt_witness(stmt: stmt) {
+    Holds { value: target } =>
+      bash_fold_direct_serialize_matches_oracle(
+        emitted: bash_fold_cmd_echo_hi_emitted,
+        target: target,
+        stmt: stmt
+      )
+    Violates { diagnostic: _ } => false
+  }
+}
+
+fn bash_fold_direct_serialize_var_ref_x_holds() -> Bool {
+  let stmt = Command { words: [VarRef { name: "X" }] }
+  match bash_fold_target_model_for_stmt_witness(stmt: stmt) {
+    Holds { value: target } =>
+      bash_fold_direct_serialize_matches_oracle(
+        emitted: bash_fold_cmd_var_x_emitted,
+        target: target,
+        stmt: stmt
+      )
+    Violates { diagnostic: _ } => false
+  }
+}
+
+fn bash_fold_emitted_tree_differs_on_wrong_fixture_holds() -> Bool {
+  bash_fold_cmd_true_emitted != bash_fold_cmd_true_wrong_emitted
+}
+
+fn bash_fold_wrong_production_mismatch_holds(
+  stmt: ShellStmt,
+  wrong_target_witness: Witness<TargetModel>
+) -> Bool {
+  match wrong_target_witness {
+    Holds { value: target } =>
+      match bash_fold_emit_stmt_with_target(stmt: stmt, target: target) {
+        Accepted { value: folded, diagnostics: _ } => folded != serialize_stmt(s: stmt)
+        Rejected { diagnostics: _ } => true
+      }
+    Violates { diagnostic: _ } => false
+  }
+}
+
+fn bash_fold_exit_code_42_holds() -> Bool {
+  bash_fold_fold_matches_oracle(stmt: Exit { code: 42 })
+}
+
+fn bash_fold_exit_code_0_holds() -> Bool {
+  bash_fold_fold_matches_oracle(stmt: Exit { code: 0 })
+}
+
+fn bash_fold_exit_wrong_production_rejects_oracle_holds() -> Bool {
+  bash_fold_wrong_production_mismatch_holds(
+    stmt: Exit { code: 42 },
+    wrong_target_witness: bash_fold_exit_wrong_target_model_witness()
+  )
+}
+
+fn bash_fold_assign_lit_foo_bar_holds() -> Bool {
+  bash_fold_fold_matches_oracle(
+    stmt: Assign { name: "FOO", value: Lit { text: "bar" } }
+  )
+}
+
+fn bash_fold_assign_var_x_home_holds() -> Bool {
+  bash_fold_fold_matches_oracle(
+    stmt: Assign { name: "X", value: VarRef { name: "HOME" } }
+  )
+}
+
+fn bash_fold_assign_lit_quote_escape_holds() -> Bool {
+  bash_fold_fold_matches_oracle(
+    stmt: Assign { name: "VAR", value: Lit { text: "a'b" } }
+  )
+}
+
+fn bash_fold_assign_wrong_production_rejects_oracle_holds() -> Bool {
+  bash_fold_wrong_production_mismatch_holds(
+    stmt: Assign { name: "FOO", value: Lit { text: "bar" } },
+    wrong_target_witness: bash_fold_assign_wrong_target_model_witness()
+  )
+}
+
+fn bash_fold_cmd_true_stmt() -> ShellStmt {
+  Command { words: [Lit { text: "true" }] }
+}
+
+fn bash_fold_cmd_false_stmt() -> ShellStmt {
+  Command { words: [Lit { text: "false" }] }
+}
+
+fn bash_fold_and_then_true_false_holds() -> Bool {
+  bash_fold_fold_matches_oracle(
+    stmt: AndOr {
+      left: bash_fold_cmd_true_stmt(),
+      op: AndThen,
+      right: bash_fold_cmd_false_stmt()
+    }
+  )
+}
+
+fn bash_fold_or_else_true_false_holds() -> Bool {
+  bash_fold_fold_matches_oracle(
+    stmt: AndOr {
+      left: bash_fold_cmd_true_stmt(),
+      op: OrElse,
+      right: bash_fold_cmd_false_stmt()
+    }
+  )
+}
+
+fn bash_fold_pipe_echo_hi_wc_holds() -> Bool {
+  bash_fold_fold_matches_oracle(
+    stmt: Pipe {
+      left: Command { words: [Lit { text: "echo" }, Lit { text: "hi" }] },
+      right: Command { words: [Lit { text: "wc" }, Lit { text: "-c" }] }
+    }
+  )
+}
+
+fn bash_fold_and_then_wrong_production_rejects_oracle_holds() -> Bool {
+  match bash_fold_relation_row_witness(
+    emitted: bash_fold_and_then_true_false_emitted,
+    lhs: ^bash_production_fold_or_else
+  ) {
+    Holds { value: _ } => false
+    Violates { diagnostic: _ } => true
+  }
+}
+
+fn bash_fold_pipe_wrong_production_rejects_oracle_holds() -> Bool {
+  match bash_fold_relation_row_witness(
+    emitted: bash_fold_pipe_echo_hi_wc_emitted,
+    lhs: ^bash_production_fold_and_then
+  ) {
+    Holds { value: _ } => false
+    Violates { diagnostic: _ } => true
+  }
+}
+
+fn bash_fold_pipe_and_then_left_holds() -> Bool {
+  bash_fold_fold_matches_oracle(
+    stmt: Pipe {
+      left: AndOr {
+        left: bash_fold_cmd_true_stmt(),
+        op: AndThen,
+        right: bash_fold_cmd_false_stmt()
+      },
+      right: Command { words: [Lit { text: "wc" }, Lit { text: "-c" }] }
+    }
+  )
+}
+
+fn bash_fold_pipe_three_stage_holds() -> Bool {
+  bash_fold_fold_matches_oracle(
+    stmt: Pipe {
+      left: Pipe {
+        left: Command { words: [Lit { text: "echo" }, Lit { text: "hi" }] },
+        right: Command { words: [Lit { text: "wc" }, Lit { text: "-c" }] }
+      },
+      right: Command { words: [Lit { text: "tr" }, Lit { text: "-d" }, Lit { text: " " }] }
+    }
+  )
+}
+
+fn bash_fold_subshell_true_holds() -> Bool {
+  bash_fold_fold_matches_oracle(
+    stmt: Subshell { body: [Command { words: [Lit { text: "true" }] }] }
+  )
+}
+
+fn bash_fold_subshell_multi_stmt_holds() -> Bool {
+  bash_fold_fold_matches_oracle(
+    stmt: Subshell {
+      body: [
+        Command { words: [Lit { text: "true" }] },
+        Command { words: [Lit { text: "false" }] }
+      ]
+    }
+  )
+}
+
+fn bash_fold_subshell_nested_and_then_holds() -> Bool {
+  bash_fold_fold_matches_oracle(
+    stmt: Subshell {
+      body: [
+        AndOr {
+          left: Command { words: [Lit { text: "true" }] },
+          op: AndThen,
+          right: Command { words: [Lit { text: "false" }] }
+        }
+      ]
+    }
+  )
+}
+
+fn bash_fold_if_true_then_echo_holds() -> Bool {
+  bash_fold_fold_matches_oracle(
+    stmt: If {
+      cond: Command { words: [Lit { text: "true" }] },
+      then: [Command { words: [Lit { text: "echo" }, Lit { text: "hi" }] }]
+    }
+  )
+}
+
+fn bash_fold_if_multi_then_holds() -> Bool {
+  bash_fold_fold_matches_oracle(
+    stmt: If {
+      cond: Command { words: [Lit { text: "true" }] },
+      then: [
+        Command { words: [Lit { text: "echo" }, Lit { text: "hi" }] },
+        Command { words: [Lit { text: "false" }] }
+      ]
+    }
+  )
+}
+
+fn bash_fold_if_then_pipe_soundness_holds() -> Bool {
+  bash_fold_fold_matches_oracle(
+    stmt: If {
+      cond: Command { words: [Lit { text: "true" }] },
+      then: [
+        Pipe {
+          left: Command { words: [Lit { text: "echo" }, Lit { text: "hi" }] },
+          right: Command { words: [Lit { text: "wc" }, Lit { text: "-c" }] }
+        }
+      ]
+    }
+  )
+}
+
+fn bash_fold_subshell_wrong_production_rejects_oracle_holds() -> Bool {
+  match bash_fold_stmt_bundle_witness(
+    stmt: Subshell { body: [Command { words: [Lit { text: "true" }] }] }
+  ) {
+    Holds { value: bundle } =>
+      match bash_fold_relation_row_witness(
+        emitted: bundle.emitted,
+        lhs: ^bash_production_fold_if
+      ) {
+        Holds { value: _ } => false
+        Violates { diagnostic: _ } => true
+      }
+    Violates { diagnostic: _ } => false
+  }
+}
+
+fn bash_fold_if_wrong_production_rejects_oracle_holds() -> Bool {
+  match bash_fold_stmt_bundle_witness(
+    stmt: If {
+      cond: Command { words: [Lit { text: "true" }] },
+      then: [Command { words: [Lit { text: "echo" }, Lit { text: "hi" }] }]
+    }
+  ) {
+    Holds { value: bundle } =>
+      match bash_fold_relation_row_witness(
+        emitted: bundle.emitted,
+        lhs: ^bash_production_fold_subshell
+      ) {
+        Holds { value: _ } => false
+        Violates { diagnostic: _ } => true
+      }
+    Violates { diagnostic: _ } => false
+  }
+}
+
+fn bash_fold_with_redir_stderr_null_holds() -> Bool {
+  bash_fold_fold_matches_oracle(
+    stmt: WithRedir {
+      stmt: Command { words: [Lit { text: "true" }] },
+      redir: StderrToNull
+    }
+  )
+}
+
+fn bash_fold_with_redir_stdout_and_stderr_null_holds() -> Bool {
+  bash_fold_fold_matches_oracle(
+    stmt: WithRedir {
+      stmt: Command { words: [Lit { text: "true" }] },
+      redir: StdoutAndStderrToNull
+    }
+  )
+}
+
+fn bash_fold_with_redir_stdout_to_stderr_holds() -> Bool {
+  bash_fold_fold_matches_oracle(
+    stmt: WithRedir {
+      stmt: Command { words: [Lit { text: "true" }] },
+      redir: StdoutToStderr
+    }
+  )
+}
+
+fn bash_fold_with_redir_redir_to_file_var_holds() -> Bool {
+  bash_fold_fold_matches_oracle(
+    stmt: WithRedir {
+      stmt: Command { words: [Lit { text: "true" }] },
+      redir: RedirToFile { path: VarRef { name: "PROBE_BIN" } }
+    }
+  )
+}
+
+fn bash_fold_heredoc_holds() -> Bool {
+  bash_fold_fold_matches_oracle(
+    stmt: Heredoc {
+      path: Lit { text: "out" },
+      delimiter: "EOF",
+      body: "hello"
+    }
+  )
+}
+
+fn bash_fold_with_redir_wrong_spellings_rejects_oracle_holds() -> Bool {
+  bash_fold_wrong_production_mismatch_holds(
+    stmt: WithRedir {
+      stmt: Command { words: [Lit { text: "true" }] },
+      redir: StderrToNull
+    },
+    wrong_target_witness: bash_fold_with_redir_wrong_target_model_witness()
+  )
+}
+
+fn bash_fold_heredoc_wrong_spellings_rejects_oracle_holds() -> Bool {
+  bash_fold_wrong_production_mismatch_holds(
+    stmt: Heredoc {
+      path: Lit { text: "out" },
+      delimiter: "EOF",
+      body: "hello"
+    },
+    wrong_target_witness: bash_fold_heredoc_wrong_target_model_witness()
+  )
+}
+
+fn bash_fold_with_redir_wrong_production_rejects_oracle_holds() -> Bool {
+  match bash_fold_relation_row_witness(
+    emitted: bash_stmt_with_redir_emitted,
+    lhs: ^bash_production_fold_command
+  ) {
+    Holds { value: _ } => false
+    Violates { diagnostic: _ } => true
+  }
+}
+
+fn bash_fold_heredoc_wrong_production_rejects_oracle_holds() -> Bool {
+  match bash_fold_relation_row_witness(
+    emitted: bash_stmt_heredoc_emitted,
+    lhs: ^bash_production_fold_command
+  ) {
+    Holds { value: _ } => false
+    Violates { diagnostic: _ } => true
+  }
+}
+
+fn bash_fold_with_redir_pipe_soundness_holds() -> Bool {
+  bash_fold_fold_matches_oracle(
+    stmt: WithRedir {
+      stmt: Pipe {
+        left: Command { words: [Lit { text: "echo" }, Lit { text: "hi" }] },
+        right: Command { words: [Lit { text: "wc" }, Lit { text: "-c" }] }
+      },
+      redir: StderrToNull
+    }
+  )
+}
+
+fn bash_fold_raw_line_orch_emit_holds() -> Bool {
+  bash_fold_fold_matches_oracle(stmt: RawLine { text: "! ( foo )" })
+}
+
+fn bash_fold_raw_line_x_eq_holds() -> Bool {
+  bash_fold_fold_matches_oracle(stmt: RawLine { text: "x=y" })
+}
+
+fn bash_fold_raw_line_cmdsubst_holds() -> Bool {
+  bash_fold_fold_matches_oracle(stmt: RawLine { text: "$(a)" })
+}
+
+fn bash_fold_raw_line_paren_holds() -> Bool {
+  bash_fold_fold_matches_oracle(stmt: RawLine { text: "a)b" })
+}
+
+fn bash_fold_raw_line_quoted_holds() -> Bool {
+  bash_fold_fold_matches_oracle(stmt: RawLine { text: "'q'" })
+}
+
+fn bash_fold_raw_line_mktemp_holds() -> Bool {
+  bash_fold_fold_matches_oracle(
+    stmt: RawLine { text: "TMPDIR=$('mktemp' '-d')" }
+  )
+}
+
+fn bash_fold_raw_line_trailing_nl_holds() -> Bool {
+  bash_fold_fold_matches_oracle(stmt: RawLine { text: "ab\n" })
+}
+
+fn bash_fold_raw_line_wrong_spellings_rejects_oracle_holds() -> Bool {
+  bash_fold_wrong_production_mismatch_holds(
+    stmt: RawLine { text: "! ( foo )" },
+    wrong_target_witness: bash_fold_raw_line_wrong_target_model_witness()
+  )
+}
+
+fn bash_fold_raw_line_wrong_production_rejects_oracle_holds() -> Bool {
+  match bash_fold_relation_row_witness(
+    emitted: bash_word_pass_emitted,
+    lhs: ^bash_production_fold_command
+  ) {
+    Holds { value: _ } => false
+    Violates { diagnostic: _ } => true
+  }
+}
+
+fn bash_fold_negation_subshell_false_holds() -> Bool {
+  bash_fold_fold_matches_oracle(
+    stmt: Negation {
+      stmt: Subshell { body: [Command { words: [Lit { text: "false" }] }] }
+    }
+  )
+}
+
+fn bash_fold_negation_subshell_rawline_holds() -> Bool {
+  bash_fold_fold_matches_oracle(
+    stmt: Negation {
+      stmt: Subshell { body: [RawLine { text: "do_verify\nmore" }] }
+    }
+  )
+}
+
+fn bash_fold_negation_wrong_spellings_rejects_oracle_holds() -> Bool {
+  bash_fold_wrong_production_mismatch_holds(
+    stmt: Negation {
+      stmt: Subshell { body: [Command { words: [Lit { text: "false" }] }] }
+    },
+    wrong_target_witness: bash_fold_negation_wrong_target_model_witness()
+  )
+}
+
+fn bash_fold_negation_wrong_production_rejects_oracle_holds() -> Bool {
+  match bash_fold_relation_row_witness(
+    emitted: bash_stmt_negation_emitted,
+    lhs: ^bash_production_fold_subshell
+  ) {
+    Holds { value: _ } => false
+    Violates { diagnostic: _ } => true
+  }
+}
+
+fn bash_fold_env_prefixed_lit_t_holds() -> Bool {
+  bash_fold_fold_matches_oracle(
+    stmt: EnvPrefixed {
+      name: "TMPDIR",
+      value: Lit { text: "/t" },
+      command: Command { words: [Lit { text: "true" }] }
+    }
+  )
+}
+
+fn bash_fold_env_prefixed_wrong_spellings_rejects_oracle_holds() -> Bool {
+  bash_fold_wrong_production_mismatch_holds(
+    stmt: EnvPrefixed {
+      name: "TMPDIR",
+      value: Lit { text: "/t" },
+      command: Command { words: [Lit { text: "true" }] }
+    },
+    wrong_target_witness: bash_fold_env_prefixed_wrong_target_model_witness()
+  )
+}
+
+fn bash_fold_env_prefixed_wrong_production_rejects_oracle_holds() -> Bool {
+  match bash_fold_relation_row_witness(
+    emitted: bash_stmt_env_prefixed_emitted,
+    lhs: ^bash_production_fold_command
+  ) {
+    Holds { value: _ } => false
+    Violates { diagnostic: _ } => true
+  }
+}
+
+fn bash_fold_delegated_bundle_fail_closed_holds() -> Bool {
+  match bash_fold_stmt_bundle_witness(
+    stmt: WithRedir {
+      stmt: Command { words: [Lit { text: "true" }] },
+      redir: StderrToNull
+    }
+  ) {
+    Holds { value: _ } => false
+    Violates { diagnostic: _ } => true
+  }
+}
+
+// SCAFFOLD dissolve-on: emit_shell_stmt deleted in cutover STEP 2 — receipt witness only.
+test fn bash_fold_emit_shell_equivalence_receipt_holds() -> Bool {
+  bash_fold_fold_matches_emit_shell_stmt(
+    stmt: Command { words: [Lit { text: "true" }] }
+  )
+  && bash_fold_fold_matches_emit_shell_stmt(
+    stmt: WithRedir {
+      stmt: Command { words: [Lit { text: "true" }] },
+      redir: StderrToNull
+    }
+  )
+  && bash_fold_fold_matches_emit_shell_stmt(stmt: RawLine { text: "! ( foo )" })
+  && bash_fold_fold_matches_emit_shell_stmt(
+    stmt: RawLine { text: "TMPDIR=$('mktemp' '-d')" }
+  )
+  && bash_fold_fold_matches_emit_shell_stmt(
+    stmt: EnvPrefixed {
+      name: "TMPDIR",
+      value: Lit { text: "/t" },
+      command: Command { words: [Lit { text: "true" }] }
+    }
+  )
+  && bash_fold_fold_matches_emit_shell_stmt(
+    stmt: Negation {
+      stmt: Subshell { body: [Command { words: [Lit { text: "false" }] }] }
+    }
+  )
+}
+
+test fn bash_fold_structural_tier_holds() -> Bool {
+  bash_fold_relation_row_true_witness_holds()
+  && bash_fold_emitted_tree_differs_on_wrong_fixture_holds()
+  && bash_fold_delegated_bundle_fail_closed_holds()
+}
+
+test fn bash_fold_command_tier_holds() -> Bool {
+  bash_fold_command_single_lit_true_holds()
+  && bash_fold_command_multi_lit_echo_hi_holds()
+  && bash_fold_command_var_ref_x_holds()
+  && bash_fold_command_arbitrary_grep_triple_holds()
+  && bash_fold_command_arbitrary_var_home_holds()
+  && bash_fold_command_arbitrary_lit_quote_escape_holds()
+  && bash_fold_wrong_production_rejects_oracle_holds()
+}
+
+test fn bash_fold_direct_serialize_tier_holds() -> Bool {
+  bash_fold_direct_serialize_single_lit_true_holds()
+  && bash_fold_direct_serialize_multi_lit_echo_hi_holds()
+  && bash_fold_direct_serialize_var_ref_x_holds()
+}
+
+test fn bash_fold_exit_assign_tier_holds() -> Bool {
+  bash_fold_exit_code_42_holds()
+  && bash_fold_exit_code_0_holds()
+  && bash_fold_exit_wrong_production_rejects_oracle_holds()
+  && bash_fold_assign_lit_foo_bar_holds()
+  && bash_fold_assign_var_x_home_holds()
+  && bash_fold_assign_lit_quote_escape_holds()
+  && bash_fold_assign_wrong_production_rejects_oracle_holds()
+}
+
+test fn bash_fold_andor_pipe_tier_holds() -> Bool {
+  bash_fold_and_then_true_false_holds()
+  && bash_fold_or_else_true_false_holds()
+  && bash_fold_pipe_echo_hi_wc_holds()
+  && bash_fold_and_then_wrong_production_rejects_oracle_holds()
+  && bash_fold_pipe_wrong_production_rejects_oracle_holds()
+  && bash_fold_pipe_and_then_left_holds()
+  && bash_fold_pipe_three_stage_holds()
+}
+
+test fn bash_fold_subshell_if_tier_holds() -> Bool {
+  bash_fold_subshell_true_holds()
+  && bash_fold_subshell_multi_stmt_holds()
+  && bash_fold_subshell_nested_and_then_holds()
+  && bash_fold_if_true_then_echo_holds()
+  && bash_fold_if_multi_then_holds()
+  && bash_fold_if_then_pipe_soundness_holds()
+  && bash_fold_subshell_wrong_production_rejects_oracle_holds()
+  && bash_fold_if_wrong_production_rejects_oracle_holds()
+}
+
+test fn bash_fold_cutover_variants_tier_holds() -> Bool {
+  bash_fold_raw_line_orch_emit_holds()
+  && bash_fold_raw_line_x_eq_holds()
+  && bash_fold_raw_line_cmdsubst_holds()
+  && bash_fold_raw_line_paren_holds()
+  && bash_fold_raw_line_quoted_holds()
+  && bash_fold_raw_line_mktemp_holds()
+  && bash_fold_raw_line_trailing_nl_holds()
+  && bash_fold_raw_line_wrong_spellings_rejects_oracle_holds()
+  && bash_fold_raw_line_wrong_production_rejects_oracle_holds()
+  && bash_fold_with_redir_stderr_null_holds()
+  && bash_fold_with_redir_stdout_and_stderr_null_holds()
+  && bash_fold_with_redir_stdout_to_stderr_holds()
+  && bash_fold_with_redir_redir_to_file_var_holds()
+  && bash_fold_with_redir_wrong_spellings_rejects_oracle_holds()
+  && bash_fold_with_redir_wrong_production_rejects_oracle_holds()
+  && bash_fold_with_redir_pipe_soundness_holds()
+  && bash_fold_heredoc_holds()
+  && bash_fold_heredoc_wrong_spellings_rejects_oracle_holds()
+  && bash_fold_heredoc_wrong_production_rejects_oracle_holds()
+  && bash_fold_negation_subshell_false_holds()
+  && bash_fold_negation_subshell_rawline_holds()
+  && bash_fold_negation_wrong_spellings_rejects_oracle_holds()
+  && bash_fold_negation_wrong_production_rejects_oracle_holds()
+  && bash_fold_env_prefixed_lit_t_holds()
+  && bash_fold_env_prefixed_wrong_spellings_rejects_oracle_holds()
+  && bash_fold_env_prefixed_wrong_production_rejects_oracle_holds()
+}

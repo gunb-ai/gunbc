@@ -19,6 +19,11 @@ import gunbc.bmc_onboarding {
   bmc_phase_eq,
   bmc_onboard_to_steady,
   bmc_decom_to_factory,
+  bmc_factory_state,
+  bmc_install_step,
+  bmc_transition_roundtrips_on_quotient,
+  bmc_transition_does_not_roundtrip_on_quotient,
+  bmc_full_state_is_lossy_after_roundtrip,
   bmc_lifecycle_roundtrip,
   bmc_lifecycle_inverse_fidelity,
   bmc_phase_credential_posture,
@@ -120,12 +125,25 @@ test fn bmc_decom_is_two_sided_inverse_on_phase_ladder() -> Bool {
 test fn bmc_onboard_then_decom_recovers_factory_phase() -> Bool {
   bmc_phase_eq(a: bmc_decom_to_factory(phase: bmc_onboard_to_steady(phase: FactoryDefault)), b: FactoryDefault)
     && bmc_phase_eq(a: bmc_onboard_to_steady(phase: bmc_decom_to_factory(phase: FabricJoined)), b: FabricJoined)
-    && match bmc_lifecycle_roundtrip(phase: FactoryDefault).carried {
-      FactoryDefault => true
-      CredentialsRotated => false
-      OsInstalled => false
-      FabricJoined => false
-    }
+}
+
+fn factory_at(p: BmcOnboardingPhase) -> BmcLifecycleState {
+  match p {
+    FactoryDefault => bmc_factory_state()
+    CredentialsRotated => bmc_install_step(s: bmc_factory_state())
+    OsInstalled => bmc_install_step(s: bmc_install_step(s: bmc_factory_state()))
+    FabricJoined => bmc_install_step(s: bmc_install_step(s: bmc_install_step(s: bmc_factory_state())))
+  }
+}
+
+test fn bmc_decom_roundtrips_canonical_on_named_quotient() -> Bool {
+  bmc_transition_roundtrips_on_quotient(s: factory_at(p: FactoryDefault))
+    && bmc_transition_roundtrips_on_quotient(s: factory_at(p: CredentialsRotated))
+    && bmc_transition_roundtrips_on_quotient(s: factory_at(p: OsInstalled))
+}
+
+test fn bmc_decom_does_not_roundtrip_when_inverse_is_wrong() -> Bool {
+  bmc_transition_does_not_roundtrip_on_quotient(s: factory_at(p: CredentialsRotated))
 }
 
 test fn bmc_lifecycle_inverse_is_lossy_section_not_iso() -> Bool {
@@ -133,10 +151,11 @@ test fn bmc_lifecycle_inverse_is_lossy_section_not_iso() -> Bool {
     Lossy => true
     Lossless => false
   }
-    && match bmc_lifecycle_roundtrip(phase: FactoryDefault).fidelity {
+    && match bmc_lifecycle_roundtrip(s: bmc_factory_state()).fidelity {
       Lossy => true
       Lossless => false
     }
+    && bmc_full_state_is_lossy_after_roundtrip(s: factory_at(p: FactoryDefault))
 }
 
 test fn new_altra_plan_starts_factory_default_at_192() -> Bool {
