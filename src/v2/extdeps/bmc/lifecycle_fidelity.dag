@@ -59,17 +59,48 @@ fn bmc_lifecycle_inverse_fidelity_quotient_node() -> Node {
   }
 }
 
-fn bmc_lifecycle_inverse_target_model_bundle() -> Node {
+fn bmc_lifecycle_inverse_fidelity_quotient_credentials_modeled_perturb_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      dag_named_edge(
+        name: ^bmc_lifecycle_fidelity_factory_default,
+        target: bmc_lifecycle_modeled_fidelity_node()
+      ),
+      dag_named_edge(
+        name: ^bmc_lifecycle_fidelity_credentials_rotated,
+        target: bmc_lifecycle_modeled_fidelity_node()
+      ),
+      dag_named_edge(
+        name: ^bmc_lifecycle_fidelity_os_installed,
+        target: bmc_lifecycle_modeled_fidelity_node()
+      ),
+      dag_named_edge(
+        name: ^bmc_lifecycle_fidelity_fabric_joined,
+        target: bmc_lifecycle_modeled_fidelity_node()
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn bmc_lifecycle_inverse_target_model_bundle_with_quotient(quotient: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
       dag_named_edge(
         name: ^target_model_edge_fidelity_quotient,
-        target: bmc_lifecycle_inverse_fidelity_quotient_node()
+        target: quotient
       )
     ],
     occurrence_id: SyntheticOccurrence
   }
+}
+
+fn bmc_lifecycle_inverse_target_model_bundle() -> Node {
+  bmc_lifecycle_inverse_target_model_bundle_with_quotient(
+    quotient: bmc_lifecycle_inverse_fidelity_quotient_node()
+  )
 }
 
 data bmc_lifecycle_inverse_authority_source: String = "gunbc.bmc_onboarding lifecycle inverse roundtrip fidelity quotient"
@@ -77,6 +108,19 @@ data bmc_lifecycle_inverse_authority_source: String = "gunbc.bmc_onboarding life
 fn bmc_lifecycle_inverse_target_model() -> TargetModel {
   TargetModel {
     bundle: bmc_lifecycle_inverse_target_model_bundle(),
+    lex: VoidLexRules,
+    binding_spellings: empty_map(),
+    token_class_emit_transforms: target_model_emit_transforms_empty,
+    authority_source_text: bmc_lifecycle_inverse_authority_source,
+    runtime_row: target_emit_host_runtime_row_unconfigured
+  }
+}
+
+fn bmc_lifecycle_inverse_target_model_credentials_modeled_perturb() -> TargetModel {
+  TargetModel {
+    bundle: bmc_lifecycle_inverse_target_model_bundle_with_quotient(
+      quotient: bmc_lifecycle_inverse_fidelity_quotient_credentials_modeled_perturb_node()
+    ),
     lex: VoidLexRules,
     binding_spellings: empty_map(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
