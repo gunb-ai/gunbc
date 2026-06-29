@@ -624,7 +624,8 @@ pub fn eval_concept_decl_facts(
         }
     }
     eprintln!(
-        "concept_decl_facts: {} type concepts from {module_count} modules ({files_parsed} files parsed)"
+        "concept_decl_facts: {} type concepts from {module_count} modules ({files_parsed} files parsed)",
+        rows.len()
     );
     Ok(crate::v1_interpreter::list_value(rows))
 }
