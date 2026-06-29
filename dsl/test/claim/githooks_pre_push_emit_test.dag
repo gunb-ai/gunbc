@@ -4,7 +4,7 @@ import gunbc.githooks_pre_push_emit { expected_githooks_pre_push_sh }
 import gunbc.local_tidy_spec {
   doc_reachability_trigger_globs, generated_artifact_trigger_globs, cargo_fmt_trigger_globs
 }
-import extdeps.git.hooks { pre_push_zero_sha }
+import extdeps.git.hooks { pre_push_zero_sha, pre_push_stdin_read_vars }
 
 fn has(s: String, p: String) -> Bool {
   string_contains(s: s, pattern: p)
@@ -18,6 +18,11 @@ fn witness_generated_header() -> Bool {
 
 fn witness_zero_sha_from_authority() -> Bool {
   has(s: expected_githooks_pre_push_sh(), p: pre_push_zero_sha)
+}
+
+fn witness_pre_push_stdin_row_fold() -> Bool {
+  let sh = expected_githooks_pre_push_sh()
+  has(s: sh, p: concat("while IFS=' ' read -r ", pre_push_stdin_read_vars()))
 }
 
 fn witness_claim_batch_wired() -> Bool {
@@ -49,6 +54,7 @@ fn witness_trigger_globs_derived() -> Bool {
 test fn githooks_pre_push_emit_witnesses() -> Bool {
   witness_generated_header()
     && witness_zero_sha_from_authority()
+    && witness_pre_push_stdin_row_fold()
     && witness_claim_batch_wired()
     && witness_fmt_subsumed()
     && witness_doc_witness_wired()

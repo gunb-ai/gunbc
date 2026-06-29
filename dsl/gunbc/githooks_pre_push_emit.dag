@@ -7,7 +7,7 @@ import gunbc.local_tidy_spec {
   generated_artifact_drift_gate_check_fn
 }
 import gunbc.ci_spec { GeneratedArtifactDriftGate }
-import extdeps.git.hooks { pre_push_zero_sha }
+import extdeps.git.hooks { pre_push_zero_sha, pre_push_stdin_read_vars }
 
 data bash_at: String = "@"
 
@@ -161,7 +161,10 @@ func expected_githooks_pre_push_sh() -> String {
             "\"; do [[ \"$x\" == \"$path\" ]] && seen=1 && break; done\n    [[ \"$seen\" == \"0\" ]] && PUSH_CHANGED+=(\"$path\")\n  done < <(git diff --name-only --diff-filter=ACMR \"$base\" \"$head\")\n}\n"
           )
         ),
-        "while IFS=' ' read -r local_ref local_sha remote_ref remote_sha; do\n  [[ \"$local_sha\" == \"$ZERO_SHA\" ]] && continue\n  PUSHES_CONTENT=1\n  collect_push_changed \"$local_sha\" \"$remote_sha\"\n  if [[ -n \"$HEAD_REF\" && \"$local_ref\" == \"$HEAD_REF\" ]]; then HEAD_BRANCH_IN_PUSH=1; fi\ndone\n[[ \"$PUSHES_CONTENT\" == \"0\" ]] && exit 0\n"
+        concat(
+          concat("while IFS=' ' read -r ", pre_push_stdin_read_vars()),
+          "; do\n  [[ \"$local_sha\" == \"$ZERO_SHA\" ]] && continue\n  PUSHES_CONTENT=1\n  collect_push_changed \"$local_sha\" \"$remote_sha\"\n  if [[ -n \"$HEAD_REF\" && \"$local_ref\" == \"$HEAD_REF\" ]]; then HEAD_BRANCH_IN_PUSH=1; fi\ndone\n[[ \"$PUSHES_CONTENT\" == \"0\" ]] && exit 0\n"
+        )
       )
     ),
     concat(
