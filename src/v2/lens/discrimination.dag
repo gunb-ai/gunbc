@@ -121,6 +121,5 @@ fn unit_is_discriminating(unit: List<TestClaim>) -> Bool {
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: WallAfterGrounding { dissolves_to: SubstrateMandatoryTag },
-  rationale: "Whether a witness unit asserts both green and a perturbed-red is decidable over TestClaim polarity; it is a lens until the witness-authoring surface makes a green-only unit unwritable. Grounding authority: the witness-authoring surface requiring a discriminating red-arm (the DESIGN sec 5 discrimination gate, PR #5116). Dissolves on: a green-only TestClaim unit becomes unwritable: the authoring surface mandates a perturbed-red assertion by construction"
+  class: WallAfterGrounding { dissolves_to: SubstrateMandatoryTag }
 }

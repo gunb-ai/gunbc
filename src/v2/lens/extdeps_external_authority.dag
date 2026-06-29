@@ -223,8 +223,7 @@ fn extdeps_external_authority_has_non_external_scheme(
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: WallAfterGrounding { dissolves_to: SubstrateMandatoryTag },
-  rationale: "Anchor presence per extdeps module is a decidable presence check -- the same shape as this construction-justification rule itself -- interim until the substrate requires the field by construction. Grounding authority: a substrate-required external_authority_anchor field (Node-tree projection, dissolve-on #5126). Dissolves on: every extdeps module declaring its anchor is enforced by construction (a required field), not by a presence-checking lens"
+  class: WallAfterGrounding { dissolves_to: SubstrateMandatoryTag }
 }
 
 data shadow_mask_construction_justification: ConstructionJustification = ConstructionJustification {

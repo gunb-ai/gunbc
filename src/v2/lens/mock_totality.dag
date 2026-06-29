@@ -53,6 +53,5 @@ fn mock_totality_lens<C>(
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: WallAfterGrounding { dissolves_to: SubstrateMandatoryTag },
-  rationale: "A match over a closed coproduct is already totality-checked by the substrate, but a published corpus is declared data the compiler cannot see is unhandled; the lens covers exactly that gap until corpus-as-type. Grounding authority: corpus-as-type: the substrate totality-checking a consumer against a published corpus expressed as a closed type. Dissolves on: an unhandled published corpus member becomes a compile error by construction (today the corpus is declared data, not a type)"
+  class: WallAfterGrounding { dissolves_to: SubstrateMandatoryTag }
 }

@@ -579,6 +579,5 @@ fn extdeps_shape_transport_policy_embedded_policy_literal_count(
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: WallAfterGrounding { dissolves_to: RealizationDispatch },
-  rationale: "Each of the four tells is a decidable structural pattern over the argv/Node projection; the lens is interim until the DESIGN sec 3 extdeps de-fusion is realized in the substrate. Grounding authority: the Node-tree argv projection that supersedes the text scan, plus the shape/transport/policy de-fusion model (#5059 corollary). Dissolves on: the four tells (policy leak, transport fusion, dead param, embedded literal) become unwritable once interface-shape, transport-handler and workflow-policy are separated by construction"
+  class: WallAfterGrounding { dissolves_to: RealizationDispatch }
 }
