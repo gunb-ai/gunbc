@@ -318,6 +318,9 @@ fn main() {
                     }
                 }
 
+                let skipped_moduleless = cli_run::moduleless_dag_entry_paths(&entry_files);
+                cli_run::report_moduleless_dag_entry_skips(&skipped_moduleless);
+
                 let mut seen: HashMap<String, Rc<v1_compiler_compile::SourceFile>> = HashMap::new();
                 let mut entry_for_queue = Vec::new();
                 for (path, content) in &entry_files {
@@ -327,12 +330,15 @@ fn main() {
                             content: content.clone(),
                         });
                         seen.insert(mod_path, source);
+                        entry_for_queue.push((path.clone(), content.clone()));
                     }
-                    entry_for_queue.push((path.clone(), content.clone()));
                 }
 
                 let mut resolved = resolve_transitively_with_seen(entry_for_queue, &index, seen);
                 for (path, content) in entry_files {
+                    if extract_module_path(&content).is_none() {
+                        continue;
+                    }
                     let already_there = resolved.iter().any(|s| s.path == path);
                     if !already_there {
                         resolved.push(Rc::new(v1_compiler_compile::SourceFile { path, content }));
@@ -509,5 +515,25 @@ fn render_one_diagnostic(
                 ))
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn extract_module_path_none_for_moduleless_parse_fixture() {
+        let fixture =
+            "data split_brace_sample: SplitBraceSample =\nSplitBraceSample { field: \"x\" }\n";
+        assert!(extract_module_path(fixture).is_none());
+    }
+
+    #[test]
+    fn extract_module_path_some_for_module_decl() {
+        assert_eq!(
+            extract_module_path("module v1.test.fixture\n"),
+            Some("v1.test.fixture".to_string())
+        );
     }
 }
