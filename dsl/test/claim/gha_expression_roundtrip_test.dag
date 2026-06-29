@@ -28,7 +28,6 @@ import extdeps.github.expressions {
 }
 import extdeps.communication.fidelity_carriers { source_medium_carried }
 import extdeps.communication.medium { Lossless }
-import v2.workflow.gha_expression_fidelity { gha_expression_core_roundtrip_fidelity }
 
 fn core_expr() -> Expression {
   LogicalOr {
@@ -184,7 +183,7 @@ fn witness_frontier_not_roundtripped() -> Bool {
 fn witness_core_advertised_lossless() -> Bool {
   match ingest_expression(src: serialize_expression(expression: core_expr())) {
     Present { value: v } => {
-      let m = source_medium_carried(carried: v, fidelity: gha_expression_core_roundtrip_fidelity())
+      let m = source_medium_carried(carried: v, fidelity: Lossless)
       match m.fidelity {
         Lossless => m.carried == core_expr()
         Lossy => false

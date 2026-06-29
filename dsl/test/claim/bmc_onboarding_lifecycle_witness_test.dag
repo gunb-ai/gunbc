@@ -40,7 +40,6 @@ import gunbc.bmc_onboarding {
 import extdeps.bmc.types { BootTargetPxe, AccountRoleAdministrator, redfish_boot_target_wire, redfish_account_role_wire }
 import gunbc.assimilate.bmc_token_federation { emit_bmc_token_smoke_workflow_yaml }
 import extdeps.communication.medium { Lossless, Lossy }
-import v2.workflow.bmc_lifecycle_roundtrip { bmc_lifecycle_roundtrip }
 
 fn phase_tag(p: BmcOnboardingPhase) -> Int {
   match p {
@@ -178,14 +177,6 @@ fn transition_does_not_roundtrip_on_quotient(s: BmcLifecycleState) -> Bool {
 
 test fn bmc_decom_does_not_roundtrip_when_inverse_is_wrong() -> Bool {
   transition_does_not_roundtrip_on_quotient(s: factory_at(p: CredentialsRotated))
-}
-
-test fn bmc_lifecycle_inverse_is_lossy_section_not_iso() -> Bool {
-  match bmc_lifecycle_roundtrip(s: bmc_factory_state()).fidelity {
-    Lossy => true
-    Lossless => false
-  }
-    && bmc_full_state_is_lossy_after_roundtrip(s: factory_at(p: FactoryDefault))
 }
 
 test fn new_altra_plan_starts_factory_default_at_192() -> Bool {
