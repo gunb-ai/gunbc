@@ -41,6 +41,8 @@ import v2.extdeps.languages.bash {
   bash_stmt_env_prefixed_emitted,
   bash_stmt_heredoc_emitted,
   bash_stmt_negation_emitted,
+  bash_stmt_subshell_emitted,
+  bash_stmt_subshell_target_model,
   bash_stmt_with_redir_emitted,
   bash_word_pass_emitted
 }
@@ -71,6 +73,14 @@ import v2.extdeps.languages.bash_command_fold {
   bash_fold_with_redir_wrong_target_model_witness
 }
 import v2.std.compilers.target_model { TargetModel }
+import v2.std.algebra {
+  HeadAbsent,
+  HeadFound,
+  TailAbsent,
+  TailFound,
+  list_head,
+  list_tail
+}
 import v2.std.collection { Map }
 import v2.std.diagnostic {
   Accepted,
@@ -147,14 +157,85 @@ fn bash_fold_emit_redir_spelling(r: Redir) -> Outcome<String> {
   }
 }
 
+fn bash_fold_stmt_list_has_delegated(stmts: List<ShellStmt>) -> Bool {
+  match list_head(xs: stmts) {
+    HeadAbsent => false
+    HeadFound { value: s } =>
+      if bash_fold_stmt_uses_delegated_grammar(stmt: s) {
+        true
+      } else {
+        match list_tail(xs: stmts) {
+          TailFound { tail: t } => bash_fold_stmt_list_has_delegated(stmts: t)
+          TailAbsent => false
+        }
+      }
+  }
+}
+
+fn bash_fold_emit_stmts_semi_step(acc: String, first: Bool, part: String) -> String {
+  if first { part } else { concat(acc, concat("; ", part)) }
+}
+
+fn bash_fold_emit_stmts_semi_spelling_from(
+  acc: String,
+  first: Bool,
+  rest: List<ShellStmt>
+) -> Outcome<String> {
+  match list_head(xs: rest) {
+    HeadAbsent => Accepted { value: acc, diagnostics: None }
+    HeadFound { value: s } =>
+      match bash_fold_emit_inner_stmt_spelling(stmt: s) {
+        Accepted { value: part, diagnostics: d } =>
+          let next = bash_fold_emit_stmts_semi_step(acc: acc, first: first, part: part)
+          match list_tail(xs: rest) {
+            TailFound { tail: t } =>
+              bash_fold_emit_stmts_semi_spelling_from(
+                acc: next,
+                first: false,
+                rest: t
+              )
+            TailAbsent => Accepted { value: next, diagnostics: None }
+          }
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      }
+  }
+}
+
+fn bash_fold_emit_stmts_semi_spelling(stmts: List<ShellStmt>) -> Outcome<String> {
+  bash_fold_emit_stmts_semi_spelling_from(acc: "", first: true, rest: stmts)
+}
+
 fn bash_fold_emit_inner_stmt_spelling(stmt: ShellStmt) -> Outcome<String> {
-  if bash_fold_stmt_uses_delegated_grammar(stmt: stmt) {
-    bash_fold_delegated_fold_serialize(stmt: stmt)
-  } else {
-    match bash_fold_target_model_for_stmt_witness(stmt: stmt) {
-      Holds { value: target } => bash_fold_fold_serialize(stmt: stmt, target: target)
-      Violates { diagnostic: d } => Rejected { diagnostics: Some { diagnostics: [d] } }
-    }
+  match stmt {
+    Subshell { body: b } =>
+      if bash_fold_stmt_list_has_delegated(stmts: b) {
+        match bash_fold_emit_stmts_semi_spelling(stmts: b) {
+          Accepted { value: body_spelling, diagnostics: d } =>
+            Accepted {
+              value: concat("(", concat(body_spelling, ")")),
+              diagnostics: None
+            }
+          Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        }
+      } else {
+        match bash_fold_target_model_for_stmt_witness(stmt: stmt) {
+          Holds { value: target } =>
+            bash_fold_fold_serialize(stmt: stmt, target: target)
+          Violates { diagnostic: d } =>
+            Rejected { diagnostics: Some { diagnostics: [d] } }
+        }
+      }
+    _ =>
+      if bash_fold_stmt_uses_delegated_grammar(stmt: stmt) {
+        bash_fold_delegated_fold_serialize(stmt: stmt)
+      } else {
+        match bash_fold_target_model_for_stmt_witness(stmt: stmt) {
+          Holds { value: target } =>
+            bash_fold_fold_serialize(stmt: stmt, target: target)
+          Violates { diagnostic: d } =>
+            Rejected { diagnostics: Some { diagnostics: [d] } }
+        }
+      }
   }
 }
 
@@ -259,20 +340,50 @@ fn bash_fold_fold_serialize(stmt: ShellStmt, target: TargetModel) -> Outcome<Str
 }
 
 fn bash_fold_fold_matches_oracle(stmt: ShellStmt) -> Bool {
-  if bash_fold_stmt_uses_delegated_grammar(stmt: stmt) {
-    match bash_fold_delegated_fold_serialize(stmt: stmt) {
-      Accepted { value: folded, diagnostics: _ } => folded == serialize_stmt(s: stmt)
-      Rejected { diagnostics: _ } => false
-    }
-  } else {
-    match bash_fold_target_model_for_stmt_witness(stmt: stmt) {
-      Holds { value: target } =>
-        match bash_fold_fold_serialize(stmt: stmt, target: target) {
-          Accepted { value: folded, diagnostics: _ } => folded == serialize_stmt(s: stmt)
+  match stmt {
+    Subshell { body: b } =>
+      if bash_fold_stmt_list_has_delegated(stmts: b) {
+        match bash_fold_emit_stmts_semi_spelling(stmts: b) {
+          Accepted { value: body_spelling, diagnostics: _ } =>
+            match bash_fold_emit_from_emitted(
+              emitted: bash_stmt_subshell_emitted,
+              target: bash_stmt_subshell_target_model(body: body_spelling)
+            ) {
+              Accepted { value: folded, diagnostics: _ } =>
+                folded == serialize_stmt(s: stmt)
+              Rejected { diagnostics: _ } => false
+            }
           Rejected { diagnostics: _ } => false
         }
-      Violates { diagnostic: _ } => false
-    }
+      } else {
+        match bash_fold_target_model_for_stmt_witness(stmt: stmt) {
+          Holds { value: target } =>
+            match bash_fold_fold_serialize(stmt: stmt, target: target) {
+              Accepted { value: folded, diagnostics: _ } =>
+                folded == serialize_stmt(s: stmt)
+              Rejected { diagnostics: _ } => false
+            }
+          Violates { diagnostic: _ } => false
+        }
+      }
+    _ =>
+      if bash_fold_stmt_uses_delegated_grammar(stmt: stmt) {
+        match bash_fold_delegated_fold_serialize(stmt: stmt) {
+          Accepted { value: folded, diagnostics: _ } =>
+            folded == serialize_stmt(s: stmt)
+          Rejected { diagnostics: _ } => false
+        }
+      } else {
+        match bash_fold_target_model_for_stmt_witness(stmt: stmt) {
+          Holds { value: target } =>
+            match bash_fold_fold_serialize(stmt: stmt, target: target) {
+              Accepted { value: folded, diagnostics: _ } =>
+                folded == serialize_stmt(s: stmt)
+              Rejected { diagnostics: _ } => false
+            }
+          Violates { diagnostic: _ } => false
+        }
+      }
   }
 }
 
