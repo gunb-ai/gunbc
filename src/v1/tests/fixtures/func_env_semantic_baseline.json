@@ -1,0 +1,9 @@
+{
+  "baseline_commit": "57223267a2",
+  "diagnostic_fingerprint": "cbf29ce484222325",
+  "rust_corpus_repr": "HostNative",
+  "emit_graph_fingerprint": "9b7d25d406f547c6",
+  "corpus_fingerprint": "38488c6da7c17681",
+  "modules_resolved": 519,
+  "per_module_rows": 519
+}
