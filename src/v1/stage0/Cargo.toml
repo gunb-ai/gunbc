@@ -93,6 +93,13 @@ path = "src/bin/v1_src_dag_parse.rs"
 name = "wiring_liveness_whole_tree"
 path = "src/bin/wiring_liveness_whole_tree.rs"
 
+# Emit-only whole-corpus audit for the complexity/linearity lens family (SYNTACTIC half).
+# Parse-only walk over witness_layer_roots; swaps to decl_facts(roots) when #5966 merges.
+# NOT floor-enrolled — prints findings TSV, exit 0 unless --fail-on-findings.
+[[bin]]
+name = "complexity_linearity_audit"
+path = "src/bin/complexity_linearity_audit.rs"
+
 [[bin]]
 name = "measure_whole_tree_resolve"
 path = "src/bin/measure_whole_tree_resolve.rs"

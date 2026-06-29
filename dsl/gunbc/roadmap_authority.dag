@@ -285,13 +285,12 @@ fn section_3() -> RoadmapSection {
   RoadmapSection {
     title: "3. Complexity budget gate (stability — validation)",
     elements: [
-      section_prose(content: "Operator decision (2026-06-21): budget-gate validation is the in-window tool; the algorithmic-cost *rewrite construction* is expansion, relocated to §5. Detection is total by construction (cost.dag U2); the gate's reach is a subject-production limit (fn-body reflection), not a detection one. → [family audit + enforcement phases](docs/plans/complexity-linearity-family-audit.md)"),
+      section_prose(content: "Operator decision (2026-06-21): budget-gate validation is the in-window tool; the algorithmic-cost *rewrite construction* is expansion, relocated to §5. Detection is total by construction (cost.dag U2); the gate's reach is a subject-production limit (fn-body reflection), not a detection one."),
       section_prose(content: "**◆ Milestones:** budget-gate non-toothless ✓ (#5437) → complexity gates the whole codebase *(gated on §5 fn-body reflection)*"),
       section_group(
         label: "",
         nodes: [
           authored(id: "3-complexity-lens", done: true, content: "complexity lens total over the kernel (cost.dag U2); the gate runs a curated subject roster"),
-          authored_pp(id: "3-family-audit", done: true, content: "**complexity/linearity family audit (audit-first)** — live census + `family_floor_audit_holds_test` floor witness; whole-corpus TermChain gated on fn-body reflection", carriers: [ptr(label: "plan", path: "docs/plans/complexity-linearity-family-audit.md")]),
 
           derivable(id: "3-cost-lens", prs: [5437], title: "cost-lens zero-absorption fix — budgets non-toothless", description: ""),
           authored(id: "3-subject-producer", done: false, content: "a subject-producer for every fn (#5437 helper; whole-corpus needs fn-body reflection)"),
