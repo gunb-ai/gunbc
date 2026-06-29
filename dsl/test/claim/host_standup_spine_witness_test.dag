@@ -22,6 +22,18 @@ import gunbc.host_standup {
   InputRefused,
   NodeRegistered,
   ResourcesPresent,
+  RunnerSlotHealthy,
+  GreenPlacePinCoherent,
+  GreenPlacePinCoherentWitness,
+  GreenPlaceFromGunbcGate,
+  GreenPlacePinGap,
+  host_standup_p5_green_place_noop_gate_authority,
+  host_standup_p5_green_place_marker_gate_authority,
+  host_standup_p5_desired_pin_authority,
+  host_standup_p5_default_green_place_gate_verdict,
+  green_place_pin_coherent_satisfied,
+  host_standup_p3_fail_closed_blocks_complete,
+  host_standup_p3_gunbc_pinned_tree_landed,
   HostStandupStep,
   Prefix,
   Assimilation,
@@ -34,9 +46,6 @@ import gunbc.host_standup {
   GreenPlaceReadiness,
   SessionPlacementEnrollment,
   StandupAssimilationComplete,
-  host_standup_p3_fail_closed_blocks_complete,
-  host_standup_p3_gunbc_pinned_tree_landed,
-  GreenPlacePinCoherent,
   DeclaredGap,
   ModeledCompose,
 }
@@ -106,11 +115,29 @@ test fn compute_fabric_shape_authority_is_referenced_not_redeclared() -> Bool {
   witness_fabric_binds_need_to_opportunity()
 }
 
+test fn green_place_pin_coherent_references_gunbc_gate_not_input_satisfied() -> Bool {
+  let default_gate = host_standup_p5_default_green_place_gate_verdict()
+  match default_gate {
+    GreenPlaceFromGunbcGate {
+      noop_satisfied_authority: noop,
+      marker_satisfied_authority: marker,
+      desired_pin_authority: desired,
+      gate_verdict: false,
+    } =>
+      !green_place_pin_coherent_satisfied(w: default_gate)
+        && noop == host_standup_p5_green_place_noop_gate_authority
+        && marker == host_standup_p5_green_place_marker_gate_authority
+        && desired == host_standup_p5_desired_pin_authority
+    GreenPlacePinGap { interim_realization: _ } => false
+    GreenPlacePinRefused { reason: _ } => false
+  }
+}
+
 test fn assimilation_complete_gate_is_fail_closed_on_any_gap_or_refusal() -> Bool {
   let all_gap = AssimilationCompleteGate {
     node_registered: InputGap { input: NodeRegistered, interim_realization: "ctrl:node_registry.mjs" },
     resources_present: InputSatisfied,
-    green_place_pin: InputSatisfied,
+    green_place_pin_coherent: GreenPlacePinGap { interim_realization: "ctrl:pending" },
     runner_healthy: InputSatisfied,
   }
   match assimilation_complete(gate: all_gap) {
@@ -121,7 +148,7 @@ test fn assimilation_complete_gate_is_fail_closed_on_any_gap_or_refusal() -> Boo
     && match assimilation_complete(gate: AssimilationCompleteGate {
       node_registered: InputSatisfied,
       resources_present: InputRefused { input: ResourcesPresent, reason: "missing cgroup slice" },
-      green_place_pin: InputSatisfied,
+      green_place_pin_coherent: host_standup_p5_default_green_place_gate_verdict(),
       runner_healthy: InputSatisfied,
     }) {
       AssimilationIncomplete { input: ResourcesPresent, reason: _ } => true
@@ -133,7 +160,12 @@ test fn assimilation_complete_passes_only_when_all_four_inputs_satisfied() -> Bo
   let gate = AssimilationCompleteGate {
     node_registered: InputSatisfied,
     resources_present: InputSatisfied,
-    green_place_pin: InputSatisfied,
+    green_place_pin_coherent: GreenPlaceFromGunbcGate {
+      noop_satisfied_authority: host_standup_p5_green_place_noop_gate_authority,
+      marker_satisfied_authority: host_standup_p5_green_place_marker_gate_authority,
+      desired_pin_authority: host_standup_p5_desired_pin_authority,
+      gate_verdict: true,
+    },
     runner_healthy: InputSatisfied,
   }
   assimilation_complete_all_satisfied(gate: gate)
@@ -158,5 +190,16 @@ test fn declared_gap_steps_carry_interim_ctrl_realization_paths() -> Bool {
           && string_contains(s: r, pattern: "host_standup:")
       ModeledCompose { authorities: refs } => refs.length() > 0
     }
+  )
+}
+
+test fn p3_gap_ledger_notes_green_place_dag_writer_path() -> Bool {
+  fold(
+    host_standup_gap_ledger,
+    init: false,
+    f: (acc, row) =>
+      acc || (row.phase_label == "P3:green-place-readiness"
+        && string_contains(s: row.authority_or_interim, pattern: "green_place.dag")
+        && string_contains(s: row.authority_or_interim, pattern: "read-gunbc-pin.sh"))
   )
 }
