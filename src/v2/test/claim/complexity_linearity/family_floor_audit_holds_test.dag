@@ -1,0 +1,113 @@
+module v2.test.complexity_linearity.family_floor_audit_holds
+
+import v2.lens.complexity {
+  ComplexityBound,
+  UnknownComplexity,
+  complexity_bound_dominates,
+  complexity_lens
+}
+import v2.lens.complexity_lowering { catalog_is_sound, lowering_catalog }
+import v2.lens.cost { cost_lens }
+import v2.lens.fact_density { fact_density_hollow_alias_gate }
+import v2.lens.intent_linearity {
+  linearity_registry,
+  parallel_representation_registry
+}
+import v2.lens.simulated_relationship { chain_is_simulated }
+import v2.lens.structural_similarity { type_decls_anti_unify }
+import v2.std.algebra { fold_list, is_empty, length }
+import v2.std.collection { List }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.fn_index { fn_arrow_decl_facts_live }
+import v2.std.logic { Bool }
+import v2.std.node { Atom, Node, TypeNode, SyntheticOccurrence }
+import v2.std.witness { Holds }
+import v2.test.complexity_gate.lens_subject_body_supply {
+  lens_subject_arrow_body_for_budget_row
+}
+import v2.test.complexity_gate.subject_complexity_budget_roster {
+  LensSubjectComplexityBudgetRow,
+  complexity_declared_budget_for_row,
+  complexity_subject_budget_rows
+}
+
+data family_floor_audit_probe_atom: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^family_floor_audit_probe_atom_symbol } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+fn complexity_declared_budget_is_rated(budget: ComplexityBound) -> Bool {
+  match budget {
+    UnknownComplexity { diagnostic: _ } => false
+    _ => true
+  }
+}
+
+fn complexity_budget_row_dominates(row: LensSubjectComplexityBudgetRow) -> Bool {
+  match lens_subject_arrow_body_for_budget_row(row: row) {
+    Accepted { value: body, diagnostics: _ } =>
+      let declared = complexity_declared_budget_for_row(row: row, body: body)
+      if !complexity_declared_budget_is_rated(budget: declared) {
+        false
+      } else {
+        match complexity_lens(n: body) {
+          Holds { value: computed } =>
+            complexity_bound_dominates(a: declared, b: computed)
+          _ => false
+        }
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn complexity_budget_roster_all_rows_hold(rows: List<LensSubjectComplexityBudgetRow>) -> Bool {
+  fold_list(
+    xs: rows,
+    empty: true,
+    cons: fn(acc, row) {
+      acc && complexity_budget_row_dominates(row: row)
+    }
+  )
+}
+
+fn family_linearity_registry_row_count_is_three() -> Bool {
+  length(xs: linearity_registry()) == 3
+}
+
+fn family_parallel_representation_row_count_is_one() -> Bool {
+  length(xs: parallel_representation_registry()) == 1
+}
+
+fn family_lowering_catalog_nonempty_and_sound() -> Bool {
+  (length(xs: lowering_catalog()) > 0) && catalog_is_sound()
+}
+
+fn family_fn_decl_enumeration_live() -> Bool {
+  length(xs: fn_arrow_decl_facts_live()) > 0
+}
+
+fn family_cost_lens_total_on_atom() -> Bool {
+  match cost_lens(n: family_floor_audit_probe_atom) {
+    Holds { value: _ } => true
+    _ => false
+  }
+}
+
+fn family_under_side_lens_reachable() -> Bool {
+  match fact_density_hollow_alias_gate(node: family_floor_audit_probe_atom) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+test fn complexity_linearity_family_floor_audit_holds() -> Bool {
+  complexity_budget_roster_all_rows_hold(rows: complexity_subject_budget_rows)
+    && !is_empty(xs: complexity_subject_budget_rows)
+    && family_linearity_registry_row_count_is_three()
+    && family_parallel_representation_row_count_is_one()
+    && family_lowering_catalog_nonempty_and_sound()
+    && family_fn_decl_enumeration_live()
+    && family_cost_lens_total_on_atom()
+    && family_under_side_lens_reachable()
+}

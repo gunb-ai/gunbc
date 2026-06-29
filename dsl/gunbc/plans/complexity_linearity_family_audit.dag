@@ -1,0 +1,56 @@
+module gunbc.plans.complexity_linearity_family_audit
+
+import gunbc.plan { Plan, HasTrigger }
+import std.markdown { MarkdownBlock, TableBlock, AlignNone }
+import gunbc.plans.md_helpers { h2, p, li, ul, cell, row }
+
+fn complexity_linearity_family_audit_body() -> List<MarkdownBlock> {
+  [
+    p(text: "**Status:** audit landed · enforcement phased · **DESIGN.md + carriers are authority** (§2 horizontal + §1 cost axis; expressibility-frontier frame: [expressibility-frontier](expressibility-frontier.md)). Linked from `ROADMAP.md §3`."),
+    p(text: "**Verified against the live tree 2026-06-29** (executable census + floor witness)."),
+    h2(text: "0. Verdict"),
+    p(text: "The complexity/linearity lens family is one registry engine (`v2.lens.intent_linearity`) over two §1 axes (run-time cost vs change-time redundancy). Detection is total; whole-corpus **TermChain** enforcement is blocked on fn-body reflection — `fn_arrow_decl_facts_live()` has signatures, not bodies."),
+    h2(text: "1. Family modules (seven top-level)"),
+    TableBlock {
+      header: row(cells: [cell(text: "module"), cell(text: "axis"), cell(text: "construction class")]),
+      alignments: [AlignNone, AlignNone, AlignNone],
+      rows: [
+        row(cells: [cell(text: "`v2.lens.intent_linearity`"), cell(text: "registry"), cell(text: "WallAfterGrounding")]),
+        row(cells: [cell(text: "`v2.lens.simulated_relationship`"), cell(text: "ChangeTime / TermChain"), cell(text: "WallAfterGrounding")]),
+        row(cells: [cell(text: "`v2.lens.structural_similarity`"), cell(text: "ChangeTime / TypeForest"), cell(text: "WallAfterGrounding")]),
+        row(cells: [cell(text: "`v2.lens.complexity_lowering`"), cell(text: "RunTime catalog"), cell(text: "WallAfterGrounding")]),
+        row(cells: [cell(text: "`v2.lens.cost`"), cell(text: "RunTime fold"), cell(text: "WallNow")]),
+        row(cells: [cell(text: "`v2.lens.complexity`"), cell(text: "RunTime budget"), cell(text: "RatchetForever")]),
+        row(cells: [cell(text: "`v2.lens.fact_density`"), cell(text: "under-side dual"), cell(text: "WallAfterGrounding")]),
+      ],
+    },
+    h2(text: "2. Whole-corpus gap"),
+    TableBlock {
+      header: row(cells: [cell(text: "representation"), cell(text: "whole-corpus today"), cell(text: "blocker")]),
+      alignments: [AlignNone, AlignNone, AlignNone],
+      rows: [
+        row(cells: [cell(text: "ImportGraph"), cell(text: "fixture only"), cell(text: "per-module entry enumeration")]),
+        row(cells: [cell(text: "TypeForest"), cell(text: "no"), cell(text: "cross-module clustering gate")]),
+        row(cells: [cell(text: "TermChain (bodies)"), cell(text: "4-subject roster"), cell(text: "**fn-body reflection**")]),
+        row(cells: [cell(text: "global optimality"), cell(text: "advisory forever"), cell(text: "Rice / RatchetForever")]),
+      ],
+    },
+    h2(text: "3. Enforcement phases"),
+    ul(items: [
+      li(text: "**Audit** — this doc + `family_floor_audit_holds_test.dag` (family aggregate witness)."),
+      li(text: "**ImportGraph whole-corpus** — all modules under `witness_layer_roots`."),
+      li(text: "**TypeForest whole-corpus** — `concept_decl_facts_live` clustering."),
+      li(text: "**TermChain whole-corpus** — `fn_body_facts_live` → `complexity_lens` + redundancy rows (ROADMAP §3 milestone)."),
+      li(text: "**Producer-applier** — self-applying registry ([self-applying-lenses](self-applying-lenses.md))."),
+    ]),
+  ]
+}
+
+data complexity_linearity_family_audit_plan: Plan = Plan {
+  slug: "complexity-linearity-family-audit",
+  title: "Complexity/linearity lens family whole-corpus (audit-first)",
+  body: complexity_linearity_family_audit_body(),
+  dissolution: HasTrigger {
+    text: "Delete this doc when whole-corpus enforcement is live for every decidable representation (ImportGraph + TypeForest + TermChain budget/redundancy over all fn bodies under witness_layer_roots), with discriminating floor witnesses per representation, and the family audit witness has dissolved into those gates."
+  }
+}
