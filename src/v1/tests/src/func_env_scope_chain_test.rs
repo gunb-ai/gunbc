@@ -287,12 +287,25 @@ fn func_env_whole_tree_unique_ptr_count_equals_local_definitions() {
 
 #[test]
 fn func_env_dropped_parent_chain_fails_lookup() {
-    let env = Rc::new(ResolvedFuncEnv {
-        local: Rc::new(std::collections::HashMap::new()),
+    let resolved = compile_modules(rc_identity_fixture_sources());
+    let graph = resolved.graph.as_ref().expect("graph");
+    let consumer = typed_module_by_name(
+        &graph.modules,
+        &resolved.source_indices,
+        "test.func_env_rc_consumer",
+    );
+    assert!(
+        lookup_func_sig(consumer.func_env.clone(), "shared_fn".to_string()).is_some(),
+        "sanity: imported shared_fn must resolve with intact parent chain"
+    );
+
+    let stripped = Rc::new(ResolvedFuncEnv {
+        local: consumer.func_env.local.clone(),
         parents: Rc::new(vec![]),
     });
     assert!(
-        lookup_func_sig(env, "missing_fn".to_string()).is_none(),
-        "empty parent chain must not resolve imported names"
+        lookup_func_sig(stripped, "shared_fn".to_string()).is_none(),
+        "perturbation: stripping parents from a real import consumer must break \
+         imported name lookup (chain-walk is load-bearing, not decorative)"
     );
 }
