@@ -39,6 +39,5 @@ fn identical_variant_payload_fact_for_type(type_node: Node) -> IdenticalVariantP
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: WallAfterGrounding { dissolves_to: SingleAuthority },
-  rationale: "Identical payload signatures within a decl is a decidable shape comparison; the lens is a scaffold gated on structural_similarity's producer-stage facts. Grounding authority: v2.lens.structural_similarity per-variant field-shape facts plus the equivalence-class payload-signature injectivity check. Dissolves on: coproduct arms with tag-not-recoverable identical payloads are caught by the structural-similarity producer stage"
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }

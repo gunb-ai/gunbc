@@ -1343,6 +1343,5 @@ fn repo_process_universe() -> RepoProcessUniverse {
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: WallAfterGrounding { dissolves_to: SingleAuthority },
-  rationale: "Changed-subgraph reachability is a decidable fold (re_exec_frontier_from_diff); it is a lens today only because the scheduler does not yet consume the frontier as a construction. Grounding authority: the v2 scheduler consuming the re-execution frontier natively (B-4/B-5 node-precision closure). Dissolves on: the scheduler derives incremental re-execution from the changed-subgraph fold by construction"
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }

@@ -228,6 +228,5 @@ fn parallelism_fact_eq(a: ParallelismFact, b: ParallelismFact) -> Bool {
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: WallAfterGrounding { dissolves_to: SingleAuthority },
-  rationale: "Independence is decidable from dependency-graph structure; the lens is a per-edge ratchet until the coupling carrier lands on InferredFacts. Grounding authority: a substrate parallelism-coupling carrier on InferredFacts (dissolves feature:T-13-parallelism-relation-unresolved). Dissolves on: independence is read from a resolved coupling carrier by construction, not classified per-edge by a lens"
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }

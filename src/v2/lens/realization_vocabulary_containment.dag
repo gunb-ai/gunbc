@@ -224,6 +224,5 @@ fn realization_vocab_roster_sound_live(scan_roots: List<String>) -> Bool {
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: WallAfterGrounding { dissolves_to: RealizationDispatch },
-  rationale: "Importing the target-AST sidecar outside the realization edge is a decidable import-graph property; a shrinking-roster ratchet that becomes a pure construction wall once the bash-sidecar arc empties the roster. Grounding authority: the bash-sidecar arc (warm-badger-46) migrating every consumer onto emit(intent, Bash). Dissolves on: the exception roster empties to a pure wall, extdeps.languages.bash.program is deletable, and importing target-AST vocab outside the realization edge is then unwritable. Edge permanent members: src/v2/workflow/shell_emit (bash string-level serializer) and src/v2/workflow/orchestration_emit (intent-to-bash emitter) are the bash realization layer parallel to 05_emit/06_translate — they author bash grammar Node values, so importing the target-AST sidecar is definitionally correct; their test siblings (orchestration_stmt_emit, orchestration_word_emit) are edge-adjacent by the same argument"
+  class: WallAfterGrounding { dissolves_to: RealizationDispatch }
 }

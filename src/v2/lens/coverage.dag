@@ -116,6 +116,5 @@ fn missing_coverage<C>(
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: WallAfterGrounding { dissolves_to: SubstrateMandatoryTag },
-  rationale: "Expected-vs-actual missing-set is a decidable set-difference over declared corpora (consumed by mock_totality); it is a lens because the corpus is data, not a type the compiler can see is unhandled. Grounding authority: corpus-as-type: the substrate seeing an unhandled declared-data corpus member as a compile error (the mock_totality consumer). Dissolves on: the published corpus is a closed type the compiler totality-checks, not declared data"
+  class: WallAfterGrounding { dissolves_to: SubstrateMandatoryTag }
 }
