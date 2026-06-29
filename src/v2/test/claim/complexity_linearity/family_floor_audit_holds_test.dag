@@ -13,8 +13,6 @@ import v2.lens.intent_linearity {
   linearity_registry,
   parallel_representation_registry
 }
-import v2.lens.simulated_relationship { chain_is_simulated }
-import v2.lens.structural_similarity { type_decls_anti_unify }
 import v2.std.algebra { fold_list, is_empty, length }
 import v2.std.collection { List }
 import v2.std.diagnostic { Accepted, Rejected }
