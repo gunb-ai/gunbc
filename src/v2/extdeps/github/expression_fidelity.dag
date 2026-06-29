@@ -1,0 +1,51 @@
+module v2.extdeps.github.expression_fidelity
+
+import v2.extdeps.languages.dag { dag_grammar_atom, dag_named_edge }
+import v2.std.compilers.target_model { TargetModel, target_model_emit_transforms_empty }
+import v2.std.compilers.lexing { VoidLexRules }
+import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
+import v2.std.collection { empty_map }
+import v2.std.node { Conj, Node, TypeNode, SyntheticOccurrence }
+
+fn gha_expression_modeled_fidelity_node() -> Node {
+  dag_grammar_atom(id: ^dag_fidelity_disposition_kind_modeled)
+}
+
+fn gha_expression_roundtrip_fidelity_quotient_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      dag_named_edge(
+        name: ^gha_expression_roundtrip_fidelity_core,
+        target: gha_expression_modeled_fidelity_node()
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn gha_expression_roundtrip_target_model_bundle() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      dag_named_edge(
+        name: ^target_model_edge_fidelity_quotient,
+        target: gha_expression_roundtrip_fidelity_quotient_node()
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+data gha_expression_roundtrip_authority_source: String = "extdeps.github.expressions core roundtrip fidelity quotient"
+
+fn gha_expression_roundtrip_target_model() -> TargetModel {
+  TargetModel {
+    bundle: gha_expression_roundtrip_target_model_bundle(),
+    lex: VoidLexRules,
+    binding_spellings: empty_map(),
+    token_class_emit_transforms: target_model_emit_transforms_empty,
+    authority_source_text: gha_expression_roundtrip_authority_source,
+    runtime_row: target_emit_host_runtime_row_unconfigured
+  }
+}
