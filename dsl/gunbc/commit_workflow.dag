@@ -1,5 +1,7 @@
-module gunbc.code_commit_workflow
+module gunbc.commit_workflow
 
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.ci_spec {
   Gate,
   RustMonolithGate, EmitHostGate, LayeringImportsGate,
@@ -24,6 +26,15 @@ fn string_list_eq(left: List<String>, right: List<String>) -> Bool {
     false
   } else {
     string_list_eq(left: left.skip(n: 1), right: right.skip(n: 1))
+  }
+}
+
+data commit_workflow_projection_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.ci_spec",
+    decl_name: "gunbc_ci_floor_gates",
+    field: WholeDeclaration
   }
 }
 

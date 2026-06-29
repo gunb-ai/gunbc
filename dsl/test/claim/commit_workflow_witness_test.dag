@@ -1,8 +1,9 @@
-module test.claim.code_commit_workflow_witness
+module test.claim.commit_workflow_witness
 
-import gunbc.code_commit_workflow {
+import gunbc.commit_workflow {
   commit_gate_roster,
   commit_workflow_realization_bindings,
+  commit_workflow_projection_scaffold,
   CommitWorkflowSurface, GithubActionsCiJob, GithubActionsRustTestsJob, GitPrePushHook,
   CiYamlHandler, GitPrePushScriptHandler,
   roster_lifts_ci_floor_gates,
@@ -14,6 +15,14 @@ import gunbc.code_commit_workflow {
 }
 import gunbc.generated_artifact {
   CiYamlArtifact, GithooksPrePushArtifact, artifact_path
+}
+import std.disposition { Scaffold, SingleAuthority }
+
+fn witness_projection_scaffold_marked() -> Bool {
+  match commit_workflow_projection_scaffold {
+    Scaffold { dissolves_to: SingleAuthority, bind: _ } => true
+    _ => false
+  }
 }
 
 fn witness_roster_lifts_ci_floor_gates() -> Bool {
@@ -73,8 +82,9 @@ fn witness_roster_nonempty() -> Bool {
     && length(commit_workflow_realization_bindings) == 3
 }
 
-test fn code_commit_workflow_witnesses() -> Bool {
-  witness_roster_nonempty()
+test fn commit_workflow_witnesses() -> Bool {
+  witness_projection_scaffold_marked()
+    && witness_roster_nonempty()
     && witness_roster_lifts_ci_floor_gates()
     && witness_roster_lifts_ci_rust_job_gates()
     && witness_roster_lifts_local_tidy_checks()

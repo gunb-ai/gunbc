@@ -67,9 +67,9 @@ Dispatch registry (extends `generated_artifact.dag`, no new artifact types):
 ## 5. Sequencing (sketch → implement)
 
 1. **Checkpoint 0 (this sketch)** — parent review; no #5924 edits.
-2. **Checkpoint 1** — land `gunbc.commit_workflow` model + projection witnesses only (additive; `ci_spec`/`local_tidy_spec` still own data rows). *Note: PR #5940 has a provisional `code_commit_workflow.dag` slice awaiting sketch alignment.*
-3. **Checkpoint 2** — `ci_spec` gate lists become projections; `local_tidy_checks` becomes projection.
-4. **Checkpoint 3** — re-express `ci_workflow` + `githooks_pre_push_emit` as handlers; byte-identical drift gates green.
+2. **Checkpoint 1** — land `gunbc.commit_workflow` (`dsl/gunbc/commit_workflow.dag`) model + projection witnesses only (additive; `ci_spec`/`local_tidy_spec` still own data rows). Projections carry `commit_workflow_projection_scaffold` (`Scaffold { dissolves_to: SingleAuthority }`) — parallel-rep until checkpoint 2 inverts authority. **Do not merge checkpoint 1 as authority dissolution.**
+3. **Checkpoint 2 — HOLD** (operator scope pending): `ci_spec` gate lists → projections. Load-bearing; do not touch until relay.
+4. **Checkpoint 3 — HOLD** (operator scope pending): handler re-expression; mandatory byte-identity on `expected_ci_yml()` + `expected_githooks_pre_push_sh()`; #5924 hook bytes frozen (swap authority import only).
 
 ## Dissolution trigger (DESIGN §6)
 
