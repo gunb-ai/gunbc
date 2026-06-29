@@ -192,8 +192,7 @@ converge_green_place_receipt_ok() {
   dsl_sha="$(grep -E '^submodule_dsl_sha=' "$ctrl/$receipt_path" 2>/dev/null | head -n1 | cut -d= -f2- | tr -d ' ' || true)"
   verdict="$(grep -E '^verdict=' "$ctrl/$receipt_path" 2>/dev/null | head -n1 | cut -d= -f2- | tr -d ' ' || true)"
   verified_at="$(grep -E '^verified_at=' "$ctrl/$receipt_path" 2>/dev/null | head -n1 | cut -d= -f2- | tr -d ' ' || true)"
-  [ -n "$binary_sha" ] && [ -n "$dsl_sha" ] && [ -n "$verdict" ] && [ -n "$verified_at" ] \
-    && [ "$binary_sha" = "$desired_pin" ] && [ "$dsl_sha" = "$desired_pin" ] && [ "$verdict" = "$verdict_green" ]
+  [ -n "$binary_sha" ] && [ -n "$dsl_sha" ] && [ -n "$verdict" ] && [ -n "$verified_at" ] && [ "$binary_sha" = "$desired_pin" ] && [ "$dsl_sha" = "$desired_pin" ] && [ "$verdict" = "$verdict_green" ]
 }
 
 converge_gunbc_pinned_tree() {
@@ -202,8 +201,8 @@ converge_gunbc_pinned_tree() {
   # DESIRED PIN: derived from ctrl third_party/gunbc gitlink at converge time — never a hardcoded constant.
   # NO-OP: binary/dsl/ctrl sha-coherent + process pin + stamped green-place receipt.
   # LIVE-APPLY: quiescent-window restart via reload_hook (sub-second, NO runner-style drain); spawn-retry backstop.
-  if [ "$8" = "defer_submodule" ]; then checkout="$10/$9"; else checkout="$9"; fi
-  ctrl_pin="$(converge_read_ctrl_gunbc_pin "$10" "$15")"
+  if [ "$8" = "defer_submodule" ]; then checkout="${10}/$9"; else checkout="$9"; fi
+  ctrl_pin="$(converge_read_ctrl_gunbc_pin "${10}" "${14}")"
   desired_pin="$ctrl_pin"
   dsl_pin="$(converge_read_gunbc_host_pin "$checkout")"
   binary_root="$(converge_resolve_live_binary_root)"
@@ -220,14 +219,14 @@ converge_gunbc_pinned_tree() {
     if [ -z "$process_pin" ] || [ "$process_pin" = "$ctrl_pin" ]; then pin_ok=1; fi
   fi
   green_ok=0
-  if converge_green_place_receipt_ok "$10" "$16" "$17" "$desired_pin"; then green_ok=1; fi
+  if converge_green_place_receipt_ok "${10}" "${15}" "${16}" "$desired_pin"; then green_ok=1; fi
   if [ "$5" = "skip_process_pin_coherent_and_receipt" ] && [ "$pin_ok" -eq 1 ] && [ "$green_ok" -eq 1 ]; then
     verdict=converged; effective="$dsl_pin"
     emit_receipt "$1" "$2" "$3" "$desired_pin" "$effective" "$verdict"
     record "$verdict"; return
   fi
   if [ "$4" = "existing_host_quiescent" ]; then
-    echo "LIVE-APPLY: gunbc pinned-tree drift on $1 requires quiescent-window restart via $19 + stamped green-place receipt (keen-dove writer); refusing blind apply" >&2
+    echo "LIVE-APPLY: gunbc pinned-tree drift on $1 requires quiescent-window restart via ${18} + stamped green-place receipt (keen-dove writer); refusing blind apply" >&2
     if [ -z "$dsl_pin" ]; then effective=ABSENT; verdict=absent; else effective="$dsl_pin"; verdict=drifted; fi
     emit_gunbc_pinned_detail "$1" "$2" "$3" "$desired_pin" "$effective" "$verdict" "1" "pinned_tree_drift" "$7" "$desired_pin" "$8"
     record "$verdict"; return
@@ -239,14 +238,14 @@ converge_gunbc_pinned_tree() {
     dsl_pin="$(converge_read_gunbc_host_pin "$checkout")"
   else dsl_pin=""; fi
   mkdir -p "$7"
-  if [ ! -x "$7/$14" ]; then
-    echo "binary pull $12@sha:$ctrl_pin into $7 (steady-state CAS/ghcr transport keyed by derived pin)" >&2
-    if [ ! -x "$7/$14" ] && [ -d "$checkout" ]; then
-      (cd "$checkout" && cargo build -p v1-compiler --release --bin "$14" >/dev/null 2>&1) || true
-      if [ -x "$checkout/target/release/$14" ]; then cp "$checkout/target/release/$14" "$7/$14" 2>/dev/null || true; fi
+  if [ ! -x "$7/${13}" ]; then
+    echo "binary pull ${11}@sha:$ctrl_pin into $7 (steady-state CAS/ghcr transport keyed by derived pin)" >&2
+    if [ ! -x "$7/${13}" ] && [ -d "$checkout" ]; then
+      (cd "$checkout" && cargo build -p v1-compiler --release --bin "${13}" >/dev/null 2>&1) || true
+      if [ -x "$checkout/target/release/${13}" ]; then cp "$checkout/target/release/${13}" "$7/${13}" 2>/dev/null || true; fi
     fi
   fi
-  if [ -x "$7/$14" ]; then export "$6=$7"; fi
+  if [ -x "$7/${13}" ]; then export "$6=$7"; fi
   if [ -z "$dsl_pin" ]; then effective=ABSENT; verdict=absent; else decide_verdict "$dsl_pin" "$desired_pin"; effective="$dsl_pin"; fi
   emit_receipt "$1" "$2" "$3" "$desired_pin" "$effective" "$verdict"
   record "$verdict"
