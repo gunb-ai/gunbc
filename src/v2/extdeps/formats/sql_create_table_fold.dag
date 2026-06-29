@@ -185,6 +185,8 @@ fn sql_fold_column_def_emitted_witness(col: SqlColumnDefinition) -> Witness<Node
   }
 }
 
+data sql_fold_column_list_pair_encoding_dissolution_trigger: String = "🟡 dissolve-on: PR #5947 lands on main — delete sql_fold_column_list_single_emitted, sql_fold_column_list_pair_emitted, sql_fold_column_list_emitted_from_suffix_witness, sql_fold_column_list_leaf_productions, sql_fold_column_list_pair_productions; wire sql_production_fold_column_list through sql_fold_list_production_for_lhs generic list productions; pilot byte-identical floor witness is proven ONLY on generic list path, pair-encoding must not remain beside it"
+
 fn sql_fold_column_list_single_emitted(col: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
