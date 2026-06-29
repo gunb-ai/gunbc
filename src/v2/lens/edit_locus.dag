@@ -256,6 +256,5 @@ fn affected_set_reading_from_git_diff_provenance(
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: WallAfterGrounding { dissolves_to: SingleAuthority },
-  rationale: "Diff path to substrate Node edit_locus is decidable; the lens is a compatibility shim over NodeArtifactProvenance until the regex primitive lands. Grounding authority: NodeArtifactProvenance -- the modeled path-to-Node authority. Dissolves on: the EditLocusRead/PathRegex shim is replaced once Q-Regex-Primitive lands and provenance owns the path-to-Node mapping"
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }

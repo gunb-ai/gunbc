@@ -148,6 +148,5 @@ fn idempotency_fact_eq(a: IdempotencyFact, b: IdempotencyFact) -> Bool {
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: WallAfterGrounding { dissolves_to: SingleAuthority },
-  rationale: "Idempotency/cancellation is algebraic-law-derived and decidable per edge; the lens is a ratchet until the collapse is a structural construction over the closed algebra. Grounding authority: algebraic simplification -- idempotent/cancellation/redundancy collapse derived from the algebra (the per-edge classification becoming substrate). Dissolves on: redundant ops collapse structurally by the algebra law, not flagged by a lens"
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }

@@ -1,0 +1,5 @@
+module std.determinism
+
+type DeterminismAxis
+  = Deterministic
+  | NonDeterministic

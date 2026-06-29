@@ -56,6 +56,5 @@ fn visibility_clean(facts: List<ModuleVisibilityFact>) -> Bool {
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: WallAfterGrounding { dissolves_to: SingleAuthority },
-  rationale: "A public module importing a non-public module is a decidable import-graph property; the realization of access.dag's effective_public leak rule, staged on the live ModuleVisibilityFact bridge. Grounding authority: access-checked publication by construction (access.dag's effective_public) plus the live ModuleVisibilityFact bridge. Dissolves on: a public module exposing a non-public import is unpublishable by construction (effective_public), not flagged by an import-graph lens"
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }

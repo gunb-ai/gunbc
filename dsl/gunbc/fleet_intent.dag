@@ -201,10 +201,6 @@ data srv3_baseboard: ServerBaseboard = ServerBaseboard {
   bmc: BmcEndpoint { host: "192.168.1.192", protocol: Redfish },
 }
 
-data srv1_bmc_credential: CredentialFlow = Stored { secret_name: "bmc-srv1-admin" }
-data srv2_bmc_credential: CredentialFlow = Stored { secret_name: "bmc-srv2-admin" }
-data srv3_bmc_credential: CredentialFlow = Stored { secret_name: "bmc-srv3-admin" }
-
 data srv1_nvme0: StorageDevice = nvme_storage_device(
   catalog: wd_black_sn850x_2tb_catalog,
   persistence: Persistent,

@@ -500,6 +500,5 @@ fn apply_advisory_lens(
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: WallAfterGrounding { dissolves_to: RealizationDispatch },
-  rationale: "The lens-application surface is a mechanism, not a bad-state detector; it is staged pending section-ref-identity-evidence and the compile-pipeline gate adapter wiring. Grounding authority: the substrate lens-attachment surface (apply_lens / CompileLens pipeline-gate adapter) plus section-ref-identity-evidence. Dissolves on: lens application is a substrate mechanism (the advisory-to-fail-closed bridge by construction) and section_subject resolves via section-ref identity"
+  class: WallAfterGrounding { dissolves_to: RealizationDispatch }
 }

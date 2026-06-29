@@ -165,6 +165,5 @@ fn lens_registry_ids_resolve(lens_ids: List<LensIdV0>) -> Bool {
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: WallAfterGrounding { dissolves_to: SingleAuthority },
-  rationale: "The v0 LENS_ID to module_path map is a decidable lookup; an operator-pinned interim until lens identity is substrate-derived. Grounding authority: substrate-derived lens identity (the r4 lens-interface freeze pin). Dissolves on: LensIdV0 to module_path is derived from the substrate, not pinned in a registry data table"
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }

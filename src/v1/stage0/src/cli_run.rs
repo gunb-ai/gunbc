@@ -1,5 +1,5 @@
 use std::cell::RefCell;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::rc::Rc;
@@ -97,6 +97,30 @@ fn extract_module_path(content: &str) -> Option<String> {
         }
     }
     None
+}
+
+/// Module-less `.dag` fragments (parse fixtures) are excluded from the compile entry
+/// set. Fail-closed visibility: list every skipped path so a forgotten `module` decl
+/// in real source is surfaced, not silently dropped.
+pub fn report_moduleless_dag_entry_skips(skipped_paths: &[String]) {
+    if skipped_paths.is_empty() {
+        return;
+    }
+    eprintln!(
+        "skipped {} module-less .dag file(s) from compile entry set (no `module` declaration):",
+        skipped_paths.len()
+    );
+    for path in skipped_paths {
+        eprintln!("  {path}");
+    }
+}
+
+pub fn moduleless_dag_entry_paths(entry_files: &[(String, String)]) -> Vec<String> {
+    entry_files
+        .iter()
+        .filter(|(_, content)| extract_module_path(content).is_none())
+        .map(|(path, _)| path.clone())
+        .collect()
 }
 
 pub(crate) fn extract_import_paths(content: &str) -> Vec<String> {
@@ -273,21 +297,27 @@ fn load_sources(source_roots: &[String]) -> Vec<Rc<v1_compiler_compile::SourceFi
         }
     }
 
+    let skipped_moduleless = moduleless_dag_entry_paths(&entry_files);
+    report_moduleless_dag_entry_skips(&skipped_moduleless);
+
     let mut seen: HashMap<String, Rc<v1_compiler_compile::SourceFile>> = HashMap::new();
     let mut entry_for_queue = Vec::new();
     for (path, content) in &entry_files {
-        let source = Rc::new(v1_compiler_compile::SourceFile {
-            path: path.clone(),
-            content: content.clone(),
-        });
         if let Some(mod_path) = extract_module_path(content) {
+            let source = Rc::new(v1_compiler_compile::SourceFile {
+                path: path.clone(),
+                content: content.clone(),
+            });
             seen.insert(mod_path, source.clone());
+            entry_for_queue.push(source);
         }
-        entry_for_queue.push(source);
     }
 
     let mut sources = resolve_transitively(entry_for_queue, &index, seen);
     for (path, content) in entry_files {
+        if extract_module_path(&content).is_none() {
+            continue;
+        }
         if !sources.iter().any(|s| s.path == path) {
             sources.push(Rc::new(v1_compiler_compile::SourceFile { path, content }));
         }
@@ -929,18 +959,18 @@ pub struct WholeTreeCtx {
     pub modules_excluded: usize,
 }
 
-pub fn whole_tree_resolved_ctx(
+pub struct WholeTreeStrictSources {
+    pub sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
+    pub modules_resolved: usize,
+    pub modules_excluded: usize,
+}
+
+pub fn whole_tree_strict_sources(
     source_roots: &[String],
     exclude_substrings: &[String],
-    execution_mode: v1_interpreter::ExecutionMode,
-) -> Result<WholeTreeCtx, String> {
+) -> Result<WholeTreeStrictSources, String> {
     let index = build_module_index(source_roots);
     let total = index.len();
-    // Drop a module if EITHER its source path OR its declared module path contains
-    // an excluded substring. Module-path matching is required because the corpus's
-    // unresolvable test scaffolds are keyed by module NAME (`v2.test.*` importing
-    // `v2.test.rung_3_4_common` / `v2.test.fixture.*`), not by a shared file path —
-    // many live physically under `compiler/` and `extdeps/` dirs.
     let all_sources: Vec<Rc<v1_compiler_compile::SourceFile>> = index
         .iter()
         .filter(|(module_path, sf)| {
@@ -955,8 +985,181 @@ pub fn whole_tree_resolved_ctx(
         return Err("whole-tree corpus is empty (no .dag modules under source roots)".to_string());
     }
     let modules_excluded = total - all_sources.len();
+    Ok(WholeTreeStrictSources {
+        sources: all_sources,
+        modules_resolved: total - modules_excluded,
+        modules_excluded,
+    })
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct WholeCorpusSemanticOracle {
+    pub diagnostic_fingerprint: String,
+    pub rust_corpus_repr: String,
+    /// Canonical JSON identity hash of the full `EmitGraphInfo` (resolved emit repr).
+    pub emit_graph_fingerprint: String,
+    /// Aggregate per-module diagnostics + emit-repr rows + graph-level emit metadata.
+    pub corpus_fingerprint: String,
+    pub modules_resolved: usize,
+    pub per_module_rows: usize,
+}
+
+fn sort_json_object_keys(value: serde_json::Value) -> serde_json::Value {
+    match value {
+        serde_json::Value::Object(map) => {
+            let mut keys: Vec<String> = map.keys().cloned().collect();
+            keys.sort();
+            let mut out = serde_json::Map::new();
+            for key in keys {
+                if let Some(child) = map.get(&key) {
+                    out.insert(key, sort_json_object_keys(child.clone()));
+                }
+            }
+            serde_json::Value::Object(out)
+        }
+        serde_json::Value::Array(items) => serde_json::Value::Array(
+            items
+                .into_iter()
+                .map(sort_json_object_keys)
+                .collect::<Vec<_>>(),
+        ),
+        other => other,
+    }
+}
+
+fn canonical_json_identity_hash<T: Serialize>(value: &T) -> Result<String, String> {
+    let raw = serde_json::to_value(value).map_err(|e| e.to_string())?;
+    let sorted = sort_json_object_keys(raw);
+    let bytes = serde_json::to_vec(&sorted).map_err(|e| e.to_string())?;
+    Ok(v1_rt::bytes_identity_hash(&bytes))
+}
+
+fn module_defined_type_names(
+    module: &TypedModule,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> BTreeSet<String> {
+    use ItemKind::{DataItem, TypeItem};
+    let mut names = BTreeSet::new();
+    for item in module.items.iter() {
+        if matches!(item_kind(item.clone()), TypeItem | DataItem) {
+            names.insert(authored_name_at(source_indices.clone(), item.clone()));
+        }
+    }
+    names
+}
+
+fn module_emit_repr_fingerprint(
+    module: &TypedModule,
+    emit_info: &crate::v1_compiler_infer_emit_info::EmitGraphInfo,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Result<String, String> {
+    use crate::v1_compiler_infer_emit_info::TypeSummary;
+
+    let type_names = module_defined_type_names(module, source_indices);
+    let mut type_summaries = BTreeMap::<String, TypeSummary>::new();
+    for name in type_names {
+        if let Some(summary) = emit_info.type_summaries.get(&name) {
+            type_summaries.insert(name, summary.as_ref().clone());
+        }
+    }
+
+    canonical_json_identity_hash(&type_summaries)
+}
+
+pub fn whole_corpus_semantic_oracle_snapshot(
+    source_roots: &[String],
+    exclude_substrings: &[String],
+) -> Result<WholeCorpusSemanticOracle, String> {
+    use crate::v1_compiler_infer_emit_info::RustCorpusRepr::{FaithfulFreeMonoid, HostNative};
+
+    let picked = whole_tree_strict_sources(source_roots, exclude_substrings)?;
+    let result = v1_compiler_compile::compile_to_resolved(Rc::new(picked.sources));
+    let graph = result.graph.as_ref().ok_or_else(|| {
+        let si: HashMap<String, Rc<NewlineIndex>> = result
+            .newline_indices
+            .iter()
+            .map(|idx| (idx.file.clone(), idx.clone()))
+            .collect();
+        format!(
+            "whole-corpus strict resolve failed:\n{}",
+            format_error_nodes(&result.diagnostics, &Rc::new(si))
+        )
+    })?;
+    let source_indices = result.source_indices.clone();
+    let mut diag_lines: Vec<String> = graph
+        .diagnostics
+        .iter()
+        .map(|d| v1_compiler_compile::serialize_diagnostic(d.clone()))
+        .collect();
+    diag_lines.sort();
+    let diagnostic_fingerprint = v1_rt::bytes_identity_hash(diag_lines.join("\n").as_bytes());
+    let rust_corpus_repr = match graph.emit_graph_info.corpus_repr {
+        HostNative => "HostNative".to_string(),
+        FaithfulFreeMonoid => "FaithfulFreeMonoid".to_string(),
+    };
+    let emit_graph_fingerprint = canonical_json_identity_hash(graph.emit_graph_info.as_ref())?;
+
+    let mut modules: Vec<Rc<TypedModule>> = graph.modules.iter().cloned().collect();
+    modules.sort_by(|left, right| {
+        let left_path = authored_name_at(source_indices.clone(), left.module.clone());
+        let right_path = authored_name_at(source_indices.clone(), right.module.clone());
+        left_path.cmp(&right_path)
+    });
+
+    let mut per_module_lines = Vec::with_capacity(modules.len());
+    for module in &modules {
+        let module_path = authored_name_at(source_indices.clone(), module.module.clone());
+        let mut module_diag_lines: Vec<String> = graph
+            .diagnostics
+            .iter()
+            .filter(|diag| diag.module_name.as_str() == module_path.as_str())
+            .map(|diag| v1_compiler_compile::serialize_diagnostic(diag.clone()))
+            .collect();
+        module_diag_lines.sort();
+        let module_diag_fingerprint =
+            v1_rt::bytes_identity_hash(module_diag_lines.join("\n").as_bytes());
+        let module_emit_fingerprint = module_emit_repr_fingerprint(
+            module.as_ref(),
+            graph.emit_graph_info.as_ref(),
+            source_indices.clone(),
+        )?;
+        per_module_lines.push(format!(
+            "{module_path}\t{module_diag_fingerprint}\t{module_emit_fingerprint}"
+        ));
+    }
+
+    let per_module_rows = per_module_lines.len();
+    let per_module_blob = per_module_lines.join("\n");
+    let corpus_fingerprint = v1_rt::bytes_identity_hash(
+        format!(
+            "diagnostic_fingerprint={diagnostic_fingerprint}\n\
+             emit_graph_fingerprint={emit_graph_fingerprint}\n\
+             rust_corpus_repr={rust_corpus_repr}\n\
+             per_module:\n{per_module_blob}"
+        )
+        .as_bytes(),
+    );
+
+    Ok(WholeCorpusSemanticOracle {
+        diagnostic_fingerprint,
+        rust_corpus_repr,
+        emit_graph_fingerprint,
+        corpus_fingerprint,
+        modules_resolved: picked.modules_resolved,
+        per_module_rows,
+    })
+}
+
+pub fn whole_tree_resolved_ctx(
+    source_roots: &[String],
+    exclude_substrings: &[String],
+    execution_mode: v1_interpreter::ExecutionMode,
+) -> Result<WholeTreeCtx, String> {
+    let picked = whole_tree_strict_sources(source_roots, exclude_substrings)?;
+    let modules_resolved = picked.modules_resolved;
+    let modules_excluded = picked.modules_excluded;
     let (graph, source_indices) =
-        resolved_graph_from_sources(all_sources, ResolveTypecheckGate::Strict)?;
+        resolved_graph_from_sources(picked.sources, ResolveTypecheckGate::Strict)?;
     Ok(WholeTreeCtx {
         ctx: v1_interpreter::InterpContext::with_runtime_options(
             graph.as_ref(),
@@ -965,7 +1168,7 @@ pub fn whole_tree_resolved_ctx(
             None,
             None,
         ),
-        modules_resolved: total - modules_excluded,
+        modules_resolved,
         modules_excluded,
     })
 }
@@ -2558,7 +2761,7 @@ pub fn discover_floor_corpus_rows(
              the bad-state class cannot be made unwritable by construction. Add a `data \
              construction_justification: ConstructionJustification = …` decl (see \
              v2.lens.common.construction_justification) classifying it as WallNow / \
-             WallAfterGrounding / RatchetForever with a rationale: {}",
+             WallAfterGrounding / RatchetForever: {}",
             unjustified.len(),
             unjustified.join(", ")
         ));
@@ -4035,8 +4238,7 @@ mod construction_justification_hygiene_tests {
         let with = "module v2.lens.demo\n\
             import v2.lens.common.construction_justification { ConstructionJustification, RatchetForever }\n\
             data construction_justification: ConstructionJustification = ConstructionJustification {\n\
-              class: RatchetForever { undecidable_because: \"x\" },\n\
-              rationale: \"y\"\n\
+              class: RatchetForever\n\
             }\n";
         assert!(declares_construction_justification(with));
 
@@ -4161,5 +4363,41 @@ mod sidecar_placement_hygiene_tests {
             msg.contains("wire-contract decls") && msg.contains("_contracts.dag"),
             "error must name the decl type and required suffix: {msg}"
         );
+    }
+}
+
+#[cfg(test)]
+mod moduleless_entry_skip_tests {
+    use super::{extract_module_path, moduleless_dag_entry_paths};
+
+    #[test]
+    fn moduleless_dag_entry_paths_collects_fixture_like_fragments() {
+        let entries = vec![
+            (
+                "/repo/src/v1/stage0/tests/fixtures/split.dag".to_string(),
+                "data x: Int = 0\n".to_string(),
+            ),
+            (
+                "/repo/src/v1/compile.dag".to_string(),
+                "module v1.compile\n".to_string(),
+            ),
+        ];
+        assert_eq!(
+            moduleless_dag_entry_paths(&entries),
+            vec!["/repo/src/v1/stage0/tests/fixtures/split.dag".to_string()]
+        );
+    }
+
+    #[test]
+    fn moduleless_dag_entry_paths_surfaces_real_source_without_module() {
+        let entries = vec![(
+            "/repo/src/v1/forgot_module.dag".to_string(),
+            "data oops: Int = 0\n".to_string(),
+        )];
+        assert_eq!(
+            moduleless_dag_entry_paths(&entries),
+            vec!["/repo/src/v1/forgot_module.dag".to_string()]
+        );
+        assert!(extract_module_path(&entries[0].1).is_none());
     }
 }
