@@ -11,9 +11,15 @@ import v2.std.node {
   SyntheticOccurrence
 }
 import v2.compiler.self_host {
+  self_host_equality_representation,
+  self_host_fixpoint_witness,
   self_host_fixed_point_digests_match,
   self_host_fixed_point_validate,
+  self_host_snake_closes,
+  self_host_stage1,
+  self_host_stage2,
   stage_emission_equality,
+  CanonicalNodeEmission,
   SourceModels
 }
 import v2.std.diagnostic { Accepted, Rejected }
@@ -65,6 +71,46 @@ test fn self_host_fixed_point_digests_match_on_equal() -> Bool {
     emitted_stage1: stage_reference_emitted(),
     emitted_stage2: stage_candidate_equal_emitted()
   )
+}
+
+test fn self_host_equality_representation_is_canonical_node_emission() -> Bool {
+  match self_host_equality_representation() {
+    CanonicalNodeEmission => true
+  }
+}
+
+test fn self_host_snake_closes_on_equal_stages() -> Bool {
+  self_host_snake_closes(
+    stage1: self_host_stage1(node: stage_reference_emitted()),
+    stage2: self_host_stage2(node: stage_candidate_equal_emitted())
+  )
+}
+
+test fn self_host_snake_closes_fails_on_perturbed_stages() -> Bool {
+  self_host_snake_closes(
+    stage1: self_host_stage1(node: stage_reference_emitted()),
+    stage2: self_host_stage2(node: stage_candidate_perturbed_emitted())
+  ) == false
+}
+
+test fn self_host_fixpoint_witness_holds_on_equal_stages() -> Bool {
+  match self_host_fixpoint_witness(
+    stage1: self_host_stage1(node: stage_reference_emitted()),
+    stage2: self_host_stage2(node: stage_candidate_equal_emitted())
+  ) {
+    Holds { value: _ } => true
+    Violates { diagnostic: _ } => false
+  }
+}
+
+test fn self_host_fixpoint_witness_violates_on_perturbed_stages() -> Bool {
+  match self_host_fixpoint_witness(
+    stage1: self_host_stage1(node: stage_reference_emitted()),
+    stage2: self_host_stage2(node: stage_candidate_perturbed_emitted())
+  ) {
+    Holds { value: _ } => false
+    Violates { diagnostic: d } => d.reason == ^self_host_fixpoint_digest_mismatch
+  }
 }
 
 test fn self_host_fixed_point_digests_diverge_on_perturbed() -> Bool {
