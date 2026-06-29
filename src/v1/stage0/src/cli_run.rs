@@ -3947,11 +3947,13 @@ mod node_frontier_plumbing_controls {
         let index = build_multi_entry_index(&roots);
 
         // Q1 precondition: assert OUTSIDE_FILE is not in FIXTURE's transitive import closure.
-        let (graph, source_indices) = super::resolve_entry_with_index(&index, FIXTURE)
-            .expect("fixture resolves");
+        let (graph, source_indices) =
+            super::resolve_entry_with_index(&index, FIXTURE).expect("fixture resolves");
         let outside = OUTSIDE_FILE.replace('\\', "/");
         let in_closure = graph.modules.iter().any(|m| {
-            m.items.iter().any(|item| item.span.file.replace('\\', "/").contains(&outside))
+            m.items
+                .iter()
+                .any(|item| item.span.file.replace('\\', "/").contains(&outside))
         });
         assert!(
             !in_closure,
@@ -3996,7 +3998,10 @@ mod node_frontier_plumbing_controls {
             "editing a test fn declaration line must not force_run_all"
         );
         assert!(
-            seeds.edited_test_fns.iter().any(|(_, name)| name == "floor_disc_witness_a_only_holds"),
+            seeds
+                .edited_test_fns
+                .iter()
+                .any(|(_, name)| name == "floor_disc_witness_a_only_holds"),
             "diff at test fn declaration line must populate edited_test_fns with the function name"
         );
     }
@@ -4014,9 +4019,12 @@ mod node_frontier_plumbing_controls {
         let ranges = parse_unified_diff_line_ranges(&diff);
         let seeds = collect_frontier_seeds_from_diff_line_ranges(&index, &ranges)
             .expect("seeds from referenced-node diff");
-        assert!(!seeds.force_run_all, "diff on a referenced data item must not force_run_all");
-        let (graph, source_indices) = super::resolve_entry_with_index(&index, FIXTURE)
-            .expect("fixture resolves");
+        assert!(
+            !seeds.force_run_all,
+            "diff on a referenced data item must not force_run_all"
+        );
+        let (graph, source_indices) =
+            super::resolve_entry_with_index(&index, FIXTURE).expect("fixture resolves");
         let ctx = super::make_eval_context(&graph, source_indices, ExecutionMode::Wet);
         assert!(
             entry_touches_frontier_seeds(&ctx, FIXTURE, &seeds).expect("touch check"),
@@ -4038,7 +4046,10 @@ mod node_frontier_plumbing_controls {
         let ranges = parse_unified_diff_line_ranges(diff);
         let seeds = collect_frontier_seeds_from_diff_line_ranges(&index, &ranges)
             .expect("seeds from .rs diff");
-        assert!(seeds.force_run_all, "diff on a non-.dag file must force_run_all (fail-closed)");
+        assert!(
+            seeds.force_run_all,
+            "diff on a non-.dag file must force_run_all (fail-closed)"
+        );
     }
 
     // Control 5 (fail-closed): diff before first declaration in a .dag file → force_run_all.
