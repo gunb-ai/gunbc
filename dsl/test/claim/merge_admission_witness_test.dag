@@ -6,7 +6,7 @@ import gunbc.merge_admission {
   PerPrGateOnly, RequireUpToDateBase, KeyedReceipt, MergeQueueAtomic,
   Success,
   policy_admits,
-  receipt_is_admissible_keyed,
+  receipt_is_admissible,
   current_gate_roster_hash,
   gate_roster_content_hash,
   gunbc_repo_standard,
@@ -32,7 +32,7 @@ fn scenario_stale_base_admits_policy(policy: AdmissionPolicy) -> Bool {
   policy_admits(
     policy: policy,
     receipt: scenario_pr_x_receipt,
-    current_base_tree: scenario_base_b1,
+    merge_target_tree_hash: scenario_base_b1,
     current_roster_hash: scenario_roster_r0,
   )
 }
@@ -41,7 +41,7 @@ fn scenario_stale_roster_admits_policy(policy: AdmissionPolicy) -> Bool {
   policy_admits(
     policy: policy,
     receipt: scenario_pr_x_receipt,
-    current_base_tree: scenario_base_b0,
+    merge_target_tree_hash: scenario_base_b0,
     current_roster_hash: scenario_roster_r1,
   )
 }
@@ -75,9 +75,9 @@ test fn merge_queue_atomic_blocks_stale_roster() -> Bool {
 }
 
 test fn keyed_receipt_admits_when_fresh() -> Bool {
-  receipt_is_admissible_keyed(
+  receipt_is_admissible(
     receipt: scenario_pr_x_receipt,
-    current_base_tree: scenario_base_b0,
+    merge_target_tree_hash: scenario_base_b0,
     current_roster_hash: scenario_roster_r0,
   )
 }

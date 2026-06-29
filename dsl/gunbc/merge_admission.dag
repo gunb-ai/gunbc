@@ -112,37 +112,37 @@ fn check_conclusion_is_success(c: CheckConclusion) -> Bool {
   }
 }
 
-fn receipt_is_admissible_keyed(
+fn receipt_is_admissible(
   receipt: MergeAdmissionReceipt,
-  current_base_tree: ContentHash,
+  merge_target_tree_hash: ContentHash,
   current_roster_hash: ContentHash,
 ) -> Bool {
   check_conclusion_is_success(c: receipt.conclusion)
-    && receipt.base_tree_hash == current_base_tree
+    && receipt.base_tree_hash == merge_target_tree_hash
     && receipt.gate_roster_hash == current_roster_hash
 }
 
 fn policy_admits(
   policy: AdmissionPolicy,
   receipt: MergeAdmissionReceipt,
-  current_base_tree: ContentHash,
+  merge_target_tree_hash: ContentHash,
   current_roster_hash: ContentHash,
 ) -> Bool {
   match policy {
     PerPrGateOnly => check_conclusion_is_success(c: receipt.conclusion)
     RequireUpToDateBase =>
       check_conclusion_is_success(c: receipt.conclusion)
-        && receipt.base_tree_hash == current_base_tree
+        && receipt.base_tree_hash == merge_target_tree_hash
     KeyedReceipt =>
-      receipt_is_admissible_keyed(
+      receipt_is_admissible(
         receipt: receipt,
-        current_base_tree: current_base_tree,
+        merge_target_tree_hash: merge_target_tree_hash,
         current_roster_hash: current_roster_hash,
       )
     MergeQueueAtomic =>
-      receipt_is_admissible_keyed(
+      receipt_is_admissible(
         receipt: receipt,
-        current_base_tree: current_base_tree,
+        merge_target_tree_hash: merge_target_tree_hash,
         current_roster_hash: current_roster_hash,
       )
   }

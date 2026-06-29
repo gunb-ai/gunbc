@@ -1,0 +1,76 @@
+module gunbc.plans.merge_admission_gate_shape_proposal
+
+import gunbc.plan { Plan, HasTrigger }
+import std.markdown { MarkdownBlock, TableBlock, AlignNone }
+import gunbc.plans.md_helpers { h2, h3, p, li, ul, cell, row, quote }
+
+fn status_block() -> MarkdownBlock {
+  quote(blocks: [
+    p(text: "**Status: enforcement gate-shape PROPOSAL only** — not enrolled, not wired, not gating. Checkpoint 1 model+witnesses live in gunbc.merge_admission. Tidy-badger owns escalation to loyal-bee and operator sign-off BEFORE any actuator lands. Dissolves when the KeyedReceipt actuator is witnessed in force or this proposal is superseded."),
+  ])
+}
+
+fn section_proposed_actuator() -> List<MarkdownBlock> {
+  [
+    h2(text: "1. Proposed actuator shape (checkpoint 3 — DO NOT AUTHOR yet)"),
+    p(text: "Merge admission is merge-time policy, orthogonal to per-commit floor gates. The actuator consumes a MergeAdmissionReceipt and the live merge-target facts; it does NOT add a new gunbc.ci_gate variant."),
+    TableBlock {
+      header: row(cells: [cell(text: "Layer"), cell(text: "Proposed home"), cell(text: "What it does")]),
+      alignments: [AlignNone, AlignNone, AlignNone],
+      rows: [
+        row(cells: [
+          cell(text: "Predicate (landed)"),
+          cell(text: "gunbc.merge_admission.receipt_is_admissible"),
+          cell(text: "Pure fn: base_tree_hash == merge_target_tree_hash AND gate_roster_hash == current_gate_roster_hash AND conclusion Success"),
+        ]),
+        row(cells: [
+          cell(text: "Enforcement flip (deferred)"),
+          cell(text: "gunbc.ci_failure_class.merge_freshness_gating_status"),
+          cell(text: "GatingComputedDeferred today; GatingEnforced flips consumption on — blocks merge when receipt is inadmissible"),
+        ]),
+        row(cells: [
+          cell(text: "Receipt source (deferred)"),
+          cell(text: "CI check conclusion + recorded base tree + gate_roster_content_hash at run time"),
+          cell(text: "Emitted by the floor run that produced the green; stored as the PR merge-admission receipt"),
+        ]),
+        row(cells: [
+          cell(text: "Repo config drift (checkpoint 2, separate)"),
+          cell(text: "RepoStandard read-only drift gate over GitHub Rulesets API"),
+          cell(text: "Detects squash-only / strict-policy / merge-queue standard-vs-reality fork — not the per-PR receipt actuator"),
+        ]),
+      ],
+    },
+    h3(text: "1.1 Consumption loop (proposal)"),
+    ul(items: [
+      li(text: "At CI green: mint MergeAdmissionReceipt with base_tree_hash = merge-base tree at run time, gate_roster_hash = gate_roster_content_hash(commit_gate_roster), conclusion = Success."),
+      li(text: "At merge attempt: load current main tree hash and current_gate_roster_hash; call receipt_is_admissible(receipt, merge_target_tree_hash, current_roster_hash)."),
+      li(text: "If merge_freshness_gating_status == GatingEnforced and NOT admissible: merge is UNWRITABLE (fail-closed), not a post-hoc main-red."),
+      li(text: "Re-validation fallback (optional cheaper path): if inadmissible only on tree drift, scope affected-set re-run against post-merge tree before blocking."),
+    ]),
+    p(text: "Explicitly NOT proposed here: a new ci_gate row, a rulesets PUT handler, or a merge-queue transport — those are separate realization handlers bound to RepoStandard, sequenced after operator sign-off."),
+  ]
+}
+
+fn section_escalation() -> List<MarkdownBlock> {
+  [
+    h2(text: "2. Escalation ask (loyal-bee + operator)"),
+    ul(items: [
+      li(text: "Confirm merge-time consumption via ci_failure_class is the right gate-shape, vs a GitHub Rulesets required-check that re-encodes the predicate."),
+      li(text: "Confirm gate_roster_content_hash(commit_gate_roster) is the correct single authority for criteria-drift — no second roster."),
+      li(text: "Sign off before vivid-ibex or a follow-on session authors the enforcing actuator."),
+    ]),
+  ]
+}
+
+fn merge_admission_gate_shape_proposal_body() -> List<MarkdownBlock> {
+  concat([status_block()], concat(section_proposed_actuator(), section_escalation()))
+}
+
+data merge_admission_gate_shape_proposal_plan: Plan = Plan {
+  slug: "merge-admission-gate-shape-proposal",
+  title: "[PROPOSAL] Merge-admission enforcement gate shape — actuator consumption, not yet authored",
+  body: merge_admission_gate_shape_proposal_body(),
+  dissolution: HasTrigger {
+    text: "Delete when the KeyedReceipt actuator is witnessed in force or superseded by an enrolled enforcement plan."
+  }
+}
