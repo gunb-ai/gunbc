@@ -5788,7 +5788,7 @@ fn fold_module_contributions(remaining: List<ItemContribution>,
     Absent =>
       LocalContributionState {
         resolved_items: resolved_items,
-        func_env: func_env,
+        func_sigs: func_sigs,
         svc_registry: svc_registry,
         svc_locals: svc_locals,
         item_registry: item_registry,

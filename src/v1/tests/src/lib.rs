@@ -58,6 +58,7 @@ mod faithful_string_element_char_witness_test;
 mod floor_skip_discovery_host_test;
 #[cfg(test)]
 mod fn_as_value_test;
+mod func_env_scope_chain_test;
 #[cfg(test)]
 mod fold_list_generic_instantiation_test;
 #[cfg(test)]
