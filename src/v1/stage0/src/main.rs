@@ -318,6 +318,9 @@ fn main() {
                     }
                 }
 
+                let skipped_moduleless = cli_run::moduleless_dag_entry_paths(&entry_files);
+                cli_run::report_moduleless_dag_entry_skips(&skipped_moduleless);
+
                 let mut seen: HashMap<String, Rc<v1_compiler_compile::SourceFile>> = HashMap::new();
                 let mut entry_for_queue = Vec::new();
                 for (path, content) in &entry_files {
