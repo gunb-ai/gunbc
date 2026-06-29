@@ -30,14 +30,20 @@ The **only true redundancy** on Axis A is `EmitDeterminismGate`'s intentional or
 
 ### Axis B — in-process `resolve_entry_graph` cross-batch (~30–40s per call)
 
-`claim_executor`'s `run_walk` runs batches sequentially. The current batch-local `SharedClaims` deduplication does not persist across batch boundaries. The `floor_effect_gate_witness.dag` closure (~106 modules) is resolved in:
+`claim_executor`'s `run_walk` runs batches sequentially. The current batch-local `SharedClaims` deduplication does not persist across batch boundaries.
 
-- Batch 1: evaluate `dsl_compile_clean_gate_passes` → 1 call to `resolve_entry_graph`
-- Batch 2: evaluate all Group-A gate witnesses → 1 call to `resolve_entry_graph` for the SAME entry
+Eight of nine gates use `floor_gate_witness_entry = "dsl/tools/floor_effect_gate_witness.dag"` as their `.dag` claim entry (`ci_floor_plan.dag:139-143,150-151`). Only `SourceRootIngestGate` uses a different entry (`source_root_ingest_gate.dag`). The heavy-resolve serialization (`floor_heavy_resolve_chain_resource_edges`) places `RegenVerifyGate` and `EmitDeterminismGate` each in their own batch, alone, so `resolve_entry_graph` is called **4 times** on the same `floor_effect_gate_witness.dag` closure (~106 modules) per CI run:
 
-These are the same `(source_roots, entry)` pair; same pure function; same output. Both calls happen in the same OS process within ~52s of each other. The second pays a full ~30–40s re-resolve for no reason.
+| Call | Batch | Claim(s) | Resolve shared? |
+|---|---|---|---|
+| 1 | Batch 1 (compile anchor, alone) | `dsl_compile_clean_gate_passes` | — (first call) |
+| 2 | Batch 2 Group A (5 negligible gates) | rust, emit_host, layering, extdeps, drift | SharedClaims within batch → 1 call for 5 claims |
+| 3 | Later batch (alone, serialized) | `regen_verify_gate_passes` | re-resolves; no cross-batch sharing |
+| 4 | Later batch (alone, serialized) | `emit_determinism_gate_passes` | re-resolves; no cross-batch sharing |
 
-Any future `heavy_whole_tree_resolve` gate added to `floor_effect_gate_witness.dag` will silently add another ~30–40s re-resolve. The behavior is not unwritable — it just happens automatically.
+Calls 2–4 are redundant: same `(source_roots, entry)` pair, same pure function, same output. Three resolves are wasted across three separate batch boundaries within one `claim_executor` process.
+
+M1 eliminates calls 2, 3, and 4 by memoizing the resolved graph from call 1 across the walk. Any future `heavy_whole_tree_resolve` gate added to `floor_effect_gate_witness.dag` in its own serialized batch would silently add a 5th call — the behavior is not unwritable today.
 
 ---
 
@@ -61,9 +67,11 @@ For Axis A (subprocess compiles): the current gate set has no sharing opportunit
 
 **Memory:** The resolved graph for `floor_effect_gate_witness.dag` is ~0.9 GiB. Since the heavy-resolve chain already serializes these batches (Batch 1 finishes before Batch 2 starts), both batches hold the graph at different times — the memo doesn't increase peak memory, it keeps the Batch 1 graph alive slightly longer. This is acceptable.
 
-**By-construction property:** Any gate in any entry that `run_walk` has already resolved in this run gets the memo automatically. A future gate added to `floor_effect_gate_witness.dag` cannot accidentally double-pay — the walk owns the resolve decision.
+**Model surface needed (DESIGN.md §5 "model before implement"):** The `RunnableResourceProfile` already carries `heavy_whole_tree_resolve: Bool`. A new field `resolve_scope: ResolveScope` where `ResolveScope = ResolveScopeIsolated | ResolveScopeShared` lets the model explicitly declare which runnables participate in the shared resolve pool:
+- `ResolveScopeShared` — the executor provides the memoized `ResolvedGraph` from the first resolve of this `(source_roots, entry)` in the walk; a second resolve is structurally impossible (the executor owns it). This is the construction guarantee.
+- `ResolveScopeIsolated` (default) — the executor resolves independently; no sharing. Fail-closed: a new gate that omits `ResolveScopeShared` re-resolves rather than silently sharing stale data. The wrong behavior is safe (extra work), not silent (shared stale result).
 
-**Model surface needed (DESIGN.md §5 "model before implement"):** The `RunnableResourceProfile` already carries `heavy_whole_tree_resolve: Bool`. A new field `resolve_scope: ResolveScope` where `ResolveScope = ResolveScopeIsolated | ResolveScopeShared` lets the model explicitly declare which runnables participate in the shared resolve pool. The executor enforces: `ResolveScopeShared` entries may NOT re-resolve; a future runnable without this field defaults to `ResolveScopeIsolated` (safe, fail-closed — it re-resolves rather than silently sharing stale data). The lens verifies that every `heavy_whole_tree_resolve: true` runnable declares `ResolveScopeShared`.
+The memo does NOT apply automatically to all same-entry resolves — only to `ResolveScopeShared` entries. This preserves the construction authority in the model rather than making the executor's behavior implicit. The lens verifies: every `heavy_whole_tree_resolve: true` runnable must declare `ResolveScopeShared` (the combination is never correct to isolate — a heavy resolve that runs independently in each batch is the violation this mechanism walls off).
 
 ### M2 — Compile artifact as a first-class plan node (Axis A)
 
@@ -138,7 +146,7 @@ All three gates use different `(source_roots, binary)` tuples and therefore each
 
 | Cost today | Cost after M1 | Cost after M1+M2 (gated on determinism) |
 |---|---|---|
-| `resolve_entry_graph` × 2 per run (~30–40s each) | × 1 (memo deduplicates Batch 1 → Batch 2) | × 1 |
+| `resolve_entry_graph` × 4 per run (~30–40s each) | × 1 (memo deduplicates calls 2–4 to call 1) | × 1 |
 | `gunbc compile` × 4 per run (~537s each) | × 4 (M1 doesn't help subprocess) | × 3 (oracle pair 2→1; other two tuples unchanged) |
 | **Total compile cost per run** | ~2148s – ~37s ≈ same subprocess cost, saved resolve | **~1611s + ~37s → 3× compile, 1× resolve** |
 
