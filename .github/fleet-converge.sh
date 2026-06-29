@@ -182,25 +182,30 @@ emit_gunbc_pinned_detail() {
   printf 'converge-receipt host=%s slice=%s knob=%s desired=%s effective=%s verdict=%s drift=%s reason=%s gunbc_root=%s target_sha=%s dsl_mode=%s\n' "$1" "$2" "$3" "$4" "$5" "$6" "$7" "$8" "$9" "${10}" "${11}"
 }
 
-converge_green_place_receipt_ok() {
-  # §5 verify + readiness + cold-start instrument: keen-dove WRITES stamped receipt post-restart.
-  # Stale receipt from a prior pin must NOT satisfy — every field compared to derived ctrl gitlink.
-  local ctrl="$1" receipt_path="$2" verdict_green="$3" desired_pin="$4"
-  local binary_sha="" dsl_sha="" verdict="" verified_at=""
-  [ -f "$ctrl/$receipt_path" ] || return 1
-  binary_sha="$(grep -E '^gunbc_binary_sha=' "$ctrl/$receipt_path" 2>/dev/null | head -n1 | cut -d= -f2- | tr -d ' ' || true)"
-  dsl_sha="$(grep -E '^submodule_dsl_sha=' "$ctrl/$receipt_path" 2>/dev/null | head -n1 | cut -d= -f2- | tr -d ' ' || true)"
-  verdict="$(grep -E '^verdict=' "$ctrl/$receipt_path" 2>/dev/null | head -n1 | cut -d= -f2- | tr -d ' ' || true)"
-  verified_at="$(grep -E '^verified_at=' "$ctrl/$receipt_path" 2>/dev/null | head -n1 | cut -d= -f2- | tr -d ' ' || true)"
-  [ -n "$binary_sha" ] && [ -n "$dsl_sha" ] && [ -n "$verdict" ] && [ -n "$verified_at" ] && [ "$binary_sha" = "$desired_pin" ] && [ "$dsl_sha" = "$desired_pin" ] && [ "$verdict" = "$verdict_green" ]
+converge_green_place_marker_ok() {
+  # ONE artifact: pin=<40hex> first_green_at=<iso8601>. Stale pin must NOT satisfy derived ctrl gitlink.
+  local ctrl="$1" marker_path="$2" pin_prefix="$3" ts_prefix="$4" desired_pin="$5"
+  local line="" marker_pin=""
+  [ -f "$ctrl/$marker_path" ] || return 1
+  line="$(head -n1 "$ctrl/$marker_path" 2>/dev/null || true)"
+  marker_pin="$(printf '%s' "$line" | grep -Eo "$3[0-9a-f]{40}" | head -n1 | cut -d= -f2 || true)"
+  [ -n "$marker_pin" ] && [ "$marker_pin" = "$desired_pin" ] && printf '%s' "$line" | grep -q "$ts_prefix"
+}
+
+converge_invoke_quiescent_reload() {
+  # Option A: converge orchestrates; keen-dove script is the safe executor. Exit 75 = not quiescent (retry next tick).
+  local ctrl="$1" hook="$2" gunbc_root="$3" target_sha="$4" dsl_mode="$5"
+  if ! command -v node >/dev/null 2>&1 || [ ! -f "$ctrl/$hook" ]; then return 1; fi
+  node "$ctrl/$hook" --gunbc-root "$gunbc_root" --target-sha "$target_sha" --dsl-mode "$dsl_mode" --ctrl "$ctrl"
 }
 
 converge_gunbc_pinned_tree() {
   # host slice knob apply_mode no_op gunbc_root_env gunbc_root_path dsl_mode dsl_path ctrl_checkout
-  #   bin_registry bin_digest bin_name pin_read_script receipt_path verdict_green placement_entrypoint reload_hook
-  # DESIRED PIN: derived from ctrl third_party/gunbc gitlink at converge time — never a hardcoded constant.
-  # NO-OP: binary/dsl/ctrl sha-coherent + process pin + stamped green-place receipt.
-  # LIVE-APPLY: quiescent-window restart via reload_hook (sub-second, NO runner-style drain); spawn-retry backstop.
+  #   bin_registry bin_digest bin_name pin_read_script marker_path pin_prefix ts_prefix reload_hook
+  # DESIRED PIN: desired_pin := ctrl_pin from third_party/gunbc gitlink — never a hardcoded constant.
+  # NO-OP: binary/dsl/ctrl sha-coherent + process pin + timestamped green-place marker.
+  # LIVE-APPLY: quiescent-window restart (sub-second, NO runner-style drain); ~10min spawn-retry backstop.
+  # Option A: on drift invoke quiescent-reload.mjs; exit 75 -> drifted (retry); exit 0 + marker -> converged.
   if [ "$8" = "defer_submodule" ]; then checkout="${10}/$9"; else checkout="$9"; fi
   ctrl_pin="$(converge_read_ctrl_gunbc_pin "${10}" "${14}")"
   desired_pin="$ctrl_pin"
@@ -209,26 +214,31 @@ converge_gunbc_pinned_tree() {
   binary_pin=""
   if [ -n "$binary_root" ]; then binary_pin="$(converge_read_gunbc_host_pin "$binary_root")"; fi
   process_pin="$(converge_dashboard_process_pin)"
-  if [ -n "$binary_pin" ] && [ -n "$dsl_pin" ] && [ "$binary_pin" != "$dsl_pin" ]; then
-    effective="$dsl_pin"; verdict=drifted
-    emit_gunbc_pinned_detail "$1" "$2" "$3" "$desired_pin" "$effective" "$verdict" "1" "binary_dsl_sha_skew" "$7" "$desired_pin" "$8"
-    record "$verdict"; return
-  fi
   pin_ok=0
   if [ -n "$ctrl_pin" ] && [ -n "$dsl_pin" ] && [ -n "$binary_pin" ] && [ "$binary_pin" = "$dsl_pin" ] && [ "$dsl_pin" = "$ctrl_pin" ]; then
     if [ -z "$process_pin" ] || [ "$process_pin" = "$ctrl_pin" ]; then pin_ok=1; fi
   fi
   green_ok=0
-  if converge_green_place_receipt_ok "${10}" "${15}" "${16}" "$desired_pin"; then green_ok=1; fi
-  if [ "$5" = "skip_process_pin_coherent_and_receipt" ] && [ "$pin_ok" -eq 1 ] && [ "$green_ok" -eq 1 ]; then
+  if converge_green_place_marker_ok "${10}" "${15}" "${16}" "${17}" "$desired_pin"; then green_ok=1; fi
+  if [ "$5" = "skip_process_pin_coherent_and_marker" ] && [ "$pin_ok" -eq 1 ] && [ "$green_ok" -eq 1 ]; then
     verdict=converged; effective="$dsl_pin"
     emit_receipt "$1" "$2" "$3" "$desired_pin" "$effective" "$verdict"
     record "$verdict"; return
   fi
   if [ "$4" = "existing_host_quiescent" ]; then
-    echo "LIVE-APPLY: gunbc pinned-tree drift on $1 requires quiescent-window restart via ${18} + stamped green-place receipt (keen-dove writer); refusing blind apply" >&2
+    drift_reason="pinned_tree_drift"
+    if [ -n "$binary_pin" ] && [ -n "$dsl_pin" ] && [ "$binary_pin" != "$dsl_pin" ]; then drift_reason="binary_dsl_sha_skew"; fi
+    reload_rc=1
+    if converge_invoke_quiescent_reload "${10}" "${18}" "$7" "$desired_pin" "$8"; then reload_rc=0; else reload_rc=$?; fi
+    if [ "$reload_rc" -eq 75 ]; then
+      echo "LIVE-APPLY: quiescent gate refused on $1 (not quiescent); drifted until next converge tick" >&2
+    elif [ "$reload_rc" -eq 0 ] && converge_green_place_marker_ok "${10}" "${15}" "${16}" "${17}" "$desired_pin"; then
+      verdict=converged; effective="$desired_pin"
+      emit_receipt "$1" "$2" "$3" "$desired_pin" "$effective" "$verdict"
+      record "$verdict"; return
+    fi
     if [ -z "$dsl_pin" ]; then effective=ABSENT; verdict=absent; else effective="$dsl_pin"; verdict=drifted; fi
-    emit_gunbc_pinned_detail "$1" "$2" "$3" "$desired_pin" "$effective" "$verdict" "1" "pinned_tree_drift" "$7" "$desired_pin" "$8"
+    emit_gunbc_pinned_detail "$1" "$2" "$3" "$desired_pin" "$effective" "$verdict" "1" "$drift_reason" "$7" "$desired_pin" "$8"
     record "$verdict"; return
   fi
   # fresh_standup: restart-free apply path for greenfield hosts (srv3 exemplar).
@@ -263,7 +273,7 @@ emit_sessions_membership() {
 }
 
 host_begin "srv1"
-converge_gunbc_pinned_tree "srv1" "gunbc" "pinned_tree_sha" "existing_host_quiescent" "skip_process_pin_coherent_and_receipt" "GUNBC_ROOT" "$HOME/.local/share/gunbc/pinned" "defer_submodule" "third_party/gunbc" "$HOME/ctrl" "ghcr.io/gunb-ai/gunbc/bootstrap" "sha256:BOOTSTRAP_DIGEST_PLACEHOLDER" "gunbc" "scripts/session-dashboard/container/read-gunbc-pin.sh" ".dashboard/converge-green-place.receipt" "green" "place_query.dag" "scripts/session-dashboard/converge-quiescent-reload.sh"
+converge_gunbc_pinned_tree "srv1" "gunbc" "pinned_tree_sha" "existing_host_quiescent" "skip_process_pin_coherent_and_marker" "GUNBC_ROOT" "$HOME/.local/share/gunbc/pinned" "defer_submodule" "third_party/gunbc" "$HOME/ctrl" "ghcr.io/gunb-ai/gunbc/bootstrap" "sha256:BOOTSTRAP_DIGEST_PLACEHOLDER" "gunbc" "scripts/session-dashboard/container/read-gunbc-pin.sh" ".dashboard/converge-green-place.marker" "pin=" "first_green_at=" "scripts/session-dashboard/bin/gunbc-pin-quiescent-reload.mjs"
 converge_slice_property "srv1" "runner" "runner_slice_cap_bytes" "system-actions-runner.slice" "MemoryMax" "85899345920" "85899345920" "85899345920"
 converge_per_slot_cap "srv1" "runner" "per_slot_memory_max_bytes" "/etc/systemd/system/actions-runner@.service.d/20-fleet-width.conf" "actions-runner@srv1-*.service" "MemoryMax" "8589934592"
 converge_per_slot_cap "srv1" "runner" "per_slot_memory_swap_max_bytes" "/etc/systemd/system/actions-runner@.service.d/30-fleet-swap.conf" "actions-runner@srv1-*.service" "MemorySwapMax" "0"
@@ -278,7 +288,7 @@ converge_slice_property "srv1" "sessions" "cpu_weight" "sessions.slice" "CPUWeig
 emit_sessions_membership "srv1" "/sys/fs/cgroup/sessions.slice" "/sys/fs/cgroup/system.slice"
 host_summary "srv1"
 host_begin "srv2"
-converge_gunbc_pinned_tree "srv2" "gunbc" "pinned_tree_sha" "existing_host_quiescent" "skip_process_pin_coherent_and_receipt" "GUNBC_ROOT" "$HOME/.local/share/gunbc/pinned" "defer_submodule" "third_party/gunbc" "$HOME/ctrl" "ghcr.io/gunb-ai/gunbc/bootstrap" "sha256:BOOTSTRAP_DIGEST_PLACEHOLDER" "gunbc" "scripts/session-dashboard/container/read-gunbc-pin.sh" ".dashboard/converge-green-place.receipt" "green" "place_query.dag" "scripts/session-dashboard/converge-quiescent-reload.sh"
+converge_gunbc_pinned_tree "srv2" "gunbc" "pinned_tree_sha" "existing_host_quiescent" "skip_process_pin_coherent_and_marker" "GUNBC_ROOT" "$HOME/.local/share/gunbc/pinned" "defer_submodule" "third_party/gunbc" "$HOME/ctrl" "ghcr.io/gunb-ai/gunbc/bootstrap" "sha256:BOOTSTRAP_DIGEST_PLACEHOLDER" "gunbc" "scripts/session-dashboard/container/read-gunbc-pin.sh" ".dashboard/converge-green-place.marker" "pin=" "first_green_at=" "scripts/session-dashboard/bin/gunbc-pin-quiescent-reload.mjs"
 converge_slice_property "srv2" "runner" "runner_slice_cap_bytes" "system-actions-runner.slice" "MemoryMax" "85899345920" "85899345920" "85899345920"
 converge_per_slot_cap "srv2" "runner" "per_slot_memory_max_bytes" "/etc/systemd/system/actions-runner@.service.d/20-fleet-width.conf" "actions-runner@srv2-*.service" "MemoryMax" "8589934592"
 converge_per_slot_cap "srv2" "runner" "per_slot_memory_swap_max_bytes" "/etc/systemd/system/actions-runner@.service.d/30-fleet-swap.conf" "actions-runner@srv2-*.service" "MemorySwapMax" "0"
