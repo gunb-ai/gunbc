@@ -1139,8 +1139,6 @@ fn bash_fold_delegated_bundle_fail_closed_holds() -> Bool {
   }
 }
 
-data bash_fold_emit_shell_equivalence_receipt_dissolution_trigger: String = "🟡 dissolve-on: emit_shell_stmt deleted in cutover STEP 2 — bash_fold_emit_shell_equivalence_receipt_holds is a receipt witness until fold cutover"
-
 test fn bash_fold_emit_shell_equivalence_receipt_holds() -> Bool {
   bash_fold_fold_matches_emit_shell_stmt(
     stmt: Command { words: [Lit { text: "true" }] }
