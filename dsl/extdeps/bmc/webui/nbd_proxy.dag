@@ -2,12 +2,10 @@ module extdeps.bmc.webui.nbd_proxy
 
 import std.types { Int, NonEmptyStr, List, Bool }
 import std.measure { ByteSize }
-import std.http_path { PathTemplate }
+import std.http_path { PathTemplate, LiteralToken, ParamToken }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import extdeps.uri_path { parse_path_template, ParsedPathTemplate }
 
-// Primary authority: openbmc/jsnbd reference client (nbd-proxy, nbd.js).
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -15,7 +13,6 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-// Cited secondary authorities for wire semantics beyond jsnbd.
 data nbd_protocol_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -30,15 +27,10 @@ data openbmc_virtual_media_design_authority: ExternalAuthority = ExternalAuthori
   }
 }
 
-// §3(a) interface shape — agnostic export contract. Transport (wss+NBD) and
-// workflow policy (slot selection, boot-once ordering) are separate facts.
 type NbdProxyServeInterface {
   export_byte_count: ByteSize
 }
 
-// OpenBMC proxy-mode virtual media inverts the usual NBD deployment: the BMC
-// is the NBD client (kernel nbd-proxy → /dev/nbdX → USB gadget); our program
-// is the NBD server serving the ISO bytes. Cited: jsnbd README + virtual-media design.
 type NbdPeerRole = NbdClient | NbdServer
 
 type NbdProxyRoleAssignment {
@@ -51,8 +43,6 @@ data nbd_proxy_role_assignment: NbdProxyRoleAssignment = NbdProxyRoleAssignment 
   host_program_role: NbdServer,
 }
 
-// After bmcweb ws-upgrade the socket is a bidirectional byte pipe; NBD frames
-// flow over wss (TLS; self-signed BMC cert → trust-pin at realization).
 type NbdOverWssCarrier {
   tls_required: Bool
   bidirectional_byte_pipe: Bool
@@ -62,8 +52,6 @@ data nbd_over_wss_carrier: NbdOverWssCarrier = NbdOverWssCarrier {
   tls_required: true,
   bidirectional_byte_pipe: true,
 }
-
-// --- Fixed-newstyle handshake (server side; jsnbd nbd.js / nbd-proxy dialect) ---
 
 data nbd_magic: Int = 5639144782019643715
 data nbd_ihaveopt_magic: Int = 5280542401877725268
@@ -93,16 +81,9 @@ data nbd_fixed_newstyle_server_greeting: NbdFixedNewstyleServerGreeting = NbdFix
   handshake_flags: nbd_fixed_newstyle_server_handshake_flags,
 }
 
-type NbdClientOption = NbdOptExportName
+data nbd_client_option_export_name_wire: Int = 1
 
-fn nbd_client_option_wire(opt: NbdClientOption) -> Int {
-  match opt {
-    NbdOptExportName => 1
-  }
-}
-
-// jsnbd honors only NBD_OPT_EXPORT_NAME during option haggling.
-data nbd_proxy_honored_client_options: List<NbdClientOption> = [NbdOptExportName]
+data nbd_proxy_honored_client_options: List<Int> = [nbd_client_option_export_name_wire]
 
 type NbdTransmissionFlag =
     NbdTransmissionFlagHasFlags
@@ -117,14 +98,10 @@ fn nbd_transmission_flag_wire(f: NbdTransmissionFlag) -> Int {
 
 data nbd_read_only_export_transmission_flags: Int = 3
 
-// Export reply after NBD_OPT_EXPORT_NAME: 64-bit export size + transmission
-// flags (incl. READ_ONLY). With NO_ZEROES negotiated, no 124-byte padding.
 type NbdExportReply {
   export_size_bytes: Int
   transmission_flags: Int
 }
-
-// --- Transmission phase framing (NBD proto § transmission) ---
 
 data nbd_request_magic: Int = 627086611
 data nbd_reply_magic: Int = 1732535960
@@ -152,20 +129,12 @@ type NbdTransmissionRequest {
   length: Int
 }
 
-type NbdErrorCode = NbdEperm
-
-fn nbd_error_code_wire(code: NbdErrorCode) -> Int {
-  match code {
-    NbdEperm => 1
-  }
-}
+data nbd_error_eperm_wire: Int = 1
 
 type NbdTransmissionReply
   = NbdDataReply { magic: Int, handle: Int, data_length: Int }
-  | NbdErrorReply { magic: Int, handle: Int, error: NbdErrorCode }
+  | NbdErrorReply { magic: Int, handle: Int, error_wire: Int }
 
-// Read-only export semantics: serve READ; refuse WRITE/TRIM with EPERM
-// (fail-closed); DISC → clean teardown. Cited: NBD proto + jsnbd nbd.js.
 type NbdReadOnlyCommandPolicy =
     NbdPolicyServeRead
   | NbdPolicyRefuseEperm
@@ -188,24 +157,30 @@ fn nbd_read_only_export_refuses_command(cmd: NbdTransmissionCommand) -> Bool {
   }
 }
 
-// --- bmcweb ws-upgrade endpoints (proxy-mode virtual media) ---
-
-// Historically /nbd/<N> or /vm/<slot>/<idx>; gated by Redfish session auth.
-// Non-upgrade GET commonly 404 even when the route exists.
 type BmcwebNbdProxyEndpointVariant =
     NbdSlotEndpoint
   | VmSlotIndexEndpoint
 
+data nbd_slot_endpoint_path_template: PathTemplate = PathTemplate {
+  tokens: [
+    LiteralToken { text: "/nbd/" },
+    ParamToken { name: "slot" },
+  ],
+}
+
+data vm_slot_index_endpoint_path_template: PathTemplate = PathTemplate {
+  tokens: [
+    LiteralToken { text: "/vm/" },
+    ParamToken { name: "slot" },
+    LiteralToken { text: "/" },
+    ParamToken { name: "index" },
+  ],
+}
+
 fn bmcweb_nbd_proxy_endpoint_path_template(variant: BmcwebNbdProxyEndpointVariant) -> PathTemplate {
   match variant {
-    NbdSlotEndpoint =>
-      match parse_path_template(raw: "/nbd/{slot}") {
-        ParsedPathTemplate { template: t } => t
-      }
-    VmSlotIndexEndpoint =>
-      match parse_path_template(raw: "/vm/{slot}/{index}") {
-        ParsedPathTemplate { template: t } => t
-      }
+    NbdSlotEndpoint => nbd_slot_endpoint_path_template
+    VmSlotIndexEndpoint => vm_slot_index_endpoint_path_template
   }
 }
 
@@ -230,7 +205,7 @@ data bmcweb_nbd_proxy_ws_upgrade_facts: List<BmcwebNbdProxyWsUpgrade> = [
 
 fn bmcweb_nbd_proxy_endpoint_wire_label(variant: BmcwebNbdProxyEndpointVariant) -> NonEmptyStr {
   match variant {
-    NbdSlotEndpoint => "/nbd/{slot}"
-    VmSlotIndexEndpoint => "/vm/{slot}/{index}"
+    NbdSlotEndpoint => concat("/nbd/", "{", "slot", "}")
+    VmSlotIndexEndpoint => concat("/vm/", "{", "slot", "}", "/", "{", "index", "}")
   }
 }
