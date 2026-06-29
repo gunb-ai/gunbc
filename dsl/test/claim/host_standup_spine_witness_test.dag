@@ -1,0 +1,154 @@
+module test.claim.host_standup_spine
+
+import std.logic { Bool }
+import std.types { Int }
+import gunbc.host_standup {
+  host_standup_spine,
+  host_standup_spine_length,
+  host_standup_gap_count,
+  host_standup_gap_ledger,
+  srv3_host_standup_target,
+  srv3_install_mechanism_is_nbd_proxy_no_fallback,
+  credential_probe_maps_factory_default,
+  credential_probe_maps_credentials_rotated,
+  host_standup_fleet_converge_policy,
+  assimilation_complete,
+  assimilation_complete_all_satisfied,
+  AssimilationCompleteGate,
+  AssimilationComplete,
+  AssimilationIncomplete,
+  InputSatisfied,
+  InputGap,
+  InputRefused,
+  NodeRegistered,
+  ResourcesPresent,
+  HostStandupStep,
+  Prefix,
+  Assimilation,
+  BmcCredentialConverge,
+  OsInstallMechanismResolved,
+  HostConvergePolicyDerived,
+  ReachSecretsNetwork,
+  RunnerDeploySlot,
+  ComputeFabricEnroll,
+  GreenPlaceReadiness,
+  SessionPlacementEnrollment,
+  StandupAssimilationComplete,
+  DeclaredGap,
+  ModeledCompose,
+}
+import gunbc.bmc_onboarding {
+  FactoryCredentialActive,
+  RotatedCredentialActive,
+}
+import gunbc.fleet_intent_network { operator_host_srv3 }
+import gunbc.host_converge { ConvergePolicyDerived, ConvergePolicyUnsound }
+import product.compute_fabric { witness_fabric_binds_need_to_opportunity }
+
+fn spine_step_tag(step: HostStandupStep) -> Int {
+  match step.phase {
+    Prefix { phase: BmcCredentialConverge } => 0
+    Prefix { phase: OsInstallMechanismResolved } => 1
+    Prefix { phase: HostConvergePolicyDerived } => 2
+    Assimilation { phase: ReachSecretsNetwork } => 3
+    Assimilation { phase: RunnerDeploySlot } => 4
+    Assimilation { phase: ComputeFabricEnroll } => 5
+    Assimilation { phase: GreenPlaceReadiness } => 6
+    Assimilation { phase: SessionPlacementEnrollment } => 7
+    Assimilation { phase: StandupAssimilationComplete } => 8
+  }
+}
+
+type SpineTagAcc {
+  ok: Bool
+  expected: Int
+}
+
+fn spine_tags_are_linear() -> Bool {
+  fold(
+    host_standup_spine,
+    init: SpineTagAcc { ok: true, expected: 0 },
+    f: (acc, s) => SpineTagAcc {
+      ok: acc.ok && spine_step_tag(step: s) == acc.expected,
+      expected: acc.expected + 1
+    }
+  ).ok
+}
+
+test fn host_standup_spine_is_nine_step_linear_prefix_then_p0_p5() -> Bool {
+  host_standup_spine_length() == 9
+    && spine_tags_are_linear()
+    && host_standup_gap_count() == 3
+    && host_standup_gap_ledger.length() == 9
+}
+
+test fn srv3_target_and_install_mechanism_are_grounded() -> Bool {
+  srv3_host_standup_target == operator_host_srv3
+    && srv3_install_mechanism_is_nbd_proxy_no_fallback()
+}
+
+test fn credential_probe_projection_matches_onboarding_authority() -> Bool {
+  credential_probe_maps_factory_default(probe: FactoryCredentialActive)
+    && credential_probe_maps_credentials_rotated(probe: RotatedCredentialActive)
+}
+
+test fn host_standup_fleet_converge_policy_is_derived_or_unsound() -> Bool {
+  match host_standup_fleet_converge_policy() {
+    ConvergePolicyDerived { hosts: _ } => true
+    ConvergePolicyUnsound { reason: _ } => true
+  }
+}
+
+test fn compute_fabric_shape_authority_is_referenced_not_redeclared() -> Bool {
+  witness_fabric_binds_need_to_opportunity()
+}
+
+test fn assimilation_complete_gate_is_fail_closed_on_any_gap_or_refusal() -> Bool {
+  let all_gap = AssimilationCompleteGate {
+    node_registered: InputGap { input: NodeRegistered, interim_realization: "ctrl:node_registry.mjs" },
+    resources_present: InputSatisfied,
+    green_place_pin: InputSatisfied,
+    runner_healthy: InputSatisfied,
+  }
+  match assimilation_complete(gate: all_gap) {
+    AssimilationIncomplete { input: NodeRegistered, reason: r } =>
+      string_contains(s: r, pattern: "P5:gap-refused:")
+    AssimilationComplete => false
+  }
+    && match assimilation_complete(gate: AssimilationCompleteGate {
+      node_registered: InputSatisfied,
+      resources_present: InputRefused { input: ResourcesPresent, reason: "missing cgroup slice" },
+      green_place_pin: InputSatisfied,
+      runner_healthy: InputSatisfied,
+    }) {
+      AssimilationIncomplete { input: ResourcesPresent, reason: _ } => true
+      AssimilationComplete => false
+    }
+}
+
+test fn assimilation_complete_passes_only_when_all_four_inputs_satisfied() -> Bool {
+  let gate = AssimilationCompleteGate {
+    node_registered: InputSatisfied,
+    resources_present: InputSatisfied,
+    green_place_pin: InputSatisfied,
+    runner_healthy: InputSatisfied,
+  }
+  assimilation_complete_all_satisfied(gate: gate)
+    && match assimilation_complete(gate: gate) {
+      AssimilationComplete => true
+      AssimilationIncomplete { input: _, reason: _ } => false
+    }
+}
+
+test fn declared_gap_steps_carry_interim_ctrl_realization_paths() -> Bool {
+  fold(
+    host_standup_spine,
+    init: true,
+    f: (acc, s) => acc && match s.disposition {
+      DeclaredGap { interim_realization: path, refusal: r } =>
+        string_contains(s: path, pattern: "ctrl:scripts/session-dashboard/lib/")
+          && string_contains(s: r, pattern: "host_standup:")
+      ModeledCompose { authorities: refs } => refs.length() > 0
+    }
+  )
+}
