@@ -1,5 +1,7 @@
 module v2.lens.application_serializer
 import v2.lens.common.construction_justification { ConstructionJustification, WallNow }
+import std.disposition { RealizationDispatch }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 import extdeps.communication.medium { Medium }
 import v2.compiler.translate { target_serialize_source_from_model }
@@ -45,6 +47,7 @@ fn serialize_diff_as_source_patch(
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: WallNow {
-    construction: "the row-driven grammar inverse (DESIGN sec 4: emit = apply_diff . serialize, one grammar read backward) realized in v2.compiler translate"
+    mechanism: RealizationDispatch,
+    authority: DeclarationRef { module_path: "v2.compiler.translate", decl_name: "target_serialize_source_from_model", field: WholeDeclaration }
   }
 }

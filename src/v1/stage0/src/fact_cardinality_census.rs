@@ -41,7 +41,7 @@ fn decl_body_hash(body: &str) -> String {
     crate::v1_rt::atom_identity_hash(normalize_decl_body(body))
 }
 
-fn extract_top_level_decls(content: &str) -> Vec<(String, String)> {
+pub fn extract_top_level_decls(content: &str) -> Vec<(String, String)> {
     let lines: Vec<&str> = content.lines().collect();
     let mut out = Vec::new();
     let mut i = 0;
