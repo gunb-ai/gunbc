@@ -6,7 +6,8 @@ import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 import v2.std.concept_index { ConceptStruct, FieldRef, QualifiedConcept, enumerate_concepts }
-import v2.lens.grounding { GroundingCandidate, candidates_in, concept_names_of, name_coincides }
+import v2.std.text { string_contains }
+import v2.lens.grounding { GroundingCandidate, candidates_in, concept_names_of, is_structural_name, name_coincides }
 
 
 

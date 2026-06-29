@@ -1,7 +1,7 @@
 module v2.lens.grounding
 
 
-import v2.std.algebra { fold_list, list_snoc_item }
+import v2.std.algebra { fold_list, is_empty, list_snoc_item }
 import v2.std.collection { List }
 import v2.std.integer { Int }
 import v2.std.logic { Bool }
@@ -45,6 +45,8 @@ type GroundingCandidate {
   field: String
   declared_type: String
   coincides_with: String
+  target_kind: String
+  target_structure: String
 }
 
 fn is_bare_string(type_name: String) -> Bool {
@@ -54,6 +56,20 @@ fn is_bare_string(type_name: String) -> Bool {
 fn name_coincides(field: String, concept_name: String) -> Bool {
   let cn = norm_whole(s: concept_name)
   (norm_whole(s: field) == cn) || (norm_head(s: field) == cn)
+}
+
+fn is_structural_name(field: String) -> Bool {
+  let f = norm_whole(s: field)
+  (f == norm_whole(s: "field"))
+    || (f == norm_whole(s: "name"))
+    || (f == norm_whole(s: "id"))
+    || (f == norm_whole(s: "value"))
+    || (f == norm_whole(s: "kind"))
+    || (f == norm_whole(s: "type"))
+    || (f == norm_whole(s: "key"))
+    || (f == norm_whole(s: "tag"))
+    || (f == norm_whole(s: "label"))
+    || (f == norm_whole(s: "index"))
 }
 
 fn concept_names_of(idx: List<QualifiedConcept>) -> List<String> {
@@ -70,18 +86,41 @@ fn matched_concept(field: String, enclosing: String, names: List<String>) -> Str
   })
 }
 
-fn candidates_of_concept(qc: QualifiedConcept, names: List<String>, acc0: List<GroundingCandidate>) -> List<GroundingCandidate> {
+fn matched_fields(name: String, idx: List<QualifiedConcept>) -> List<FieldRef> {
+  fold(idx, init: [], f: fn(acc, qc) {
+    if qc.concept.name == name { qc.concept.fields } else { acc }
+  })
+}
+
+fn render_members(fields: List<FieldRef>) -> String {
+  fold(fields, init: "", f: fn(acc, fr) {
+    if acc == "" { "{fr.field}: {fr.type_name}" } else { "{acc}, {fr.field}: {fr.type_name}" }
+  })
+}
+
+fn target_kind_of(fields: List<FieldRef>) -> String {
+  if is_empty(xs: fields) {
+    "Unstructured (no named members in the index -- a string alias / opaque / external registry; verify openness with the judge)"
+  } else {
+    "Structured (named members below; check they are the RIGHT concept for this field, not a coincidental name)"
+  }
+}
+
+fn candidates_of_concept(qc: QualifiedConcept, names: List<String>, idx: List<QualifiedConcept>, acc0: List<GroundingCandidate>) -> List<GroundingCandidate> {
   fold(qc.concept.fields, init: acc0, f: fn(acc, fr) {
-    if is_bare_string(type_name: fr.type_name) {
+    if is_bare_string(type_name: fr.type_name) && !is_structural_name(field: fr.field) {
       let m = matched_concept(field: fr.field, enclosing: qc.concept.name, names: names)
       if m == "" {
         acc
       } else {
+        let mf = matched_fields(name: m, idx: idx)
         list_snoc_item(xs: acc, item: GroundingCandidate {
           enclosing: qc.concept.name,
           field: fr.field,
           declared_type: fr.type_name,
-          coincides_with: m
+          coincides_with: m,
+          target_kind: target_kind_of(fields: mf),
+          target_structure: render_members(fields: mf)
         })
       }
     } else {
@@ -92,7 +131,7 @@ fn candidates_of_concept(qc: QualifiedConcept, names: List<String>, acc0: List<G
 
 fn candidates_in(idx: List<QualifiedConcept>) -> List<GroundingCandidate> {
   let names = concept_names_of(idx: idx)
-  fold(idx, init: [], f: fn(acc, qc) { candidates_of_concept(qc: qc, names: names, acc0: acc) })
+  fold(idx, init: [], f: fn(acc, qc) { candidates_of_concept(qc: qc, names: names, idx: idx, acc0: acc) })
 }
 
 fn candidates() -> List<GroundingCandidate> {
