@@ -1,0 +1,194 @@
+module v2.test.claim.value_null_split_model_witness
+
+import v2.std.collection {
+  Absent,
+  Present,
+  empty_map,
+  map_absent_diagnostic,
+  map_get,
+  map_insert,
+  optional_absent,
+  optional_present
+}
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.value_null_split {
+  HostMapLookupMiss,
+  HostOptionalAbsent,
+  HostWitnessViolates,
+  MapLookupMissRole,
+  OptionalAbsentRole,
+  WitnessViolatesRole,
+  host_absent_carrier_role,
+  host_absent_carriers_may_compare_equal,
+  legacy_null_conflation_equates_optional_and_witness,
+  map_get_optional_absent_carrier,
+  map_lookup_miss_to_host_carrier,
+  map_lookup_witness_violates_carrier,
+  optional_absent_to_host_carrier,
+  optional_modeled_arm_carrier,
+  witness_modeled_arm_carrier,
+  witness_violates_to_host_carrier
+}
+import v2.std.witness { Holds, Violates }
+
+fn witness_carriers_pairwise_distinct() -> Bool {
+  let optional_carrier = optional_absent_to_host_carrier()
+  let witness_carrier = witness_violates_to_host_carrier(d: map_absent_diagnostic())
+  let miss_carrier = map_lookup_miss_to_host_carrier()
+  !host_absent_carriers_may_compare_equal(a: optional_carrier, b: witness_carrier)
+    && !host_absent_carriers_may_compare_equal(a: optional_carrier, b: miss_carrier)
+    && !host_absent_carriers_may_compare_equal(a: witness_carrier, b: miss_carrier)
+}
+
+fn witness_optional_absent_projects() -> Bool {
+  match optional_modeled_arm_carrier(opt: optional_absent()) {
+    Present { value: c } =>
+      match host_absent_carrier_role(c: c) {
+        OptionalAbsentRole {} => true
+        WitnessViolatesRole {} => false
+        MapLookupMissRole {} => false
+      }
+    Absent => false
+  }
+}
+
+fn witness_optional_present_not_absent_carrier() -> Bool {
+  match optional_modeled_arm_carrier(opt: optional_present(value: 42)) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+fn witness_witness_violates_projects() -> Bool {
+  match witness_modeled_arm_carrier(
+    w: Violates { diagnostic: map_absent_diagnostic() }
+  ) {
+    Present { value: c } =>
+      match host_absent_carrier_role(c: c) {
+        WitnessViolatesRole {} => true
+        OptionalAbsentRole {} => false
+        MapLookupMissRole {} => false
+      }
+    Absent => false
+  }
+}
+
+fn witness_witness_holds_not_absent_carrier() -> Bool {
+  match witness_modeled_arm_carrier(w: Holds { value: 42 }) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+fn witness_map_lookup_witness_violates_slice() -> Bool {
+  let m = empty_map()
+  match map_lookup_witness_violates_carrier(m: m, key: "k") {
+    Present { value: c } =>
+      match host_absent_carrier_role(c: c) {
+        WitnessViolatesRole {} => true
+        OptionalAbsentRole {} => false
+        MapLookupMissRole {} => false
+      }
+    Absent => false
+  }
+}
+
+fn witness_map_get_optional_absent_slice() -> Bool {
+  let m = empty_map()
+  match map_get_optional_absent_carrier(m: m, key: "k") {
+    Present { value: c } =>
+      match host_absent_carrier_role(c: c) {
+        OptionalAbsentRole {} => true
+        WitnessViolatesRole {} => false
+        MapLookupMissRole {} => false
+      }
+    Absent => false
+  }
+}
+
+fn witness_map_get_present_not_absent_carrier() -> Bool {
+  let m = empty_map() |> map_insert(key: "k", value: 42)
+  match map_get_optional_absent_carrier(m: m, key: "k") {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+fn witness_map_get_miss_matches_direct_map_get() -> Bool {
+  let m = empty_map()
+  match map_get(m: m, key: "k") {
+    Accepted { value: Absent, diagnostics: _ } =>
+      witness_map_get_optional_absent_slice()
+    Accepted { value: Present { value: _ }, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn witness_conflation_perturbation_red() -> Bool {
+  !legacy_null_conflation_equates_optional_and_witness()
+}
+
+fn witness_carrier_constructors_match_roles() -> Bool {
+  match host_absent_carrier_role(c: HostOptionalAbsent {}) {
+    OptionalAbsentRole {} => true
+    WitnessViolatesRole {} => false
+    MapLookupMissRole {} => false
+  }
+    && match host_absent_carrier_role(
+      c: HostWitnessViolates { diagnostic: map_absent_diagnostic() }
+    ) {
+      WitnessViolatesRole {} => true
+      OptionalAbsentRole {} => false
+      MapLookupMissRole {} => false
+    }
+    && match host_absent_carrier_role(c: HostMapLookupMiss {}) {
+      MapLookupMissRole {} => true
+      OptionalAbsentRole {} => false
+      WitnessViolatesRole {} => false
+    }
+}
+
+test fn value_null_split_carriers_pairwise_distinct() -> Bool {
+  witness_carriers_pairwise_distinct()
+}
+
+test fn value_null_split_optional_absent_projects() -> Bool {
+  witness_optional_absent_projects()
+}
+
+test fn value_null_split_optional_present_not_absent_carrier() -> Bool {
+  witness_optional_present_not_absent_carrier()
+}
+
+test fn value_null_split_witness_violates_projects() -> Bool {
+  witness_witness_violates_projects()
+}
+
+test fn value_null_split_witness_holds_not_absent_carrier() -> Bool {
+  witness_witness_holds_not_absent_carrier()
+}
+
+test fn value_null_split_map_lookup_witness_slice() -> Bool {
+  witness_map_lookup_witness_violates_slice()
+}
+
+test fn value_null_split_map_get_optional_absent_slice() -> Bool {
+  witness_map_get_optional_absent_slice()
+}
+
+test fn value_null_split_map_get_present_not_absent_carrier() -> Bool {
+  witness_map_get_present_not_absent_carrier()
+}
+
+test fn value_null_split_map_get_miss_matches_direct_map_get() -> Bool {
+  witness_map_get_miss_matches_direct_map_get()
+}
+
+test fn value_null_split_conflation_perturbation_red() -> Bool {
+  witness_conflation_perturbation_red()
+}
+
+test fn value_null_split_carrier_constructors_match_roles() -> Bool {
+  witness_carrier_constructors_match_roles()
+}

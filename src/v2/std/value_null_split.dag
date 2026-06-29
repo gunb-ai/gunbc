@@ -1,0 +1,119 @@
+module v2.std.value_null_split
+
+import v2.std.collection {
+  Absent,
+  Map,
+  Optional,
+  Present,
+  map_absent_diagnostic,
+  map_get
+}
+import v2.std.diagnostic { Accepted, Diagnostic, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+import v2.std.witness { Holds, Violates, Witness }
+
+type NullSentinelRole
+  = OptionalAbsentRole {}
+  | WitnessViolatesRole {}
+  | MapLookupMissRole {}
+
+type HostAbsentCarrier
+  = HostOptionalAbsent {}
+  | HostWitnessViolates { diagnostic: Diagnostic }
+  | HostMapLookupMiss {}
+
+data value_null_split_dissolution_trigger: String = "🟡 dissolve-on: value_null_split scaffold — model declares HostAbsentCarrier (OptionalAbsent / WitnessViolates / MapLookupMiss) and modeled-arm projections; DISSOLVES WHEN v1_interpreter.rs Value enum splits the overloaded Null sentinel into these three host variants (~131 bridge sites migrate), testgen cross_repr_native_value_null roster retires in favor of per-carrier symbols, and eval_binop CrossRepresentationEquality Optional/Witness straddle guard is dead-in-corpus."
+
+data host_absent_carrier_optional_absent: Symbol = ^host_optional_absent
+data host_absent_carrier_witness_violates: Symbol = ^host_witness_violates
+data host_absent_carrier_map_lookup_miss: Symbol = ^host_map_lookup_miss
+data legacy_native_value_null: Symbol = ^native_value_null
+
+data value_null_split_shape: String = "Split shape (MODEL-SCOPE, review before ~131-site migration): Value::Null overload conflates three semantic roles that must each own a host carrier. (1) HostOptionalAbsent — modeled Optional::Absent (and LitNull literal at the optional layer); today bridged via pattern match on Value::Null at Absent arm and via optional_absent() Variant construction. (2) HostWitnessViolates { diagnostic } — modeled Witness::Violates; today bridged via pattern match on Value::Null at Violates arm; emitted Rust already has v1_rt::Witness::Violates as a distinct enum. (3) HostMapLookupMiss — native HAMT/record miss before Witness bridge; today raw_map_lookup returns Value::Null. Reconciliation stack (bottom-up): MapLookupMiss → Witness::Violates(map_key_absent) → map_get → Optional::Absent. Each layer keeps its own carrier; bridges are typed projections, not silent Null collapse. Equality invariant: host_absent_carriers_may_compare_equal holds only when null_sentinel_roles_equal — fixing the fail-open where distinct roles compared equal under LegacyNullOverload. Native target: extend Value enum with three variants (or fold Witness into v1_rt::Witness carrier); retire legacy_native_value_null from cross-representation roster."
+
+fn host_absent_carrier_role(c: HostAbsentCarrier) -> NullSentinelRole {
+  match c {
+    HostOptionalAbsent {} => OptionalAbsentRole {}
+    HostWitnessViolates { diagnostic: _ } => WitnessViolatesRole {}
+    HostMapLookupMiss {} => MapLookupMissRole {}
+  }
+}
+
+fn null_sentinel_roles_equal(a: NullSentinelRole, b: NullSentinelRole) -> Bool {
+  match a {
+    OptionalAbsentRole {} =>
+      match b {
+        OptionalAbsentRole {} => true
+        WitnessViolatesRole {} => false
+        MapLookupMissRole {} => false
+      }
+    WitnessViolatesRole {} =>
+      match b {
+        OptionalAbsentRole {} => false
+        WitnessViolatesRole {} => true
+        MapLookupMissRole {} => false
+      }
+    MapLookupMissRole {} =>
+      match b {
+        OptionalAbsentRole {} => false
+        WitnessViolatesRole {} => false
+        MapLookupMissRole {} => true
+      }
+  }
+}
+
+fn host_absent_carriers_may_compare_equal(a: HostAbsentCarrier, b: HostAbsentCarrier) -> Bool {
+  null_sentinel_roles_equal(
+    a: host_absent_carrier_role(c: a),
+    b: host_absent_carrier_role(c: b)
+  )
+}
+
+fn optional_absent_to_host_carrier<T>() -> HostAbsentCarrier {
+  HostOptionalAbsent {}
+}
+
+fn witness_violates_to_host_carrier(d: Diagnostic) -> HostAbsentCarrier {
+  HostWitnessViolates { diagnostic: d }
+}
+
+fn map_lookup_miss_to_host_carrier() -> HostAbsentCarrier {
+  HostMapLookupMiss {}
+}
+
+fn optional_modeled_arm_carrier<T>(opt: Optional<T>) -> Optional<HostAbsentCarrier> {
+  match opt {
+    Absent => Present { value: optional_absent_to_host_carrier() }
+    Present { value: _ } => Absent
+  }
+}
+
+fn witness_modeled_arm_carrier<T>(w: Witness<T>) -> Optional<HostAbsentCarrier> {
+  match w {
+    Violates { diagnostic: d } => Present { value: witness_violates_to_host_carrier(d: d) }
+    Holds { value: _ } => Absent
+  }
+}
+
+fn map_lookup_witness_violates_carrier<K, V>(m: Map<K, V>, key: K) -> Optional<HostAbsentCarrier> {
+  witness_modeled_arm_carrier(w: m.lookup(key))
+}
+
+fn map_get_optional_absent_carrier<K, V>(m: Map<K, V>, key: K) -> Optional<HostAbsentCarrier> {
+  optional_modeled_arm_carrier(opt: map_get_optional_absent(m: m, key: key))
+}
+
+fn map_get_optional_absent<K, V>(m: Map<K, V>, key: K) -> Optional<V> {
+  match map_get(m: m, key: key) {
+    Accepted { value: opt, diagnostics: _ } => opt
+    Rejected { diagnostics: _ } => Absent
+  }
+}
+
+fn legacy_null_conflation_equates_optional_and_witness() -> Bool {
+  host_absent_carriers_may_compare_equal(
+    a: optional_absent_to_host_carrier(),
+    b: witness_violates_to_host_carrier(d: map_absent_diagnostic())
+  )
+}
