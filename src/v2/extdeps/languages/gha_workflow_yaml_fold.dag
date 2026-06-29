@@ -7,7 +7,7 @@ import extdeps.github.actions {
   RunnerSpec,
   SelfHosted
 }
-import gunbc.gha_yaml_fold_pilot {
+import v2.extdeps.github.gha_fold_pilot_emit {
   GhaPilotRunEmit,
   GhaPilotStepEmit,
   GhaPilotUsesEmit,
@@ -105,6 +105,8 @@ data gha_fold_diagnostic_anchor: Node = Node {
   children: [],
   occurrence_id: SyntheticOccurrence
 }
+
+data gha_fold_diagnostic_anchor_dissolution_trigger: String = "🟡 dissolve-on: gha_fold_diagnostic_anchor — shared empty Conj placeholder locus for fold reject diagnostics (gha_fold_unsupported_variant_diagnostic, unsupported step kind / empty step list / non-self-hosted runner rejects, wrong-production and flat-steps perturbation witnesses). DISSOLVES WHEN GHA fold serialize lands beyond the pilot: production emit callers surface Violates diagnostics through emit() with node_locus over the offending Job/Step subtree in GhaFoldJobBundle.emitted, retiring the synthetic anchor."
 
 fn gha_fold_unsupported_variant_diagnostic(variant: Symbol) -> Diagnostic {
   Diagnostic {
@@ -752,6 +754,8 @@ fn gha_fold_lex_rules() -> LexRuleSet {
 fn gha_fold_lex() -> LexRules {
   ModeledLexRules { root: gha_fold_lex_rules() }
 }
+
+data gha_fold_kind_marker_dissolution_trigger: String = "🟡 dissolve-on: phantom \\u{0000}/\\u{0002} kind-marker lex bytes (gha_fold_scalar_kind / gha_fold_prod_kind_tag) and zero-width gha_fold_scalar_kind_emit_transform / gha_fold_kind_emit_transform are replaced by real YAML step-class lexing that disambiguates production tags without sentinel bytes"
 
 fn gha_fold_kind_emit_transform(_spelling: String) -> String {
   ""
