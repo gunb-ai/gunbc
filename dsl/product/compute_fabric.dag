@@ -132,3 +132,10 @@ fn witness_hard_requirement_unmet_is_unmet() -> Bool {
     Pending => false
   }
 }
+
+data compute_fabric_resource_model_dissolution_receipt: List<NonEmptyStr> = [
+  "Dissolved in #5904: heavy resource model (WorkDemand, ExecutionReceipt, ComputeOffer, satisfies/2).",
+  "satisfies(offer,demand) had zero production consumers. Thread-floor coverage: witness_hard_requirement_unmet_is_unmet (this module). Memory-budget coverage: gunbc.fleet_container.demand_envelope_fits_budget + witness_run_demand_envelope_fits_budget.",
+  "execution_receipt_digest was a documented stub returning receipt.work.id (not a content hash). Real content-hash grounding tracked in gunbc.plans.realization_measurement_loop.",
+  "IsolationBoundary and ContainerRuntime moved to gunbc.fleet_intent (single authority: ExecutionSurface lives there). ResourceEnvelope authority moved to gunbc.fleet_container.",
+]
