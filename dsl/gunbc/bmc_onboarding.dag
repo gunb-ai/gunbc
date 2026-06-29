@@ -54,21 +54,11 @@ fn bmc_phase_credential_posture(phase: BmcOnboardingPhase) -> BmcCredentialPostu
   }
 }
 
-fn bmc_posture_rank(posture: BmcCredentialPosture) -> Int {
-  match posture {
-    FactoryPublished => 0
-    RotatedSecretManaged => 1
-    KeylessFederated => 2
-  }
-}
-
-fn bmc_posture_is_keyless(posture: BmcCredentialPosture) -> Bool {
-  match posture {
-    FactoryPublished => false
-    RotatedSecretManaged => false
-    KeylessFederated => true
-  }
-}
+data bmc_posture_hardening_order: List<BmcCredentialPosture> = [
+  FactoryPublished,
+  RotatedSecretManaged,
+  KeylessFederated
+]
 
 fn bmc_credential_lifecycle() -> List<BmcCredentialPosture> {
   fold(
@@ -78,20 +68,25 @@ fn bmc_credential_lifecycle() -> List<BmcCredentialPosture> {
   )
 }
 
-type BmcPostureScan {
-  prev_rank: Int
-  monotone: Bool
+type BmcPostureDedup {
+  out: List<BmcCredentialPosture>
+  last: BmcCredentialPosture?
+}
+
+fn bmc_distinct_postures(postures: List<BmcCredentialPosture>) -> List<BmcCredentialPosture> {
+  fold(
+    postures,
+    init: BmcPostureDedup { out: [], last: Absent },
+    f: (acc, p) => match acc.last {
+      Absent => BmcPostureDedup { out: acc.out |> list_push(p), last: Present { value: p } }
+      Present { value: lp } =>
+        if (lp == p) { acc } else { BmcPostureDedup { out: acc.out |> list_push(p), last: Present { value: p } } }
+    }
+  ).out
 }
 
 fn bmc_lifecycle_is_monotone_hardening() -> Bool {
-  fold(
-    bmc_credential_lifecycle(),
-    init: BmcPostureScan { prev_rank: 0, monotone: true },
-    f: (acc, posture) => BmcPostureScan {
-      prev_rank: bmc_posture_rank(posture: posture),
-      monotone: acc.monotone && bmc_posture_rank(posture: posture) >= acc.prev_rank
-    }
-  ).monotone
+  bmc_distinct_postures(postures: bmc_credential_lifecycle()) == bmc_posture_hardening_order
 }
 
 fn bmc_lifecycle_length() -> Int {
