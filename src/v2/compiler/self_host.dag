@@ -33,7 +33,9 @@ type SourceModels {
   model_corpus: List<CoreNode>
 }
 
-type SelfHostEqualityRepresentation = CanonicalNodeEmission
+type SelfHostEqualityRepresentation {
+  authority: Symbol
+}
 
 type SelfHostStageEmission {
   node: CoreNode
@@ -99,13 +101,11 @@ fn self_host_fixpoint_digest_mismatch_diagnostic(
 }
 
 fn self_host_equality_representation() -> SelfHostEqualityRepresentation {
-  CanonicalNodeEmission
+  SelfHostEqualityRepresentation { authority: ^canonical_node_emission }
 }
 
 fn self_host_equality_representation_is_canonical_node_emission() -> Bool {
-  match self_host_equality_representation() {
-    CanonicalNodeEmission => true
-  }
+  self_host_equality_representation().authority == ^canonical_node_emission
 }
 
 fn self_host_stage_emission(node: CoreNode) -> SelfHostStageEmission {
