@@ -16,18 +16,7 @@ import gunbc.local_tidy_spec {
 import gunbc.generated_artifact {
   GeneratedArtifact, CiYamlArtifact, GithooksPrePushArtifact, artifact_path
 }
-
-fn string_list_eq(left: List<String>, right: List<String>) -> Bool {
-  if length(left) != length(right) {
-    false
-  } else if length(left) == 0 {
-    true
-  } else if left.first() != right.first() {
-    false
-  } else {
-    string_list_eq(left: left.skip(n: 1), right: right.skip(n: 1))
-  }
-}
+import std.realization_schedule { string_list_eq }
 
 data commit_workflow_projection_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
