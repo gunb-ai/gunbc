@@ -55,10 +55,7 @@ const NON_FOLD_RESIDUE_ROSTER: &[&str] = &[
     // SEEDED FROM THE LIVE CENSUS 2026-06-22 (re-derive with the live_tree gate below). Each is a
     // `file::fn` with a `match <coproduct-param> { ... _ => ... }` — a wildcard escape over a closed
     // coproduct. This is the honest baseline; the wall is that no NEW residue merges.
-    "dsl/extdeps/github/workflow_runs.dag::parse_workflow_run_conclusion",
-    "dsl/extdeps/github/workflow_runs.dag::parse_workflow_run_status",
     "dsl/extdeps/languages/markdown.dag::md_nested",
-    "dsl/gunbc/compile_source_model.dag::dependency_pool_index_from_flag",
     "dsl/gunbc/generated_artifact.dag::artifact_eq",
     "dsl/std/computation.dag::constant_bound_value",
     "dsl/std/computation.dag::is_constant_bound",
@@ -109,7 +106,6 @@ const NON_FOLD_RESIDUE_ROSTER: &[&str] = &[
     "src/v2/lens/cost.dag::symbolic_max",
     "src/v2/lens/cost.dag::symbolic_product",
     "src/v2/lens/cost.dag::symbolic_sequential",
-    "src/v2/lens/extdeps_external_authority.dag::decode_uri_scheme",
     "src/v2/lens/fact_density.dag::connective_is_kernel_ambient_atom",
     "src/v2/lens/idempotency.dag::idempotency_verdict_eq",
     "src/v2/lens/ownership.dag::ownership_mode_eq",
