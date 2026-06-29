@@ -1267,6 +1267,8 @@ fn bash_fold_target_model_for_stmt_witness(stmt: ShellStmt) -> Witness<TargetMod
       }
   }
 }
+
+fn bash_fold_raw_line_target_model(text: String) -> TargetModel {
   bash_word_pass_target_model(spelling: text)
 }
 
