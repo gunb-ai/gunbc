@@ -12,19 +12,21 @@ The CI floor runs one `claim_executor` process per CI job, executing the plan as
 
 The gap is **cross-batch and subprocess**: two independent dimensions of redundant work.
 
-### Axis A — subprocess `gunbc compile` (the expensive one: ~537s each)
+### Axis A — subprocess compiles (the expensive ones: ~537s each)
 
-Three gates independently invoke `gunbc compile --target rust` over the same corpus:
+Three gates invoke compile-like subprocesses, each with a **distinct (source_roots, binary) tuple**:
 
-| Gate | Compiles |
-|---|---|
-| `DslCompileCleanGate` | 1× `gunbc compile --source-root dsl --source-root src/v2` |
-| `EmitDeterminismGate` | 2× `gunbc compile --source-root dsl` in sequence (to diff output trees) |
-| `RegenVerifyGate` | 1× via `regen_stage0 --verify` (internally compiles to compare against committed seed) |
+| Gate | Binary | Source roots | Notes |
+|---|---|---|---|
+| `DslCompileCleanGate` | `gunbc compile` | `dsl src/v2` | `witness_layer_roots` via `dsl_compile_clean_transport.dag` |
+| `EmitDeterminismGate` | `gunbc compile` | `dsl` only | `emit_determinism_corpus_roots = ["dsl"]` — intentionally narrower scope |
+| `RegenVerifyGate` | `regen_stage0 --verify` | `src/v1 + dsl` (internal) | Different binary; verifies committed v1 seed against a fresh regen |
 
-On a clean tree with the same compiler binary: compile-1 and compile-2 (and compile-3 and compile-4) are pure functions of `(source_content, compiler_binary)` and produce byte-identical output. Running the same pure function 4 times is a §2 violation; the 3 extra runs are each ~537s of wasted wall time.
+Because each gate uses a **different (source_roots OR binary) tuple**, none of the three produce byte-identical output. There is no artifact sharing opportunity between them today. The four compile invocations are not four calls to the same pure function — they are three distinct functions.
 
-`EmitDeterminismGate` is the empirical oracle for non-reproducible emit: it runs the SAME compile TWICE independently and diffs the output trees. This is load-bearing — emit is KNOWN-NONDETERMINISTIC today (Rust emitter HashMap iteration order; `v2.std.determinism` at P1). Content-addressing does not make this gate redundant; it requires the gate to have already confirmed determinism before a content-address can be trusted.
+The **only true redundancy** on Axis A is `EmitDeterminismGate`'s intentional oracle pair: it runs its own tuple twice to catch non-reproducible emit. That pair must survive: emit is KNOWN-NONDETERMINISTIC today (Rust emitter HashMap iteration order; `v2.std.determinism` at P1), making the empirical x2 diff the only live check for that bug class. Content-addressing the output would assume determinism, not prove it.
+
+**Axis A net today: no redundancy to remove.** The four compiles are four distinct necessary operations. The value of M2 (see §3) is therefore not present-day savings but **future-proofing**: the model makes it unwritable for a new gate to accidentally add a second compile of an existing tuple without declaring it. If a new gate is added that uses the same tuple as an existing gate, the structural dependency is explicit and the executor enforces sharing.
 
 ### Axis B — in-process `resolve_entry_graph` cross-batch (~30–40s per call)
 
@@ -41,9 +43,11 @@ Any future `heavy_whole_tree_resolve` gate added to `floor_effect_gate_witness.d
 
 ## 2. Current model has no shared-output node
 
-The plan in `std.realization_schedule` represents runnables as independent units. `RunnableSingleClaim` carries `entry`, `function`, and `profile` — but has no concept of a produced artifact that other runnables consume. `DataDependsOn` edges declare ordering (compile gate must pass before corpus runs) but they carry no payload (the resolved graph or compiled artifact).
+The plan in `std.realization_schedule` represents runnables as independent units. `RunnableSingleClaim` carries `entry`, `function`, and `profile` — but has no concept of a produced artifact that other runnables consume. `DataDependsOn` edges declare ordering but carry no payload.
 
-This means the executor cannot share the output of one runnable as the input of another. Each runnable independently recomputes from source. The double-payment is not a bug in the executor — it is an honest consequence of a model that has no shared-output primitive. Fixing it by adding a memo to `claim_executor` without changing the model would be a §5 validation standing where construction was available: a future gate added to `floor_effect_gate_witness.dag` would again silently double-pay.
+For Axis B (in-process resolve): this means two batches in the same `claim_executor` process can call `resolve_entry_graph` for the same `(source_roots, entry)` pair without the executor knowing they're the same work. Fixing it by adding a memo to `claim_executor` without model surface would concede the bad state is writable: a future gate added to `floor_effect_gate_witness.dag` would silently double-pay again.
+
+For Axis A (subprocess compiles): the current gate set has no sharing opportunity (each gate uses a distinct tuple), so the missing shared-output primitive has no displacement value today. Its value is forward: if a future gate uses the same compile tuple as an existing gate, the model should make the sharing explicit and the duplication unwritable.
 
 ---
 
