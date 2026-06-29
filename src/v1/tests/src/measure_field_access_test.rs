@@ -65,7 +65,7 @@ fn byte_size_count(b: ByteSize) -> Nat {
 }
 
 #[test]
-fn g3_param_dependent_field_through_parametric_alias_chain_fails_closed() {
+fn g3_param_dependent_field_through_parametric_alias_chain_resolves() {
     let src = r#"
 module m
 
@@ -82,11 +82,9 @@ fn unwrap(w: IntWrap) -> Int {
 "#;
     let msgs = hard_diagnostic_messages(&compile_dag_resolved(src));
     assert!(
-        msgs.iter()
-            .any(|m| m.contains("no field 'value' on type 'IntWrap'")),
-        "param-dependent field through a parametric-alias chain must fail closed with the \
-         origin-nominal `no field 'value' on type 'IntWrap'` diagnostic (proving \
-         nominal_type_ref(origin) fired at the lossy && unresolved-param boundary), got: {msgs:?}"
+        msgs.is_empty(),
+        "param-dependent field through a parametric-alias chain should resolve once type args \
+         are preserved across hops, got: {msgs:?}"
     );
 }
 
