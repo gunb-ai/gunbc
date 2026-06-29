@@ -1,0 +1,12 @@
+module v2.lens.grounding_probe
+
+import v2.std.algebra { list_append }
+import v2.std.collection { List }
+import v2.std.text { String }
+import v2.lens.grounding { GroundingCandidate, candidates_in_roots }
+
+fn main() -> String {
+  fold(candidates_in_roots(pool_roots: ["dsl", "src/v2"]), init: "", f: fn(acc, c) {
+    list_append(left: acc, right: list_append(left: c.enclosing, right: list_append(left: ".", right: list_append(left: c.field, right: list_append(left: " ~ ", right: list_append(left: c.coincides_with, right: "\n"))))))
+  })
+}
