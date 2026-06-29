@@ -12,18 +12,21 @@ import gunbc.merge_admission {
   gunbc_repo_standard,
   SquashMerge,
 }
-import gunbc.commit_workflow { commit_gate_roster }
-import gunbc.ci_failure_class {
-  MergeAdmissionVerdict,
-  MergeAdmitted, MergeDeniedStaleBase, MergeDeniedStaleRoster, MergeDeniedNotSuccess,
-  classify_merge_admission_verdict,
-  merge_admission_would_block,
-  merge_admission_blocks_merge,
-  merge_admission_enforcement_policy,
-  merge_freshness_gating_status,
-  gating_is_enforced,
+import gunbc.commit_workflow {
+  commit_gate_roster,
+  CommitCheckEnrollment, CommitSpecGate,
+  GitPrePushHook,
 }
+import gunbc.ci_gate { EmitHostGate }
 import std.types { ContentHash }
+
+data roster_surface_only_variant: List<CommitCheckEnrollment> = concat(
+  [CommitCheckEnrollment {
+    check: CommitSpecGate { gate: EmitHostGate },
+    surfaces: [GitPrePushHook]
+  }],
+  commit_gate_roster.skip(n: 1)
+)
 
 data scenario_base_b0: ContentHash = "merge-admission-witness-base-b0"
 data scenario_base_b1: ContentHash = "merge-admission-witness-base-b1"
@@ -100,124 +103,13 @@ test fn gate_roster_hash_sensitive_to_roster_content() -> Bool {
     && (empty_roster_hash != truncated_roster_hash)
 }
 
+test fn gate_roster_hash_unchanged_on_surface_only_move() -> Bool {
+  gate_roster_content_hash(roster: roster_surface_only_variant) == current_gate_roster_hash
+}
+
 test fn gunbc_repo_standard_is_squash_only() -> Bool {
   gunbc_repo_standard.default_branch == "main"
     && length(gunbc_repo_standard.allowed_strategies) == 1
     && gunbc_repo_standard.allowed_strategies.first() == SquashMerge
     && gunbc_repo_standard.require_up_to_date == false
-}
-
-test fn enforcement_policy_is_keyed_receipt() -> Bool {
-  merge_admission_enforcement_policy == KeyedReceipt
-}
-
-test fn enforcement_denies_stale_base_verdict() -> Bool {
-  match classify_merge_admission_verdict(
-    receipt: scenario_pr_x_receipt,
-    merge_target_tree_hash: scenario_base_b1,
-    current_roster_hash: scenario_roster_r0,
-  ) {
-    MergeDeniedStaleBase => true
-    MergeAdmitted => false
-    MergeDeniedStaleRoster => false
-    MergeDeniedNotSuccess => false
-  }
-}
-
-test fn enforcement_denies_stale_roster_verdict() -> Bool {
-  match classify_merge_admission_verdict(
-    receipt: scenario_pr_x_receipt,
-    merge_target_tree_hash: scenario_base_b0,
-    current_roster_hash: scenario_roster_r1,
-  ) {
-    MergeDeniedStaleRoster => true
-    MergeAdmitted => false
-    MergeDeniedStaleBase => false
-    MergeDeniedNotSuccess => false
-  }
-}
-
-test fn enforcement_admits_fresh_verdict() -> Bool {
-  match classify_merge_admission_verdict(
-    receipt: scenario_pr_x_receipt,
-    merge_target_tree_hash: scenario_base_b0,
-    current_roster_hash: scenario_roster_r0,
-  ) {
-    MergeAdmitted => true
-    MergeDeniedStaleBase => false
-    MergeDeniedStaleRoster => false
-    MergeDeniedNotSuccess => false
-  }
-}
-
-test fn enforcement_red_on_revert_stale_base() -> Bool {
-  let fresh = match classify_merge_admission_verdict(
-    receipt: scenario_pr_x_receipt,
-    merge_target_tree_hash: scenario_base_b0,
-    current_roster_hash: scenario_roster_r0,
-  ) {
-    MergeAdmitted => true
-    MergeDeniedStaleBase => false
-    MergeDeniedStaleRoster => false
-    MergeDeniedNotSuccess => false
-  }
-  let stale = match classify_merge_admission_verdict(
-    receipt: scenario_pr_x_receipt,
-    merge_target_tree_hash: scenario_base_b1,
-    current_roster_hash: scenario_roster_r0,
-  ) {
-    MergeDeniedStaleBase => true
-    MergeAdmitted => false
-    MergeDeniedStaleRoster => false
-    MergeDeniedNotSuccess => false
-  }
-  fresh && stale
-}
-
-test fn enforcement_would_block_stale_but_activation_deferred() -> Bool {
-  (gating_is_enforced(s: merge_freshness_gating_status) == false)
-    && merge_admission_would_block(
-      receipt: scenario_pr_x_receipt,
-      merge_target_tree_hash: scenario_base_b1,
-      current_roster_hash: scenario_roster_r0,
-    )
-    && (merge_admission_blocks_merge(
-      receipt: scenario_pr_x_receipt,
-      merge_target_tree_hash: scenario_base_b1,
-      current_roster_hash: scenario_roster_r0,
-    ) == false)
-}
-
-test fn enforcement_verdict_aligns_with_keyed_predicate() -> Bool {
-  let fresh_admitted = receipt_is_admissible(
-    receipt: scenario_pr_x_receipt,
-    merge_target_tree_hash: scenario_base_b0,
-    current_roster_hash: scenario_roster_r0,
-  )
-  let stale_denied = !receipt_is_admissible(
-    receipt: scenario_pr_x_receipt,
-    merge_target_tree_hash: scenario_base_b1,
-    current_roster_hash: scenario_roster_r0,
-  )
-  let verdict_fresh = match classify_merge_admission_verdict(
-    receipt: scenario_pr_x_receipt,
-    merge_target_tree_hash: scenario_base_b0,
-    current_roster_hash: scenario_roster_r0,
-  ) {
-    MergeAdmitted => true
-    MergeDeniedStaleBase => false
-    MergeDeniedStaleRoster => false
-    MergeDeniedNotSuccess => false
-  }
-  let verdict_stale = match classify_merge_admission_verdict(
-    receipt: scenario_pr_x_receipt,
-    merge_target_tree_hash: scenario_base_b1,
-    current_roster_hash: scenario_roster_r0,
-  ) {
-    MergeDeniedStaleBase => true
-    MergeAdmitted => false
-    MergeDeniedStaleRoster => false
-    MergeDeniedNotSuccess => false
-  }
-  fresh_admitted && stale_denied && verdict_fresh && verdict_stale
 }

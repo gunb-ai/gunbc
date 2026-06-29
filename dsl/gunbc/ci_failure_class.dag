@@ -1,15 +1,10 @@
 module gunbc.ci_failure_class
 
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
-import std.types { ContentHash }
 import extdeps.runtime.errno { PosixErrno, EAGAIN, errno_strerror }
 import extdeps.rust.std_process { StdProcessSpawnOutcome, SpawnFailed, spawn_outcome_log_fragment }
 import extdeps.cache.sccache { sccache_fatal_error_log_fragment }
 import extdeps.github.ci_runner { RunnerLifecycleSignal, ShutdownReceived, runner_lifecycle_log_fragment }
-import gunbc.merge_admission {
-  MergeAdmissionReceipt, AdmissionPolicy, KeyedReceipt,
-  check_conclusion_is_success,
-}
 
 type InfraSignature
   = ResourceTemporarilyUnavailable
@@ -141,64 +136,4 @@ fn gating_is_enforced(s: MergeGatingStatus) -> Bool {
 
 fn merge_freshness_verdict_is_consumed_to_block() -> Bool {
   gating_is_enforced(s: merge_freshness_gating_status)
-}
-
-type MergeAdmissionVerdict
-  = MergeAdmitted
-  | MergeDeniedStaleBase
-  | MergeDeniedStaleRoster
-  | MergeDeniedNotSuccess
-
-data merge_admission_enforcement_policy: AdmissionPolicy = KeyedReceipt
-
-fn classify_merge_admission_verdict(
-  receipt: MergeAdmissionReceipt,
-  merge_target_tree_hash: ContentHash,
-  current_roster_hash: ContentHash,
-) -> MergeAdmissionVerdict {
-  if !check_conclusion_is_success(c: receipt.conclusion) {
-    MergeDeniedNotSuccess
-  } else if receipt.base_tree_hash != merge_target_tree_hash {
-    MergeDeniedStaleBase
-  } else if receipt.gate_roster_hash != current_roster_hash {
-    MergeDeniedStaleRoster
-  } else {
-    MergeAdmitted
-  }
-}
-
-fn merge_admission_verdict_would_block(v: MergeAdmissionVerdict) -> Bool {
-  match v {
-    MergeAdmitted => false
-    MergeDeniedStaleBase => true
-    MergeDeniedStaleRoster => true
-    MergeDeniedNotSuccess => true
-  }
-}
-
-fn merge_admission_would_block(
-  receipt: MergeAdmissionReceipt,
-  merge_target_tree_hash: ContentHash,
-  current_roster_hash: ContentHash,
-) -> Bool {
-  merge_admission_verdict_would_block(
-    v: classify_merge_admission_verdict(
-      receipt: receipt,
-      merge_target_tree_hash: merge_target_tree_hash,
-      current_roster_hash: current_roster_hash,
-    )
-  )
-}
-
-fn merge_admission_blocks_merge(
-  receipt: MergeAdmissionReceipt,
-  merge_target_tree_hash: ContentHash,
-  current_roster_hash: ContentHash,
-) -> Bool {
-  merge_freshness_verdict_is_consumed_to_block()
-    && merge_admission_would_block(
-      receipt: receipt,
-      merge_target_tree_hash: merge_target_tree_hash,
-      current_roster_hash: current_roster_hash,
-    )
 }
