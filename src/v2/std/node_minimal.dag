@@ -1,0 +1,248 @@
+module v2.std.node_minimal
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import v2.std.collection { List, Optional, Absent, Present }
+import v2.std.integer { UInt32 }
+import v2.std.node {
+  Behavior,
+  Connective,
+  Edge,
+  Node,
+  NodeKind,
+  NodeOccurrenceId,
+  Symbol
+}
+
+type NodeSupersetField
+  = NsfName
+  | NsfIdent
+  | NsfSpan
+  | NsfIdentSpan
+  | NsfChildren
+  | NsfConnective
+  | NsfParams
+  | NsfInferred
+  | NsfReturnCardinality
+  | NsfUses
+  | NsfBody
+  | NsfTransport
+  | NsfProperties
+  | NsfTypeAnnotation
+  | NsfIsSelfRecursive
+  | NsfHasNonTailSelfCall
+  | NsfMatchPattern
+  | NsfExprData
+
+data node_superset_field_count: Int = 18
+
+type SpanRef {
+  file_id: UInt32
+  start: UInt32
+  end: UInt32
+}
+
+type IdentRef {
+  value: UInt32
+}
+
+data ident_ref_absent: IdentRef = IdentRef { value: 0 }
+
+type InferenceSlot
+  = InferenceAbsent
+  | InferencePresent { slot: UInt32 }
+
+type MatchPatternSlot {
+  tag: Symbol
+}
+
+type SurfaceExprTag
+  = SetNoExprData
+  | SetExprLiteral
+  | SetExprError
+  | SetExprVar
+  | SetExprFieldAccess
+  | SetExprCall
+  | SetExprMethodCall
+  | SetExprMatch
+  | SetExprIf
+  | SetExprLet
+  | SetExprRecordLit
+  | SetExprListLit
+  | SetExprBinOp
+  | SetExprUnaryOp
+  | SetExprLambda
+  | SetExprStringInterp
+  | SetExprBlock
+  | SetExprCast
+  | SetExprForEach
+  | SetExprIndex
+  | SetExprSlice
+  | SetExprReturn
+
+type SurfaceProvenance {
+  span: SpanRef
+  ident: IdentRef
+}
+
+type NamedProvenance {
+  span: SpanRef
+  ident_span: SpanRef
+  ident: IdentRef
+  name: Symbol
+}
+
+type SurfaceDeclRole
+  = SdrParam
+  | SdrField
+  | SdrVariant
+  | SdrFnItem
+  | SdrModuleItem
+  | SdrImport
+  | SdrResourceUse
+  | SdrProperty
+
+type SurfaceDeclPayload
+  = SdpChildrenOnly { children: List<Edge> }
+  | SdpWithParams { params: List<Edge>, children: List<Edge> }
+  | SdpWithBody { body: Edge, children: List<Edge> }
+  | SdpWithUses { uses: List<Edge>, children: List<Edge> }
+
+type MinimalNodeKind
+  = MnkSubstrateGraph
+  | MnkSurfaceExprLeaf
+  | MnkSurfaceExprParent
+  | MnkSurfaceConnective
+  | MnkSurfaceNamedDecl
+  | MnkSurfaceMatchArm
+
+type MinimalResolvedNode
+  = MrnSubstrateGraph {
+      kind: NodeKind
+      children: List<Edge>
+      occurrence_id: NodeOccurrenceId
+    }
+  | MrnSurfaceExprLeaf {
+      expr: SurfaceExprTag
+      provenance: SurfaceProvenance
+      inference: InferenceSlot
+    }
+  | MrnSurfaceExprParent {
+      expr: SurfaceExprTag
+      provenance: SurfaceProvenance
+      children: List<Edge>
+      inference: InferenceSlot
+    }
+  | MrnSurfaceConnective {
+      connective: Connective
+      provenance: SurfaceProvenance
+      children: List<Edge>
+      params: List<Edge>
+      uses: List<Edge>
+      inference: InferenceSlot
+    }
+  | MrnSurfaceNamedDecl {
+      role: SurfaceDeclRole
+      provenance: NamedProvenance
+      payload: SurfaceDeclPayload
+      inference: InferenceSlot
+    }
+  | MrnSurfaceMatchArm {
+      pattern: MatchPatternSlot
+      provenance: SurfaceProvenance
+      children: List<Edge>
+    }
+
+fn minimal_node_kind_of(node: MinimalResolvedNode) -> MinimalNodeKind {
+  match node {
+    MrnSubstrateGraph { kind: _, children: _, occurrence_id: _ } => MnkSubstrateGraph
+    MrnSurfaceExprLeaf { expr: _, provenance: _, inference: _ } => MnkSurfaceExprLeaf
+    MrnSurfaceExprParent { expr: _, provenance: _, children: _, inference: _ } =>
+      MnkSurfaceExprParent
+    MrnSurfaceConnective {
+      connective: _,
+      provenance: _,
+      children: _,
+      params: _,
+      uses: _,
+      inference: _
+    } => MnkSurfaceConnective
+    MrnSurfaceNamedDecl { role: _, provenance: _, payload: _, inference: _ } =>
+      MnkSurfaceNamedDecl
+    MrnSurfaceMatchArm { pattern: _, provenance: _, children: _ } => MnkSurfaceMatchArm
+  }
+}
+
+fn minimal_node_kind_superset_fields(kind: MinimalNodeKind) -> List<NodeSupersetField> {
+  match kind {
+    MnkSubstrateGraph => []
+    MnkSurfaceExprLeaf =>
+      [NsfSpan, NsfIdent, NsfExprData, NsfInferred]
+    MnkSurfaceExprParent =>
+      [NsfSpan, NsfIdent, NsfExprData, NsfChildren, NsfInferred]
+    MnkSurfaceConnective =>
+      [
+        NsfSpan,
+        NsfIdent,
+        NsfConnective,
+        NsfChildren,
+        NsfParams,
+        NsfUses,
+        NsfInferred
+      ]
+    MnkSurfaceNamedDecl =>
+      [
+        NsfName,
+        NsfIdent,
+        NsfSpan,
+        NsfIdentSpan,
+        NsfChildren,
+        NsfParams,
+        NsfUses,
+        NsfBody,
+        NsfInferred,
+        NsfReturnCardinality
+      ]
+    MnkSurfaceMatchArm =>
+      [NsfSpan, NsfIdent, NsfMatchPattern, NsfChildren]
+  }
+}
+
+fn minimal_node_kind_live_field_count(kind: MinimalNodeKind) -> Int {
+  minimal_node_kind_superset_fields(kind: kind) |> count
+}
+
+fn minimal_node_superset_field_unused_by_kind(
+  kind: MinimalNodeKind,
+  field: NodeSupersetField
+) -> Bool {
+  !minimal_node_kind_superset_fields(kind: kind) |> any(f => f == field)
+}
+
+fn minimal_substrate_node_from_v2(node: Node) -> MinimalResolvedNode {
+  MrnSubstrateGraph {
+    kind: node.kind,
+    children: node.children,
+    occurrence_id: node.occurrence_id
+  }
+}
+
+fn minimal_expr_leaf_example() -> MinimalResolvedNode {
+  MrnSurfaceExprLeaf {
+    expr: SetExprVar,
+    provenance: SurfaceProvenance {
+      span: SpanRef { file_id: 1, start: 10, end: 12 },
+      ident: ident_ref_absent
+    },
+    inference: InferenceAbsent
+  }
+}
+
+data node_minimal_representation_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "v2.std.node",
+    decl_name: "Node",
+    field: WholeDeclaration
+  }
+}
