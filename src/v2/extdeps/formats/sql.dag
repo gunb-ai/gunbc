@@ -378,6 +378,8 @@ fn sql_wave1_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
   )
 }
 
+data sql_serialize_oracle_dissolution_trigger: String = "🟡 dissolve-on: sql_serialize_* hand serializer family — byte-identical cross-check oracle for the grammar-inverse fold pilot (parallel to bash serialize_stmt / extdeps/languages/* authority_source_text convention). DISSOLVES WHEN SQL ingest is wired over the same grammar rows and the fold proves ingest ∘ emit = id (round-trip grounded over shared productions); until then witnesses compare emit() output to this oracle, not the other way around"
+
 fn sql_serialize_identifier(id: SqlIdentifier) -> String {
   match id {
     SqlRegularIdentifier { name: n } => n
