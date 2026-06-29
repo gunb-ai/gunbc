@@ -172,7 +172,7 @@ Gate: uncached non-redundant work is an ERROR, not "slow". The cache-key-from-in
 
 ## 3. Complexity budget gate (stability — validation)
 
-Operator decision (2026-06-21): budget-gate validation is the in-window tool; the algorithmic-cost *rewrite construction* is expansion, relocated to §5. Detection is total by construction (cost.dag U2); the gate's reach is a subject-production limit (fn-body reflection), not a detection one. → [family audit + enforcement phases](docs/plans/complexity-linearity-family-audit.md)
+Operator decision (2026-06-21): budget-gate validation is the in-window tool; the algorithmic-cost *rewrite construction* is expansion, relocated to §5. Detection is total by construction (cost.dag U2); the gate's reach is a subject-production limit (fn-body reflection), not a detection one.
 
 **◆ Milestones:** budget-gate non-toothless ✓ (#5437) → complexity gates the whole codebase *(gated on §5 fn-body reflection)*
 

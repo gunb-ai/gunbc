@@ -15,6 +15,7 @@
 
 pub mod cache_purity_oracle;
 pub mod cli_run;
+pub mod complexity_linearity_audit_project;
 pub mod coproduct_reflection;
 pub mod corpus_lex;
 pub mod doc_reachability_project;
