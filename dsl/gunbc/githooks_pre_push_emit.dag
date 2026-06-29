@@ -2,10 +2,11 @@ module gunbc.githooks_pre_push_emit
 
 import gunbc.local_tidy_spec {
   LocalTidyCheck, LocalTidyWitnessCheck, LocalTidyGateCheck, LocalTidyCargoFmtCheck,
-  local_tidy_checks, local_tidy_trigger_globs, local_tidy_has_stale_probe,
-  local_tidy_gate_entry, local_tidy_gate_wet_fn, doc_reachability_witness_entry
+  local_tidy_checks, local_tidy_trigger_globs,
+  local_tidy_gate_entry, local_tidy_gate_wet_fn, doc_reachability_witness_entry,
+  generated_artifact_drift_gate_check_fn
 }
-import gunbc.gate_registry { GeneratedArtifactDriftGate, gate_binding }
+import gunbc.ci_spec { GeneratedArtifactDriftGate }
 import extdeps.git.hooks { pre_push_zero_sha }
 
 data bash_at: String = "@"
@@ -60,7 +61,7 @@ fn emit_freshness_doc() -> String {
 
 fn emit_freshness_artifact() -> String {
   let globs = local_tidy_trigger_globs(check: LocalTidyGateCheck { gate: GeneratedArtifactDriftGate })
-  let entry = gate_binding(g: GeneratedArtifactDriftGate).entry
+  let entry = local_tidy_gate_entry()
   concat(
     concat(
       emit_freshness_path_fn(label: "fresh_artifact", globs: globs),
@@ -104,7 +105,7 @@ fn emit_run_doc() -> String {
 }
 
 fn emit_run_artifact() -> String {
-  let entry = local_tidy_gate_entry(g: GeneratedArtifactDriftGate)
+  let entry = local_tidy_gate_entry()
   concat(
     concat("echo \"[pre-push] generated-artifact drift gate\"\nif ", emit_claim_batch(entry: entry, function: "run_generated_artifact_drift_gate_body", suffix: "")),
     concat(

@@ -4,7 +4,7 @@ import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.ci_layer_roots { witness_layer_roots }
 import gunbc.generated_artifact { committed_generated_artifacts, artifact_path }
-import gunbc.gate_registry { Gate, GeneratedArtifactDriftGate, gate_binding }
+import gunbc.ci_spec { GeneratedArtifactDriftGate }
 import tools.rust_stage0_gates { rust_monolith_suffixes }
 
 type LocalTidyCheck
@@ -13,6 +13,12 @@ type LocalTidyCheck
   | LocalTidyCargoFmtCheck
 
 data doc_reachability_witness_entry: String = "dsl/test/claim/doc_reachability_witness_test.dag"
+
+data generated_artifact_drift_gate_entry: String = "dsl/tools/generated_artifact_gate.dag"
+
+data generated_artifact_drift_gate_check_fn: String = "run_generated_artifact_drift_gate_body"
+
+data generated_artifact_drift_gate_wet_fn: String = "main_wet"
 
 data local_tidy_checks: List<LocalTidyCheck> = [
   LocalTidyWitnessCheck {
@@ -86,10 +92,10 @@ fn local_tidy_has_stale_probe(check: LocalTidyCheck) -> Bool {
   }
 }
 
-fn local_tidy_gate_entry(g: Gate) -> String {
-  gate_binding(g: g).entry
+fn local_tidy_gate_entry() -> String {
+  generated_artifact_drift_gate_entry
 }
 
-fn local_tidy_gate_wet_fn(g: Gate) -> String {
-  gate_binding(g: g).wet_fn
+fn local_tidy_gate_wet_fn() -> String {
+  generated_artifact_drift_gate_wet_fn
 }
