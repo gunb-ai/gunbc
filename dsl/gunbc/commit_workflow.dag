@@ -286,31 +286,18 @@ fn realization_artifact_path(surface: CommitWorkflowSurface) -> String {
   }
 }
 
-fn realization_binding_matches_surface(
-  b: CommitWorkflowRealizationBinding,
-  surface: CommitWorkflowSurface,
-) -> Bool {
-  commit_workflow_surface_eq(a: b.surface, b: surface)
-}
-
-fn realization_handler_for_surface(surface: CommitWorkflowSurface) -> CommitWorkflowRealizationKind? {
-  let found = filter(
-    commit_workflow_realization_bindings,
-    b => realization_binding_matches_surface(b: b, surface: surface)
-  )
-  match length(found) == 0 {
-    true => Absent
-    false => Present { value: found.first().handler }
+fn realization_handler_for_surface(surface: CommitWorkflowSurface) -> CommitWorkflowRealizationKind {
+  match surface {
+    GithubActionsCiJob => CiYamlHandler
+    GithubActionsRustTestsJob => CiYamlHandler
+    GitPrePushHook => GitPrePushScriptHandler
   }
 }
 
-fn realization_artifact_for_surface(surface: CommitWorkflowSurface) -> GeneratedArtifact? {
-  let found = filter(
-    commit_workflow_realization_bindings,
-    b => realization_binding_matches_surface(b: b, surface: surface)
-  )
-  match length(found) == 0 {
-    true => Absent
-    false => Present { value: found.first().artifact }
+fn realization_artifact_for_surface(surface: CommitWorkflowSurface) -> GeneratedArtifact {
+  match surface {
+    GithubActionsCiJob => CiYamlArtifact
+    GithubActionsRustTestsJob => CiYamlArtifact
+    GitPrePushHook => GithooksPrePushArtifact
   }
 }

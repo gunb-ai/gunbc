@@ -38,38 +38,23 @@ fn witness_roster_lifts_local_tidy_checks() -> Bool {
 }
 
 fn witness_ci_jobs_share_yaml_handler() -> Bool {
-  match realization_handler_for_surface(surface: GithubActionsCiJob) {
-    Present { value: ci_handler } =>
-      match realization_handler_for_surface(surface: GithubActionsRustTestsJob) {
-        Present { value: rust_handler } =>
-          match realization_artifact_for_surface(surface: GithubActionsCiJob) {
-            Present { value: ci_artifact } =>
-              match realization_artifact_for_surface(surface: GithubActionsRustTestsJob) {
-                Present { value: rust_artifact } =>
-                  ci_handler == CiYamlHandler
-                    && rust_handler == CiYamlHandler
-                    && ci_artifact == CiYamlArtifact
-                    && rust_artifact == CiYamlArtifact
-                Absent => false
-              }
-            Absent => false
-          }
-        Absent => false
-      }
-    Absent => false
-  }
+  realization_handler_for_surface(surface: GithubActionsCiJob) == CiYamlHandler
+    && realization_handler_for_surface(surface: GithubActionsRustTestsJob) == CiYamlHandler
+    && realization_artifact_for_surface(surface: GithubActionsCiJob) == CiYamlArtifact
+    && realization_artifact_for_surface(surface: GithubActionsRustTestsJob) == CiYamlArtifact
 }
 
 fn witness_pre_push_handler_binding() -> Bool {
-  match realization_handler_for_surface(surface: GitPrePushHook) {
-    Present { value: handler } =>
-      match realization_artifact_for_surface(surface: GitPrePushHook) {
-        Present { value: artifact } =>
-          handler == GitPrePushScriptHandler && artifact == GithooksPrePushArtifact
-        Absent => false
-      }
-    Absent => false
-  }
+  realization_handler_for_surface(surface: GitPrePushHook) == GitPrePushScriptHandler
+    && realization_artifact_for_surface(surface: GitPrePushHook) == GithooksPrePushArtifact
+}
+
+fn witness_realization_bindings_match_dispatch() -> Bool {
+  fold(commit_workflow_realization_bindings, init: true, f: fn(acc, b) {
+    acc
+      && realization_handler_for_surface(surface: b.surface) == b.handler
+      && realization_artifact_for_surface(surface: b.surface) == b.artifact
+  })
 }
 
 fn witness_realization_artifact_paths() -> Bool {
@@ -90,5 +75,6 @@ test fn commit_workflow_witnesses() -> Bool {
     && witness_roster_lifts_local_tidy_checks()
     && witness_ci_jobs_share_yaml_handler()
     && witness_pre_push_handler_binding()
+    && witness_realization_bindings_match_dispatch()
     && witness_realization_artifact_paths()
 }
