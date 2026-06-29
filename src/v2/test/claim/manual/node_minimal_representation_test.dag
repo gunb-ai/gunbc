@@ -18,6 +18,7 @@ import v2.std.node_minimal {
   minimal_node_superset_field_unused_by_kind,
   minimal_substrate_node_from_v2,
   node_superset_field_count,
+  witness_all_node_superset_fields_roster_length,
   witness_partition_covers_superset
 }
 import v2.std.verification {
@@ -39,7 +40,7 @@ fn substrate_v2_node() -> Node {
 }
 
 fn witness_expr_leaf_field_count_below_superset() -> Bool {
-  if minimal_node_kind_live_field_count(kind: MnkSurfaceExprLeaf) < node_superset_field_count() {
+  if minimal_node_kind_live_field_count(kind: MnkSurfaceExprLeaf) < node_superset_field_count {
     true
   } else {
     false
@@ -114,6 +115,8 @@ data witness_node_minimal_substrate_zero_superset: Bool = witness_substrate_kind
 
 data witness_node_minimal_kind_of_expr_leaf: Bool = witness_minimal_node_kind_of_expr_leaf()
 
+data witness_node_minimal_roster_length_matches_count: Bool = witness_all_node_superset_fields_roster_length()
+
 data witness_node_minimal_partition_covers_superset: Bool = witness_partition_covers_superset()
 
 data witness_node_minimal_placed_bucket_count: Bool = witness_placed_bucket_count()
@@ -140,6 +143,10 @@ test fn node_minimal_substrate_has_no_superset_fields_holds() -> Bool {
 
 test fn node_minimal_kind_of_expr_leaf_holds() -> Bool {
   witness_node_minimal_kind_of_expr_leaf
+}
+
+test fn node_minimal_roster_length_matches_superset_count_holds() -> Bool {
+  witness_node_minimal_roster_length_matches_count
 }
 
 test fn witness_partition_covers_superset_holds() -> Bool {

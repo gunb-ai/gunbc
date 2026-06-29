@@ -34,7 +34,9 @@ type NodeSupersetField
   | NsfMatchPattern
   | NsfExprData
 
-data node_superset_field_all: List<NodeSupersetField> = [
+data node_superset_field_count: Int = 18
+
+data all_node_superset_fields: List<NodeSupersetField> = [
   NsfName,
   NsfIdent,
   NsfSpan,
@@ -55,8 +57,8 @@ data node_superset_field_all: List<NodeSupersetField> = [
   NsfExprData
 ]
 
-fn node_superset_field_count() -> Int {
-  count(node_superset_field_all)
+fn witness_all_node_superset_fields_roster_length() -> Bool {
+  count(all_node_superset_fields) == node_superset_field_count
 }
 
 type SpanRef {
@@ -364,14 +366,35 @@ fn minimal_kind_partition_field_union() -> List<NodeSupersetField> {
   )
 }
 
+fn node_superset_field_in_partition(field: NodeSupersetField) -> Bool {
+  list_contains_node_superset_field(
+    xs: minimal_kind_partition_field_union(),
+    field: field
+  )
+}
+
+fn witness_all_node_superset_fields_covered_by_partition() -> Bool {
+  fold(all_node_superset_fields, init: true, f: fn(acc, field) {
+    if acc {
+      node_superset_field_in_partition(field: field)
+    } else {
+      false
+    }
+  })
+}
+
 fn witness_partition_covers_superset() -> Bool {
   if node_superset_field_three_way_disjoint(
     placed: minimal_kind_placed_fields_union(),
     owed: minimal_kind_owed_placement,
     migrated: minimal_kind_migrated_to_facts
   ) {
-    if count(minimal_kind_partition_field_union()) == node_superset_field_count() {
-      true
+    if count(minimal_kind_partition_field_union()) == node_superset_field_count {
+      if witness_all_node_superset_fields_roster_length() {
+        witness_all_node_superset_fields_covered_by_partition()
+      } else {
+        false
+      }
     } else {
       false
     }
