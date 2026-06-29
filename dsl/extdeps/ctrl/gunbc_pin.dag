@@ -1,0 +1,23 @@
+module extdeps.ctrl.gunbc_pin
+
+import std.types { String, Bool }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/gunb-ai/ctrl/blob/main/scripts/session-dashboard/lib/gunbc_run.mjs"
+  }
+}
+
+// Single authority for pin comparison: readPin(tree) === desired_pin in gunbc_run.mjs
+// (resolveGunbcDslRoot: hasDsl(root) && readPin(root) === ctrlPin). Do NOT reinvent.
+
+fn gunbc_pin_match(read_pin: String, desired_pin: String) -> Bool {
+  read_pin != "" && desired_pin != "" && read_pin == desired_pin
+}
+
+fn gunbc_pin_skewed(host_pin: String, ctrl_pin: String) -> Bool {
+  host_pin != "" && ctrl_pin != "" && host_pin != ctrl_pin
+}

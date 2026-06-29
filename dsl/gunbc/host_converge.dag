@@ -27,6 +27,7 @@ import gunbc.ci_floor_measurement {
 }
 import gunbc.ci_fleet { fleet_intent_offers }
 import gunbc.fleet_intent_network { operator_host_srv3 }
+import extdeps.ctrl.gunbc_pin { gunbc_pin_match }
 import gunbc.oomd_install { gunbc_oomd_sessions_policy, gunbc_oomd_sessions_slice }
 import gunbc.runner_slot_enforcement { gunbc_runner_slot_unit_placeholder }
 import extdeps.os.systemd {
@@ -68,6 +69,12 @@ data gunbc_fleet_pinned_binary_digest: String = "sha256:BOOTSTRAP_DIGEST_PLACEHO
 
 data gunbc_fleet_pinned_binary_name: String = "gunbc"
 
+data gunbc_ctrl_read_pin_script: String = "scripts/session-dashboard/container/read-gunbc-pin.sh"
+
+data gunbc_ctrl_placement_probe_script: String = "scripts/session-dashboard/lib/placement_query.mjs"
+
+data gunbc_ctrl_green_place_receipt: String = ".dashboard/converge-green-place.ok"
+
 type ConvergeVerdict
   = Converged
   | Drifted
@@ -102,11 +109,22 @@ fn converge_slice_label(s: ConvergeSlice) -> String {
 
 type ConvergeApplyMode
   = FreshStandup
-  | ExistingHostReConverge
+  | ExistingHostQuiescentReload
+
+type ConvergeEffectiveSource
+  = FileOnDisk
+  | ProcessEffective
+
+type ConvergeDoneCondition
+  = EffectiveEqualsDesired
+  | PinMatchAndGreenPlace
 
 type ConvergeNoOpPolicy
   = BlindApply
-  | SkipApplyWhenConverged
+  | SkipApplyWhenConverged {
+      effective_source: ConvergeEffectiveSource
+      done: ConvergeDoneCondition
+    }
 
 type DslRootBinding
   = DeferToSubmodule { submodule_path: String }
@@ -134,6 +152,9 @@ type ConvergeTarget
       ctrl_checkout_path: String
       expected_sha: String
       binary: GunbcBinaryProvenancePolicy
+      pin_read_script: String
+      placement_probe_script: String
+      green_place_receipt: String
     }
 
 type ConvergeKnob {
