@@ -518,3 +518,7 @@ fn witness_floor_derived_width_leaves_headroom_at_cap() -> Bool {
   let committed = byte_size_count(b: gunbc_ci_floor_per_shard_peak_rss_bytes()) * width
   committed < byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap)
 }
+
+fn execution_measurement_plan() -> List<List<Runnable>> {
+  [[execution_corpus_runnable()]]
+}
