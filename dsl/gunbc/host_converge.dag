@@ -1,7 +1,7 @@
 module gunbc.host_converge
 
 import std.types { String, List, Int, Bool }
-import std.measure { ByteSize, byte_size_count, hardware_thread_count_value, percent_count }
+import std.measure { ByteSize, byte_size_count, hardware_thread_count_value, percent_count, Second, second, second_count }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import product.placement_supply { HostIdentity }
@@ -90,7 +90,7 @@ data gunbc_ctrl_green_place_marker_ts_prefix: String = "first_green_at="
 
 data gunbc_ctrl_quiescent_reload_hook: String = "scripts/session-dashboard/bin/gunbc-pin-quiescent-reload.mjs"
 
-data gunbc_spawn_retry_backstop_seconds: Int = 600
+data gunbc_spawn_retry_backstop_cadence: Second = second(count: 600)
 
 type GreenPlaceReadinessMarker {
   path: String
@@ -99,7 +99,7 @@ type GreenPlaceReadinessMarker {
 }
 
 type SpawnRetryBackstop {
-  cadence_seconds: Int
+  cadence: Second
   role: String
 }
 
@@ -287,7 +287,7 @@ fn gunbc_dashboard_live_apply_policy() -> ConvergeLiveApplyPolicy {
     restart: "quiescent_window_systemd",
     quiescent_window: true,
     backstop: SpawnRetryBackstop {
-      cadence_seconds: gunbc_spawn_retry_backstop_seconds,
+      cadence: gunbc_spawn_retry_backstop_cadence,
       role: "acknowledged_auto_spawn_retry",
     },
     reload_hook: gunbc_ctrl_quiescent_reload_hook,

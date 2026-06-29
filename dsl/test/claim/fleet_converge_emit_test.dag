@@ -1,7 +1,7 @@
 module test.claim.fleet_converge_emit
 
 import std.types { Bool, String, List, Int }
-import std.measure { byte_size, hardware_thread_count }
+import std.measure { byte_size, hardware_thread_count, second_count }
 import extdeps.github.actions { RunnerSpec, SelfHosted }
 import gunbc.ci_runner_placement {
   RunnerDeploymentPlan,
@@ -40,7 +40,7 @@ import gunbc.host_converge {
   gunbc_ctrl_green_place_marker_pin_prefix,
   gunbc_ctrl_green_place_marker_ts_prefix,
   gunbc_ctrl_quiescent_reload_hook,
-  gunbc_spawn_retry_backstop_seconds,
+  gunbc_spawn_retry_backstop_cadence,
   gunbc_process_effective_converged,
   gunbc_green_place_marker_satisfied,
   gunbc_sha_triple_coherent,
@@ -221,7 +221,10 @@ fn witness_gunbc_pinned_tree_emitted() -> Bool {
     && has(s: sh, p: "--target-sha")
     && has(s: sh, p: "--dsl-mode")
     && has(s: sh, p: "--ctrl")
+    && has(s: sh, p: "grep -Eo '[0-9a-f]{40}'")
     && has(s: sh, p: "desired_pin=\"$ctrl_pin\"")
+    && has(s: sh, p: "[ -n \"$process_pin\" ] && [ \"$process_pin\" = \"$ctrl_pin\" ]")
+    && !has(s: sh, p: "[ -z \"$process_pin\" ] ||")
     && has(s: sh, p: "skip_process_pin_coherent_and_marker")
     && has(s: sh, p: "quiescent-window restart")
     && has(s: sh, p: "spawn-retry backstop")
@@ -270,7 +273,7 @@ fn witness_gunbc_noop_predicate_process_and_green_place() -> Bool {
     && !gunbc_green_place_marker_satisfied(marker_line: "pin=deadbeef", marker_pin: "deadbeef", desired_pin: sha)
     && converge_no_op_policy_label(p: gunbc_pinned_noop_policy()) == "skip_process_pin_coherent_and_marker"
     && gunbc_process_effective_converged(process_pin: sha, ctrl_pin: sha)
-    && gunbc_spawn_retry_backstop_seconds == 600
+    && second_count(s: gunbc_spawn_retry_backstop_cadence) == 600
     && gunbc_pinned_tree_desired_label == "ctrl:third_party/gunbc"
 }
 
