@@ -87,7 +87,7 @@ func judge_one(instructions: String, body: String) -> { verdict: String } {
 }
 
 fn grade(verdict: String, expected: String) -> String {
-  if contains(verdict, expected) { "MATCH" } else { "MISS" }
+  if starts_with(verdict, prefix: expected) { "MATCH" } else { "MISS" }
 }
 
 func confirm_bare() -> { lines: String } {
