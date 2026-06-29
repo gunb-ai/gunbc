@@ -48,7 +48,7 @@ fn assert_resolved_ok(result: &ResolvedPipelineResult, label: &str) {
 }
 
 fn run_bool_test(
-    graph: &v1_compiler::v1_std_core::ResolvedGraph,
+    graph: &v1_compiler::v1_compiler_infer_items::ResolvedGraph,
     source_indices: std::rc::Rc<
         std::collections::HashMap<
             String,

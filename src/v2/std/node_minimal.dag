@@ -5,7 +5,6 @@ import std.disposition { Disposition, Scaffold, SingleAuthority }
 import v2.std.collection { List }
 import v2.std.integer { UInt32 }
 import v2.std.node {
-  Behavior,
   Connective,
   Edge,
   Node,
@@ -157,18 +156,9 @@ fn minimal_node_kind_of(node: MinimalResolvedNode) -> MinimalNodeKind {
   match node {
     MrnSubstrateGraph { kind: _, children: _, occurrence_id: _ } => MnkSubstrateGraph
     MrnSurfaceExprLeaf { expr: _, provenance: _, inference: _ } => MnkSurfaceExprLeaf
-    MrnSurfaceExprParent { expr: _, provenance: _, children: _, inference: _ } =>
-      MnkSurfaceExprParent
-    MrnSurfaceConnective {
-      connective: _,
-      provenance: _,
-      children: _,
-      params: _,
-      uses: _,
-      inference: _
-    } => MnkSurfaceConnective
-    MrnSurfaceNamedDecl { role: _, provenance: _, payload: _, inference: _ } =>
-      MnkSurfaceNamedDecl
+    MrnSurfaceExprParent { expr: _, provenance: _, children: _, inference: _ } => MnkSurfaceExprParent
+    MrnSurfaceConnective { connective: _, provenance: _, children: _, params: _, uses: _, inference: _ } => MnkSurfaceConnective
+    MrnSurfaceNamedDecl { role: _, provenance: _, payload: _, inference: _ } => MnkSurfaceNamedDecl
     MrnSurfaceMatchArm { pattern: _, provenance: _, children: _ } => MnkSurfaceMatchArm
   }
 }
@@ -216,7 +206,11 @@ fn minimal_node_superset_field_unused_by_kind(
   kind: MinimalNodeKind,
   field: NodeSupersetField
 ) -> Bool {
-  !minimal_node_kind_superset_fields(kind: kind) |> any(f => f == field)
+  if minimal_node_kind_superset_fields(kind: kind) |> any(f => f == field) {
+    false
+  } else {
+    true
+  }
 }
 
 fn minimal_substrate_node_from_v2(node: Node) -> MinimalResolvedNode {

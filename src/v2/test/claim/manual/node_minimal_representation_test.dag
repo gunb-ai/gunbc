@@ -5,18 +5,10 @@ import v2.std.node_minimal {
   MnkSubstrateGraph,
   MnkSurfaceExprLeaf,
   MrnSubstrateGraph,
-  MinimalNodeKind,
   NsfConnective,
   NsfParams,
   NsfUses,
   NsfBody,
-  NsfTransport,
-  NsfProperties,
-  NsfTypeAnnotation,
-  NsfIsSelfRecursive,
-  NsfHasNonTailSelfCall,
-  NsfMatchPattern,
-  NsfReturnCardinality,
   minimal_expr_leaf_example,
   minimal_node_kind_live_field_count,
   minimal_node_kind_of,
@@ -43,23 +35,41 @@ fn substrate_v2_node() -> Node {
 }
 
 fn witness_expr_leaf_field_count_below_superset() -> Bool {
-  minimal_node_kind_live_field_count(kind: MnkSurfaceExprLeaf)
-    < node_superset_field_count
+  if minimal_node_kind_live_field_count(kind: MnkSurfaceExprLeaf) < node_superset_field_count {
+    true
+  } else {
+    false
+  }
 }
 
 fn witness_expr_leaf_drops_connective_and_params() -> Bool {
-  minimal_node_superset_field_unused_by_kind(kind: MnkSurfaceExprLeaf, field: NsfConnective)
-    && minimal_node_superset_field_unused_by_kind(kind: MnkSurfaceExprLeaf, field: NsfParams)
-    && minimal_node_superset_field_unused_by_kind(kind: MnkSurfaceExprLeaf, field: NsfUses)
-    && minimal_node_superset_field_unused_by_kind(kind: MnkSurfaceExprLeaf, field: NsfBody)
+  if minimal_node_superset_field_unused_by_kind(kind: MnkSurfaceExprLeaf, field: NsfConnective) {
+    if minimal_node_superset_field_unused_by_kind(kind: MnkSurfaceExprLeaf, field: NsfParams) {
+      if minimal_node_superset_field_unused_by_kind(kind: MnkSurfaceExprLeaf, field: NsfUses) {
+        minimal_node_superset_field_unused_by_kind(kind: MnkSurfaceExprLeaf, field: NsfBody)
+      } else {
+        false
+      }
+    } else {
+      false
+    }
+  } else {
+    false
+  }
 }
 
 fn witness_substrate_kind_round_trips_v2_node() -> Bool {
   match minimal_substrate_node_from_v2(node: substrate_v2_node()) {
-    MrnSubstrateGraph { kind: k, children: c, occurrence_id: o } =>
-      (k == substrate_v2_node().kind)
-        && (c == substrate_v2_node().children)
-        && (o == substrate_v2_node().occurrence_id)
+    MrnSubstrateGraph {
+      kind: TypeNode { connective: Atom { identity: sym } },
+      children: c,
+      occurrence_id: SyntheticOccurrence
+    } => (sym == ^node_minimal_probe) && (c |> count == 0)
+    MrnSurfaceExprLeaf { expr: _, provenance: _, inference: _ } => false
+    MrnSurfaceExprParent { expr: _, provenance: _, children: _, inference: _ } => false
+    MrnSurfaceConnective { connective: _, provenance: _, children: _, params: _, uses: _, inference: _ } => false
+    MrnSurfaceNamedDecl { role: _, provenance: _, payload: _, inference: _ } => false
+    MrnSurfaceMatchArm { pattern: _, provenance: _, children: _ } => false
   }
 }
 
@@ -78,20 +88,15 @@ fn witness_minimal_node_kind_of_expr_leaf() -> Bool {
   }
 }
 
-data witness_node_minimal_expr_leaf_field_count: Bool =
-  witness_expr_leaf_field_count_below_superset()
+data witness_node_minimal_expr_leaf_field_count: Bool = witness_expr_leaf_field_count_below_superset()
 
-data witness_node_minimal_expr_leaf_drops_dead_fields: Bool =
-  witness_expr_leaf_drops_connective_and_params()
+data witness_node_minimal_expr_leaf_drops_dead_fields: Bool = witness_expr_leaf_drops_connective_and_params()
 
-data witness_node_minimal_substrate_round_trip: Bool =
-  witness_substrate_kind_round_trips_v2_node()
+data witness_node_minimal_substrate_round_trip: Bool = witness_substrate_kind_round_trips_v2_node()
 
-data witness_node_minimal_substrate_zero_superset: Bool =
-  witness_substrate_kind_has_zero_superset_fields()
+data witness_node_minimal_substrate_zero_superset: Bool = witness_substrate_kind_has_zero_superset_fields()
 
-data witness_node_minimal_kind_of_expr_leaf: Bool =
-  witness_minimal_node_kind_of_expr_leaf()
+data witness_node_minimal_kind_of_expr_leaf: Bool = witness_minimal_node_kind_of_expr_leaf()
 
 test fn node_minimal_expr_leaf_field_count_below_superset_holds() -> Bool {
   witness_node_minimal_expr_leaf_field_count
