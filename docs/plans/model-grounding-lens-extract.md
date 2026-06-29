@@ -1,6 +1,6 @@
 # Model-grounding lens — whole-tree EXTRACT
 
-> DESIGN.md §2 leaf-decomposition residue lens. Detector half of the [reference-grounding migration](reference-grounding-migration.md) effort; carrier half is tidy-badger-45. Sibling: [anemia-lens design history](anemia-lens.md) (PR #5302).
+> DESIGN.md §2 leaf-decomposition residue lens. Detector half of the [reference-grounding migration](reference-grounding-migration.md) effort; carrier half is tidy-badger-45. Sibling design history: anemia lens (PR #5302; no standalone plan doc on main).
 
 ## 1. What the lens does
 
