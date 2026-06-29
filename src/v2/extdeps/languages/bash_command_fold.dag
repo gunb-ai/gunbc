@@ -141,7 +141,7 @@ data bash_fold_diagnostic_anchor: Node = Node {
   occurrence_id: SyntheticOccurrence
 }
 
-data bash_fold_diagnostic_anchor_dissolution_trigger: String = "🟡 dissolve-on: bash_fold_diagnostic_anchor synthetic placeholder locus (shared across fold reject diagnostics) is replaced by node_locus over the actual ShellWord/ShellStmt/input subtree when fold witnesses gain downstream diagnostic consumers"
+data bash_fold_diagnostic_anchor_dissolution_trigger: String = "🟡 dissolve-on: bash_fold_diagnostic_anchor — shared empty Conj placeholder locus for fold reject diagnostics (bash_fold_unsupported_variant_diagnostic, bash_fold_delegated_needs_component_spellings_diagnostic, bash_fold_words_absent_diagnostic, bash_fold_stmts_absent_diagnostic, wrong-fixture build failures). DISSOLVES WHEN #5920 STEP 3 follow-on lands: production emit callers (orch_emit_run beyond env-free RawLine; stmt-shaped fold serialize) surface bash_fold_word_emitted_witness / bash_fold_stmt_bundle_witness Violates diagnostics through emit() with node_locus over the offending ShellWord or ShellStmt subtree in BashFoldStmtBundle.emitted, retiring the synthetic anchor."
 
 fn bash_fold_unsupported_variant_diagnostic(variant: Symbol) -> Diagnostic {
   Diagnostic {
