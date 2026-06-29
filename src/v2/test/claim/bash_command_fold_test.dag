@@ -1164,7 +1164,7 @@ fn bash_fold_delegated_bundle_fail_closed_holds() -> Bool {
   }
 }
 
-test fn bash_fold_emit_shell_equivalence_receipt_holds() -> Bool {
+fn bash_fold_emit_shell_equivalence_receipt_holds() -> Bool {
   bash_fold_fold_matches_emit_shell_stmt(
     stmt: Command { words: [Lit { text: "true" }] }
   )

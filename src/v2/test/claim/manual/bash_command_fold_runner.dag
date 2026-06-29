@@ -247,6 +247,10 @@ fn bash_command_fold_plan() -> List<List<Runnable>> {
       RunnableSingleClaim {
         entry: bash_fold_test_entry,
         function: "bash_fold_env_prefixed_wrong_production_rejects_oracle_holds"
+      },
+      RunnableSingleClaim {
+        entry: bash_fold_test_entry,
+        function: "bash_fold_emit_shell_equivalence_receipt_holds"
       }
     ]
   ]
