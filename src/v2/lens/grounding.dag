@@ -1,4 +1,4 @@
-module v2.lens.anemia
+module v2.lens.grounding
 
 
 import v2.std.algebra { fold_list, list_snoc_item }
@@ -11,9 +11,9 @@ import v2.lens.common.construction_justification { ConstructionJustification, Ra
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: RatchetForever {
-    undecidable_because: "Whether a bare-string field is an anemic nickname (it should point at an existing concept) or legitimately a string (an open registry, a constraint/grammar string, an opaque token, or free-form prose) is not decidable from the substrate. Name-coincidence with a concept (this lens's Signal-A) is only a NECESSARY candidate condition, never sufficient: cursor~Cursor, mediaType~OpenRegistry, schedule~Schedule(wrong-target) all coincide by name yet are correct as strings. Sufficiency requires semantic judgment of the field's meaning, which is why the pipeline routes the residual to a CONFIRM judge (gunbc.tools.anemia_confirm); a construction wall cannot make under-modeling unwritable any more than it can make non-optimality unwritable (Rice)."
+    undecidable_because: "Whether a bare-string field SHOULD BE GROUNDED on an existing concept (it re-spells a type that already exists) or is legitimately a string (an open registry, a constraint/grammar string, an opaque token, or free-form prose) is not decidable from the substrate. Name-coincidence with a concept (this lens's Signal-A) is only a NECESSARY candidate condition, never sufficient: cursor~Cursor, mediaType~OpenRegistry, schedule~Schedule(wrong-target) all coincide by name yet are correct as strings. Sufficiency requires semantic judgment of the field's meaning, which is why the pipeline routes the residual to a CONFIRM judge (gunbc.tools.grounding_confirm); a construction wall cannot make under-grounding unwritable any more than it can make non-optimality unwritable (Rice)."
   },
-  rationale: "EXTRACT+DECIDE residue lens: a pure fold over enumerate_concepts() (type-level, never coproduct-arm names) flagging bare-String fields whose name coincides with a concept. It stores nothing and gates nothing alone -- it narrows the corpus to a high-quality candidate set for the CONFIRM judge. The decidable part (is_bare_string AND name_coincides) is a candidate signal only; the anemia verdict is the undecidable residue. DISSOLVES toward: deterministic DECIDE clearing of provable cases (closed-set-by-comparison, consumer-cracks-the-leaf, parse-input fields) shrinks the residual sent to the judge, but the name-only residual remains RatchetForever."
+  rationale: "EXTRACT+DECIDE residue lens (model grounding): a pure fold over enumerate_concepts() (type-level, never coproduct-arm names) flagging bare-String fields whose name coincides with a concept that could ground them. It stores nothing and gates nothing alone -- it narrows the corpus to a high-quality candidate set for the CONFIRM judge. The decidable part (is_bare_string AND name_coincides) is a candidate signal only; the should-ground verdict is the undecidable residue. DISSOLVES toward: deterministic DECIDE clearing of provable cases (closed-set-by-comparison, consumer-cracks-the-leaf, parse-input fields) shrinks the residual sent to the judge, but the name-only residual remains RatchetForever."
 }
 
 
@@ -40,7 +40,7 @@ fn norm_head(s: String) -> List<Int> {
 
 
 
-type AnemiaCandidate {
+type GroundingCandidate {
   enclosing: String
   field: String
   declared_type: String
@@ -70,14 +70,14 @@ fn matched_concept(field: String, enclosing: String, names: List<String>) -> Str
   })
 }
 
-fn candidates_of_concept(qc: QualifiedConcept, names: List<String>, acc0: List<AnemiaCandidate>) -> List<AnemiaCandidate> {
+fn candidates_of_concept(qc: QualifiedConcept, names: List<String>, acc0: List<GroundingCandidate>) -> List<GroundingCandidate> {
   fold(qc.concept.fields, init: acc0, f: fn(acc, fr) {
     if is_bare_string(type_name: fr.type_name) {
       let m = matched_concept(field: fr.field, enclosing: qc.concept.name, names: names)
       if m == "" {
         acc
       } else {
-        list_snoc_item(xs: acc, item: AnemiaCandidate {
+        list_snoc_item(xs: acc, item: GroundingCandidate {
           enclosing: qc.concept.name,
           field: fr.field,
           declared_type: fr.type_name,
@@ -90,11 +90,11 @@ fn candidates_of_concept(qc: QualifiedConcept, names: List<String>, acc0: List<A
   })
 }
 
-fn candidates_in(idx: List<QualifiedConcept>) -> List<AnemiaCandidate> {
+fn candidates_in(idx: List<QualifiedConcept>) -> List<GroundingCandidate> {
   let names = concept_names_of(idx: idx)
   fold(idx, init: [], f: fn(acc, qc) { candidates_of_concept(qc: qc, names: names, acc0: acc) })
 }
 
-fn candidates() -> List<AnemiaCandidate> {
+fn candidates() -> List<GroundingCandidate> {
   candidates_in(idx: enumerate_concepts())
 }

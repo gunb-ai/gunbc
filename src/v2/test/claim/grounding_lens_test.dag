@@ -1,4 +1,4 @@
-module v2.test.claim.anemia_lens
+module v2.test.claim.grounding_lens
 
 
 import v2.std.algebra { is_empty }
@@ -6,7 +6,7 @@ import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 import v2.std.concept_index { ConceptStruct, FieldRef, QualifiedConcept, enumerate_concepts }
-import v2.lens.anemia { AnemiaCandidate, candidates_in, concept_names_of, name_coincides }
+import v2.lens.grounding { GroundingCandidate, candidates_in, concept_names_of, name_coincides }
 
 
 
@@ -44,7 +44,7 @@ fn fixture_idx() -> List<QualifiedConcept> {
   ]
 }
 
-fn has_candidate(cands: List<AnemiaCandidate>, enclosing: String, field: String) -> Bool {
+fn has_candidate(cands: List<GroundingCandidate>, enclosing: String, field: String) -> Bool {
   fold(cands, init: false, f: fn(acc, c) {
     acc || ((c.enclosing == enclosing) && (c.field == field))
   })
@@ -69,7 +69,7 @@ fn witness_extract_live_nonempty() -> Bool {
 }
 
 
-test fn anemia_lens_witnesses() -> Bool {
+test fn grounding_lens_witnesses() -> Bool {
   witness_coincide_caseinsensitive()
     && witness_coincide_headnoun()
     && witness_coincide_whole()
