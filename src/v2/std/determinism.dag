@@ -19,6 +19,8 @@ type DeterminismFact {
   classification: DeterminismClass
 }
 
+data determinism_primitive_roster_dissolution_marker: String = "Base-primitive ground-fact KERNEL for determinism_primitive_lookup (closed Symbol roster: irreducible NonDetSource atoms plus #5913 construction-instance rows). Dissolves when composite determinism is DERIVED via determinism_compose wired into #3468 InferredFacts at infer (P4/FLAG-A bundle); this hand-roster shrinks to base-primitive ground facts only — not a permanent side-map (FLAG A rejected)."
+
 fn non_det_source_eq(a: NonDetSource, b: NonDetSource) -> Bool {
   match a {
     HashIteration => match b {

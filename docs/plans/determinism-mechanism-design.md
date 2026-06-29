@@ -1,6 +1,7 @@
 # Determinism mechanism — design proposal (§5)
 
-> **Status: OPERATOR SHAPE-SIGNED — P1 authoring in flight (sunny-wolf-582).** FLAG 1 = A (bundle determinism into #3468 `InferredFacts` block); FLAG 2 = C (refinement + emit + determinism horizontal).
+> **Status: OPERATOR SHAPE-SIGNED — P1 landed in #5941 (sunny-wolf-582).** Supersedes #5937 (keen-bat-281) design-for-sign draft; signed status + FLAG locks authoritative here.
+> **FLAG 1 = A** (bundle determinism into #3468 `InferredFacts` block); **FLAG 2 = C** (refinement + emit + determinism horizontal).
 > Lane: `v2.std.determinism` inert-carrier activation (keen-bat-281 → sunny-wolf-582 P1).
 > DESIGN refs: §2 (horizontal — one perturbation/determinism kernel, many readings; deep — ground `NonDetSource` atoms), §3 (single authority vs `behavioral.determinism`, `perturbation`, `emit_determinism_gate`), §5 (construction over validation; decidability trichotomy), §6 (inert carrier → wired consumer; priced in displaced cost), §7 (signature-derived classification dissolves the lens).
 >
