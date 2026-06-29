@@ -97,6 +97,8 @@ data sql_fold_diagnostic_anchor: Node = Node {
   occurrence_id: SyntheticOccurrence
 }
 
+data sql_fold_diagnostic_anchor_dissolution_trigger: String = "🟡 dissolve-on: sql_fold_diagnostic_anchor — shared empty Conj placeholder locus for fold reject diagnostics (sql_fold_unsupported_variant_diagnostic, sql_fold_columns_absent_diagnostic, wrong-fixture build failures). DISSOLVES WHEN SQL emit-medium follow-on lands: production emit callers surface sql_fold_column_def_emitted_witness / sql_fold_schema_operation_bundle_witness Violates diagnostics through emit() with node_locus over the offending SqlColumnDefinition or SqlSchemaOperation subtree in SqlFoldCreateTableBundle.emitted, retiring the synthetic anchor."
+
 fn sql_fold_unsupported_variant_diagnostic(variant: Symbol) -> Diagnostic {
   Diagnostic {
     reason: variant,
