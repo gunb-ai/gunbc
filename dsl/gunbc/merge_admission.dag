@@ -43,7 +43,6 @@ type AdmissionPolicy
   = PerPrGateOnly
   | RequireUpToDateBase
   | KeyedReceipt
-  | MergeQueueAtomic
 
 data gunbc_repo_standard: RepoStandard = RepoStandard {
   default_branch: "main",
@@ -134,12 +133,6 @@ fn policy_admits(
       check_conclusion_is_success(c: receipt.conclusion)
         && receipt.base_tree_hash == merge_target_tree_hash
     KeyedReceipt =>
-      receipt_is_admissible(
-        receipt: receipt,
-        merge_target_tree_hash: merge_target_tree_hash,
-        current_roster_hash: current_roster_hash,
-      )
-    MergeQueueAtomic =>
       receipt_is_admissible(
         receipt: receipt,
         merge_target_tree_hash: merge_target_tree_hash,

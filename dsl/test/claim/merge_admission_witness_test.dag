@@ -3,7 +3,7 @@ module test.claim.merge_admission_witness
 import gunbc.merge_admission {
   MergeAdmissionReceipt,
   AdmissionPolicy,
-  PerPrGateOnly, RequireUpToDateBase, KeyedReceipt, MergeQueueAtomic,
+  PerPrGateOnly, RequireUpToDateBase, KeyedReceipt,
   Success,
   policy_admits,
   receipt_is_admissible,
@@ -77,14 +77,6 @@ test fn keyed_receipt_blocks_stale_base() -> Bool {
 
 test fn keyed_receipt_blocks_stale_roster() -> Bool {
   !scenario_stale_roster_admits_policy(policy: KeyedReceipt)
-}
-
-test fn merge_queue_atomic_blocks_stale_base() -> Bool {
-  !scenario_stale_base_admits_policy(policy: MergeQueueAtomic)
-}
-
-test fn merge_queue_atomic_blocks_stale_roster() -> Bool {
-  !scenario_stale_roster_admits_policy(policy: MergeQueueAtomic)
 }
 
 test fn keyed_receipt_admits_when_fresh() -> Bool {
