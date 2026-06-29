@@ -1,0 +1,96 @@
+module extdeps.languages.typescript.emit
+
+import std.emit_model { SimpleMethodSpec }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.typescriptlang.org/docs/handbook/"
+  }
+}
+
+data ts_keywords: Map<String, String> = {
+  "true": "true", "false": "false", "null": "null",
+  "and": "&&", "or": "||", "not": "!",
+  "div": "/"
+}
+
+data ts_container_templates: Map<String, String> = {
+  "list": "Array<\{0\}>",
+  "set": "Set<\{0\}>",
+  "optional": "\{0\} | undefined",
+  "map": "Map<\{0\}, \{1\}>",
+  "free_monoid": "Array<\{0\}>",
+  "partial_function": "Map<\{0\}, \{1\}>",
+  "boolean_algebra": "boolean"
+}
+
+data ts_simple_method_specs: List<SimpleMethodSpec> = [
+  { method_name: "count",  template: "\{recv\}.length",              wraps_result: false },
+  { method_name: "join",   template: "\{recv\}.join(\{arg\})",       wraps_result: false },
+  { method_name: "split",  template: "\{recv\}.split(\{arg\})",      wraps_result: false },
+  { method_name: "last",   template: "\{recv\}[\{recv\}.length - 1]", wraps_result: false },
+  { method_name: "first",  template: "\{recv\}[0]",                  wraps_result: false },
+  { method_name: "skip",   template: "\{recv\}.slice(\{arg\})",       wraps_result: false },
+  { method_name: "take",   template: "\{recv\}.slice(0, \{arg\})",    wraps_result: false }
+]
+
+fn ts_method_templates() -> Map<String, String> {
+  ts_simple_method_specs
+    |> fold(init: empty_map(), f: (acc, spec) => map_insert(acc, spec.method_name, spec.template))
+}
+
+data ts_reserved: List<String> = [
+  "break", "case", "catch", "class", "const", "continue",
+  "debugger", "default", "delete", "do", "else", "export",
+  "extends", "false", "finally", "for", "function", "if",
+  "import", "in", "instanceof", "new", "null", "return",
+  "static", "super", "switch", "this", "throw", "true",
+  "try", "typeof", "var", "void", "while", "with", "yield",
+  "abstract", "as", "async", "await", "declare", "enum",
+  "from", "implements", "interface", "is", "keyof", "let",
+  "module", "namespace", "never", "of", "override", "private",
+  "protected", "public", "readonly", "require", "satisfies",
+  "symbol", "type", "undefined", "unique", "unknown"
+]
+
+data ts_reserved_escape_suffix: String = "_"
+
+data ts_string_types: List<String> = ["String", "Secret"]
+
+data ts_func_keyword: String = "function"
+data ts_async_prefix: String = "async "
+data ts_struct_keyword: String = "interface"
+data ts_enum_keyword: String = "enum"
+data ts_type_alias_keyword: String = "type"
+data ts_param_separator: String = ", "
+data ts_return_arrow: String = ": "
+data ts_param_type_sep: String = ": "
+data ts_module_keyword: String = "namespace"
+data ts_import_keyword: String = "import"
+data ts_import_from_keyword: String = "from"
+
+data ts_source_extension: String = ".ts"
+
+data ts_lambda_template: String = "({0}) => {1}"
+
+data ts_error_expr_template: String = "(() => \{ throw new Error({0}); \})()"
+
+data ts_list_literal_empty: String = "[]"
+data ts_list_literal_template: String = "[{0}]"
+
+data ts_null_coalesce_template: String = "{0} ?? {1}"
+
+data ts_error_type_template: String = "__EMIT_BUG_{0}__"
+
+data ts_type_arg_open: String = "<"
+data ts_type_arg_close: String = ">"
+
+data ts_void_type: String = "void"
+
+data ts_tuple_empty: String = "[]"
+data ts_tuple_pair_template: String = "[{0}, {1}]"
+data ts_tuple_multi_template: String = "[{0}]"
+data ts_tuple_separator: String = ", "
