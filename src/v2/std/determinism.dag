@@ -86,13 +86,6 @@ fn determinism_primitive_in_roster(sig: Symbol) -> Bool {
   }
 }
 
-fn determinism_of_primitive(sig: Symbol) -> DeterminismClass {
-  match determinism_primitive_lookup(sig: sig) {
-    Present { value: classification } => classification
-    Absent => NonDeterministic { source: EnvRead }
-  }
-}
-
 fn determinism_compose(outer: DeterminismClass, inner: DeterminismClass) -> DeterminismClass {
   match outer {
     NonDeterministic { source: source } => NonDeterministic { source: source }
@@ -100,22 +93,42 @@ fn determinism_compose(outer: DeterminismClass, inner: DeterminismClass) -> Dete
   }
 }
 
-fn determinism_fact_for_signature(sig: Symbol) -> DeterminismFact {
-  DeterminismFact {
-    signature: sig,
-    classification: determinism_of_primitive(sig: sig)
+fn determinism_fact_for_signature(sig: Symbol) -> Optional<DeterminismFact> {
+  match determinism_primitive_lookup(sig: sig) {
+    Present { value: classification } =>
+      optional_present(
+        value: DeterminismFact {
+          signature: sig,
+          classification: classification
+        }
+      )
+    Absent => Absent
   }
 }
 
-data witness_pure_add_is_deterministic: Bool = determinism_class_eq(
-  a: determinism_of_primitive(sig: ^pure_add),
-  b: Deterministic
-)
+data witness_pure_add_is_deterministic: Bool = match determinism_primitive_lookup(sig: ^pure_add) {
+  Present { value: classification } =>
+    determinism_class_eq(a: classification, b: Deterministic)
+  Absent => false
+}
 
-data witness_hash_map_keys_iter_is_hash_iteration_leak: Bool = determinism_class_eq(
-  a: determinism_of_primitive(sig: ^hash_map_keys_iter),
-  b: NonDeterministic { source: HashIteration }
-)
+data witness_hash_map_keys_iter_is_hash_iteration_leak: Bool = match determinism_primitive_lookup(
+  sig: ^hash_map_keys_iter
+) {
+  Present { value: classification } =>
+    determinism_class_eq(
+      a: classification,
+      b: NonDeterministic { source: HashIteration }
+    )
+  Absent => false
+}
+
+data witness_unknown_primitive_absent_from_roster: Bool = match determinism_primitive_lookup(
+  sig: ^unknown_determinism_roster_probe
+) {
+  Absent => true
+  Present { value: _ } => false
+}
 
 data witness_deterministic_compose_is_deterministic: Bool = determinism_class_eq(
   a: determinism_compose(
@@ -141,7 +154,10 @@ data witness_nondeterministic_compose_propagates_right: Bool = determinism_class
   b: NonDeterministic { source: TimeRead }
 )
 
-data witness_sorted_export_set_map_keys_is_deterministic: Bool = determinism_class_eq(
-  a: determinism_of_primitive(sig: ^sorted_export_set_map_keys),
-  b: Deterministic
-)
+data witness_sorted_export_set_map_keys_is_deterministic: Bool = match determinism_primitive_lookup(
+  sig: ^sorted_export_set_map_keys
+) {
+  Present { value: classification } =>
+    determinism_class_eq(a: classification, b: Deterministic)
+  Absent => false
+}
