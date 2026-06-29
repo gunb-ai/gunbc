@@ -1,8 +1,4 @@
-<<<<<<<< HEAD:src/v2/test/claim/execution/comprep_pipeline_bridge_test.dag
-module v2.test.execution.comprep_pipeline_bridge_test
-========
 module v2.test.complexity_gate.source_bridged_pipeline_bridge_test
->>>>>>>> origin/main:src/v2/test/claim/complexity_gate/source_bridged_pipeline_bridge_test.dag
 
 import v2.test.complexity_gate.source_bridged_pipeline_bridge { source_bridged_resolved_root }
 import v2.extdeps.languages.dag {
