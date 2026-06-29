@@ -98,19 +98,6 @@ fn bmc_lifecycle_length() -> Int {
   bmc_onboarding_phase_order.length()
 }
 
-fn bmc_phase_index(phase: BmcOnboardingPhase) -> Int {
-  match phase {
-    FactoryDefault => 0
-    CredentialsRotated => 1
-    OsInstalled => 2
-    FabricJoined => 3
-  }
-}
-
-fn bmc_phase_eq(a: BmcOnboardingPhase, b: BmcOnboardingPhase) -> Bool {
-  bmc_phase_index(phase: a) == bmc_phase_index(phase: b)
-}
-
 fn bmc_onboarding_prev_phase(phase: BmcOnboardingPhase) -> BmcOnboardingPhase? {
   match phase {
     FactoryDefault => Absent
@@ -155,8 +142,8 @@ fn bmc_install_step(s: BmcLifecycleState) -> BmcLifecycleState {
     Present { value: nxt } => BmcLifecycleState {
       phase: nxt,
       credential: bmc_phase_credential_posture(phase: nxt),
-      secret_epoch: if bmc_phase_eq(a: nxt, b: CredentialsRotated) { s.secret_epoch + 1 } else { s.secret_epoch },
-      boot_cleared: if bmc_phase_eq(a: nxt, b: OsInstalled) { false } else { s.boot_cleared }
+      secret_epoch: if nxt == CredentialsRotated { s.secret_epoch + 1 } else { s.secret_epoch },
+      boot_cleared: if nxt == OsInstalled { false } else { s.boot_cleared }
     }
     Absent => s
   }
@@ -167,8 +154,8 @@ fn bmc_decom_step(s: BmcLifecycleState) -> BmcLifecycleState {
     Present { value: prv } => BmcLifecycleState {
       phase: prv,
       credential: bmc_phase_credential_posture(phase: prv),
-      secret_epoch: if bmc_phase_eq(a: s.phase, b: CredentialsRotated) { s.secret_epoch + 1 } else { s.secret_epoch },
-      boot_cleared: if bmc_phase_eq(a: s.phase, b: OsInstalled) { true } else { s.boot_cleared }
+      secret_epoch: if s.phase == CredentialsRotated { s.secret_epoch + 1 } else { s.secret_epoch },
+      boot_cleared: if s.phase == OsInstalled { true } else { s.boot_cleared }
     }
     Absent => s
   }
@@ -186,28 +173,10 @@ fn bmc_recoverable_quotient(s: BmcLifecycleState) -> BmcRecoverableInvariant {
   }
 }
 
-fn bmc_decom_step_broken(s: BmcLifecycleState) -> BmcLifecycleState {
-  match bmc_onboarding_prev_phase(phase: s.phase) {
-    Present { value: prv } => BmcLifecycleState {
-      phase: prv,
-      credential: bmc_phase_credential_posture(phase: prv),
-      secret_epoch: s.secret_epoch,
-      boot_cleared: s.boot_cleared
-    }
-    Absent => s
-  }
-}
-
 fn bmc_transition_roundtrips_on_quotient(s: BmcLifecycleState) -> Bool {
   let recovered = bmc_recoverable_quotient(s: bmc_decom_step(s: bmc_install_step(s: s)))
   let original = bmc_recoverable_quotient(s: s)
   recovered == original
-}
-
-fn bmc_transition_does_not_roundtrip_on_quotient(s: BmcLifecycleState) -> Bool {
-  let recovered = bmc_recoverable_quotient(s: bmc_decom_step_broken(s: bmc_install_step(s: s)))
-  let original = bmc_recoverable_quotient(s: s)
-  !(recovered == original)
 }
 
 fn bmc_full_state_is_lossy_after_roundtrip(s: BmcLifecycleState) -> Bool {
@@ -259,8 +228,8 @@ fn bmc_decom_to_factory_state(s: BmcLifecycleState) -> BmcLifecycleState {
 data bmc_decom_inverse_law_scaffold: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
   bind: DeclarationRef {
-    module_path: "v2.compiler.06_translate",
-    decl_name: "TranslateDiagnosticReason",
+    module_path: "v2.compiler.target_carriers",
+    decl_name: "lossless_source",
     field: WholeDeclaration
   }
 }
