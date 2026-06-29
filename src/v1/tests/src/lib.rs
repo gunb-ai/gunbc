@@ -184,3 +184,5 @@ mod whole_tree_wiring_enum_test;
 mod width_nat_type_arg_test;
 #[cfg(test)]
 mod witness_option_bridge_test;
+
+mod value_null_split_model_witness_test;
