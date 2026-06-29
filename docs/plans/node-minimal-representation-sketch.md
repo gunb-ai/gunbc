@@ -52,8 +52,8 @@ Side-table refs modeled (not inline heap strings): `SpanRef { file_id, start, en
 | `inferred` | `InferenceSlot` **or** v2 `InferredTree.facts` side-map | Substrate graph nodes: facts live in side-map (v2 already splits) |
 | `return_cardinality` | Named decl variant only | |
 | `match_pattern` | Match-arm variant only | |
-| `transport`, `properties`, `type_annotation` | **Owed: extend `SurfaceNamedDecl` payload** before emit | Not yet in executable sketch variants — listed here so the split cannot silently drop them |
-| `is_self_recursive`, `has_non_tail_self_call` | **Owed: fn-item metadata arm or infer facts** | Descent/termination metadata; candidate for `InferredFacts`, not every node |
+| `transport`, `properties`, `type_annotation` | **NamedDecl** (`SdpServiceOp` / `SdpTypedMember` payloads) | Service-op transport; typed param/field annotations; decl properties |
+| `is_self_recursive`, `has_non_tail_self_call` | **NamedDecl fn-item** (`SdpFnItem.descent`) | Termination / DescentEvidence flags alongside `return_cardinality` |
 | Rc/`Vec` child storage | **Sub-move (ii) — NOT in this sketch** | Arena/`u32` slices replace pointer fields at realization |
 
 ## NOT-edited boundary (constraint b — load-bearing)

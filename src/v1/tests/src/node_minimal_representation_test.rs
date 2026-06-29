@@ -109,9 +109,25 @@ fn v2_node_minimal_representation_compiles_and_witnesses_hold() {
     assert!(
         run_bool_test(
             graph,
-            source_indices,
+            source_indices.clone(),
             "node_minimal_kind_of_expr_leaf_holds"
         ),
         "minimal_node_kind_of should classify expr leaf example"
+    );
+    assert!(
+        run_bool_test(
+            graph,
+            source_indices.clone(),
+            "node_minimal_partition_covers_all_superset_fields_holds"
+        ),
+        "partition union must cover all 18 v1 superset fields"
+    );
+    assert!(
+        run_bool_test(
+            graph,
+            source_indices,
+            "node_minimal_orphan_fields_placed_on_named_decl_holds"
+        ),
+        "transport/properties/type_annotation/recursion flags must live on NamedDecl"
     );
 }

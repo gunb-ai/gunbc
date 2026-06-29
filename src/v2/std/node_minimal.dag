@@ -2,6 +2,7 @@ module v2.std.node_minimal
 
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
+import v2.std.algebra { any }
 import v2.std.collection { List }
 import v2.std.integer { UInt32 }
 import v2.std.node {
@@ -100,12 +101,47 @@ type SurfaceDeclRole
   | SdrImport
   | SdrResourceUse
   | SdrProperty
+  | SdrServiceOp
+
+type FnItemDescentFlags {
+  is_self_recursive: Bool
+  has_non_tail_self_call: Bool
+}
+
+type ReturnCardinalitySlot
+  = ReturnRequired
+  | ReturnOptional
+
+type TypeAnnotationSlot
+  = TypeAnnotationAbsent
+  | TypeAnnotationPresent { annotation: Edge }
+
+type TransportSlot
+  = TransportAbsent
+  | TransportPresent { transport: Edge }
 
 type SurfaceDeclPayload
   = SdpChildrenOnly { children: List<Edge> }
   | SdpWithParams { params: List<Edge>, children: List<Edge> }
   | SdpWithBody { body: Edge, children: List<Edge> }
   | SdpWithUses { uses: List<Edge>, children: List<Edge> }
+  | SdpFnItem {
+      params: List<Edge>
+      body: Edge
+      children: List<Edge>
+      uses: List<Edge>
+      return_cardinality: ReturnCardinalitySlot
+      descent: FnItemDescentFlags
+    }
+  | SdpTypedMember {
+      type_annotation: TypeAnnotationSlot
+      properties: List<Edge>
+      children: List<Edge>
+    }
+  | SdpServiceOp {
+      transport: TransportSlot
+      children: List<Edge>
+    }
 
 type MinimalNodeKind
   = MnkSubstrateGraph
@@ -191,7 +227,12 @@ fn minimal_node_kind_superset_fields(kind: MinimalNodeKind) -> List<NodeSuperset
         NsfUses,
         NsfBody,
         NsfInferred,
-        NsfReturnCardinality
+        NsfReturnCardinality,
+        NsfTransport,
+        NsfProperties,
+        NsfTypeAnnotation,
+        NsfIsSelfRecursive,
+        NsfHasNonTailSelfCall
       ]
     MnkSurfaceMatchArm =>
       [NsfSpan, NsfIdent, NsfMatchPattern, NsfChildren]
@@ -211,6 +252,60 @@ fn minimal_node_superset_field_unused_by_kind(
   } else {
     true
   }
+}
+
+fn minimal_superset_field_covered_by_kind(
+  field: NodeSupersetField,
+  kind: MinimalNodeKind
+) -> Bool {
+  minimal_node_kind_superset_fields(kind: kind) |> any(f => f == field)
+}
+
+fn minimal_superset_field_covered(field: NodeSupersetField) -> Bool {
+  if minimal_superset_field_covered_by_kind(field: field, kind: MnkSurfaceExprLeaf) {
+    true
+  } else if minimal_superset_field_covered_by_kind(field: field, kind: MnkSurfaceExprParent) {
+    true
+  } else if minimal_superset_field_covered_by_kind(field: field, kind: MnkSurfaceConnective) {
+    true
+  } else if minimal_superset_field_covered_by_kind(field: field, kind: MnkSurfaceNamedDecl) {
+    true
+  } else if minimal_superset_field_covered_by_kind(field: field, kind: MnkSurfaceMatchArm) {
+    true
+  } else {
+    false
+  }
+}
+
+data all_node_superset_fields: List<NodeSupersetField> = [
+  NsfName,
+  NsfIdent,
+  NsfSpan,
+  NsfIdentSpan,
+  NsfChildren,
+  NsfConnective,
+  NsfParams,
+  NsfInferred,
+  NsfReturnCardinality,
+  NsfUses,
+  NsfBody,
+  NsfTransport,
+  NsfProperties,
+  NsfTypeAnnotation,
+  NsfIsSelfRecursive,
+  NsfHasNonTailSelfCall,
+  NsfMatchPattern,
+  NsfExprData
+]
+
+fn minimal_superset_partition_covers_all_fields() -> Bool {
+  fold(all_node_superset_fields, init: true, f: fn(acc, field) {
+    if acc {
+      minimal_superset_field_covered(field: field)
+    } else {
+      false
+    }
+  })
 }
 
 fn minimal_substrate_node_from_v2(node: Node) -> MinimalResolvedNode {
