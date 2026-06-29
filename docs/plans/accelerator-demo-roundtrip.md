@@ -122,6 +122,14 @@ Fixture: a pure elementwise chain — `y = relu(a*b + c)` (mul → add → max).
 - **Real today** (current v2 Rust interpreter, pre-self-host): the recognizer, the SoA fused-kernel handler, the differential + numerical-contract harness, the refusal arm, integer-bit-exact + float-under-contract bars. A runnable prototype, honestly labeled.
 - **Aspirational / post-self-host**: the plan being *fully* substrate-native end-to-end, and reshaping *arbitrary* programs (vs the recognized elementwise class). For the demo the plan is a real modeled value even where some lowering is Rust-side; each prototype-Rust seam is marked so the pitch never overclaims.
 
+**Hand-Rust scaffold receipt (§7 self-host — Rust shrinks to zero, so new Rust must name its exit).** The execution lane's three Rust additions on the v2-interpreter seed — the elementwise recognizer pass, the SoA fused-kernel handler, and the differential harness — are **explicitly scaffold, not load-bearing Rust.** Each lands with a named **dissolution trigger** and is tracked by the `accel-exec` roadmap row (owner `tidy-deer-560`, folded into #5968), which does not flip `[x]` until the dissolution is either done or re-deferred with a reason:
+
+  - *recognizer* → dissolves into a `.dag` **lens** (read-only over the `Node` tree) once the lens can express the elementwise-fold predicate; dissolution trigger `feature:dag-elementwise-recognizer-lens`.
+  - *SoA fused-kernel handler* → dissolves into a `.dag` **Realization handler** bound to the `extdeps/languages/<accel>` target row (emit is the same fold, both directions); trigger `feature:dag-kernel-realization-handler`.
+  - *differential harness* → dissolves into a `.dag` **witness** (the scalar interpreter is already the in-substrate oracle); trigger `feature:dag-differential-witness`.
+
+  Until then they are `🟡`-marked prototype Rust on the doomed seed — they add **no** census ratchet pressure and must not be cemented into emit templates (DESIGN §7; the anti-cement rule). Net Rust delta is bounded and has a written path to zero; it is not new permanent compiler surface.
+
 ## Open threads
 
 - Exact spelling of the accelerator `Placement` variant (device-parameterized `LocalAccelerator<Device>` vs flat) — DFS the concept DAG before minting; a device is plausibly a `Vendor<Hardware>`-adjacent entity (DESIGN §3), not a fresh enum.
