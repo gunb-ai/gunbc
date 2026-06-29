@@ -52,7 +52,7 @@ fn ts_arc1_pr3_eager_row_round_trip_holds() -> Bool {
   }
 }
 
-fn ts_arc1_mvp1_exemplar_derive_violates_holds() -> Bool {
+fn ts_arc1_wave1_exemplar_derive_violates_holds() -> Bool {
   match ts_exemplar_emitted_for_lhs(lhs: ^ts_production_mvp1_fn_add) {
     Violates { diagnostic: d } => d.reason == ^grammar_relation_emitted_not_conj
     Holds { value: _ } => false
@@ -90,7 +90,7 @@ fn ts_arc1_wave2a_perturbed_row_derive_red_holds() -> Bool {
   }
 }
 
-fn ts_arc1_mvp1_scaffold_row_present_holds() -> Bool {
+fn ts_arc1_wave1_scaffold_row_present_holds() -> Bool {
   match find_named_child(
     root: ts_mvp1_fn_add_scaffold_relation_row_node(),
     name: ^grammar_relation_field_emitted
@@ -109,8 +109,8 @@ test fn ts_arc1_pr3_eager_row_content_hash_round_trip_holds() -> Bool {
   ts_arc1_pr3_eager_row_round_trip_holds()
 }
 
-test fn ts_arc1_mvp1_arrow_exemplar_keeps_scaffold_fallback_holds() -> Bool {
-  ts_arc1_mvp1_exemplar_derive_violates_holds() && ts_arc1_mvp1_scaffold_row_present_holds()
+test fn ts_arc1_wave1_arrow_exemplar_keeps_scaffold_fallback_holds() -> Bool {
+  ts_arc1_wave1_exemplar_derive_violates_holds() && ts_arc1_wave1_scaffold_row_present_holds()
 }
 
 test fn ts_arc1_wave2a_perturbed_eager_emitted_derive_red_holds() -> Bool {

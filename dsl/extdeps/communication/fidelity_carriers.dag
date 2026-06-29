@@ -30,3 +30,7 @@ fn decode_fidelity_from_step_fidelities(steps: List<DecodeFidelity>) -> DecodeFi
 fn source_medium_carried<R>(carried: R, fidelity: DecodeFidelity) -> Medium<R> {
   Medium { carried: carried, fidelity: fidelity }
 }
+
+fn medium_section_equal<R>(left: Medium<R>, right: Medium<R>) -> Bool {
+  left.carried == right.carried
+}

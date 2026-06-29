@@ -1,0 +1,169 @@
+module v2.test.manual.path_y_fidelity_successor
+
+import extdeps.communication.medium { Lossless, Lossy, DecodeFidelity }
+import extdeps.communication.fidelity_carriers { source_medium_carried }
+import extdeps.github.expressions {
+  Expression,
+  ContextAccess,
+  FunctionCall,
+  StringLiteral,
+  LogicalOr,
+  Github,
+  Runner,
+  HashFiles,
+  serialize_expression,
+  ingest_expression
+}
+import gunbc.bmc_onboarding {
+  bmc_factory_state,
+  bmc_full_state_is_lossy_after_roundtrip
+}
+import v2.compiler.target_carriers { decode_fidelity_from_target }
+import v2.extdeps.bmc.lifecycle_fidelity {
+  bmc_lifecycle_inverse_target_model,
+  bmc_lifecycle_inverse_target_model_credentials_modeled_perturb
+}
+import v2.extdeps.github.expression_fidelity { gha_expression_roundtrip_target_model }
+import v2.workflow.bmc_lifecycle_roundtrip {
+  bmc_lifecycle_roundtrip,
+  bmc_lifecycle_roundtrip_fidelity
+}
+import v2.workflow.gha_expression_fidelity {
+  gha_expression_core_roundtrip_fidelity,
+  gha_expression_core_advertises_lossless
+}
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+
+fn path_y_core_expr() -> Expression {
+  LogicalOr {
+    left: LogicalOr {
+      left: FunctionCall {
+        function: HashFiles,
+        args: [ StringLiteral { value: "Cargo.lock" }, StringLiteral { value: "Cargo.toml" } ],
+      },
+      right: ContextAccess { context: Github, path: ["event", "number"] },
+    },
+    right: ContextAccess { context: Runner, path: ["os"] },
+  }
+}
+
+fn bmc_target_quotient_decodes_lossy() -> Bool {
+  match decode_fidelity_from_target(target: bmc_lifecycle_inverse_target_model()) {
+    Accepted { value: fidelity, diagnostics: _ } =>
+      match fidelity {
+        Lossy => true
+        Lossless => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn gha_target_quotient_decodes_lossless() -> Bool {
+  match decode_fidelity_from_target(target: gha_expression_roundtrip_target_model()) {
+    Accepted { value: fidelity, diagnostics: _ } =>
+      match fidelity {
+        Lossless => true
+        Lossy => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn bmc_roundtrip_fidelity_matches_target_quotient() -> Bool {
+  match bmc_lifecycle_roundtrip_fidelity() {
+    Accepted { value: fidelity, diagnostics: _ } =>
+      match fidelity {
+        Lossy => bmc_target_quotient_decodes_lossy()
+        Lossless => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn gha_roundtrip_fidelity_matches_target_quotient() -> Bool {
+  gha_expression_core_advertises_lossless() && gha_target_quotient_decodes_lossless()
+}
+
+fn gha_core_advertises_target_quotient_fidelity() -> Bool {
+  match ingest_expression(src: serialize_expression(expression: path_y_core_expr())) {
+    Present { value: v } =>
+      match gha_expression_core_roundtrip_fidelity() {
+        Accepted { value: fidelity, diagnostics: _ } => {
+          let m = source_medium_carried(carried: v, fidelity: fidelity)
+          match m.fidelity {
+            Lossless => m.carried == path_y_core_expr()
+            Lossy => false
+          }
+        }
+        Rejected { diagnostics: _ } => false
+      }
+    Absent => false
+  }
+}
+
+fn bmc_lifecycle_inverse_is_lossy_section_not_iso_on_fidelity(fidelity: DecodeFidelity) -> Bool {
+  match fidelity {
+    Lossy => true
+    Lossless => false
+  }
+}
+
+fn bmc_credentials_rotated_perturb_decodes_lossless() -> Bool {
+  match decode_fidelity_from_target(
+    target: bmc_lifecycle_inverse_target_model_credentials_modeled_perturb()
+  ) {
+    Accepted { value: fidelity, diagnostics: _ } =>
+      match fidelity {
+        Lossless => true
+        Lossy => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn bmc_credentials_rotated_perturb_red_control_still_lossy() -> Bool {
+  match decode_fidelity_from_target(
+    target: bmc_lifecycle_inverse_target_model_credentials_modeled_perturb()
+  ) {
+    Accepted { value: fidelity, diagnostics: _ } =>
+      match fidelity {
+        Lossy => true
+        Lossless => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn bmc_credentials_rotated_perturb_flips_iso_section_red() -> Bool {
+  match decode_fidelity_from_target(
+    target: bmc_lifecycle_inverse_target_model_credentials_modeled_perturb()
+  ) {
+    Accepted { value: fidelity, diagnostics: _ } =>
+      !bmc_lifecycle_inverse_is_lossy_section_not_iso_on_fidelity(fidelity: fidelity)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn path_y_bmc_quotient_teeth_perturb_credentials_rotated_flips_lossy() -> Bool {
+  bmc_credentials_rotated_perturb_decodes_lossless()
+    && !bmc_credentials_rotated_perturb_red_control_still_lossy()
+    && bmc_credentials_rotated_perturb_flips_iso_section_red()
+}
+
+test fn path_y_fidelity_successor_reads_target_model_quotient() -> Bool {
+  bmc_target_quotient_decodes_lossy()
+    && gha_target_quotient_decodes_lossless()
+    && bmc_roundtrip_fidelity_matches_target_quotient()
+    && gha_roundtrip_fidelity_matches_target_quotient()
+    && gha_core_advertises_target_quotient_fidelity()
+    && match bmc_lifecycle_roundtrip(s: bmc_factory_state()) {
+      Accepted { value: medium, diagnostics: _ } =>
+        match medium.fidelity {
+          Lossy => true
+          Lossless => false
+        }
+      Rejected { diagnostics: _ } => false
+    }
+    && bmc_full_state_is_lossy_after_roundtrip(s: bmc_factory_state())
+}
