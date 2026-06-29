@@ -1,0 +1,7 @@
+module std.determinism
+
+data determinism_axis_activation_dissolution_marker: String = "ONE core authority (Deterministic | NonDeterministic only — §3 rename test: the universal predicate lives here, not re-declared per domain). Two refinements project outward without duplicating the core coproduct: (i) COMPILER REFINEMENT — v2.std.determinism DeterminismClass refines NonDeterministic with closed NonDetSource leak atoms (HashIteration | TimeRead | RandomRead | EnvRead); Deterministic is shared verbatim; DeterminismFact { signature, classification } is the compiler fact carrier (P1 landed #5944). (ii) SERVICE PROJECTION (P5 activation) — std.behavioral Determinism (OperationDeterminism) projects Deterministic/NonDeterministic from this core and adds EventuallyConsistent as a service-domain sibling with no compiler NonDetSource image (D2). Dissolves when: DeterminismClass and OperationDeterminism both project from DeterminismAxis/DeterminismFact without re-declaring Deterministic|NonDeterministic as independent authorities (determinism-mechanism-design §9 item 5); the behavioral core-predicate fork retires in favor of bind-time projection at P5."
+
+type DeterminismAxis
+  = Deterministic
+  | NonDeterministic

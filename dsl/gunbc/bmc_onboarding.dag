@@ -250,3 +250,16 @@ data new_altra_onboarding_plan: BmcOnboardingPlan = BmcOnboardingPlan {
   os_install_boot_target: BootTargetPxe,
   start_phase: FactoryDefault,
 }
+
+type BmcCredentialProbeResult
+  = FactoryCredentialActive
+  | RotatedCredentialActive
+  | CredentialStateUnknown { reason: String }
+
+fn bmc_credential_probe_to_phase(probe: BmcCredentialProbeResult) -> BmcOnboardingPhase? {
+  match probe {
+    FactoryCredentialActive => Present { value: FactoryDefault }
+    RotatedCredentialActive => Present { value: CredentialsRotated }
+    CredentialStateUnknown { reason: _ } => Absent
+  }
+}

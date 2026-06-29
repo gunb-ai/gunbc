@@ -136,6 +136,5 @@ fn ownership_fact_eq(a: OwnershipFact, b: OwnershipFact) -> Bool {
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: WallAfterGrounding { dissolves_to: SingleAuthority },
-  rationale: "Aliased mutation is decidable from the dependency graph; the lens is a per-edge ratchet until the closed access carrier is derived in the substrate. Grounding authority: the closed access/alias-mode carrier (RequiresAccessWitness; #3468 codex follow-up). Dissolves on: aliased mutation is rejected by the substrate ownership/borrow construction, not classified per-edge by a lens"
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }

@@ -9,7 +9,10 @@ import extdeps.bmc.capability {
   CapabilityFirmwareUpdate,
   firmware_has_capability,
   catalog_has_vm_capable_firmware,
-  openbmc_2_07_00_capabilities,
+}
+import extdeps.boards.asrock_rack {
+  asrock_altrad8ud_1l2t_bmc_firmware_capability_catalog,
+  asrock_altrad8ud_shipped_bmc_firmware_capabilities,
 }
 
 type OsInstallMechanism
@@ -34,9 +37,9 @@ fn solve_install_mechanism(
   }
 }
 
-data srv3_firmware_catalog: List<BmcFirmwareCapabilityRow> = [openbmc_2_07_00_capabilities]
+data srv3_firmware_catalog: List<BmcFirmwareCapabilityRow> = asrock_altrad8ud_1l2t_bmc_firmware_capability_catalog
 
 data srv3_install_mechanism: OsInstallMechanism = solve_install_mechanism(
-  current: openbmc_2_07_00_capabilities,
+  current: asrock_altrad8ud_shipped_bmc_firmware_capabilities,
   catalog: srv3_firmware_catalog
 )

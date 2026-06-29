@@ -4,7 +4,8 @@ import extdeps.formats.yaml { yaml_string, yaml_int, yaml_bool, kv }
 import gunbc.ci_workflow_expressions {
   ci_concurrency_group, ci_setup_rust_home, ci_cache_path, ci_cache_key, ci_cache_restore_keys
 }
-import gunbc.ci_spec { gunbc_ci_spec, gunbc_ci_workflow_run, gunbc_ci_rust_job_run }
+import gunbc.ci_spec { CiSpec, gunbc_ci_spec, gunbc_ci_workflow_run, gunbc_ci_rust_job_run }
+import gunbc.commit_workflow { commit_gate_roster, project_ci_floor_gates }
 import gunbc.runner_spec_from_offer { gunbc_ci_runner_spec }
 import extdeps.github.actions {
   Workflow, Job, Step, RunStep, UsesStep,
@@ -119,11 +120,19 @@ fn ci_prelude_steps() -> List<Step> {
   ]
 }
 
+fn ci_floor_spec_from_roster() -> CiSpec {
+  {
+    gates: project_ci_floor_gates(roster: commit_gate_roster),
+    diff_policy: gunbc_ci_spec.diff_policy,
+    notice_title: gunbc_ci_spec.notice_title
+  }
+}
+
 fn ci_floor_step() -> Step {
   RunStep {
     name: Present { value: "gunbc ci (.dag witnesses + gates)" },
     id: none,
-    run: gunbc_ci_workflow_run(spec: gunbc_ci_spec),
+    run: gunbc_ci_workflow_run(spec: ci_floor_spec_from_roster()),
     shell: none,
     env: none,
     working_directory: none,

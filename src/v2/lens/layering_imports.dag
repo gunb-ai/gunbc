@@ -106,6 +106,5 @@ fn layer_import_facts_live(
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: WallAfterGrounding { dissolves_to: SingleAuthority },
-  rationale: "Cross-layer import direction is a decidable graph property; the lens is interim until the resolver forbids the inverted edge by construction. Grounding authority: resolver/substrate rejection of a forbidden layer-DAG edge by construction (std <- extdeps <- compiler <- workflow). Dissolves on: an import pointing against the layer arrow becomes unresolvable by construction, not flagged by a host scan over LayerImportFact"
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }

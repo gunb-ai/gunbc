@@ -23,6 +23,5 @@ fn chain_generalization_is_fold(g: ChainGeneralization) -> Bool {
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: WallAfterGrounding { dissolves_to: SingleAuthority },
-  rationale: "Simulation of a fold is decidable (a wall): the anti-unification kernel produces the whole-chain template + per-element fillings, and a hand-unrolled fold is exactly a chain whose template holds variance only at leaf data slots. The undecidable residue (callee-position-only variance, interleaved strides, whether the variance is semantically a list) stays a ratchet, not a wall. Grounding authority: the parse/resolve walk that projects a body's statement chain into List<Node> (shared with v2.lens.structural_similarity). Dissolves on: chain_is_simulated run over live dsl/** statement chains once the parse/resolve walk produces per-body Node-chain facts; until then this is a lens_unit predicate over synthetic Node chains"
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }
