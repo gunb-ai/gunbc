@@ -1,5 +1,7 @@
 module v2.lens.cost
 import v2.lens.common.construction_justification { ConstructionJustification, WallNow }
+import std.disposition { SubstrateMandatoryTag }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 import v2.extdeps.languages.llvm_ir { LlvmInstruction }
 import v2.std.algebra {
@@ -669,6 +671,7 @@ fn llvm_instruction_cost(i: LlvmInstruction) -> Int {
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: WallNow {
-    construction: "cost is TOTAL over the closed 6-connective x 5-behavior kernel -- anything expressible is kernel-composed, so it has a SymbolicCost by construction (a new connective/behavior is a C1 STOP)"
+    mechanism: SubstrateMandatoryTag,
+    authority: DeclarationRef { module_path: "v2.std.node", decl_name: "NodeKind", field: WholeDeclaration }
   }
 }

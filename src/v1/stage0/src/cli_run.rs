@@ -2777,6 +2777,102 @@ fn declares_construction_justification(content: &str) -> bool {
     })
 }
 
+// ITEM 2 (reference grounding): the construction->authority graph witness.
+//
+// `WallNow.construction` was free-text prose; it is now
+// `WallNow { mechanism: ConstructionMechanism, authority: DeclarationRef }`, so "this
+// lens chains to a real construction" becomes a WALKABLE graph property: every WallNow
+// authority must resolve to a real top-level decl in the corpus. The witness below proves
+// that graph is TOTAL and goes RED if any binding dangles.
+//
+// SCAFFOLD (DESIGN §6): resolution is done HOST-SIDE here (extract authority refs from
+// source + the kind-agnostic `extract_top_level_decls` over the resolved module), standing
+// in for a not-yet-exposed unified .dag decl-resolution primitive. It keys on identity
+// (module_path + decl_name), kind-agnostically — NOT a per-kind union (no fn-index ∪
+// type-index fork). Dissolve-on: item (ii) "unified kind-agnostic decl-resolution authority
+// exposed to .dag" (coordinator-tracked, resolver/spine lane) — when it lands, this witness
+// re-expresses over the .dag primitive and the host-side resolution is deleted.
+
+/// Extract every `authority: DeclarationRef { module_path: "..", decl_name: ".." }` in a
+/// source file as `(module_path, decl_name)`. The field name `authority` typed
+/// `DeclarationRef` is unique to `WallNow`, so this captures exactly the WallNow authorities.
+pub fn wall_now_authority_refs(content: &str) -> Vec<(String, String)> {
+    const NEEDLE: &str = "authority: DeclarationRef {";
+    let mut out = Vec::new();
+    let mut rest = content;
+    while let Some(pos) = rest.find(NEEDLE) {
+        let after = &rest[pos + NEEDLE.len()..];
+        if let (Some(mp), Some(dn)) = (
+            quoted_field_value(after, "module_path:"),
+            quoted_field_value(after, "decl_name:"),
+        ) {
+            out.push((mp, dn));
+        }
+        rest = after;
+    }
+    out
+}
+
+/// The string literal following `<field>` (the next `"..."`), whitespace/newline tolerant.
+fn quoted_field_value(s: &str, field: &str) -> Option<String> {
+    let start = s.find(field)? + field.len();
+    let rest = &s[start..];
+    let open = rest.find('"')? + 1;
+    let tail = &rest[open..];
+    let close = tail.find('"')?;
+    Some(tail[..close].to_string())
+}
+
+/// Resolve WallNow authorities against the kind-agnostic top-level decl table of their
+/// declaring module. Returns the unresolved refs as `(declaring_file, module_path, decl_name)`;
+/// empty = the construction->authority graph is TOTAL.
+pub fn construction_authority_unresolved(
+    module_to_content: &std::collections::HashMap<String, String>,
+    authorities: &[(String, String, String)],
+) -> Vec<(String, String, String)> {
+    authorities
+        .iter()
+        .filter(|(_, module_path, decl_name)| {
+            !module_to_content.get(module_path).is_some_and(|content| {
+                crate::fact_cardinality_census::extract_top_level_decls(content)
+                    .iter()
+                    .any(|(name, _)| name == decl_name)
+            })
+        })
+        .cloned()
+        .collect()
+}
+
+/// Walk the corpus, collect WallNow authorities + the module->source map, and return the
+/// unresolved refs (empty = total). The live driver behind the witness test.
+pub fn construction_authority_graph_unresolved(
+    source_roots: &[String],
+) -> Result<Vec<(String, String, String)>, String> {
+    let mut module_to_content: std::collections::HashMap<String, String> =
+        std::collections::HashMap::new();
+    let mut authorities: Vec<(String, String, String)> = Vec::new();
+    for root in source_roots {
+        let mut dag_files: Vec<PathBuf> = Vec::new();
+        collect_dag_files_tolerant(Path::new(root), &mut dag_files);
+        dag_files.sort();
+        for path in dag_files {
+            let content = std::fs::read_to_string(&path)
+                .map_err(|e| format!("read {}: {e}", path.display()))?;
+            let file = path.to_string_lossy().into_owned();
+            for (module_path, decl_name) in wall_now_authority_refs(&content) {
+                authorities.push((file.clone(), module_path, decl_name));
+            }
+            if let Some(m) = extract_module_path(&content) {
+                module_to_content.insert(m, content);
+            }
+        }
+    }
+    Ok(construction_authority_unresolved(
+        &module_to_content,
+        &authorities,
+    ))
+}
+
 fn unjustified_lens_modules(
     module_to_path: &std::collections::HashMap<String, String>,
     justified: &std::collections::BTreeSet<String>,
@@ -4220,7 +4316,9 @@ mod inert_lens_hygiene_tests {
 #[cfg(test)]
 mod construction_justification_hygiene_tests {
     use super::{
+        construction_authority_graph_unresolved, construction_authority_unresolved,
         declares_construction_justification, discover_floor_corpus_rows, unjustified_lens_modules,
+        wall_now_authority_refs,
     };
     use std::collections::{BTreeSet, HashMap};
     use std::path::PathBuf;
@@ -4296,6 +4394,84 @@ mod construction_justification_hygiene_tests {
             "floor discovery must succeed — every v2.lens.* records a construction-justification: {}",
             result.err().unwrap_or_default()
         );
+    }
+
+    // ITEM 2 graph-property witness: the construction->authority graph is TOTAL over the
+    // live corpus (every WallNow authority DeclarationRef resolves to a real top-level decl).
+    // Perturb-to-RED: plant a dangling decl_name in any WallNow site -> this flips to a
+    // non-empty unresolved list and the test fails. (SCAFFOLD, dissolves on item (ii) —
+    // unified kind-agnostic decl-resolution exposed to .dag; see construction_authority_* docs.)
+    #[test]
+    fn wall_now_authority_graph_is_total() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir to workspace root");
+        let roots = vec![
+            ws.join("dsl").to_string_lossy().into_owned(),
+            ws.join("src/v2").to_string_lossy().into_owned(),
+        ];
+        let unresolved =
+            construction_authority_graph_unresolved(&roots).expect("corpus walk must succeed");
+        assert!(
+            unresolved.is_empty(),
+            "every WallNow construction-authority must resolve to a real decl; dangling: {unresolved:?}"
+        );
+    }
+
+    // Discriminating control: the resolver detects a dangling authority and clears on a real one.
+    #[test]
+    fn dangling_authority_is_detected() {
+        let mut module_to_content: HashMap<String, String> = HashMap::new();
+        module_to_content.insert(
+            "v2.std.node".to_string(),
+            "module v2.std.node\ntype NodeKind\n  = TypeNode { connective: Connective }\n"
+                .to_string(),
+        );
+
+        let real = vec![(
+            "src/v2/lens/cost.dag".to_string(),
+            "v2.std.node".to_string(),
+            "NodeKind".to_string(),
+        )];
+        assert!(
+            construction_authority_unresolved(&module_to_content, &real).is_empty(),
+            "a real authority (v2.std.node.NodeKind) must resolve"
+        );
+
+        let dangling = vec![(
+            "src/v2/lens/cost.dag".to_string(),
+            "v2.std.node".to_string(),
+            "NoSuchDecl".to_string(),
+        )];
+        assert_eq!(
+            construction_authority_unresolved(&module_to_content, &dangling).len(),
+            1,
+            "a dangling decl_name must be flagged unresolved"
+        );
+
+        let missing_module = vec![(
+            "src/v2/lens/cost.dag".to_string(),
+            "v2.absent.module".to_string(),
+            "NodeKind".to_string(),
+        )];
+        assert_eq!(
+            construction_authority_unresolved(&module_to_content, &missing_module).len(),
+            1,
+            "an authority whose module is absent must be flagged unresolved"
+        );
+    }
+
+    // Parse unit: extraction pulls (module_path, decl_name) from a WallNow authority,
+    // whitespace/newline tolerant, and ignores non-WallNow DeclarationRef binds.
+    #[test]
+    fn wall_now_authority_refs_extraction() {
+        let src = "  class: WallNow {\n    mechanism: SubstrateMandatoryTag,\n    authority: DeclarationRef { module_path: \"v2.std.node\", decl_name: \"NodeKind\", field: WholeDeclaration }\n  }\n";
+        assert_eq!(
+            wall_now_authority_refs(src),
+            vec![("v2.std.node".to_string(), "NodeKind".to_string())]
+        );
+        // a Scaffold `bind: DeclarationRef { .. }` has no `authority:` field -> not captured.
+        let other = "  bind: DeclarationRef { module_path: \"x.y\", decl_name: \"Z\", field: WholeDeclaration }\n";
+        assert!(wall_now_authority_refs(other).is_empty());
     }
 }
 

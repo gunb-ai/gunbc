@@ -8,6 +8,7 @@ import gunbc.plans.realization_measurement_loop { realization_measurement_loop_p
 import gunbc.plans.host_effect_orchestration { host_effect_orchestration_plan }
 import gunbc.plans.ci_floor_fractal_gantt { ci_floor_fractal_gantt_plan }
 import gunbc.plans.representation_minimization { representation_minimization_plan }
+import gunbc.plans.reference_grounding_migration { reference_grounding_migration_plan }
 
 data batch_g_plans: List<Plan> = [
   ci_humming_plan,
@@ -16,5 +17,6 @@ data batch_g_plans: List<Plan> = [
   realization_measurement_loop_plan,
   host_effect_orchestration_plan,
   ci_floor_fractal_gantt_plan,
-  representation_minimization_plan
+  representation_minimization_plan,
+  reference_grounding_migration_plan
 ]
