@@ -25,7 +25,7 @@ fn bash_positional_all() -> String {
 
 fn emit_glob_case_arms(globs: List<String>) -> String {
   fold(globs, init: "", f: fn(acc, g) {
-    concat(acc, concat("\n    ", concat(concat(g, "*"), ") return 0 ;;")))
+    concat(acc, concat("\n    ", concat(g, "*) return 0 ;;")))
   })
 }
 

@@ -976,6 +976,9 @@ pub fn closure_subject_for_entry(index: &MultiEntryIndex, entry: &str) -> Result
 }
 
 pub fn run_claim(ctx: &v1_interpreter::InterpContext, function: &str) -> ClaimOutcome {
+    // ProcessExit is the wet-gate return convention: ExitSuccess => Pass, ExitFailure => Fail.
+    // NotProcessExit stays NotBool (fail-closed). Required so claim_batch --wet gates (e.g.
+    // generated-artifact drift) report honestly instead of FAIL-on-ExitSuccess.
     match v1_interpreter::run_in_context(ctx, function, false) {
         Ok(v1_interpreter::Value::Bool(true)) => ClaimOutcome::Pass,
         Ok(v1_interpreter::Value::Bool(false)) => ClaimOutcome::Fail,
