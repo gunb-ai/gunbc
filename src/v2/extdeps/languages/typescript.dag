@@ -838,6 +838,23 @@ fn ts_mvp1_canonical_add_fn_tokens() -> List<ConcreteSyntaxToken> {
   ts_mvp1_compose_add_fn_tokens(body_tokens: ts_mvp1_add_return_body_tokens())
 }
 
+fn ts_mvp1_grammar_relation_row_with_body() -> TsGrammarRelationRow {
+  TsGrammarRelationRow {
+    production: ts_formal_production_mvp1_fn_add(),
+    emitted: ts_mvp1_emitted_add_fn_with_body_node(),
+    tokens: ts_mvp1_compose_add_fn_tokens(
+      body_tokens: ts_mvp1_add_return_body_tokens()
+    )
+  }
+}
+
+fn ts_mvp1_fn_add_bodied_relation_row_node() -> Node {
+  grammar_relation_row_attach_bodied_scaffold(
+    row: ts_grammar_relation_row_node(row: ts_mvp1_grammar_relation_row_with_body()),
+    scaffold: ts_mvp1_bodied_arrow_statement_scaffold()
+  )
+}
+
 fn ts_wave2a_field_type_string_emitted() -> Node {
   ts_inhabitant_atom(id: ^ts_token_ty_string)
 }
@@ -1413,8 +1430,8 @@ fn ts_mvp1_translation_rules_node() -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       ts_named_edge(
-        name: ^ts_relation_rule_mvp1_fn_add,
-        target: ts_mvp1_fn_add_scaffold_relation_row_node()
+        name: ^ts_relation_rule_mvp1_fn_add_with_body,
+        target: ts_mvp1_fn_add_bodied_relation_row_node()
       )
     ],
     occurrence_id: SyntheticOccurrence

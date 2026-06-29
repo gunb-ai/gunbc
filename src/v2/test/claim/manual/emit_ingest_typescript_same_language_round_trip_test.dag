@@ -12,8 +12,8 @@ import v2.extdeps.languages.dag {
   dag_mvp1_target_model
 }
 import v2.extdeps.languages.typescript {
-  ts_mvp1_emitted_add_fn_node,
-  ts_mvp1_fn_add_scaffold_relation_row_node,
+  ts_mvp1_emitted_add_fn_with_body_node,
+  ts_mvp1_fn_add_bodied_relation_row_node,
   ts_mvp1_source_text,
   ts_mvp1_target_model,
   ts_mvp1_translation_rules_node
@@ -70,11 +70,11 @@ fn emit_ingest_typescript_shared_rules() -> Node {
 }
 
 fn emit_ingest_typescript_canonical_row() -> Node {
-  ts_mvp1_fn_add_scaffold_relation_row_node()
+  ts_mvp1_fn_add_bodied_relation_row_node()
 }
 
 fn emit_ingest_typescript_canonical_emitted() -> Node {
-  ts_mvp1_emitted_add_fn_node()
+  ts_mvp1_emitted_add_fn_with_body_node()
 }
 
 fn emit_typescript_backward_selects_canonical_row_holds() -> Bool {
