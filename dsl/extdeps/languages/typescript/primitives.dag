@@ -1,0 +1,102 @@
+module extdeps.languages.typescript.primitives
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "tc39.es/ecma262"
+  }
+}
+
+type TsIntegerAlgebra
+  = TsIntOrderedRingAlgebra
+  | TsIntegerAlgebraReserved
+
+type TsIntegerCarrier
+  = TsIntIEEE754DoubleCarrier
+  | TsIntegerCarrierReserved
+
+type TsFloatAlgebra
+  = TsFloatApproximateFieldAlgebra
+  | TsFloatAlgebraReserved
+
+type TsFloatCarrier
+  = TsFloatIEEE754DoubleCarrier
+  | TsFloatCarrierReserved
+
+type TsBoolAlgebra
+  = TsBoolCanonicalTwoElementBooleanAlgebra
+  | TsBoolAlgebraReserved
+
+type TsBoolCarrier
+  = TsBoolBitCarrier
+  | TsBoolCarrierReserved
+
+type TsStringAlgebra
+  = TsStrUtf16CodeUnitSequenceMonoidAlgebra
+  | TsStringAlgebraReserved
+
+type TsStringCarrier
+  = TsStrUtf16CodeUnitSequenceCarrier
+  | TsStringCarrierReserved
+
+type TsUnitAlgebra
+  = TsUnitTerminalAlgebra
+  | TsUnitAlgebraReserved
+
+type TsUnitCarrier
+  = TsUnitTerminalCarrier
+  | TsUnitCarrierReserved
+
+type TsPrimitive
+  = TsIntegerPrimitive {
+      target_name: String
+      algebra: TsIntegerAlgebra
+      carrier: TsIntegerCarrier
+    }
+  | TsFloatPrimitive {
+      target_name: String
+      algebra: TsFloatAlgebra
+      carrier: TsFloatCarrier
+    }
+  | TsBooleanPrimitive {
+      target_name: String
+      algebra: TsBoolAlgebra
+      carrier: TsBoolCarrier
+    }
+  | TsStringPrimitive {
+      target_name: String
+      algebra: TsStringAlgebra
+      carrier: TsStringCarrier
+    }
+  | TsUnitPrimitive {
+      target_name: String
+      algebra: TsUnitAlgebra
+      carrier: TsUnitCarrier
+    }
+
+data ts_spec_predeclared_primitives: List<TsPrimitive> = [
+  TsIntegerPrimitive { target_name: "number",
+    algebra: TsIntOrderedRingAlgebra,
+    carrier: TsIntIEEE754DoubleCarrier },
+
+  TsFloatPrimitive { target_name: "number",
+    algebra: TsFloatApproximateFieldAlgebra,
+    carrier: TsFloatIEEE754DoubleCarrier },
+
+  TsBooleanPrimitive { target_name: "boolean",
+    algebra: TsBoolCanonicalTwoElementBooleanAlgebra,
+    carrier: TsBoolBitCarrier },
+
+  TsStringPrimitive { target_name: "string",
+    algebra: TsStrUtf16CodeUnitSequenceMonoidAlgebra,
+    carrier: TsStrUtf16CodeUnitSequenceCarrier }
+]
+
+data ts_dag_unit_target_primitive: TsPrimitive = TsUnitPrimitive {
+  target_name: "undefined",
+  algebra: TsUnitTerminalAlgebra,
+  carrier: TsUnitTerminalCarrier
+}

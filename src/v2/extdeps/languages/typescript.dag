@@ -506,42 +506,6 @@ fn ts_mvp1_emitted_add_fn_node() -> Node {
 }
 }
 
-fn ts_mvp1_add_binary_body_node() -> Node {
-  Node {
-    kind: ComputationNode { behavior: Transform },
-    children: [
-      Edge {
-        label: Positional,
-        target: ts_inhabitant_atom(id: ^dag_token_plus)
-      },
-      Edge {
-        label: Positional,
-        target: ts_inhabitant_atom(id: ^dag_binding_param_x)
-      },
-      Edge {
-        label: Positional,
-        target: ts_inhabitant_atom(id: ^dag_binding_param_y)
-      }
-    ],
-    occurrence_id: SyntheticOccurrence
-  }
-}
-
-fn ts_mvp1_emitted_add_fn_with_body_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Arrow },
-    children: [
-      Edge { label: Positional, target: ts_inhabitant_number_node() },
-      Edge { label: Positional, target: ts_inhabitant_number_node() },
-      Edge { label: Positional, target: ts_inhabitant_number_node() },
-      Edge {
-        label: Named { name: ^arrow_body_edge },
-        target: ts_mvp1_add_binary_body_node()
-      }
-    ],
-    occurrence_id: SyntheticOccurrence
-  }
-}
 
 fn ts_value_expression_projection() -> TargetValueExpressionProjection {
   ts_value_expression_projection_full(
@@ -835,16 +799,6 @@ fn ts_mvp1_add_return_body_tokens() -> List<ConcreteSyntaxToken> {
 
 fn ts_mvp1_canonical_add_fn_tokens() -> List<ConcreteSyntaxToken> {
   ts_mvp1_compose_add_fn_tokens(body_tokens: ts_mvp1_add_return_body_tokens())
-}
-
-fn ts_mvp1_grammar_relation_row_with_body() -> TsGrammarRelationRow {
-  TsGrammarRelationRow {
-    production: ts_formal_production_mvp1_fn_add(),
-    emitted: ts_mvp1_emitted_add_fn_with_body_node(),
-    tokens: ts_mvp1_compose_add_fn_tokens(
-      body_tokens: ts_mvp1_add_return_body_tokens()
-    )
-  }
 }
 
 fn ts_wave2a_field_type_string_emitted() -> Node {

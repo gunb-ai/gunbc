@@ -55,7 +55,7 @@ data ts_reserved: List<String> = [
   "from", "implements", "interface", "is", "keyof", "let",
   "module", "namespace", "never", "of", "override", "private",
   "protected", "public", "readonly", "require", "satisfies",
-  "symbol", "type", "undefined", "unique", "unknown"
+  "symbol", "type", "undefined", "unique", "unknown", "any"
 ]
 
 data ts_reserved_escape_suffix: String = "_"
