@@ -150,6 +150,122 @@ pub fn qualified_name_value_to_module_path(value: &crate::v1_interpreter::Value)
     crate::v1_interpreter::qualified_name_value_to_module_path(value)
 }
 
+pub(crate) fn repo_rel(path: &std::path::Path) -> String {
+    let ws = workspace_root();
+    let s = path.to_string_lossy().replace('\\', "/");
+    let prefix = format!("{}/", ws.to_string_lossy().replace('\\', "/"));
+    s.strip_prefix(&prefix)
+        .map(|p| p.to_string())
+        .unwrap_or(s)
+        .trim_start_matches("./")
+        .to_string()
+}
+
+pub(crate) fn is_test_dag(path: &str) -> bool {
+    path.ends_with("_test.dag")
+}
+
+pub(crate) fn collect_dag_files(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+    let entries = match std::fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(_) => return,
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            collect_dag_files(&path, out);
+        } else if path.extension().and_then(|e| e.to_str()) == Some("dag") {
+            out.push(path);
+        }
+    }
+}
+
+pub(crate) fn corpus_dag_files() -> Vec<(String, String)> {
+    let mut paths = Vec::new();
+    for root in witness_layer_roots() {
+        collect_dag_files(&workspace_root().join(&root), &mut paths);
+    }
+    let mut out = Vec::new();
+    for p in paths {
+        let rel = repo_rel(&p);
+        if let Ok(content) = std::fs::read_to_string(&p) {
+            out.push((rel, content));
+        }
+    }
+    out.sort();
+    out.dedup();
+    out
+}
+
+pub(crate) fn strip_line_comment(line: &str) -> String {
+    let bytes = line.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut in_string = false;
+    let mut escaped = false;
+    let mut i = 0;
+    while i < bytes.len() {
+        let b = bytes[i];
+        if in_string {
+            if escaped {
+                out.push(b' ');
+                escaped = false;
+            } else if b == b'\\' {
+                out.push(b' ');
+                escaped = true;
+            } else if b == b'"' {
+                out.push(b'"');
+                in_string = false;
+            } else {
+                out.push(b' ');
+            }
+        } else if b == b'"' {
+            in_string = true;
+            out.push(b'"');
+        } else if b == b'/' && i + 1 < bytes.len() && bytes[i + 1] == b'/' {
+            break;
+        } else {
+            out.push(b);
+        }
+        i += 1;
+    }
+    String::from_utf8(out).expect("strip_line_comment output is valid UTF-8")
+}
+
+pub(crate) fn brace_delta(line: &str) -> i32 {
+    let c = strip_line_comment(line);
+    c.matches('{').count() as i32 - c.matches('}').count() as i32
+}
+
+#[cfg(test)]
+mod corpus_lex_tests {
+    use super::*;
+
+    #[test]
+    fn strip_blanks_string_interior_and_drops_comment() {
+        let got = strip_line_comment("data u = \"https://x // y\" // real comment");
+        assert!(got.starts_with("data u = \""));
+        assert!(
+            !got.contains("real comment"),
+            "trailing // comment dropped: {got:?}"
+        );
+        assert!(!got.contains("https"), "string interior blanked: {got:?}");
+        assert!(got.len() <= "data u = \"https://x // y\" // real comment".len());
+    }
+
+    #[test]
+    fn brace_delta_ignores_braces_in_strings() {
+        assert_eq!(brace_delta("fn f() {"), 1);
+        assert_eq!(brace_delta("let s = \"{ { {\""), 0);
+        assert_eq!(brace_delta("} // }"), -1);
+    }
+
+    #[test]
+    fn is_test_dag_matches_suffix() {
+        assert!(is_test_dag("src/v2/lens/x_test.dag"));
+        assert!(!is_test_dag("src/v2/lens/x.dag"));
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

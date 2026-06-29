@@ -5011,3 +5011,127 @@ mod witness_timing_attribution_tests {
         assert_eq!(top[1].function, "medium");
     }
 }
+
+pub struct LayerImportFactRaw {
+    pub layer: &'static str,
+    pub path: String,
+    pub import_module: String,
+}
+
+const LAYER_STD: &str = "LayerPrefixStd";
+const LAYER_EXTDEPS: &str = "LayerPrefixExtdeps";
+
+fn rel_path_for_layer_import(path: &Path) -> String {
+    path.to_string_lossy().replace('\\', "/")
+}
+
+fn project_layer_import_root(root: &str, layer: &'static str, out: &mut Vec<LayerImportFactRaw>) {
+    let root_path = Path::new(root);
+    if !root_path.is_dir() {
+        return;
+    }
+    let mut dag_files: Vec<PathBuf> = Vec::new();
+    collect_dag_files_tolerant(root_path, &mut dag_files);
+    dag_files.sort();
+    for file in dag_files {
+        let content = match std::fs::read_to_string(&file) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+        let rel = rel_path_for_layer_import(&file);
+        for import_module in extract_import_paths(&content) {
+            out.push(LayerImportFactRaw {
+                layer,
+                path: rel.clone(),
+                import_module,
+            });
+        }
+    }
+}
+
+pub fn layer_import_facts(
+    std_roots: &[String],
+    extdeps_roots: &[String],
+) -> Vec<LayerImportFactRaw> {
+    let mut out = Vec::new();
+    for root in std_roots {
+        project_layer_import_root(root, LAYER_STD, &mut out);
+    }
+    for root in extdeps_roots {
+        project_layer_import_root(root, LAYER_EXTDEPS, &mut out);
+    }
+    out
+}
+
+pub struct ImportResolutionFactRaw {
+    pub path: String,
+    pub import_module: String,
+    pub target_declared: bool,
+}
+
+pub struct ModuleDeclarationFactRaw {
+    pub module: String,
+    pub path: String,
+}
+
+fn is_excluded_import_path(rel: &str, exclude_substrings: &[String]) -> bool {
+    exclude_substrings.iter().any(|s| rel.contains(s.as_str()))
+}
+
+pub fn import_resolution_facts(
+    pool_roots: &[String],
+    importer_roots: &[String],
+    exclude_substrings: &[String],
+) -> Vec<ImportResolutionFactRaw> {
+    let ws = workspace_root();
+    let abs_pool_roots: Vec<String> = pool_roots
+        .iter()
+        .map(|r| ws.join(r).to_string_lossy().into_owned())
+        .collect();
+    let declared: HashSet<String> = build_module_path_index(&abs_pool_roots)
+        .into_keys()
+        .collect();
+    let mut out = Vec::new();
+    for root in importer_roots {
+        let root_path = Path::new(root);
+        if !root_path.is_dir() {
+            continue;
+        }
+        let mut dag_files: Vec<PathBuf> = Vec::new();
+        collect_dag_files_tolerant(root_path, &mut dag_files);
+        dag_files.sort();
+        for file in dag_files {
+            let rel = rel_path_for_layer_import(&file);
+            if is_excluded_import_path(&rel, exclude_substrings) {
+                continue;
+            }
+            let content = match std::fs::read_to_string(&file) {
+                Ok(c) => c,
+                Err(_) => continue,
+            };
+            for import_module in extract_import_paths(&content) {
+                let target_declared = declared.contains(&import_module);
+                out.push(ImportResolutionFactRaw {
+                    path: rel.clone(),
+                    import_module,
+                    target_declared,
+                });
+            }
+        }
+    }
+    out
+}
+
+pub fn module_declaration_facts(pool_roots: &[String]) -> Vec<ModuleDeclarationFactRaw> {
+    let ws = workspace_root();
+    let abs_pool_roots: Vec<String> = pool_roots
+        .iter()
+        .map(|r| ws.join(r).to_string_lossy().into_owned())
+        .collect();
+    let mut out: Vec<ModuleDeclarationFactRaw> = build_module_path_index(&abs_pool_roots)
+        .into_iter()
+        .map(|(module, path)| ModuleDeclarationFactRaw { module, path })
+        .collect();
+    out.sort_by(|a, b| a.module.cmp(&b.module));
+    out
+}
