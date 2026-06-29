@@ -7,6 +7,14 @@ import v2.std.integer { Int }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 import v2.std.concept_index { ConceptStruct, FieldRef, QualifiedConcept, enumerate_concepts }
+import v2.lens.common.construction_justification { ConstructionJustification, RatchetForever }
+
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: RatchetForever {
+    undecidable_because: "Whether a bare-string field is an anemic nickname (it should point at an existing concept) or legitimately a string (an open registry, a constraint/grammar string, an opaque token, or free-form prose) is not decidable from the substrate. Name-coincidence with a concept (this lens's Signal-A) is only a NECESSARY candidate condition, never sufficient: cursor~Cursor, mediaType~OpenRegistry, schedule~Schedule(wrong-target) all coincide by name yet are correct as strings. Sufficiency requires semantic judgment of the field's meaning, which is why the pipeline routes the residual to a CONFIRM judge (gunbc.tools.anemia_confirm); a construction wall cannot make under-modeling unwritable any more than it can make non-optimality unwritable (Rice)."
+  },
+  rationale: "EXTRACT+DECIDE residue lens: a pure fold over enumerate_concepts() (type-level, never coproduct-arm names) flagging bare-String fields whose name coincides with a concept. It stores nothing and gates nothing alone -- it narrows the corpus to a high-quality candidate set for the CONFIRM judge. The decidable part (is_bare_string AND name_coincides) is a candidate signal only; the anemia verdict is the undecidable residue. DISSOLVES toward: deterministic DECIDE clearing of provable cases (closed-set-by-comparison, consumer-cracks-the-leaf, parse-input fields) shrinks the residual sent to the judge, but the name-only residual remains RatchetForever."
+}
 
 
 
