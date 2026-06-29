@@ -1,7 +1,8 @@
 module gunbc.githooks_pre_push_emit
 
 import gunbc.commit_workflow {
-  commit_workflow_local_tidy_checks,
+  commit_gate_roster,
+  project_local_tidy_checks,
   LocalTidyCheck, LocalTidyWitnessCheck, LocalTidyGateCheck, LocalTidyCargoFmtCheck,
   doc_reachability_witness_entry
 }
@@ -92,8 +93,12 @@ fn emit_freshness_fmt() -> String {
   )
 }
 
+fn pre_push_checks_from_roster() -> List<LocalTidyCheck> {
+  project_local_tidy_checks(roster: commit_gate_roster)
+}
+
 fn emit_run_doc() -> String {
-  fold(commit_workflow_local_tidy_checks, init: "", f: fn(acc, check) {
+  fold(pre_push_checks_from_roster(), init: "", f: fn(acc, check) {
     match check {
       LocalTidyWitnessCheck { entry, check_fns } =>
         fold(check_fns, init: acc, f: fn(inner, check_fn) {
