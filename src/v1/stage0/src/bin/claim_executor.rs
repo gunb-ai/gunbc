@@ -9,9 +9,9 @@ use std::time::Instant;
 
 use v1_compiler::cli_run::{
     compute_histogram_data, compute_witness_timing_rows, make_eval_context, resolve_entry_graph,
-    run_claim, run_discovery_corpus_with_options, run_value, top_n_slowest_witnesses,
-    ClaimOutcome, DiscoveryCorpusOptions, DiscoverySummary, DEFAULT_SLOWEST_WITNESS_ATTRIBUTION_N, HistogramData,
-    TimingPercentiles, WitnessTimingRow,
+    run_claim, run_discovery_corpus_with_options, run_value, top_n_slowest_witnesses, ClaimOutcome,
+    DiscoveryCorpusOptions, DiscoverySummary, HistogramData, TimingPercentiles, WitnessTimingRow,
+    DEFAULT_SLOWEST_WITNESS_ATTRIBUTION_N,
 };
 use v1_compiler::v1_interpreter::{
     color_enabled, paint, run_in_context_with_args, sgr, ExecutionMode, InterpContext, Value,
@@ -569,11 +569,7 @@ fn render_slowest_witnesses(
         .map_err(|e| format!("slowest_witness_row eval failed: {e}"))?;
         match line {
             Value::Str(s) => body_lines.push(s),
-            other => {
-                return Err(format!(
-                    "slowest_witness_row returned non-string: {other}"
-                ))
-            }
+            other => return Err(format!("slowest_witness_row returned non-string: {other}")),
         }
     }
 
@@ -607,7 +603,8 @@ fn emit_slowest_witness_attribution(source_roots: &[String], summary: &Discovery
             match render_slowest_witnesses(source_roots, &top) {
                 Ok(boxed) => {
                     eprintln!("{boxed}");
-                    let tail_eval_ms: u128 = top.iter().map(|r| r.eval_nanos).sum::<u128>() / 1_000_000;
+                    let tail_eval_ms: u128 =
+                        top.iter().map(|r| r.eval_nanos).sum::<u128>() / 1_000_000;
                     let total_eval_ms = summary.total_measured_nanos / 1_000_000;
                     let pct = if total_eval_ms == 0 {
                         0.0
