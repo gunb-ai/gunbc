@@ -130,12 +130,18 @@ fn is_substrate_layer(layer: String) -> Bool {
   (layer == "LayerPrefixStd") || (layer == "LayerPrefixCompiler")
 }
 
+fn is_meta_model_field_name(field: String) -> Bool {
+  let f = norm_whole(s: field)
+  (f == norm_whole(s: "field")) || (f == norm_whole(s: "name"))
+}
+
 fn is_meta_self_coincidence(
   field: String,
   matched_name: String,
   matched_qn: String
 ) -> Bool {
-  is_substrate_layer(layer: layer_prefix_str_from_qualified_name(qn: matched_qn))
+  is_meta_model_field_name(field: field)
+    && is_substrate_layer(layer: layer_prefix_str_from_qualified_name(qn: matched_qn))
     && name_whole_coincides(field: field, concept_name: matched_name)
 }
 
