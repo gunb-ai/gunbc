@@ -7,14 +7,11 @@
 use std::fs;
 
 use serde::Deserialize;
-use v1_compiler::cli_run::{
-    whole_corpus_semantic_oracle_snapshot, FLOOR_DISCOVERY_EXCLUDES,
-};
+use v1_compiler::cli_run::{whole_corpus_semantic_oracle_snapshot, FLOOR_DISCOVERY_EXCLUDES};
 
 use crate::helpers::workspace_root;
 
-const BASELINE_FIXTURE: &str =
-    "src/v1/tests/fixtures/func_env_semantic_baseline.json";
+const BASELINE_FIXTURE: &str = "src/v1/tests/fixtures/func_env_semantic_baseline.json";
 
 #[derive(Debug, Deserialize)]
 struct SemanticBaseline {
@@ -54,8 +51,8 @@ fn func_env_whole_corpus_semantic_oracle_matches_pre_change_baseline() {
     let fixture_path = workspace_root().join(BASELINE_FIXTURE);
     let raw = fs::read_to_string(&fixture_path)
         .unwrap_or_else(|e| panic!("read baseline fixture {fixture_path:?}: {e}"));
-    let baseline: SemanticBaseline = serde_json::from_str(&raw)
-        .unwrap_or_else(|e| panic!("parse baseline fixture: {e}"));
+    let baseline: SemanticBaseline =
+        serde_json::from_str(&raw).unwrap_or_else(|e| panic!("parse baseline fixture: {e}"));
 
     let current = whole_corpus_semantic_oracle_snapshot(
         &whole_tree_probe_roots(),

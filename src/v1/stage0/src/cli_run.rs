@@ -994,8 +994,7 @@ pub fn whole_corpus_semantic_oracle_snapshot(
         .map(|d| v1_compiler_compile::serialize_diagnostic(d.clone()))
         .collect();
     diag_lines.sort();
-    let diagnostic_fingerprint =
-        v1_rt::bytes_identity_hash(diag_lines.join("\n").as_bytes());
+    let diagnostic_fingerprint = v1_rt::bytes_identity_hash(diag_lines.join("\n").as_bytes());
     let rust_corpus_repr = match graph.emit_graph_info.corpus_repr {
         HostNative => "HostNative".to_string(),
         FaithfulFreeMonoid => "FaithfulFreeMonoid".to_string(),

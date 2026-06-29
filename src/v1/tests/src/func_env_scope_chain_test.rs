@@ -69,17 +69,14 @@ fn rc_identity_fixture_sources() -> Vec<Rc<SourceFile>> {
     ]
 }
 
-fn assert_rc_identity_across_import_chain(graph: &ResolvedGraph, source_indices: &Rc<std::collections::HashMap<String, Rc<v1_compiler::v1_std_core::NewlineIndex>>>) {
-    let def_mod = typed_module_by_name(
-        &graph.modules,
-        source_indices,
-        "test.func_env_rc_definer",
-    );
-    let use_mod = typed_module_by_name(
-        &graph.modules,
-        source_indices,
-        "test.func_env_rc_consumer",
-    );
+fn assert_rc_identity_across_import_chain(
+    graph: &ResolvedGraph,
+    source_indices: &Rc<
+        std::collections::HashMap<String, Rc<v1_compiler::v1_std_core::NewlineIndex>>,
+    >,
+) {
+    let def_mod = typed_module_by_name(&graph.modules, source_indices, "test.func_env_rc_definer");
+    let use_mod = typed_module_by_name(&graph.modules, source_indices, "test.func_env_rc_consumer");
     let def_sig = lookup_resolved_sig(def_mod.func_env.clone(), "shared_fn".to_string())
         .expect("definer local shared_fn");
     let use_sig = lookup_func_sig(use_mod.func_env.clone(), "shared_fn".to_string())
@@ -108,10 +105,7 @@ fn unique_func_sig_ptr_count_modules(modules: &[Rc<TypedModule>]) -> usize {
 }
 
 fn sum_local_func_sig_defs_modules(modules: &[Rc<TypedModule>]) -> usize {
-    modules
-        .iter()
-        .map(|m| m.func_env.local.len())
-        .sum()
+    modules.iter().map(|m| m.func_env.local.len()).sum()
 }
 
 fn unique_func_sig_ptr_count(graph: &ResolvedGraph) -> usize {

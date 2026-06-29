@@ -6,9 +6,7 @@
 
 use std::process::ExitCode;
 
-use v1_compiler::cli_run::{
-    whole_corpus_semantic_oracle_snapshot, FLOOR_DISCOVERY_EXCLUDES,
-};
+use v1_compiler::cli_run::{whole_corpus_semantic_oracle_snapshot, FLOOR_DISCOVERY_EXCLUDES};
 
 fn run() -> Result<ExitCode, ExitCode> {
     let args: Vec<String> = std::env::args().collect();
@@ -30,27 +28,19 @@ fn run() -> Result<ExitCode, ExitCode> {
         match args[i].as_str() {
             "--source-root" => {
                 i += 1;
-                source_roots.push(
-                    args.get(i)
-                        .cloned()
-                        .ok_or_else(|| {
-                            eprintln!("capture_func_env_semantic_oracle: --source-root requires a value");
-                            ExitCode::from(2)
-                        })?,
-                );
+                source_roots.push(args.get(i).cloned().ok_or_else(|| {
+                    eprintln!("capture_func_env_semantic_oracle: --source-root requires a value");
+                    ExitCode::from(2)
+                })?);
             }
             "--exclude-subpath" => {
                 i += 1;
-                exclude_subpaths.push(
-                    args.get(i)
-                        .cloned()
-                        .ok_or_else(|| {
-                            eprintln!(
-                                "capture_func_env_semantic_oracle: --exclude-subpath requires a value"
-                            );
-                            ExitCode::from(2)
-                        })?,
-                );
+                exclude_subpaths.push(args.get(i).cloned().ok_or_else(|| {
+                    eprintln!(
+                        "capture_func_env_semantic_oracle: --exclude-subpath requires a value"
+                    );
+                    ExitCode::from(2)
+                })?);
             }
             other => {
                 eprintln!("capture_func_env_semantic_oracle: unknown argument: {other}");
