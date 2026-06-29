@@ -2,7 +2,7 @@ module gunbc.host_effect
 
 import std.types { String, Int }
 import extdeps.bmc.types { RedfishSystemAction }
-import product.compute_fabric { ComputeHost }
+import gunbc.fleet_intent { ComputeHost }
 
 type HostEffect =
     ShellCommand { script: String }

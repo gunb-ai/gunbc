@@ -1,6 +1,7 @@
 module extdeps.toolchain.types
 
-import std.types { String }
+import std.types { String, NonEmptyStr }
+import std.cache_identity { CacheInterfaceId }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -29,4 +30,24 @@ type TargetTriple {
 type RuntimePlatform {
   host: TargetTriple
   env: ExecutionEnv
+}
+
+type ToolchainEnvIsolation
+  = SharedHomeAcrossJobs
+  | PerJobCargoHome { cargo_home_var: NonEmptyStr, rustup_home_var: NonEmptyStr }
+  | HermeticContainer
+
+type BuildWrapperKind = CtrlBuild | BakedInImage | NoBuildWrapper
+
+type ToolchainCapability {
+  name: NonEmptyStr
+  version: NonEmptyStr
+  env_isolation: ToolchainEnvIsolation
+  build_wrapper: BuildWrapperKind?
+  linked_cache_interface: CacheInterfaceId?
+}
+
+type ToolchainRequirement {
+  name: NonEmptyStr
+  version: NonEmptyStr
 }

@@ -17,11 +17,6 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data gpu_types_compute_fabric_parallel_copy_debt: List<NonEmptyStr> = [
-  "SCAFFOLD: byte-identical GPU vocabulary still declared in product.compute_fabric until the connector PR removes it",
-  "dissolve-on: product.compute_fabric connector PR deletes local GpuRuntime/GpuComputeCapability/GpuCapabilityLabelOutcome/gpu_compute_capability_sm_label/GpuFacts/AcceleratorFacts and imports from extdeps.gpu.types",
-]
-
 type GpuRuntime = Cuda | Rocm | Metal | OpenCl
 
 type GpuComputeCapability {
