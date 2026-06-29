@@ -2516,6 +2516,7 @@ pub const FLOOR_DISCOVERY_EXCLUDES: &[&str] = &[
     "program_assembly/real_ingest_test.dag",
     "self_host/compiler_closure_emit_from_ingest_test.dag",
     "unified_test_claim_substrate_equivalence.dag",
+    "test/claim/execution/",
 ];
 
 pub fn floor_discovery_path_excluded(path: &str) -> bool {
@@ -2643,6 +2644,29 @@ pub fn discover_floor_corpus_rows(
     scan_dirs: &[String],
     exclude_substrings: &[String],
 ) -> Result<Vec<DiscoveryRow>, String> {
+    discover_floor_corpus_rows_inner(source_roots, scan_dirs, exclude_substrings, &[])
+}
+
+pub fn discover_floor_corpus_rows_scoped(
+    source_roots: &[String],
+    scan_dirs: &[String],
+    exclude_substrings: &[String],
+    discovery_scope_dirs: &[String],
+) -> Result<Vec<DiscoveryRow>, String> {
+    discover_floor_corpus_rows_inner(
+        source_roots,
+        scan_dirs,
+        exclude_substrings,
+        discovery_scope_dirs,
+    )
+}
+
+fn discover_floor_corpus_rows_inner(
+    source_roots: &[String],
+    scan_dirs: &[String],
+    exclude_substrings: &[String],
+    discovery_scope_dirs: &[String],
+) -> Result<Vec<DiscoveryRow>, String> {
     let excludes: Vec<String> = exclude_substrings.to_vec();
     let mut rows: Vec<DiscoveryRow> = Vec::new();
     let mut seen: std::collections::BTreeSet<(String, String)> = std::collections::BTreeSet::new();
@@ -2701,6 +2725,13 @@ pub fn discover_floor_corpus_rows(
             }
             path_imports.insert(rel, extract_import_paths(&content));
             if excludes.iter().any(|sub| entry.contains(sub.as_str())) {
+                continue;
+            }
+            if !discovery_scope_dirs.is_empty()
+                && !discovery_scope_dirs
+                    .iter()
+                    .any(|d| entry.contains(d.as_str()))
+            {
                 continue;
             }
             let rule_decls: Vec<Vec<String>> = SIDECAR_PLACEMENT_RULES
@@ -2870,6 +2901,13 @@ pub struct DiscoveryCorpusOptions {
     /// Path-substring exclusion list. Non-plan callers default to FLOOR_DISCOVERY_EXCLUDES;
     /// plan-driven paths supply this from RunnableDiscoveryBatch.exclude_substrings (the model authority).
     pub exclude_substrings: Vec<String>,
+    /// When non-empty, scopes the source-root `test fn` tree walk to files under one of these
+    /// directories. Import resolution still uses the full source_roots. Empty = full walk.
+    pub discovery_scope_dirs: Vec<String>,
+    /// When > 0, caps the effective spawn_width for this discovery corpus to this value.
+    /// Derived from RunnableDiscoveryBatch.spawn_width_cap (provisioned from runner alloc ÷
+    /// per-witness memory reservation). 0 = use the batch-wide spawn_width.
+    pub spawn_width_cap: usize,
 }
 
 impl Default for DiscoveryCorpusOptions {
@@ -2881,6 +2919,8 @@ impl Default for DiscoveryCorpusOptions {
                 .iter()
                 .map(|s| s.to_string())
                 .collect(),
+            discovery_scope_dirs: vec![],
+            spawn_width_cap: 0,
         }
     }
 }

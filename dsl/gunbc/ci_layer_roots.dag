@@ -14,7 +14,8 @@ data witness_exclusion_substrings: List<String> = [
   "program_assembly/real_ingest_test.dag",
   "self_host/compiler_closure_emit_from_ingest_test.dag",
   "unified_test_claim_substrate_equivalence.dag",
-  "ci_exclusion_proof_test.dag"
+  "ci_exclusion_proof_test.dag",
+  "test/claim/execution/"
 ]
 
 fn witness_layer_source_flags(roots: List<String>) -> String {
