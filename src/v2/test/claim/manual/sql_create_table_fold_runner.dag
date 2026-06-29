@@ -39,6 +39,14 @@ fn sql_create_table_fold_plan() -> List<List<Runnable>> {
       RunnableSingleClaim {
         entry: sql_fold_test_entry,
         function: "sql_fold_oracle_rejects_parameterized_numeric_type_holds"
+      },
+      RunnableSingleClaim {
+        entry: sql_fold_test_entry,
+        function: "sql_fold_two_col_uses_recursive_list_production_holds"
+      },
+      RunnableSingleClaim {
+        entry: sql_fold_test_entry,
+        function: "sql_fold_single_col_uses_leaf_list_production_holds"
       }
     ]
   ]

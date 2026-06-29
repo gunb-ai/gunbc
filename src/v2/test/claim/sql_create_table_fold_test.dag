@@ -21,7 +21,8 @@ import v2.extdeps.formats.sql_create_table_fold {
   sql_fold_target_model_for_operation_witness,
   sql_fold_tasks_pk_table,
   sql_fold_tasks_single_col_table,
-  sql_fold_tasks_two_col_table
+  sql_fold_tasks_two_col_table,
+  sql_fold_column_list_uses_recursive_list_production_witness
 }
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
@@ -210,12 +211,34 @@ fn sql_fold_oracle_rejects_parameterized_numeric_type_holds() -> Bool {
   }
 }
 
+fn sql_fold_two_col_uses_recursive_list_production_holds() -> Bool {
+  match sql_fold_column_list_uses_recursive_list_production_witness(
+    cols: sql_fold_tasks_two_col_table.columns
+  ) {
+    Holds { value: true } => true
+    Holds { value: false } => false
+    Violates { diagnostic: _ } => false
+  }
+}
+
+fn sql_fold_single_col_uses_leaf_list_production_holds() -> Bool {
+  match sql_fold_column_list_uses_recursive_list_production_witness(
+    cols: sql_fold_tasks_single_col_table.columns
+  ) {
+    Holds { value: false } => true
+    Holds { value: true } => false
+    Violates { diagnostic: _ } => false
+  }
+}
+
 test fn sql_fold_structural_tier_holds() -> Bool {
   sql_fold_relation_row_single_col_witness_holds()
   && sql_fold_emitted_tree_differs_on_two_col_fixture_holds()
   && sql_fold_wrong_production_rejects_oracle_holds()
   && sql_fold_oracle_rejects_unsupported_drop_table_holds()
   && sql_fold_oracle_rejects_parameterized_numeric_type_holds()
+  && sql_fold_two_col_uses_recursive_list_production_holds()
+  && sql_fold_single_col_uses_leaf_list_production_holds()
 }
 
 test fn sql_fold_create_table_tier_holds() -> Bool {

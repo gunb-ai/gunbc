@@ -21,7 +21,7 @@ import v2.extdeps.formats.sql_target {
   sql_target_model_bundle,
   sql_token_class_emit_transforms
 }
-import v2.std.algebra { list_append }
+import v2.std.algebra { fold_list, list_append }
 import v2.std.collection {
   Absent,
   List,
@@ -185,19 +185,17 @@ fn sql_fold_column_def_emitted_witness(col: SqlColumnDefinition) -> Witness<Node
   }
 }
 
-data sql_fold_column_list_catalog_dissolved: String = "dissolved: PR #5947 — leaf-only derive/match catalog split removed; column_list uses unified sql_fold_formal_productions with generic formal_productions_for_lhs filtering (leaf + list recursive productions)"
-
-fn sql_fold_column_list_single_emitted(col: Node) -> Node {
+fn sql_fold_conj_list_root(item: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Positional, target: col }
+      Edge { label: Positional, target: item }
     ],
     occurrence_id: SyntheticOccurrence
   }
 }
 
-fn sql_fold_column_list_pair_emitted(left: Node, right: Node) -> Node {
+fn sql_fold_conj_list_append(left: Node, right: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
@@ -208,7 +206,7 @@ fn sql_fold_column_list_pair_emitted(left: Node, right: Node) -> Node {
   }
 }
 
-fn sql_fold_column_list_emitted_from_suffix_witness(
+fn sql_fold_list_production_emitted_fold_rest(
   cols: List<SqlColumnDefinition>,
   accumulated: Node,
   index: Int
@@ -217,12 +215,9 @@ fn sql_fold_column_list_emitted_from_suffix_witness(
     Present { value: col } =>
       match sql_fold_column_def_emitted_witness(col: col) {
         Holds { value: col_node } =>
-          sql_fold_column_list_emitted_from_suffix_witness(
+          sql_fold_list_production_emitted_fold_rest(
             cols: cols,
-            accumulated: sql_fold_column_list_pair_emitted(
-              left: accumulated,
-              right: col_node
-            ),
+            accumulated: sql_fold_conj_list_append(left: accumulated, right: col_node),
             index: index + 1
           )
         Violates { diagnostic: d } => Violates { diagnostic: d }
@@ -236,9 +231,9 @@ fn sql_fold_column_list_emitted_witness(cols: List<SqlColumnDefinition>) -> Witn
     Holds { value: col0 } =>
       match sql_fold_column_def_emitted_witness(col: col0) {
         Holds { value: col_node } =>
-          sql_fold_column_list_emitted_from_suffix_witness(
+          sql_fold_list_production_emitted_fold_rest(
             cols: cols,
-            accumulated: sql_fold_column_list_single_emitted(col: col_node),
+            accumulated: sql_fold_conj_list_root(item: col_node),
             index: 1
           )
         Violates { diagnostic: d } => Violates { diagnostic: d }
@@ -414,26 +409,25 @@ fn sql_fold_column_def_production() -> FormalProduction {
   )
 }
 
-fn sql_fold_column_list_leaf_productions() -> List<FormalProduction> {
-  [
-    grammar_formal_production(
-      lhs: ^sql_production_fold_column_list,
-      rhs: [grammar_formal_nonterminal_occurrence(identity: ^sql_production_fold_column_def)]
-    )
-  ]
-}
-
-fn sql_fold_column_list_list_productions() -> List<FormalProduction> {
-  [
-    grammar_formal_production(
-      lhs: ^sql_production_fold_column_list,
-      rhs: [
-        grammar_formal_nonterminal_occurrence(identity: ^sql_production_fold_column_list),
-        grammar_formal_terminal(identity: ^sql_token_comma),
-        grammar_formal_nonterminal_occurrence(identity: ^sql_production_fold_column_def)
-      ]
-    )
-  ]
+fn sql_fold_list_production_for_lhs(lhs: Symbol) -> List<FormalProduction> {
+  if lhs == ^sql_production_fold_column_list {
+    [
+      grammar_formal_production(
+        lhs: ^sql_production_fold_column_list,
+        rhs: [grammar_formal_nonterminal_occurrence(identity: ^sql_production_fold_column_def)]
+      ),
+      grammar_formal_production(
+        lhs: ^sql_production_fold_column_list,
+        rhs: [
+          grammar_formal_nonterminal_occurrence(identity: ^sql_production_fold_column_list),
+          grammar_formal_terminal(identity: ^sql_token_comma),
+          grammar_formal_nonterminal_occurrence(identity: ^sql_production_fold_column_def)
+        ]
+      )
+    ]
+  } else {
+    []
+  }
 }
 
 fn sql_fold_primary_key_production() -> FormalProduction {
@@ -481,10 +475,7 @@ fn sql_fold_create_table_pk_top_production() -> FormalProduction {
 
 fn sql_fold_formal_productions() -> List<FormalProduction> {
   list_append(
-    list_append(
-      sql_fold_column_list_leaf_productions(),
-      sql_fold_column_list_list_productions()
-    ),
+    sql_fold_list_production_for_lhs(lhs: ^sql_production_fold_column_list),
     [
       sql_fold_column_def_production(),
       sql_fold_primary_key_production(),
@@ -492,6 +483,44 @@ fn sql_fold_formal_productions() -> List<FormalProduction> {
       sql_fold_create_table_pk_top_production()
     ]
   )
+}
+
+fn sql_fold_formal_rhs_length(symbols: List<FormalGrammarSymbol>) -> Int {
+  fold_list(
+    xs: symbols,
+    empty: 0,
+    cons: fn(acc, _) { acc + 1 }
+  )
+}
+
+fn sql_fold_column_list_production_is_recursive_list(production: FormalProduction) -> Bool {
+  sql_fold_formal_rhs_length(symbols: production.rhs) == 3
+}
+
+fn sql_fold_column_list_matched_production_witness(
+  column_list: Node
+) -> Witness<FormalProduction> {
+  formal_production_for_lhs_exact(
+    productions: sql_fold_formal_productions(),
+    lhs: ^sql_production_fold_column_list,
+    child: column_list
+  )
+}
+
+fn sql_fold_column_list_uses_recursive_list_production_witness(
+  cols: List<SqlColumnDefinition>
+) -> Witness<Bool> {
+  match sql_fold_column_list_emitted_witness(cols: cols) {
+    Holds { value: column_list } =>
+      match sql_fold_column_list_matched_production_witness(column_list: column_list) {
+        Holds { value: production } =>
+          Holds {
+            value: sql_fold_column_list_production_is_recursive_list(production: production)
+          }
+        Violates { diagnostic: d } => Violates { diagnostic: d }
+      }
+    Violates { diagnostic: d } => Violates { diagnostic: d }
+  }
 }
 
 fn sql_fold_relation_row_witness(emitted: Node, lhs: Symbol) -> Witness<Node> {
