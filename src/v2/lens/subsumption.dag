@@ -69,6 +69,5 @@ data rust_language_model_emit_subsumption: DissolutionSubsumption = {
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: WallAfterGrounding { dissolves_to: SingleAuthority },
-  rationale: "Subsumption ordering (a root fix mechanically closing leaf fixes) is decidable over the rows; a scaffold accepting structural mirrors until TestClaim execution owns them. Grounding authority: TestClaim execution owning the subsumption ordering rows. Dissolves on: root-fix-to-leaf-fix subsumption is executed as TestClaims, not mirrored as structural rows"
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }

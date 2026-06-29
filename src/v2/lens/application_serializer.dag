@@ -46,6 +46,5 @@ fn serialize_diff_as_source_patch(
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: WallNow {
     construction: "the row-driven grammar inverse (DESIGN sec 4: emit = apply_diff . serialize, one grammar read backward) realized in v2.compiler translate"
-  },
-  rationale: "Re-emit / patch-as-source is a construction (the structural inverse of ingest over the shared grammar rows), not a validation lens; it lives beside v2.lens.application's apply_diff."
+  }
 }

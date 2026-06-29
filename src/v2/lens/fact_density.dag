@@ -100,6 +100,5 @@ fn fact_density_hollow_alias_gate(node: Node) -> Outcome<Witness<Node>> {
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: WallAfterGrounding { dissolves_to: SubstrateMandatoryTag },
-  rationale: "Detecting a structurally-hollow alias (a NoFact carrier) is decidable and gateable; the deeper DESIGN sec 2 leaf-side -- whether a leaf is adequately DECOMPOSED -- needs domain knowledge and stays region-3 review (the parked sec 2 open thread). Grounding authority: fact-presence required at type declaration by construction (a hollow NoFact carrier becomes unwritable). Dissolves on: a type carrier with no recorded spec facts is rejected at declaration, not flagged after the fact"
+  class: WallAfterGrounding { dissolves_to: SubstrateMandatoryTag }
 }

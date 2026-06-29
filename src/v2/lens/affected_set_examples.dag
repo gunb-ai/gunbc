@@ -177,6 +177,5 @@ data affected_set_example_two_edit_diff: Diff = Diff {
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: WallAfterGrounding { dissolves_to: SingleAuthority },
-  rationale: "Example frontier values for the affected-set lens: carries no independent bad-state class; its single-authority home (DESIGN sec 3) is a sub-module of affected_set, not a separate top-level lens. Grounding authority: v2.lens.affected_set owning its example values as a sub-module / test fixture. Dissolves on: the affected-set frontier examples fold into v2.lens.affected_set as a sub-module, not a top-level lens"
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }

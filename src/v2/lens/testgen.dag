@@ -2143,8 +2143,5 @@ fn bootstrap_claim_generator_for_manual_anchor(
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: RatchetForever {
-    undecidable_because: "complete discriminating test generation is undecidable -- there is no construction that emits a test set guaranteed to catch every wrong behavior"
-  },
-  rationale: "Test generation is honest residue: a manual-anchor plus filesystem-backed shadow driver, never a complete construction; a new TestgenConcept arm is an operator STOP."
+  class: RatchetForever
 }

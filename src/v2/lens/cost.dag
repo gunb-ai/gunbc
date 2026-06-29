@@ -670,6 +670,5 @@ fn llvm_instruction_cost(i: LlvmInstruction) -> Int {
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: WallNow {
     construction: "cost is TOTAL over the closed 6-connective x 5-behavior kernel -- anything expressible is kernel-composed, so it has a SymbolicCost by construction (a new connective/behavior is a C1 STOP)"
-  },
-  rationale: "Cost is computed by construction over the closed kernel, not validated; there is no 'uncosted' bad state to flag. complexity and synthesis are its projections."
+  }
 }

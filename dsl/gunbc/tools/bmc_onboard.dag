@@ -6,7 +6,13 @@ import extdeps.entropy
 import extdeps.cloud.gcp.secret_manager
 import extdeps.cloud.gcp.gcp { GcpProjectId }
 import extdeps.shell
-import gunbc.bmc_onboarding { new_altra_onboarding_plan }
+import gunbc.bmc_onboarding {
+  new_altra_onboarding_plan,
+  BmcCredentialProbeResult,
+  FactoryCredentialActive,
+  RotatedCredentialActive,
+  CredentialStateUnknown,
+}
 import std.credentials { Stored }
 import std.types { NonEmptyStr, Secret, String }
 import std.measure { ByteSize, byte_size, byte_size_count }
@@ -160,4 +166,56 @@ func bmc_assimilate_srv3_credential() -> ProcessExit
   }
 
   return bmc_store_and_rotate(credential: mint_bmc_credential())
+}
+
+func bmc_probe_credential_phase() -> BmcCredentialProbeResult
+  uses net: Network
+{
+  let plan = new_altra_onboarding_plan
+  let host = plan.bmc.host
+  let account = plan.factory_login.username
+
+  factory_check = redfish.Http.GetSystem(
+    bmc_host: host,
+    username: account,
+    password: plan.factory_login.published_password as Secret
+  )
+  if factory_check.success {
+    return FactoryCredentialActive
+  }
+
+  auth = shell.GCloud.AuthPrintAccessToken()
+  secret_resp = gcp.SecretManager.AccessVersion(
+    access_token: auth.access_token,
+    project_id: srv3_gcp_project,
+    secret: onboarding_secret_id(),
+    version: "latest"
+  )
+  rotated_verify = redfish.Http.GetSystem(
+    bmc_host: host,
+    username: account,
+    password: secret_resp.data_b64 as Secret
+  )
+  return if rotated_verify.success {
+    RotatedCredentialActive
+  } else {
+    CredentialStateUnknown { reason: "stored credential rejected by BMC" }
+  }
+}
+
+func bmc_converge_credential_idempotent() -> ProcessExit
+  uses net: Network
+{
+  root_resp = redfish.Http.GetServiceRoot(bmc_host: new_altra_onboarding_plan.bmc.host)
+  if root_resp.success == false {
+    return exit_failure(reason: concat("credential converge: BMC unreachable: ", root_resp.body))
+  }
+
+  probe = bmc_probe_credential_phase()
+  match probe {
+    FactoryCredentialActive => return bmc_store_and_rotate(credential: mint_bmc_credential())
+    RotatedCredentialActive => return ExitSuccess
+    CredentialStateUnknown { reason: r } =>
+      return exit_failure(reason: concat("credential converge: unknown phase: ", r))
+  }
 }
