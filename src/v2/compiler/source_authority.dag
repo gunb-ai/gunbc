@@ -39,8 +39,8 @@ import v2.std.cross_tree.import_model { SourceRootRef, SourceRootSet }
 import v2.std.cross_tree.resolution { source_root_set_insert }
 import v2.std.provenance { SpanIndex }
 import v2.std.compilers.target_model { TargetModel }
-import extdeps.communication.medium { Lossless, Medium }
-import v2.compiler.target_carriers { lossless_source }
+import extdeps.communication.fidelity_carriers { medium_section_equal }
+import extdeps.communication.medium { DecodeFidelity, Medium }
 import v2.compiler.translate { target_serialize_source_from_model }
 import v2.std.text { String }
 import v2.std.witness { Holds, Violates, Witness }
@@ -95,7 +95,10 @@ type NormalizedSourceAstEqual {
   reparsed: NormalizedDagSourceAst
 }
 
-type DeterministicDagSourceSerializerLaw {}
+type DeterministicDagSourceSerializerLaw {
+  canonical_section: String
+  declared_fidelity: DecodeFidelity
+}
 
 type NormalizedDagSourceParsePrintLaw {
   normalized_source_law: NormalizedSourceAstEqual
@@ -448,8 +451,13 @@ fn deterministic_dag_source_serializer_witness(
   first: Medium<String>,
   second: Medium<String>
 ) -> Witness<DeterministicDagSourceSerializerLaw> {
-  if first.carried == second.carried {
-    Holds { value: DeterministicDagSourceSerializerLaw {} }
+  if medium_section_equal(left: first, right: second) {
+    Holds {
+      value: DeterministicDagSourceSerializerLaw {
+        canonical_section: first.carried,
+        declared_fidelity: first.fidelity
+      }
+    }
   } else {
     Violates {
       diagnostic: source_authority_diagnostic(reason: ^source_authority_serializer_nondeterministic)

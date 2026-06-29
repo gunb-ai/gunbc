@@ -18,13 +18,13 @@ import v2.extdeps.languages.dag {
   dag_mvp1_emitted_add_fn_node,
   dag_mvp1_target_model
 }
-import v2.test.manual.mvp1_dag_add_round_trip {
-  mvp1_dag_emitted_root,
-  mvp1_dag_target_model
+import v2.test.manual.dag_add_emit_round_trip {
+  dag_add_emitted_root,
+  dag_add_target_model
 }
-import v2.test.manual.mvp1_rust_add_translate {
-  mvp1_rust_emitted_root,
-  mvp1_rust_missing_translation_rules_target
+import v2.test.manual.rust_add_emit_translate {
+  rust_add_emitted_root,
+  rust_add_missing_translation_rules_target
 }
 import v2.test.manual.sg2_type_expression_projection {
   sg2_expected_arrow_text,
@@ -115,10 +115,10 @@ fn witness_translate_diagnostic_reason_symbol_inverse() -> Bool {
     && translate_diagnostic_reason_variants_drop_malformed_perturb_red_holds()
 }
 
-fn candidate_generation_mvp1_dag_slice_accepts() -> Bool {
+fn candidate_generation_dag_add_slice_accepts() -> Bool {
   match generate_translate_self_emit_candidate(
-    resolved_module: mvp1_dag_emitted_root,
-    dag_target: mvp1_dag_target_model
+    resolved_module: dag_add_emitted_root,
+    dag_target: dag_add_target_model
   ) {
     Accepted { value: candidate, diagnostics: d } =>
       (candidate.emitted == dag_mvp1_emitted_add_fn_node()) && (d == None)
@@ -130,10 +130,10 @@ fn translate_error_profile_roster_nonempty() -> Bool {
   length(xs: translate_diagnostic_reason_roster()) > 0
 }
 
-fn translate_error_profile_mvp1_malformed_bundle_known() -> Bool {
+fn translate_error_profile_rust_add_malformed_bundle_known() -> Bool {
   match target_serialize_source_from_model(
-    target: mvp1_rust_missing_translation_rules_target,
-    emitted: mvp1_rust_emitted_root
+    target: rust_add_missing_translation_rules_target,
+    emitted: rust_add_emitted_root
   ) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: r } =>
@@ -191,8 +191,8 @@ fn translate_diagnostic_reason_from_symbol_swapped_malformed_duplicate(
 
 fn translate_error_profile_coproduct_swap_perturb_discriminates() -> Bool {
   match target_serialize_source_from_model(
-    target: mvp1_rust_missing_translation_rules_target,
-    emitted: mvp1_rust_emitted_root
+    target: rust_add_missing_translation_rules_target,
+    emitted: rust_add_emitted_root
   ) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: r } =>
@@ -213,16 +213,16 @@ test fn translate_diagnostic_reason_symbol_inverse_holds() -> Bool {
   witness_translate_diagnostic_reason_symbol_inverse()
 }
 
-test fn candidate_generation_translate_self_emit_mvp1_slice_holds() -> Bool {
-  candidate_generation_mvp1_dag_slice_accepts()
+test fn candidate_generation_translate_self_emit_dag_add_slice_holds() -> Bool {
+  candidate_generation_dag_add_slice_accepts()
 }
 
 test fn translate_error_profile_roster_nonempty_holds() -> Bool {
   translate_error_profile_roster_nonempty()
 }
 
-test fn translate_error_profile_mvp1_malformed_bundle_classified() -> Bool {
-  translate_error_profile_mvp1_malformed_bundle_known()
+test fn translate_error_profile_rust_add_malformed_bundle_classified() -> Bool {
+  translate_error_profile_rust_add_malformed_bundle_known()
 }
 
 test fn translate_error_profile_sg2_projected_arrow_serialize_accepts() -> Bool {

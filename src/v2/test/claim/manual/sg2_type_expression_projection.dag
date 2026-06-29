@@ -44,9 +44,9 @@ import v2.std.compilers.target_model {
 }
 import v2.std.algebra { Cons, Empty }
 import v2.std.node { Arrow }
-import v2.test.manual.mvp1_rust_add_translate {
-  mvp1_rust_inferred_tree,
-  mvp1_rust_target_model
+import v2.test.manual.rust_add_emit_translate {
+  rust_add_inferred_tree,
+  rust_add_target_model
 }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.logic { Bool }
@@ -240,15 +240,15 @@ fn sg2_wire_decode_accepts(emitted: Node) -> Bool {
   }
 }
 
-fn sg2_mvp1_projection_absent() -> Bool {
+fn sg2_rust_add_projection_absent() -> Bool {
   match target_bundle_child_optional_type_expr_projection(target: rust_mvp1_target_model()) {
     Accepted { value: ProjectionAbsent, diagnostics: _ } => true
     _ => false
   }
 }
 
-fn sg2_mvp1_translate_fallback_accepts() -> Bool {
-  match translate(tree: mvp1_rust_inferred_tree, target: mvp1_rust_target_model) {
+fn sg2_rust_add_translate_fallback_accepts() -> Bool {
+  match translate(tree: rust_add_inferred_tree, target: rust_add_target_model) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
@@ -449,18 +449,18 @@ data claim_sg2_wire_decode_rejects_instantiation_zero_positional: TestClaim = Co
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_sg2_mvp1_projection_absent: TestClaim = CompilesClaim {
+data claim_sg2_rust_add_projection_absent: TestClaim = CompilesClaim {
   label: "manual/sg2: rust_mvp1_target_model lacks type-expression projection row (ProjectionAbsent)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  input: sg2_claim_input(ok: sg2_mvp1_projection_absent()),
+  input: sg2_claim_input(ok: sg2_rust_add_projection_absent()),
   expected_value: sg2_pass_node(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_sg2_mvp1_translate_fallback: TestClaim = CompilesClaim {
+data claim_sg2_rust_add_translate_fallback: TestClaim = CompilesClaim {
   label: "manual/sg2: MVP1 translate fallback still grounds TypeNode subtrees (no projection row)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  input: sg2_claim_input(ok: sg2_mvp1_translate_fallback_accepts()),
+  input: sg2_claim_input(ok: sg2_rust_add_translate_fallback_accepts()),
   expected_value: sg2_pass_node(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }

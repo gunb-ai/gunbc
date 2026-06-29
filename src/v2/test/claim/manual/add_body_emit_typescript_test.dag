@@ -1,0 +1,465 @@
+module v2.test.manual.add_body_emit_typescript
+
+import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
+import v2.compiler.body_producer {
+  produce_mvp1_add_arrow_with_body,
+  produce_mvp1_add_arrow_with_body_swapped_operands
+}
+import v2.extdeps.languages.dag {
+  dag_mvp1_add_arrow_signature_fixture,
+  dag_mvp1_add_arrow_with_body_fixture,
+  dag_mvp1_add_arrow_with_body_swapped_operands_fixture,
+  dag_mvp1_add_binary_body_fixture,
+  dag_mvp1_add_binary_body_swapped_operands_fixture
+}
+import v2.compiler.emit { emit }
+import v2.compiler.infer { InferredFacts, InferredTree }
+import v2.test.lens_common.infer_fixture { claim_inferred_facts_witness }
+import v2.extdeps.languages.typescript {
+  ts_facts_number,
+  ts_inhabitant_atom,
+  ts_inhabitant_number_node,
+  ts_lex_rule,
+  ts_mvp1_binding_spellings,
+  ts_mvp1_declared_inhabitants_root,
+  ts_mvp1_selection_policy_node,
+  ts_mvp1_serialize_source_node,
+  ts_mvp1_source_text,
+  ts_mvp1_source_text_authority,
+  ts_mvp1_target_model,
+  ts_mvp1_translation_rules_node,
+  ts_number_arithmetic_semantics_node,
+  ts_number_bitwise_semantics_node,
+  ts_number_facts_node,
+  ts_value_expression_projection,
+  ts_wave1_lex,
+  ts_wave1_lex_rules
+}
+import v2.std.algebra { Cons, Empty, list_append }
+import v2.std.compilers.lexing { LexRuleSet, LexRules, ModeledLexRules }
+import v2.std.compilers.target_model {
+  InfixToken,
+  TargetModel,
+  canonical_operation_op_add,
+  target_operator_realization_node,
+  target_operator_realizations_catalog_node,
+  value_expr_projection_bundle_node, target_model_emit_transforms_empty}
+import extdeps.communication.medium { Lossless, Medium }
+import v2.std.cardinality { TerminationProof, termination_proof_witness_for_node }
+import v2.std.collection { Map, empty_map }
+import v2.std.constraints {
+  CanonicalGrounding,
+  CanonicalGroundingWitness
+}
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  None,
+  Outcome,
+  Rejected,
+  Unavailable,
+  bind_outcome,
+  diagnostics_singleton,
+  node_locus
+}
+import v2.std.logic { Bool }
+import v2.std.node {
+  Arrow,
+  Atom,
+  ComputationNode,
+  Conj,
+  Edge,
+  Named,
+  Node,
+  Positional,
+  Symbol,
+  Transform,
+  TypeNode,
+  node_synthetic
+}
+import v2.std.verification {
+  BoolWitness,
+  BoolWitnessClaim,
+  ManualAnchorAbsent,
+  UnifiedTestClaim,
+  manual_claim_anchor
+}
+import v2.std.witness { Holds, StructuralPropertyWitness, Violates, Witness }
+
+data add_body_ts_emit_operand_swap_source_text: String = "function add(x: number, y: number): number { return y + x; }"
+
+data add_body_ts_emit_catalog_minus_source_text: String = "function add(x: number, y: number): number { return x - y; }"
+
+fn add_body_ts_named_edge(name: Symbol, target: Node) -> Edge {
+  Edge { label: Named { name: name }, target: target }
+}
+
+fn add_body_ts_add_operator_row_minus() -> Node {
+  target_operator_realization_node(
+    operation: canonical_operation_op_add(),
+    shape: InfixToken { token: ^ts_token_minus }
+  )
+}
+
+fn add_body_ts_operator_catalog_minus() -> Node {
+  target_operator_realizations_catalog_node(rows: [add_body_ts_add_operator_row_minus()])
+}
+
+fn add_body_ts_operator_catalog_empty() -> Node {
+  target_operator_realizations_catalog_node(rows: [])
+}
+
+fn add_body_ts_target_model_bundle(operator_catalog: Node) -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Conj },
+    children: [
+      add_body_ts_named_edge(
+        name: ^target_model_edge_selection_policy,
+        target: ts_mvp1_selection_policy_node()
+      ),
+      add_body_ts_named_edge(
+        name: ^target_model_edge_declared_inhabitants,
+        target: ts_mvp1_declared_inhabitants_root()
+      ),
+      add_body_ts_named_edge(
+        name: ^target_model_edge_translation_rules,
+        target: ts_mvp1_translation_rules_node()
+      ),
+      add_body_ts_named_edge(
+        name: ^target_model_edge_serialize_source,
+        target: ts_mvp1_serialize_source_node()
+      ),
+      add_body_ts_named_edge(
+        name: ^target_model_edge_value_expression_projection,
+        target: value_expr_projection_bundle_node(
+          projection: ts_value_expression_projection()
+        )
+      ),
+      add_body_ts_named_edge(
+        name: ^target_model_edge_operator_realizations,
+        target: operator_catalog
+      )
+    ]
+  )
+}
+
+fn add_body_ts_lex_with_minus() -> LexRules {
+  let base = ts_wave1_lex_rules()
+  ModeledLexRules {
+    root: LexRuleSet {
+      rules: list_append(
+        left: base.rules,
+        right: Cons {
+          head: ts_lex_rule(token_class: ^ts_token_minus, text: " - "),
+          tail: Empty
+        }
+      )
+    }
+  }
+}
+
+fn add_body_ts_target_model_minus_catalog() -> TargetModel {
+  TargetModel {
+    bundle: add_body_ts_target_model_bundle(operator_catalog: add_body_ts_operator_catalog_minus()),
+    lex: add_body_ts_lex_with_minus(),
+    binding_spellings: ts_mvp1_binding_spellings(),
+    token_class_emit_transforms: target_model_emit_transforms_empty,
+    authority_source_text: ts_mvp1_source_text_authority(),
+    runtime_row: target_emit_host_runtime_row_unconfigured
+  }
+}
+
+fn add_body_ts_target_model_missing_operator_catalog() -> TargetModel {
+  TargetModel {
+    bundle: add_body_ts_target_model_bundle(operator_catalog: add_body_ts_operator_catalog_empty()),
+    lex: ts_wave1_lex(),
+    binding_spellings: ts_mvp1_binding_spellings(),
+    token_class_emit_transforms: target_model_emit_transforms_empty,
+    authority_source_text: ts_mvp1_source_text_authority(),
+    runtime_row: target_emit_host_runtime_row_unconfigured
+  }
+}
+
+fn add_body_ts_canonical_grounding(node: Node, algebra: Node) -> CanonicalGrounding {
+  CanonicalGrounding {
+    node: node,
+    witness: CanonicalGroundingWitness {
+      structural: StructuralPropertyWitness {
+        property: ^constraint_property_being_canonical,
+        evidence: algebra
+      },
+      closedness: StructuralPropertyWitness {
+        property: ^constraint_property_candidate_set_closedness,
+        evidence: node
+      }
+    }
+  }
+}
+
+data add_body_ts_number_inhabitant: Node = ts_inhabitant_number_node()
+data add_body_ts_number_facts_node: Node = ts_number_facts_node(facts: ts_facts_number)
+data add_body_ts_arithmetic_semantics_node: Node = ts_number_arithmetic_semantics_node()
+data add_body_ts_bitwise_semantics_node: Node = ts_number_bitwise_semantics_node()
+
+fn add_body_ts_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding> {
+  if node == dag_mvp1_add_arrow_with_body_fixture {
+    Holds {
+      value: add_body_ts_canonical_grounding(node: node, algebra: node)
+    }
+  } else if node == dag_mvp1_add_arrow_signature_fixture {
+    Holds {
+      value: add_body_ts_canonical_grounding(node: node, algebra: node)
+    }
+  } else if node == dag_mvp1_add_binary_body_fixture {
+    Holds {
+      value: add_body_ts_canonical_grounding(node: node, algebra: node)
+    }
+  } else if node == dag_mvp1_add_arrow_with_body_swapped_operands_fixture {
+    Holds {
+      value: add_body_ts_canonical_grounding(node: node, algebra: node)
+    }
+  } else if node == dag_mvp1_add_binary_body_swapped_operands_fixture {
+    Holds {
+      value: add_body_ts_canonical_grounding(node: node, algebra: node)
+    }
+  } else if node == add_body_ts_number_inhabitant {
+    Holds {
+      value: add_body_ts_canonical_grounding(
+        node: node,
+        algebra: add_body_ts_number_facts_node
+      )
+    }
+  } else if node == ts_inhabitant_atom(id: ^ts_inhabitant_number) {
+    Holds {
+      value: add_body_ts_canonical_grounding(
+        node: node,
+        algebra: add_body_ts_number_inhabitant
+      )
+    }
+  } else if node == add_body_ts_number_facts_node {
+    Holds {
+      value: add_body_ts_canonical_grounding(node: node, algebra: node)
+    }
+  } else if node == ts_inhabitant_atom(id: ^ts_surface_spelling_number) {
+    Holds {
+      value: add_body_ts_canonical_grounding(
+        node: node,
+        algebra: add_body_ts_number_facts_node
+      )
+    }
+  } else if node == add_body_ts_arithmetic_semantics_node {
+    Holds {
+      value: add_body_ts_canonical_grounding(
+        node: node,
+        algebra: add_body_ts_number_facts_node
+      )
+    }
+  } else if node == ts_inhabitant_atom(id: ^ts_tag_number_ieee754_binary64) {
+    Holds {
+      value: add_body_ts_canonical_grounding(
+        node: node,
+        algebra: add_body_ts_arithmetic_semantics_node
+      )
+    }
+  } else if node == add_body_ts_bitwise_semantics_node {
+    Holds {
+      value: add_body_ts_canonical_grounding(
+        node: node,
+        algebra: add_body_ts_number_facts_node
+      )
+    }
+  } else if node == ts_inhabitant_atom(id: ^ts_tag_number_bitwise_int32_uint32) {
+    Holds {
+      value: add_body_ts_canonical_grounding(
+        node: node,
+        algebra: add_body_ts_bitwise_semantics_node
+      )
+    }
+  } else if node == ts_inhabitant_atom(id: ^ts_tag_bits64) {
+    Holds {
+      value: add_body_ts_canonical_grounding(
+        node: node,
+        algebra: add_body_ts_number_facts_node
+      )
+    }
+  } else if node == ts_inhabitant_atom(id: ^ts_ieee754_binary64) {
+    Holds {
+      value: add_body_ts_canonical_grounding(
+        node: node,
+        algebra: add_body_ts_number_facts_node
+      )
+    }
+  } else if node == ts_inhabitant_atom(id: ^std_projection_additive_numeric) {
+    Holds {
+      value: add_body_ts_canonical_grounding(
+        node: node,
+        algebra: add_body_ts_number_facts_node
+      )
+    }
+  } else if node == ts_inhabitant_atom(id: ^dag_token_plus) {
+    Holds {
+      value: add_body_ts_canonical_grounding(node: node, algebra: node)
+    }
+  } else if node == ts_inhabitant_atom(id: ^dag_binding_param_x) {
+    Holds {
+      value: add_body_ts_canonical_grounding(node: node, algebra: node)
+    }
+  } else if node == ts_inhabitant_atom(id: ^dag_binding_param_y) {
+    Holds {
+      value: add_body_ts_canonical_grounding(node: node, algebra: node)
+    }
+  } else if node == ts_inhabitant_atom(id: ^dag_binding_type_int) {
+    Holds {
+      value: add_body_ts_canonical_grounding(
+        node: node,
+        algebra: add_body_ts_number_inhabitant
+      )
+    }
+  } else {
+    match node.kind {
+      TypeNode { connective: Atom { identity: id } } =>
+        if id == ^dag_binding_type_int {
+          Holds {
+            value: add_body_ts_canonical_grounding(
+              node: node,
+              algebra: add_body_ts_number_inhabitant
+            )
+          }
+        } else if id == ^dag_token_plus {
+          Holds {
+            value: add_body_ts_canonical_grounding(node: node, algebra: node)
+          }
+        } else if id == ^dag_binding_param_x {
+          Holds {
+            value: add_body_ts_canonical_grounding(node: node, algebra: node)
+          }
+        } else if id == ^dag_binding_param_y {
+          Holds {
+            value: add_body_ts_canonical_grounding(node: node, algebra: node)
+          }
+        } else {
+          Violates {
+            diagnostic: Diagnostic {
+              reason: ^add_body_ts_body_grounding_miss,
+              at: node_locus(node: node),
+              correction: Unavailable { reason: ExternalContractUnknown }
+            }
+          }
+        }
+      _ =>
+        Violates {
+          diagnostic: Diagnostic {
+            reason: ^add_body_ts_body_grounding_miss,
+            at: node_locus(node: node),
+            correction: Unavailable { reason: ExternalContractUnknown }
+          }
+        }
+    }
+  }
+}
+
+fn add_body_ts_inferred_facts_for(node: Node) -> Witness<InferredFacts> {
+  match add_body_ts_canonical_grounding_for(node: node) {
+    Violates { diagnostic: d } => Violates { diagnostic: d }
+    Holds { value: grounding } =>
+      match termination_proof_witness_for_node(n: node) {
+        Violates { diagnostic: d } => Violates { diagnostic: d }
+        Holds { value: proof } =>
+          Holds {
+            value: claim_inferred_facts_witness(
+              grounding: grounding,
+              descent: Holds { value: proof }
+            )
+          }
+      }
+  }
+}
+
+fn add_body_ts_facts_lookup(key: Node) -> Witness<InferredFacts> {
+  add_body_ts_inferred_facts_for(node: key)
+}
+
+fn add_body_ts_inferred_tree_for(root: Node) -> InferredTree {
+  InferredTree {
+    root: root,
+    facts: Map { lookup: add_body_ts_facts_lookup }
+  }
+}
+
+fn add_body_ts_producer_inferred_tree() -> Outcome<InferredTree> {
+  match produce_mvp1_add_arrow_with_body() {
+    Accepted { value: root, diagnostics: d } =>
+      Accepted {
+        value: add_body_ts_inferred_tree_for(root: root),
+        diagnostics: d
+      }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+fn add_body_ts_producer_swapped_inferred_tree() -> Outcome<InferredTree> {
+  match produce_mvp1_add_arrow_with_body_swapped_operands() {
+    Accepted { value: root, diagnostics: d } =>
+      Accepted {
+        value: add_body_ts_inferred_tree_for(root: root),
+        diagnostics: d
+      }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+fn add_body_ts_emit_from_producer_tree(target: TargetModel) -> Outcome<Medium<String>> {
+  bind_outcome(
+    o: add_body_ts_producer_inferred_tree(),
+    f: fn(tree) {
+      emit(tree: tree, target: target)
+    }
+  )
+}
+
+fn add_body_ts_emit_from_producer_swapped_tree(target: TargetModel) -> Outcome<Medium<String>> {
+  bind_outcome(
+    o: add_body_ts_producer_swapped_inferred_tree(),
+    f: fn(tree) {
+      emit(tree: tree, target: target)
+    }
+  )
+}
+
+test fn add_body_ts_emit_add_fn_accepts_holds() -> Bool {
+  match add_body_ts_emit_from_producer_tree(target: ts_mvp1_target_model()) {
+    Accepted { value: source, diagnostics: d } =>
+      (source.carried == ts_mvp1_source_text) && (d == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn add_body_ts_emit_operand_swap_discriminates() -> Bool {
+  match add_body_ts_emit_from_producer_swapped_tree(target: ts_mvp1_target_model()) {
+    Accepted { value: source, diagnostics: d } =>
+      (source.carried == add_body_ts_emit_operand_swap_source_text) &&
+      (source.carried != ts_mvp1_source_text) &&
+      (d == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn add_body_ts_emit_catalog_minus_discriminates() -> Bool {
+  match add_body_ts_emit_from_producer_tree(target: add_body_ts_target_model_minus_catalog()) {
+    Accepted { value: source, diagnostics: d } =>
+      (source.carried == add_body_ts_emit_catalog_minus_source_text) &&
+      (source.carried != ts_mvp1_source_text) &&
+      (d == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn add_body_ts_emit_missing_catalog_rejects() -> Bool {
+  match add_body_ts_emit_from_producer_tree(
+    target: add_body_ts_target_model_missing_operator_catalog()
+  ) {
+    Rejected { diagnostics: _ } => true
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
