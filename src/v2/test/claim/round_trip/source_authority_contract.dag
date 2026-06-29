@@ -27,18 +27,10 @@ import v2.std.witness { Holds, Violates }
 
 data source_authority_contract_target_model: TargetModel = dag_mvp1_target_model()
 
-fn source_authority_contract_source_medium() -> Medium<String> {
-  match target_source_medium(
-    text: dag_mvp1_source_text,
-    target: source_authority_contract_target_model
-  ) {
-    Accepted { value: medium, diagnostics: _ } => medium
-    Rejected { diagnostics: _ } =>
-      Medium { carried: dag_mvp1_source_text, fidelity: Lossy }
-  }
+data source_authority_contract_source: Medium<String> = Medium {
+  carried: dag_mvp1_source_text,
+  fidelity: Lossy
 }
-
-data source_authority_contract_source: Medium<String> = source_authority_contract_source_medium()
 
 data source_authority_contract_subject: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^source_authority_contract_subject_symbol } },
@@ -66,12 +58,16 @@ fn contract_target_advertises_declared_loss() -> Bool {
 }
 
 fn contract_source_medium_matches_compose_up() -> Bool {
-  match source_authority_contract_source_medium() {
-    medium =>
+  match target_source_medium(
+    text: dag_mvp1_source_text,
+    target: source_authority_contract_target_model
+  ) {
+    Accepted { value: medium, diagnostics: _ } =>
       match medium.fidelity {
         Lossy => medium.carried == dag_mvp1_source_text
         Lossless => false
       }
+    Rejected { diagnostics: _ } => false
   }
 }
 
