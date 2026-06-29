@@ -207,8 +207,6 @@ fn shell_program_serializes_nonempty(p: ShellProgram) -> Bool {
   serialize_bash(p: p) != ""
 }
 
-/// Pure transport-shape checks for discovery-corpus witnesses. Host-effect compile
-/// receipts are owned by `tools.dsl_compile_clean_gate` (batch-1 gate), not re-run here.
 fn dsl_compile_clean_transport_programs_well_formed() -> Bool {
   shell_program_serializes_nonempty(p: clean_tree_compile_program())
     && shell_program_serializes_nonempty(p: compile_clean_perturb_program())

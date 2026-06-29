@@ -4,8 +4,6 @@ import tools.dsl_compile_clean_transport {
   dsl_compile_clean_transport_programs_well_formed
 }
 
-// Host-effect compile receipts are batch-1 `DslCompileCleanGate` only (§3: discovery
-// witnesses must not re-run shell transports the gate already owns).
 test fn dsl_compile_clean_witnesses() -> Bool {
   dsl_compile_clean_transport_programs_well_formed()
 }
