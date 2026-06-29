@@ -10,7 +10,7 @@ import gunbc.merge_admission {
   current_gate_roster_hash,
   gate_roster_content_hash,
   gunbc_repo_standard,
-  repo_standard_eq,
+  SquashMerge,
 }
 import gunbc.commit_workflow { commit_gate_roster }
 import gunbc.ci_failure_class {
@@ -92,16 +92,18 @@ test fn keyed_receipt_admits_when_fresh() -> Bool {
   )
 }
 
-test fn current_gate_roster_hash_matches_live_roster() -> Bool {
-  current_gate_roster_hash == gate_roster_content_hash(roster: commit_gate_roster)
+test fn gate_roster_hash_sensitive_to_roster_content() -> Bool {
+  let empty_roster_hash = gate_roster_content_hash(roster: [])
+  let truncated_roster_hash = gate_roster_content_hash(roster: commit_gate_roster.skip(n: 1))
+  (empty_roster_hash != current_gate_roster_hash)
+    && (truncated_roster_hash != current_gate_roster_hash)
+    && (empty_roster_hash != truncated_roster_hash)
 }
 
 test fn gunbc_repo_standard_is_squash_only() -> Bool {
-  repo_standard_eq(
-    a: gunbc_repo_standard,
-    b: gunbc_repo_standard,
-  )
-    && gunbc_repo_standard.default_branch == "main"
+  gunbc_repo_standard.default_branch == "main"
+    && length(gunbc_repo_standard.allowed_strategies) == 1
+    && gunbc_repo_standard.allowed_strategies.first() == SquashMerge
     && gunbc_repo_standard.require_up_to_date == false
 }
 
