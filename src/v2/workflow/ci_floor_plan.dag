@@ -227,14 +227,18 @@ fn floor_resource_depends_on(source: Node, dependent: Node) -> DependencyView {
 }
 
 fn floor_corpus_exclusion_resource_edges(spec: CiSpec) -> List<DependencyView> {
-  fold(spec.gates, init: [], f: fn(acc, g) {
+  let execution_after_floor = [floor_resource_depends_on(source: floor_corpus_node, dependent: execution_corpus_node)]
+  fold(spec.gates, init: execution_after_floor, f: fn(acc, g) {
     let node = gate_node(g: g)
     if floor_resource_anchor_node(node: node) {
       acc
     } else if runnable_excludes_corpus_co_residence(profile: gate_runnable_profile(g: g)) {
       list_snoc_item(
-        xs: acc,
-        item: floor_resource_depends_on(source: floor_corpus_node, dependent: node)
+        xs: list_snoc_item(
+          xs: acc,
+          item: floor_resource_depends_on(source: floor_corpus_node, dependent: node)
+        ),
+        item: floor_resource_depends_on(source: execution_corpus_node, dependent: node)
       )
     } else {
       acc
@@ -517,8 +521,4 @@ fn witness_floor_derived_width_leaves_headroom_at_cap() -> Bool {
   let width = gunbc_ci_floor_memory_derived_width(cap: gunbc_ci_runner_cgroup_memory_cap, cpu_bound: 128)
   let committed = byte_size_count(b: gunbc_ci_floor_per_shard_peak_rss_bytes()) * width
   committed < byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap)
-}
-
-fn execution_measurement_plan() -> List<List<Runnable>> {
-  [[execution_corpus_runnable()]]
 }
