@@ -58,11 +58,20 @@ tidy_gates_run_doc_reachability() {
     --function doc_graph_has_no_dangling_links --claim-run
 }
 
-tidy_gates_stage_regen_diffs_only() {
+tidy_gates_stage_regen_outputs() {
   local path
+  # Tracked projection edits (worktree vs index).
   while IFS= read -r path; do
     [[ -n "$path" ]] && git add -u -- "$path"
   done < <(git diff --name-only --diff-filter=ACMR)
+  # Newly-created untracked committed projections (main_wet can mint plan docs).
+  while IFS= read -r path; do
+    [[ -n "$path" ]] && git add -- "$path"
+  done < <(
+    git ls-files --others --exclude-standard -- \
+      .github/workflows/ci.yml .gitignore ROADMAP.md DESIGN.md \
+      .github/fleet-converge.sh docs/plans 2>/dev/null || true
+  )
 }
 
 tidy_gates_run_generated_artifact() {
@@ -75,7 +84,9 @@ tidy_gates_run_generated_artifact() {
 
   echo "[pre-push] generated-artifact drift detected; running main_wet regen"
   "$GUNBC_BIN" run --source-root dsl --entry "$entry" --function main_wet
-  tidy_gates_stage_regen_diffs_only
+  tidy_gates_stage_regen_outputs
+  echo "[pre-push] staged after regen:"
+  git diff --cached --name-only --diff-filter=ACMR | sed 's/^/  /' || true
 
   echo "[pre-push] re-checking generated-artifact drift after regen"
   "$GUNBC_BIN" run --source-root dsl --entry "$entry" \

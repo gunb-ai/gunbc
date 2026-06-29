@@ -46,7 +46,7 @@ collect_push_changed() {
   while IFS= read -r path; do
     [[ -z "$path" ]] && continue
     local seen=0 existing
-    for existing in "${PUSH_CHANGED[@]}"; do
+    for existing in ${PUSH_CHANGED[@]+"${PUSH_CHANGED[@]}"}; do
       if [[ "$existing" == "$path" ]]; then
         seen=1
         break
