@@ -1,0 +1,139 @@
+module v2.lens.grounding
+
+
+import v2.std.algebra { fold_list, is_empty, list_snoc_item }
+import v2.std.collection { List }
+import v2.std.integer { Int }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.std.concept_index { ConceptStruct, FieldRef, QualifiedConcept, enumerate_concepts }
+import v2.lens.common.construction_justification { ConstructionJustification, RatchetForever }
+
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: RatchetForever {
+    undecidable_because: "Whether a bare-string field SHOULD BE GROUNDED on an existing concept (it re-spells a type that already exists) or is legitimately a string (an open registry, a constraint/grammar string, an opaque token, or free-form prose) is not decidable from the substrate. Name-coincidence with a concept (this lens's Signal-A) is only a NECESSARY candidate condition, never sufficient: cursor~Cursor, mediaType~OpenRegistry, schedule~Schedule(wrong-target) all coincide by name yet are correct as strings. Sufficiency requires semantic judgment of the field's meaning, which is why the residual is routed to a CONFIRM judge (an LLM-judged step, landing with the whole-tree EXTRACT follow-up that feeds it real candidates against a single-authority eval corpus); a construction wall cannot make under-grounding unwritable any more than it can make non-optimality unwritable (Rice)."
+  },
+  rationale: "EXTRACT+DECIDE residue lens (model grounding): a pure fold over enumerate_concepts() (type-level, never coproduct-arm names) flagging bare-String fields whose name coincides with a concept that could ground them. It stores nothing and gates nothing alone -- it narrows the corpus to a high-quality candidate set for the CONFIRM judge. The decidable part (is_bare_string AND name_coincides) is a candidate signal only; the should-ground verdict is the undecidable residue. DISSOLVES toward: deterministic DECIDE clearing of provable cases (closed-set-by-comparison, consumer-cracks-the-leaf, parse-input fields) shrinks the residual sent to the judge, but the name-only residual remains RatchetForever."
+}
+
+
+
+fn lower_code(c: Int) -> Int {
+  if (c >= 65) && (c <= 90) { c + 32 } else { c }
+}
+
+fn empty_ints() -> List<Int> {
+  []
+}
+
+fn norm_whole(s: String) -> List<Int> {
+  fold_list(xs: s, empty: empty_ints(), cons: fn(acc, c) {
+    if c == 95 { acc } else { list_snoc_item(xs: acc, item: lower_code(c: c)) }
+  })
+}
+
+fn norm_head(s: String) -> List<Int> {
+  fold_list(xs: s, empty: empty_ints(), cons: fn(acc, c) {
+    if c == 95 { empty_ints() } else { list_snoc_item(xs: acc, item: lower_code(c: c)) }
+  })
+}
+
+
+
+type GroundingCandidate {
+  enclosing: String
+  field: String
+  declared_type: String
+  coincides_with: String
+  target_kind: String
+  target_structure: String
+}
+
+fn is_bare_string(type_name: String) -> Bool {
+  (type_name == "String") || (type_name == "NonEmptyStr")
+}
+
+fn name_coincides(field: String, concept_name: String) -> Bool {
+  let cn = norm_whole(s: concept_name)
+  (norm_whole(s: field) == cn) || (norm_head(s: field) == cn)
+}
+
+fn is_structural_name(field: String) -> Bool {
+  let f = norm_whole(s: field)
+  (f == norm_whole(s: "field"))
+    || (f == norm_whole(s: "name"))
+    || (f == norm_whole(s: "id"))
+    || (f == norm_whole(s: "value"))
+    || (f == norm_whole(s: "kind"))
+    || (f == norm_whole(s: "type"))
+    || (f == norm_whole(s: "key"))
+    || (f == norm_whole(s: "tag"))
+    || (f == norm_whole(s: "label"))
+    || (f == norm_whole(s: "index"))
+}
+
+fn concept_names_of(idx: List<QualifiedConcept>) -> List<String> {
+  fold(idx, init: [], f: fn(acc, qc) { list_snoc_item(xs: acc, item: qc.concept.name) })
+}
+
+fn matched_concept(field: String, enclosing: String, names: List<String>) -> String {
+  fold(names, init: "", f: fn(acc, n) {
+    if (acc == "") && !(n == enclosing) && name_coincides(field: field, concept_name: n) {
+      n
+    } else {
+      acc
+    }
+  })
+}
+
+fn matched_fields(name: String, idx: List<QualifiedConcept>) -> List<FieldRef> {
+  fold(idx, init: [], f: fn(acc, qc) {
+    if qc.concept.name == name { qc.concept.fields } else { acc }
+  })
+}
+
+fn render_members(fields: List<FieldRef>) -> String {
+  fold(fields, init: "", f: fn(acc, fr) {
+    if acc == "" { "{fr.field}: {fr.type_name}" } else { "{acc}, {fr.field}: {fr.type_name}" }
+  })
+}
+
+fn target_kind_of(fields: List<FieldRef>) -> String {
+  if is_empty(xs: fields) {
+    "Unstructured (no named members in the index -- a string alias / opaque / external registry; verify openness with the judge)"
+  } else {
+    "Structured (named members below; check they are the RIGHT concept for this field, not a coincidental name)"
+  }
+}
+
+fn candidates_of_concept(qc: QualifiedConcept, names: List<String>, idx: List<QualifiedConcept>, acc0: List<GroundingCandidate>) -> List<GroundingCandidate> {
+  fold(qc.concept.fields, init: acc0, f: fn(acc, fr) {
+    if is_bare_string(type_name: fr.type_name) && !is_structural_name(field: fr.field) {
+      let m = matched_concept(field: fr.field, enclosing: qc.concept.name, names: names)
+      if m == "" {
+        acc
+      } else {
+        let mf = matched_fields(name: m, idx: idx)
+        list_snoc_item(xs: acc, item: GroundingCandidate {
+          enclosing: qc.concept.name,
+          field: fr.field,
+          declared_type: fr.type_name,
+          coincides_with: m,
+          target_kind: target_kind_of(fields: mf),
+          target_structure: render_members(fields: mf)
+        })
+      }
+    } else {
+      acc
+    }
+  })
+}
+
+fn candidates_in(idx: List<QualifiedConcept>) -> List<GroundingCandidate> {
+  let names = concept_names_of(idx: idx)
+  fold(idx, init: [], f: fn(acc, qc) { candidates_of_concept(qc: qc, names: names, idx: idx, acc0: acc) })
+}
+
+fn candidates() -> List<GroundingCandidate> {
+  candidates_in(idx: enumerate_concepts())
+}
