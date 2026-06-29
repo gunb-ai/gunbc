@@ -457,10 +457,7 @@ fn concept_decl_node(ctx: &InterpContext, item: &Rc<Node>) -> InterpResult<Value
     }
 }
 
-pub fn eval_concept_decl_facts(
-    ctx: &InterpContext,
-    pool_roots: &[String],
-) -> InterpResult<Value> {
+pub fn eval_concept_decl_facts(ctx: &InterpContext, pool_roots: &[String]) -> InterpResult<Value> {
     let ws = crate::module_path_index::workspace_root();
     let abs_pool_roots: Vec<String> = pool_roots
         .iter()
