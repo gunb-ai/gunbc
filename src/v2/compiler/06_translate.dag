@@ -10,8 +10,8 @@ import v2.extdeps.languages.dag {
   ParseSubtreeAbsent,
   ParseSubtreeFound
 }
-import extdeps.communication.medium { Medium }
-import v2.compiler.target_carriers { target_source_medium }
+import extdeps.communication.medium { Lossless, Medium }
+import v2.compiler.target_carriers { lossless_source }
 import v2.std.compilers.target_model {
   CanonicalOperation,
   TargetBodiedArrowStatementScaffold,
@@ -807,7 +807,7 @@ fn serialize_concrete_syntax_tokens_to_source(
   bind_outcome(
     o: serialize_concrete_syntax_tokens_to_source_string(target: target, tokens: tokens),
     f: fn(text) {
-      target_source_medium(text: text, target: target)
+      outcome_accepted(lossless_source(text: text))
     }
   )
 }
@@ -1181,7 +1181,7 @@ fn target_serialize_source_from_model(
       bind_outcome(
         o: target_serialize_source_from_model_bounded(measure, target, emitted),
         f: fn(text) {
-          target_source_medium(text: text, target: target)
+          outcome_accepted(lossless_source(text: text))
         }
       )
     }
