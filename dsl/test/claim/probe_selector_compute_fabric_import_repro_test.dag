@@ -1,7 +1,0 @@
-module test.claim.probe_selector_compute_fabric_import_repro
-
-import product.compute_fabric { example_shared_host_offer }
-
-test fn probe_selector_compute_fabric_import_repro_holds() -> Bool {
-  example_shared_host_offer.provider == example_shared_host_offer.provider
-}

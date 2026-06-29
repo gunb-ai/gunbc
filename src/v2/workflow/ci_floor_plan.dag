@@ -15,7 +15,7 @@ import v2.std.text { String }
 import std.types { ContentHash, Int }
 import std.measure { HardwareThreadCount, hardware_thread_count, hardware_thread_count_value, byte_size, ByteSize, byte_size_count }
 import std.realization_width { width_fold_objective_goals, bounded_host_spawn_width, int_min }
-import product.compute_fabric {
+import gunbc.fleet_container {
   ResourceEnvelope,
   parallel_run_demand_envelope,
   demand_envelope_thread_count,
