@@ -1,0 +1,104 @@
+module gunbc.gha_yaml_fold_pilot
+
+import extdeps.formats.yaml { YamlKeyValue }
+import extdeps.github.actions {
+  ActionRef,
+  Job,
+  RunStep,
+  SelfHosted,
+  ShellType,
+  Step,
+  UsesStep
+}
+
+type GhaFoldPilotDecomposedStep
+  = GhaFoldPilotDecomposedRun {
+      name: String?,
+      id: String?,
+      run: String,
+      shell: ShellType?,
+      env: List<YamlKeyValue>?,
+      working_directory: String?,
+      if_condition: String?,
+      continue_on_error: Bool?,
+      timeout_minutes: Int?
+    }
+  | GhaFoldPilotDecomposedUses {
+      name: String?,
+      id: String?,
+      uses: ActionRef,
+      with: List<YamlKeyValue>?,
+      env: List<YamlKeyValue>?,
+      if_condition: String?,
+      continue_on_error: Bool?,
+      timeout_minutes: Int?
+    }
+
+fn gha_fold_pilot_decompose_step(step: Step) -> Optional<GhaFoldPilotDecomposedStep> {
+  match step {
+    RunStep { name: n, id: i, run: r, shell: sh, env: e, working_directory: wd, if_condition: ic, continue_on_error: coe, timeout_minutes: tm } =>
+      Present {
+        value: GhaFoldPilotDecomposedRun {
+          name: n,
+          id: i,
+          run: r,
+          shell: sh,
+          env: e,
+          working_directory: wd,
+          if_condition: ic,
+          continue_on_error: coe,
+          timeout_minutes: tm
+        }
+      }
+    UsesStep { name: n, id: i, uses: u, with: w, env: e, if_condition: ic, continue_on_error: coe, timeout_minutes: tm } =>
+      Present {
+        value: GhaFoldPilotDecomposedUses {
+          name: n,
+          id: i,
+          uses: u,
+          with: w,
+          env: e,
+          if_condition: ic,
+          continue_on_error: coe,
+          timeout_minutes: tm
+        }
+      }
+  }
+}
+
+data gha_fold_pilot_job: Job = Job {
+  id: "pilot",
+  name: Absent,
+  runner: SelfHosted { labels: ["self-hosted", "linux"] },
+  steps: [
+    RunStep {
+      name: Absent,
+      id: Absent,
+      run: "echo hi",
+      shell: Absent,
+      env: Absent,
+      working_directory: Absent,
+      if_condition: Absent,
+      continue_on_error: Absent,
+      timeout_minutes: Absent
+    },
+    UsesStep {
+      name: Absent,
+      id: Absent,
+      uses: ActionRef { owner: "actions", repo: "checkout", ref: "v4" },
+      with: Absent,
+      env: Absent,
+      if_condition: Absent,
+      continue_on_error: Absent,
+      timeout_minutes: Absent
+    }
+  ],
+  needs: [],
+  env: Absent,
+  outputs: Absent,
+  if_condition: Absent,
+  strategy: Absent,
+  timeout_minutes: Absent,
+  continue_on_error: Absent,
+  concurrency: Absent
+}
