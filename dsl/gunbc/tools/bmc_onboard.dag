@@ -6,7 +6,13 @@ import extdeps.entropy
 import extdeps.cloud.gcp.secret_manager
 import extdeps.cloud.gcp.gcp { GcpProjectId }
 import extdeps.shell
-import gunbc.bmc_onboarding { new_altra_onboarding_plan }
+import gunbc.bmc_onboarding {
+  new_altra_onboarding_plan,
+  BmcCredentialProbeResult,
+  FactoryCredentialActive,
+  RotatedCredentialActive,
+  CredentialStateUnknown,
+}
 import std.credentials { Stored }
 import std.types { NonEmptyStr, Secret, String }
 import std.measure { ByteSize, byte_size, byte_size_count }
