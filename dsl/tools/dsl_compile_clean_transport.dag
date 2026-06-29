@@ -204,7 +204,7 @@ fn run_dsl_shell_primary_precedence_receipt() -> Bool {
 }
 
 fn shell_program_serializes_nonempty(p: ShellProgram) -> Bool {
-  length(serialize_bash(p: p)) > 0
+  serialize_bash(p: p) != ""
 }
 
 /// Pure transport-shape checks for discovery-corpus witnesses. Host-effect compile
