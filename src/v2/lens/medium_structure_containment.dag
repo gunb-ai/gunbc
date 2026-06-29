@@ -66,6 +66,7 @@ data emitted_medium_emit_fns: List<String> = [
   "witness_layer_source_flags",
   "fleet_converge_sh_for",
   "expected_fleet_converge_sh",
+  "expected_githooks_pre_push_sh",
   "toolchain_provision_shell_exec",
   "autoinstall_user_data",
   "install_server_dnsmasq_conf",
@@ -133,11 +134,13 @@ data medium_structure_exception_roster: List<String> = [
   "src/v2/test/claim/ci_spec_witness_test.dag",
 
   "dsl/gunbc/fleet_converge_emit.dag",
+  "dsl/gunbc/githooks_pre_push_emit.dag",
   "dsl/gunbc/ci_spec.dag",
   "dsl/tools/emit_host_transport.dag",
   "dsl/gunbc/assimilate/bmc_token_federation.dag",
   "dsl/gunbc/tools/review.dag",
   "dsl/test/claim/fleet_converge_emit_test.dag",
+  "dsl/test/claim/githooks_pre_push_emit_test.dag",
 
   "dsl/test/claim/srv3_os_install_emit_test.dag",
   "dsl/test/claim/srv3_install_server_emit_test.dag"
