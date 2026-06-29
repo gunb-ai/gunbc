@@ -160,10 +160,14 @@ fn compute_layer_excluded(
   ) || is_layer_inversion(enclosing_qn: enclosing_qn, matched_qn: matched.qualified_name)
 }
 
+fn str_starts_with(s: String, prefix: String) -> Bool {
+  is_prefix_of(prefix: prefix, xs: s, eq: char_eq)
+}
+
 fn name_has_unrecognized_prefix(name: String) -> Bool {
-  starts_with(name, prefix: "Unrecognized")
-    || starts_with(name, prefix: "NonExternal")
-    || starts_with(name, prefix: "Non")
+  str_starts_with(s: name, prefix: "Unrecognized")
+    || str_starts_with(s: name, prefix: "NonExternal")
+    || str_starts_with(s: name, prefix: "Non")
 }
 
 fn sibling_variant_names(node: Node) -> String {
@@ -172,7 +176,8 @@ fn sibling_variant_names(node: Node) -> String {
   } else {
     fold(coproduct_arm_list_from_node(node: node), init: "", f: fn(acc, arm) {
       let pair = coproduct_arm_payload_pair_from_arm(arm: arm)
-      if acc == "" { pair.label } else { concat(acc, concat(", ", pair.label)) }
+      let piece = "{pair.label}"
+      if acc == "" { piece } else { concat(acc, concat(", ", piece)) }
     })
   }
 }
@@ -183,7 +188,7 @@ fn sibling_has_unrecognized_variant(node: Node) -> Bool {
   } else {
     fold(coproduct_arm_list_from_node(node: node), init: false, f: fn(acc, arm) {
       let pair = coproduct_arm_payload_pair_from_arm(arm: arm)
-      acc || name_has_unrecognized_prefix(name: pair.label)
+      acc || name_has_unrecognized_prefix(name: "{pair.label}")
     })
   }
 }
@@ -194,7 +199,7 @@ fn sibling_decode_optional_present(node: Node) -> Bool {
   } else {
     fold(coproduct_arm_list_from_node(node: node), init: false, f: fn(acc, arm) {
       let pair = coproduct_arm_payload_pair_from_arm(arm: arm)
-      acc || starts_with(pair.payload_type_name, prefix: "Optional")
+      acc || str_starts_with(s: "{pair.payload_type_name}", prefix: "Optional")
     })
   }
 }

@@ -321,6 +321,23 @@ fn skip_braced(s: &str) -> Option<&str> {
     None
 }
 
+fn skip_parens(s: &str) -> Option<&str> {
+    let mut depth = 0usize;
+    for (i, ch) in s.char_indices() {
+        match ch {
+            '(' => depth += 1,
+            ')' => {
+                depth = depth.saturating_sub(1);
+                if depth == 0 {
+                    return Some(&s[i + 1..]);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
 fn payload_type_name_from_rest(rest: &str) -> Result<(String, &str), String> {
     let rest = rest.trim_start();
     if rest.starts_with('{') {
@@ -330,9 +347,41 @@ fn payload_type_name_from_rest(rest: &str) -> Result<(String, &str), String> {
         let payload_len = rest.len() - after.len();
         let payload = rest[..payload_len].trim().to_string();
         Ok((payload, after))
+    } else if rest.starts_with('(') {
+        let after = skip_parens(rest).ok_or_else(|| {
+            "syntactic coproduct arm pairs: unclosed `(` in arm payload".to_string()
+        })?;
+        let payload_len = rest.len() - after.len();
+        let inner = rest[..payload_len]
+            .trim()
+            .trim_start_matches('(')
+            .trim_end_matches(')')
+            .trim()
+            .to_string();
+        Ok((inner, after))
     } else {
         Ok((NULLARY_PAYLOAD_TYPE_NAME.to_string(), rest))
     }
+}
+
+fn skip_angle_generics(s: &str) -> Option<&str> {
+    if !s.starts_with('<') {
+        return Some(s);
+    }
+    let mut depth = 0usize;
+    for (i, ch) in s.char_indices() {
+        match ch {
+            '<' => depth += 1,
+            '>' => {
+                depth = depth.saturating_sub(1);
+                if depth == 0 {
+                    return Some(&s[i + 1..]);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
 }
 
 fn find_type_decl_start(source: &str, type_name: &str) -> Option<usize> {
@@ -341,10 +390,9 @@ fn find_type_decl_start(source: &str, type_name: &str) -> Option<usize> {
     while let Some(rel) = source[search_from..].find(&needle) {
         let start = search_from + rel;
         let after = start + needle.len();
-        let boundary_ok = source[after..]
-            .chars()
-            .next()
-            .is_none_or(|c| c.is_whitespace() || c == '=' || c == '{');
+        let boundary_ok = source[after..].chars().next().is_none_or(|c| {
+            c.is_whitespace() || c == '=' || c == '{' || c == '<'
+        });
         let prefix_ok = start == 0
             || source
                 .as_bytes()
@@ -367,6 +415,9 @@ fn extract_type_sum_arm_pairs(
     })?;
     let needle = format!("type {type_name}");
     let after_type = &source[start + needle.len()..];
+    let after_type = skip_angle_generics(after_type.trim_start()).ok_or_else(|| {
+        format!("syntactic coproduct arm pairs: `{type_name}` has unclosed `<`")
+    })?;
     let eq_rel = after_type
         .find('=')
         .ok_or_else(|| format!("syntactic coproduct arm pairs: `{type_name}` missing `=`"))?;
@@ -407,8 +458,13 @@ fn extract_type_sum_arm_pairs(
             if suffix.starts_with("//")
                 || suffix.starts_with("type ")
                 || suffix.starts_with("fn ")
+                || suffix.starts_with("func ")
                 || suffix.starts_with("module ")
                 || suffix.starts_with("import ")
+                || suffix.starts_with("export ")
+                || suffix.starts_with("service ")
+                || suffix.starts_with("data ")
+                || suffix.starts_with("pattern ")
             {
                 break;
             }
@@ -461,31 +517,49 @@ fn type_expr_head_name(
     type_expr: &Rc<Node>,
     si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> InterpResult<String> {
+    type_expr_head_name_opt(type_expr, si).ok_or_else(|| InterpError::TypeError {
+        msg: format!(
+            "type_expr_head_name: cannot extract head type name (connective={:?}, children={})",
+            type_expr.connective,
+            type_expr.children.len()
+        ),
+    })
+}
+
+fn type_expr_head_name_opt(
+    type_expr: &Rc<Node>,
+    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
     let name = authored_name_at(si.clone(), type_expr.clone());
     if !name.is_empty() {
-        return Ok(name);
+        return Some(name);
+    }
+    if !type_expr.name.is_empty() {
+        return Some(type_expr.name.clone());
+    }
+    if let ExprData::ExprVar { .. } = type_expr.expr_data.as_ref() {
+        let var_name = expr_var_name_at(type_expr.clone(), si.clone());
+        if !var_name.is_empty() {
+            return Some(var_name);
+        }
     }
     if type_expr.connective == Connective::Conj {
         let mut parts: Vec<String> = Vec::new();
         for field in type_expr.children.iter() {
             let field_name = authored_name_at(si.clone(), field.clone());
             if field_name.is_empty() {
-                return Err(InterpError::TypeError {
-                    msg: "type_expr_head_name: anonymous field in inline record type".to_string(),
-                });
+                return None;
             }
             let type_child = field_node_type_expr(field.clone());
-            let head = type_expr_head_name(&type_child, si)?;
+            let head = type_expr_head_name_opt(&type_child, si)?;
             parts.push(format!("{field_name}: {head}"));
         }
-        return Ok(format!("{{ {} }}", parts.join(", ")));
+        return Some(format!("{{ {} }}", parts.join(", ")));
     }
-    Err(InterpError::TypeError {
-        msg: format!(
-            "type_expr_head_name: cannot extract head type name (connective={:?})",
-            type_expr.connective
-        ),
-    })
+    if type_expr.children.len() == 1 {
+        return type_expr_head_name_opt(&type_expr.children[0], si);
+    }
+    None
 }
 
 fn marshal_type_expr_head_ref(
@@ -501,24 +575,93 @@ fn marshal_type_expr_head_ref(
     ))
 }
 
-fn marshal_variant_arm_target_parse_only(
-    ctx: &InterpContext,
-    variant: &Rc<Node>,
-    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> InterpResult<Value> {
-    if variant.children.is_empty() {
-        return Ok(unit_type_node(ctx));
+fn type_expr_head_from_token(ty: &str) -> String {
+    let ty = ty.trim();
+    if let Some(i) = ty.find('<') {
+        ty[..i].trim().to_string()
+    } else {
+        ty.to_string()
     }
-    let mut edges = Vec::with_capacity(variant.children.len());
-    for field in variant.children.iter() {
-        let field_name = authored_name_at(si.clone(), field.clone());
-        if field_name.is_empty() {
-            return Err(InterpError::TypeError {
-                msg: "marshal_variant_arm_target_parse_only: anonymous field".to_string(),
-            });
+}
+
+fn split_top_level_commas(s: &str) -> Vec<&str> {
+    let mut parts = Vec::new();
+    let mut start = 0usize;
+    let mut depth = 0i32;
+    for (i, ch) in s.char_indices() {
+        match ch {
+            '<' | '{' | '(' => depth += 1,
+            '>' | '}' | ')' => depth -= 1,
+            ',' if depth == 0 => {
+                parts.push(s[start..i].trim());
+                start = i + ch.len_utf8();
+            }
+            _ => {}
         }
-        let type_expr = field_node_type_expr(field.clone());
-        let target = marshal_type_expr_head_ref(ctx, &type_expr, si)?;
+    }
+    let tail = s[start..].trim();
+    if !tail.is_empty() {
+        parts.push(tail);
+    }
+    parts
+}
+
+fn parse_inline_record_field_heads(payload: &str) -> Result<Vec<(String, String)>, String> {
+    let inner = payload.trim();
+    let inner = inner
+        .strip_prefix('{')
+        .and_then(|s| s.strip_suffix('}'))
+        .unwrap_or(inner);
+    if inner.trim().is_empty() {
+        return Ok(Vec::new());
+    }
+    let mut out = Vec::new();
+    for part in split_top_level_commas(inner) {
+        let (name, ty) = part
+            .split_once(':')
+            .ok_or_else(|| format!("expected field: type in `{part}`"))?;
+        out.push((name.trim().to_string(), type_expr_head_from_token(ty)));
+    }
+    Ok(out)
+}
+
+fn extract_record_type_field_pairs(
+    source: &str,
+    type_name: &str,
+) -> Result<Vec<(String, String)>, String> {
+    let start = find_type_decl_start(source, type_name)
+        .ok_or_else(|| format!("record type `{type_name}` not found in source"))?;
+    let needle = format!("type {type_name}");
+    let after = &source[start + needle.len()..];
+    let after = skip_angle_generics(after.trim_start())
+        .ok_or_else(|| format!("record type `{type_name}` has unclosed `<`"))?;
+    let brace_rel = after
+        .find('{')
+        .ok_or_else(|| format!("record type `{type_name}` missing `{{` body"))?;
+    let after_brace = &after[brace_rel..];
+    let after_close = skip_braced(after_brace)
+        .ok_or_else(|| format!("record type `{type_name}` has unclosed `{{`"))?;
+    let payload_len = after_brace.len() - after_close.len();
+    parse_inline_record_field_heads(&after_brace[..payload_len])
+}
+
+fn marshal_conj_from_source(
+    ctx: &InterpContext,
+    source: &str,
+    type_name: &str,
+) -> InterpResult<Value> {
+    let fields = extract_record_type_field_pairs(source, type_name).map_err(|msg| {
+        InterpError::TypeError {
+            msg: format!("marshal_conj_from_source `{type_name}`: {msg}"),
+        }
+    })?;
+    let mut edges = Vec::new();
+    for (field_name, head) in fields {
+        let target = node_record(
+            ctx,
+            node_kind_type_node(ctx, atom_connective_variant(ctx, &head)),
+            vec![],
+        );
         edges.push(edge_named(ctx, &field_name, target));
     }
     Ok(node_record(
@@ -528,26 +671,52 @@ fn marshal_variant_arm_target_parse_only(
     ))
 }
 
-fn marshal_disj_type_item_parse_only(
+fn marshal_disj_from_source(
     ctx: &InterpContext,
-    item: &Rc<Node>,
-    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source: &str,
+    type_name: &str,
 ) -> InterpResult<Value> {
-    if item.connective != Connective::Disj {
-        return Err(InterpError::TypeError {
-            msg: "marshal_disj_type_item_parse_only: type is not a coproduct (Disj)".to_string(),
-        });
-    }
-    let mut edges = Vec::with_capacity(item.children.len());
-    for child in item.children.iter() {
-        let label = authored_name_at(si.clone(), child.clone());
-        if label.is_empty() {
-            return Err(InterpError::TypeError {
-                msg: "marshal_disj_type_item_parse_only: anonymous coproduct arm".to_string(),
-            });
+    let arms = extract_type_sum_arm_pairs(source, type_name).map_err(|msg| {
+        InterpError::TypeError {
+            msg: format!("marshal_disj_from_source `{type_name}`: {msg}"),
         }
-        let target = marshal_variant_arm_target_parse_only(ctx, child, si)?;
-        edges.push(edge_named(ctx, &label, target));
+    })?;
+    let mut edges = Vec::new();
+    for arm in arms {
+        let target = if arm.payload_type_name == NULLARY_PAYLOAD_TYPE_NAME {
+            unit_type_node(ctx)
+        } else if arm.payload_type_name.starts_with('{') {
+            let fields = parse_inline_record_field_heads(&arm.payload_type_name).map_err(|msg| {
+                InterpError::TypeError {
+                    msg: format!(
+                        "marshal_disj_from_source `{type_name}` arm `{}`: {msg}",
+                        arm.label
+                    ),
+                }
+            })?;
+            let mut inner = Vec::new();
+            for (field_name, head) in fields {
+                let t = node_record(
+                    ctx,
+                    node_kind_type_node(ctx, atom_connective_variant(ctx, &head)),
+                    vec![],
+                );
+                inner.push(edge_named(ctx, &field_name, t));
+            }
+            node_record(
+                ctx,
+                node_kind_type_node(ctx, nullary_connective_variant(ctx, "Conj")),
+                inner,
+            )
+        } else {
+            let head = type_expr_head_from_token(&arm.payload_type_name);
+            node_record(
+                ctx,
+                node_kind_type_node(ctx, atom_connective_variant(ctx, &head)),
+                vec![],
+            )
+        };
+        edges.push(edge_named(ctx, &arm.label, target));
     }
     Ok(node_record(
         ctx,
@@ -556,14 +725,21 @@ fn marshal_disj_type_item_parse_only(
     ))
 }
 
-fn concept_decl_node_parse_only(
+fn concept_decl_node_parse_only_from_source(
     ctx: &InterpContext,
     item: &Rc<Node>,
     si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source: &str,
 ) -> InterpResult<Value> {
+    let name = authored_name_at(si.clone(), item.clone());
+    if name.is_empty() {
+        return Err(InterpError::TypeError {
+            msg: "concept_decl_node_parse_only_from_source: anonymous type decl".to_string(),
+        });
+    }
     match item.connective {
-        Connective::Disj => marshal_disj_type_item_parse_only(ctx, item, si),
-        Connective::Conj => marshal_variant_arm_target_parse_only(ctx, item, si),
+        Connective::Disj => marshal_disj_from_source(ctx, source, &name),
+        Connective::Conj => marshal_conj_from_source(ctx, source, &name),
         _ => Ok(unit_type_node(ctx)),
     }
 }
@@ -589,6 +765,11 @@ pub fn eval_concept_decl_facts(
     let mut files_parsed = 0usize;
     for (module_name, rel_path) in modules {
         let abs = ws.join(&rel_path);
+        let file_content = std::fs::read_to_string(&abs).map_err(|e| {
+            InterpError::TypeError {
+                msg: format!("concept_decl_facts: failed to read `{rel_path}`: {e}"),
+            }
+        })?;
         let (items, si) = crate::medium_structure_project::parse_file(&abs).ok_or_else(|| {
             InterpError::TypeError {
                 msg: format!(
@@ -606,7 +787,8 @@ pub fn eval_concept_decl_facts(
                 continue;
             }
             let qualified_name = logical_qualified_name(&module_name, &name);
-            let node = concept_decl_node_parse_only(ctx, item, &si).map_err(|e| {
+            let node = concept_decl_node_parse_only_from_source(ctx, item, &si, &file_content)
+                .map_err(|e| {
                 InterpError::TypeError {
                     msg: format!(
                         "concept_decl_facts: failed to marshal `{qualified_name}` in `{rel_path}`: {e}"
