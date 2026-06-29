@@ -7,6 +7,7 @@ use std::sync::OnceLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::v1_compiler_compile::SourceFile;
+use crate::v1_compiler_infer::rewire_func_env_parent_links;
 use crate::v1_compiler_infer_items::ResolvedGraph;
 use crate::v1_rt::{self, Hash};
 use crate::v1_std_core::NewlineIndex;
@@ -262,15 +263,23 @@ fn read_cached_file(path: &Path, expected_subject: &str) -> CacheLookupResult {
         Ok(p) => p,
         Err(_) => return CacheLookupResult::Miss,
     };
-    let source_indices = Rc::new(
+    let source_indices: Rc<HashMap<String, Rc<NewlineIndex>>> = Rc::new(
         payload
             .source_indices
             .into_iter()
             .map(|(k, v)| (k, Rc::new(v)))
             .collect(),
     );
+    let decoded = Rc::new(payload.graph);
+    let modules = rewire_func_env_parent_links(decoded.modules.clone(), source_indices.clone());
+    let graph = Rc::new(ResolvedGraph {
+        modules,
+        item_registry: decoded.item_registry.clone(),
+        diagnostics: decoded.diagnostics.clone(),
+        emit_graph_info: decoded.emit_graph_info.clone(),
+    });
     CacheLookupResult::Hit(CachedResolvedGraph {
-        graph: Rc::new(payload.graph),
+        graph,
         source_indices,
     })
 }
@@ -450,15 +459,22 @@ pub fn serialize_fixture_payload_for_test(
 pub fn deserialize_fixture_payload_for_test(bytes: &[u8]) -> Result<CachedResolvedGraph, String> {
     let payload: CachePayload =
         serde_json::from_slice(bytes).map_err(|e| format!("fixture payload decode: {e}"))?;
-    let source_indices = Rc::new(
+    let source_indices: Rc<HashMap<String, Rc<NewlineIndex>>> = Rc::new(
         payload
             .source_indices
             .into_iter()
             .map(|(k, v)| (k, Rc::new(v)))
             .collect(),
     );
+    let decoded = Rc::new(payload.graph);
+    let modules = rewire_func_env_parent_links(decoded.modules.clone(), source_indices.clone());
     Ok(CachedResolvedGraph {
-        graph: Rc::new(payload.graph),
+        graph: Rc::new(ResolvedGraph {
+            modules,
+            item_registry: decoded.item_registry.clone(),
+            diagnostics: decoded.diagnostics.clone(),
+            emit_graph_info: decoded.emit_graph_info.clone(),
+        }),
         source_indices,
     })
 }

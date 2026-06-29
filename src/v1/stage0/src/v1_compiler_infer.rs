@@ -14229,16 +14229,78 @@ pub fn typecheck_modules(
     }
 }
 
+pub fn import_module_path_at(
+    imp: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    authored_name_at(source_indices, imp)
+}
+
+pub fn rewire_func_env_parent_links(
+    modules: Rc<Vec<Rc<TypedModule>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<Rc<TypedModule>>> {
+    {
+        let index = modules.clone().iter().cloned().fold(
+            v1_rt::rc_empty_map::<String, Rc<TypedModule>>(),
+            |acc: Rc<HashMap<String, Rc<TypedModule>>>, m: Rc<TypedModule>| {
+                v1_rt::rc_map_insert(
+                    acc,
+                    authored_name_at(source_indices.clone(), m.module.clone()),
+                    m.clone(),
+                )
+            },
+        );
+        Rc::new({
+            let mut __result = Vec::new();
+            for m in modules.clone().iter().cloned() {
+                __result.push({
+                    let parents = Rc::new({
+                        let mut __result = Vec::new();
+                        for imp in module_imports(m.module.clone()).iter().cloned() {
+                            __result.extend(
+                                (*{
+                                    let path =
+                                        import_module_path_at(imp.clone(), source_indices.clone());
+                                    match v1_rt::map_get(&index, path.clone()) {
+                                        Some(parent) => Rc::new(vec![parent.func_env.clone()]),
+                                        None => Rc::new(vec![]),
+                                    }
+                                })
+                                .iter()
+                                .cloned(),
+                            );
+                        }
+                        __result
+                    });
+                    Rc::new(TypedModule {
+                        module: m.module.clone(),
+                        items: m.items.clone(),
+                        type_env: m.type_env.clone(),
+                        func_env: Rc::new(ResolvedFuncEnv {
+                            local: m.func_env.clone().local.clone(),
+                            parents: parents.clone(),
+                        }),
+                        item_registry: m.item_registry.clone(),
+                    })
+                });
+            }
+            __result
+        })
+    }
+}
+
 pub fn reconcile(
     graph: Rc<ModuleGraph>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
 ) -> Rc<ResolvedGraph> {
     {
-        let typed = typecheck(graph, source_indices, intern_table);
-        let emit_info = build_emit_graph_info(typed.modules.clone());
+        let typed = typecheck(graph, source_indices.clone(), intern_table);
+        let modules = rewire_func_env_parent_links(typed.modules.clone(), source_indices.clone());
+        let emit_info = build_emit_graph_info(modules.clone());
         Rc::new(ResolvedGraph {
-            modules: typed.modules.clone(),
+            modules: modules.clone(),
             item_registry: typed.item_registry.clone(),
             diagnostics: typed.diagnostics.clone(),
             emit_graph_info: emit_info,
