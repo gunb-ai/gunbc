@@ -25,7 +25,7 @@ import gunbc.ci_floor_measurement {
   SessionAggregateUnmeasured,
   gunbc_ci_session_reservation_mode,
 }
-import gunbc.fleet_intent { fleet_intent_offers }
+import gunbc.ci_fleet { fleet_intent_offers }
 import gunbc.oomd_install { gunbc_oomd_sessions_policy, gunbc_oomd_sessions_slice }
 import gunbc.runner_slot_enforcement { gunbc_runner_slot_unit_placeholder }
 import extdeps.os.systemd {

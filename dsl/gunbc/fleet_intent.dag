@@ -3,31 +3,176 @@ module gunbc.fleet_intent
 import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2, operator_host_srv3 }
 import extdeps.storage.western_digital { wd_black_sn850x_2tb_catalog }
 import extdeps.storage.samsung { samsung_970_evo_plus_2tb_catalog }
+import extdeps.storage.types {
+  StorageDevice,
+  nvme_storage_device,
+  PersistenceKind,
+  Persistent,
+  StorageMedium,
+}
 import extdeps.cpu.ampere { altra_max_m12830_catalog }
 import extdeps.cpu.types { CpuFacts, CpuDeploymentFacts }
+import extdeps.cpu { cpu_facts_threads, cpu_facts_sustained_per_thread_hz }
 import extdeps.boards.asrock_rack { asrock_altrad8ud_1l2t_catalog }
+import extdeps.memory.types { MemoryKind, Dram }
+import extdeps.gpu.types { GpuFacts, AcceleratorFacts, GpuRuntime }
+import extdeps.toolchain.types { ToolchainCapability }
+import product.network_topology { NetworkLocality, NetworkInterface, NetworkAddressability, LatencyClass }
+import product.placement_supply { HostIdentity, PlacementSupplyRow }
 import std.baseboard { ServerBaseboard }
 import std.bmc { BmcEndpoint, Redfish }
 import std.credentials { CredentialFlow, Stored }
-import std.measure { gibibyte, gibibyte_to_byte_size, hertz }
+import std.measure { gibibyte, gibibyte_to_byte_size, hertz, ByteSize, byte_size, byte_size_count, Bandwidth, HardwareThreadCount, hardware_thread_count_value, Nano, measure_count }
 import std.os.types { OperatingSystemSurface, Linux, Posix, PosixProcess }
-import std.types { List }
-import product.compute_fabric {
-  ComputeOffer,
-  ComputeSupplyFacts,
-  ComputeHost,
-  ExecutionSurface,
-  MemoryDevice,
-  CpuProcessor,
-  AvailabilityWindow,
-  CostModel,
-  ProviderCostModel,
-  OwnedMarginalZero,
-  PerJobFilesystem,
-  Dram,
-  StorageDevice,
-  nvme_storage_device,
-  Persistent,
+import std.types { List, NonEmptyStr, Bool, Int }
+import std.verification { NanosecondDuration, nanosecond_duration }
+import std.realization_schedule { CostAccount }
+import std.realization_measurement { cost_account_measured_from_time_and_space }
+import std.nat { Nat }
+import std.float { Float }
+
+type IsolationBoundary = SharedHostHome | PerJobFilesystem | ContainerHermetic | Vm
+type ContainerRuntime = Docker | Podman | Gvisor | Ubicloud | GcloudRun
+
+type WorkUnitId = NonEmptyStr where brand("WorkUnitId")
+
+type ProviderIdentity = NonEmptyStr where brand("ProviderIdentity")
+
+type MemoryDevice {
+  capacity: ByteSize
+  memory_kind: MemoryKind
+  bandwidth: Bandwidth?
+}
+
+type StorageMount {
+  mount_path: NonEmptyStr
+  device: StorageDevice
+  lifecycle: PersistenceKind
+}
+
+type ProcessorKind
+  = CpuProcessor { cpu: CpuFacts }
+  | GpuProcessor { gpu: GpuFacts }
+  | AcceleratorProcessor { accelerator: AcceleratorFacts }
+
+type ExecutionSurface {
+  os: OperatingSystemSurface
+  isolation: IsolationBoundary
+  container_runtime: ContainerRuntime?
+  toolchains: List<ToolchainCapability>
+  mounted_storage: List<StorageMount>
+  network: List<NetworkInterface>
+}
+
+type ComputeHost {
+  identity: HostIdentity
+  baseboard: ServerBaseboard?
+  processors: List<ProcessorKind>
+  memory: List<MemoryDevice>
+  storage: List<StorageDevice>
+  network_interfaces: List<NetworkInterface>
+}
+
+fn compute_host_primary_cpu(host: ComputeHost) -> CpuFacts? {
+  match host.processors.first() {
+    Absent => none
+    Present { value: kind } =>
+      match kind {
+        CpuProcessor { cpu: c } => Present { value: c }
+        GpuProcessor { gpu: _ } => none
+        AcceleratorProcessor { accelerator: _ } => none
+      }
+  }
+}
+
+fn compute_host_ram_bytes_total(host: ComputeHost) -> ByteSize {
+  byte_size(
+    host.memory
+      |> fold(
+        init: 0,
+        f: (acc, dev) => acc + byte_size_count(dev.capacity),
+      ),
+  )
+}
+
+fn placement_supply_row_from_host(identity: HostIdentity, cpu: CpuFacts, ram_bytes_total: ByteSize) -> PlacementSupplyRow {
+  PlacementSupplyRow {
+    identity: identity,
+    hardware_threads: cpu_facts_threads(cpu),
+    clock_hz: cpu_facts_sustained_per_thread_hz(cpu),
+    ram_bytes: ram_bytes_total,
+  }
+}
+
+type MeasurementConfidence
+  = SingleSample
+  | Range { low: Float, high: Float }
+  | DistributionSummary { mean: Float, variance: Float }
+
+type PerformanceReceipt {
+  provider: ProviderIdentity
+  work_shape: WorkUnitId
+  cost: CostAccount<Nano>
+  cpu_seconds: Float?
+  sample_count: Int
+  measurement_context: ExecutionSurface
+  confidence: MeasurementConfidence
+  cache_state_summary: NonEmptyStr?
+}
+
+data host_v1_interpreter_provider: ProviderIdentity = "host:v1-interpreter"
+
+data host_v1_interpreter_execution_surface: ExecutionSurface = ExecutionSurface {
+  os: OperatingSystemSurface {
+    kernel: Linux,
+    distro_or_product: none,
+    version: none,
+    filesystem_semantics: Posix,
+    process_semantics: PosixProcess,
+  },
+  isolation: SharedHostHome,
+  container_runtime: none,
+  toolchains: [],
+  mounted_storage: [],
+  network: [],
+}
+
+fn performance_receipt_host_single_sample(
+  work_shape: WorkUnitId,
+  wall_time: NanosecondDuration,
+  space: ByteSize,
+) -> PerformanceReceipt {
+  PerformanceReceipt {
+    provider: host_v1_interpreter_provider,
+    work_shape: work_shape,
+    cost: cost_account_measured_from_time_and_space(time: wall_time, space: space),
+    cpu_seconds: none,
+    sample_count: 1,
+    measurement_context: host_v1_interpreter_execution_surface,
+    confidence: SingleSample,
+    cache_state_summary: none,
+  }
+}
+
+fn performance_receipts_total_time(receipts: List<PerformanceReceipt>) -> NanosecondDuration {
+  nanosecond_duration(
+    count: fold(
+      receipts,
+      init: 0,
+      f: (acc, receipt) => acc + measure_count(m: receipt.cost.time)
+    )
+  )
+}
+
+fn cost_account_from_performance_receipts(receipts: List<PerformanceReceipt>) -> CostAccount<Nano> {
+  cost_account_measured_from_time_and_space(
+    time: performance_receipts_total_time(receipts: receipts),
+    space: byte_size(count: fold(
+      receipts,
+      init: 0,
+      f: (acc, receipt) => acc + byte_size_count(receipt.cost.space)
+    ))
+  )
 }
 
 data fleet_intent_cpu: CpuFacts = CpuFacts {
@@ -111,33 +256,3 @@ fn fleet_intent_execution_surface() -> ExecutionSurface {
   }
 }
 
-fn operator_owned_cost() -> CostModel {
-  CostModel { cost_class: OwnedMarginalZero, rates: ProviderCostModel { placeholder: true } }
-}
-
-data srv1_offer: ComputeOffer = ComputeOffer {
-  provider: "gunbc-operator-srv1",
-  supply: ComputeSupplyFacts {
-    physical: srv1_host,
-    execution: fleet_intent_execution_surface(),
-    cost: Present { value: operator_owned_cost() },
-    observed_performance: [],
-  },
-  available_window: AvailabilityWindow { open: "always-open", close: none },
-  cost_quote: none,
-  constraints: [],
-}
-data srv2_offer: ComputeOffer = ComputeOffer {
-  provider: "gunbc-operator-srv2",
-  supply: ComputeSupplyFacts {
-    physical: srv2_host,
-    execution: fleet_intent_execution_surface(),
-    cost: Present { value: operator_owned_cost() },
-    observed_performance: [],
-  },
-  available_window: AvailabilityWindow { open: "always-open", close: none },
-  cost_quote: none,
-  constraints: [],
-}
-
-data fleet_intent_offers: List<ComputeOffer> = [srv1_offer, srv2_offer]

@@ -13,7 +13,7 @@ import std.realization_reconcile {
 }
 import extdeps.shell
 import extdeps.bmc.types { RedfishSystemAction }
-import product.compute_fabric { ComputeHost }
+import gunbc.fleet_intent { ComputeHost }
 import std.types { String }
 
 type ResolvedHostEffectCell =

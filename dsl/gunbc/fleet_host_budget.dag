@@ -16,7 +16,8 @@ import std.effects { EffectShape, CreateEffect, CreateCause, CreateIfAbsent, Key
 import std.realization_schedule { CostAccount, CostBasis, Predicted }
 import extdeps.accounting.budget { Appropriation, LineItem }
 import product.budget_tree { BudgetNode, BudgetClaim, Guaranteed, node_conserves }
-import product.compute_fabric { ComputeOffer, compute_host_ram_bytes_total, compute_host_primary_cpu }
+import gunbc.ci_fleet { ComputeOffer }
+import gunbc.fleet_intent { compute_host_ram_bytes_total, compute_host_primary_cpu }
 import extdeps.cpu { cpu_facts_threads }
 import extdeps.ctrl.jobserver {
   CtrlJobserverConfig,
