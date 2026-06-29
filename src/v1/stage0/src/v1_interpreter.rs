@@ -5273,7 +5273,7 @@ fn eval_builtin(
             let std_roots = expect_str_list(positional.first().copied(), "layer_import_facts")?;
             let extdeps_roots = expect_str_list(positional.get(1).copied(), "layer_import_facts")?;
             let facts =
-                crate::layering_imports_project::layer_import_facts(&std_roots, &extdeps_roots);
+                crate::cli_run::layer_import_facts(&std_roots, &extdeps_roots);
             let mut items: Vec<Value> = Vec::new();
             for f in facts {
                 let layer = Value::Variant {
@@ -5300,7 +5300,7 @@ fn eval_builtin(
                 expect_str_list(positional.get(1).copied(), "import_resolution_facts")?;
             let exclude_substrings =
                 expect_str_list(positional.get(2).copied(), "import_resolution_facts")?;
-            let facts = crate::import_resolution_project::import_resolution_facts(
+            let facts = crate::cli_run::import_resolution_facts(
                 &pool_roots,
                 &importer_roots,
                 &exclude_substrings,
@@ -5322,7 +5322,7 @@ fn eval_builtin(
         "module_declaration_facts" => {
             let pool_roots =
                 expect_str_list(positional.first().copied(), "module_declaration_facts")?;
-            let facts = crate::import_resolution_project::module_declaration_facts(&pool_roots);
+            let facts = crate::cli_run::module_declaration_facts(&pool_roots);
             let mut items: Vec<Value> = Vec::new();
             for f in facts {
                 items.push(Value::Record {
@@ -5347,7 +5347,7 @@ fn eval_builtin(
                 expect_str_list_flex(positional.get(3).copied(), "medium_structure_leak_facts")?;
             let string_ops =
                 expect_str_list_flex(positional.get(4).copied(), "medium_structure_leak_facts")?;
-            let facts = crate::medium_structure_project::medium_structure_leak_facts(
+            let facts = crate::cli_run::medium_structure_leak_facts(
                 &emit_roots,
                 &check_roots,
                 &markers,
@@ -5374,11 +5374,11 @@ fn eval_builtin(
         }
 
         "fact_cardinality_cross_tree_coexistence_count" => Ok(Some(Value::Int(
-            crate::fact_cardinality_census::cross_tree_coexistence_count(),
+            crate::cli_run::cross_tree_coexistence_count(),
         ))),
 
         "fact_cardinality_cross_tree_diverged_fork_count" => Ok(Some(Value::Int(
-            crate::fact_cardinality_census::cross_tree_diverged_fork_count(),
+            crate::cli_run::cross_tree_diverged_fork_count(),
         ))),
 
         "fact_cardinality_cross_tree_is_coexistence" => {
@@ -5387,7 +5387,7 @@ fn eval_builtin(
                 "fact_cardinality_cross_tree_is_coexistence",
             )?;
             Ok(Some(Value::Bool(
-                crate::fact_cardinality_census::cross_tree_is_coexistence(key),
+                crate::cli_run::cross_tree_is_coexistence(key),
             )))
         }
 
@@ -5397,7 +5397,7 @@ fn eval_builtin(
                 "fact_cardinality_cross_tree_is_diverged_fork",
             )?;
             Ok(Some(Value::Bool(
-                crate::fact_cardinality_census::cross_tree_is_diverged_fork(key),
+                crate::cli_run::cross_tree_is_diverged_fork(key),
             )))
         }
 
@@ -5570,7 +5570,7 @@ fn eval_builtin(
                 "transport_script_literal_violation_count_for_path",
             )?;
             let count =
-                crate::transport_script_position_project::transport_script_literal_violation_count_for_path(
+                crate::cli_run::transport_script_literal_violation_count_for_path(
                     path,
                 );
             Ok(Some(Value::Int(count)))
@@ -5758,13 +5758,13 @@ fn eval_builtin(
         ))),
 
         "doc_graph_orphan_count" => Ok(Some(Value::Int(
-            crate::doc_reachability_project::doc_graph_orphan_count(),
+            crate::cli_run::doc_graph_orphan_count(),
         ))),
         "doc_graph_dangling_link_count" => Ok(Some(Value::Int(
-            crate::doc_reachability_project::doc_graph_dangling_link_count(),
+            crate::cli_run::doc_graph_dangling_link_count(),
         ))),
         "doc_graph_doc_count" => Ok(Some(Value::Int(
-            crate::doc_reachability_project::doc_graph_doc_count(),
+            crate::cli_run::doc_graph_doc_count(),
         ))),
 
         "inert_carrier_count" => Ok(Some(Value::Int(

@@ -1,5 +1,5 @@
 use std::cell::RefCell;
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::rc::Rc;
@@ -18,12 +18,14 @@ use crate::v1_compiler_tokenize;
 use crate::v1_interpreter;
 use crate::v1_rt;
 use crate::v1_std_core::{
-    authored_name_at, build_newline_index, byte_to_line_col, diagnostic_to_message,
-    diagnostic_to_span, empty_intern_table, expr_var_name_at, field_init_node_name_at,
-    field_init_node_value, has_child_named, intern,
+    arg_name_at, arg_value, authored_name_at, block_stmts, build_newline_index, byte_to_line_col,
+    diagnostic_to_message, diagnostic_to_span, empty_intern_table, expr_call_func_at,
+    expr_method_name_at, expr_var_name_at, field_access_base, field_access_field_at,
+    field_init_node_name_at, field_init_node_value, has_child_named, intern,
     is_discovery_corpus_advisory_typecheck_diagnostic, is_discovery_corpus_blocking_diagnostic,
-    is_error_diagnostic, is_interpreter_blocking_diagnostic, CompilerDiagnostic, ErrorNode,
-    ExprData, InferredNode, InternTable, NewlineIndex, Node,
+    is_error_diagnostic, is_interpreter_blocking_diagnostic, let_binding_name_at, let_value,
+    method_arg_nodes, method_receiver, CompilerDiagnostic, ErrorNode, ExprData, InferredNode,
+    InternTable, LiteralValue, NewlineIndex, Node,
 };
 use serde::Serialize;
 
@@ -2896,7 +2898,7 @@ pub fn construction_authority_unresolved(
         .iter()
         .filter(|(_, module_path, decl_name)| {
             !module_to_content.get(module_path).is_some_and(|content| {
-                crate::fact_cardinality_census::extract_top_level_decls(content)
+                extract_top_level_decls(content)
                     .iter()
                     .any(|(name, _)| name == decl_name)
             })
@@ -3683,6 +3685,1149 @@ fn run_discovery_rows(
         }
     }
     Ok(summary)
+}
+
+// --- lens host projections (consolidated from dissolved HAND_MAINTAINED *_project.rs) ---
+
+pub struct LayerImportFactRaw {
+    pub layer: &'static str,
+    pub path: String,
+    pub import_module: String,
+}
+
+const LAYER_STD: &str = "LayerPrefixStd";
+const LAYER_EXTDEPS: &str = "LayerPrefixExtdeps";
+
+fn rel_path_for_layer_import(path: &Path) -> String {
+    path.to_string_lossy().replace('\\', "/")
+}
+
+fn project_layer_import_root(root: &str, layer: &'static str, out: &mut Vec<LayerImportFactRaw>) {
+    let root_path = Path::new(root);
+    if !root_path.is_dir() {
+        return;
+    }
+    let mut dag_files: Vec<PathBuf> = Vec::new();
+    collect_dag_files_tolerant(root_path, &mut dag_files);
+    dag_files.sort();
+    for file in dag_files {
+        let content = match std::fs::read_to_string(&file) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+        let rel = rel_path_for_layer_import(&file);
+        for import_module in extract_import_paths(&content) {
+            out.push(LayerImportFactRaw {
+                layer,
+                path: rel.clone(),
+                import_module,
+            });
+        }
+    }
+}
+
+pub fn layer_import_facts(
+    std_roots: &[String],
+    extdeps_roots: &[String],
+) -> Vec<LayerImportFactRaw> {
+    let mut out = Vec::new();
+    for root in std_roots {
+        project_layer_import_root(root, LAYER_STD, &mut out);
+    }
+    for root in extdeps_roots {
+        project_layer_import_root(root, LAYER_EXTDEPS, &mut out);
+    }
+    out
+}
+
+pub struct ImportResolutionFactRaw {
+    pub path: String,
+    pub import_module: String,
+    pub target_declared: bool,
+}
+
+pub struct ModuleDeclarationFactRaw {
+    pub module: String,
+    pub path: String,
+}
+
+fn is_excluded_import_path(rel: &str, exclude_substrings: &[String]) -> bool {
+    exclude_substrings.iter().any(|s| rel.contains(s.as_str()))
+}
+
+pub fn import_resolution_facts(
+    pool_roots: &[String],
+    importer_roots: &[String],
+    exclude_substrings: &[String],
+) -> Vec<ImportResolutionFactRaw> {
+    let ws = workspace_root();
+    let abs_pool_roots: Vec<String> = pool_roots
+        .iter()
+        .map(|r| ws.join(r).to_string_lossy().into_owned())
+        .collect();
+    let declared: HashSet<String> = build_module_path_index(&abs_pool_roots)
+        .into_keys()
+        .collect();
+    let mut out = Vec::new();
+    for root in importer_roots {
+        let root_path = Path::new(root);
+        if !root_path.is_dir() {
+            continue;
+        }
+        let mut dag_files: Vec<PathBuf> = Vec::new();
+        collect_dag_files_tolerant(root_path, &mut dag_files);
+        dag_files.sort();
+        for file in dag_files {
+            let rel = rel_path_for_layer_import(&file);
+            if is_excluded_import_path(&rel, exclude_substrings) {
+                continue;
+            }
+            let content = match std::fs::read_to_string(&file) {
+                Ok(c) => c,
+                Err(_) => continue,
+            };
+            for import_module in extract_import_paths(&content) {
+                let target_declared = declared.contains(&import_module);
+                out.push(ImportResolutionFactRaw {
+                    path: rel.clone(),
+                    import_module,
+                    target_declared,
+                });
+            }
+        }
+    }
+    out
+}
+
+pub fn module_declaration_facts(pool_roots: &[String]) -> Vec<ModuleDeclarationFactRaw> {
+    let ws = workspace_root();
+    let abs_pool_roots: Vec<String> = pool_roots
+        .iter()
+        .map(|r| ws.join(r).to_string_lossy().into_owned())
+        .collect();
+    let mut out: Vec<ModuleDeclarationFactRaw> = build_module_path_index(&abs_pool_roots)
+        .into_iter()
+        .map(|(module, path)| ModuleDeclarationFactRaw { module, path })
+        .collect();
+    out.sort_by(|a, b| a.module.cmp(&b.module));
+    out
+}
+
+const DOC_PLAN_ROOTS: &[&str] = &["ROADMAP.md", "DESIGN.md"];
+const DOC_RUNBOOK_ROOT: &str = "docs/runbooks/README.md";
+
+fn doc_repo_rel(path: &Path) -> String {
+    let ws = workspace_root();
+    let s = path.to_string_lossy().replace('\\', "/");
+    let prefix = format!("{}/", ws.to_string_lossy().replace('\\', "/"));
+    s.strip_prefix(&prefix)
+        .map(|p| p.to_string())
+        .unwrap_or(s)
+        .trim_start_matches("./")
+        .to_string()
+}
+
+fn doc_universe() -> BTreeSet<String> {
+    let mut out = BTreeSet::new();
+    let docs_dir = workspace_root().join("docs");
+    collect_md_files(&docs_dir, &mut out);
+    out
+}
+
+fn collect_md_files(dir: &Path, out: &mut BTreeSet<String>) {
+    let entries = match std::fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(_) => return,
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            collect_md_files(&path, out);
+        } else if path.extension().and_then(|e| e.to_str()) == Some("md") {
+            out.insert(doc_repo_rel(&path));
+        }
+    }
+}
+
+fn markdown_link_targets(content: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let bytes = content.as_bytes();
+    let mut i = 0;
+    while i + 1 < bytes.len() {
+        if bytes[i] == b']' && bytes[i + 1] == b'(' {
+            if let Some(end) = content[i + 2..].find(')') {
+                let raw = &content[i + 2..i + 2 + end];
+                let target = raw.split('#').next().unwrap_or("").trim();
+                if !target.is_empty()
+                    && !target.starts_with("http://")
+                    && !target.starts_with("https://")
+                    && !target.starts_with("mailto:")
+                {
+                    out.push(target.to_string());
+                }
+                i = i + 2 + end + 1;
+                continue;
+            }
+        }
+        i += 1;
+    }
+    out
+}
+
+fn resolve_doc_link(from: &str, target: &str) -> Vec<String> {
+    let mut candidates = Vec::new();
+    let from_dir = Path::new(from).parent().unwrap_or_else(|| Path::new(""));
+    candidates.push(normalize_doc_path(&from_dir.join(target)));
+    candidates.push(normalize_doc_path(Path::new(target)));
+    candidates.dedup();
+    candidates
+}
+
+fn normalize_doc_path(path: &Path) -> String {
+    let mut parts: Vec<String> = Vec::new();
+    for comp in path.to_string_lossy().replace('\\', "/").split('/') {
+        match comp {
+            "" | "." => {}
+            ".." => {
+                parts.pop();
+            }
+            other => parts.push(other.to_string()),
+        }
+    }
+    parts.join("/")
+}
+
+fn doc_collect_dag_files(dir: &Path, out: &mut Vec<PathBuf>) {
+    let entries = match std::fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(_) => return,
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            doc_collect_dag_files(&path, out);
+        } else if path.extension().and_then(|e| e.to_str()) == Some("dag") {
+            out.push(path);
+        }
+    }
+}
+
+fn dag_comment_bind_doc_refs() -> BTreeSet<String> {
+    let mut out = BTreeSet::new();
+    for root in crate::module_path_index::witness_layer_roots() {
+        let mut dag_files = Vec::new();
+        doc_collect_dag_files(&workspace_root().join(&root), &mut dag_files);
+        for path in dag_files {
+            let content = match std::fs::read_to_string(&path) {
+                Ok(c) => c,
+                Err(_) => continue,
+            };
+            for target in bind_md_refs(&content) {
+                out.insert(target);
+            }
+        }
+    }
+    out
+}
+
+fn bind_md_refs(content: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    for (idx, _) in content.match_indices("bind:") {
+        let rest = content[idx + "bind:".len()..].trim_start();
+        let token: String = rest
+            .chars()
+            .take_while(|c| !c.is_whitespace() && *c != ')' && *c != '"' && *c != '`')
+            .collect();
+        if token.ends_with(".md") {
+            out.push(normalize_doc_path(Path::new(&token)));
+        }
+    }
+    out
+}
+
+fn doc_reachable_set(
+    roots: &BTreeSet<String>,
+    edges: &HashMap<String, Vec<String>>,
+) -> BTreeSet<String> {
+    let mut reached: BTreeSet<String> = BTreeSet::new();
+    let mut queue: VecDeque<String> = VecDeque::new();
+    for r in roots {
+        if reached.insert(r.clone()) {
+            queue.push_back(r.clone());
+        }
+    }
+    while let Some(node) = queue.pop_front() {
+        if let Some(neighbors) = edges.get(&node) {
+            for n in neighbors {
+                if reached.insert(n.clone()) {
+                    queue.push_back(n.clone());
+                }
+            }
+        }
+    }
+    reached
+}
+
+struct DocGraphReport {
+    orphans: Vec<String>,
+    dangling: Vec<(String, String)>,
+}
+
+fn build_doc_graph_report() -> DocGraphReport {
+    let universe = doc_universe();
+    let bind_refs = dag_comment_bind_doc_refs();
+
+    let mut roots: BTreeSet<String> = BTreeSet::new();
+    for r in DOC_PLAN_ROOTS {
+        roots.insert((*r).to_string());
+    }
+    if workspace_root().join(DOC_RUNBOOK_ROOT).is_file() {
+        roots.insert(DOC_RUNBOOK_ROOT.to_string());
+    }
+    for b in &bind_refs {
+        if universe.contains(b) {
+            roots.insert(b.clone());
+        }
+    }
+
+    let mut edges: HashMap<String, Vec<String>> = HashMap::new();
+    let mut dangling: Vec<(String, String)> = Vec::new();
+    let mut sources: Vec<String> = universe.iter().cloned().collect();
+    for r in DOC_PLAN_ROOTS {
+        sources.push((*r).to_string());
+    }
+    if roots.contains(DOC_RUNBOOK_ROOT) {
+        sources.push(DOC_RUNBOOK_ROOT.to_string());
+    }
+    sources.sort();
+    sources.dedup();
+    for src in &sources {
+        let content = match std::fs::read_to_string(workspace_root().join(src)) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+        let mut out_edges: Vec<String> = Vec::new();
+        for target in markdown_link_targets(&content) {
+            let candidates = resolve_doc_link(src, &target);
+            let existing = candidates
+                .iter()
+                .find(|c| workspace_root().join(c).is_file())
+                .cloned();
+            match existing {
+                Some(path) => out_edges.push(path),
+                None => {
+                    if target.ends_with(".md") {
+                        dangling.push((src.clone(), target.clone()));
+                    }
+                }
+            }
+        }
+        edges.insert(src.clone(), out_edges);
+    }
+
+    let reached = doc_reachable_set(&roots, &edges);
+    let orphans: Vec<String> = universe
+        .iter()
+        .filter(|d| !reached.contains(*d))
+        .cloned()
+        .collect();
+    dangling.sort();
+    dangling.dedup();
+    DocGraphReport { orphans, dangling }
+}
+
+pub fn doc_graph_orphan_count() -> i64 {
+    build_doc_graph_report().orphans.len() as i64
+}
+
+pub fn doc_graph_dangling_link_count() -> i64 {
+    build_doc_graph_report().dangling.len() as i64
+}
+
+pub fn doc_graph_doc_count() -> i64 {
+    doc_universe().len() as i64
+}
+
+pub const FACE_INLINE_SYNTAX_LITERAL: &str = "InlineSyntaxLiteral";
+pub const FACE_EMITTED_MEDIUM_STRING_OP: &str = "EmittedMediumStringOp";
+
+pub struct MediumStructureLeakRaw {
+    pub path: String,
+    pub face: &'static str,
+    pub detail: String,
+}
+
+type MediumSourceIndices = Rc<HashMap<String, Rc<NewlineIndex>>>;
+
+fn medium_rel_path(path: &Path) -> String {
+    path.to_string_lossy().replace('\\', "/")
+}
+
+fn medium_parse_file(path: &Path) -> Option<(Rc<Vec<Rc<Node>>>, MediumSourceIndices)> {
+    let content = std::fs::read_to_string(path).ok()?;
+    let filename = path.file_name().and_then(|s| s.to_str()).unwrap_or("?");
+    let tokens = v1_compiler_tokenize::tokenize(content.clone(), filename.to_string());
+    let source_index = build_newline_index(filename.to_string(), content);
+    let mut indices = HashMap::new();
+    indices.insert(filename.to_string(), source_index);
+    let source_indices: MediumSourceIndices = Rc::new(indices);
+    let result = v1_compiler_parse::parse(tokens, source_indices.clone());
+    if result.error.is_some() {
+        return None;
+    }
+    let module = result.module.as_ref()?;
+    Some((module.children.clone(), source_indices))
+}
+
+fn medium_function_bodies(items: &Rc<Vec<Rc<Node>>>) -> Vec<Rc<Node>> {
+    let mut bodies = Vec::new();
+    for item in items.iter() {
+        if !matches!(
+            item_kind(item.clone()),
+            ItemKind::FuncItem | ItemKind::FnItem
+        ) {
+            continue;
+        }
+        if let Some(body) = item.body.as_ref() {
+            bodies.push(body.clone());
+        }
+    }
+    bodies
+}
+
+fn medium_item_value_bodies(items: &Rc<Vec<Rc<Node>>>) -> Vec<Rc<Node>> {
+    items.iter().filter_map(|item| item.body.clone()).collect()
+}
+
+fn medium_string_literal_text(node: &Rc<Node>) -> Option<String> {
+    match node.expr_data.as_ref() {
+        ExprData::ExprLiteral { value } => match value.as_ref() {
+            LiteralValue::LitStr { value: s, .. } => Some(s.clone()),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+fn medium_emit_side_walk(
+    node: &Rc<Node>,
+    markers: &[String],
+    path: &str,
+    out: &mut Vec<MediumStructureLeakRaw>,
+) {
+    if let Some(text) = medium_string_literal_text(node) {
+        for marker in markers {
+            if !marker.is_empty() && text.contains(marker.as_str()) {
+                out.push(MediumStructureLeakRaw {
+                    path: path.to_string(),
+                    face: FACE_INLINE_SYNTAX_LITERAL,
+                    detail: marker.clone(),
+                });
+            }
+        }
+    }
+    for child in node.children.iter() {
+        medium_emit_side_walk(child, markers, path, out);
+    }
+}
+
+fn medium_collect_let_values(
+    body: &Rc<Node>,
+    bindings: &mut HashMap<String, Rc<Node>>,
+    si: &MediumSourceIndices,
+) {
+    if let ExprData::ExprLet { .. } = body.expr_data.as_ref() {
+        let name = let_binding_name_at(body.clone(), si.clone());
+        bindings.insert(name, let_value(body.clone()));
+    }
+    for child in body.children.iter() {
+        medium_collect_let_values(child, bindings, si);
+    }
+}
+
+fn medium_receiver_emit_fn(
+    receiver: &Rc<Node>,
+    bindings: &HashMap<String, Rc<Node>>,
+    emit_fns: &[String],
+    si: &MediumSourceIndices,
+) -> Option<String> {
+    if let ExprData::ExprCall { .. } = receiver.expr_data.as_ref() {
+        let callee = expr_call_func_at(receiver.clone(), si.clone());
+        if emit_fns.iter().any(|f| f == &callee) {
+            return Some(callee);
+        }
+    }
+    if let ExprData::ExprVar { .. } = receiver.expr_data.as_ref() {
+        let name = expr_var_name_at(receiver.clone(), si.clone());
+        if let Some(bound) = bindings.get(&name) {
+            if let ExprData::ExprCall { .. } = bound.expr_data.as_ref() {
+                let callee = expr_call_func_at(bound.clone(), si.clone());
+                if emit_fns.iter().any(|f| f == &callee) {
+                    return Some(callee);
+                }
+            }
+        }
+    }
+    None
+}
+
+fn medium_check_side_walk(
+    node: &Rc<Node>,
+    bindings: &HashMap<String, Rc<Node>>,
+    emit_fns: &[String],
+    string_ops: &[String],
+    path: &str,
+    si: &MediumSourceIndices,
+    out: &mut Vec<MediumStructureLeakRaw>,
+) {
+    if let ExprData::ExprCall { .. } = node.expr_data.as_ref() {
+        let callee = expr_call_func_at(node.clone(), si.clone());
+        if string_ops.iter().any(|o| o == &callee) {
+            if let Some(first) = node.children.first() {
+                let receiver = arg_value(first.clone());
+                if let Some(emit_fn) = medium_receiver_emit_fn(&receiver, bindings, emit_fns, si)
+                {
+                    out.push(MediumStructureLeakRaw {
+                        path: path.to_string(),
+                        face: FACE_EMITTED_MEDIUM_STRING_OP,
+                        detail: format!("{callee}@{emit_fn}"),
+                    });
+                }
+            }
+        }
+    }
+    for child in node.children.iter() {
+        medium_check_side_walk(child, bindings, emit_fns, string_ops, path, si, out);
+    }
+}
+
+fn medium_check_side_scan_function(
+    body: &Rc<Node>,
+    emit_fns: &[String],
+    string_ops: &[String],
+    path: &str,
+    si: &MediumSourceIndices,
+    out: &mut Vec<MediumStructureLeakRaw>,
+) {
+    let mut bindings: HashMap<String, Rc<Node>> = HashMap::new();
+    medium_collect_let_values(body, &mut bindings, si);
+    medium_check_side_walk(body, &bindings, emit_fns, string_ops, path, si, out);
+}
+
+fn medium_is_string_literal_arg(
+    val: &Rc<Node>,
+    bindings: &HashMap<String, Rc<Node>>,
+    si: &MediumSourceIndices,
+) -> bool {
+    if medium_string_literal_text(val).is_some() {
+        return true;
+    }
+    if let ExprData::ExprVar { .. } = val.expr_data.as_ref() {
+        let name = expr_var_name_at(val.clone(), si.clone());
+        if let Some(bound) = bindings.get(&name) {
+            return medium_string_literal_text(bound).is_some();
+        }
+    }
+    false
+}
+
+fn medium_emit_side_provenance_walk(
+    node: &Rc<Node>,
+    bindings: &HashMap<String, Rc<Node>>,
+    emit_fns: &[String],
+    path: &str,
+    si: &MediumSourceIndices,
+    out: &mut Vec<MediumStructureLeakRaw>,
+) {
+    if let ExprData::ExprCall { .. } = node.expr_data.as_ref() {
+        let callee = expr_call_func_at(node.clone(), si.clone());
+        if emit_fns.iter().any(|f| f == &callee) {
+            let has_str_arg = node
+                .children
+                .iter()
+                .any(|arg| medium_is_string_literal_arg(&arg_value(arg.clone()), bindings, si));
+            if has_str_arg {
+                out.push(MediumStructureLeakRaw {
+                    path: path.to_string(),
+                    face: FACE_INLINE_SYNTAX_LITERAL,
+                    detail: format!("provenance@{callee}"),
+                });
+            }
+        }
+    }
+    for child in node.children.iter() {
+        medium_emit_side_provenance_walk(child, bindings, emit_fns, path, si, out);
+    }
+}
+
+fn medium_emit_side_provenance_scan_function(
+    body: &Rc<Node>,
+    emit_fns: &[String],
+    path: &str,
+    si: &MediumSourceIndices,
+    out: &mut Vec<MediumStructureLeakRaw>,
+) {
+    let mut bindings: HashMap<String, Rc<Node>> = HashMap::new();
+    medium_collect_let_values(body, &mut bindings, si);
+    medium_emit_side_provenance_walk(body, &bindings, emit_fns, path, si, out);
+}
+
+fn medium_any_present(text: &str, needles: &[String]) -> bool {
+    needles
+        .iter()
+        .any(|n| !n.is_empty() && text.contains(n.as_str()))
+}
+
+fn medium_dag_files_sorted(root: &str) -> Vec<PathBuf> {
+    let root_path = Path::new(root);
+    if !root_path.is_dir() {
+        return Vec::new();
+    }
+    let mut files: Vec<PathBuf> = Vec::new();
+    collect_dag_files_tolerant(root_path, &mut files);
+    files.sort();
+    files
+}
+
+pub fn medium_structure_leak_facts(
+    emit_roots: &[String],
+    check_roots: &[String],
+    markers: &[String],
+    emit_fns: &[String],
+    string_ops: &[String],
+) -> Vec<MediumStructureLeakRaw> {
+    let mut out: Vec<MediumStructureLeakRaw> = Vec::new();
+
+    for root in emit_roots {
+        for file in medium_dag_files_sorted(root) {
+            let Ok(content) = std::fs::read_to_string(&file) else {
+                continue;
+            };
+            if !medium_any_present(&content, markers) {
+                continue;
+            }
+            if let Some((items, _si)) = medium_parse_file(&file) {
+                let rel = medium_rel_path(&file);
+                for body in medium_item_value_bodies(&items) {
+                    medium_emit_side_walk(&body, markers, &rel, &mut out);
+                }
+            }
+        }
+    }
+
+    for root in emit_roots {
+        for file in medium_dag_files_sorted(root) {
+            let Ok(content) = std::fs::read_to_string(&file) else {
+                continue;
+            };
+            if !medium_any_present(&content, emit_fns) {
+                continue;
+            }
+            if let Some((items, si)) = medium_parse_file(&file) {
+                let rel = medium_rel_path(&file);
+                for body in medium_function_bodies(&items) {
+                    medium_emit_side_provenance_scan_function(&body, emit_fns, &rel, &si, &mut out);
+                }
+            }
+        }
+    }
+
+    for root in check_roots {
+        for file in medium_dag_files_sorted(root) {
+            let Ok(content) = std::fs::read_to_string(&file) else {
+                continue;
+            };
+            if !(medium_any_present(&content, string_ops) && medium_any_present(&content, emit_fns))
+            {
+                continue;
+            }
+            if let Some((items, si)) = medium_parse_file(&file) {
+                let rel = medium_rel_path(&file);
+                for body in medium_function_bodies(&items) {
+                    medium_check_side_scan_function(
+                        &body, emit_fns, string_ops, &rel, &si, &mut out,
+                    );
+                }
+            }
+        }
+    }
+
+    out.sort_by(|a, b| {
+        a.path
+            .cmp(&b.path)
+            .then(a.face.cmp(b.face))
+            .then(a.detail.cmp(&b.detail))
+    });
+    out
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TransportScriptArgShape {
+    ComputedApplication = 0,
+    BareStringLiteral = 1,
+    LetBoundStringLiteral = 2,
+    StringInterpLiteralsOnly = 3,
+}
+
+impl TransportScriptArgShape {
+    pub fn is_literal_blob(self) -> bool {
+        matches!(
+            self,
+            Self::BareStringLiteral | Self::LetBoundStringLiteral | Self::StringInterpLiteralsOnly
+        )
+    }
+}
+
+fn transport_resolve_dag_path(path: &str) -> PathBuf {
+    let candidate = Path::new(path);
+    if candidate.is_file() {
+        return candidate.to_path_buf();
+    }
+    let rooted = workspace_root().join(path);
+    if rooted.is_file() {
+        return rooted;
+    }
+    panic!("transport_script_position projection: file not found: {path}");
+}
+
+fn transport_parse_module_items(
+    path: &str,
+) -> (
+    Rc<Vec<Rc<Node>>>,
+    Rc<HashMap<String, Rc<NewlineIndex>>>,
+) {
+    let resolved = transport_resolve_dag_path(path);
+    let path_str = resolved.to_string_lossy();
+    let content = std::fs::read_to_string(&resolved).unwrap_or_else(|e| {
+        panic!("transport_script_position projection: failed to read {path_str}: {e}")
+    });
+    let filename = resolved
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or(path);
+    let tokens = v1_compiler_tokenize::tokenize(content.clone(), filename.to_string());
+    let source_index = build_newline_index(filename.to_string(), content);
+    let mut source_indices = HashMap::new();
+    source_indices.insert(filename.to_string(), source_index);
+    let source_indices = Rc::new(source_indices);
+    let result = v1_compiler_parse::parse(tokens, source_indices.clone());
+    if let Some(err) = result.error.as_ref() {
+        panic!(
+            "transport_script_position projection: parse error in {path}: {}",
+            diagnostic_to_message(err.diagnostic.clone())
+        );
+    }
+    let module = result
+        .module
+        .as_ref()
+        .expect("transport_script_position projection: missing module");
+    (module.children.clone(), source_indices)
+}
+
+fn transport_literal_string_value(node: &Rc<Node>) -> bool {
+    matches!(
+        node.expr_data.as_ref(),
+        ExprData::ExprLiteral {
+            value: lit,
+            ..
+        } if matches!(lit.as_ref(), LiteralValue::LitStr { .. })
+    )
+}
+
+fn transport_classify_script_arg(
+    node: &Rc<Node>,
+    let_literal_bindings: &HashMap<String, bool>,
+    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> TransportScriptArgShape {
+    if transport_literal_string_value(node) {
+        return TransportScriptArgShape::BareStringLiteral;
+    }
+    match node.expr_data.as_ref() {
+        ExprData::ExprStringInterp => {
+            for child in node.children.iter() {
+                match child.expr_data.as_ref() {
+                    ExprData::ExprLiteral { value, .. } => {
+                        if !matches!(value.as_ref(), LiteralValue::LitStr { .. }) {
+                            return TransportScriptArgShape::ComputedApplication;
+                        }
+                    }
+                    ExprData::ExprVar { .. } => {
+                        let name = expr_var_name_at(child.clone(), source_indices.clone());
+                        if !let_literal_bindings.get(&name).copied().unwrap_or(false) {
+                            return TransportScriptArgShape::ComputedApplication;
+                        }
+                    }
+                    _ => return TransportScriptArgShape::ComputedApplication,
+                }
+            }
+            TransportScriptArgShape::StringInterpLiteralsOnly
+        }
+        ExprData::ExprVar { .. } => {
+            let name = expr_var_name_at(node.clone(), source_indices.clone());
+            if let_literal_bindings.get(&name).copied().unwrap_or(false) {
+                TransportScriptArgShape::LetBoundStringLiteral
+            } else {
+                TransportScriptArgShape::ComputedApplication
+            }
+        }
+        _ => TransportScriptArgShape::ComputedApplication,
+    }
+}
+
+fn transport_is_shell_exec_run(
+    node: &Rc<Node>,
+    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    match node.expr_data.as_ref() {
+        ExprData::ExprMethodCall { .. } => {
+            if expr_method_name_at(node.clone(), source_indices.clone()) != "Run" {
+                return false;
+            }
+            let recv = method_receiver(node.clone());
+            match recv.expr_data.as_ref() {
+                ExprData::ExprFieldAccess { .. } => {
+                    if field_access_field_at(recv.clone(), source_indices.clone()) != "Exec" {
+                        return false;
+                    }
+                    let base = field_access_base(recv.clone());
+                    match base.expr_data.as_ref() {
+                        ExprData::ExprVar { .. } => {
+                            expr_var_name_at(base.clone(), source_indices.clone()) == "shell"
+                        }
+                        _ => false,
+                    }
+                }
+                _ => false,
+            }
+        }
+        _ => false,
+    }
+}
+
+fn transport_script_arg_node(
+    node: &Rc<Node>,
+    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<Rc<Node>> {
+    for arg in method_arg_nodes(node.clone()).iter() {
+        if arg_name_at(arg.clone(), source_indices.clone()).as_deref() == Some("script") {
+            return Some(arg_value(arg.clone()));
+        }
+    }
+    None
+}
+
+fn transport_binding_is_literal_shaped(
+    node: &Rc<Node>,
+    bindings: &HashMap<String, bool>,
+    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    transport_classify_script_arg(node, bindings, source_indices).is_literal_blob()
+}
+
+fn transport_collect_let_bindings_in_block(
+    block: &Rc<Node>,
+    bindings: &mut HashMap<String, bool>,
+    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+) {
+    for stmt in block_stmts(block.clone()).iter() {
+        match stmt.expr_data.as_ref() {
+            ExprData::ExprLet { .. } => {
+                let name = let_binding_name_at(stmt.clone(), source_indices.clone());
+                let val = let_value(stmt.clone());
+                let literal_shaped =
+                    transport_binding_is_literal_shaped(&val, bindings, source_indices);
+                bindings.insert(name, literal_shaped);
+            }
+            _ => transport_walk_expr(stmt, bindings, source_indices, &mut |_| {}),
+        }
+    }
+}
+
+fn transport_walk_expr(
+    node: &Rc<Node>,
+    let_bindings: &HashMap<String, bool>,
+    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    on_run: &mut dyn FnMut(TransportScriptArgShape),
+) {
+    if transport_is_shell_exec_run(node, source_indices) {
+        if let Some(script_node) = transport_script_arg_node(node, source_indices) {
+            on_run(transport_classify_script_arg(
+                &script_node,
+                let_bindings,
+                source_indices,
+            ));
+        }
+    }
+    for child in node.children.iter() {
+        transport_walk_expr(child, let_bindings, source_indices, on_run);
+    }
+}
+
+fn transport_violation_count_for_function(
+    body: &Rc<Node>,
+    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> i64 {
+    let mut bindings = HashMap::new();
+    if let ExprData::ExprBlock { .. } = body.expr_data.as_ref() {
+        transport_collect_let_bindings_in_block(body, &mut bindings, source_indices);
+    }
+    let mut count = 0i64;
+    transport_walk_expr(body, &bindings, source_indices, &mut |shape| {
+        if shape.is_literal_blob() {
+            count += 1;
+        }
+    });
+    count
+}
+
+pub fn transport_script_literal_violation_count_for_path(path: String) -> i64 {
+    let (items, source_indices) = transport_parse_module_items(&path);
+    let mut total = 0i64;
+    for item in items.iter() {
+        let kind = item_kind(item.clone());
+        if !matches!(kind, ItemKind::FuncItem | ItemKind::FnItem) {
+            continue;
+        }
+        let Some(body) = item.body.as_ref() else {
+            continue;
+        };
+        total += transport_violation_count_for_function(body, &source_indices);
+    }
+    total
+}
+
+const FACT_CARDINALITY_ITEM_KEYWORDS: [&str; 8] = [
+    "data ",
+    "fn ",
+    "func ",
+    "type ",
+    "service ",
+    "const ",
+    "pattern ",
+    "resource ",
+];
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FactCardinalityDeclRecord {
+    pub rel_path_decl_key: String,
+    pub tree: String,
+    pub content_hash: String,
+}
+
+fn fact_cardinality_normalize_decl_body(source: &str) -> String {
+    source
+        .lines()
+        .map(|line| line.split("//").next().unwrap_or(line).trim())
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn fact_cardinality_decl_body_hash(body: &str) -> String {
+    v1_rt::atom_identity_hash(fact_cardinality_normalize_decl_body(body))
+}
+
+pub fn extract_top_level_decls(content: &str) -> Vec<(String, String)> {
+    let lines: Vec<&str> = content.lines().collect();
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < lines.len() {
+        let line = lines[i];
+        if line.starts_with("test ") {
+            i += 1;
+            continue;
+        }
+        let Some(kw) = FACT_CARDINALITY_ITEM_KEYWORDS
+            .iter()
+            .find(|kw| line.starts_with(*kw))
+        else {
+            i += 1;
+            continue;
+        };
+        let rest = &line[kw.len()..];
+        let name: String = rest
+            .chars()
+            .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+            .collect();
+        if name.is_empty() {
+            i += 1;
+            continue;
+        }
+        let mut body = String::new();
+        body.push_str(line);
+        body.push('\n');
+        i += 1;
+        let mut depth = line.chars().filter(|c| *c == '{').count() as i32
+            - line.chars().filter(|c| *c == '}').count() as i32;
+        while i < lines.len() {
+            let next = lines[i];
+            if depth <= 0
+                && FACT_CARDINALITY_ITEM_KEYWORDS
+                    .iter()
+                    .any(|kw| next.starts_with(kw))
+                && !next.starts_with("test ")
+            {
+                break;
+            }
+            body.push_str(next);
+            body.push('\n');
+            depth += next.chars().filter(|c| *c == '{').count() as i32;
+            depth -= next.chars().filter(|c| *c == '}').count() as i32;
+            i += 1;
+        }
+        out.push((name, fact_cardinality_decl_body_hash(&body)));
+    }
+    out
+}
+
+fn fact_cardinality_read_dag_source(path: &Path) -> String {
+    std::fs::read_to_string(path).unwrap_or_else(|e| {
+        panic!(
+            "fact_cardinality_census: failed to read {}: {e}",
+            path.display()
+        )
+    })
+}
+
+fn fact_cardinality_rel_path_within_tree(top_root: &Path, path: &Path) -> String {
+    path.strip_prefix(top_root)
+        .unwrap_or_else(|_| {
+            panic!(
+                "fact_cardinality_census: path {} is not under tree root {}",
+                path.display(),
+                top_root.display()
+            )
+        })
+        .to_string_lossy()
+        .replace('\\', "/")
+}
+
+fn fact_cardinality_walk_tree_dir(
+    top_root: &Path,
+    dir: &Path,
+    tree: &str,
+    records: &mut Vec<FactCardinalityDeclRecord>,
+) {
+    let entries = std::fs::read_dir(dir).unwrap_or_else(|e| {
+        panic!(
+            "fact_cardinality_census: failed to read dir {}: {e}",
+            dir.display()
+        )
+    });
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            fact_cardinality_walk_tree_dir(top_root, &path, tree, records);
+            continue;
+        }
+        if path.extension().and_then(|e| e.to_str()) != Some("dag") {
+            continue;
+        }
+        let rel = fact_cardinality_rel_path_within_tree(top_root, &path);
+        let content = fact_cardinality_read_dag_source(&path);
+        for (name, hash) in extract_top_level_decls(&content) {
+            records.push(FactCardinalityDeclRecord {
+                rel_path_decl_key: format!("{rel}:{name}"),
+                tree: tree.to_string(),
+                content_hash: hash,
+            });
+        }
+    }
+}
+
+fn fact_cardinality_walk_tree(
+    top_root: &Path,
+    tree: &str,
+    records: &mut Vec<FactCardinalityDeclRecord>,
+) {
+    if !top_root.is_dir() {
+        panic!(
+            "fact_cardinality_census: tree root {} does not exist",
+            top_root.display()
+        );
+    }
+    fact_cardinality_walk_tree_dir(top_root, top_root, tree, records);
+}
+
+pub fn cross_tree_decl_records() -> Vec<FactCardinalityDeclRecord> {
+    let ws = workspace_root();
+    let mut records = Vec::new();
+    for root in crate::module_path_index::witness_layer_roots() {
+        let tree = std::path::Path::new(&root)
+            .file_name()
+            .expect("ci_layer_roots: each root must have a file_name component")
+            .to_string_lossy()
+            .into_owned();
+        fact_cardinality_walk_tree(&ws.join(&root), &tree, &mut records);
+    }
+    records
+}
+
+pub fn cross_tree_coexistence_keys(records: &[FactCardinalityDeclRecord]) -> Vec<String> {
+    let mut by_key: HashMap<String, HashSet<String>> = HashMap::new();
+    for record in records {
+        by_key
+            .entry(record.rel_path_decl_key.clone())
+            .or_default()
+            .insert(record.tree.clone());
+    }
+    let mut keys = Vec::new();
+    for (key, trees) in by_key {
+        if trees.contains("dsl") && trees.contains("v2") {
+            keys.push(key);
+        }
+    }
+    keys.sort();
+    keys
+}
+
+pub fn cross_tree_diverged_fork_keys(records: &[FactCardinalityDeclRecord]) -> Vec<String> {
+    let mut by_key: HashMap<String, HashMap<String, HashSet<String>>> = HashMap::new();
+    for record in records {
+        by_key
+            .entry(record.rel_path_decl_key.clone())
+            .or_default()
+            .entry(record.content_hash.clone())
+            .or_default()
+            .insert(record.tree.clone());
+    }
+    let mut forks = Vec::new();
+    for (key, hash_map) in by_key {
+        if hash_map.len() <= 1 {
+            continue;
+        }
+        let trees: HashSet<String> = hash_map
+            .values()
+            .flat_map(|trees| trees.iter().cloned())
+            .collect();
+        if trees.contains("dsl") && trees.contains("v2") {
+            forks.push(key);
+        }
+    }
+    forks.sort();
+    forks
+}
+
+pub fn cross_tree_coexistence_count() -> i64 {
+    cross_tree_coexistence_keys(&cross_tree_decl_records()).len() as i64
+}
+
+pub fn cross_tree_diverged_fork_count() -> i64 {
+    cross_tree_diverged_fork_keys(&cross_tree_decl_records()).len() as i64
+}
+
+pub fn cross_tree_is_coexistence(rel_path_decl_key: String) -> bool {
+    let keys: HashSet<String> = cross_tree_coexistence_keys(&cross_tree_decl_records())
+        .into_iter()
+        .collect();
+    keys.contains(&rel_path_decl_key)
+}
+
+pub fn cross_tree_is_diverged_fork(rel_path_decl_key: String) -> bool {
+    let forks: HashSet<String> = cross_tree_diverged_fork_keys(&cross_tree_decl_records())
+        .into_iter()
+        .collect();
+    forks.contains(&rel_path_decl_key)
 }
 
 #[cfg(test)]
