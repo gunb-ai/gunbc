@@ -24,7 +24,7 @@ Three gates independently invoke `gunbc compile --target rust` over the same cor
 
 On a clean tree with the same compiler binary: compile-1 and compile-2 (and compile-3 and compile-4) are pure functions of `(source_content, compiler_binary)` and produce byte-identical output. Running the same pure function 4 times is a §2 violation; the 3 extra runs are each ~537s of wasted wall time.
 
-`EmitDeterminismGate` is particularly telling: it proves determinism by running the SAME compile TWICE and diffing — but if the compile is content-addressed, the proof is already in the hash (same key → same output; re-running is redundant). The gate's intent (verify determinism) can be satisfied by the content-address invariant, not by re-execution.
+`EmitDeterminismGate` is the empirical oracle for non-reproducible emit: it runs the SAME compile TWICE independently and diffs the output trees. This is load-bearing — emit is KNOWN-NONDETERMINISTIC today (Rust emitter HashMap iteration order; `v2.std.determinism` at P1). Content-addressing does not make this gate redundant; it requires the gate to have already confirmed determinism before a content-address can be trusted.
 
 ### Axis B — in-process `resolve_entry_graph` cross-batch (~30–40s per call)
 
