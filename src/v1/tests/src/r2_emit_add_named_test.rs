@@ -6,8 +6,8 @@ use v1_compiler::v1_interpreter::{self, Value};
 
 use crate::helpers::{resolve_imports_transitively_with_source_roots, workspace_root};
 
-const CERT_ENTRY: &str = "src/v2/test/claim/manual/mvp1_rust_add_translate_test.dag";
-const WITNESS_FN: &str = "mvp1_rust_emit_add_fn_accepts_holds";
+const CERT_ENTRY: &str = "src/v2/test/claim/manual/rust_add_emit_translate_test.dag";
+const WITNESS_FN: &str = "rust_add_emit_add_fn_accepts_holds";
 
 const PINNED_ADD_SOURCE: &str = "fn add(x: i32, y: i32) -> i32 { x + y }";
 

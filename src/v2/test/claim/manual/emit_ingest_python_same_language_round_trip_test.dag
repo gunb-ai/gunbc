@@ -19,8 +19,8 @@ import v2.extdeps.languages.python {
   python_mvp1_target_model,
   python_mvp1_translation_rules_node
 }
-import v2.test.manual.python_mvp1_grammar_claim {
-  python_mvp1_grammar_parse_fixture
+import v2.test.manual.python_wave1_grammar_claim {
+  python_wave1_grammar_parse_fixture
 }
 import v2.std.algebra { Cons, Empty, list_append }
 import v2.std.collection { List }
@@ -197,7 +197,7 @@ test fn emit_ingest_python_selector_bijectivity_holds() -> Bool {
 }
 
 fn python_same_language_parse_bridge_holds() -> Bool {
-  match python_mvp1_grammar_parse_fixture() {
+  match python_wave1_grammar_parse_fixture() {
     Accepted { value: tree, diagnostics: _ } =>
       match parse_tree_to_target_model_bridge(
         parse_tree: tree,
@@ -212,7 +212,7 @@ fn python_same_language_parse_bridge_holds() -> Bool {
 }
 
 test fn python_same_language_source_emit_round_trip_holds() -> Bool {
-  match python_mvp1_grammar_parse_fixture() {
+  match python_wave1_grammar_parse_fixture() {
     Accepted { value: tree, diagnostics: _ } =>
       match cross_language_compile(
         parse_tree: tree,
@@ -229,7 +229,7 @@ test fn python_same_language_source_emit_round_trip_holds() -> Bool {
 }
 
 fn python_same_language_discriminates_on_real_tree() -> Bool {
-  match python_mvp1_grammar_parse_fixture() {
+  match python_wave1_grammar_parse_fixture() {
     Accepted { value: tree, diagnostics: _ } =>
       match parse_tree_to_emitted_node(
         parse_tree: tree,

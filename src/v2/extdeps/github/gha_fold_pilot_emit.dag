@@ -1,0 +1,115 @@
+module v2.extdeps.github.gha_fold_pilot_emit
+
+import extdeps.formats.yaml { YamlKeyValue }
+import extdeps.github.actions {
+  ActionRef,
+  RunStep,
+  ShellType,
+  Step,
+  UsesStep
+}
+import v2.std.algebra { for_all }
+import v2.std.collection { Absent, List, Optional, Present }
+
+type GhaPilotStepEmit
+  = GhaPilotRunEmit { run: String }
+  | GhaPilotUsesEmit { uses: ActionRef }
+
+data gha_fold_pilot_emit_dissolution_trigger: String = "🟡 dissolve-on: GhaPilotStepEmit + optional_is_absent + gha_pilot_*_non_emit_fields_absent + gha_fold_pilot_emit_step — pilot narrowing layer that projects extdeps.github.actions.Step to run/uses-only emit payload and rejects non-pilot optional fields via Absent. DISSOLVES WHEN GHA fold handles non-pilot step/job fields (name, env, timeout_minutes, with, etc.) through grammar productions and retires the optional-field guard family; fold then matches Step variants directly without this slim projection module."
+
+fn optional_is_absent<T>(opt: Optional<T>) -> Bool {
+  match opt {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+fn gha_pilot_optionals_all_absent(checks: List<Bool>) -> Bool {
+  for_all(xs: checks, predicate: fn(b) { b })
+}
+
+fn gha_pilot_run_step_non_emit_fields_absent(
+  name: Optional<String>,
+  id: Optional<String>,
+  shell: Optional<ShellType>,
+  env: Optional<List<YamlKeyValue>>,
+  working_directory: Optional<String>,
+  if_condition: Optional<String>,
+  continue_on_error: Optional<Bool>,
+  timeout_minutes: Optional<Int>
+) -> Bool {
+  gha_pilot_optionals_all_absent(
+    checks: [
+      optional_is_absent(name),
+      optional_is_absent(id),
+      optional_is_absent(shell),
+      optional_is_absent(env),
+      optional_is_absent(working_directory),
+      optional_is_absent(if_condition),
+      optional_is_absent(continue_on_error),
+      optional_is_absent(timeout_minutes)
+    ]
+  )
+}
+
+fn gha_pilot_uses_step_non_emit_fields_absent(
+  name: Optional<String>,
+  id: Optional<String>,
+  with: Optional<List<YamlKeyValue>>,
+  env: Optional<List<YamlKeyValue>>,
+  if_condition: Optional<String>,
+  continue_on_error: Optional<Bool>,
+  timeout_minutes: Optional<Int>
+) -> Bool {
+  gha_pilot_optionals_all_absent(
+    checks: [
+      optional_is_absent(name),
+      optional_is_absent(id),
+      optional_is_absent(with),
+      optional_is_absent(env),
+      optional_is_absent(if_condition),
+      optional_is_absent(continue_on_error),
+      optional_is_absent(timeout_minutes)
+    ]
+  )
+}
+
+data gha_fold_pilot_emit_optional_absent_dissolution_trigger: String = "🟡 dissolve-on: gha_fold_pilot_emit_step Optional Absent — non-pilot RunStep/UsesStep field presence collapses into the same Absent carrier as unsupported step kind; v2 fold maps Absent to gha_fold_unsupported_step_kind Violates at call site. DISSOLVES WHEN production lift returns Witness<GhaPilotStepEmit> with located diagnostic at producer (pilot field rejects vs absent step)."
+
+fn gha_fold_pilot_emit_step(step: Step) -> Optional<GhaPilotStepEmit> {
+  match step {
+    RunStep { name: n, id: i, run: r, shell: sh, env: e, working_directory: wd, if_condition: ic, continue_on_error: coe, timeout_minutes: tm } =>
+      match gha_pilot_run_step_non_emit_fields_absent(
+        name: n,
+        id: i,
+        shell: sh,
+        env: e,
+        working_directory: wd,
+        if_condition: ic,
+        continue_on_error: coe,
+        timeout_minutes: tm
+      ) {
+        true =>
+          Present {
+            value: GhaPilotRunEmit { run: r }
+          }
+        false => Absent
+      }
+    UsesStep { name: n, id: i, uses: u, with: w, env: e, if_condition: ic, continue_on_error: coe, timeout_minutes: tm } =>
+      match gha_pilot_uses_step_non_emit_fields_absent(
+        name: n,
+        id: i,
+        with: w,
+        env: e,
+        if_condition: ic,
+        continue_on_error: coe,
+        timeout_minutes: tm
+      ) {
+        true =>
+          Present {
+            value: GhaPilotUsesEmit { uses: u }
+          }
+        false => Absent
+      }
+  }
+}

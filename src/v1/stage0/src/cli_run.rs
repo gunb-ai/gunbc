@@ -2331,6 +2331,68 @@ pub struct HistogramData {
     pub eval: TimingPercentiles,
 }
 
+/// One witness row with per-witness eval time and its entry's amortized resolve cost.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WitnessTimingRow {
+    pub entry: String,
+    pub function: String,
+    pub eval_nanos: u128,
+    pub resolve_nanos: u128,
+    pub total_nanos: u128,
+}
+
+pub const DEFAULT_SLOWEST_WITNESS_ATTRIBUTION_N: usize = 15;
+
+pub fn compute_witness_timing_rows(
+    summary: &DiscoverySummary,
+) -> Result<Vec<WitnessTimingRow>, String> {
+    if summary.performance_receipts.len() != summary.witness_outcomes.len() {
+        return Err(format!(
+            "[attribution] SKIPPED: mismatched vector lengths (performance_receipts={}, witness_outcomes={}) — timings unreliable",
+            summary.performance_receipts.len(),
+            summary.witness_outcomes.len()
+        ));
+    }
+
+    let mut entry_resolve_map: HashMap<String, u128> = HashMap::new();
+    for receipt in &summary.entry_resolve_receipts {
+        entry_resolve_map.insert(receipt.entry.clone(), receipt.resolve_nanos);
+    }
+
+    let mut rows: Vec<WitnessTimingRow> = Vec::new();
+    for (perf, outcome) in summary
+        .performance_receipts
+        .iter()
+        .zip(summary.witness_outcomes.iter())
+    {
+        let Some(resolve_nanos) = entry_resolve_map.get(&outcome.entry).copied() else {
+            continue;
+        };
+        let eval_nanos = perf.wall_nanos;
+        rows.push(WitnessTimingRow {
+            entry: outcome.entry.clone(),
+            function: outcome.function.clone(),
+            eval_nanos,
+            resolve_nanos,
+            total_nanos: resolve_nanos + eval_nanos,
+        });
+    }
+    Ok(rows)
+}
+
+/// Return the top `n` witnesses ranked by eval time (descending), stable on function name.
+pub fn top_n_slowest_witnesses(rows: &[WitnessTimingRow], n: usize) -> Vec<WitnessTimingRow> {
+    let mut sorted = rows.to_vec();
+    sorted.sort_by(|a, b| {
+        b.eval_nanos
+            .cmp(&a.eval_nanos)
+            .then_with(|| a.function.cmp(&b.function))
+            .then_with(|| a.entry.cmp(&b.entry))
+    });
+    sorted.truncate(n);
+    sorted
+}
+
 pub fn compute_histogram_data(summary: &DiscoverySummary) -> Result<HistogramData, String> {
     if summary.performance_receipts.len() != summary.witness_outcomes.len() {
         return Err(format!(
@@ -4575,5 +4637,96 @@ mod moduleless_entry_skip_tests {
             vec!["/repo/src/v1/forgot_module.dag".to_string()]
         );
         assert!(extract_module_path(&entries[0].1).is_none());
+    }
+}
+
+#[cfg(test)]
+mod witness_timing_attribution_tests {
+    use super::{
+        compute_witness_timing_rows, top_n_slowest_witnesses, ClaimOutcome, DiscoverySummary,
+        DiscoveryWitnessOutcome, EntryResolveReceipt,
+    };
+    use crate::v1_interpreter::PerformanceReceipt;
+
+    fn sample_summary() -> DiscoverySummary {
+        DiscoverySummary {
+            total: 3,
+            passed: 3,
+            skipped: 0,
+            failures: Vec::new(),
+            witness_outcomes: vec![
+                DiscoveryWitnessOutcome {
+                    entry: "a.dag".to_string(),
+                    function: "fast".to_string(),
+                    outcome: ClaimOutcome::Pass,
+                },
+                DiscoveryWitnessOutcome {
+                    entry: "b.dag".to_string(),
+                    function: "slow".to_string(),
+                    outcome: ClaimOutcome::Pass,
+                },
+                DiscoveryWitnessOutcome {
+                    entry: "a.dag".to_string(),
+                    function: "medium".to_string(),
+                    outcome: ClaimOutcome::Pass,
+                },
+            ],
+            entry_resolve_receipts: vec![
+                EntryResolveReceipt {
+                    entry: "a.dag".to_string(),
+                    closure_subject: "subj-a".to_string(),
+                    resolve_nanos: 100,
+                },
+                EntryResolveReceipt {
+                    entry: "b.dag".to_string(),
+                    closure_subject: "subj-b".to_string(),
+                    resolve_nanos: 200,
+                },
+            ],
+            total_resolve_nanos: 300,
+            performance_receipts: vec![
+                PerformanceReceipt {
+                    subject_key: "subj-a".to_string(),
+                    work_shape: "claim".to_string(),
+                    wall_nanos: 1_000,
+                    eval_self_nanos: 1_000,
+                    sample_count: 1,
+                },
+                PerformanceReceipt {
+                    subject_key: "subj-b".to_string(),
+                    work_shape: "claim".to_string(),
+                    wall_nanos: 50_000,
+                    eval_self_nanos: 50_000,
+                    sample_count: 1,
+                },
+                PerformanceReceipt {
+                    subject_key: "subj-a".to_string(),
+                    work_shape: "claim".to_string(),
+                    wall_nanos: 5_000,
+                    eval_self_nanos: 5_000,
+                    sample_count: 1,
+                },
+            ],
+            total_measured_nanos: 56_000,
+        }
+    }
+
+    #[test]
+    fn witness_timing_rows_pair_perf_with_outcomes() {
+        let rows = compute_witness_timing_rows(&sample_summary()).expect("rows");
+        assert_eq!(rows.len(), 3);
+        assert_eq!(rows[0].function, "fast");
+        assert_eq!(rows[0].eval_nanos, 1_000);
+        assert_eq!(rows[0].resolve_nanos, 100);
+        assert_eq!(rows[0].total_nanos, 1_100);
+    }
+
+    #[test]
+    fn top_n_slowest_ranks_by_eval_descending() {
+        let rows = compute_witness_timing_rows(&sample_summary()).expect("rows");
+        let top = top_n_slowest_witnesses(&rows, 2);
+        assert_eq!(top.len(), 2);
+        assert_eq!(top[0].function, "slow");
+        assert_eq!(top[1].function, "medium");
     }
 }

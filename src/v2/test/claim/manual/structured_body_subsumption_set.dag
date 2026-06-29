@@ -46,7 +46,7 @@ fn subsumption_bool_node(pass: Bool) -> Node {
   }
 }
 
-fn mvp1_int_pair_arrow_signature() -> Node {
+fn int_pair_arrow_signature() -> Node {
   node_synthetic(
     kind: TypeNode { connective: Arrow },
     children: [
@@ -59,7 +59,7 @@ fn mvp1_int_pair_arrow_signature() -> Node {
 
 fn subsumes(structured_body: Node, table_target: Node) -> Bool {
   match produce_arrow_with_structured_body(
-    signature: mvp1_int_pair_arrow_signature(),
+    signature: int_pair_arrow_signature(),
     structured_body: structured_body
   ) {
     Accepted { value: arrow_with_body, diagnostics: _ } => arrow_with_body == table_target

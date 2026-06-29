@@ -1,0 +1,46 @@
+module gunbc.gha_yaml_fold_pilot
+
+import extdeps.github.actions {
+  ActionRef,
+  Job,
+  RunStep,
+  SelfHosted,
+  UsesStep
+}
+
+data gha_fold_pilot_job: Job = Job {
+  id: "pilot",
+  name: Absent,
+  runner: SelfHosted { labels: ["self-hosted", "linux"] },
+  steps: [
+    RunStep {
+      name: Absent,
+      id: Absent,
+      run: "echo hi",
+      shell: Absent,
+      env: Absent,
+      working_directory: Absent,
+      if_condition: Absent,
+      continue_on_error: Absent,
+      timeout_minutes: Absent
+    },
+    UsesStep {
+      name: Absent,
+      id: Absent,
+      uses: ActionRef { owner: "actions", repo: "checkout", ref: "v4" },
+      with: Absent,
+      env: Absent,
+      if_condition: Absent,
+      continue_on_error: Absent,
+      timeout_minutes: Absent
+    }
+  ],
+  needs: [],
+  env: Absent,
+  outputs: Absent,
+  if_condition: Absent,
+  strategy: Absent,
+  timeout_minutes: Absent,
+  continue_on_error: Absent,
+  concurrency: Absent
+}

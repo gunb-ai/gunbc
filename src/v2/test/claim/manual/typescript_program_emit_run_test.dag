@@ -7,10 +7,10 @@ import v2.std.compilers.target_model {
   target_atom_realization_lookup_in_catalog
 }
 import v2.extdeps.languages.typescript { ts_target_atom_realization_catalog }
-import v2.test.manual.mvp1_typescript_add_translate { anchor_mvp1_ts_emit_accepts }
+import v2.test.manual.typescript_add_emit_translate { anchor_typescript_add_emit_accepts }
 
 fn ts_program_emit_add_source() -> String {
-  match anchor_mvp1_ts_emit_accepts() {
+  match anchor_typescript_add_emit_accepts() {
     Accepted { value: source, diagnostics: _ } => source.carried
     Rejected { diagnostics: _ } => "TS_ADD_EMIT_REJECTED"
   }
