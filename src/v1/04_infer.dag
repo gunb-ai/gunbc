@@ -99,6 +99,7 @@ import std.termination {
 import std.algebra { CollectionSizeEffect, ShrinkEffect }
 import v1.compiler.infer_resolve {
   resolve_node, resolve_item_types, peel_nominal_alias_identity, preserve_nominal_brand_on_resolve,
+  resolve_generic_use_decl,
   is_user_generic_use_site,
   NodeResolveResult, ItemResult
 }
@@ -2725,17 +2726,65 @@ fn record_has_unresolved_param_field(record: Node, env: TypeEnv) -> Bool {
   record.children |> any(f => record_field_type_is_unresolved_param(field: f, param_names: param_names, env: env))
 }
 
+fn alias_chain_generic_decl(env: TypeEnv, carrier: Node, target: Node) -> Node {
+  if target.params |> count > 0 { target }
+  else { resolve_generic_use_decl(env: env, n: carrier) }
+}
+
+fn alias_chain_type_arg_subst(env: TypeEnv, carrier: Node, target: Node, type_args: List<Node>) -> Map<String, Node> {
+  let decl = alias_chain_generic_decl(env: env, carrier: carrier, target: target)
+  fold(decl.params |> enumerate, init: empty_map(), f: (acc, pair) =>
+    let slot = generic_param_name_at(n: pair.second, source_indices: env.source_indices)
+    match type_args |> skip(pair.first) |> first {
+      Present { value: arg } => map_insert(acc, slot, resolve_scrutinee_type_node(env: env, n: arg))
+      Absent => acc
+    }
+  )
+}
+
+fn alias_chain_target_after_args(target: Node, carrier: Node, env: TypeEnv) -> Node {
+  let type_args = carrier.children
+  if type_args |> count == 0 { target }
+  else {
+    let decl = alias_chain_generic_decl(env: env, carrier: carrier, target: target)
+    let subst = alias_chain_type_arg_subst(env: env, carrier: carrier, target: target, type_args: type_args)
+    let is_parameterized_alias = decl.inferred != none && decl.children |> count == 0 && decl.connective == NoConnective
+    if is_parameterized_alias {
+      match decl.inferred {
+        Present { value: Resolved { node: alias_body } } => substitute_generics(n: alias_body, subst: subst, source_indices: env.source_indices)
+        _ => target
+      }
+    } else {
+      substitute_generics(n: decl, subst: subst, source_indices: env.source_indices)
+    }
+  }
+}
+
+fn alias_chain_carrier(n: Node) -> Node {
+  if n.connective == NoConnective && n.name != "" { n }
+  else { structural_from_expanded_type(normed: n) }
+}
+
 fn expand_alias_chain_for_field_access(n: Node, env: TypeEnv, module_name: String, origin_name: String, seen: Map<String, Bool>, lossy: Bool) -> Node {
   let peeled = if needs_alias_field_expansion(n: n, env: env) { peel_alias_once_for_field_access(n: n, env: env, module_name: module_name) } else { n }
+  let carrier = alias_chain_carrier(n: peeled)
   let structural = structural_from_expanded_type(normed: resolve_scrutinee_type_node(env: env, n: peeled))
   let is_record = structural.connective == Conj || structural.connective == Disj
   if is_record {
-    let fail_closed = lossy && record_has_unresolved_param_field(record: structural, env: env)
+    let resolved_record = if record_has_unresolved_param_field(record: structural, env: env) && (carrier.children |> count) > 0 && carrier.name != "" {
+      match lookup_type_by_name(env: env, name: carrier.name) {
+        Present { value: target } =>
+          let subst = alias_chain_type_arg_subst(env: env, carrier: carrier, target: target, type_args: carrier.children)
+          substitute_generics(n: structural, subst: subst, source_indices: env.source_indices)
+        Absent => structural
+      }
+    } else { structural }
+    let fail_closed = lossy && record_has_unresolved_param_field(record: resolved_record, env: env)
     if fail_closed {
       nominal_type_ref(name: origin_name)
-    } else { structural }
+    } else { resolved_record }
   } else {
-    let next_name = structural.name
+    let next_name = carrier.name
 
     let is_optional = structural.return_cardinality == CardOptional
     let stop = is_optional || next_name == "" || emit_map_has(m: seen, key: next_name)
@@ -2745,9 +2794,15 @@ fn expand_alias_chain_for_field_access(n: Node, env: TypeEnv, module_name: Strin
       match lookup_type_by_name(env: env, name: next_name) {
         Present { value: target } =>
           let next_seen = map_insert(seen, next_name, true)
-          let dropped_args = structural.children |> count > 0
+          let type_arg_count = carrier.children |> count
+          let decl = alias_chain_generic_decl(env: env, carrier: carrier, target: target)
+          let param_count = decl.params |> count
+          let dropped_args = type_arg_count > 0 && param_count > 0 && param_count != type_arg_count
           let next_lossy = lossy || dropped_args
-          expand_alias_chain_for_field_access(n: target, env: env, module_name: module_name, origin_name: origin_name, seen: next_seen, lossy: next_lossy)
+          let next_n = if type_arg_count > 0 && !dropped_args {
+            alias_chain_target_after_args(target: target, carrier: carrier, env: env)
+          } else { target }
+          expand_alias_chain_for_field_access(n: next_n, env: env, module_name: module_name, origin_name: origin_name, seen: next_seen, lossy: next_lossy)
         Absent => structural
       }
     }

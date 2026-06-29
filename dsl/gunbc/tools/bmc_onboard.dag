@@ -9,6 +9,7 @@ import extdeps.shell
 import gunbc.bmc_onboarding { new_altra_onboarding_plan }
 import std.credentials { Stored }
 import std.types { NonEmptyStr, Secret, String }
+import std.measure { ByteSize, byte_size, byte_size_count }
 import std.logic { Bool }
 import std.resources { Network }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
@@ -27,19 +28,9 @@ data bmc_onboard_secret_on_disk_debt: Disposition = Scaffold {
   }
 }
 
-
 data srv3_gcp_project: GcpProjectId = "gunbai-secrets"
 
-data bmc_credential_bytes: Int = 20
-
-data bmc_credential_bytes_unit_debt: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "std.measure",
-    decl_name: "ByteSize",
-    field: WholeDeclaration
-  }
-}
+data bmc_credential_bytes: ByteSize = byte_size(20)
 
 data bmc_redfish_json_concat_debt: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
@@ -79,7 +70,7 @@ fn onboarding_secret_id() -> NonEmptyStr {
 }
 
 fn mint_bmc_credential() -> Secret {
-  Urandom.ReadBytes(count: bmc_credential_bytes).octets_b64 as Secret
+  Urandom.ReadBytes(count: byte_size_count(b: bmc_credential_bytes) as Int).octets_b64 as Secret
 }
 
 fn write_netrc(host: String, account: String, password: String) -> Bool {
