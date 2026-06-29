@@ -13,6 +13,33 @@ This draft is downstream of [DESIGN.md](../../DESIGN.md) §4 (one grammar, both 
 - **NOT opcode-bucketing scattered scalars.** SIMT width must come from *data-parallelism inside a node* (one op over a contiguous array), not *task-parallelism across nodes* (gathering scattered scalar ops by opcode — the gather/scatter is itself the pointer-chasing you were trying to escape, and the arithmetic intensity is hopeless).
 - **NOT a general "reshape arbitrary programs" control plane.** That is post-self-host research. This demo handles exactly one recognized class: **pure elementwise array folds.**
 
+## 0.5. Intuition — how your programs relate to GPU execution (the shared language)
+
+The phrase to hold onto is **"arbitrary program DAG → numerical graph."** Your program is already a dependency graph; the accelerator wants a *particular kind* of dependency graph. The demo is the bridge that finds the second kind inside the first.
+
+**"DAG" alone does not pick the hardware — the *nodes* do.** Two programs can both be pure dependency graphs and belong on opposite chips:
+
+- A **task DAG** — coarse, *heterogeneous* nodes ("resolve this", "fold that"), wired by dependencies, scheduled dynamically. This is what a build system (Bazel) or a compiler pipeline is. → belongs on a **multicore CPU**: a handful of big, different jobs running in parallel across cores.
+- A **dataflow / numerical DAG** — fine, *homogeneous* nodes (one arithmetic op applied across a whole array), static structure, no branching. This is what an ML graph (XLA's HLO, a tensor program) is. → belongs on a **GPU**.
+
+So the mental model for the two chips:
+
+| | CPU (MIMD) | GPU (SIMT) |
+|---|---|---|
+| What it wants | any mix of different instructions on demand | **one** instruction over a **big contiguous array** of data |
+| Strength | heterogeneous, branchy, irregular work | thousands of identical, branch-free arithmetic ops |
+| The bet | big caches + speculation absorb unpredictability | march thousands of lanes in lockstep, no caches needed |
+
+A GPU is essentially a **batch executor for arithmetic**: if at one moment you can hand it *one* operation over a million contiguous data elements, it's ideal; if you hand it a grab-bag of different operations on scattered data, it falls apart. Two things break the lockstep and collapse it back toward serial: **branches** (lanes want different instructions) and **scattered memory** (lanes want different addresses). That's why a tree-walking interpreter is the *worst* case — every node is a different `match` arm (branches) and every child is a random heap pointer (scattered memory). It maxes out both.
+
+**Where the GPU-friendly graph hides in your program.** The crucial move is that SIMT width comes from **data-parallelism *inside* a node** (one `map (+)` over a 10⁶-element array), **not** task-parallelism *across* nodes (gathering a million scattered scalar adds — the gathering is itself the scattered-memory problem you were trying to escape). So you don't "send the whole program to the GPU." You **recognize the subgraph that is already a numerical graph** — a chain of pure, elementwise, array-shaped ops like `relu(a*b + c)` — and lower *that* to a kernel. The rest of the program stays on the CPU. The accelerator gets the array math; the orchestration stays where orchestration belongs.
+
+**"Shaping for supply" — why daglang can do this and a normal language can't.** Whether your array data sits scattered across the heap or packed in one contiguous buffer is **not physics — it's a layout decision the compiler makes.** Today the naive choice (scattered) is what makes pointer-chasing look mandatory. Because the `.dag` *owns* lowering, it can instead *choose* a contiguous layout that turns latent-but-hidden data-parallelism into the coalesced, lockstep-friendly form the GPU wants. And because `.dag` programs are **pure with explicit effects**, that relayout is *provably* meaning-preserving — a normal language can't prove it safe because hidden side-effects might depend on the old order. That provable freedom to reshape layout is the moat; the GPU kernel is just the payoff.
+
+**The honest bound.** This reveals data-parallelism that layout was *hiding*; it cannot *manufacture* parallelism your data dependencies forbid. A serial chain (each step needs the last) has a hard floor — its critical path — that no layout beats. So the demo deliberately targets the one place the win is real (pure elementwise array folds) and is fail-closed everywhere else.
+
+So the one-sentence relationship: **your arbitrary program is a task DAG; inside it live numerical subgraphs; the demo recognizes one, chooses a layout that makes it SIMT-shaped, and lowers it — proving the recognition is semantics-exact or honestly refused.**
+
 ## 1. The claim the demo proves (load-bearing)
 
 > A pure `.dag` elementwise-array subgraph can be lowered to a contiguous-layout, fused, data-parallel kernel; the result is **bit-identical to the scalar interpreter under a declared numerical contract**; and any subgraph outside the lowerable class is **refused** with a typed, located honesty diagnostic — never silently miscompiled.
