@@ -2761,7 +2761,7 @@ pub fn discover_floor_corpus_rows(
              the bad-state class cannot be made unwritable by construction. Add a `data \
              construction_justification: ConstructionJustification = …` decl (see \
              v2.lens.common.construction_justification) classifying it as WallNow / \
-             WallAfterGrounding / RatchetForever with a rationale: {}",
+             WallAfterGrounding / RatchetForever: {}",
             unjustified.len(),
             unjustified.join(", ")
         ));
