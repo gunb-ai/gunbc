@@ -1296,7 +1296,7 @@ fn bash_fold_heredoc_target_model(path_spelling: String, delimiter: String, body
   bash_stmt_heredoc_target_model(path: path_spelling, delimiter: delimiter, body: body)
 }
 
-fn bash_fold_raw_line_target_model(text: String) -> TargetModel {
+fn bash_fold_with_redir_wrong_target_model_witness() -> Witness<TargetModel> {
   Holds {
     value: bash_fold_with_redir_target_model(
       stmt_spelling: "'true'",
