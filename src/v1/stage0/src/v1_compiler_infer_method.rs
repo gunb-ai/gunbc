@@ -368,13 +368,13 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
-            "concept_decl_facts".to_string(),
-            list_of_type_variable("concept_decl_elem".to_string()),
+            "module_declaration_facts".to_string(),
+            list_of_type_variable("module_declaration_fact_elem".to_string()),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
-            "module_declaration_facts".to_string(),
-            list_of_type_variable("module_declaration_fact_elem".to_string()),
+            "concept_decl_facts".to_string(),
+            list_of_type_variable("concept_decl_elem".to_string()),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
