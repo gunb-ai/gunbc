@@ -2,7 +2,7 @@ module v2.lens.grounding
 
 
 import gunbc.ci_layer_roots { witness_layer_roots }
-import v2.std.algebra { Empty, fold_list, is_empty, is_prefix_of, list_snoc_item }
+import v2.std.algebra { fold_list, is_empty, is_prefix_of, list_snoc_item }
 import v2.std.collection { List }
 import v2.std.integer { Int }
 import v2.std.logic { Bool }
@@ -408,7 +408,7 @@ fn filter_layer_included(rows: List<GroundingWorklistEntry>) -> List<GroundingWo
 }
 
 fn enumerate_concepts_from_decls(decls: List<ConceptDecl>) -> List<QualifiedConcept> {
-  fold(decls, init: Empty, f: fn(acc, decl) {
+  fold(decls, init: [], f: fn(acc, decl) {
     list_snoc_item(xs: acc, item: concept_from_decl(decl: decl))
   })
 }
