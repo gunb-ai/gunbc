@@ -19,6 +19,12 @@ type LocalTidyCheck
 
 data local_tidy_checks: List<LocalTidyCheck> = project_local_tidy_checks(roster: commit_gate_roster)
 
+data generated_artifact_drift_gate_entry: String = "dsl/tools/generated_artifact_gate.dag"
+
+data generated_artifact_drift_gate_check_fn: String = "run_generated_artifact_drift_gate_body"
+
+data generated_artifact_drift_gate_wet_fn: String = "main_wet"
+
 data githooks_pre_push_emit_scaffold: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
   bind: DeclarationRef {

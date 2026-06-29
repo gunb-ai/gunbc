@@ -1,9 +1,13 @@
 module gunbc.githooks_pre_push_emit
 
+import gunbc.commit_workflow {
+  commit_workflow_local_tidy_checks,
+  doc_reachability_witness_entry
+}
 import gunbc.local_tidy_spec {
   LocalTidyCheck, LocalTidyWitnessCheck, LocalTidyGateCheck, LocalTidyCargoFmtCheck,
-  local_tidy_checks, local_tidy_trigger_globs,
-  local_tidy_gate_entry, local_tidy_gate_wet_fn, doc_reachability_witness_entry,
+  local_tidy_trigger_globs,
+  local_tidy_gate_entry, local_tidy_gate_wet_fn,
   generated_artifact_drift_gate_check_fn
 }
 import gunbc.ci_spec { GeneratedArtifactDriftGate }
@@ -89,7 +93,7 @@ fn emit_freshness_fmt() -> String {
 }
 
 fn emit_run_doc() -> String {
-  fold(local_tidy_checks, init: "", f: fn(acc, check) {
+  fold(commit_workflow_local_tidy_checks, init: "", f: fn(acc, check) {
     match check {
       LocalTidyWitnessCheck { entry, check_fns } =>
         fold(check_fns, init: acc, f: fn(inner, check_fn) {
