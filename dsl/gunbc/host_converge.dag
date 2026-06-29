@@ -1,6 +1,6 @@
 module gunbc.host_converge
 
-import std.types { String, List, Int, Bool }
+import std.types { String, List, Int, Bool, CommitSha }
 import std.measure { ByteSize, byte_size_count, hardware_thread_count_value, percent_count }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -51,6 +51,10 @@ data gunbc_runner_jobserver_env_file: String = "/etc/default/ctrl-jobserver"
 data gunbc_runner_jobserver_env_key: String = "CTRL_JOBSERVER_TOKENS"
 data gunbc_runner_jobserver_service: String = "ctrl-jobserver.service"
 
+data gunbc_host_pinned_tree_path: String = "$HOME/gunbc"
+
+data gunbc_fleet_pinned_tree_sha: CommitSha = "53e066417e00ee56deb084ea75a969a7f3f96592"
+
 type ConvergeVerdict
   = Converged
   | Drifted
@@ -71,11 +75,13 @@ fn converge_verdict_label(v: ConvergeVerdict) -> String {
 }
 
 type ConvergeSlice
-  = RunnerSlice
+  = GunbcSlice
+  | RunnerSlice
   | SessionsSlice
 
 fn converge_slice_label(s: ConvergeSlice) -> String {
   match s {
+    GunbcSlice => "gunbc"
     RunnerSlice => "runner"
     SessionsSlice => "sessions"
   }
@@ -87,6 +93,7 @@ type ConvergeTarget
   | RunnerWidth { instance_glob: String }
   | JobserverTokens { env_file: String, env_key: String, service_unit: String }
   | VerifyOnlyCap { slice_unit: String, property: String }
+  | GunbcPinnedTree { repo_path: String, expected_sha: String }
 
 type ConvergeKnob {
   slice: ConvergeSlice
@@ -130,6 +137,20 @@ fn slice_numeric_knob(slice: ConvergeSlice, name: String, unit: String, property
     desired: v,
     target: SliceProperty { unit: unit, property: property, apply_value: v, expected_effective: v },
   }
+}
+
+fn gunbc_pinned_tree_knobs() -> List<ConvergeKnob> {
+  [
+    ConvergeKnob {
+      slice: GunbcSlice,
+      name: "pinned_tree_sha",
+      desired: gunbc_fleet_pinned_tree_sha,
+      target: GunbcPinnedTree {
+        repo_path: gunbc_host_pinned_tree_path,
+        expected_sha: gunbc_fleet_pinned_tree_sha,
+      },
+    },
+  ]
 }
 
 fn runner_host_knobs(h: RunnerHostDeployment) -> List<ConvergeKnob> {
@@ -272,7 +293,7 @@ fn sessions_membership_probe(session_knobs: List<ConvergeKnob>) -> SessionsMembe
 fn host_converge_of(h: RunnerHostDeployment, session_knobs: List<ConvergeKnob>) -> HostConverge {
   HostConverge {
     identity: h.identity,
-    knobs: concat(runner_host_knobs(h: h), session_knobs),
+    knobs: concat(concat(gunbc_pinned_tree_knobs(), runner_host_knobs(h: h)), session_knobs),
     membership: sessions_membership_probe(session_knobs: session_knobs),
   }
 }

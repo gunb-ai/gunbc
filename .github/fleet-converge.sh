@@ -111,6 +111,20 @@ converge_verify_only_cap() {
   record "$verdict"
 }
 
+converge_gunbc_pinned_tree() {
+  # host slice knob repo_path expected_sha  (fleet spawn bootstrap: pin ~/gunbc to the known-good commit)
+  effective=""
+  if [ ! -d "$4/.git" ]; then effective=ABSENT; verdict=absent;
+  else
+    (cd "$4" && git fetch --prune origin >/dev/null 2>&1) || true
+    (cd "$4" && git checkout --detach "$5" >/dev/null 2>&1) || true
+    effective="$(cd "$4" && git rev-parse HEAD 2>/dev/null | tr -d ' ' || true)"
+    if [ -z "$effective" ]; then effective=ABSENT; verdict=absent; else decide_verdict "$effective" "$5"; fi
+  fi
+  emit_receipt "$1" "$2" "$3" "$5" "$effective" "$verdict"
+  record "$verdict"
+}
+
 emit_sessions_membership() {
   # host slice_cgroup legacy_cgroup  (membership signal for the OomdEnforced guard; EMPTY slice => 0, not error)
   in_slice=$(ls -d "$2"/docker-*.scope 2>/dev/null | wc -l | tr -d ' ' || true)
@@ -123,6 +137,7 @@ emit_sessions_membership() {
 }
 
 host_begin "srv1"
+converge_gunbc_pinned_tree "srv1" "gunbc" "pinned_tree_sha" "$HOME/gunbc" "53e066417e00ee56deb084ea75a969a7f3f96592"
 converge_slice_property "srv1" "runner" "runner_slice_cap_bytes" "system-actions-runner.slice" "MemoryMax" "85899345920" "85899345920" "85899345920"
 converge_per_slot_cap "srv1" "runner" "per_slot_memory_max_bytes" "/etc/systemd/system/actions-runner@.service.d/20-fleet-width.conf" "actions-runner@srv1-*.service" "MemoryMax" "8589934592"
 converge_per_slot_cap "srv1" "runner" "per_slot_memory_swap_max_bytes" "/etc/systemd/system/actions-runner@.service.d/30-fleet-swap.conf" "actions-runner@srv1-*.service" "MemorySwapMax" "0"
@@ -137,6 +152,7 @@ converge_slice_property "srv1" "sessions" "cpu_weight" "sessions.slice" "CPUWeig
 emit_sessions_membership "srv1" "/sys/fs/cgroup/sessions.slice" "/sys/fs/cgroup/system.slice"
 host_summary "srv1"
 host_begin "srv2"
+converge_gunbc_pinned_tree "srv2" "gunbc" "pinned_tree_sha" "$HOME/gunbc" "53e066417e00ee56deb084ea75a969a7f3f96592"
 converge_slice_property "srv2" "runner" "runner_slice_cap_bytes" "system-actions-runner.slice" "MemoryMax" "85899345920" "85899345920" "85899345920"
 converge_per_slot_cap "srv2" "runner" "per_slot_memory_max_bytes" "/etc/systemd/system/actions-runner@.service.d/20-fleet-width.conf" "actions-runner@srv2-*.service" "MemoryMax" "8589934592"
 converge_per_slot_cap "srv2" "runner" "per_slot_memory_swap_max_bytes" "/etc/systemd/system/actions-runner@.service.d/30-fleet-swap.conf" "actions-runner@srv2-*.service" "MemorySwapMax" "0"

@@ -28,6 +28,8 @@ import gunbc.host_converge {
   RunnerSlice,
   SessionsSlice,
   HostConverge,
+  gunbc_fleet_pinned_tree_sha,
+  gunbc_host_pinned_tree_path,
   converge_verdict,
   converge_verdict_label,
   fleet_converge_policy_from,
@@ -181,6 +183,36 @@ fn witness_drift_perturbed_desired_flips_emit() -> Bool {
     && has(s: perturbed_sh, p: "converge_runner_width \"srv1\" \"runner\" \"runner_count\" \"actions-runner@srv1-*.service\" \"99\"")
 }
 
+fn witness_gunbc_pinned_tree_emitted() -> Bool {
+  let sh = fixture_sound_sh()
+  has(s: sh, p: "converge_gunbc_pinned_tree()")
+    && has(
+      s: sh,
+      p: concat(
+        concat(
+          concat(
+            concat("converge_gunbc_pinned_tree \"srv1\" \"gunbc\" \"pinned_tree_sha\" \"", gunbc_host_pinned_tree_path),
+            "\" \""
+          ),
+          gunbc_fleet_pinned_tree_sha
+        ),
+        "\""
+      )
+    )
+}
+
+fn first_host_knob_name(knobs: List<ConvergeKnob>) -> String {
+  knobs.first().name
+}
+
+fn witness_gunbc_pinned_tree_runs_first() -> Bool {
+  match fixture_sound_policy() {
+    ConvergePolicyDerived { hosts: hosts } =>
+      hosts.length() > 0 && all(hosts, h => first_host_knob_name(knobs: h.knobs) == "pinned_tree_sha")
+    ConvergePolicyUnsound { reason: _ } => false
+  }
+}
+
 fn witness_sessions_membership_line_emitted() -> Bool {
   let sh = fixture_sound_sh()
   has(s: sh, p: "emit_sessions_membership \"srv1\" \"/sys/fs/cgroup/sessions.slice\" \"/sys/fs/cgroup/system.slice\"")
@@ -201,5 +233,7 @@ test fn fleet_converge_emit_holds() -> Bool {
     && witness_verdict_discriminating()
     && witness_emitted_bash_realizes_verdict()
     && witness_drift_perturbed_desired_flips_emit()
+    && witness_gunbc_pinned_tree_emitted()
+    && witness_gunbc_pinned_tree_runs_first()
     && witness_sessions_membership_line_emitted()
 }

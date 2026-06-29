@@ -19,6 +19,7 @@ import gunbc.host_converge {
   RunnerWidth,
   JobserverTokens,
   VerifyOnlyCap,
+  GunbcPinnedTree,
   SessionsMembershipProbe,
   MembershipProbe,
   NoMembershipProbe,
@@ -153,6 +154,20 @@ fn converge_script_header() -> Doc {
     "  record \"$verdict\"",
     "}",
     "",
+    "converge_gunbc_pinned_tree() {",
+    "  # host slice knob repo_path expected_sha  (fleet spawn bootstrap: pin ~/gunbc to the known-good commit)",
+    "  effective=\"\"",
+    "  if [ ! -d \"$4/.git\" ]; then effective=ABSENT; verdict=absent;",
+    "  else",
+    "    (cd \"$4\" && git fetch --prune origin >/dev/null 2>&1) || true",
+    "    (cd \"$4\" && git checkout --detach \"$5\" >/dev/null 2>&1) || true",
+    "    effective=\"$(cd \"$4\" && git rev-parse HEAD 2>/dev/null | tr -d ' ' || true)\"",
+    "    if [ -z \"$effective\" ]; then effective=ABSENT; verdict=absent; else decide_verdict \"$effective\" \"$5\"; fi",
+    "  fi",
+    "  emit_receipt \"$1\" \"$2\" \"$3\" \"$5\" \"$effective\" \"$verdict\"",
+    "  record \"$verdict\"",
+    "}",
+    "",
     "emit_sessions_membership() {",
     "  # host slice_cgroup legacy_cgroup  (membership signal for the OomdEnforced guard; EMPTY slice => 0, not error)",
     "  in_slice=$(ls -d \"$2\"/docker-*.scope 2>/dev/null | wc -l | tr -d ' ' || true)",
@@ -188,6 +203,8 @@ fn knob_call_line(host: String, k: ConvergeKnob) -> Doc {
       doc_line_of(text: sh_cmd(cmd: "converge_jobserver_tokens", args: [host, slice, k.name, f, ek, su, k.desired]))
     VerifyOnlyCap { slice_unit: u, property: p } =>
       doc_line_of(text: sh_cmd(cmd: "converge_verify_only_cap", args: [host, slice, k.name, u, p, k.desired]))
+    GunbcPinnedTree { repo_path: rp, expected_sha: sha } =>
+      doc_line_of(text: sh_cmd(cmd: "converge_gunbc_pinned_tree", args: [host, slice, k.name, rp, sha]))
   }
 }
 
