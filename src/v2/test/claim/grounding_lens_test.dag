@@ -6,7 +6,6 @@ import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 import v2.std.concept_index { ConceptStruct, FieldRef, QualifiedConcept, enumerate_concepts }
-import v2.std.text { string_contains }
 import v2.lens.grounding { GroundingCandidate, candidates_in, concept_names_of, is_structural_name, name_coincides }
 
 
@@ -39,8 +38,10 @@ fn qc(qn: String, nm: String, fs: List<FieldRef>) -> QualifiedConcept {
 
 fn fixture_idx() -> List<QualifiedConcept> {
   [
-    qc(qn: "demo.Url", nm: "Url", fs: []),
+    qc(qn: "demo.Url", nm: "Url", fs: [fr(f: "scheme", t: "UriScheme"), fr(f: "host", t: "NonEmptyStr")]),
+    qc(qn: "demo.Id", nm: "Id", fs: [fr(f: "raw", t: "String")]),
     qc(qn: "demo.Endpoint", nm: "Endpoint", fs: [fr(f: "base_url", t: "String"), fr(f: "timeout", t: "Int")]),
+    qc(qn: "demo.Widget", nm: "Widget", fs: [fr(f: "id", t: "String")]),
     qc(qn: "demo.Note", nm: "Note", fs: [fr(f: "body", t: "String")])
   ]
 }
@@ -48,6 +49,12 @@ fn fixture_idx() -> List<QualifiedConcept> {
 fn has_candidate(cands: List<GroundingCandidate>, enclosing: String, field: String) -> Bool {
   fold(cands, init: false, f: fn(acc, c) {
     acc || ((c.enclosing == enclosing) && (c.field == field))
+  })
+}
+
+fn candidate_structure(cands: List<GroundingCandidate>, enclosing: String, field: String) -> String {
+  fold(cands, init: "", f: fn(acc, c) {
+    if (c.enclosing == enclosing) && (c.field == field) { c.target_structure } else { acc }
   })
 }
 
@@ -61,6 +68,19 @@ fn witness_decide_clears_nonbare() -> Bool {
 
 fn witness_decide_clears_clean_RED() -> Bool {
   !has_candidate(cands: candidates_in(idx: fixture_idx()), enclosing: "Note", field: "body")
+}
+
+fn witness_stopword_predicate() -> Bool {
+  is_structural_name(field: "id") && is_structural_name(field: "Name") && !is_structural_name(field: "base_url")
+}
+
+fn witness_decide_clears_structural_name() -> Bool {
+  !has_candidate(cands: candidates_in(idx: fixture_idx()), enclosing: "Widget", field: "id")
+}
+
+fn witness_enrich_target_structure() -> Bool {
+  let s = candidate_structure(cands: candidates_in(idx: fixture_idx()), enclosing: "Endpoint", field: "base_url")
+  s == "scheme: UriScheme, host: NonEmptyStr"
 }
 
 
@@ -78,5 +98,8 @@ test fn grounding_lens_witnesses() -> Bool {
     && witness_decide_flags_nickname()
     && witness_decide_clears_nonbare()
     && witness_decide_clears_clean_RED()
+    && witness_stopword_predicate()
+    && witness_decide_clears_structural_name()
+    && witness_enrich_target_structure()
     && witness_extract_live_nonempty()
 }
