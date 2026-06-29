@@ -34,6 +34,15 @@ fn decode_fidelity_merge(left: DecodeFidelity, right: DecodeFidelity) -> DecodeF
   }
 }
 
+data target_carriers_fidelity_disposition_decode_dissolution_trigger: String = "🟡 undeclared-sum: atom-id + named-child probe standing in for typed DecodeFidelityDisposition coproduct dispatch — consumes existing Node grammar from extdeps.languages.dag dag_fidelity_disposition_node; dissolves when TargetModel carries DecodeFidelityDisposition = Modeled | DeclaredNormalized | FailClosed so the validator family dispatches on the coproduct instead of predicate probing"
+
+fn fidelity_disposition_node_has_named_kind(root: Node, name: Symbol) -> Bool {
+  match find_named_child(root: root, name: name) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 fn fidelity_disposition_node_decode_fidelity(node: Node) -> Outcome<DecodeFidelity> {
   match node.kind {
     TypeNode { connective: Atom { identity: id } } =>
@@ -49,28 +58,22 @@ fn fidelity_disposition_node_decode_fidelity(node: Node) -> Outcome<DecodeFideli
         )
       }
     TypeNode { connective: Conj } =>
-      match find_named_child(
+      if fidelity_disposition_node_has_named_kind(
         root: node,
         name: ^dag_fidelity_disposition_kind_declared_normalized
+      ) || fidelity_disposition_node_has_named_kind(
+        root: node,
+        name: ^dag_fidelity_disposition_kind_fail_closed
       ) {
-        Accepted { value: _, diagnostics: _ } =>
-          outcome_accepted(Lossy)
-        Rejected { diagnostics: _ } =>
-          match find_named_child(
-            root: node,
-            name: ^dag_fidelity_disposition_kind_fail_closed
-          ) {
-            Accepted { value: _, diagnostics: _ } =>
-              outcome_accepted(Lossy)
-            Rejected { diagnostics: _ } =>
-              outcome_rejected(
-                Diagnostic {
-                  reason: ^target_carriers_fidelity_disposition_malformed,
-                  at: node_locus(node: node),
-                  correction: Unavailable { reason: ExternalContractUnknown }
-                }
-              )
+        outcome_accepted(Lossy)
+      } else {
+        outcome_rejected(
+          Diagnostic {
+            reason: ^target_carriers_fidelity_disposition_malformed,
+            at: node_locus(node: node),
+            correction: Unavailable { reason: ExternalContractUnknown }
           }
+        )
       }
     _ =>
       outcome_rejected(
