@@ -4,7 +4,7 @@
 > Lane: `v2.std.determinism` inert-carrier activation (keen-bat-281).
 > DESIGN refs: §2 (horizontal — one perturbation/determinism kernel, many readings; deep — ground `NonDetSource` atoms), §3 (single authority vs `behavioral.determinism`, `perturbation`, `emit_determinism_gate`), §5 (construction over validation; decidability trichotomy), §6 (inert carrier → wired consumer; priced in displaced cost), §7 (signature-derived classification dissolves the lens).
 >
-> Every place I am unsure is tagged **⚠ FLAG**. The brief asks me to flag rather than commit on load-bearing modeling.
+> Every unresolved item is either a **decided-with-rationale** entry (§8) or one of **two genuine operator FLAGS**.
 
 ---
 
@@ -28,57 +28,121 @@ Three symptoms today, one root:
 
 The mechanism's job is not to replace `emit_determinism_gate` (corpus-level backstop) but to make **every non-deterministic dependence locatable before execution** — the same construction-first move §5 applied to idempotency (`EffectShape`) and cache purity (`std.perturbation`).
 
+### 1.1 Additive to #5913 (first construction instance — do not re-do in parallel)
+
+**#5913 (crisp-stag, merged 2026-06-28) already grounded the first `HashIteration` class** in `.dag` authority — variant-owner disambiguation and import-map-key ordering — not as a hand-synced v1 seed restore:
+
+| #5913 fix | where | what it eliminated |
+| --- | --- | --- |
+| `unique_imported_variant_owner` | `src/v2/compiler/04_infer.dag` | variant-owner pick depending on transitive `type_env` iteration order |
+| alpha-sorted `variant_fold` | `04_infer.dag` | shared-variant owner selection unstable across `env.bindings` walk order |
+| sorted `map_keys(export_sets)` | `05_emit_rust.dag` (3 sites) | `pub use` import-set ordering drift |
+| `find_struct_name_by_fields` disambiguation | infer | struct literal pick ambiguity |
+
+Proof at merge: double-emit `diff` 36→0; `regen_stage0 --verify` green; `variant_owner_disambiguation` 3/3.
+
+**This design is ADDITIVE — it generalizes #5913, not parallel work:**
+
+- #5913 = the **first realized construction-instance** of making a former `HashIteration` leak structurally deterministic (sorted iteration / unambiguous owner maps).
+- P1 `v2.std.determinism` primitive roster + `determinism_compose` = the **general algebra** those fixes instantiate (`unique_imported_variant_owner`, sorted `map_keys`, etc. become roster entries or compose derivatives).
+- Interim `determinism_facts_live()` host bridge = covers **remaining** v1-seed `HashMap` emit residue #5913 did not touch — bank-if-cheap, dies with v1 — until infer owns the full roster at P4.
+
+Read #5913 as "row 1 of the roster landed early," not as a competing determinism mechanism.
+
 ---
 
 ## 2. Authority map (do not fork — §3)
 
-Four nearby concepts that must stay distinct and project, not duplicate:
+### 2.0 One core, two refinements (resolving the §3 core-fork probe)
+
+The `Vendor<Hardware>` analog applies as **one shared core + domain refinements**, not as two parallel re-declarations of `Deterministic | NonDeterministic`.
+
+**The hidden fork to avoid:** two independent enums that each list `Deterministic | NonDeterministic` as separate top-level coproducts — same predicate duplicated, extra arms differ. That fails the rename test even when projection is documented.
+
+**Adopted decomposition (§2-deep):**
+
+```dag
+// ONE core authority (home: dsl/std — universal, layer-stable)
+type DeterminismAxis = Deterministic | NonDeterministic
+
+// Compiler refinement — std REFINES NonDeterministic with leak detail
+type DeterminismClass
+  = Deterministic
+  | NonDeterministic { source: NonDetSource }   // NonDetSource = HashIteration | TimeRead | RandomRead | EnvRead
+
+// Service extension — behavioral ADDS a sibling arm (not a compiler leak)
+type OperationDeterminism
+  = Deterministic
+  | NonDeterministic                            // coarse: no source required at contract time
+  | EventuallyConsistent                        // distributed replication; no compiler image
+```
+
+| layer | type | relationship to core |
+| --- | --- | --- |
+| `dsl/std` | `DeterminismAxis` | **the** single core — two arms only |
+| `src/v2/std/determinism` | `DeterminismClass` | refines `NonDeterministic` with `NonDetSource`; `Deterministic` is shared verbatim |
+| `dsl/std/behavioral` | `OperationDeterminism` | projects `Deterministic`/`NonDeterministic` from core; adds `EventuallyConsistent` as service-domain sibling |
+
+**Projection rules (P5):**
+
+- `OperationDeterminism.Deterministic` ⇐ every bound realization has `DeterminismClass = Deterministic`.
+- `OperationDeterminism.NonDeterministic` ⇐ ∃ realization with `NonDeterministic { source: _ }` (source mandatory at bind time, optional at contract time).
+- `OperationDeterminism.EventuallyConsistent` ⇐ **no image** in `DeterminismClass` or `NonDetSource` — honestly out of scope for the compiler wall.
+
+`DeterminismFact { signature, classification: DeterminismClass }` remains the compiler fact carrier; behavioral contracts project *from* it, never re-declare the core.
+
+**Why not collapse into one type today:** `EventuallyConsistent` is genuinely not a refinement of `NonDeterministic` — it is a third predicate ("converges without per-call stability") that only exists at the service-contract boundary. One core + one service sibling arm is the minimal honest factoring; merging into `DeterminismClass` would nickname distributed semantics into compiler leak atoms.
 
 ```mermaid
 flowchart TB
-  subgraph std_compiler ["v2.std (compiler-internal)"]
-    DF["DeterminismFact\n(signature → DeterminismClass)"]
+  subgraph core ["dsl/std — ONE core"]
+    DA["DeterminismAxis\nDeterministic | NonDeterministic"]
+  end
+
+  subgraph compiler ["v2.std.determinism — refinement"]
+    DC["DeterminismClass\nNonDeterministic refines with NonDetSource"]
     NDS["NonDetSource\nHashIteration | TimeRead | RandomRead | EnvRead"]
-    ES["EffectShape\n(idempotency axis)"]
-    IO["IterationOrdering\n(StructurallyOrdered | Unordered)"]
+    DF["DeterminismFact\nsignature → DeterminismClass"]
   end
 
-  subgraph dsl_extdeps ["dsl/std (service contracts)"]
-    BD["behavioral.OperationBehavior.determinism\nDeterministic | NonDeterministic | EventuallyConsistent"]
+  subgraph service ["behavioral — extension"]
+    OD["OperationDeterminism\n+ EventuallyConsistent sibling"]
   end
 
-  subgraph gates ["execution gates (symptom)"]
-    EDG["emit_determinism_gate\n(x2 compile tree diff)"]
-    SAS["source_authority serializer witness"]
+  subgraph nearby ["orthogonal axes"]
+    ES["EffectShape"]
+    IO["IterationOrdering"]
+    P["std.perturbation"]
   end
 
-  subgraph kernel ["shared kernel"]
-    P["std.perturbation\nsame-input-same-output polarity"]
+  subgraph gates ["symptom gates"]
+    EDG["emit_determinism_gate"]
+    SAS["source_authority serializer"]
   end
 
-  NDS --> DF
-  IO -.->|"horizontal §2: HashIteration = StructurallyUnordered leak"| NDS
-  DF -.->|"project (coarse)"| BD
-  DF -.->|"diagnoses failures of"| EDG
-  DF -.->|"refines failures of"| SAS
-  P -.->|"related axis: cache key purity ≠ determinism, but ForwardSameInSameOut is a determinism special case"| DF
-  ES -.->|"orthogonal: idempotent ∘ non-deterministic is still non-deterministic"| DF
+  DA --> DC
+  NDS --> DC
+  DC --> DF
+  DA --> OD
+  IO -.-> NDS
+  DF -.-> OD
+  DF -.-> EDG
+  DF -.-> SAS
+  P -.-> DF
+  ES -.-> DF
 ```
 
-### 2.1 `v2.std.determinism` — **the compiler authority** (this design)
+### 2.1 `v2.std.determinism` — **compiler refinement of the core**
 
 - **Granularity:** per `Symbol` signature (function / primitive / pipeline step).
-- **Taxonomy:** closed `NonDetSource` coproduct (four atoms, no stringly "maybe non-det").
-- **Home:** `src/v2/std/determinism.dag` (v2 compiler std layer).
+- **Taxonomy:** `DeterminismClass` refines core `NonDeterministic` with closed `NonDetSource` (four grounded atoms).
+- **Home:** `src/v2/std/determinism.dag` (v2 compiler std layer). `DeterminismAxis` lands in `dsl/std` at P1 (shape-sign).
 
-### 2.2 `dsl/std/behavioral.determinism` — **extdeps service-contract authority**
+### 2.2 `dsl/std/behavioral.OperationDeterminism` — **service extension of the core**
 
 - **Granularity:** per capability / REST operation (`OperationBehavior`).
-- **Taxonomy:** `EventuallyConsistent` (distributed) has **no image** in `NonDetSource` — it is honestly out of scope for the compiler determinism wall.
-- **Relationship:** a **projection homomorphism**, not a merge:
-  - `behavioral.Deterministic` ← requires `DeterminismClass = Deterministic` at every transport realization the contract binds.
-  - `behavioral.NonDeterministic` ← requires `∃ NonDetSource` (source may be unknown at contract-authoring time → `DescentUnknown` analogue **⚠ FLAG** — see §8).
-- **Do not** add `EventuallyConsistent` to `NonDetSource` — that would be nicknaming a distributed-systems fact into a compiler leak atom.
+- **Adds:** `EventuallyConsistent` only — not a compiler leak, not a `NonDetSource` arm.
+- **Projects** `Deterministic` / `NonDeterministic` from `DeterminismAxis`; does not re-declare the core predicate.
 
 ### 2.3 `std.perturbation` — **input-key purity kernel** (already live)
 
@@ -114,7 +178,7 @@ Each arm must point at a shared, time-stable framework (§3), not an internal ni
 | `RandomRead` | C `getrandom` / host RNG | test fixtures seeded from OS RNG without fixed seed; `uuid()` in emit | **yes** for a closed primitive roster |
 | `EnvRead` | POSIX environment (`environ`) | `std::env::var` in emit, transport scripts reading `$VAR` for output-shaping decisions | **yes** for a closed primitive roster |
 
-**⚠ FLAG:** `HashIteration` vs "any `Map` type" — the v1 emit corpus uses both `HashMap` and ordered structures. The atom name says *hash* iteration specifically; do not broaden to `MapIteration` unless the ordered/unordered distinction is modeled as a refinement parameter (ties to `IterationClassifier`).
+**Decided (not an operator FLAG):** `HashIteration` names *hash* iteration specifically, not every `Map`. The ordered/unordered distinction is the `IterationClassifier` / `Refined<Map, StructurallyOrdered>` horizontal (operator FLAG 2 below) — do not broaden the atom to `MapIteration`.
 
 ---
 
@@ -141,8 +205,8 @@ fn determinism_compose(
   inner: DeterminismClass
 ) -> DeterminismClass {
   // deterministic ∘ deterministic = deterministic
-  // any NonDeterministic propagates; source = left-biased merge or diagnostic pair
-  // ⚠ FLAG: source-merge policy when both sides leak
+  // any NonDeterministic propagates; compose classification left-biased;
+  // diagnostic carries full source list when both sides leak (see §8 decided #1)
 }
 
 fn determinism_fact_for_signature(sig: Symbol) -> DeterminismFact {
@@ -171,7 +235,7 @@ Mirror the `DescentEvidence` / `InferredFacts` side-car pattern:
 | **Lens** (interim) | read derived facts; fail-closed when a **determinism-required consumer** (emit, serializer, cache key) calls a `NonDeterministic` signature without an explicit isolation witness |
 | **Emit** | consume only `Deterministic` projections for pure paths; ordered-container emission for any map iteration that affects output order |
 
-**⚠ FLAG:** exact `InferredFacts` extension field name / whether determinism lives beside `DescentEvidence` or in its own side-map — defer to #3468 signature-derivation bundle (effect + ownership + determinism share the same "signature-derived closed set" blocking follow-up noted in `v2.lens.effect` and `v2.lens.ownership` construction justifications).
+**Operator FLAG (genuine):** exact `InferredFacts` extension — bundle with #3468 signature-facts block vs separate side-map (see §8 FLAG 1).
 
 ### 4.3 Interim fact bridge (host-fed — Tier 2 pattern)
 
@@ -250,11 +314,11 @@ Existing witness: unordered classifier → `^naming_the_leak`. Add horizontal li
 | Phase | deliverable | consumer | gate |
 | --- | --- | --- | --- |
 | **P0** (now) | this design doc | operator shape-sign | — |
-| **P1** | extend `v2.std.determinism` with primitive roster + `determinism_compose` + witness data | `*_test.dag` claims (mirror idempotency_contract) | compile-clean |
+| **P1** | `DeterminismAxis` core in `dsl/std` + extend `v2.std.determinism` with roster (incl. #5913 instances) + `determinism_compose` + witness data | `*_test.dag` claims (mirror idempotency_contract) | compile-clean |
 | **P2** | `determinism_facts_live` host bridge + `v2.lens.determinism` (observing, ranked report) | floor witness (manual) | advisory only |
 | **P3** | wire emit/serializer consumers; enrich `emit_determinism_gate` failure diagnostics | `emit_determinism_gate` | fail-closed on new leaks |
 | **P4** | infer-derived facts (#3468); delete host bridge | `04_infer` | lens dissolves to construction |
-| **P5** | projection to `behavioral.determinism` for extdeps contracts | extdeps authoring | contract drift lens |
+| **P5** | `OperationDeterminism` projects from `DeterminismFact` for extdeps contracts | extdeps authoring | contract drift lens |
 
 **MVP discriminating witness (required by §5):**
 
@@ -268,19 +332,34 @@ Existing witness: unordered classifier → `^naming_the_leak`. Add horizontal li
 
 - **Not a second emit diff gate.** `emit_determinism_gate` stays; this explains it.
 - **Not a replacement for `std.perturbation`.** Purity is the same-input-same-output reading; determinism names the leak axis.
-- **Not a fork of `behavioral.determinism`.** Service contracts project from the compiler authority.
+- **Not a fork of the core axis.** `DeterminismAxis` is one authority; behavioral extends with `EventuallyConsistent`, compiler refines with `NonDetSource`.
 - **Not an excuse to gate "optimality of algorithm".** Whether a *faster* algorithm exists is ③ forever; whether the *implemented* algorithm reads the clock is ①.
-- **Not v1-seed cement.** v1 `HashMap` scan in the host bridge is explicitly bank-if-cheap / dies with v1 (representation-minimization discriminator). The v2-surviving root is primitive roster + infer derivation in `.dag`.
+- **Not a parallel re-do of #5913.** #5913 is roster row 1; this design generalizes it.
+- **Not v1-seed cement.** v1 `HashMap` scan in the host bridge is bank-if-cheap / dies with v1; v2-surviving root is roster + infer derivation in `.dag`.
 
 ---
 
-## 8. Open flags (⚠ — need operator ruling)
+## 8. Operator decisions
 
-1. **Source-merge policy:** when two sub-expressions leak (`TimeRead` + `HashIteration`), is the composite source a coproduct pair, left-biased, or a new `NonDetSource` arm? (Recommend: keep pair in diagnostic; do not grow `NonDetSource` without a new grounded atom.)
-2. **`behavioral.EventuallyConsistent` boundary:** confirm it stays out of `NonDetSource` permanently.
-3. **`InferredFacts` extension:** bundle with #3468 or own field? (Recommend: bundle — one signature-derived facts block.)
-4. **Ordered container construction:** is `BTreeMap`/sorted-key fold the single authority for ordered emission, or a `Refined<Map, StructurallyOrdered>` requirement? (Touches refinement + determinism — one horizontal fix.)
-5. **Inert-carrier hygiene:** P1 must add a `*_test.dag` witness referencing `DeterminismFact` so the carrier enters the inert census correctly when still unwired.
+### Decided (with rationale — not open for operator call)
+
+**D1 — Source-merge when two sub-expressions leak different atoms.** Composite `determinism_compose` classification is **left-biased** (simple algebra). The **located diagnostic carries the full source list** (all leak atoms). Do **not** grow the closed `NonDetSource` roster for combinations. *Rationale: §2-deep — atoms are grounded upstream; combinations are diagnostic richness, not new authorities.*
+
+**D2 — `EventuallyConsistent` permanently out of scope for compiler `NonDetSource`.** `OperationDeterminism.EventuallyConsistent` is a service-domain sibling arm on `DeterminismAxis`; it has **no image** in `DeterminismClass` or `NonDetSource`. Distributed replication semantics are not host-read leak atoms. *Rationale: §3 rename test — same word, different domain; projection not merge. Operator veto only if a cited distributed framework demands a compiler image (none identified).*
+
+**D3 — P1 self-test before production consumer.** P1 **must** add `*_test.dag` witnesses referencing `DeterminismFact` / `determinism_compose` alongside the roster. The carrier has zero refs today (not even self-tested); staged-ahead entry on the shrinking inert roster is honest §6 discipline. *Rationale: §6 inert-carrier hygiene — a green test with no production consumer is the precise §5 trap this design closes incrementally.*
+
+### Genuine operator FLAGS (2 only)
+
+**FLAG 1 — `InferredFacts` seam architecture (#3468 bundle).**
+- **Decision:** bundle determinism with the #3468 signature-derived facts block (effect + ownership + determinism) vs a separate `determinism_facts` side-map.
+- **Options:** (A) one bundled extension on `InferredFacts`; (B) parallel side-map keyed by signature.
+- **Recommendation: A** — one signature-derived authority block; avoids three parallel per-edge ratchets. *This is a shared-seam architecture call the analysis cannot close without operator judgment on #3468 sequencing.*
+
+**FLAG 2 — Refinement / emit / determinism horizontal (ordered container construction).**
+- **Decision:** how three subsystems jointly guarantee ordered map iteration on output-affecting paths.
+- **Options:** (A) emit realization always uses sorted-key / `BTreeMap`; (B) `Refined<Map, StructurallyOrdered>` construction gate only; (C) both — refinement gates the *claim*, emit realizes sorted iteration, `NonDetSource.HashIteration` names the leak.
+- **Recommendation: C** — horizontal §2 one concept across `v2.std.refinement`, `05_emit`, and `v2.std.determinism`. *Touches three load-bearing subsystems; operator signs the cross-team sequencing.*
 
 ---
 
@@ -292,6 +371,6 @@ Delete or fold this doc when:
 2. infer derives `DeterminismClass` from signatures by construction (#3468 landed);
 3. `v2.lens.determinism` is deleted (construction subsumed inference);
 4. `emit_determinism_gate` failures surface the first located `NonDetSource` on the emit chain;
-5. `behavioral.determinism` projects from `DeterminismFact` without a second taxonomy.
+5. `DeterminismAxis` is the single core; `OperationDeterminism` projects from `DeterminismFact` without re-declaring `Deterministic | NonDeterministic`.
 
 Until operator shape-sign on §4–§6, **no `std/` or `lens/` edits** — this document is the sole artifact.
