@@ -1,0 +1,29 @@
+module v2.workflow.bmc_lifecycle_roundtrip
+
+import gunbc.bmc_onboarding {
+  BmcLifecycleState,
+  BmcRecoverableInvariant,
+  bmc_recoverable_quotient,
+  bmc_onboard_to_steady_state,
+  bmc_decom_to_factory_state
+}
+import v2.compiler.target_carriers { decode_fidelity_from_target }
+import v2.extdeps.bmc.lifecycle_fidelity { bmc_lifecycle_inverse_target_model }
+import extdeps.communication.medium { Medium, DecodeFidelity, Lossy }
+import v2.std.diagnostic { Accepted, Rejected }
+
+fn bmc_lifecycle_roundtrip_fidelity() -> DecodeFidelity {
+  match decode_fidelity_from_target(target: bmc_lifecycle_inverse_target_model()) {
+    Accepted { value: fidelity, diagnostics: _ } => fidelity
+    Rejected { diagnostics: _ } => Lossy
+  }
+}
+
+fn bmc_lifecycle_roundtrip(s: BmcLifecycleState) -> Medium<BmcRecoverableInvariant> {
+  Medium {
+    carried: bmc_recoverable_quotient(
+      s: bmc_decom_to_factory_state(s: bmc_onboard_to_steady_state(s: s))
+    ),
+    fidelity: bmc_lifecycle_roundtrip_fidelity()
+  }
+}

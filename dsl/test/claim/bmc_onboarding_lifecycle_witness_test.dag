@@ -25,7 +25,6 @@ import gunbc.bmc_onboarding {
   bmc_install_step,
   bmc_transition_roundtrips_on_quotient,
   bmc_full_state_is_lossy_after_roundtrip,
-  bmc_lifecycle_roundtrip,
   bmc_phase_credential_posture,
   bmc_lifecycle_is_monotone_hardening,
   bmc_lifecycle_length,
@@ -41,6 +40,7 @@ import gunbc.bmc_onboarding {
 import extdeps.bmc.types { BootTargetPxe, AccountRoleAdministrator, redfish_boot_target_wire, redfish_account_role_wire }
 import gunbc.assimilate.bmc_token_federation { emit_bmc_token_smoke_workflow_yaml }
 import extdeps.communication.medium { Lossless, Lossy }
+import v2.workflow.bmc_lifecycle_roundtrip { bmc_lifecycle_roundtrip }
 
 fn phase_tag(p: BmcOnboardingPhase) -> Int {
   match p {
