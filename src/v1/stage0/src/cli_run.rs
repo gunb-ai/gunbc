@@ -276,18 +276,21 @@ fn load_sources(source_roots: &[String]) -> Vec<Rc<v1_compiler_compile::SourceFi
     let mut seen: HashMap<String, Rc<v1_compiler_compile::SourceFile>> = HashMap::new();
     let mut entry_for_queue = Vec::new();
     for (path, content) in &entry_files {
-        let source = Rc::new(v1_compiler_compile::SourceFile {
-            path: path.clone(),
-            content: content.clone(),
-        });
         if let Some(mod_path) = extract_module_path(content) {
+            let source = Rc::new(v1_compiler_compile::SourceFile {
+                path: path.clone(),
+                content: content.clone(),
+            });
             seen.insert(mod_path, source.clone());
+            entry_for_queue.push(source);
         }
-        entry_for_queue.push(source);
     }
 
     let mut sources = resolve_transitively(entry_for_queue, &index, seen);
     for (path, content) in entry_files {
+        if extract_module_path(&content).is_none() {
+            continue;
+        }
         if !sources.iter().any(|s| s.path == path) {
             sources.push(Rc::new(v1_compiler_compile::SourceFile { path, content }));
         }

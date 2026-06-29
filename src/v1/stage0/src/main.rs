@@ -327,12 +327,15 @@ fn main() {
                             content: content.clone(),
                         });
                         seen.insert(mod_path, source);
+                        entry_for_queue.push((path.clone(), content.clone()));
                     }
-                    entry_for_queue.push((path.clone(), content.clone()));
                 }
 
                 let mut resolved = resolve_transitively_with_seen(entry_for_queue, &index, seen);
                 for (path, content) in entry_files {
+                    if extract_module_path(&content).is_none() {
+                        continue;
+                    }
                     let already_there = resolved.iter().any(|s| s.path == path);
                     if !already_there {
                         resolved.push(Rc::new(v1_compiler_compile::SourceFile { path, content }));
