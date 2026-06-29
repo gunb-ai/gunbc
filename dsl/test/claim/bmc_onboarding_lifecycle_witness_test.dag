@@ -26,7 +26,6 @@ import gunbc.bmc_onboarding {
   bmc_transition_roundtrips_on_quotient,
   bmc_full_state_is_lossy_after_roundtrip,
   bmc_lifecycle_roundtrip,
-  bmc_lifecycle_inverse_fidelity,
   bmc_phase_credential_posture,
   bmc_lifecycle_is_monotone_hardening,
   bmc_lifecycle_length,
@@ -177,14 +176,10 @@ test fn bmc_decom_does_not_roundtrip_when_inverse_is_wrong() -> Bool {
 }
 
 test fn bmc_lifecycle_inverse_is_lossy_section_not_iso() -> Bool {
-  match bmc_lifecycle_inverse_fidelity() {
+  match bmc_lifecycle_roundtrip(s: bmc_factory_state()).fidelity {
     Lossy => true
     Lossless => false
   }
-    && match bmc_lifecycle_roundtrip(s: bmc_factory_state()).fidelity {
-      Lossy => true
-      Lossless => false
-    }
     && bmc_full_state_is_lossy_after_roundtrip(s: factory_at(p: FactoryDefault))
 }
 
