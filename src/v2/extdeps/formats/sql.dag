@@ -386,6 +386,12 @@ fn sql_serialize_identifier(id: SqlIdentifier) -> String {
   }
 }
 
+data sql_serialize_diagnostic_anchor: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
 fn sql_serialize_unsupported_operation_diagnostic(variant: Symbol) -> Diagnostic {
   Diagnostic {
     reason: variant,
@@ -516,20 +522,6 @@ fn sql_serialize_table_definition(table: SqlTableDefinition) -> Outcome<String> 
       ))
     }
   )
-}
-
-data sql_serialize_diagnostic_anchor: Node = Node {
-  kind: TypeNode { connective: Conj },
-  children: [],
-  occurrence_id: SyntheticOccurrence
-}
-
-fn sql_serialize_unsupported_operation_diagnostic(variant: Symbol) -> Diagnostic {
-  Diagnostic {
-    reason: variant,
-    at: node_locus(node: sql_serialize_diagnostic_anchor),
-    correction: Unavailable { reason: ExternalContractUnknown }
-  }
 }
 
 fn sql_serialize_schema_operation(op: SqlSchemaOperation) -> Outcome<String> {

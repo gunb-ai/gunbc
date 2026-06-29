@@ -35,6 +35,10 @@ fn sql_create_table_fold_plan() -> List<List<Runnable>> {
       RunnableSingleClaim {
         entry: sql_fold_test_entry,
         function: "sql_fold_oracle_rejects_unsupported_drop_table_holds"
+      },
+      RunnableSingleClaim {
+        entry: sql_fold_test_entry,
+        function: "sql_fold_oracle_rejects_parameterized_numeric_type_holds"
       }
     ]
   ]

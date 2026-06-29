@@ -198,11 +198,24 @@ fn sql_fold_oracle_rejects_unsupported_drop_table_holds() -> Bool {
   }
 }
 
+fn sql_fold_oracle_rejects_parameterized_numeric_type_holds() -> Bool {
+  match sql_serialize_data_type(
+    dt: SqlTypeNumeric {
+      precision: NonZeroNat { prev: Zero },
+      scale: Zero
+    }
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
 test fn sql_fold_structural_tier_holds() -> Bool {
   sql_fold_relation_row_single_col_witness_holds()
   && sql_fold_emitted_tree_differs_on_two_col_fixture_holds()
   && sql_fold_wrong_production_rejects_oracle_holds()
   && sql_fold_oracle_rejects_unsupported_drop_table_holds()
+  && sql_fold_oracle_rejects_parameterized_numeric_type_holds()
 }
 
 test fn sql_fold_create_table_tier_holds() -> Bool {
