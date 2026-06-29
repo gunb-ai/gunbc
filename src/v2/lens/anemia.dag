@@ -1,7 +1,7 @@
 module v2.lens.anemia
 
 
-import v2.std.algebra { Empty, fold_list, list_snoc_item }
+import v2.std.algebra { fold_list, list_snoc_item }
 import v2.std.collection { List }
 import v2.std.integer { Int }
 import v2.std.logic { Bool }
@@ -22,15 +22,19 @@ fn lower_code(c: Int) -> Int {
   if (c >= 65) && (c <= 90) { c + 32 } else { c }
 }
 
+fn empty_ints() -> List<Int> {
+  []
+}
+
 fn norm_whole(s: String) -> List<Int> {
-  fold_list(xs: s, empty: Empty, cons: fn(acc, c) {
+  fold_list(xs: s, empty: empty_ints(), cons: fn(acc, c) {
     if c == 95 { acc } else { list_snoc_item(xs: acc, item: lower_code(c: c)) }
   })
 }
 
 fn norm_head(s: String) -> List<Int> {
-  fold_list(xs: s, empty: Empty, cons: fn(acc, c) {
-    if c == 95 { Empty } else { list_snoc_item(xs: acc, item: lower_code(c: c)) }
+  fold_list(xs: s, empty: empty_ints(), cons: fn(acc, c) {
+    if c == 95 { empty_ints() } else { list_snoc_item(xs: acc, item: lower_code(c: c)) }
   })
 }
 
@@ -53,7 +57,7 @@ fn name_coincides(field: String, concept_name: String) -> Bool {
 }
 
 fn concept_names_of(idx: List<QualifiedConcept>) -> List<String> {
-  fold(idx, init: Empty, f: fn(acc, qc) { list_snoc_item(xs: acc, item: qc.concept.name) })
+  fold(idx, init: [], f: fn(acc, qc) { list_snoc_item(xs: acc, item: qc.concept.name) })
 }
 
 fn matched_concept(field: String, enclosing: String, names: List<String>) -> String {
@@ -88,7 +92,7 @@ fn candidates_of_concept(qc: QualifiedConcept, names: List<String>, acc0: List<A
 
 fn candidates_in(idx: List<QualifiedConcept>) -> List<AnemiaCandidate> {
   let names = concept_names_of(idx: idx)
-  fold(idx, init: Empty, f: fn(acc, qc) { candidates_of_concept(qc: qc, names: names, acc0: acc) })
+  fold(idx, init: [], f: fn(acc, qc) { candidates_of_concept(qc: qc, names: names, acc0: acc) })
 }
 
 fn candidates() -> List<AnemiaCandidate> {
