@@ -7,11 +7,6 @@ import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
 import v2.std.collection { empty_map }
 import v2.std.node { Conj, Node, TypeNode, SyntheticOccurrence }
 
-type BmcLifecycleInverseLossyWitness =
-    SecretEpochNotInQuotient
-
-data bmc_credentials_rotated_inverse_lossy_witness: BmcLifecycleInverseLossyWitness = SecretEpochNotInQuotient
-
 fn bmc_lifecycle_modeled_fidelity_node() -> Node {
   dag_grammar_atom(id: ^dag_fidelity_disposition_kind_modeled)
 }
