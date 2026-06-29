@@ -3,7 +3,11 @@ module gunbc.tools.grounding_confirm
 import extdeps.llm.anthropic
 import extdeps.llm.anthropic_rest
 
-data judge_model: String = "claude-haiku-4-5-20251001"
+fn judge_model_id() -> String {
+  fold(models, init: "", f: fn(acc, spec) {
+    match spec.model { ClaudeHaiku4_5 => spec.model_id, _ => acc }
+  })
+}
 
 type GroundingFinding {
   enclosing: String
@@ -27,9 +31,9 @@ fn enriched_user(f: GroundingFinding) -> String {
   "enclosing_concept: {f.enclosing}\nfield: {f.field}\ndeclared_type: {f.declared_type}\ncoincides_with: {f.coincides_with}\ntarget_kind: {f.target_kind}\ntarget_definition: {f.target_definition}"
 }
 
-data ask: List<AnthropicChatMessage> = [
-  UserMessage { content: [UserTextBlock { text: "Decide GROUND or KEEP for the candidate in the system prompt." }] }
-]
+fn candidate_message(body: String) -> List<AnthropicChatMessage> {
+  [UserMessage { content: [UserTextBlock { text: body }] }]
+}
 
 data findings: List<GroundingFinding> = [
   GroundingFinding {
@@ -70,14 +74,14 @@ data findings: List<GroundingFinding> = [
   }
 ]
 
-func judge_one(f: GroundingFinding, sys: String) -> { verdict: String } {
+func judge_one(instructions: String, body: String) -> { verdict: String } {
   resp = llm.Anthropic.Messages(
     api_key: "",
-    model: judge_model,
-    messages: ask,
+    model: judge_model_id(),
+    messages: candidate_message(body: body),
     max_tokens: 8,
     temperature: 0.0,
-    system: sys
+    system: instructions
   )
   return { verdict: resp.content }
 }
@@ -88,7 +92,7 @@ fn grade(verdict: String, expected: String) -> String {
 
 func confirm_bare() -> { lines: String } {
   rows = for f in findings {
-    let v = judge_one(f: f, sys: "{bare_system}\n\n{bare_user(f: f)}").verdict
+    let v = judge_one(instructions: bare_system, body: bare_user(f: f)).verdict
     "{f.field} -> {v} [want {f.expected}] {grade(verdict: v, expected: f.expected)}"
   }
   return { lines: join(rows, "\n") }
@@ -96,7 +100,7 @@ func confirm_bare() -> { lines: String } {
 
 func confirm_enriched() -> { lines: String } {
   rows = for f in findings {
-    let v = judge_one(f: f, sys: "{enriched_system}\n\n{enriched_user(f: f)}").verdict
+    let v = judge_one(instructions: enriched_system, body: enriched_user(f: f)).verdict
     "{f.field} -> {v} [want {f.expected}] {grade(verdict: v, expected: f.expected)}"
   }
   return { lines: join(rows, "\n") }
