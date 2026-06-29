@@ -1,10 +1,154 @@
 module v2.compiler.target_carriers
 
-import extdeps.communication.medium { Lossless, Medium }
-import v2.std.language_model { LanguageModel }
+import extdeps.communication.medium { DecodeFidelity, Lossless, Lossy, Medium }
 import v2.std.compilers.target_model { TargetModel }
+import v2.std.collection { Absent, Optional, Present }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  Outcome,
+  Rejected,
+  Unavailable,
+  bind_outcome,
+  node_locus,
+  outcome_accepted,
+  outcome_rejected
+}
+import v2.std.node { Atom, Conj, Node, TypeNode }
+import v2.std.node_query { find_named_child }
 import v2.std.text { String }
 
+fn source_medium(text: String, fidelity: DecodeFidelity) -> Medium<String> {
+  Medium { carried: text, fidelity: fidelity }
+}
+
 fn lossless_source(text: String) -> Medium<String> {
-  Medium { carried: text, fidelity: Lossless }
+  source_medium(text: text, fidelity: Lossless)
+}
+
+fn decode_fidelity_merge(left: DecodeFidelity, right: DecodeFidelity) -> DecodeFidelity {
+  match left {
+    Lossy => Lossy
+    Lossless => right
+  }
+}
+
+fn fidelity_disposition_node_decode_fidelity(node: Node) -> Outcome<DecodeFidelity> {
+  match node.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      if id == ^dag_fidelity_disposition_kind_modeled {
+        outcome_accepted(Lossless)
+      } else {
+        outcome_rejected(
+          Diagnostic {
+            reason: ^target_carriers_fidelity_disposition_malformed,
+            at: node_locus(node: node),
+            correction: Unavailable { reason: ExternalContractUnknown }
+          }
+        )
+      }
+    TypeNode { connective: Conj } =>
+      match find_named_child(
+        root: node,
+        name: ^dag_fidelity_disposition_kind_declared_normalized
+      ) {
+        Accepted { value: _, diagnostics: _ } =>
+          outcome_accepted(Lossy)
+        Rejected { diagnostics: _ } =>
+          match find_named_child(
+            root: node,
+            name: ^dag_fidelity_disposition_kind_fail_closed
+          ) {
+            Accepted { value: _, diagnostics: _ } =>
+              outcome_accepted(Lossy)
+            Rejected { diagnostics: _ } =>
+              outcome_rejected(
+                Diagnostic {
+                  reason: ^target_carriers_fidelity_disposition_malformed,
+                  at: node_locus(node: node),
+                  correction: Unavailable { reason: ExternalContractUnknown }
+                }
+              )
+          }
+      }
+    _ =>
+      outcome_rejected(
+        Diagnostic {
+          reason: ^target_carriers_fidelity_disposition_malformed,
+          at: node_locus(node: node),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        }
+      )
+  }
+}
+
+fn fidelity_quotient_decode_fidelity(quotient: Node) -> Outcome<DecodeFidelity> {
+  match quotient.kind {
+    TypeNode { connective: Conj } =>
+      fold(
+        quotient.children,
+        init: Accepted { value: Lossless, diagnostics: None },
+        f: fn(acc, edge) {
+          match acc {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: current_fidelity, diagnostics: ad } =>
+              bind_outcome(
+                o: fidelity_disposition_node_decode_fidelity(node: edge.target),
+                f: fn(next_fidelity) {
+                  Accepted {
+                    value: decode_fidelity_merge(
+                      left: current_fidelity,
+                      right: next_fidelity
+                    ),
+                    diagnostics: ad
+                  }
+                }
+              )
+          }
+        }
+      )
+    _ =>
+      outcome_rejected(
+        Diagnostic {
+          reason: ^target_carriers_fidelity_quotient_malformed,
+          at: node_locus(node: quotient),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        }
+      )
+  }
+}
+
+fn target_fidelity_quotient_optional(target: TargetModel) -> Outcome<Optional<Node>> {
+  match find_named_child(
+    root: target.bundle,
+    name: ^target_model_edge_fidelity_quotient
+  ) {
+    Accepted { value: child, diagnostics: _ } =>
+      outcome_accepted(Present { value: child })
+    Rejected { diagnostics: _ } =>
+      outcome_accepted(Absent)
+  }
+}
+
+fn decode_fidelity_from_target(target: TargetModel) -> Outcome<DecodeFidelity> {
+  bind_outcome(
+    o: target_fidelity_quotient_optional(target: target),
+    f: fn(opt) {
+      match opt {
+        Absent => outcome_accepted(Lossless)
+        Present { value: quotient } =>
+          fidelity_quotient_decode_fidelity(quotient: quotient)
+      }
+    }
+  )
+}
+
+fn target_source_medium(text: String, target: TargetModel) -> Outcome<Medium<String>> {
+  bind_outcome(
+    o: decode_fidelity_from_target(target: target),
+    f: fn(fidelity) {
+      outcome_accepted(source_medium(text: text, fidelity: fidelity))
+    }
+  )
 }
