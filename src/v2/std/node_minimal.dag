@@ -199,23 +199,13 @@ fn minimal_node_kind_of(node: MinimalResolvedNode) -> MinimalNodeKind {
   }
 }
 
-fn minimal_node_kind_superset_fields(kind: MinimalNodeKind) -> List<NodeSupersetField> {
+fn minimal_node_kind_placed_fields(kind: MinimalNodeKind) -> List<NodeSupersetField> {
   match kind {
     MnkSubstrateGraph => []
-    MnkSurfaceExprLeaf =>
-      [NsfSpan, NsfIdent, NsfExprData, NsfInferred]
-    MnkSurfaceExprParent =>
-      [NsfSpan, NsfIdent, NsfExprData, NsfChildren, NsfInferred]
+    MnkSurfaceExprLeaf => [NsfSpan, NsfIdent, NsfExprData]
+    MnkSurfaceExprParent => [NsfSpan, NsfIdent, NsfExprData, NsfChildren]
     MnkSurfaceConnective =>
-      [
-        NsfSpan,
-        NsfIdent,
-        NsfConnective,
-        NsfChildren,
-        NsfParams,
-        NsfUses,
-        NsfInferred
-      ]
+      [NsfSpan, NsfIdent, NsfConnective, NsfChildren, NsfParams, NsfUses]
     MnkSurfaceNamedDecl =>
       [
         NsfName,
@@ -226,86 +216,156 @@ fn minimal_node_kind_superset_fields(kind: MinimalNodeKind) -> List<NodeSuperset
         NsfParams,
         NsfUses,
         NsfBody,
-        NsfInferred,
-        NsfReturnCardinality,
-        NsfTransport,
-        NsfProperties,
-        NsfTypeAnnotation,
-        NsfIsSelfRecursive,
-        NsfHasNonTailSelfCall
+        NsfReturnCardinality
       ]
-    MnkSurfaceMatchArm =>
-      [NsfSpan, NsfIdent, NsfMatchPattern, NsfChildren]
+    MnkSurfaceMatchArm => [NsfSpan, NsfIdent, NsfMatchPattern, NsfChildren]
   }
 }
 
 fn minimal_node_kind_live_field_count(kind: MinimalNodeKind) -> Int {
-  minimal_node_kind_superset_fields(kind: kind) |> count
+  minimal_node_kind_placed_fields(kind: kind) |> count
+}
+
+fn node_superset_field_eq(left: NodeSupersetField, right: NodeSupersetField) -> Bool {
+  match left {
+    NsfName => match right { NsfName => true  _ => false }
+    NsfIdent => match right { NsfIdent => true  _ => false }
+    NsfSpan => match right { NsfSpan => true  _ => false }
+    NsfIdentSpan => match right { NsfIdentSpan => true  _ => false }
+    NsfChildren => match right { NsfChildren => true  _ => false }
+    NsfConnective => match right { NsfConnective => true  _ => false }
+    NsfParams => match right { NsfParams => true  _ => false }
+    NsfInferred => match right { NsfInferred => true  _ => false }
+    NsfReturnCardinality => match right { NsfReturnCardinality => true  _ => false }
+    NsfUses => match right { NsfUses => true  _ => false }
+    NsfBody => match right { NsfBody => true  _ => false }
+    NsfTransport => match right { NsfTransport => true  _ => false }
+    NsfProperties => match right { NsfProperties => true  _ => false }
+    NsfTypeAnnotation => match right { NsfTypeAnnotation => true  _ => false }
+    NsfIsSelfRecursive => match right { NsfIsSelfRecursive => true  _ => false }
+    NsfHasNonTailSelfCall => match right { NsfHasNonTailSelfCall => true  _ => false }
+    NsfMatchPattern => match right { NsfMatchPattern => true  _ => false }
+    NsfExprData => match right { NsfExprData => true  _ => false }
+  }
+}
+
+fn list_contains_node_superset_field(
+  xs: List<NodeSupersetField>,
+  field: NodeSupersetField
+) -> Bool {
+  xs |> any(f => node_superset_field_eq(left: f, right: field))
+}
+
+fn dedup_node_superset_fields(xs: List<NodeSupersetField>) -> List<NodeSupersetField> {
+  fold(xs, init: [], f: fn(acc, field) {
+    if list_contains_node_superset_field(xs: acc, field: field) {
+      acc
+    } else {
+      concat(acc, [field])
+    }
+  })
+}
+
+fn concat_node_superset_field_lists(
+  left: List<NodeSupersetField>,
+  right: List<NodeSupersetField>
+) -> List<NodeSupersetField> {
+  concat(left, right)
+}
+
+fn minimal_kind_placed_fields_union() -> List<NodeSupersetField> {
+  dedup_node_superset_fields(
+    xs: concat_node_superset_field_lists(
+      left: concat_node_superset_field_lists(
+        left: concat_node_superset_field_lists(
+          left: concat_node_superset_field_lists(
+            left: concat_node_superset_field_lists(
+              left: minimal_node_kind_placed_fields(kind: MnkSurfaceExprLeaf),
+              right: minimal_node_kind_placed_fields(kind: MnkSurfaceExprParent)
+            ),
+            right: minimal_node_kind_placed_fields(kind: MnkSurfaceConnective)
+          ),
+          right: minimal_node_kind_placed_fields(kind: MnkSurfaceNamedDecl)
+        ),
+        right: minimal_node_kind_placed_fields(kind: MnkSurfaceMatchArm)
+      ),
+      right: minimal_node_kind_placed_fields(kind: MnkSubstrateGraph)
+    )
+  )
+}
+
+data minimal_kind_owed_placement: List<NodeSupersetField> = [
+  NsfTransport,
+  NsfProperties,
+  NsfTypeAnnotation
+]
+
+data minimal_kind_migrated_to_facts: List<NodeSupersetField> = [
+  NsfInferred,
+  NsfIsSelfRecursive,
+  NsfHasNonTailSelfCall
+]
+
+fn node_superset_field_lists_disjoint(
+  left: List<NodeSupersetField>,
+  right: List<NodeSupersetField>
+) -> Bool {
+  fold(left, init: true, f: fn(acc, field) {
+    if acc {
+      !list_contains_node_superset_field(xs: right, field: field)
+    } else {
+      false
+    }
+  })
+}
+
+fn node_superset_field_three_way_disjoint(
+  placed: List<NodeSupersetField>,
+  owed: List<NodeSupersetField>,
+  migrated: List<NodeSupersetField>
+) -> Bool {
+  node_superset_field_lists_disjoint(left: placed, right: owed)
+    && node_superset_field_lists_disjoint(left: placed, right: migrated)
+    && node_superset_field_lists_disjoint(left: owed, right: migrated)
+}
+
+fn minimal_kind_partition_field_union() -> List<NodeSupersetField> {
+  dedup_node_superset_fields(
+    xs: concat_node_superset_field_lists(
+      left: concat_node_superset_field_lists(
+        left: minimal_kind_placed_fields_union(),
+        right: minimal_kind_owed_placement
+      ),
+      right: minimal_kind_migrated_to_facts
+    )
+  )
+}
+
+fn witness_partition_covers_superset() -> Bool {
+  if node_superset_field_three_way_disjoint(
+    placed: minimal_kind_placed_fields_union(),
+    owed: minimal_kind_owed_placement,
+    migrated: minimal_kind_migrated_to_facts
+  ) {
+    if count(minimal_kind_partition_field_union()) == node_superset_field_count {
+      true
+    } else {
+      false
+    }
+  } else {
+    false
+  }
 }
 
 fn minimal_node_superset_field_unused_by_kind(
   kind: MinimalNodeKind,
   field: NodeSupersetField
 ) -> Bool {
-  if minimal_node_kind_superset_fields(kind: kind) |> any(f => f == field) {
+  if minimal_node_kind_placed_fields(kind: kind) |> any(f => f == field) {
     false
   } else {
     true
   }
-}
-
-fn minimal_superset_field_covered_by_kind(
-  field: NodeSupersetField,
-  kind: MinimalNodeKind
-) -> Bool {
-  minimal_node_kind_superset_fields(kind: kind) |> any(f => f == field)
-}
-
-fn minimal_superset_field_covered(field: NodeSupersetField) -> Bool {
-  if minimal_superset_field_covered_by_kind(field: field, kind: MnkSurfaceExprLeaf) {
-    true
-  } else if minimal_superset_field_covered_by_kind(field: field, kind: MnkSurfaceExprParent) {
-    true
-  } else if minimal_superset_field_covered_by_kind(field: field, kind: MnkSurfaceConnective) {
-    true
-  } else if minimal_superset_field_covered_by_kind(field: field, kind: MnkSurfaceNamedDecl) {
-    true
-  } else if minimal_superset_field_covered_by_kind(field: field, kind: MnkSurfaceMatchArm) {
-    true
-  } else {
-    false
-  }
-}
-
-data all_node_superset_fields: List<NodeSupersetField> = [
-  NsfName,
-  NsfIdent,
-  NsfSpan,
-  NsfIdentSpan,
-  NsfChildren,
-  NsfConnective,
-  NsfParams,
-  NsfInferred,
-  NsfReturnCardinality,
-  NsfUses,
-  NsfBody,
-  NsfTransport,
-  NsfProperties,
-  NsfTypeAnnotation,
-  NsfIsSelfRecursive,
-  NsfHasNonTailSelfCall,
-  NsfMatchPattern,
-  NsfExprData
-]
-
-fn minimal_superset_partition_covers_all_fields() -> Bool {
-  fold(all_node_superset_fields, init: true, f: fn(acc, field) {
-    if acc {
-      minimal_superset_field_covered(field: field)
-    } else {
-      false
-    }
-  })
 }
 
 fn minimal_substrate_node_from_v2(node: Node) -> MinimalResolvedNode {

@@ -49,11 +49,23 @@ Side-table refs modeled (not inline heap strings): `SpanRef { file_id, start, en
 | `name`, `ident`, `span`, `ident_span` | Named/surface provenance + side tables | `ident` kept for module/import fast-path |
 | `children`, `params`, `uses`, `body` | Per-kind payload lists / `SurfaceDeclPayload` | Only on kinds that read them |
 | `connective`, `expr_data` | Kind discriminator payloads | Eliminates cross-kind dead storage |
-| `inferred` | `InferenceSlot` **or** v2 `InferredTree.facts` side-map | Substrate graph nodes: facts live in side-map (v2 already splits) |
-| `return_cardinality` | Named decl variant only | |
-| `match_pattern` | Match-arm variant only | |
-| `transport`, `properties`, `type_annotation` | **NamedDecl** (`SdpServiceOp` / `SdpTypedMember` payloads) | Service-op transport; typed param/field annotations; decl properties |
-| `is_self_recursive`, `has_non_tail_self_call` | **NamedDecl fn-item** (`SdpFnItem.descent`) | Termination / DescentEvidence flags alongside `return_cardinality` |
+| `inferred` | **migrated_to_facts** | v2 `InferredTree.facts` side-map (not per-node payload) |
+| `transport`, `properties`, `type_annotation` | **owed_placement** | Variant arms staged to emit-integration (`SdpServiceOp`, `SdpTypedMember`) |
+| `is_self_recursive`, `has_non_tail_self_call` | **migrated_to_facts** | Termination / DescentEvidence via `InferredFacts`, not every node |
+
+### Executable completeness witness (construction wall)
+
+`witness_partition_covers_superset()` executes in `v2.std.node_minimal`:
+
+- `minimal_kind_placed_fields_union()` — 12 fields on kind arms today
+- `minimal_kind_owed_placement` — 3 fields awaiting variant arms
+- `minimal_kind_migrated_to_facts` — 3 fields leaving the node (`NsfInferred`, recursion flags)
+- Asserts: three buckets pairwise disjoint AND `count(dedup(placed ++ owed ++ migrated)) == 18`
+- Dissolution trigger: `minimal_kind_owed_placement == []` AND migrated fields proven relocated
+
+Dropping any field without re-bucketing turns the witness **RED** (count ≠ 18 or overlap).
+
+**Landed (PR #5936, runs green):**
 | Rc/`Vec` child storage | **Sub-move (ii) — NOT in this sketch** | Arena/`u32` slices replace pointer fields at realization |
 
 ## NOT-edited boundary (constraint b — load-bearing)
@@ -90,10 +102,12 @@ cargo test -p v1-compiler-tests v2_node_minimal_representation_compiles_and_witn
 | `node_minimal_substrate_round_trips_v2_node_holds` | `minimal_substrate_node_from_v2` preserves v2 `Node` kind/children/occurrence |
 | `node_minimal_substrate_has_no_superset_fields_holds` | Substrate kind maps **zero** v1 superset fields (authority is already minimal) |
 | `node_minimal_kind_of_expr_leaf_holds` | Kind classifier is discriminating |
-| `node_minimal_partition_covers_all_superset_fields_holds` | **Union of all 6 kinds' live fields = full 18-field superset** |
-| `node_minimal_orphan_fields_placed_on_named_decl_holds` | Previously-missing 5 fields (`transport`, `properties`, `type_annotation`, recursion flags) placed on `MnkSurfaceNamedDecl` |
+| `witness_partition_covers_superset_holds` | **12 placed + 3 owed + 3 migrated = 18, pairwise disjoint** |
+| `node_minimal_placed_bucket_count_holds` | Placed union count == 12 |
+| `node_minimal_owed_bucket_count_holds` | Owed count == 3 |
+| `node_minimal_migrated_bucket_count_holds` | Migrated count == 3 |
 
-**Owed before emit integration (not yet green):**
+**Staged to emit-integration (owed list shrinks as arms land):**
 - End-to-end: whole-tree resolve diagnostic fingerprint **unchanged** after realization swap (gated on #5879)
 
 ### 2. Measured byte / RSS delta

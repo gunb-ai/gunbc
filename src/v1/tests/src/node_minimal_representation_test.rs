@@ -118,16 +118,32 @@ fn v2_node_minimal_representation_compiles_and_witnesses_hold() {
         run_bool_test(
             graph,
             source_indices.clone(),
-            "node_minimal_partition_covers_all_superset_fields_holds"
+            "witness_partition_covers_superset_holds"
         ),
-        "partition union must cover all 18 v1 superset fields"
+        "placed + owed + migrated must partition all 18 superset fields disjointly"
+    );
+    assert!(
+        run_bool_test(
+            graph,
+            source_indices.clone(),
+            "node_minimal_placed_bucket_count_holds"
+        ),
+        "placed bucket must have 12 fields on kind arms today"
+    );
+    assert!(
+        run_bool_test(
+            graph,
+            source_indices.clone(),
+            "node_minimal_owed_bucket_count_holds"
+        ),
+        "owed bucket must have 3 fields awaiting variant arms"
     );
     assert!(
         run_bool_test(
             graph,
             source_indices,
-            "node_minimal_orphan_fields_placed_on_named_decl_holds"
+            "node_minimal_migrated_bucket_count_holds"
         ),
-        "transport/properties/type_annotation/recursion flags must live on NamedDecl"
+        "migrated bucket must have 3 fields relocated to InferredFacts"
     );
 }
