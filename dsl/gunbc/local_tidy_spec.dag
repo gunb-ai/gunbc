@@ -1,6 +1,6 @@
 module gunbc.local_tidy_spec
 
-import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.ci_layer_roots { witness_layer_roots }
 import gunbc.generated_artifact { committed_generated_artifacts, artifact_path }
@@ -29,20 +29,11 @@ data local_tidy_checks: List<LocalTidyCheck> = [
   LocalTidyCargoFmtCheck
 ]
 
-data local_tidy_emit_scaffold: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
+data githooks_pre_push_emit_scaffold: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
   bind: DeclarationRef {
-    module_path: "gunbc.githooks_pre_push_emit",
-    decl_name: "expected_githooks_pre_push_sh",
-    field: WholeDeclaration
-  }
-}
-
-data githooks_lib_tidy_scaffold: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "gunbc.githooks_pre_push_emit",
-    decl_name: "expected_githooks_pre_push_sh",
+    module_path: "extdeps.languages.bash.program",
+    decl_name: "serialize_bash",
     field: WholeDeclaration
   }
 }
