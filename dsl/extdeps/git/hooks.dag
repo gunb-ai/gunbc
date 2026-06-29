@@ -1,0 +1,50 @@
+module extdeps.git.hooks
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "git-scm.com/docs/githooks"
+  }
+}
+
+type HookEvent
+  = PrePush
+  | PreCommit
+
+type HookExit
+  = Allow
+  | Block { code: Int, message: String }
+
+type PrePushStdinRow {
+  local_ref: String
+  local_sha: String
+  remote_ref: String
+  remote_sha: String
+}
+
+type HookInvocation {
+  event: HookEvent
+  stdin_rows: List<PrePushStdinRow>
+}
+
+data zero_sha: String = "0000000000000000000000000000000000000000"
+
+data pre_push_zero_sha: String = zero_sha
+
+data pre_push_stdin_format: String = "<local_ref> <local_sha> <remote_ref> <remote_sha>"
+
+data hook_exit_semantics: String = "non-zero shell exit blocks the git hook (fail-closed)"
+
+fn hook_exit_is_allow(e: HookExit) -> Bool {
+  match e { Allow => true  Block { code: _, message: _ } => false }
+}
+
+fn hook_fail_closed_message(e: HookExit) -> String {
+  match e {
+    Allow => ""
+    Block { code: c, message: msg } => concat("hook blocked (exit ", concat(to_string(c), concat("): ", msg)))
+  }
+}

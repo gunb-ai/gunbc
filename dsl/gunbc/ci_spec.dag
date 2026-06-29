@@ -4,19 +4,15 @@ import gunbc.ci_layer_roots {
   witness_layer_roots,
   witness_layer_source_flags
 }
+import gunbc.gate_registry {
+  Gate, RustMonolithGate, EmitHostGate, LayeringImportsGate,
+  ExtdepsExternalAuthorityGate, DslCompileCleanGate, GeneratedArtifactDriftGate,
+  SourceRootIngestGate, RegenVerifyGate, DocReachabilityGate, CargoFmtGate,
+  gate_floor_variants, gate_rust_job_variants, gate_all_variants
+}
 import tools.build_step { BuildArtifact }
 import extdeps.languages.bash.program { Concat, lit, var_ref }
 import gunbc.ci_failure_class { infra_retry_grep_alternation }
-
-type Gate
-  = RustMonolithGate
-  | EmitHostGate
-  | LayeringImportsGate
-  | ExtdepsExternalAuthorityGate
-  | DslCompileCleanGate
-  | GeneratedArtifactDriftGate
-  | SourceRootIngestGate
-  | RegenVerifyGate
 
 type DiffMode = DiffMergeBase | DiffTwoDot
 
@@ -32,21 +28,11 @@ type CiSpec {
   notice_title: String
 }
 
-data gunbc_ci_floor_gates: List<Gate> = [
-  EmitHostGate,
-  LayeringImportsGate,
-  ExtdepsExternalAuthorityGate,
-  DslCompileCleanGate,
-  GeneratedArtifactDriftGate,
-  SourceRootIngestGate,
-  RegenVerifyGate
-]
+data gunbc_ci_floor_gates: List<Gate> = gate_floor_variants()
 
-data gunbc_ci_rust_job_gates: List<Gate> = [
-  RustMonolithGate
-]
+data gunbc_ci_rust_job_gates: List<Gate> = gate_rust_job_variants()
 
-data gunbc_ci_gates: List<Gate> = concat(gunbc_ci_floor_gates, gunbc_ci_rust_job_gates)
+data gunbc_ci_gates: List<Gate> = gate_all_variants()
 
 data gunbc_ci_spec: CiSpec = {
   gates: gunbc_ci_floor_gates,

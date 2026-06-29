@@ -1,0 +1,198 @@
+module gunbc.githooks_pre_push_emit
+
+import gunbc.local_tidy_spec {
+  local_tidy_gate_order, local_tidy_gate_entry, local_tidy_gate_check_fns, local_tidy_gate_wet_fn
+}
+import gunbc.gate_registry {
+  Gate, DocReachabilityGate, GeneratedArtifactDriftGate, CargoFmtGate,
+  local_tidy_trigger_globs, gate_has_stale_probe, gate_binding
+}
+import extdeps.git.hooks { pre_push_zero_sha }
+
+data bash_at: String = "@"
+
+fn bash_dollar() -> String {
+  "$"
+}
+
+fn bash_array_all(name: String) -> String {
+  concat(concat(concat(bash_dollar(), "{"), name), concat("[", concat(concat(bash_at, "]"), "}")))
+}
+
+fn bash_positional_all() -> String {
+  concat(bash_dollar(), bash_at)
+}
+
+fn emit_glob_case_arms(globs: List<String>) -> String {
+  fold(globs, init: "", f: fn(acc, g) {
+    concat(acc, concat("\n    ", concat(g, "*) return 0 ;;")))
+  })
+}
+
+fn emit_claim_batch(entry: String, function: String, suffix: String) -> String {
+  concat(
+    "\"$CLAIM_BATCH\" --source-root dsl --entry ",
+    concat(entry, concat(" --function ", concat(function, suffix)))
+  )
+}
+
+fn emit_freshness_path_fn(label: String, globs: List<String>) -> String {
+  concat(
+    concat(label, "_path() {\n  case \"$1\" in"),
+    concat(emit_glob_case_arms(globs: globs), "\n  esac\n  return 1\n}\n")
+  )
+}
+
+fn emit_freshness_doc() -> String {
+  let globs = local_tidy_trigger_globs(g: DocReachabilityGate)
+  concat(
+    emit_freshness_path_fn(label: "fresh_doc", globs: globs),
+    concat(
+      "fresh_doc() {\n  local p\n  for p in \"",
+      concat(bash_positional_all(), "\"; do fresh_doc_path \"$p\" && return 0; done\n  return 1\n}\n")
+    )
+  )
+}
+
+fn emit_freshness_artifact() -> String {
+  let globs = local_tidy_trigger_globs(g: GeneratedArtifactDriftGate)
+  let entry = gate_binding(g: GeneratedArtifactDriftGate).entry
+  concat(
+    concat(
+      emit_freshness_path_fn(label: "fresh_artifact", globs: globs),
+      concat(
+        "fresh_artifact() {\n  local p\n  for p in \"",
+        concat(bash_positional_all(), "\"; do fresh_artifact_path \"$p\" && return 0; done\n  if ! ")
+      )
+    ),
+    concat(
+      emit_claim_batch(entry: entry, function: "run_generated_artifact_drift_gate_body", suffix: ""),
+      " 2>/dev/null; then return 0; fi\n  return 1\n}\n"
+    )
+  )
+}
+
+fn emit_freshness_fmt() -> String {
+  let globs = local_tidy_trigger_globs(g: CargoFmtGate)
+  concat(
+    emit_freshness_path_fn(label: "fresh_fmt", globs: globs),
+    concat(
+      "fresh_fmt() {\n  local p\n  for p in \"",
+      concat(bash_positional_all(), "\"; do fresh_fmt_path \"$p\" && return 0; done\n  return 1\n}\n")
+    )
+  )
+}
+
+fn emit_run_doc() -> String {
+  let entry = local_tidy_gate_entry(g: DocReachabilityGate)
+  fold(local_tidy_gate_check_fns(g: DocReachabilityGate), init: "", f: fn(acc, check_fn) {
+    let block = concat(
+      concat("echo \"[pre-push] doc reachability: ", check_fn),
+      concat("\"\n", concat(emit_claim_batch(entry: entry, function: check_fn, suffix: " --claim-run"), "\n"))
+    )
+    if acc == "" { block } else { concat(acc, block) }
+  })
+}
+
+fn emit_run_artifact() -> String {
+  let entry = local_tidy_gate_entry(g: GeneratedArtifactDriftGate)
+  concat(
+    concat("echo \"[pre-push] generated-artifact drift gate\"\nif ", emit_claim_batch(entry: entry, function: "run_generated_artifact_drift_gate_body", suffix: "")),
+    concat(
+      "; then :; else\n  echo \"[pre-push] drift detected; running main_wet\"\n  ",
+      concat(
+        emit_claim_batch(entry: entry, function: "main_wet", suffix: " --wet"),
+        concat(
+          "\n  echo \"[pre-push] staging regen outputs:\"\n  git diff --name-only --diff-filter=ACMR | while IFS= read -r p; do\n    [ -n \"$p\" ] || continue\n    echo \"  + $p\"\n    git add -u -- \"$p\"\n  done\n  git ls-files --others --exclude-standard | while IFS= read -r p; do\n    [ -n \"$p\" ] || continue\n    echo \"  + $p (untracked)\"\n    git add -- \"$p\"\n  done\n  echo \"[pre-push] re-checking drift after regen\"\n  ",
+          concat(emit_claim_batch(entry: entry, function: "run_generated_artifact_drift_gate_body", suffix: ""), "\nfi\n")
+        )
+      )
+    )
+  )
+}
+
+fn emit_run_fmt() -> String {
+  concat(
+    "echo \"[pre-push] cargo fmt --all --check\"\nif cargo fmt --all --check 2>/dev/null; then\n  exit 0\nfi\n",
+    concat(
+      "if [[ \"$HEAD_BRANCH_IN_PUSH\" != \"1\" ]]; then\n  echo \"[pre-push] fmt drift detected; auto-fix out of scope for this push.\" >&2\n  exit 1\nfi\n",
+      concat(
+        "echo \"[pre-push] running cargo fmt --all\"\ncargo fmt --all\ngit add -u\n",
+        concat(
+          "if git diff --cached --quiet; then echo \"[pre-push] fmt reported drift but produced no diff\" >&2; exit 1; fi\n",
+          "git commit -m \"chore: apply cargo fmt\"\necho \"[pre-push] fmt committed locally; re-run git push.\"\nexit 1\n"
+        )
+      )
+    )
+  )
+}
+
+func expected_githooks_pre_push_sh() -> String {
+  concat(
+    concat(
+      "#!/usr/bin/env bash\n# GENERATED by dsl/gunbc/githooks_pre_push_emit.dag — DO NOT HAND-EDIT.\n",
+      "set -euo pipefail\nROOT=\"$(git rev-parse --show-toplevel)\"\ncd \"$ROOT\"\n"
+    ),
+    concat(
+      concat("ZERO_SHA=\"", concat(pre_push_zero_sha, "\"\n")),
+      concat(
+        "ensure_bins() {\n  if [[ -x \"$ROOT/target/release/claim_batch\" ]]; then\n    CLAIM_BATCH=\"$ROOT/target/release/claim_batch\"\n  elif [[ -x \"$ROOT/target/debug/claim_batch\" ]]; then\n    CLAIM_BATCH=\"$ROOT/target/debug/claim_batch\"\n  else\n    echo \"[pre-push] claim_batch not built; compiling debug (one-time)...\"\n    (cd \"$ROOT\" && CTRL_BUILD_WRAP_CARGO=0 cargo build -p v1-compiler --bin claim_batch)\n    CLAIM_BATCH=\"$ROOT/target/debug/claim_batch\"\n  fi\n}\n",
+        concat(emit_freshness_doc(), concat(emit_freshness_artifact(), emit_freshness_fmt()))
+      )
+    ),
+    concat(
+      "HEAD_REF=\"$(git symbolic-ref HEAD 2>/dev/null || echo \"\")\"\nHEAD_BRANCH_IN_PUSH=0\nPUSHES_CONTENT=0\ndeclare -a PUSH_CHANGED=()\n",
+      concat(
+        concat(
+          "collect_push_changed() {\n  local local_sha=\"$1\" remote_sha=\"$2\" base=\"$remote_sha\" head=\"$local_sha\"\n  if [[ \"$remote_sha\" == \"$ZERO_SHA\" ]]; then base=\"$(git hash-object -t tree /dev/null)\"; fi\n  local path seen=0 x\n  while IFS= read -r path; do\n    [[ -z \"$path\" ]] && continue\n    seen=0\n    for x in \"",
+          concat(
+            bash_array_all(name: "PUSH_CHANGED"),
+            "\"; do [[ \"$x\" == \"$path\" ]] && seen=1 && break; done\n    [[ \"$seen\" == \"0\" ]] && PUSH_CHANGED+=(\"$path\")\n  done < <(git diff --name-only --diff-filter=ACMR \"$base\" \"$head\")\n}\n"
+          )
+        ),
+        "while IFS=' ' read -r local_ref local_sha remote_ref remote_sha; do\n  [[ \"$local_sha\" == \"$ZERO_SHA\" ]] && continue\n  PUSHES_CONTENT=1\n  collect_push_changed \"$local_sha\" \"$remote_sha\"\n  if [[ -n \"$HEAD_REF\" && \"$local_ref\" == \"$HEAD_REF\" ]]; then HEAD_BRANCH_IN_PUSH=1; fi\ndone\n[[ \"$PUSHES_CONTENT\" == \"0\" ]] && exit 0\n"
+      )
+    ),
+    concat(
+      "if [[ \"$HEAD_BRANCH_IN_PUSH\" == \"1\" ]]; then\n  if ! git diff --quiet || ! git diff --cached --quiet; then\n    echo \"[pre-push] uncommitted changes — commit or stash before pushing.\" >&2\n    exit 1\n  fi\nfi\n",
+      "ensure_bins\n"
+    ),
+    concat(
+      concat(
+        concat(
+          concat(
+            "NEED_DOC=0 NEED_ARTIFACT=0 NEED_FMT=0\nif fresh_doc \"",
+            bash_array_all(name: "PUSH_CHANGED")
+          ),
+          "\"; then NEED_DOC=1; fi\nif fresh_artifact \""
+        ),
+        concat(
+          bash_array_all(name: "PUSH_CHANGED"),
+          concat(
+            "\"; then NEED_ARTIFACT=1; fi\nif fresh_fmt \"",
+            concat(
+              bash_array_all(name: "PUSH_CHANGED"),
+              "\"; then NEED_FMT=1; fi\nif [[ \"$NEED_DOC\" == \"0\" && \"$NEED_ARTIFACT\" == \"0\" && \"$NEED_FMT\" == \"0\" ]]; then exit 0; fi\n"
+            )
+          )
+        )
+      ),
+      concat(
+        "if [[ \"$NEED_DOC\" == \"1\" ]]; then\n",
+        concat(
+          emit_run_doc(),
+          concat(
+            "fi\nif [[ \"$NEED_ARTIFACT\" == \"1\" ]]; then\n",
+            concat(
+              emit_run_artifact(),
+              concat(
+                "fi\nif [[ \"$NEED_ARTIFACT\" == \"1\" ]]; then\n  if ! git diff --cached --quiet; then\n    if [[ \"$HEAD_BRANCH_IN_PUSH\" != \"1\" ]]; then echo \"[pre-push] regen staged but HEAD branch not in push\" >&2; exit 1; fi\n    echo \"[pre-push] staged after regen:\"\n    git diff --cached --name-only | while IFS= read -r p; do echo \"  + $p\"; done\n    git commit -m \"chore: regenerate committed projections\"\n    echo \"[pre-push] regen committed locally; re-run git push.\"\n    exit 1\n  fi\nfi\n",
+                concat("if [[ \"$NEED_FMT\" == \"1\" ]]; then\n", concat(emit_run_fmt(), "fi\nexit 0\n"))
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+}

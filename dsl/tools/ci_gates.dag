@@ -5,7 +5,7 @@ import gunbc.ci_spec {
   gunbc_ci_gates, CiSpec, Gate,
   RustMonolithGate, EmitHostGate, LayeringImportsGate,
   ExtdepsExternalAuthorityGate, DslCompileCleanGate, GeneratedArtifactDriftGate,
-  SourceRootIngestGate, RegenVerifyGate
+  SourceRootIngestGate, RegenVerifyGate, DocReachabilityGate, CargoFmtGate
 }
 import tools.rust_gates_ci { run_rust_monolith_gate }
 import tools.emit_host_gate { run_emit_host_ci_gate }
@@ -31,6 +31,12 @@ fn run_spec_gate(g: Gate) -> ProcessExit {
       reason: "SourceRootIngestGate: run via ci_floor_plan v2.workflow.source_root_ingest_gate (slice 3)"
     )
     RegenVerifyGate => run_regen_verify_gate()
+    DocReachabilityGate => exit_failure(
+      reason: "DocReachabilityGate: local pre-push only (see gunbc.local_tidy_spec)"
+    )
+    CargoFmtGate => exit_failure(
+      reason: "CargoFmtGate: local pre-push only (see gunbc.local_tidy_spec)"
+    )
   }
 }
 

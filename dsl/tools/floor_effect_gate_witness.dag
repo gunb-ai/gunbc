@@ -34,3 +34,7 @@ func generated_artifact_drift_gate_passes() -> Bool {
 func regen_verify_gate_passes() -> Bool {
   exit_ok(e: run_spec_gate(g: RegenVerifyGate))
 }
+
+func local_tidy_only_gate_unreachable() -> Bool {
+  false
+}
