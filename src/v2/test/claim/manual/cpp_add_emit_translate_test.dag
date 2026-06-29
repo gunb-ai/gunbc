@@ -1,4 +1,4 @@
-module v2.test.manual.mvp1_cpp_add_translate
+module v2.test.manual.cpp_add_emit_translate
 
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
 import v2.compiler.emit { emit }
@@ -82,51 +82,51 @@ import v2.std.verification {
   manual_claim_anchor
 }
 import v2.std.witness { Holds, StructuralPropertyWitness, Violates, Witness }
-data mvp1_cpp_forbidden_authority_source_text: String = "authority_source_text_fallback_forbidden"
+data cpp_add_forbidden_authority_source_text: String = "authority_source_text_fallback_forbidden"
 
-data mvp1_cpp_target_profile: Node = Node {
-  kind: TypeNode { connective: Atom { identity: ^mvp1_cpp_target_profile_atom } },
+data cpp_add_target_profile: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^cpp_add_target_profile_atom } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-data mvp1_cpp_int_primitive_facts: CppIntegerPrimitiveFacts = cpp_signed_integer_facts(
+data cpp_add_int_primitive_facts: CppIntegerPrimitiveFacts = cpp_signed_integer_facts(
   spelling: Int,
   surface_spelling: ^cpp_surface_spelling_int,
   target_profile: cpp_mvp1_target_profile
 )
 
-data mvp1_cpp_int_inhabitant: Node = cpp_int_inhabitant_node(target_profile: cpp_mvp1_target_profile)
+data cpp_add_int_inhabitant: Node = cpp_int_inhabitant_node(target_profile: cpp_mvp1_target_profile)
 
-data mvp1_cpp_emitted_root: Node = cpp_mvp1_emitted_add_fn_node(target_profile: cpp_mvp1_target_profile)
+data cpp_add_emitted_root: Node = cpp_mvp1_emitted_add_fn_node(target_profile: cpp_mvp1_target_profile)
 
-data mvp1_cpp_int_facts_node: Node = cpp_integer_facts_node(facts: mvp1_cpp_int_primitive_facts)
+data cpp_add_int_facts_node: Node = cpp_integer_facts_node(facts: cpp_add_int_primitive_facts)
 
-data mvp1_cpp_int_scalar_node: Node = cpp_integer_scalar_fact_node(facts: mvp1_cpp_int_primitive_facts)
+data cpp_add_int_scalar_node: Node = cpp_integer_scalar_fact_node(facts: cpp_add_int_primitive_facts)
 
-data mvp1_cpp_int_width_node: Node = mvp1_cpp_int_primitive_facts.width_fact
+data cpp_add_int_width_node: Node = cpp_add_int_primitive_facts.width_fact
 
-data mvp1_cpp_int_spelling_node: Node = cpp_signed_integer_spelling_node(spelling: Int)
+data cpp_add_int_spelling_node: Node = cpp_signed_integer_spelling_node(spelling: Int)
 
-data mvp1_cpp_target_model: TargetModel = cpp_mvp1_target_model()
+data cpp_add_target_model: TargetModel = cpp_mvp1_target_model()
 
-data mvp1_cpp_poisoned_authority_target_model: TargetModel = TargetModel {
+data cpp_add_poisoned_authority_target_model: TargetModel = TargetModel {
   bundle: cpp_mvp1_target_model_node(target_profile: cpp_mvp1_target_profile),
   lex: cpp_wave1_lex(),
   binding_spellings: cpp_mvp1_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
-  authority_source_text: mvp1_cpp_forbidden_authority_source_text,
+  authority_source_text: cpp_add_forbidden_authority_source_text,
   runtime_row: target_emit_host_runtime_row_unconfigured
 }
 
-data mvp1_cpp_empty_translation_rules_bundle: Node = Node {
+data cpp_add_empty_translation_rules_bundle: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-data mvp1_cpp_missing_translation_rules_target: TargetModel = TargetModel {
-  bundle: mvp1_cpp_empty_translation_rules_bundle,
+data cpp_add_missing_translation_rules_target: TargetModel = TargetModel {
+  bundle: cpp_add_empty_translation_rules_bundle,
   lex: cpp_wave1_lex(),
   binding_spellings: empty_map(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
@@ -134,24 +134,24 @@ data mvp1_cpp_missing_translation_rules_target: TargetModel = TargetModel {
   runtime_row: target_emit_host_runtime_row_unconfigured
 }
 
-fn anchor_mvp1_cpp_serialize_rejects_missing_translation_rules() -> Outcome<Medium<String>> {
+fn anchor_cpp_add_serialize_rejects_missing_translation_rules() -> Outcome<Medium<String>> {
   target_serialize_source_from_model(
-    target: mvp1_cpp_missing_translation_rules_target,
-    emitted: mvp1_cpp_emitted_root
+    target: cpp_add_missing_translation_rules_target,
+    emitted: cpp_add_emitted_root
   )
 }
 
-data mvp1_cpp_serialize_reject_receipt: Outcome<Medium<String>> = anchor_mvp1_cpp_serialize_rejects_missing_translation_rules()
+data cpp_add_serialize_reject_receipt: Outcome<Medium<String>> = anchor_cpp_add_serialize_rejects_missing_translation_rules()
 
-fn mvp1_cpp_serialize_reject_claim_outcome() -> Outcome<Node> {
-  match mvp1_cpp_serialize_reject_receipt {
+fn cpp_add_serialize_reject_claim_outcome() -> Outcome<Node> {
+  match cpp_add_serialize_reject_receipt {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: _, diagnostics: _ } =>
       Rejected {
         diagnostics: diagnostics_singleton(
           d: Diagnostic {
-            reason: ^mvp1_cpp_serialize_unexpected_accept,
-            at: node_locus(node: mvp1_cpp_emitted_root),
+            reason: ^cpp_add_serialize_unexpected_accept,
+            at: node_locus(node: cpp_add_emitted_root),
             correction: Unavailable { reason: ExternalContractUnknown }
           }
         )
@@ -159,7 +159,7 @@ fn mvp1_cpp_serialize_reject_claim_outcome() -> Outcome<Node> {
   }
 }
 
-fn mvp1_cpp_canonical_grounding(
+fn cpp_add_canonical_grounding(
   node: Node,
   algebra: Node
 ) -> CanonicalGrounding {
@@ -178,102 +178,102 @@ fn mvp1_cpp_canonical_grounding(
   }
 }
 
-fn mvp1_cpp_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding> {
-  if node == mvp1_cpp_emitted_root {
+fn cpp_add_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding> {
+  if node == cpp_add_emitted_root {
     Holds {
-      value: mvp1_cpp_canonical_grounding(
+      value: cpp_add_canonical_grounding(
         node: node,
         algebra: node
       )
     }
-  } else if node == mvp1_cpp_int_inhabitant {
+  } else if node == cpp_add_int_inhabitant {
     Holds {
-      value: mvp1_cpp_canonical_grounding(
+      value: cpp_add_canonical_grounding(
         node: node,
-        algebra: mvp1_cpp_int_facts_node
+        algebra: cpp_add_int_facts_node
       )
     }
   } else if node == cpp_atom(id: ^cpp_inhabitant_int) {
     Holds {
-      value: mvp1_cpp_canonical_grounding(
+      value: cpp_add_canonical_grounding(
         node: node,
-        algebra: mvp1_cpp_int_inhabitant
+        algebra: cpp_add_int_inhabitant
       )
     }
-  } else if node == mvp1_cpp_int_facts_node {
+  } else if node == cpp_add_int_facts_node {
     Holds {
-      value: mvp1_cpp_canonical_grounding(
+      value: cpp_add_canonical_grounding(
         node: node,
         algebra: node
       )
     }
   } else if node == cpp_atom(id: ^cpp_surface_spelling_int) {
     Holds {
-      value: mvp1_cpp_canonical_grounding(
+      value: cpp_add_canonical_grounding(
         node: node,
-        algebra: mvp1_cpp_int_facts_node
+        algebra: cpp_add_int_facts_node
       )
     }
-  } else if node == mvp1_cpp_int_scalar_node {
+  } else if node == cpp_add_int_scalar_node {
     Holds {
-      value: mvp1_cpp_canonical_grounding(
+      value: cpp_add_canonical_grounding(
         node: node,
-        algebra: mvp1_cpp_int_facts_node
+        algebra: cpp_add_int_facts_node
       )
     }
   } else if node == cpp_atom(id: ^cpp_tag_signed_integer) {
     Holds {
-      value: mvp1_cpp_canonical_grounding(
+      value: cpp_add_canonical_grounding(
         node: node,
-        algebra: mvp1_cpp_int_scalar_node
+        algebra: cpp_add_int_scalar_node
       )
     }
-  } else if node == mvp1_cpp_int_width_node {
+  } else if node == cpp_add_int_width_node {
     Holds {
-      value: mvp1_cpp_canonical_grounding(
+      value: cpp_add_canonical_grounding(
         node: node,
-        algebra: mvp1_cpp_int_scalar_node
+        algebra: cpp_add_int_scalar_node
       )
     }
   } else if node == cpp_atom(id: ^cpp_tag_width_selection) {
     Holds {
-      value: mvp1_cpp_canonical_grounding(
+      value: cpp_add_canonical_grounding(
         node: node,
-        algebra: mvp1_cpp_int_width_node
+        algebra: cpp_add_int_width_node
       )
     }
-  } else if node == mvp1_cpp_int_spelling_node {
+  } else if node == cpp_add_int_spelling_node {
     Holds {
-      value: mvp1_cpp_canonical_grounding(
+      value: cpp_add_canonical_grounding(
         node: node,
-        algebra: mvp1_cpp_int_width_node
+        algebra: cpp_add_int_width_node
       )
     }
   } else if node == cpp_mvp1_target_profile {
     Holds {
-      value: mvp1_cpp_canonical_grounding(
+      value: cpp_add_canonical_grounding(
         node: node,
-        algebra: mvp1_cpp_int_width_node
+        algebra: cpp_add_int_width_node
       )
     }
   } else if node == cpp_atom(id: ^cpp_tag_twos_complement) {
     Holds {
-      value: mvp1_cpp_canonical_grounding(
+      value: cpp_add_canonical_grounding(
         node: node,
-        algebra: mvp1_cpp_int_scalar_node
+        algebra: cpp_add_int_scalar_node
       )
     }
   } else if node == cpp_atom(id: ^cpp_tag_representable_result_required) {
     Holds {
-      value: mvp1_cpp_canonical_grounding(
+      value: cpp_add_canonical_grounding(
         node: node,
-        algebra: mvp1_cpp_int_scalar_node
+        algebra: cpp_add_int_scalar_node
       )
     }
   } else {
     Violates {
       diagnostic: Diagnostic {
-        reason: ^mvp1_cpp_grounding_miss,
+        reason: ^cpp_add_grounding_miss,
         at: node_locus(node: node),
         correction: Unavailable { reason: ExternalContractUnknown }
       }
@@ -281,8 +281,8 @@ fn mvp1_cpp_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding> {
   }
 }
 
-fn mvp1_cpp_inferred_facts_for(node: Node) -> Witness<InferredFacts> {
-  match mvp1_cpp_canonical_grounding_for(node: node) {
+fn cpp_add_inferred_facts_for(node: Node) -> Witness<InferredFacts> {
+  match cpp_add_canonical_grounding_for(node: node) {
     Violates { diagnostic: d } => Violates { diagnostic: d }
     Holds { value: grounding } =>
       match termination_proof_witness_for_node(n: node) {
@@ -298,43 +298,43 @@ fn mvp1_cpp_inferred_facts_for(node: Node) -> Witness<InferredFacts> {
   }
 }
 
-fn mvp1_cpp_facts_lookup(key: Node) -> Witness<InferredFacts> {
-  mvp1_cpp_inferred_facts_for(node: key)
+fn cpp_add_facts_lookup(key: Node) -> Witness<InferredFacts> {
+  cpp_add_inferred_facts_for(node: key)
 }
 
-data mvp1_cpp_inferred_tree: InferredTree = InferredTree {
-  root: mvp1_cpp_emitted_root,
+data cpp_add_inferred_tree: InferredTree = InferredTree {
+  root: cpp_add_emitted_root,
   facts: Map {
-    lookup: mvp1_cpp_facts_lookup
+    lookup: cpp_add_facts_lookup
   }
 }
 
-fn anchor_mvp1_cpp_emit_accepts() -> Outcome<Medium<String>> {
-  emit(tree: mvp1_cpp_inferred_tree, target: mvp1_cpp_target_model)
+fn anchor_cpp_add_emit_accepts() -> Outcome<Medium<String>> {
+  emit(tree: cpp_add_inferred_tree, target: cpp_add_target_model)
 }
 
-fn anchor_mvp1_cpp_compile_inferred_accepts() -> Outcome<CompileOutput> {
+fn anchor_cpp_add_compile_inferred_accepts() -> Outcome<CompileOutput> {
   compile_inferred(
-    inferred: mvp1_cpp_inferred_tree,
-    mode: TranslateTo { target: mvp1_cpp_poisoned_authority_target_model }
+    inferred: cpp_add_inferred_tree,
+    mode: TranslateTo { target: cpp_add_poisoned_authority_target_model }
   )
 }
 
-data mvp1_cpp_emit_receipt: Outcome<Medium<String>> = anchor_mvp1_cpp_emit_accepts()
+data cpp_add_emit_receipt: Outcome<Medium<String>> = anchor_cpp_add_emit_accepts()
 
-data mvp1_cpp_compile_inferred_receipt: Outcome<CompileOutput> = anchor_mvp1_cpp_compile_inferred_accepts()
+data cpp_add_compile_inferred_receipt: Outcome<CompileOutput> = anchor_cpp_add_compile_inferred_accepts()
 
-fn mvp1_cpp_emit_claim_outcome() -> Outcome<Node> {
-  match mvp1_cpp_emit_receipt {
+fn cpp_add_emit_claim_outcome() -> Outcome<Node> {
+  match cpp_add_emit_receipt {
     Accepted { value: source, diagnostics: d } =>
       if (source.carried == cpp_mvp1_source_text) && (d == None) {
-        Accepted { value: mvp1_cpp_emitted_root, diagnostics: None }
+        Accepted { value: cpp_add_emitted_root, diagnostics: None }
       } else {
         Rejected {
           diagnostics: diagnostics_singleton(
             d: Diagnostic {
-              reason: ^mvp1_cpp_emit_source_mismatch,
-              at: node_locus(node: mvp1_cpp_emitted_root),
+              reason: ^cpp_add_emit_source_mismatch,
+              at: node_locus(node: cpp_add_emitted_root),
               correction: Unavailable { reason: ExternalContractUnknown }
             }
           )
@@ -344,19 +344,19 @@ fn mvp1_cpp_emit_claim_outcome() -> Outcome<Node> {
   }
 }
 
-fn mvp1_cpp_compile_inferred_claim_outcome() -> Outcome<Node> {
-  match mvp1_cpp_compile_inferred_receipt {
+fn cpp_add_compile_inferred_claim_outcome() -> Outcome<Node> {
+  match cpp_add_compile_inferred_receipt {
     Accepted { value: compile_result, diagnostics: d } =>
       match compile_result {
         TranslateResult { source } =>
           if (source.carried == cpp_mvp1_source_text) && (d == None) {
-            Accepted { value: mvp1_cpp_emitted_root, diagnostics: None }
+            Accepted { value: cpp_add_emitted_root, diagnostics: None }
           } else {
             Rejected {
               diagnostics: diagnostics_singleton(
                 d: Diagnostic {
-                  reason: ^mvp1_cpp_compile_source_mismatch,
-                  at: node_locus(node: mvp1_cpp_emitted_root),
+                  reason: ^cpp_add_compile_source_mismatch,
+                  at: node_locus(node: cpp_add_emitted_root),
                   correction: Unavailable { reason: ExternalContractUnknown }
                 }
               )
@@ -366,8 +366,8 @@ fn mvp1_cpp_compile_inferred_claim_outcome() -> Outcome<Node> {
           Rejected {
             diagnostics: diagnostics_singleton(
               d: Diagnostic {
-                reason: ^mvp1_cpp_compile_source_mismatch,
-                at: node_locus(node: mvp1_cpp_emitted_root),
+                reason: ^cpp_add_compile_source_mismatch,
+                at: node_locus(node: cpp_add_emitted_root),
                 correction: Unavailable { reason: ExternalContractUnknown }
               }
             )
@@ -377,89 +377,89 @@ fn mvp1_cpp_compile_inferred_claim_outcome() -> Outcome<Node> {
   }
 }
 
-data claim_mvp1_cpp_emit_add_fn_accepts: TestClaim = CompilesClaim {
-  label: "manual/mvp1: anchor_mvp1_cpp_emit_accepts with canonical cpp_mvp1 add-fn source",
+data claim_cpp_add_emit_add_fn_accepts: TestClaim = CompilesClaim {
+  label: "manual/rust_add_emit: anchor_cpp_add_emit_accepts with canonical cpp_mvp1 add-fn source",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  input: mvp1_cpp_emitted_root,
-  expected_value: mvp1_cpp_emitted_root,
+  input: cpp_add_emitted_root,
+  expected_value: cpp_add_emitted_root,
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_mvp1_cpp_compile_inferred_add_fn_accepts: TestClaim = CompilesClaim {
-  label: "manual/mvp1: compile_inferred emits canonical cpp_mvp1 add-fn source through grammar inverse",
+data claim_cpp_add_compile_inferred_add_fn_accepts: TestClaim = CompilesClaim {
+  label: "manual/rust_add_emit: compile_inferred emits canonical cpp_mvp1 add-fn source through grammar inverse",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  input: mvp1_cpp_emitted_root,
-  expected_value: mvp1_cpp_emitted_root,
+  input: cpp_add_emitted_root,
+  expected_value: cpp_add_emitted_root,
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-data subject_mvp1_cpp_emit_add_fn_accepts: TestClaimEvalSubject<Node> = TestClaimEvalSubject {
-  claim: claim_mvp1_cpp_emit_add_fn_accepts,
+data subject_cpp_add_emit_add_fn_accepts: TestClaimEvalSubject<Node> = TestClaimEvalSubject {
+  claim: claim_cpp_add_emit_add_fn_accepts,
   context: infer_receipt_context(),
-  tree: mvp1_cpp_inferred_tree,
+  tree: cpp_add_inferred_tree,
   input: test_claim_typed_input_node(
-    evaluator_input: mvp1_cpp_emitted_root,
+    evaluator_input: cpp_add_emitted_root,
     evaluator_pin: ^infer_receipt_input_infer_add_mvp
   )
 }
 
-data run_mvp1_cpp_emit_add_fn_accepts: TestClaimRun<Node, Node> = TestClaimRun {
-  cache: test_claim_cache_receipt(subject: subject_mvp1_cpp_emit_add_fn_accepts),
+data run_cpp_add_emit_add_fn_accepts: TestClaimRun<Node, Node> = TestClaimRun {
+  cache: test_claim_cache_receipt(subject: subject_cpp_add_emit_add_fn_accepts),
   verdict: run_test_claim_assert(
-    claim: claim_mvp1_cpp_emit_add_fn_accepts,
-    actual: mvp1_cpp_emit_claim_outcome(),
-    at: mvp1_cpp_emitted_root
+    claim: claim_cpp_add_emit_add_fn_accepts,
+    actual: cpp_add_emit_claim_outcome(),
+    at: cpp_add_emitted_root
   )
 }
 
-data subject_mvp1_cpp_compile_inferred_add_fn_accepts: TestClaimEvalSubject<Node> = TestClaimEvalSubject {
-  claim: claim_mvp1_cpp_compile_inferred_add_fn_accepts,
+data subject_cpp_add_compile_inferred_add_fn_accepts: TestClaimEvalSubject<Node> = TestClaimEvalSubject {
+  claim: claim_cpp_add_compile_inferred_add_fn_accepts,
   context: infer_receipt_context(),
-  tree: mvp1_cpp_inferred_tree,
+  tree: cpp_add_inferred_tree,
   input: test_claim_typed_input_node(
-    evaluator_input: mvp1_cpp_emitted_root,
+    evaluator_input: cpp_add_emitted_root,
     evaluator_pin: ^infer_receipt_input_infer_add_mvp
   )
 }
 
-data run_mvp1_cpp_compile_inferred_add_fn_accepts: TestClaimRun<Node, Node> = TestClaimRun {
-  cache: test_claim_cache_receipt(subject: subject_mvp1_cpp_compile_inferred_add_fn_accepts),
+data run_cpp_add_compile_inferred_add_fn_accepts: TestClaimRun<Node, Node> = TestClaimRun {
+  cache: test_claim_cache_receipt(subject: subject_cpp_add_compile_inferred_add_fn_accepts),
   verdict: run_test_claim_assert(
-    claim: claim_mvp1_cpp_compile_inferred_add_fn_accepts,
-    actual: mvp1_cpp_compile_inferred_claim_outcome(),
-    at: mvp1_cpp_emitted_root
+    claim: claim_cpp_add_compile_inferred_add_fn_accepts,
+    actual: cpp_add_compile_inferred_claim_outcome(),
+    at: cpp_add_emitted_root
   )
 }
 
-data claim_mvp1_cpp_serialize_rejects_missing_translation_rules: TestClaim = DiagnosticClaim {
-  label: "manual/mvp1: target_serialize_source_from_model rejects cpp bundle missing translation_rules",
+data claim_cpp_add_serialize_rejects_missing_translation_rules: TestClaim = DiagnosticClaim {
+  label: "manual/rust_add_emit: target_serialize_source_from_model rejects cpp bundle missing translation_rules",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  input: mvp1_cpp_emitted_root,
+  input: cpp_add_emitted_root,
   expected_rejection: diagnostics_singleton(
     d: Diagnostic {
       reason: ^translate_target_bundle_malformed,
-      at: node_locus(node: mvp1_cpp_empty_translation_rules_bundle),
+      at: node_locus(node: cpp_add_empty_translation_rules_bundle),
       correction: Unavailable { reason: ExternalContractUnknown }
     }
   ),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-data subject_mvp1_cpp_serialize_rejects_missing_translation_rules: TestClaimEvalSubject<Node> = TestClaimEvalSubject {
-  claim: claim_mvp1_cpp_serialize_rejects_missing_translation_rules,
+data subject_cpp_add_serialize_rejects_missing_translation_rules: TestClaimEvalSubject<Node> = TestClaimEvalSubject {
+  claim: claim_cpp_add_serialize_rejects_missing_translation_rules,
   context: infer_receipt_context(),
-  tree: mvp1_cpp_inferred_tree,
+  tree: cpp_add_inferred_tree,
   input: test_claim_typed_input_node(
-    evaluator_input: mvp1_cpp_emitted_root,
+    evaluator_input: cpp_add_emitted_root,
     evaluator_pin: ^infer_receipt_input_infer_add_mvp
   )
 }
 
-data run_mvp1_cpp_serialize_rejects_missing_translation_rules: TestClaimRun<Node, Node> = TestClaimRun {
-  cache: test_claim_cache_receipt(subject: subject_mvp1_cpp_serialize_rejects_missing_translation_rules),
+data run_cpp_add_serialize_rejects_missing_translation_rules: TestClaimRun<Node, Node> = TestClaimRun {
+  cache: test_claim_cache_receipt(subject: subject_cpp_add_serialize_rejects_missing_translation_rules),
   verdict: run_test_claim_assert(
-    claim: claim_mvp1_cpp_serialize_rejects_missing_translation_rules,
-    actual: mvp1_cpp_serialize_reject_claim_outcome(),
-    at: mvp1_cpp_emitted_root
+    claim: claim_cpp_add_serialize_rejects_missing_translation_rules,
+    actual: cpp_add_serialize_reject_claim_outcome(),
+    at: cpp_add_emitted_root
   )
 }

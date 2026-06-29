@@ -1,4 +1,4 @@
-module v2.test.manual.go_mvp1_grammar_claim
+module v2.test.manual.go_wave1_grammar_claim
 
 import v2.compiler.parse {
   grammar_validate_for_parse,
@@ -34,7 +34,7 @@ fn go_claim_bool_atom(b: Bool) -> Node {
   }
 }
 
-fn go_mvp1_grammar_validates_fixture() -> Bool {
+fn go_wave1_grammar_validates_fixture() -> Bool {
   let at = port_locus(port: ^parse_stage_locus_port)
   match grammar_validate_for_parse(root: go_wave1_grammar_root(), at: at) {
     Accepted { value: _, diagnostics: _ } => true
@@ -42,18 +42,18 @@ fn go_mvp1_grammar_validates_fixture() -> Bool {
   }
 }
 
-fn go_mvp1_grammar_parse_accepted() -> Bool {
-  match go_mvp1_grammar_parse_fixture() {
+fn go_wave1_grammar_parse_accepted() -> Bool {
+  match go_wave1_grammar_parse_fixture() {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
 }
 
-fn go_mvp1_grammar_parse_fixture() -> Outcome<ParseTree> {
+fn go_wave1_grammar_parse_fixture() -> Outcome<ParseTree> {
   let at = port_locus(port: ^parse_stage_locus_port)
   match tokenize(
     text: go_mvp1_source_text,
-    file: ^go_mvp1_parse_fixture_file,
+    file: ^go_wave1_parse_fixture_file,
     rules: go_wave1_lex()
   ) {
     Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
@@ -70,18 +70,18 @@ fn go_mvp1_grammar_parse_fixture() -> Outcome<ParseTree> {
   }
 }
 
-data claim_go_mvp1_grammar_validates: TestClaim = EqualsClaim {
+data claim_go_wave1_grammar_validates: TestClaim = EqualsClaim {
   label: "go_wave1_grammar_root passes grammar_validate_for_parse",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  lhs: go_claim_bool_atom(b: go_mvp1_grammar_validates_fixture()),
+  lhs: go_claim_bool_atom(b: go_wave1_grammar_validates_fixture()),
   rhs: go_claim_bool_atom(b: true),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_go_mvp1_grammar_parses_mvp_tokens: TestClaim = EqualsClaim {
+data claim_go_wave1_grammar_parses_tokens: TestClaim = EqualsClaim {
   label: "go MVP-1 production parse_production accepts lexer output for func-add source",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  lhs: go_claim_bool_atom(b: go_mvp1_grammar_parse_accepted()),
+  lhs: go_claim_bool_atom(b: go_wave1_grammar_parse_accepted()),
   rhs: go_claim_bool_atom(b: true),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }

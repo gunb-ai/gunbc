@@ -1,4 +1,4 @@
-module v2.test.manual.kotlin_mvp1_grammar_claim
+module v2.test.manual.kotlin_wave1_grammar_claim
 
 import v2.compiler.parse {
   grammar_validate_for_parse,
@@ -34,7 +34,7 @@ fn kotlin_claim_bool_atom(b: Bool) -> Node {
   }
 }
 
-fn kotlin_mvp1_grammar_validates_fixture() -> Bool {
+fn kotlin_wave1_grammar_validates_fixture() -> Bool {
   let at = port_locus(port: ^parse_stage_locus_port)
   match grammar_validate_for_parse(root: kotlin_wave1_grammar_root(), at: at) {
     Accepted { value: _, diagnostics: _ } => true
@@ -42,18 +42,18 @@ fn kotlin_mvp1_grammar_validates_fixture() -> Bool {
   }
 }
 
-fn kotlin_mvp1_grammar_parse_accepted() -> Bool {
-  match kotlin_mvp1_grammar_parse_fixture() {
+fn kotlin_wave1_grammar_parse_accepted() -> Bool {
+  match kotlin_wave1_grammar_parse_fixture() {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
 }
 
-fn kotlin_mvp1_grammar_parse_fixture() -> Outcome<ParseTree> {
+fn kotlin_wave1_grammar_parse_fixture() -> Outcome<ParseTree> {
   let at = port_locus(port: ^parse_stage_locus_port)
   match tokenize(
     text: kotlin_mvp1_source_text,
-    file: ^kotlin_mvp1_parse_fixture_file,
+    file: ^kotlin_wave1_parse_fixture_file,
     rules: kotlin_wave1_lex()
   ) {
     Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
@@ -70,18 +70,18 @@ fn kotlin_mvp1_grammar_parse_fixture() -> Outcome<ParseTree> {
   }
 }
 
-data claim_kotlin_mvp1_grammar_validates: TestClaim = EqualsClaim {
+data claim_kotlin_wave1_grammar_validates: TestClaim = EqualsClaim {
   label: "kotlin_wave1_grammar_root passes grammar_validate_for_parse",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  lhs: kotlin_claim_bool_atom(b: kotlin_mvp1_grammar_validates_fixture()),
+  lhs: kotlin_claim_bool_atom(b: kotlin_wave1_grammar_validates_fixture()),
   rhs: kotlin_claim_bool_atom(b: true),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_kotlin_mvp1_grammar_parses_mvp_tokens: TestClaim = EqualsClaim {
+data claim_kotlin_wave1_grammar_parses_tokens: TestClaim = EqualsClaim {
   label: "kotlin MVP-1 production parse_production accepts lexer output for fun-add source",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  lhs: kotlin_claim_bool_atom(b: kotlin_mvp1_grammar_parse_accepted()),
+  lhs: kotlin_claim_bool_atom(b: kotlin_wave1_grammar_parse_accepted()),
   rhs: kotlin_claim_bool_atom(b: true),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }

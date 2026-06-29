@@ -1,9 +1,9 @@
-module v2.test.manual.comprep_eval_by_execution
+module v2.test.manual.add_arrow_eval_by_execution
 
 import v2.compiler.body_producer { produce_mvp1_add_arrow_with_body }
-import v2.test.complexity_gate.comprep_wave1_add_subject_producer {
-  comprep_source_bridged_add_arrow_with_body,
-  comprep_wave1_add_parse_tokens
+import v2.test.complexity_gate.source_bridged_add_subject_producer {
+  source_bridged_add_arrow_with_body,
+  source_bridged_add_parse_tokens
 }
 import v2.compiler.eval {
   EvalContext,
@@ -95,7 +95,7 @@ import v2.std.verification {
   manual_claim_anchor
 }
 
-fn comprep_eval_atom(s: Symbol) -> Node {
+fn add_arrow_eval_atom(s: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: s } },
     occurrence_id: SyntheticOccurrence,
@@ -103,89 +103,89 @@ fn comprep_eval_atom(s: Symbol) -> Node {
   }
 }
 
-fn comprep_eval_byte() -> Byte {
+fn add_arrow_eval_byte() -> Byte {
   Byte { bits: [true] }
 }
 
-fn comprep_eval_i64_node() -> Node {
-  comprep_eval_atom(s: ^comprep_eval_i64)
+fn add_arrow_eval_i64_node() -> Node {
+  add_arrow_eval_atom(s: ^add_arrow_eval_i64)
 }
 
-fn comprep_eval_int_value(bytes: List<Byte>) -> RuntimeValue {
+fn add_arrow_eval_int_value(bytes: List<Byte>) -> RuntimeValue {
   RuntimePrimitive {
     value: RuntimePrimitiveValue {
-      primitive_type: comprep_eval_i64_node(),
+      primitive_type: add_arrow_eval_i64_node(),
       bytes: bytes
     }
   }
 }
 
-fn comprep_eval_two_value() -> RuntimeValue {
-  comprep_eval_int_value(bytes: [comprep_eval_byte(), comprep_eval_byte()])
+fn add_arrow_eval_two_value() -> RuntimeValue {
+  add_arrow_eval_int_value(bytes: [add_arrow_eval_byte(), add_arrow_eval_byte()])
 }
 
-fn comprep_eval_three_value() -> RuntimeValue {
-  comprep_eval_int_value(bytes: [comprep_eval_byte(), comprep_eval_byte(), comprep_eval_byte()])
+fn add_arrow_eval_three_value() -> RuntimeValue {
+  add_arrow_eval_int_value(bytes: [add_arrow_eval_byte(), add_arrow_eval_byte(), add_arrow_eval_byte()])
 }
 
-fn comprep_eval_five_value() -> RuntimeValue {
-  comprep_eval_int_value(bytes: [
-    comprep_eval_byte(),
-    comprep_eval_byte(),
-    comprep_eval_byte(),
-    comprep_eval_byte(),
-    comprep_eval_byte()
+fn add_arrow_eval_five_value() -> RuntimeValue {
+  add_arrow_eval_int_value(bytes: [
+    add_arrow_eval_byte(),
+    add_arrow_eval_byte(),
+    add_arrow_eval_byte(),
+    add_arrow_eval_byte(),
+    add_arrow_eval_byte()
   ])
 }
 
-fn comprep_eval_literal_two_node() -> Node {
-  comprep_eval_atom(s: ^comprep_eval_literal_two)
+fn add_arrow_eval_literal_two_node() -> Node {
+  add_arrow_eval_atom(s: ^add_arrow_eval_literal_two)
 }
 
-fn comprep_eval_literal_three_node() -> Node {
-  comprep_eval_atom(s: ^comprep_eval_literal_three)
+fn add_arrow_eval_literal_three_node() -> Node {
+  add_arrow_eval_atom(s: ^add_arrow_eval_literal_three)
 }
 
-fn comprep_eval_literal_five_node() -> Node {
-  comprep_eval_atom(s: ^comprep_eval_literal_five)
+fn add_arrow_eval_literal_five_node() -> Node {
+  add_arrow_eval_atom(s: ^add_arrow_eval_literal_five)
 }
 
-fn comprep_eval_runtime_diagnostic(n: Node) -> Diagnostic {
+fn add_arrow_eval_runtime_diagnostic(n: Node) -> Diagnostic {
   Diagnostic {
-    reason: ^comprep_eval_runtime_rejected,
+    reason: ^add_arrow_eval_runtime_rejected,
     at: node_locus(node: n),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 
-fn comprep_eval_allocate_literal(node: Node, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
-  if node == comprep_eval_literal_two_node() {
-    outcome_accepted(value: comprep_eval_two_value())
-  } else if node == comprep_eval_literal_three_node() {
-    outcome_accepted(value: comprep_eval_three_value())
-  } else if node == comprep_eval_literal_five_node() {
-    outcome_accepted(value: comprep_eval_five_value())
+fn add_arrow_eval_allocate_literal(node: Node, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
+  if node == add_arrow_eval_literal_two_node() {
+    outcome_accepted(value: add_arrow_eval_two_value())
+  } else if node == add_arrow_eval_literal_three_node() {
+    outcome_accepted(value: add_arrow_eval_three_value())
+  } else if node == add_arrow_eval_literal_five_node() {
+    outcome_accepted(value: add_arrow_eval_five_value())
   } else {
-    outcome_rejected(d: comprep_eval_runtime_diagnostic(n: node))
+    outcome_rejected(d: add_arrow_eval_runtime_diagnostic(n: node))
   }
 }
 
-fn comprep_eval_arg_is_count(value: RuntimeValue, n: Int) -> Bool {
+fn add_arrow_eval_arg_is_count(value: RuntimeValue, n: Int) -> Bool {
   match value {
     RuntimePrimitive { value: p } =>
-      (p.primitive_type == comprep_eval_i64_node()) && (count(p.bytes) == n)
+      (p.primitive_type == add_arrow_eval_i64_node()) && (count(p.bytes) == n)
     _ => false
   }
 }
 
-fn comprep_eval_ordered_add_args(args: List<RuntimeValue>) -> Bool {
+fn add_arrow_eval_ordered_add_args(args: List<RuntimeValue>) -> Bool {
   if count(args) == 2 {
     match first(args) {
       Present { value: left } =>
         match last(args) {
           Present { value: right } =>
-            comprep_eval_arg_is_count(value: left, n: 2)
-              && comprep_eval_arg_is_count(value: right, n: 3)
+            add_arrow_eval_arg_is_count(value: left, n: 2)
+              && add_arrow_eval_arg_is_count(value: right, n: 3)
           Absent => false
         }
       Absent => false
@@ -195,66 +195,66 @@ fn comprep_eval_ordered_add_args(args: List<RuntimeValue>) -> Bool {
   }
 }
 
-fn comprep_eval_call_primitive(
+fn add_arrow_eval_call_primitive(
   node: Node,
   args: List<RuntimeValue>,
   _env: EvaluationEnvironment
 ) -> Outcome<RuntimeValue> {
-  if comprep_eval_ordered_add_args(args: args) {
-    outcome_accepted(value: comprep_eval_five_value())
+  if add_arrow_eval_ordered_add_args(args: args) {
+    outcome_accepted(value: add_arrow_eval_five_value())
   } else {
-    outcome_rejected(d: comprep_eval_runtime_diagnostic(n: node))
+    outcome_rejected(d: add_arrow_eval_runtime_diagnostic(n: node))
   }
 }
 
-fn comprep_eval_choose_branch(node: Node, _value: RuntimeValue, _env: EvaluationEnvironment) -> Outcome<Node> {
-  outcome_rejected(d: comprep_eval_runtime_diagnostic(n: node))
+fn add_arrow_eval_choose_branch(node: Node, _value: RuntimeValue, _env: EvaluationEnvironment) -> Outcome<Node> {
+  outcome_rejected(d: add_arrow_eval_runtime_diagnostic(n: node))
 }
 
-fn comprep_eval_choose_first_arm(node: Node, _value: RuntimeValue, _env: EvaluationEnvironment) -> Outcome<Node> {
+fn add_arrow_eval_choose_first_arm(node: Node, _value: RuntimeValue, _env: EvaluationEnvironment) -> Outcome<Node> {
   match list_at_optional(xs: node_positional_child_targets(node: node), index: 1) {
     Present { value: arm } => outcome_accepted(value: arm)
-    Absent => outcome_rejected(d: comprep_eval_runtime_diagnostic(n: node))
+    Absent => outcome_rejected(d: add_arrow_eval_runtime_diagnostic(n: node))
   }
 }
 
-fn comprep_eval_lazy_arm_interpretation() -> InterpretationAlgebra {
+fn add_arrow_eval_lazy_arm_interpretation() -> InterpretationAlgebra {
   InterpretationAlgebra {
     value: ValueInterpreter {
-      allocate_literal: comprep_eval_allocate_literal
+      allocate_literal: add_arrow_eval_allocate_literal
     },
     transform: TransformInterpreter {
-      call_primitive: comprep_eval_call_primitive
+      call_primitive: add_arrow_eval_call_primitive
     },
     branch: BranchInterpreter {
-      choose_branch: comprep_eval_choose_first_arm
+      choose_branch: add_arrow_eval_choose_first_arm
     },
     loop: LoopInterpreter {
-      step_loop: comprep_eval_step_loop
+      step_loop: add_arrow_eval_step_loop
     },
     bind: BindInterpreter {
-      bind_value: comprep_eval_bind_value
+      bind_value: add_arrow_eval_bind_value
     }
   }
 }
 
-fn comprep_eval_lazy_arm_branch_node() -> Node {
+fn add_arrow_eval_lazy_arm_branch_node() -> Node {
   Node {
     kind: ComputationNode { behavior: Branch },
     occurrence_id: SyntheticOccurrence,
     children: [
-      Edge { label: Positional, target: comprep_eval_literal_two_node() },
-      Edge { label: Positional, target: comprep_eval_literal_five_node() },
-      Edge { label: Positional, target: comprep_eval_atom(s: ^comprep_eval_unknown_arm_literal) }
+      Edge { label: Positional, target: add_arrow_eval_literal_two_node() },
+      Edge { label: Positional, target: add_arrow_eval_literal_five_node() },
+      Edge { label: Positional, target: add_arrow_eval_atom(s: ^add_arrow_eval_unknown_arm_literal) }
     ]
   }
 }
 
-fn comprep_eval_step_loop(node: Node, _env: EvaluationEnvironment) -> Outcome<ControlTransfer> {
-  outcome_rejected(d: comprep_eval_runtime_diagnostic(n: node))
+fn add_arrow_eval_step_loop(node: Node, _env: EvaluationEnvironment) -> Outcome<ControlTransfer> {
+  outcome_rejected(d: add_arrow_eval_runtime_diagnostic(n: node))
 }
 
-fn comprep_eval_bind_value(
+fn add_arrow_eval_bind_value(
   key: EnvironmentBindingKey,
   value: RuntimeValue,
   env: EvaluationEnvironment
@@ -267,52 +267,52 @@ fn comprep_eval_bind_value(
   }
 }
 
-fn comprep_eval_interpretation() -> InterpretationAlgebra {
+fn add_arrow_eval_interpretation() -> InterpretationAlgebra {
   InterpretationAlgebra {
     value: ValueInterpreter {
-      allocate_literal: comprep_eval_allocate_literal
+      allocate_literal: add_arrow_eval_allocate_literal
     },
     transform: TransformInterpreter {
-      call_primitive: comprep_eval_call_primitive
+      call_primitive: add_arrow_eval_call_primitive
     },
     branch: BranchInterpreter {
-      choose_branch: comprep_eval_choose_branch
+      choose_branch: add_arrow_eval_choose_branch
     },
     loop: LoopInterpreter {
-      step_loop: comprep_eval_step_loop
+      step_loop: add_arrow_eval_step_loop
     },
     bind: BindInterpreter {
-      bind_value: comprep_eval_bind_value
+      bind_value: add_arrow_eval_bind_value
     }
   }
 }
 
-fn comprep_eval_interpretation_structure_witness() -> InterpretationStructureWitness {
+fn add_arrow_eval_interpretation_structure_witness() -> InterpretationStructureWitness {
   InterpretationStructureWitness {
-    allocate_literal: ^comprep_eval_allocate_literal_sym,
-    call_primitive: ^comprep_eval_call_primitive_sym,
-    choose_branch: ^comprep_eval_choose_branch_sym,
-    step_loop: ^comprep_eval_step_loop_sym,
-    bind_value: ^comprep_eval_bind_value_sym,
+    allocate_literal: ^add_arrow_eval_allocate_literal_sym,
+    call_primitive: ^add_arrow_eval_call_primitive_sym,
+    choose_branch: ^add_arrow_eval_choose_branch_sym,
+    step_loop: ^add_arrow_eval_step_loop_sym,
+    bind_value: ^add_arrow_eval_bind_value_sym,
     choose_arm: ^runtime_reject_match_arm
   }
 }
 
-fn comprep_eval_context() -> EvalContext {
+fn add_arrow_eval_context() -> EvalContext {
   eval_context_with_semantics(
-    runtime_identity: ^comprep_eval_runtime_id,
-    interpretation: comprep_eval_interpretation(),
-    structure_witness: comprep_eval_interpretation_structure_witness()
+    runtime_identity: ^add_arrow_eval_runtime_id,
+    interpretation: add_arrow_eval_interpretation(),
+    structure_witness: add_arrow_eval_interpretation_structure_witness()
   )
 }
 
-fn comprep_source_ingested_add_infers() -> Outcome<InferredTree> {
+fn add_arrow_source_ingested_add_infers() -> Outcome<InferredTree> {
   let lm = dag_language_model_wave1()
   bind_outcome(
-    o: tokenize(text: dag_mvp1_source_text, file: ^comprep_eval_source_file, rules: lm.lex),
+    o: tokenize(text: dag_mvp1_source_text, file: ^add_arrow_eval_source_file, rules: lm.lex),
     f: fn(tokens) {
       bind_outcome(
-        o: comprep_wave1_add_parse_tokens(tokens: tokens.tokens),
+        o: source_bridged_add_parse_tokens(tokens: tokens.tokens),
         f: fn(parsed) {
           bind_outcome(
             o: normalize(parse_tree: parsed),
@@ -320,7 +320,7 @@ fn comprep_source_ingested_add_infers() -> Outcome<InferredTree> {
               bind_outcome(
                 o: resolve(tree: normalized, lm: lm),
                 f: fn(resolved) {
-                  outcome_accepted(value: comprep_eval_admitted_tree(root: resolved))
+                  outcome_accepted(value: add_arrow_eval_admitted_tree(root: resolved))
                 }
               )
             }
@@ -331,27 +331,27 @@ fn comprep_source_ingested_add_infers() -> Outcome<InferredTree> {
   )
 }
 
-fn comprep_eval_tokenize_source() -> Outcome<List<Token>> {
+fn add_arrow_eval_tokenize_source() -> Outcome<List<Token>> {
   let lm = dag_language_model_wave1()
   bind_outcome(
-    o: tokenize(text: dag_mvp1_source_text, file: ^comprep_eval_source_file, rules: lm.lex),
+    o: tokenize(text: dag_mvp1_source_text, file: ^add_arrow_eval_source_file, rules: lm.lex),
     f: fn(tokens) {
       outcome_accepted(value: tokens.tokens)
     }
   )
 }
 
-fn comprep_eval_tokenize_holds() -> Bool {
-  match comprep_eval_tokenize_source() {
+fn add_arrow_eval_tokenize_holds() -> Bool {
+  match add_arrow_eval_tokenize_source() {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
 }
 
-fn comprep_eval_parse_holds() -> Bool {
-  match comprep_eval_tokenize_source() {
+fn add_arrow_eval_parse_holds() -> Bool {
+  match add_arrow_eval_tokenize_source() {
     Accepted { value: tokens, diagnostics: _ } =>
-      match comprep_wave1_add_parse_tokens(tokens: tokens) {
+      match source_bridged_add_parse_tokens(tokens: tokens) {
         Accepted { value: _, diagnostics: _ } => true
         Rejected { diagnostics: _ } => false
       }
@@ -359,10 +359,10 @@ fn comprep_eval_parse_holds() -> Bool {
   }
 }
 
-fn comprep_eval_normalize_holds() -> Bool {
-  match comprep_eval_tokenize_source() {
+fn add_arrow_eval_normalize_holds() -> Bool {
+  match add_arrow_eval_tokenize_source() {
     Accepted { value: tokens, diagnostics: _ } =>
-      match comprep_wave1_add_parse_tokens(tokens: tokens) {
+      match source_bridged_add_parse_tokens(tokens: tokens) {
         Accepted { value: parsed, diagnostics: _ } =>
           match normalize(parse_tree: parsed) {
             Accepted { value: _, diagnostics: _ } => true
@@ -374,11 +374,11 @@ fn comprep_eval_normalize_holds() -> Bool {
   }
 }
 
-fn comprep_eval_resolve_holds() -> Bool {
+fn add_arrow_eval_resolve_holds() -> Bool {
   let lm = dag_language_model_wave1()
-  match comprep_eval_tokenize_source() {
+  match add_arrow_eval_tokenize_source() {
     Accepted { value: tokens, diagnostics: _ } =>
-      match comprep_wave1_add_parse_tokens(tokens: tokens) {
+      match source_bridged_add_parse_tokens(tokens: tokens) {
         Accepted { value: parsed, diagnostics: _ } =>
           match normalize(parse_tree: parsed) {
             Accepted { value: normalized, diagnostics: _ } =>
@@ -394,57 +394,57 @@ fn comprep_eval_resolve_holds() -> Bool {
   }
 }
 
-fn comprep_eval_add_call(callee: Node) -> Node {
+fn add_arrow_eval_add_call(callee: Node) -> Node {
   Node {
     kind: ComputationNode { behavior: Transform },
     occurrence_id: SyntheticOccurrence,
     children: [
       Edge { label: Positional, target: callee },
-      Edge { label: Positional, target: comprep_eval_literal_two_node() },
-      Edge { label: Positional, target: comprep_eval_literal_three_node() }
+      Edge { label: Positional, target: add_arrow_eval_literal_two_node() },
+      Edge { label: Positional, target: add_arrow_eval_literal_three_node() }
     ]
   }
 }
 
-fn comprep_eval_tree_root(call: Node, expected: Node) -> Node {
+fn add_arrow_eval_tree_root(call: Node, expected: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     occurrence_id: SyntheticOccurrence,
     children: [
-      Edge { label: Named { name: ^comprep_eval_actual }, target: call },
-      Edge { label: Named { name: ^comprep_eval_expected }, target: expected }
+      Edge { label: Named { name: ^add_arrow_eval_actual }, target: call },
+      Edge { label: Named { name: ^add_arrow_eval_expected }, target: expected }
     ]
   }
 }
 
-fn comprep_eval_facts_lookup(key: Node) -> Witness<InferredFacts> {
+fn add_arrow_eval_facts_lookup(key: Node) -> Witness<InferredFacts> {
   Holds {
     value: claim_inferred_facts_from_nodes(
       resolved: key,
-      algebra: comprep_eval_i64_node(),
+      algebra: add_arrow_eval_i64_node(),
       descent: termination_proof_witness_for_node(n: key)
     )
   }
 }
 
-fn comprep_eval_admitted_tree(root: Node) -> InferredTree {
+fn add_arrow_eval_admitted_tree(root: Node) -> InferredTree {
   InferredTree {
     root: root,
     facts: Map {
-      lookup: comprep_eval_facts_lookup
+      lookup: add_arrow_eval_facts_lookup
     }
   }
 }
 
-fn comprep_eval_inferred_run_tree(callee: Node, expected: Node) -> Outcome<InferredTree> {
-  let call = comprep_eval_add_call(callee: callee)
-  let root = comprep_eval_tree_root(call: call, expected: expected)
-  outcome_accepted(value: comprep_eval_admitted_tree(root: root))
+fn add_arrow_eval_inferred_run_tree(callee: Node, expected: Node) -> Outcome<InferredTree> {
+  let call = add_arrow_eval_add_call(callee: callee)
+  let root = add_arrow_eval_tree_root(call: call, expected: expected)
+  outcome_accepted(value: add_arrow_eval_admitted_tree(root: root))
 }
 
-fn comprep_eval_claim(input: Node, expected: Node) -> TestClaim {
+fn add_arrow_eval_claim(input: Node, expected: Node) -> TestClaim {
   CompilesClaim {
-    label: "manual/comprep: source-bridged add Arrow.body executes through eval callee dispatch",
+    label: "manual/add_arrow: source-bridged add Arrow.body executes through eval callee dispatch",
     anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
     input: input,
     expected_value: expected,
@@ -452,123 +452,123 @@ fn comprep_eval_claim(input: Node, expected: Node) -> TestClaim {
   }
 }
 
-fn comprep_eval_subject(tree: InferredTree, input: Node, expected: Node) -> TestClaimEvalSubject<Node> {
+fn add_arrow_eval_subject(tree: InferredTree, input: Node, expected: Node) -> TestClaimEvalSubject<Node> {
   TestClaimEvalSubject {
-    claim: comprep_eval_claim(input: input, expected: expected),
-    context: comprep_eval_context(),
+    claim: add_arrow_eval_claim(input: input, expected: expected),
+    context: add_arrow_eval_context(),
     tree: tree,
     input: test_claim_typed_input_node(
       evaluator_input: input,
-      evaluator_pin: ^comprep_eval_add_call_pin
+      evaluator_pin: ^add_arrow_eval_add_call_pin
     )
   }
 }
 
-fn comprep_eval_run(callee: Node, expected: Node) -> Outcome<TestClaimRun<Node, RuntimeValue>> {
-  let input = comprep_eval_add_call(callee: callee)
+fn add_arrow_eval_run(callee: Node, expected: Node) -> Outcome<TestClaimRun<Node, RuntimeValue>> {
+  let input = add_arrow_eval_add_call(callee: callee)
   bind_outcome(
-    o: comprep_eval_inferred_run_tree(callee: callee, expected: expected),
+    o: add_arrow_eval_inferred_run_tree(callee: callee, expected: expected),
     f: fn(tree) {
       outcome_accepted(
         value: run_test_claim(
-          subject: comprep_eval_subject(tree: tree, input: input, expected: expected)
+          subject: add_arrow_eval_subject(tree: tree, input: input, expected: expected)
         )
       )
     }
   )
 }
 
-fn comprep_swapped_operand_body() -> Node {
+fn add_arrow_swapped_operand_body() -> Node {
   Node {
     kind: ComputationNode { behavior: Transform },
     occurrence_id: SyntheticOccurrence,
     children: [
-      Edge { label: Positional, target: comprep_eval_atom(s: ^dag_token_plus) },
-      Edge { label: Positional, target: comprep_eval_atom(s: ^dag_binding_param_y) },
-      Edge { label: Positional, target: comprep_eval_atom(s: ^dag_binding_param_x) }
+      Edge { label: Positional, target: add_arrow_eval_atom(s: ^dag_token_plus) },
+      Edge { label: Positional, target: add_arrow_eval_atom(s: ^dag_binding_param_y) },
+      Edge { label: Positional, target: add_arrow_eval_atom(s: ^dag_binding_param_x) }
     ]
   }
 }
 
-fn comprep_swapped_add_arrow() -> Node {
+fn add_arrow_swapped_add_arrow() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
     occurrence_id: SyntheticOccurrence,
     children: [
-      Edge { label: Positional, target: comprep_eval_atom(s: ^dag_binding_type_int) },
-      Edge { label: Positional, target: comprep_eval_atom(s: ^dag_binding_type_int) },
-      Edge { label: Positional, target: comprep_eval_atom(s: ^dag_binding_type_int) },
-      Edge { label: Named { name: ^arrow_body_edge }, target: comprep_swapped_operand_body() }
+      Edge { label: Positional, target: add_arrow_eval_atom(s: ^dag_binding_type_int) },
+      Edge { label: Positional, target: add_arrow_eval_atom(s: ^dag_binding_type_int) },
+      Edge { label: Positional, target: add_arrow_eval_atom(s: ^dag_binding_type_int) },
+      Edge { label: Named { name: ^arrow_body_edge }, target: add_arrow_swapped_operand_body() }
     ]
   }
 }
 
-fn comprep_excess_signature_arrow() -> Node {
+fn add_arrow_excess_signature_arrow() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
     occurrence_id: SyntheticOccurrence,
     children: [
-      Edge { label: Positional, target: comprep_eval_atom(s: ^dag_binding_type_int) },
-      Edge { label: Positional, target: comprep_eval_atom(s: ^dag_binding_type_int) },
-      Edge { label: Positional, target: comprep_eval_atom(s: ^dag_binding_type_int) },
-      Edge { label: Positional, target: comprep_eval_atom(s: ^dag_binding_type_int) },
-      Edge { label: Named { name: ^arrow_body_edge }, target: comprep_eval_canonical_body() }
+      Edge { label: Positional, target: add_arrow_eval_atom(s: ^dag_binding_type_int) },
+      Edge { label: Positional, target: add_arrow_eval_atom(s: ^dag_binding_type_int) },
+      Edge { label: Positional, target: add_arrow_eval_atom(s: ^dag_binding_type_int) },
+      Edge { label: Positional, target: add_arrow_eval_atom(s: ^dag_binding_type_int) },
+      Edge { label: Named { name: ^arrow_body_edge }, target: add_arrow_eval_canonical_body() }
     ]
   }
 }
 
-fn comprep_eval_canonical_body() -> Node {
+fn add_arrow_eval_canonical_body() -> Node {
   Node {
     kind: ComputationNode { behavior: Transform },
     occurrence_id: SyntheticOccurrence,
     children: [
-      Edge { label: Positional, target: comprep_eval_atom(s: ^dag_token_plus) },
-      Edge { label: Positional, target: comprep_eval_atom(s: ^dag_binding_param_x) },
-      Edge { label: Positional, target: comprep_eval_atom(s: ^dag_binding_param_y) }
+      Edge { label: Positional, target: add_arrow_eval_atom(s: ^dag_token_plus) },
+      Edge { label: Positional, target: add_arrow_eval_atom(s: ^dag_binding_param_x) },
+      Edge { label: Positional, target: add_arrow_eval_atom(s: ^dag_binding_param_y) }
     ]
   }
 }
 
-fn comprep_excess_body_arrow() -> Node {
+fn add_arrow_excess_body_arrow() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
     occurrence_id: SyntheticOccurrence,
     children: [
-      Edge { label: Positional, target: comprep_eval_atom(s: ^dag_binding_type_int) },
-      Edge { label: Positional, target: comprep_eval_atom(s: ^dag_binding_type_int) },
-      Edge { label: Positional, target: comprep_eval_atom(s: ^dag_binding_type_int) },
-      Edge { label: Named { name: ^arrow_body_edge }, target: comprep_excess_body() }
+      Edge { label: Positional, target: add_arrow_eval_atom(s: ^dag_binding_type_int) },
+      Edge { label: Positional, target: add_arrow_eval_atom(s: ^dag_binding_type_int) },
+      Edge { label: Positional, target: add_arrow_eval_atom(s: ^dag_binding_type_int) },
+      Edge { label: Named { name: ^arrow_body_edge }, target: add_arrow_excess_body() }
     ]
   }
 }
 
-fn comprep_excess_body() -> Node {
+fn add_arrow_excess_body() -> Node {
   Node {
     kind: ComputationNode { behavior: Transform },
     occurrence_id: SyntheticOccurrence,
     children: [
-      Edge { label: Positional, target: comprep_eval_atom(s: ^dag_token_plus) },
-      Edge { label: Positional, target: comprep_eval_atom(s: ^dag_binding_param_x) },
-      Edge { label: Positional, target: comprep_eval_atom(s: ^dag_binding_param_y) },
-      Edge { label: Positional, target: comprep_eval_atom(s: ^dag_binding_param_x) }
+      Edge { label: Positional, target: add_arrow_eval_atom(s: ^dag_token_plus) },
+      Edge { label: Positional, target: add_arrow_eval_atom(s: ^dag_binding_param_x) },
+      Edge { label: Positional, target: add_arrow_eval_atom(s: ^dag_binding_param_y) },
+      Edge { label: Positional, target: add_arrow_eval_atom(s: ^dag_binding_param_x) }
     ]
   }
 }
 
-fn comprep_excess_actual_call(callee: Node) -> Node {
+fn add_arrow_excess_actual_call(callee: Node) -> Node {
   Node {
     kind: ComputationNode { behavior: Transform },
     occurrence_id: SyntheticOccurrence,
     children: [
       Edge { label: Positional, target: callee },
-      Edge { label: Positional, target: comprep_eval_literal_two_node() },
-      Edge { label: Positional, target: comprep_eval_literal_three_node() },
-      Edge { label: Positional, target: comprep_eval_literal_two_node() }
+      Edge { label: Positional, target: add_arrow_eval_literal_two_node() },
+      Edge { label: Positional, target: add_arrow_eval_literal_three_node() },
+      Edge { label: Positional, target: add_arrow_eval_literal_two_node() }
     ]
   }
 }
 
-fn comprep_eval_run_passes(run: Outcome<TestClaimRun<Node, RuntimeValue>>) -> Bool {
+fn add_arrow_eval_run_passes(run: Outcome<TestClaimRun<Node, RuntimeValue>>) -> Bool {
   match run {
     Accepted { value: r, diagnostics: _ } =>
       match test_claim_run_verdict(run: r) {
@@ -579,17 +579,17 @@ fn comprep_eval_run_passes(run: Outcome<TestClaimRun<Node, RuntimeValue>>) -> Bo
   }
 }
 
-fn comprep_eval_source_pipeline_admits_add_holds() -> Bool {
-  match comprep_source_ingested_add_infers() {
+fn add_arrow_eval_source_pipeline_admits_add_holds() -> Bool {
+  match add_arrow_source_ingested_add_infers() {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
 }
 
-fn comprep_eval_canonical_tree_infers_holds() -> Bool {
+fn add_arrow_eval_canonical_tree_infers_holds() -> Bool {
   match produce_mvp1_add_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
-      match comprep_eval_inferred_run_tree(callee: arrow, expected: comprep_eval_literal_five_node()) {
+      match add_arrow_eval_inferred_run_tree(callee: arrow, expected: add_arrow_eval_literal_five_node()) {
         Accepted { value: _, diagnostics: _ } => true
         Rejected { diagnostics: _ } => false
       }
@@ -597,23 +597,23 @@ fn comprep_eval_canonical_tree_infers_holds() -> Bool {
   }
 }
 
-fn comprep_eval_runtime_value_is_five(value: RuntimeValue) -> Bool {
-  comprep_eval_arg_is_count(value: value, n: 5)
+fn add_arrow_eval_runtime_value_is_five(value: RuntimeValue) -> Bool {
+  add_arrow_eval_arg_is_count(value: value, n: 5)
 }
 
-fn comprep_eval_direct_runtime_holds() -> Bool {
-  match comprep_source_bridged_add_arrow_with_body() {
+fn add_arrow_eval_direct_runtime_holds() -> Bool {
+  match source_bridged_add_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } => {
-      let input = comprep_eval_add_call(callee: arrow)
-      match comprep_eval_inferred_run_tree(callee: arrow, expected: comprep_eval_literal_five_node()) {
+      let input = add_arrow_eval_add_call(callee: arrow)
+      match add_arrow_eval_inferred_run_tree(callee: arrow, expected: add_arrow_eval_literal_five_node()) {
         Accepted { value: tree, diagnostics: _ } =>
           match eval(
             tree: tree,
-            interpretation: comprep_eval_interpretation(),
+            interpretation: add_arrow_eval_interpretation(),
             inputs: inputs_root_only(root: input)
           ) {
             Accepted { value: actual, diagnostics: None } =>
-              comprep_eval_runtime_value_is_five(value: actual)
+              add_arrow_eval_runtime_value_is_five(value: actual)
             _ => false
           }
         Rejected { diagnostics: _ } => false
@@ -623,76 +623,76 @@ fn comprep_eval_direct_runtime_holds() -> Bool {
   }
 }
 
-fn comprep_eval_source_driven_add_executes_holds() -> Bool {
-  match comprep_source_bridged_add_arrow_with_body() {
+fn add_arrow_eval_source_driven_add_executes_holds() -> Bool {
+  match source_bridged_add_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
-      comprep_eval_run_passes(
-        run: comprep_eval_run(
+      add_arrow_eval_run_passes(
+        run: add_arrow_eval_run(
           callee: arrow,
-          expected: comprep_eval_literal_five_node()
+          expected: add_arrow_eval_literal_five_node()
         )
       )
     Rejected { diagnostics: _ } => false
   }
 }
 
-fn comprep_eval_produced_add_body_executes_holds() -> Bool {
+fn add_arrow_eval_produced_add_body_executes_holds() -> Bool {
   match produce_mvp1_add_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
-      comprep_eval_run_passes(
-        run: comprep_eval_run(
+      add_arrow_eval_run_passes(
+        run: add_arrow_eval_run(
           callee: arrow,
-          expected: comprep_eval_literal_five_node()
+          expected: add_arrow_eval_literal_five_node()
         )
       )
     Rejected { diagnostics: _ } => false
   }
 }
 
-fn comprep_eval_swapped_operands_red_holds() -> Bool {
-  comprep_eval_swapped_operands_claim_passes() == false
+fn add_arrow_eval_swapped_operands_red_holds() -> Bool {
+  add_arrow_eval_swapped_operands_claim_passes() == false
 }
 
-fn comprep_eval_swapped_operands_claim_passes() -> Bool {
-  comprep_eval_run_passes(
-    run: comprep_eval_run(
-      callee: comprep_swapped_add_arrow(),
-      expected: comprep_eval_literal_five_node()
+fn add_arrow_eval_swapped_operands_claim_passes() -> Bool {
+  add_arrow_eval_run_passes(
+    run: add_arrow_eval_run(
+      callee: add_arrow_swapped_add_arrow(),
+      expected: add_arrow_eval_literal_five_node()
     )
   )
 }
 
-fn comprep_excess_signature_red_holds() -> Bool {
-  comprep_eval_run_passes(
-    run: comprep_eval_run(
-      callee: comprep_excess_signature_arrow(),
-      expected: comprep_eval_literal_five_node()
+fn add_arrow_excess_signature_red_holds() -> Bool {
+  add_arrow_eval_run_passes(
+    run: add_arrow_eval_run(
+      callee: add_arrow_excess_signature_arrow(),
+      expected: add_arrow_eval_literal_five_node()
     )
   ) == false
 }
 
-fn comprep_excess_body_red_holds() -> Bool {
-  comprep_eval_run_passes(
-    run: comprep_eval_run(
-      callee: comprep_excess_body_arrow(),
-      expected: comprep_eval_literal_five_node()
+fn add_arrow_excess_body_red_holds() -> Bool {
+  add_arrow_eval_run_passes(
+    run: add_arrow_eval_run(
+      callee: add_arrow_excess_body_arrow(),
+      expected: add_arrow_eval_literal_five_node()
     )
   ) == false
 }
 
-fn comprep_excess_actual_executes_to_five() -> Bool {
+fn add_arrow_excess_actual_executes_to_five() -> Bool {
   match produce_mvp1_add_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } => {
-      let input = comprep_excess_actual_call(callee: arrow)
-      match comprep_eval_inferred_run_tree(callee: arrow, expected: comprep_eval_literal_five_node()) {
+      let input = add_arrow_excess_actual_call(callee: arrow)
+      match add_arrow_eval_inferred_run_tree(callee: arrow, expected: add_arrow_eval_literal_five_node()) {
         Accepted { value: tree, diagnostics: _ } =>
           match eval(
             tree: tree,
-            interpretation: comprep_eval_interpretation(),
+            interpretation: add_arrow_eval_interpretation(),
             inputs: inputs_root_only(root: input)
           ) {
             Accepted { value: actual, diagnostics: None } =>
-              comprep_eval_runtime_value_is_five(value: actual)
+              add_arrow_eval_runtime_value_is_five(value: actual)
             _ => false
           }
         Rejected { diagnostics: _ } => false
@@ -702,54 +702,54 @@ fn comprep_excess_actual_executes_to_five() -> Bool {
   }
 }
 
-fn comprep_excess_actual_red_holds() -> Bool {
-  comprep_excess_actual_executes_to_five() == false
+fn add_arrow_excess_actual_red_holds() -> Bool {
+  add_arrow_excess_actual_executes_to_five() == false
 }
 
-fn comprep_eval_lazy_arm_branch_suppression_holds() -> Bool {
-  let branch = comprep_eval_lazy_arm_branch_node()
-  let tree = comprep_eval_admitted_tree(root: branch)
+fn add_arrow_eval_lazy_arm_branch_suppression_holds() -> Bool {
+  let branch = add_arrow_eval_lazy_arm_branch_node()
+  let tree = add_arrow_eval_admitted_tree(root: branch)
   match eval(
     tree: tree,
-    interpretation: comprep_eval_lazy_arm_interpretation(),
+    interpretation: add_arrow_eval_lazy_arm_interpretation(),
     inputs: inputs_root_only(root: branch)
   ) {
     Accepted { value: v, diagnostics: _ } =>
-      comprep_eval_runtime_value_is_five(value: v)
+      add_arrow_eval_runtime_value_is_five(value: v)
     Rejected { diagnostics: _ } => false
   }
 }
 
-fn comprep_eval_step_loop_continue(node: Node, _env: EvaluationEnvironment) -> Outcome<ControlTransfer> {
-  outcome_accepted(value: Continue { value: comprep_eval_five_value() })
+fn add_arrow_eval_step_loop_continue(node: Node, _env: EvaluationEnvironment) -> Outcome<ControlTransfer> {
+  outcome_accepted(value: Continue { value: add_arrow_eval_five_value() })
 }
 
-fn comprep_eval_lazy_arm_loop_interpretation() -> InterpretationAlgebra {
+fn add_arrow_eval_lazy_arm_loop_interpretation() -> InterpretationAlgebra {
   InterpretationAlgebra {
-    value: ValueInterpreter { allocate_literal: comprep_eval_allocate_literal },
-    transform: TransformInterpreter { call_primitive: comprep_eval_call_primitive },
-    branch: BranchInterpreter { choose_branch: comprep_eval_choose_first_arm },
-    loop: LoopInterpreter { step_loop: comprep_eval_step_loop_continue },
-    bind: BindInterpreter { bind_value: comprep_eval_bind_value },
+    value: ValueInterpreter { allocate_literal: add_arrow_eval_allocate_literal },
+    transform: TransformInterpreter { call_primitive: add_arrow_eval_call_primitive },
+    branch: BranchInterpreter { choose_branch: add_arrow_eval_choose_first_arm },
+    loop: LoopInterpreter { step_loop: add_arrow_eval_step_loop_continue },
+    bind: BindInterpreter { bind_value: add_arrow_eval_bind_value },
     match: MatchInterpreter { choose_arm: runtime_reject_match_arm }
   }
 }
 
-fn comprep_eval_lazy_arm_loop_node() -> Node {
+fn add_arrow_eval_lazy_arm_loop_node() -> Node {
   Node {
     kind: ComputationNode { behavior: Loop },
     occurrence_id: SyntheticOccurrence,
     children: [
-      Edge { label: Positional, target: comprep_eval_atom(s: ^comprep_eval_unknown_arm_literal) },
+      Edge { label: Positional, target: add_arrow_eval_atom(s: ^add_arrow_eval_unknown_arm_literal) },
       Edge {
         label: Named { name: ^loop_bound_edge },
-        target: comprep_eval_atom(s: ^comprep_eval_loop_measure_literal)
+        target: add_arrow_eval_atom(s: ^add_arrow_eval_loop_measure_literal)
       }
     ]
   }
 }
 
-fn comprep_eval_loop_admitted_tree(root: Node) -> InferredTree {
+fn add_arrow_eval_loop_admitted_tree(root: Node) -> InferredTree {
   InferredTree {
     root: root,
     facts: Map {
@@ -759,50 +759,50 @@ fn comprep_eval_loop_admitted_tree(root: Node) -> InferredTree {
             Holds {
               value: claim_inferred_facts_from_nodes(
                 resolved: key,
-                algebra: comprep_eval_i64_node(),
+                algebra: add_arrow_eval_i64_node(),
                 descent: Holds {
                   value: TerminationProof {
                     non_increasing: [],
                     strict: RankingDimension {
-                      measured: ^comprep_eval_loop_measure_literal
+                      measured: ^add_arrow_eval_loop_measure_literal
                     }
                   }
                 }
               )
             }
           _ =>
-            comprep_eval_facts_lookup(key: key)
+            add_arrow_eval_facts_lookup(key: key)
         }
       }
     }
   }
 }
 
-fn comprep_eval_lazy_arm_loop_suppression_holds() -> Bool {
-  let loop_node = comprep_eval_lazy_arm_loop_node()
-  let tree = comprep_eval_loop_admitted_tree(root: loop_node)
+fn add_arrow_eval_lazy_arm_loop_suppression_holds() -> Bool {
+  let loop_node = add_arrow_eval_lazy_arm_loop_node()
+  let tree = add_arrow_eval_loop_admitted_tree(root: loop_node)
   match eval(
     tree: tree,
-    interpretation: comprep_eval_lazy_arm_loop_interpretation(),
+    interpretation: add_arrow_eval_lazy_arm_loop_interpretation(),
     inputs: inputs_root_only(root: loop_node)
   ) {
     Accepted { value: v, diagnostics: _ } =>
-      comprep_eval_runtime_value_is_five(value: v)
+      add_arrow_eval_runtime_value_is_five(value: v)
     Rejected { diagnostics: _ } => false
   }
 }
 
-test fn comprep_eval_by_execution_keystone_holds() -> Bool {
-  comprep_eval_source_driven_add_executes_holds()
-    && comprep_eval_direct_runtime_holds()
-    && comprep_eval_source_pipeline_admits_add_holds()
-    && comprep_eval_swapped_operands_red_holds()
+test fn add_arrow_eval_by_execution_keystone_holds() -> Bool {
+  add_arrow_eval_source_driven_add_executes_holds()
+    && add_arrow_eval_direct_runtime_holds()
+    && add_arrow_eval_source_pipeline_admits_add_holds()
+    && add_arrow_eval_swapped_operands_red_holds()
 
-    && comprep_excess_signature_red_holds()
-    && comprep_excess_body_red_holds()
-    && comprep_excess_actual_red_holds()
+    && add_arrow_excess_signature_red_holds()
+    && add_arrow_excess_body_red_holds()
+    && add_arrow_excess_actual_red_holds()
 
-    && comprep_eval_lazy_arm_branch_suppression_holds()
+    && add_arrow_eval_lazy_arm_branch_suppression_holds()
 
-    && comprep_eval_lazy_arm_loop_suppression_holds()
+    && add_arrow_eval_lazy_arm_loop_suppression_holds()
 }

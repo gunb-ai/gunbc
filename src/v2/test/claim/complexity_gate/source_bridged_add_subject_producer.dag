@@ -1,4 +1,4 @@
-module v2.test.complexity_gate.comprep_wave1_add_subject_producer
+module v2.test.complexity_gate.source_bridged_add_subject_producer
 
 import v2.compiler.body_producer { produce_mvp1_add_arrow_with_body_from_resolved }
 import v2.compiler.normalize { normalize }
@@ -19,7 +19,7 @@ import v2.std.grammar { GrammarRoot, ParseTree }
 import v2.std.compilers.lexing { Token }
 import v2.std.node { Node, Symbol }
 
-fn comprep_wave1_add_parse_root() -> GrammarRoot {
+fn source_bridged_add_parse_root() -> GrammarRoot {
   GrammarRoot {
     start: ^dag_production_mvp1_fn_add,
     productions: [dag_grammar_production_mvp1_fn_add()],
@@ -31,8 +31,8 @@ fn comprep_wave1_add_parse_root() -> GrammarRoot {
   }
 }
 
-fn comprep_wave1_add_parse_tokens(tokens: List<Token>) -> Outcome<ParseTree> {
-  let root = comprep_wave1_add_parse_root()
+fn source_bridged_add_parse_tokens(tokens: List<Token>) -> Outcome<ParseTree> {
+  let root = source_bridged_add_parse_root()
   match grammar_validate_for_parse(root: root, at: port_locus(port: ^parse_stage_locus_port)) {
     Accepted { value: validated, diagnostics: _ } =>
       parse_production_tree(
@@ -44,17 +44,17 @@ fn comprep_wave1_add_parse_tokens(tokens: List<Token>) -> Outcome<ParseTree> {
   }
 }
 
-fn comprep_source_resolved_add_arrow() -> Outcome<Node> {
+fn source_bridged_resolved_add_arrow() -> Outcome<Node> {
   let lm = dag_language_model_wave1()
   bind_outcome(
     o: tokenize(
       text: dag_mvp1_source_text,
-      file: ^comprep_wave1_add_subject_source_file,
+      file: ^source_bridged_add_subject_source_file,
       rules: lm.lex
     ),
     f: fn(tokens) {
       bind_outcome(
-        o: comprep_wave1_add_parse_tokens(tokens: tokens.tokens),
+        o: source_bridged_add_parse_tokens(tokens: tokens.tokens),
         f: fn(parsed) {
           bind_outcome(
             o: normalize(parse_tree: parsed),
@@ -68,9 +68,9 @@ fn comprep_source_resolved_add_arrow() -> Outcome<Node> {
   )
 }
 
-fn comprep_source_bridged_add_arrow_with_body() -> Outcome<Node> {
+fn source_bridged_add_arrow_with_body() -> Outcome<Node> {
   bind_outcome(
-    o: comprep_source_resolved_add_arrow(),
+    o: source_bridged_resolved_add_arrow(),
     f: fn(resolved) {
       produce_mvp1_add_arrow_with_body_from_resolved(resolved_root: resolved)
     }

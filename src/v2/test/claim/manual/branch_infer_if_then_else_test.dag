@@ -1,4 +1,4 @@
-module v2.test.manual.comprep_branch_infer_if_then_else
+module v2.test.manual.branch_infer_if_then_else
 
 import v2.compiler.infer {
   infer,
@@ -22,7 +22,7 @@ import v2.std.verification {
   UnifiedTestClaim
 }
 
-fn comprep_branch_infer_arm_mismatch_body() -> Node {
+fn branch_infer_arm_mismatch_body() -> Node {
   dag_mvp1_pick_if_body_from_arms(
     condition: dag_mvp1_type_atom_node(identity: ^dag_token_kw_true),
     then_arm: dag_mvp1_type_atom_node(identity: ^dag_mvp1_pick_lit_one),
@@ -30,21 +30,21 @@ fn comprep_branch_infer_arm_mismatch_body() -> Node {
   )
 }
 
-fn comprep_branch_infer_bool_cond_accepts_holds() -> Bool {
+fn branch_infer_bool_cond_accepts_holds() -> Bool {
   match infer(tree: dag_mvp1_pick_if_body_fixture) {
     Accepted { value: _, diagnostics: d } => d == None
     Rejected { diagnostics: _ } => false
   }
 }
 
-fn comprep_branch_infer_arm_mismatch_red_holds() -> Bool {
-  match infer(tree: comprep_branch_infer_arm_mismatch_body()) {
+fn branch_infer_arm_mismatch_red_holds() -> Bool {
+  match infer(tree: branch_infer_arm_mismatch_body()) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } => d.head.reason == ^infer_branch_arm_type_mismatch
   }
 }
 
-test fn comprep_branch_infer_keystone_holds() -> Bool {
-  comprep_branch_infer_bool_cond_accepts_holds()
-    && comprep_branch_infer_arm_mismatch_red_holds()
+test fn branch_infer_keystone_holds() -> Bool {
+  branch_infer_bool_cond_accepts_holds()
+    && branch_infer_arm_mismatch_red_holds()
 }

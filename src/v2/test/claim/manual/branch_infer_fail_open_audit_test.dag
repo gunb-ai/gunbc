@@ -1,4 +1,4 @@
-module v2.test.manual.comprep_branch_infer_fail_open_audit
+module v2.test.manual.branch_infer_fail_open_audit
 
 import v2.compiler.infer { infer }
 import v2.extdeps.languages.dag {
@@ -15,7 +15,7 @@ import v2.std.verification {
   UnifiedTestClaim
 }
 
-fn comprep_branch_infer_fail_open_audit_body() -> Node {
+fn branch_infer_fail_open_audit_body() -> Node {
   dag_mvp1_pick_if_body_from_arms(
     condition: dag_mvp1_type_atom_node(identity: ^dag_token_kw_true),
     then_arm: dag_mvp1_type_atom_node(identity: ^dag_mvp1_pick_lit_one),
@@ -23,21 +23,21 @@ fn comprep_branch_infer_fail_open_audit_body() -> Node {
   )
 }
 
-test fn comprep_branch_infer_fail_open_audit_rejects_holds() -> Bool {
-  match infer(tree: comprep_branch_infer_fail_open_audit_body()) {
+test fn branch_infer_fail_open_audit_rejects_holds() -> Bool {
+  match infer(tree: branch_infer_fail_open_audit_body()) {
     Accepted { value: _, diagnostics: d } => false
     Rejected { diagnostics: _ } => true
   }
 }
 
-fn comprep_branch_infer_fail_open_audit_silent_accept_holds() -> Bool {
-  match infer(tree: comprep_branch_infer_fail_open_audit_body()) {
+fn branch_infer_fail_open_audit_silent_accept_holds() -> Bool {
+  match infer(tree: branch_infer_fail_open_audit_body()) {
     Accepted { value: _, diagnostics: d } => d == None
     Rejected { diagnostics: _ } => false
   }
 }
 
-fn comprep_branch_infer_fail_open_audit_literal_arm_accepts_holds() -> Bool {
+fn branch_infer_fail_open_audit_literal_arm_accepts_holds() -> Bool {
   match infer(tree: dag_mvp1_pick_if_body_fixture) {
     Accepted { value: _, diagnostics: d } => d == None
     Rejected { diagnostics: _ } => false

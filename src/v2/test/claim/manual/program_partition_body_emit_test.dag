@@ -1,4 +1,4 @@
-module v2.test.manual.program_partition_comprep_body_emit
+module v2.test.manual.program_partition_body_emit
 
 import v2.compiler.program_partition {
   emit_for_target,
@@ -31,9 +31,9 @@ import v2.std.verification {
   BoolWitnessClaim,
   UnifiedTestClaim
 }
-import v2.test.manual.comprep_add_body_emit_typescript {
-  comprep_ts_emit_from_producer_tree,
-  comprep_ts_producer_inferred_tree
+import v2.test.manual.add_body_emit_typescript {
+  add_body_ts_emit_from_producer_tree,
+  add_body_ts_producer_inferred_tree
 }
 
 fn program_partition_node_list_member_seen(seen: List<Node>, needle: Node) -> Bool {
@@ -65,7 +65,7 @@ fn program_partition_node_list_is_duplicate_free(xs: List<Node>) -> Bool {
 }
 
 test fn program_partition_body_canonical_closure_enumeration_is_duplicate_free() -> Bool {
-  match comprep_ts_producer_inferred_tree() {
+  match add_body_ts_producer_inferred_tree() {
     Accepted { value: program, diagnostics: _ } =>
       match find_arrow_body_child(root: program.root) {
         Accepted { value: body, diagnostics: _ } =>
@@ -79,7 +79,7 @@ test fn program_partition_body_canonical_closure_enumeration_is_duplicate_free()
 }
 
 test fn program_partition_body_fail_closed_facts_closure_fold_accepts() -> Bool {
-  match comprep_ts_producer_inferred_tree() {
+  match add_body_ts_producer_inferred_tree() {
     Accepted { value: program, diagnostics: _ } =>
       match find_arrow_body_child(root: program.root) {
         Accepted { value: body, diagnostics: _ } =>
@@ -102,11 +102,11 @@ test fn program_partition_body_fail_closed_facts_closure_fold_accepts() -> Bool 
 }
 
 test fn program_partition_body_emit_accepts_and_differs_from_whole() -> Bool {
-  match comprep_ts_producer_inferred_tree() {
+  match add_body_ts_producer_inferred_tree() {
     Accepted { value: program, diagnostics: _ } =>
       match find_arrow_body_child(root: program.root) {
         Accepted { value: body, diagnostics: _ } =>
-          match comprep_ts_emit_from_producer_tree(target: ts_mvp1_target_model()) {
+          match add_body_ts_emit_from_producer_tree(target: ts_mvp1_target_model()) {
             Accepted { value: whole_source, diagnostics: whole_d } =>
               match emit_for_target(
                 program: program,
@@ -130,9 +130,9 @@ test fn program_partition_body_emit_accepts_and_differs_from_whole() -> Bool {
 }
 
 test fn program_partition_whole_program_emit_matches_direct() -> Bool {
-  match comprep_ts_producer_inferred_tree() {
+  match add_body_ts_producer_inferred_tree() {
     Accepted { value: program, diagnostics: _ } =>
-      match comprep_ts_emit_from_producer_tree(target: ts_mvp1_target_model()) {
+      match add_body_ts_emit_from_producer_tree(target: ts_mvp1_target_model()) {
         Accepted { value: direct_source, diagnostics: direct_d } =>
           match emit_for_target(
             program: program,

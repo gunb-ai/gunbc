@@ -1,11 +1,11 @@
-module v2.test.manual.comprep_bind_eval_by_execution
+module v2.test.manual.bind_eval_by_execution
 
 import v2.compiler.body_producer {
   produce_mvp1_bind_arrow_with_body,
   produce_mvp1_bind_arrow_with_body_wrong_value
 }
-import v2.test.complexity_gate.comprep_wave1_bind_subject_producer {
-  comprep_source_bridged_bind_arrow_with_body
+import v2.test.complexity_gate.source_bridged_bind_subject_producer {
+  source_bridged_bind_arrow_with_body
 }
 import v2.compiler.eval {
   EvalContext,
@@ -87,7 +87,7 @@ import v2.std.verification {
   manual_claim_anchor
 }
 
-fn comprep_bind_atom(s: Symbol) -> Node {
+fn bind_atom(s: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: s } },
     occurrence_id: SyntheticOccurrence,
@@ -95,94 +95,94 @@ fn comprep_bind_atom(s: Symbol) -> Node {
   }
 }
 
-fn comprep_bind_byte() -> Byte {
+fn bind_byte() -> Byte {
   Byte { bits: [true] }
 }
 
-fn comprep_bind_i64_node() -> Node {
-  comprep_bind_atom(s: ^comprep_bind_i64)
+fn bind_i64_node() -> Node {
+  bind_atom(s: ^bind_i64)
 }
 
-fn comprep_bind_int_value(bytes: List<Byte>) -> RuntimeValue {
+fn bind_int_value(bytes: List<Byte>) -> RuntimeValue {
   RuntimePrimitive {
     value: RuntimePrimitiveValue {
-      primitive_type: comprep_bind_i64_node(),
+      primitive_type: bind_i64_node(),
       bytes: bytes
     }
   }
 }
 
-fn comprep_bind_one_value() -> RuntimeValue {
-  comprep_bind_int_value(bytes: [comprep_bind_byte()])
+fn bind_one_value() -> RuntimeValue {
+  bind_int_value(bytes: [bind_byte()])
 }
 
-fn comprep_bind_two_value() -> RuntimeValue {
-  comprep_bind_int_value(bytes: [comprep_bind_byte(), comprep_bind_byte()])
+fn bind_two_value() -> RuntimeValue {
+  bind_int_value(bytes: [bind_byte(), bind_byte()])
 }
 
-fn comprep_bind_literal_one_node() -> Node {
-  comprep_bind_atom(s: ^dag_mvp1_pick_lit_one)
+fn bind_literal_one_node() -> Node {
+  bind_atom(s: ^dag_mvp1_pick_lit_one)
 }
 
-fn comprep_bind_literal_two_node() -> Node {
-  comprep_bind_atom(s: ^dag_mvp1_pick_lit_two)
+fn bind_literal_two_node() -> Node {
+  bind_atom(s: ^dag_mvp1_pick_lit_two)
 }
 
-fn comprep_bind_runtime_diagnostic(n: Node) -> Diagnostic {
+fn bind_runtime_diagnostic(n: Node) -> Diagnostic {
   Diagnostic {
-    reason: ^comprep_bind_runtime_rejected,
+    reason: ^bind_runtime_rejected,
     at: node_locus(node: n),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 
-fn comprep_bind_runtime_int_is_one(value: RuntimeValue) -> Bool {
+fn bind_runtime_int_is_one(value: RuntimeValue) -> Bool {
   match value {
     RuntimePrimitive { value: p } =>
-      (p.primitive_type == comprep_bind_i64_node()) && (count(p.bytes) == 1)
+      (p.primitive_type == bind_i64_node()) && (count(p.bytes) == 1)
     _ => false
   }
 }
 
-fn comprep_bind_runtime_int_is_two(value: RuntimeValue) -> Bool {
+fn bind_runtime_int_is_two(value: RuntimeValue) -> Bool {
   match value {
     RuntimePrimitive { value: p } =>
-      (p.primitive_type == comprep_bind_i64_node()) && (count(p.bytes) == 2)
+      (p.primitive_type == bind_i64_node()) && (count(p.bytes) == 2)
     _ => false
   }
 }
 
-fn comprep_bind_allocate_literal(node: Node, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
-  if node == comprep_bind_literal_one_node() {
-    outcome_accepted(value: comprep_bind_one_value())
-  } else if node == comprep_bind_literal_two_node() {
-    outcome_accepted(value: comprep_bind_two_value())
+fn bind_allocate_literal(node: Node, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
+  if node == bind_literal_one_node() {
+    outcome_accepted(value: bind_one_value())
+  } else if node == bind_literal_two_node() {
+    outcome_accepted(value: bind_two_value())
   } else {
-    outcome_rejected(d: comprep_bind_runtime_diagnostic(n: node))
+    outcome_rejected(d: bind_runtime_diagnostic(n: node))
   }
 }
 
-fn comprep_bind_call_primitive(
+fn bind_call_primitive(
   _node: Node,
   _args: List<RuntimeValue>,
   _env: EvaluationEnvironment
 ) -> Outcome<RuntimeValue> {
-  outcome_rejected(d: comprep_bind_runtime_diagnostic(n: _node))
+  outcome_rejected(d: bind_runtime_diagnostic(n: _node))
 }
 
-fn comprep_bind_choose_branch(
+fn bind_choose_branch(
   node: Node,
   _condition: RuntimeValue,
   _env: EvaluationEnvironment
 ) -> Outcome<Node> {
-  outcome_rejected(d: comprep_bind_runtime_diagnostic(n: node))
+  outcome_rejected(d: bind_runtime_diagnostic(n: node))
 }
 
-fn comprep_bind_step_loop(node: Node, _env: EvaluationEnvironment) -> Outcome<ControlTransfer> {
-  outcome_rejected(d: comprep_bind_runtime_diagnostic(n: node))
+fn bind_step_loop(node: Node, _env: EvaluationEnvironment) -> Outcome<ControlTransfer> {
+  outcome_rejected(d: bind_runtime_diagnostic(n: node))
 }
 
-fn comprep_bind_bind_value(
+fn bind_bind_value(
   key: EnvironmentBindingKey,
   value: RuntimeValue,
   env: EvaluationEnvironment
@@ -195,46 +195,46 @@ fn comprep_bind_bind_value(
   }
 }
 
-fn comprep_bind_interpretation() -> InterpretationAlgebra {
+fn bind_interpretation() -> InterpretationAlgebra {
   InterpretationAlgebra {
     value: ValueInterpreter {
-      allocate_literal: comprep_bind_allocate_literal
+      allocate_literal: bind_allocate_literal
     },
     transform: TransformInterpreter {
-      call_primitive: comprep_bind_call_primitive
+      call_primitive: bind_call_primitive
     },
     branch: BranchInterpreter {
-      choose_branch: comprep_bind_choose_branch
+      choose_branch: bind_choose_branch
     },
     loop: LoopInterpreter {
-      step_loop: comprep_bind_step_loop
+      step_loop: bind_step_loop
     },
     bind: BindInterpreter {
-      bind_value: comprep_bind_bind_value
+      bind_value: bind_bind_value
     }
   }
 }
 
-fn comprep_bind_interpretation_structure_witness() -> InterpretationStructureWitness {
+fn bind_interpretation_structure_witness() -> InterpretationStructureWitness {
   InterpretationStructureWitness {
-    allocate_literal: ^comprep_bind_allocate_literal_sym,
-    call_primitive: ^comprep_bind_call_primitive_sym,
-    choose_branch: ^comprep_bind_choose_branch_sym,
-    step_loop: ^comprep_bind_step_loop_sym,
-    bind_value: ^comprep_bind_bind_value_sym,
+    allocate_literal: ^bind_allocate_literal_sym,
+    call_primitive: ^bind_call_primitive_sym,
+    choose_branch: ^bind_choose_branch_sym,
+    step_loop: ^bind_step_loop_sym,
+    bind_value: ^bind_bind_value_sym,
     choose_arm: ^runtime_reject_match_arm
   }
 }
 
-fn comprep_bind_context() -> EvalContext {
+fn bind_context() -> EvalContext {
   eval_context_with_semantics(
-    runtime_identity: ^comprep_bind_runtime_id,
-    interpretation: comprep_bind_interpretation(),
-    structure_witness: comprep_bind_interpretation_structure_witness()
+    runtime_identity: ^bind_runtime_id,
+    interpretation: bind_interpretation(),
+    structure_witness: bind_interpretation_structure_witness()
   )
 }
 
-fn comprep_bind_pick_call(callee: Node) -> Node {
+fn bind_pick_call(callee: Node) -> Node {
   Node {
     kind: ComputationNode { behavior: Transform },
     occurrence_id: SyntheticOccurrence,
@@ -244,45 +244,45 @@ fn comprep_bind_pick_call(callee: Node) -> Node {
   }
 }
 
-fn comprep_bind_tree_root(call: Node, expected: Node) -> Node {
+fn bind_tree_root(call: Node, expected: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     occurrence_id: SyntheticOccurrence,
     children: [
-      Edge { label: Named { name: ^comprep_bind_actual }, target: call },
-      Edge { label: Named { name: ^comprep_bind_expected }, target: expected }
+      Edge { label: Named { name: ^bind_actual }, target: call },
+      Edge { label: Named { name: ^bind_expected }, target: expected }
     ]
   }
 }
 
-fn comprep_bind_facts_lookup(key: Node) -> Witness<InferredFacts> {
+fn bind_facts_lookup(key: Node) -> Witness<InferredFacts> {
   Holds {
     value: claim_inferred_facts_from_nodes(
       resolved: key,
-      algebra: comprep_bind_i64_node(),
+      algebra: bind_i64_node(),
       descent: termination_proof_witness_for_node(n: key)
     )
   }
 }
 
-fn comprep_bind_admitted_tree(root: Node) -> InferredTree {
+fn bind_admitted_tree(root: Node) -> InferredTree {
   InferredTree {
     root: root,
     facts: Map {
-      lookup: comprep_bind_facts_lookup
+      lookup: bind_facts_lookup
     }
   }
 }
 
-fn comprep_bind_inferred_run_tree(callee: Node, expected: Node) -> Outcome<InferredTree> {
-  let call = comprep_bind_pick_call(callee: callee)
-  let root = comprep_bind_tree_root(call: call, expected: expected)
-  outcome_accepted(value: comprep_bind_admitted_tree(root: root))
+fn bind_inferred_run_tree(callee: Node, expected: Node) -> Outcome<InferredTree> {
+  let call = bind_pick_call(callee: callee)
+  let root = bind_tree_root(call: call, expected: expected)
+  outcome_accepted(value: bind_admitted_tree(root: root))
 }
 
-fn comprep_bind_claim(input: Node, expected: Node) -> TestClaim {
+fn bind_claim(input: Node, expected: Node) -> TestClaim {
   CompilesClaim {
-    label: "manual/comprep_bind: source-bridged let-in Bind.body executes through eval",
+    label: "manual/bind: source-bridged let-in Bind.body executes through eval",
     anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
     input: input,
     expected_value: expected,
@@ -290,40 +290,40 @@ fn comprep_bind_claim(input: Node, expected: Node) -> TestClaim {
   }
 }
 
-fn comprep_bind_subject(
+fn bind_subject(
   tree: InferredTree,
   input: Node,
   expected: Node
 ) -> TestClaimEvalSubject<Node> {
   TestClaimEvalSubject {
-    claim: comprep_bind_claim(input: input, expected: expected),
-    context: comprep_bind_context(),
+    claim: bind_claim(input: input, expected: expected),
+    context: bind_context(),
     tree: tree,
     input: test_claim_typed_input_node(
       evaluator_input: input,
-      evaluator_pin: ^comprep_bind_pick_call_pin
+      evaluator_pin: ^bind_pick_call_pin
     )
   }
 }
 
-fn comprep_bind_run(
+fn bind_run(
   callee: Node,
   expected: Node
 ) -> Outcome<TestClaimRun<Node, RuntimeValue>> {
-  let input = comprep_bind_pick_call(callee: callee)
+  let input = bind_pick_call(callee: callee)
   bind_outcome(
-    o: comprep_bind_inferred_run_tree(callee: callee, expected: expected),
+    o: bind_inferred_run_tree(callee: callee, expected: expected),
     f: fn(tree) {
       outcome_accepted(
         value: run_test_claim(
-          subject: comprep_bind_subject(tree: tree, input: input, expected: expected)
+          subject: bind_subject(tree: tree, input: input, expected: expected)
         )
       )
     }
   )
 }
 
-fn comprep_bind_run_passes(run: Outcome<TestClaimRun<Node, RuntimeValue>>) -> Bool {
+fn bind_run_passes(run: Outcome<TestClaimRun<Node, RuntimeValue>>) -> Bool {
   match run {
     Accepted { value: r, diagnostics: _ } =>
       match test_claim_run_verdict(run: r) {
@@ -334,42 +334,42 @@ fn comprep_bind_run_passes(run: Outcome<TestClaimRun<Node, RuntimeValue>>) -> Bo
   }
 }
 
-fn comprep_bind_source_pipeline_admits_holds() -> Bool {
-  match comprep_source_bridged_bind_arrow_with_body() {
+fn bind_source_pipeline_admits_holds() -> Bool {
+  match source_bridged_bind_arrow_with_body() {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
 }
 
-fn comprep_bind_source_driven_executes_holds() -> Bool {
-  match comprep_source_bridged_bind_arrow_with_body() {
+fn bind_source_driven_executes_holds() -> Bool {
+  match source_bridged_bind_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
-      comprep_bind_run_passes(
-        run: comprep_bind_run(
+      bind_run_passes(
+        run: bind_run(
           callee: arrow,
-          expected: comprep_bind_literal_one_node()
+          expected: bind_literal_one_node()
         )
       )
     Rejected { diagnostics: _ } => false
   }
 }
 
-fn comprep_bind_direct_runtime_holds() -> Bool {
-  match comprep_source_bridged_bind_arrow_with_body() {
+fn bind_direct_runtime_holds() -> Bool {
+  match source_bridged_bind_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } => {
-      let input = comprep_bind_pick_call(callee: arrow)
-      match comprep_bind_inferred_run_tree(
+      let input = bind_pick_call(callee: arrow)
+      match bind_inferred_run_tree(
         callee: arrow,
-        expected: comprep_bind_literal_one_node()
+        expected: bind_literal_one_node()
       ) {
         Accepted { value: tree, diagnostics: _ } =>
           match eval(
             tree: tree,
-            interpretation: comprep_bind_interpretation(),
+            interpretation: bind_interpretation(),
             inputs: inputs_root_only(root: input)
           ) {
             Accepted { value: actual, diagnostics: None } =>
-              comprep_bind_runtime_int_is_one(value: actual)
+              bind_runtime_int_is_one(value: actual)
             _ => false
           }
         Rejected { diagnostics: _ } => false
@@ -379,50 +379,50 @@ fn comprep_bind_direct_runtime_holds() -> Bool {
   }
 }
 
-fn comprep_bind_value_perturbation_red_holds() -> Bool {
-  match comprep_source_bridged_bind_arrow_with_body() {
+fn bind_value_perturbation_red_holds() -> Bool {
+  match source_bridged_bind_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
-      comprep_bind_run_passes(
-        run: comprep_bind_run(
+      bind_run_passes(
+        run: bind_run(
           callee: arrow,
-          expected: comprep_bind_literal_two_node()
+          expected: bind_literal_two_node()
         )
       ) == false
     Rejected { diagnostics: _ } => false
   }
 }
 
-fn comprep_bind_fixture_producer_holds() -> Bool {
+fn bind_fixture_producer_holds() -> Bool {
   match produce_mvp1_bind_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
-      comprep_bind_run_passes(
-        run: comprep_bind_run(
+      bind_run_passes(
+        run: bind_run(
           callee: arrow,
-          expected: comprep_bind_literal_one_node()
+          expected: bind_literal_one_node()
         )
       )
     Rejected { diagnostics: _ } => false
   }
 }
 
-fn comprep_bind_fixture_wrong_value_red_holds() -> Bool {
+fn bind_fixture_wrong_value_red_holds() -> Bool {
   match produce_mvp1_bind_arrow_with_body_wrong_value() {
     Accepted { value: arrow, diagnostics: _ } =>
-      comprep_bind_run_passes(
-        run: comprep_bind_run(
+      bind_run_passes(
+        run: bind_run(
           callee: arrow,
-          expected: comprep_bind_literal_one_node()
+          expected: bind_literal_one_node()
         )
       ) == false
     Rejected { diagnostics: _ } => false
   }
 }
 
-test fn comprep_bind_eval_by_execution_keystone_holds() -> Bool {
-  comprep_bind_source_driven_executes_holds()
-    && comprep_bind_direct_runtime_holds()
-    && comprep_bind_source_pipeline_admits_holds()
-    && comprep_bind_value_perturbation_red_holds()
-    && comprep_bind_fixture_producer_holds()
-    && comprep_bind_fixture_wrong_value_red_holds()
+test fn bind_eval_by_execution_keystone_holds() -> Bool {
+  bind_source_driven_executes_holds()
+    && bind_direct_runtime_holds()
+    && bind_source_pipeline_admits_holds()
+    && bind_value_perturbation_red_holds()
+    && bind_fixture_producer_holds()
+    && bind_fixture_wrong_value_red_holds()
 }

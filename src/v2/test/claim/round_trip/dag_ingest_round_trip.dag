@@ -33,7 +33,7 @@ fn dag_round_trip_input_node() -> Node {
       ),
       dag_round_trip_edge(
         name: ^dag_round_trip_fixture_axis,
-        target: dag_round_trip_atom(s: ^dag_round_trip_mvp1_subject)
+        target: dag_round_trip_atom(s: ^dag_add_fn_round_trip_fixture_subject)
       ),
       dag_round_trip_edge(
         name: ^dag_round_trip_lex_axis,

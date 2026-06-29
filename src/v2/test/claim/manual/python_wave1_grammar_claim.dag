@@ -1,4 +1,4 @@
-module v2.test.manual.python_mvp1_grammar_claim
+module v2.test.manual.python_wave1_grammar_claim
 
 import v2.compiler.parse {
   grammar_validate_for_parse,
@@ -34,7 +34,7 @@ fn python_claim_bool_atom(b: Bool) -> Node {
   }
 }
 
-fn python_mvp1_grammar_validates_fixture() -> Bool {
+fn python_wave1_grammar_validates_fixture() -> Bool {
   let at = port_locus(port: ^parse_stage_locus_port)
   match grammar_validate_for_parse(root: python_wave1_grammar_root(), at: at) {
     Accepted { value: _, diagnostics: _ } => true
@@ -42,18 +42,18 @@ fn python_mvp1_grammar_validates_fixture() -> Bool {
   }
 }
 
-fn python_mvp1_grammar_parse_accepted() -> Bool {
-  match python_mvp1_grammar_parse_fixture() {
+fn python_wave1_grammar_parse_accepted() -> Bool {
+  match python_wave1_grammar_parse_fixture() {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
 }
 
-fn python_mvp1_grammar_parse_fixture() -> Outcome<ParseTree> {
+fn python_wave1_grammar_parse_fixture() -> Outcome<ParseTree> {
   let at = port_locus(port: ^parse_stage_locus_port)
   match tokenize(
     text: python_mvp1_source_text,
-    file: ^python_mvp1_parse_fixture_file,
+    file: ^python_wave1_parse_fixture_file,
     rules: python_wave1_lex()
   ) {
     Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
@@ -70,18 +70,18 @@ fn python_mvp1_grammar_parse_fixture() -> Outcome<ParseTree> {
   }
 }
 
-data claim_python_mvp1_grammar_validates: TestClaim = EqualsClaim {
+data claim_python_wave1_grammar_validates: TestClaim = EqualsClaim {
   label: "python_wave1_grammar_root passes grammar_validate_for_parse",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  lhs: python_claim_bool_atom(b: python_mvp1_grammar_validates_fixture()),
+  lhs: python_claim_bool_atom(b: python_wave1_grammar_validates_fixture()),
   rhs: python_claim_bool_atom(b: true),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_python_mvp1_grammar_parses_mvp_tokens: TestClaim = EqualsClaim {
+data claim_python_wave1_grammar_parses_tokens: TestClaim = EqualsClaim {
   label: "python MVP-1 production parse_production accepts lexer output for def-add source",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  lhs: python_claim_bool_atom(b: python_mvp1_grammar_parse_accepted()),
+  lhs: python_claim_bool_atom(b: python_wave1_grammar_parse_accepted()),
   rhs: python_claim_bool_atom(b: true),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }

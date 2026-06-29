@@ -1,4 +1,4 @@
-module v2.test.manual.comprep_branch_lazy_arm_eval_acceptance
+module v2.test.manual.branch_lazy_arm_eval_acceptance
 
 import v2.compiler.eval {
   EvalContext,
@@ -470,7 +470,7 @@ fn lazy_arm_run_branch(
     value: run_test_claim(
       subject: TestClaimEvalSubject {
         claim: CompilesClaim {
-          label: "manual/comprep_branch_lazy_arm: demand-driven Branch eval acceptance",
+          label: "manual/branch_lazy_arm: demand-driven Branch eval acceptance",
           anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
           input: call,
           expected_value: expected,

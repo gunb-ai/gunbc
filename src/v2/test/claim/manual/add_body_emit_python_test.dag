@@ -1,4 +1,4 @@
-module v2.test.manual.comprep_add_body_emit_python
+module v2.test.manual.add_body_emit_python
 
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
 import v2.compiler.emit { emit }
@@ -12,8 +12,8 @@ import v2.extdeps.languages.python {
   python_mvp1_target_model_node,
   python_wave1_lex
 }
-import v2.test.manual.mvp1_python_add_translate {
-  mvp1_python_inferred_tree
+import v2.test.manual.python_add_emit_translate {
+  python_add_inferred_tree
 }
 import v2.std.collection { Map, empty_map, map_insert }
 import v2.std.compilers.target_model { TargetModel, target_model_emit_transforms_empty }
@@ -32,9 +32,9 @@ import v2.std.verification {
   UnifiedTestClaim
 }
 
-data comprep_python_add_emit_perturbed_source_text: String = "def add(a, b): return a + b"
+data python_add_emit_perturbed_source_text: String = "def add(a, b): return a + b"
 
-fn comprep_python_add_emit_perturbed_binding_spellings() -> Map<Symbol, String> {
+fn python_add_emit_perturbed_binding_spellings() -> Map<Symbol, String> {
   map_insert(
     map_insert(
       map_insert(empty_map(), ^python_binding_fn_add, "add"),
@@ -46,28 +46,28 @@ fn comprep_python_add_emit_perturbed_binding_spellings() -> Map<Symbol, String> 
   )
 }
 
-fn comprep_python_add_emit_perturbed_target_model() -> TargetModel {
+fn python_add_emit_perturbed_target_model() -> TargetModel {
   TargetModel {
     bundle: python_mvp1_target_model_node(),
     lex: python_wave1_lex(),
-    binding_spellings: comprep_python_add_emit_perturbed_binding_spellings(),
+    binding_spellings: python_add_emit_perturbed_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
     authority_source_text: python_mvp1_source_text,
     runtime_row: target_emit_host_runtime_row_unconfigured
   }
 }
 
-fn comprep_python_add_emit_from_tree(target: TargetModel) -> Outcome<Medium<String>> {
-  emit(tree: mvp1_python_inferred_tree, target: target)
+fn python_add_emit_from_tree(target: TargetModel) -> Outcome<Medium<String>> {
+  emit(tree: python_add_inferred_tree, target: target)
 }
 
-fn comprep_python_add_emit_holds() -> Bool {
+fn python_add_emit_holds() -> Bool {
   match target_serialize_source_from_model(
     target: python_mvp1_target_model(),
     emitted: python_mvp1_emitted_add_fn_node()
   ) {
     Accepted { value: authority, diagnostics: ad } =>
-      match comprep_python_add_emit_from_tree(target: python_mvp1_target_model()) {
+      match python_add_emit_from_tree(target: python_mvp1_target_model()) {
         Accepted { value: source, diagnostics: d } =>
           (source == authority) && (d == None) && (ad == None)
         Rejected { diagnostics: _ } => false
@@ -76,15 +76,15 @@ fn comprep_python_add_emit_holds() -> Bool {
   }
 }
 
-fn comprep_python_add_emit_perturbed_spellings_discriminates() -> Bool {
-  match comprep_python_add_emit_from_tree(target: python_mvp1_target_model()) {
+fn python_add_emit_perturbed_spellings_discriminates() -> Bool {
+  match python_add_emit_from_tree(target: python_mvp1_target_model()) {
     Accepted { value: canonical, diagnostics: dc } =>
-      match comprep_python_add_emit_from_tree(
-        target: comprep_python_add_emit_perturbed_target_model()
+      match python_add_emit_from_tree(
+        target: python_add_emit_perturbed_target_model()
       ) {
         Accepted { value: perturbed, diagnostics: dp } =>
           (perturbed != canonical)
-            && (perturbed.carried == comprep_python_add_emit_perturbed_source_text)
+            && (perturbed.carried == python_add_emit_perturbed_source_text)
             && (dc == None)
             && (dp == None)
         Rejected { diagnostics: _ } => false
@@ -93,6 +93,6 @@ fn comprep_python_add_emit_perturbed_spellings_discriminates() -> Bool {
   }
 }
 
-test fn comprep_python_add_emit_keystone_holds() -> Bool {
-  comprep_python_add_emit_holds() && comprep_python_add_emit_perturbed_spellings_discriminates()
+test fn python_add_emit_keystone_holds() -> Bool {
+  python_add_emit_holds() && python_add_emit_perturbed_spellings_discriminates()
 }

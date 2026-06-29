@@ -1,4 +1,4 @@
-module v2.test.manual.comprep_b3_ts_descriptor_node_run
+module v2.test.manual.typescript_descriptor_node_run
 
 import v2.compiler.emit_host {
   emit_host_exit_not_ok_diagnostic,
@@ -22,26 +22,26 @@ import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.compilers.target_model { TargetModel }
 import v2.std.text { String }
-import v2.test.manual.comprep_add_body_emit_typescript {
-  comprep_ts_emit_from_producer_tree,
-  comprep_ts_target_model_minus_catalog
+import v2.test.manual.add_body_emit_typescript {
+  add_body_ts_emit_from_producer_tree,
+  add_body_ts_target_model_minus_catalog
 }
 import v2.test.manual.connective_anchors { stub_empty_conj }
 import extdeps.communication.medium { Lossless, Medium }
 
-fn comprep_b3_emit_host_fixture_inputs() -> Inputs {
+fn typescript_descriptor_node_emit_host_fixture_inputs() -> Inputs {
   inputs_for_emit_host(
     claim_input_root: stub_empty_conj,
     expected_eval_root: stub_empty_conj,
-    claim_pin: ^comprep_b3_claim_pin
+    claim_pin: ^typescript_descriptor_node_claim_pin
   )
 }
 
-fn comprep_b3_host_run_i32(target: TargetModel, source: Medium<String>) -> Outcome<Int> {
+fn typescript_descriptor_node_host_run_i32(target: TargetModel, source: Medium<String>) -> Outcome<Int> {
   match run_emit_host(
     target: target,
     source: source,
-    fixture_inputs: comprep_b3_emit_host_fixture_inputs()
+    fixture_inputs: typescript_descriptor_node_emit_host_fixture_inputs()
   ) {
     Accepted { value: receipt, diagnostics: None } =>
       match receipt.logical_run {
@@ -60,10 +60,10 @@ fn comprep_b3_host_run_i32(target: TargetModel, source: Medium<String>) -> Outco
   }
 }
 
-fn comprep_b3_ts_node_run_add_holds() -> Bool {
-  match comprep_ts_emit_from_producer_tree(target: ts_mvp1_target_model()) {
+fn typescript_descriptor_node_ts_node_run_add_holds() -> Bool {
+  match add_body_ts_emit_from_producer_tree(target: ts_mvp1_target_model()) {
     Accepted { value: source, diagnostics: None } =>
-      match comprep_b3_host_run_i32(target: ts_mvp1_target_model(), source: source) {
+      match typescript_descriptor_node_host_run_i32(target: ts_mvp1_target_model(), source: source) {
         Accepted { value: n, diagnostics: None } => n == 5
         _ => false
       }
@@ -71,11 +71,11 @@ fn comprep_b3_ts_node_run_add_holds() -> Bool {
   }
 }
 
-fn comprep_b3_ts_node_run_catalog_minus_discriminates() -> Bool {
-  match comprep_ts_emit_from_producer_tree(target: comprep_ts_target_model_minus_catalog()) {
+fn typescript_descriptor_node_ts_node_run_catalog_minus_discriminates() -> Bool {
+  match add_body_ts_emit_from_producer_tree(target: add_body_ts_target_model_minus_catalog()) {
     Accepted { value: source, diagnostics: None } =>
-      match comprep_b3_host_run_i32(
-        target: comprep_ts_target_model_minus_catalog(),
+      match typescript_descriptor_node_host_run_i32(
+        target: add_body_ts_target_model_minus_catalog(),
         source: source
       ) {
         Accepted { value: n, diagnostics: None } => n == -1

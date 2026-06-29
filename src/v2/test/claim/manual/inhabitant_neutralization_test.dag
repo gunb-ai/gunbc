@@ -21,7 +21,7 @@ import v2.extdeps.languages.python {
   python_mvp1_target_model
 }
 import v2.test.manual.ingest_bridge { ingest_cross_language_compile_holds }
-import v2.test.manual.python_mvp1_grammar_claim { python_mvp1_grammar_parse_fixture }
+import v2.test.manual.python_wave1_grammar_claim { python_wave1_grammar_parse_fixture }
 import v2.extdeps.languages.typescript { ts_mvp1_source_text, ts_mvp1_target_model }
 import v2.std.inhabitant_neutralization {
   inhabitant_std_projection_symbol,
@@ -226,7 +226,7 @@ test fn inhabitant_neutralization_03_ingest_regression_guard_holds() -> Bool {
 }
 
 fn inhabitant_neutralization_python_to_ts_cross_language_compile_e2e_holds() -> Bool {
-  match python_mvp1_grammar_parse_fixture() {
+  match python_wave1_grammar_parse_fixture() {
     Accepted { value: python_parse_tree, diagnostics: _ } =>
       match cross_language_compile(
         parse_tree: python_parse_tree,
@@ -241,7 +241,7 @@ fn inhabitant_neutralization_python_to_ts_cross_language_compile_e2e_holds() -> 
 }
 
 fn inhabitant_neutralization_python_to_go_cross_language_compile_e2e_holds() -> Bool {
-  match python_mvp1_grammar_parse_fixture() {
+  match python_wave1_grammar_parse_fixture() {
     Accepted { value: python_parse_tree, diagnostics: _ } =>
       match cross_language_compile(
         parse_tree: python_parse_tree,
@@ -256,7 +256,7 @@ fn inhabitant_neutralization_python_to_go_cross_language_compile_e2e_holds() -> 
 }
 
 fn inhabitant_neutralization_python_to_go_discriminates_on_real_tree() -> Bool {
-  match python_mvp1_grammar_parse_fixture() {
+  match python_wave1_grammar_parse_fixture() {
     Accepted { value: python_parse_tree, diagnostics: _ } =>
       match cross_language_compile(
         parse_tree: python_parse_tree,

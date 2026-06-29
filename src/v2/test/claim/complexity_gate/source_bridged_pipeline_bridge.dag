@@ -1,4 +1,4 @@
-module v2.test.complexity_gate.comprep_pipeline_bridge
+module v2.test.complexity_gate.source_bridged_pipeline_bridge
 
 import v2.compiler.normalize { normalize }
 import v2.compiler.parse { ValidatedGrammarRoot, grammar_validate_for_parse, parse_production_tree }
@@ -12,7 +12,7 @@ import v2.std.grammar { GrammarRoot, ParseTree }
 import v2.std.node { Node, Symbol }
 import v2.std.text { String }
 
-fn comprep_source_resolved_root(
+fn source_bridged_resolved_root(
   source_text: String,
   parse_root: GrammarRoot,
   production_name: Symbol,
@@ -21,7 +21,7 @@ fn comprep_source_resolved_root(
   let lm = dag_language_model_wave1()
   match grammar_validate_for_parse(
     root: parse_root,
-    at: port_locus(port: ^comprep_pipeline_bridge_grammar_locus)
+    at: port_locus(port: ^source_bridged_pipeline_bridge_grammar_locus)
   ) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: validated, diagnostics: _ } =>
