@@ -50,6 +50,24 @@ Three things an XLA/NVIDIA audience treats as *hard* and this gets *structurally
 2. **A new backend is a *row*, not a backend team.** Medium-agnostic emit (§4/§7) means "support this accelerator" = author a target row in `extdeps/languages/<accel>/`, not fork a codegen. The optional GPU run is the proof: *same plan, one target row changed.*
 3. **The schedule/layout is data, so auto-tuning can't miscompile.** The plan is a first-class `RealizationPlan<S>` value and every rewrite is provably semantics-preserving (purity + explicit `EffectShape`), so searching over layouts is guaranteed meaning-preserving.
 
+## 1.5. The relational projection — the demo artifact that is *for the author* (and doubles as the pitch)
+
+A first-class deliverable, not a debug print: the demo must **render the relationship** "arbitrary program DAG → numerical graph → kernel" as an inspectable artifact, because making that relationship legible is half the point (to the author, who thinks in array compilers; and to the audience, who thinks in HLO). The **recognize + plan** station's `RealizationPlan` value is *promoted from a side-effect to the product.*
+
+Shape — a **triptych** over one input program:
+
+| LEFT — your program | MIDDLE — the numerical graph inside it | RIGHT — the lowering |
+|---|---|---|
+| the program as written (the full **task DAG**) | the pure elementwise-array subgraph **lifted out**, shown as a **dataflow graph** — literally "arbitrary dag → numerical graph", the HLO-shaped view | the layout/fusion plan (SoA buffers, fused ops, `placement: LocalAccelerator`) + the **fidelity verdict** (Lossless / Lossy / Refused) |
+
+Why this is on-model, not scope creep:
+
+- It's a **lens** — read-only over the `Node` tree + the `RealizationPlan` value, storing nothing (DESIGN §6). A new analysis costs zero substrate edits.
+- It elevates the project's own pitch point ("the schedule/layout is *data*, so it's inspectable and can't silently miscompile") from a claim into the **rendered artifact** that demonstrates it.
+- Rendering is **"one more medium"** (§4/§7): a text / DOT structural projection first (provable, in-substrate), an HTML/React visual on top — *the same projected data, two media.* This **converges with §7** (the website/React rendering lane): the triptych is a natural candidate for the "demo beside the TS emit" milestone.
+
+Acceptance: the projection is *derived* from the same `RealizationPlan` the kernel is lowered from (single authority — the picture cannot drift from what actually executes), and the MIDDLE→RIGHT carving shows the exact subgraph that was lowered, with the refusal arm rendering a located refusal rather than a blank.
+
 ## 2. On-model framing — first live consumer of the inert placement carriers
 
 The substrate **already models** the vocabulary; the roadmap (Ergonomics LANE) flags `Placement` / `Materialization` / `RealizationObjective` as *inert (no live consumer)* — the keystone inert-abstraction-lens's first RED witness. This demo makes them **load-bearing** by being their first real consumer:
