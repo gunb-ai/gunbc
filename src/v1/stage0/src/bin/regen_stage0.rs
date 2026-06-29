@@ -93,6 +93,7 @@ const GENERATED_STAGE0_FILES: &[&str] = &[
     "v1_compiler_languages.rs",
     "v1_compiler_normalize.rs",
     "v1_compiler_ownership.rs",
+    "v1_compiler_parse.rs",
     "v1_compiler_resolve.rs",
     "v1_compiler_runtime_go.rs",
     "v1_compiler_runtime_rust.rs",
@@ -139,13 +140,6 @@ const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
     // gunbc CLI + dependency-pool indexing in the emitter, then move this file back to
     // GENERATED_STAGE0_FILES.
     "main.rs",
-    // Un-dissolved bootstrap parser seed: #5864's O(N) cursor optimization lives in
-    // this hand-maintained file, NOT in src/v1/02_parse.dag (which still models the
-    // O(N^2) baseline). A faithful regen from 02_parse.dag would revert #5864, so
-    // parse.rs is copy-preserved here (operator ruling Path B). Dissolution: ground
-    // the TokenStream cursor into 02_parse.dag, then move this file back to
-    // GENERATED_STAGE0_FILES.
-    "v1_compiler_parse.rs",
     "v1_compiler_dag_collect.rs",
     "v1_compiler_dag_collect_support.rs",
     "v1_interpreter.rs",
