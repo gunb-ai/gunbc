@@ -20,18 +20,13 @@ import extdeps.languages.bash.program {
 }
 import v2.extdeps.languages.bash {
   bash_named_edge,
-  bash_stmt_env_prefixed_emitted,
   bash_stmt_env_prefixed_target_model,
-  bash_stmt_heredoc_emitted,
   bash_stmt_heredoc_target_model,
-  bash_stmt_negation_emitted,
   bash_stmt_negation_target_model,
-  bash_stmt_with_redir_emitted,
   bash_stmt_with_redir_target_model,
   bash_token_class_emit_transforms,
   bash_target_model_bundle,
   bash_word_atom,
-  bash_word_pass_emitted,
   bash_word_pass_target_model
 }
 import v2.std.algebra { list_append }
@@ -149,6 +144,14 @@ data bash_fold_diagnostic_anchor: Node = Node {
 fn bash_fold_unsupported_variant_diagnostic(variant: Symbol) -> Diagnostic {
   Diagnostic {
     reason: variant,
+    at: node_locus(node: bash_fold_diagnostic_anchor),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn bash_fold_delegated_needs_component_spellings_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: ^bash_fold_delegated_target_needs_component_spellings,
     at: node_locus(node: bash_fold_diagnostic_anchor),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -540,45 +543,15 @@ fn bash_fold_stmt_bundle_witness(stmt: ShellStmt) -> Witness<BashFoldStmtBundle>
     BraceGroup { body: _ } =>
       Violates { diagnostic: bash_fold_unsupported_variant_diagnostic(variant: ^bash_fold_stmt_brace_group) }
     EnvPrefixed { name: _, value: _, command: _ } =>
-      Holds {
-        value: BashFoldStmtBundle {
-          production_binding: ^bash_production_stmt_env_prefixed,
-          relation_rule: ^bash_relation_rule_stmt_env_prefixed,
-          emitted: bash_stmt_env_prefixed_emitted
-        }
-      }
+      Violates { diagnostic: bash_fold_delegated_needs_component_spellings_diagnostic() }
     WithRedir { stmt: _, redir: _ } =>
-      Holds {
-        value: BashFoldStmtBundle {
-          production_binding: ^bash_production_stmt_with_redir,
-          relation_rule: ^bash_relation_rule_stmt_with_redir,
-          emitted: bash_stmt_with_redir_emitted
-        }
-      }
+      Violates { diagnostic: bash_fold_delegated_needs_component_spellings_diagnostic() }
     Heredoc { path: _, delimiter: _, body: _ } =>
-      Holds {
-        value: BashFoldStmtBundle {
-          production_binding: ^bash_production_stmt_heredoc,
-          relation_rule: ^bash_relation_rule_stmt_heredoc,
-          emitted: bash_stmt_heredoc_emitted
-        }
-      }
+      Violates { diagnostic: bash_fold_delegated_needs_component_spellings_diagnostic() }
     Negation { stmt: _ } =>
-      Holds {
-        value: BashFoldStmtBundle {
-          production_binding: ^bash_production_stmt_negation,
-          relation_rule: ^bash_relation_rule_stmt_negation,
-          emitted: bash_stmt_negation_emitted
-        }
-      }
+      Violates { diagnostic: bash_fold_delegated_needs_component_spellings_diagnostic() }
     RawLine { text: _ } =>
-      Holds {
-        value: BashFoldStmtBundle {
-          production_binding: ^bash_production_word_pass,
-          relation_rule: ^bash_relation_rule_word_pass,
-          emitted: bash_word_pass_emitted
-        }
-      }
+      Violates { diagnostic: bash_fold_delegated_needs_component_spellings_diagnostic() }
   }
 }
 
@@ -1268,25 +1241,32 @@ fn bash_fold_target_model_for_emitted_witness(
   }
 }
 
-fn bash_fold_stmt_uses_delegated_grammar(stmt: ShellStmt) -> Bool {
+fn bash_fold_target_model_for_stmt_witness(stmt: ShellStmt) -> Witness<TargetModel> {
   match stmt {
-    WithRedir { stmt: _, redir: _ } => true
-    Heredoc { path: _, delimiter: _, body: _ } => true
-    RawLine { text: _ } => true
-    Negation { stmt: _ } => true
-    EnvPrefixed { name: _, value: _, command: _ } => true
-    Command { words: _ } => false
-    Assign { name: _, value: _ } => false
-    If { cond: _, then: _ } => false
-    Subshell { body: _ } => false
-    BraceGroup { body: _ } => false
-    AndOr { left: _, op: _, right: _ } => false
-    Pipe { left: _, right: _ } => false
-    Exit { code: _ } => false
+    WithRedir { stmt: _, redir: _ } =>
+      Violates { diagnostic: bash_fold_delegated_needs_component_spellings_diagnostic() }
+    Heredoc { path: _, delimiter: _, body: _ } =>
+      Violates { diagnostic: bash_fold_delegated_needs_component_spellings_diagnostic() }
+    RawLine { text: _ } =>
+      Violates { diagnostic: bash_fold_delegated_needs_component_spellings_diagnostic() }
+    Negation { stmt: _ } =>
+      Violates { diagnostic: bash_fold_delegated_needs_component_spellings_diagnostic() }
+    EnvPrefixed { name: _, value: _, command: _ } =>
+      Violates { diagnostic: bash_fold_delegated_needs_component_spellings_diagnostic() }
+    _ =>
+      match bash_fold_stmt_bundle_witness(stmt: stmt) {
+        Holds { value: bundle } =>
+          bash_fold_target_model_for_emitted_witness(
+            emitted: bundle.emitted,
+            source_literal: ^bash_fold_dynamic_source_literal,
+            source_text: serialize_stmt(s: stmt),
+            production_binding: bundle.production_binding,
+            rule_name: bundle.relation_rule
+          )
+        Violates { diagnostic: d } => Violates { diagnostic: d }
+      }
   }
 }
-
-fn bash_fold_raw_line_target_model(text: String) -> TargetModel {
   bash_word_pass_target_model(spelling: text)
 }
 
@@ -1314,31 +1294,7 @@ fn bash_fold_heredoc_target_model(path_spelling: String, delimiter: String, body
   bash_stmt_heredoc_target_model(path: path_spelling, delimiter: delimiter, body: body)
 }
 
-fn bash_fold_target_model_for_stmt_witness(stmt: ShellStmt) -> Witness<TargetModel> {
-  if bash_fold_stmt_uses_delegated_grammar(stmt: stmt) {
-    Violates {
-      diagnostic: Diagnostic {
-        reason: ^bash_fold_delegated_target_needs_component_spellings,
-        at: node_locus(node: bash_fold_diagnostic_anchor),
-        correction: Unavailable { reason: ExternalContractUnknown }
-      }
-    }
-  } else {
-    match bash_fold_stmt_bundle_witness(stmt: stmt) {
-      Holds { value: bundle } =>
-        bash_fold_target_model_for_emitted_witness(
-          emitted: bundle.emitted,
-          source_literal: ^bash_fold_dynamic_source_literal,
-          source_text: serialize_stmt(s: stmt),
-          production_binding: bundle.production_binding,
-          rule_name: bundle.relation_rule
-        )
-      Violates { diagnostic: d } => Violates { diagnostic: d }
-    }
-  }
-}
-
-fn bash_fold_with_redir_wrong_target_model_witness() -> Witness<TargetModel> {
+fn bash_fold_raw_line_target_model(text: String) -> TargetModel {
   Holds {
     value: bash_fold_with_redir_target_model(
       stmt_spelling: "'true'",
