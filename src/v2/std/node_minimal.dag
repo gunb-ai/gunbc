@@ -384,23 +384,11 @@ fn witness_all_node_superset_fields_covered_by_partition() -> Bool {
 }
 
 fn witness_partition_covers_superset() -> Bool {
-  if node_superset_field_three_way_disjoint(
+  node_superset_field_three_way_disjoint(
     placed: minimal_kind_placed_fields_union(),
     owed: minimal_kind_owed_placement,
     migrated: minimal_kind_migrated_to_facts
-  ) {
-    if count(minimal_kind_partition_field_union()) == node_superset_field_count {
-      if witness_all_node_superset_fields_roster_length() {
-        witness_all_node_superset_fields_covered_by_partition()
-      } else {
-        false
-      }
-    } else {
-      false
-    }
-  } else {
-    false
-  }
+  ) && count(minimal_kind_partition_field_union()) == node_superset_field_count && witness_all_node_superset_fields_roster_length() && witness_all_node_superset_fields_covered_by_partition()
 }
 
 fn minimal_node_superset_field_unused_by_kind(

@@ -40,11 +40,7 @@ fn substrate_v2_node() -> Node {
 }
 
 fn witness_expr_leaf_field_count_below_superset() -> Bool {
-  if minimal_node_kind_live_field_count(kind: MnkSurfaceExprLeaf) < node_superset_field_count {
-    true
-  } else {
-    false
-  }
+  minimal_node_kind_live_field_count(kind: MnkSurfaceExprLeaf) < node_superset_field_count
 }
 
 fn witness_expr_leaf_drops_connective_and_params() -> Bool {
