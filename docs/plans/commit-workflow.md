@@ -11,7 +11,7 @@ This is **not speculative**. Gunbc already has two registered `GeneratedArtifact
 | `CiYamlArtifact` → `.github/workflows/ci.yml` | `GithubActionsWorkflow` | `gunbc.ci_yaml_emit` ← `gunbc.ci_workflow` | `gunbc.ci_spec` (`gunbc_ci_floor_gates`, `gunbc_ci_rust_job_gates`, `CiSpec`) |
 | `GithooksPrePushArtifact` → `.githooks/pre-push` | `GitProtocol` (`CommitRequired { consumer: GitProtocol }`) | `gunbc.githooks_pre_push_emit` | `gunbc.ci_spec.Gate` (via `GeneratedArtifactDriftGate`) + `local_tidy_spec` freshness slice (#5924) |
 
-**Displaced cost:** two parallel emission paths maintain the same commit-time gate facts twice — `ci_workflow` hardwires the CI job graph while `githooks_pre_push_emit` hardwires a overlapping bash slice. Adding a gate today means touching both handlers *and* hoping `local_tidy_checks` stays aligned with `gunbc_ci_*_gates`. The project unifies **two existing emitters**, not a hypothetical Nth provider.
+**Displaced cost:** two parallel emission paths maintain the same commit-time gate facts twice — `ci_workflow` hardwires the CI job graph while `githooks_pre_push_emit` hardwires an overlapping bash slice. Adding a gate today means touching both handlers *and* hoping `local_tidy_checks` stays aligned with `gunbc_ci_*_gates`. The project unifies **two existing emitters**, not a hypothetical Nth provider.
 
 ## 1. §3 spine — three facts, one workflow authority
 

@@ -29,7 +29,7 @@ fn commit_workflow_body() -> List<MarkdownBlock> {
         ]),
       ],
     },
-    p(text: "**Displaced cost:** two parallel emission paths maintain the same commit-time gate facts twice — `ci_workflow` hardwires the CI job graph while `githooks_pre_push_emit` hardwires a overlapping bash slice. Adding a gate today means touching both handlers *and* hoping `local_tidy_checks` stays aligned with `gunbc_ci_*_gates`. The project unifies **two existing emitters**, not a hypothetical Nth provider."),
+    p(text: "**Displaced cost:** two parallel emission paths maintain the same commit-time gate facts twice — `ci_workflow` hardwires the CI job graph while `githooks_pre_push_emit` hardwires an overlapping bash slice. Adding a gate today means touching both handlers *and* hoping `local_tidy_checks` stays aligned with `gunbc_ci_*_gates`. The project unifies **two existing emitters**, not a hypothetical Nth provider."),
     h2(text: "1. §3 spine — three facts, one workflow authority"),
     TableBlock {
       header: row(cells: [cell(text: "fact"), cell(text: "owner (layer)"), cell(text: "lives in sketch model as")]),
