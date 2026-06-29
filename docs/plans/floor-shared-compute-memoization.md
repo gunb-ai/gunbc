@@ -67,38 +67,39 @@ For Axis A (subprocess compiles): the current gate set has no sharing opportunit
 
 ### M2 — Compile artifact as a first-class plan node (Axis A)
 
-**Mechanism:** Introduce `RunnableCompile` as a variant of `Runnable` in `std.realization_schedule`:
+**Current gate set — no sharing opportunities today.** Each of the three compile operations uses a distinct `(source_roots, binary)` tuple (verified against source):
+
+| Gate | Tuple |
+|---|---|
+| `DslCompileCleanGate` | `(["dsl","src/v2"], gunbc compile)` |
+| `EmitDeterminismGate` | `(["dsl"], gunbc compile)` — ×2 oracle pair |
+| `RegenVerifyGate` | `(["src/v1","dsl"], regen_stage0 --verify)` — different binary |
+
+No two gates share a tuple, so no artifact sharing is possible across gates today. Each `RunnableCompile` node is independent; `DslCompileCleanGate` and `EmitDeterminismGate` are different source-root sets and cannot share an artifact without re-introducing the narrower-vs-wider corpus skew.
+
+**The EmitDeterminismGate oracle pair survives unchanged.** Its two cold compiles use the same tuple and are the empirical oracle for non-reproducible emit. Content-addressing assumes determinism; it does not prove it. Emit is KNOWN-NONDETERMINISTIC today (`v2.std.determinism` at P1), so memoizing the pair would delete the only live check for that bug (§5 coverage-by-illusion). The x2 compiles remain in any M2 shape.
+
+**M2's value is forward-looking, not present-day displacement.** The structural mechanism `RunnableCompile` is introduced so that if a future gate needs to compile the same `(source_roots, binary)` tuple as an existing gate, it must declare a `DataDependsOn` on the existing node rather than adding a second `RunnableCompile`. That second node would be statically flagged by the lens as a duplicate tuple — the double-compile becomes **unwritable by construction** rather than a silent accidental addition.
+
+**Mechanism sketch:**
 
 ```
 type Runnable
   = RunnableSingleClaim { ... }        -- existing
   | RunnableDiscoveryBatch { ... }     -- existing
-  | RunnableCompile {                  -- NEW
+  | RunnableCompile {                  -- NEW (future-proofing wall)
       source_roots: List<String>
+      binary: CompileBinary            -- GunbcCompile | RegenStage0Verify | ...
       target: EmitTarget
-      artifact_id: ContentHash         -- the content-address key
       profile: RunnableResourceProfile
     }
 ```
 
-A `RunnableCompile` is a plan node that:
-1. Invokes `gunbc compile --source-root ... --target ...`
-2. Content-addresses its output (directory tree hash)
-3. Stores the artifact under `artifact_id` in a within-run artifact store
-4. Exposes a typed `CompiledArtifact` handle to dependent nodes via `DataDependsOn`
+A lens enforces: no two `RunnableCompile` nodes in the same plan share the same `(source_roots, binary, target)` key. A `RunnableSingleClaim` that invokes a compile operation must reference the plan's canonical `RunnableCompile` node for that tuple via `DataDependsOn`; it cannot shell out to compile independently.
 
-**CRITICAL DEPENDENCY:** M2 is GATED on emit being deterministic. Today's Rust emitter has known non-determinism (HashMap iteration order in the emit path; `v2.std.determinism` is only at P1 as of 2026-06-29). Content-addressing a non-deterministic compile is unsound: two cold runs produce DIFFERING outputs, so a content-address key would collide on differing artifacts and serve an arbitrary one to consumers — the exact "key went green while the realizer faked the key" §5 fail-open trap. **M2 must not land until the determinism mechanism (#5941, `v2.std.determinism`) closes the non-determinism gap.** Sequence: M1 → determinism mechanism → M2.
+**CRITICAL DEPENDENCY:** M2 is GATED on emit being deterministic. Content-addressing a non-deterministic compile output is unsound — two cold runs produce differing artifacts, so a content-address key would collide and serve an arbitrary one to consumers (the "key went green while the realizer faked the key" §5 trap). **M2 must not land until `v2.std.determinism` (#5941) closes the non-determinism gap.** Sequence: M1 → determinism mechanism → M2.
 
-**The determinism gate is the ORACLE, not a redundancy.** `EmitDeterminismGate`'s two cold, independent compiles are the empirical oracle for non-reproducible emit. Content-addressing does not prove determinism — it assumes it. Memoizing the pair to one artifact would delete the only live check for a known bug, making the gate inert (§5 coverage-by-illusion). The x2 compiles REMAIN in M2.
-
-Dependent nodes change their contract under M2:
-- `EmitDeterminismGate` → **unchanged**: still runs 2× cold, independent `gunbc compile` and diffs. It is the oracle that LICENSES the artifact as canonical. Both runs benefit from the M1 in-process resolve memo (same source closure, so each resolves once). Net: 2× compile (same as today for this gate), ~30–40s of resolve saved.
-- `DslCompileCleanGate` → consumes `EmitDeterminismGate`'s proven-canonical `CompiledArtifact` via `DataDependsOn`. Checks that the compile exits 0. Does NOT re-compile. (Previously: 1× compile. After M2: 0× compile.)
-- `RegenVerifyGate` → consumes the same proven-canonical `CompiledArtifact`. Verifies committed seed matches it. Does NOT re-compile. (Previously: 1× compile. After M2: 0× compile.)
-
-**Compile count:** 4× → 2× (the determinism oracle pair). Saves ~537s × 2 ≈ 18 min.
-
-**By-construction property:** The plan has exactly ONE `RunnableCompile` node per `(source_roots, target)` tuple. The executor raises a typed error if it encounters two `RunnableCompile` nodes with the same key — the plan is malformed, not silently redundant. A future gate that needs the compiled artifact adds a `DataDependsOn` on the existing `RunnableCompile` node; it cannot accidentally introduce a second compile without explicitly creating a second `RunnableCompile` node, which the lens will flag.
+**Compile count:** unchanged today (4×). The benefit is prevention of future regression, not current displacement.
 
 ---
 
@@ -124,12 +125,12 @@ M1 (within-walk resolve memo) is lower-risk and immediately addressable. M2 (`Ru
 **Recommendation: M1 first (one PR, small, purely additive); M2 as a follow-on with operator approval of the substrate shape.**
 
 **D3 — Does `EmitDeterminismGate` survive M2?**
-Yes, it survives unchanged as the oracle. Its x2 compiles are not a cost to eliminate — they are the discriminating witness for non-reproducible emit, a known live bug. The gate dissolves only when the determinism mechanism (`v2.std.determinism`, #5941) closes the bug and makes non-determinism unwritable by construction; at that point the two cold compiles become definitionally redundant and the gate can be replaced by a construction-side check. Until then, deleting or memoizing the pair is a §5 coverage-by-illusion.
+Yes, unchanged. Its x2 compiles are the empirical oracle for non-reproducible emit (a live bug). The gate dissolves only when `v2.std.determinism` (#5941) makes non-determinism unwritable by construction; at that point the pair becomes definitionally redundant and can be replaced by a construction-side check.
 **Recommendation: keep both compiles; gate M2 on the determinism mechanism landing.**
 
-**D4 — Scope of `RunnableCompile.source_roots`.**
-`DslCompileCleanGate` compiles `dsl + src/v2` (the full floor corpus). `EmitDeterminismGate` today compiles only `dsl`. These are different `(source_roots, target)` tuples — two `RunnableCompile` nodes. Is this the intended split, or should both use the same full-corpus compile? (The difference is intentional today because emit_determinism targets only `dsl`.)
-**Recommendation: Preserve the existing split; document it explicitly in the plan as two separate `RunnableCompile` nodes with different `source_roots`.**
+**D4 — Distinct tuples per gate in M2.**
+All three gates use different `(source_roots, binary)` tuples and therefore each gets its own `RunnableCompile` node with no artifact sharing. This is the correct model — it is a change to HOW compile operations are declared in the plan (explicitly, as named nodes) rather than a change to how many compiles are run. A future gate that reuses an existing tuple will automatically reuse the node; that is the mechanism's payoff.
+**Recommendation: accept the three-node model; document the distinct tuples explicitly so a future author knows which node to declare a dependency on.**
 
 ---
 
@@ -143,16 +144,23 @@ Yes, it survives unchanged as the oracle. Its x2 compiles are not a cost to elim
 
 M1 saves ~30–40s per run (the Axis-B double-resolve). Small absolute, but the mechanism is a construction wall. Unblocked today.
 
-M2 saves ~537s × 2 — the other two compiles (DslCompileCleanGate and RegenVerifyGate) consume the determinism oracle's proven-canonical artifact. That is ~18 minutes of CI wall time removed per run. **Gated on `v2.std.determinism` (#5941) closing the non-determinism gap before content-addressing compile output is sound.**
+M2 saves **0 compiles today** — the current gate set has no duplicate `(source_roots, binary)` tuples (each gate uses a distinct one, verified). M2's value is forward-proofing: once the plan explicitly declares `RunnableCompile` nodes, a future gate that accidentally duplicates an existing tuple is caught by the lens before it silently adds another ~537s to CI.
 
-The combined displacement: **~2148s → ~1074s for the compile-related floor costs** (4→2 compiles, 2→1 resolve), roughly a 2× improvement. The remaining 2× (the determinism oracle pair) is load-bearing and dissolves only when emit is provably deterministic.
+**M2 displacement after determinism closes** (future state): if `EmitDeterminismGate`'s x2 oracle pair collapses to 1× once emit is provably deterministic, that frees 1× ~537s. That is the max M2 displacement in the current gate set — not 2×. Any further wins require a new gate that would otherwise duplicate an existing tuple.
+
+| Mechanism | Compiles today | Compiles after | Resolve calls | Time saved |
+|---|---|---|---|---|
+| baseline | 4× | — | 2× | — |
+| + M1 | 4× | 4× | 1× | ~35s |
+| + M2 (gated on #5941) | 4× | 3× or 4× | 1× | ~537s (if oracle pair collapses) |
 
 ---
 
 ## 7. Dissolution triggers
 
 M1 (`ResolveScopeShared` memo):
-- Dissolves into M2 (`RunnableCompile`)'s pre-resolve: once the compile node holds the compiled+resolved graph as a typed artifact, the within-walk memo becomes a special case of "artifact produced by Batch-1 consumed by Batch-2" — the general mechanism subsumes it.
+- Terminal within its scope: the within-walk resolve memo addresses Axis-B (in-process resolve deduplication across batches); it does not dissolve into M2, because M2 addresses Axis-A (subprocess compile declarations). The two are orthogonal.
+- Dissolution trigger: when v2 streaming-infer (resource-aware-scheduler Node B/C) replaces the v1 whole-tree resolve with a dependency-batched resolve, per-entry memoization becomes a sub-case of the streaming boundary and M1's memo can be removed.
 - Intermediate milestone: lens verifies all `heavy_whole_tree_resolve: true` runnables carry `ResolveScopeShared`.
 
 M2 (`RunnableCompile`):
