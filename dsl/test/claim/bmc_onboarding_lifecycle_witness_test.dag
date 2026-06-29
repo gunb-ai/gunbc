@@ -94,7 +94,7 @@ fn prev_next_is_identity(p: BmcOnboardingPhase) -> Bool {
   match bmc_onboarding_next_phase(phase: p) {
     Present { value: nxt } =>
       match bmc_onboarding_prev_phase(phase: nxt) {
-        Present { value: back } => bmc_phase_eq(a: back, b: p)
+        Present { value: back } => back == p
         Absent => false
       }
     Absent => true
@@ -105,7 +105,7 @@ fn next_prev_is_identity(p: BmcOnboardingPhase) -> Bool {
   match bmc_onboarding_prev_phase(phase: p) {
     Present { value: prv } =>
       match bmc_onboarding_next_phase(phase: prv) {
-        Present { value: fwd } => bmc_phase_eq(a: fwd, b: p)
+        Present { value: fwd } => fwd == p
         Absent => false
       }
     Absent => true
@@ -124,8 +124,9 @@ test fn bmc_decom_is_two_sided_inverse_on_phase_ladder() -> Bool {
 }
 
 test fn bmc_onboard_then_decom_recovers_factory_phase() -> Bool {
-  bmc_phase_eq(a: bmc_decom_to_factory(phase: bmc_onboard_to_steady(phase: FactoryDefault)), b: FactoryDefault)
-    && bmc_phase_eq(a: bmc_onboard_to_steady(phase: bmc_decom_to_factory(phase: FabricJoined)), b: FabricJoined)
+  let decom_after_install = bmc_decom_to_factory(phase: bmc_onboard_to_steady(phase: FactoryDefault))
+  let install_after_decom = bmc_onboard_to_steady(phase: bmc_decom_to_factory(phase: FabricJoined))
+  (decom_after_install == FactoryDefault) && (install_after_decom == FabricJoined)
 }
 
 fn factory_at(p: BmcOnboardingPhase) -> BmcLifecycleState {
@@ -143,8 +144,26 @@ test fn bmc_decom_roundtrips_canonical_on_named_quotient() -> Bool {
     && bmc_transition_roundtrips_on_quotient(s: factory_at(p: OsInstalled))
 }
 
+fn decom_step_broken(s: BmcLifecycleState) -> BmcLifecycleState {
+  match bmc_onboarding_prev_phase(phase: s.phase) {
+    Present { value: prv } => BmcLifecycleState {
+      phase: prv,
+      credential: bmc_phase_credential_posture(phase: prv),
+      secret_epoch: s.secret_epoch,
+      boot_cleared: s.boot_cleared
+    }
+    Absent => s
+  }
+}
+
+fn transition_does_not_roundtrip_on_quotient(s: BmcLifecycleState) -> Bool {
+  let recovered = bmc_recoverable_quotient(s: decom_step_broken(s: bmc_install_step(s: s)))
+  let original = bmc_recoverable_quotient(s: s)
+  !(recovered == original)
+}
+
 test fn bmc_decom_does_not_roundtrip_when_inverse_is_wrong() -> Bool {
-  bmc_transition_does_not_roundtrip_on_quotient(s: factory_at(p: CredentialsRotated))
+  transition_does_not_roundtrip_on_quotient(s: factory_at(p: CredentialsRotated))
 }
 
 test fn bmc_lifecycle_inverse_is_lossy_section_not_iso() -> Bool {

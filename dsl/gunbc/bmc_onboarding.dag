@@ -142,8 +142,8 @@ fn bmc_install_step(s: BmcLifecycleState) -> BmcLifecycleState {
     Present { value: nxt } => BmcLifecycleState {
       phase: nxt,
       credential: bmc_phase_credential_posture(phase: nxt),
-      secret_epoch: if nxt == CredentialsRotated { s.secret_epoch + 1 } else { s.secret_epoch },
-      boot_cleared: if nxt == OsInstalled { false } else { s.boot_cleared }
+      secret_epoch: if (nxt == CredentialsRotated) { s.secret_epoch + 1 } else { s.secret_epoch },
+      boot_cleared: if (nxt == OsInstalled) { false } else { s.boot_cleared }
     }
     Absent => s
   }
@@ -154,8 +154,8 @@ fn bmc_decom_step(s: BmcLifecycleState) -> BmcLifecycleState {
     Present { value: prv } => BmcLifecycleState {
       phase: prv,
       credential: bmc_phase_credential_posture(phase: prv),
-      secret_epoch: if s.phase == CredentialsRotated { s.secret_epoch + 1 } else { s.secret_epoch },
-      boot_cleared: if s.phase == OsInstalled { true } else { s.boot_cleared }
+      secret_epoch: if (s.phase == CredentialsRotated) { s.secret_epoch + 1 } else { s.secret_epoch },
+      boot_cleared: if (s.phase == OsInstalled) { true } else { s.boot_cleared }
     }
     Absent => s
   }
