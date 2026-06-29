@@ -90,11 +90,10 @@ cargo test -p v1-compiler-tests v2_node_minimal_representation_compiles_and_witn
 | `node_minimal_substrate_round_trips_v2_node_holds` | `minimal_substrate_node_from_v2` preserves v2 `Node` kind/children/occurrence |
 | `node_minimal_substrate_has_no_superset_fields_holds` | Substrate kind maps **zero** v1 superset fields (authority is already minimal) |
 | `node_minimal_kind_of_expr_leaf_holds` | Kind classifier is discriminating |
+| `node_minimal_partition_covers_all_superset_fields_holds` | **Union of all 6 kinds' live fields = full 18-field superset** |
+| `node_minimal_orphan_fields_placed_on_named_decl_holds` | Previously-missing 5 fields (`transport`, `properties`, `type_annotation`, recursion flags) placed on `MnkSurfaceNamedDecl` |
 
 **Owed before emit integration (not yet green):**
-
-- Per-accessor witness: for each v1 field **read at runtime** on the resolve/infer path, assert the owning `MinimalNodeKind` lists that field in `minimal_node_kind_superset_fields` (generated from `node_field_roles` / accessor census — quiet-gull-17 receipt)
-- Extension witnesses for `transport`/`properties`/`type_annotation`/`is_self_recursive`/`has_non_tail_self_call` once variant arms are authored (table above)
 - End-to-end: whole-tree resolve diagnostic fingerprint **unchanged** after realization swap (gated on #5879)
 
 ### 2. Measured byte / RSS delta
