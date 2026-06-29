@@ -1,8 +1,8 @@
 module v2.extdeps.formats.sql
 
 import v2.std.grammar { GrammarSchema }
-import v2.std.algebra { fold_list, list_append }
-import v2.std.collection { List, Map, Optional }
+import v2.std.algebra { Cons, Empty, fold_list, list_append }
+import v2.std.collection { Absent, List, Map, Optional, Present }
 import v2.std.nat { Nat }
 import v2.std.cardinality { NonZeroNat }
 import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence }
@@ -363,4 +363,136 @@ fn sql_wave1_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
     ),
     right: sql_primitive_bundles_from_nonnumeric_catalog()
   )
+}
+
+fn sql_serialize_identifier(id: SqlIdentifier) -> String {
+  match id {
+    SqlRegularIdentifier { name: n } => n
+    SqlDelimitedIdentifier { name: n } =>
+      concat("\"", concat(replace(n, "\"", "\"\""), "\""))
+  }
+}
+
+fn sql_serialize_data_type(dt: SqlDataType) -> String {
+  match dt {
+    SqlTypeBoolean => "BOOLEAN"
+    SqlTypeSmallInt => "SMALLINT"
+    SqlTypeInteger => "INTEGER"
+    SqlTypeBigInt => "BIGINT"
+    SqlTypeReal => "REAL"
+    SqlTypeDoublePrecision => "DOUBLE PRECISION"
+    SqlTypeNumeric { precision: _, scale: _ } => "NUMERIC"
+    SqlTypeCharacter { length: _ } => "CHARACTER"
+    SqlTypeCharacterVarying { length: _ } => "CHARACTER VARYING"
+    SqlTypeCharacterLargeObject => "TEXT"
+    SqlTypeDate => "DATE"
+    SqlTypeTime => "TIME"
+    SqlTypeTimestamp => "TIMESTAMP"
+    SqlTypeTimestampWithTimeZone => "TIMESTAMP WITH TIME ZONE"
+  }
+}
+
+fn sql_serialize_column_constraints(c: SqlColumnConstraints) -> String {
+  if c.not_null { " NOT NULL" } else { "" }
+}
+
+fn sql_serialize_column_definition(col: SqlColumnDefinition) -> String {
+  concat(
+    sql_serialize_identifier(id: col.name),
+    concat(
+      " ",
+      concat(
+        sql_serialize_data_type(dt: col.data_type),
+        sql_serialize_column_constraints(c: col.constraints)
+      )
+    )
+  )
+}
+
+fn sql_join_column_definitions(acc: String, first: Bool, part: String) -> String {
+  if first { part } else { concat(acc, concat(", ", part)) }
+}
+
+fn sql_serialize_column_definitions_from(
+  acc: String,
+  first: Bool,
+  cols: List<SqlColumnDefinition>
+) -> String {
+  match cols {
+    Empty => acc
+    Cons { head: col, tail: rest } => {
+      let part = sql_serialize_column_definition(col: col)
+      sql_serialize_column_definitions_from(
+        acc: sql_join_column_definitions(acc: acc, first: first, part: part),
+        first: false,
+        cols: rest
+      )
+    }
+  }
+}
+
+fn sql_serialize_column_definitions(cols: List<SqlColumnDefinition>) -> String {
+  sql_serialize_column_definitions_from(acc: "", first: true, cols: cols)
+}
+
+fn sql_serialize_primary_key_clause(pk: Optional<List<SqlIdentifier>>) -> String {
+  match pk {
+    Absent => ""
+    Present { value: cols } =>
+      concat(
+        ", PRIMARY KEY (",
+        concat(
+          sql_serialize_identifier_list(ids: cols),
+          ")"
+        )
+      )
+  }
+}
+
+fn sql_serialize_identifier_list(ids: List<SqlIdentifier>) -> String {
+  fold(
+    ids,
+    init: "",
+    f: fn(acc, id) {
+      let part = sql_serialize_identifier(id: id)
+      if acc == "" { part } else { concat(acc, concat(", ", part)) }
+    }
+  )
+}
+
+fn sql_serialize_table_definition(table: SqlTableDefinition) -> String {
+  concat(
+    "CREATE TABLE ",
+    concat(
+      sql_serialize_identifier(id: table.name),
+      concat(
+        " (",
+        concat(
+          sql_serialize_column_definitions(cols: table.columns),
+          concat(
+            sql_serialize_primary_key_clause(pk: table.primary_key),
+            ");"
+          )
+        )
+      )
+    )
+  )
+}
+
+fn sql_serialize_create_table(op: SqlCreateTable) -> String {
+  sql_serialize_table_definition(table: op.table)
+}
+
+fn sql_serialize_schema_operation(op: SqlSchemaOperation) -> String {
+  match op {
+    SqlCreateTable { table: t } => sql_serialize_table_definition(table: t)
+    SqlDropTable { table_name: _ } => ""
+    SqlAddColumn { table_name: _, column: _ } => ""
+    SqlDropColumn { table_name: _, column_name: _ } => ""
+    SqlAlterTableConstraint { table_name: _, constraint: _ } => ""
+    SqlCreateIndex { index_name: _, table_name: _, columns: _ } => ""
+    SqlDropIndex { index_name: _ } => ""
+    SqlAlterTableRaw { table_name: _, alteration: _ } => ""
+    SqlRawStep { statement: s } => s
+  }
 }
