@@ -1,6 +1,11 @@
 module gunbc.ci_spec
 
-import gunbc.ci_gate { Gate }
+import gunbc.ci_gate {
+  Gate,
+  RustMonolithGate, EmitHostGate, LayeringImportsGate,
+  ExtdepsExternalAuthorityGate, DslCompileCleanGate, GeneratedArtifactDriftGate,
+  SourceRootIngestGate, RegenVerifyGate, EmitDeterminismGate
+}
 import gunbc.ci_layer_roots {
   witness_layer_roots,
   witness_layer_source_flags
