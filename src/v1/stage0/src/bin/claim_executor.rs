@@ -657,6 +657,7 @@ fn emit_slowest_witness_attribution(source_roots: &[String], summary: &Discovery
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn run_discovery_batch_node(
     source_roots: Vec<String>,
     scan_dirs: Vec<String>,
