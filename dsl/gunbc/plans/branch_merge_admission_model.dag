@@ -6,7 +6,7 @@ import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, cell, row, quote }
 
 fn status_block() -> MarkdownBlock {
   quote(blocks: [
-    p(text: "**Status: design sketch (checkpoint 0)** — model frame for operator review BEFORE any substrate edit. Design-first; NO enforcement flip in this doc. DESIGN refs: §1 (reduce convention to necessity — a merge policy is a substrate fact, not a GitHub setting bolted on the side), §2 (Realization — one RepoStandard authority, N transport handlers), §3 (single authority; the merge step currently punted to the operator's repo-admin half is the layer-inversion tell), §5 (construction over validation; the decidability trichotomy), §6 (priced in displaced cost, not elegance). Companion: this MODELS the options that gunbc.plans.ci_merge_freshness names as a decision record, and is the merge-side complement to gunbc.plans.ci_process_end_to_end (which is CI performance, not admission). Do NOT disturb the frozen carriers gunbc.commit_workflow (#5940) or the #5924 pre-push emit."),
+    p(text: "**Status: design sketch (checkpoint 0)** — model frame for operator review BEFORE any substrate edit. Design-first; NO enforcement flip in this doc. Authored as a .dag Plan and NOT yet enrolled as a generated docs/plans md (no PlanArtifact, no plan_registry entry, no roadmap node) — enrollment is checkpoint 1, mirroring the gunbc.plans.commit_workflow deferral; until then this module is reviewable from its own source. DESIGN refs: §1 (reduce convention to necessity — a merge policy is a substrate fact, not a GitHub setting bolted on the side), §2 (Realization — one RepoStandard authority, N transport handlers), §3 (single authority; the merge step currently punted to the operator's repo-admin half is the layer-inversion tell), §5 (construction over validation; the decidability trichotomy), §6 (priced in displaced cost, not elegance). Companion: this MODELS the options that gunbc.plans.ci_merge_freshness names as a decision record, and is the merge-side complement to gunbc.plans.ci_process_end_to_end (which is CI performance, not admission). Do NOT disturb the frozen carriers gunbc.commit_workflow (#5940) or the #5924 pre-push emit."),
   ])
 }
 
@@ -160,8 +160,6 @@ fn branch_merge_admission_model_body() -> List<MarkdownBlock> {
             concat(section_4(),
               concat(section_5(), section_6())))))))
 }
-
-data branch_merge_admission_model_plan_doc_provenance: String = "bind: docs/plans/branch-merge-admission-model.md"
 
 data branch_merge_admission_model_plan: Plan = Plan {
   slug: "branch-merge-admission-model",
