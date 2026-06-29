@@ -1,6 +1,15 @@
 module gunbc.tools.bmc_onboard
 
 import extdeps.bmc.http
+import extdeps.bmc.types {
+  RedfishAccountPasswordBody,
+  RedfishBootOverrideEnvelope,
+  RedfishBootOverrideFields,
+  RedfishResetRequestBody,
+  redfish_account_password_body_json,
+  redfish_boot_override_body_json,
+  redfish_reset_request_body_json,
+}
 import extdeps.filesystem.filesystem_io
 import extdeps.entropy
 import extdeps.cloud.gcp.secret_manager
@@ -8,63 +17,38 @@ import extdeps.cloud.gcp.gcp { GcpProjectId }
 import extdeps.shell
 import gunbc.bmc_onboarding { new_altra_onboarding_plan }
 import std.credentials { Stored }
-import std.types { NonEmptyStr, Secret, String }
+import std.types { NonEmptyStr, Secret, String, FilesystemHandle }
+import std.measure { ByteSize, byte_size, byte_size_count }
 import std.logic { Bool }
 import std.resources { Network }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.disposition { Disposition, Scaffold, SingleAuthority, RealizationDispatch }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 
-data bmc_onboard_netrc_path: String = "/tmp/bmc_onboard_netrc"
-data bmc_onboard_pwbody_path: String = "/tmp/bmc_onboard_pwbody.json"
-
-data bmc_onboard_secret_on_disk_debt: Disposition = Scaffold {
-  dissolves_to: RealizationDispatch,
-  bind: DeclarationRef {
-    module_path: "extdeps.filesystem.filesystem_io",
-    decl_name: "Filesystem",
-    field: WholeDeclaration
-  }
-}
-
+data bmc_onboard_netrc_path: FilesystemHandle = "/tmp/bmc_onboard_netrc"
+data bmc_onboard_pwbody_path: FilesystemHandle = "/tmp/bmc_onboard_pwbody.json"
 
 data srv3_gcp_project: GcpProjectId = "gunbai-secrets"
 
-data bmc_credential_bytes: Int = 20
-
-data bmc_credential_bytes_unit_debt: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "std.measure",
-    decl_name: "ByteSize",
-    field: WholeDeclaration
-  }
-}
-
-data bmc_redfish_json_concat_debt: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "std.primitives",
-    decl_name: "to_json_contract",
-    field: WholeDeclaration
-  }
-}
+data bmc_credential_bytes: ByteSize = byte_size(20)
 
 fn netrc_content(host: String, account: String, password: String) -> String {
   concat("machine ", concat(host, concat(" login ", concat(account, concat(" password ", concat(password, "\n"))))))
 }
 
 fn account_password_body(new_password: String) -> String {
-  concat("{\"Password\": \"", concat(new_password, "\"}"))
+  redfish_account_password_body_json(body: RedfishAccountPasswordBody { Password: new_password })
 }
 
 fn boot_override_body(target: String, enabled: String) -> String {
-  concat("{\"Boot\": {\"BootSourceOverrideTarget\": \"",
-    concat(target, concat("\", \"BootSourceOverrideEnabled\": \"", concat(enabled, "\"}}"))))
+  redfish_boot_override_body_json(body: RedfishBootOverrideEnvelope {
+    Boot: RedfishBootOverrideFields {
+      BootSourceOverrideTarget: target,
+      BootSourceOverrideEnabled: enabled,
+    }
+  })
 }
 
 fn reset_body(reset_type: String) -> String {
-  concat("{\"ResetType\": \"", concat(reset_type, "\"}"))
+  redfish_reset_request_body_json(body: RedfishResetRequestBody { ResetType: reset_type })
 }
 
 fn gcp_secret_full_name(project: String, secret_id: String) -> String {
@@ -79,7 +63,7 @@ fn onboarding_secret_id() -> NonEmptyStr {
 }
 
 fn mint_bmc_credential() -> Secret {
-  Urandom.ReadBytes(count: bmc_credential_bytes).octets_b64 as Secret
+  Urandom.ReadBytes(count: byte_size_count(b: bmc_credential_bytes) as Int).octets_b64 as Secret
 }
 
 fn write_netrc(host: String, account: String, password: String) -> Bool {
