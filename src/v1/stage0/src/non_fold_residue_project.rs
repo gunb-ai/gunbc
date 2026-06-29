@@ -57,7 +57,8 @@ const NON_FOLD_RESIDUE_ROSTER: &[&str] = &[
     // coproduct. This is the honest baseline; the wall is that no NEW residue merges.
     "dsl/extdeps/languages/markdown.dag::md_nested",
     "dsl/gunbc/generated_artifact.dag::artifact_eq",
-    // Category (b) named irreducible kernel — `_ => false` off-diagonal eq over closed coproduct.
+    // Category (b) kernel scaffold — tracked beside commit_workflow_coproduct_eq_scaffold;
+    // dissolves with projection authority inversion (checkpoint 2) / exhaustiveness-by-default (gunbc#5364).
     "dsl/gunbc/commit_workflow.dag::commit_workflow_surface_eq",
     "dsl/gunbc/commit_workflow.dag::gate_eq",
     "dsl/gunbc/commit_workflow.dag::local_tidy_check_eq",

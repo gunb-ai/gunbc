@@ -4,6 +4,7 @@ import gunbc.commit_workflow {
   commit_gate_roster,
   commit_workflow_realization_bindings,
   commit_workflow_projection_scaffold,
+  commit_workflow_coproduct_eq_scaffold,
   CommitWorkflowSurface, GithubActionsCiJob, GithubActionsRustTestsJob, GitPrePushHook,
   CiYamlHandler, GitPrePushScriptHandler,
   roster_lifts_ci_floor_gates,
@@ -20,6 +21,13 @@ import std.disposition { Scaffold, SingleAuthority }
 
 fn witness_projection_scaffold_marked() -> Bool {
   match commit_workflow_projection_scaffold {
+    Scaffold { dissolves_to: SingleAuthority, bind: _ } => true
+    _ => false
+  }
+}
+
+fn witness_coproduct_eq_scaffold_marked() -> Bool {
+  match commit_workflow_coproduct_eq_scaffold {
     Scaffold { dissolves_to: SingleAuthority, bind: _ } => true
     _ => false
   }
@@ -69,6 +77,7 @@ fn witness_roster_nonempty() -> Bool {
 
 test fn commit_workflow_witnesses() -> Bool {
   witness_projection_scaffold_marked()
+    && witness_coproduct_eq_scaffold_marked()
     && witness_roster_nonempty()
     && witness_roster_lifts_ci_floor_gates()
     && witness_roster_lifts_ci_rust_job_gates()

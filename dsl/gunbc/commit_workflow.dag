@@ -27,6 +27,15 @@ data commit_workflow_projection_scaffold: Disposition = Scaffold {
   }
 }
 
+data commit_workflow_coproduct_eq_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.commit_workflow",
+    decl_name: "commit_workflow_projection_scaffold",
+    field: WholeDeclaration
+  }
+}
+
 type CommitWorkflowSurface
   = GithubActionsCiJob
   | GithubActionsRustTestsJob
