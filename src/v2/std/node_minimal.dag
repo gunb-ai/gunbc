@@ -2,7 +2,7 @@ module v2.std.node_minimal
 
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
-import v2.std.collection { List, Optional, Absent, Present }
+import v2.std.collection { List }
 import v2.std.integer { UInt32 }
 import v2.std.node {
   Behavior,
