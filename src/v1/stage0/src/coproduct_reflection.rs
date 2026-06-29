@@ -390,9 +390,10 @@ fn find_type_decl_start(source: &str, type_name: &str) -> Option<usize> {
     while let Some(rel) = source[search_from..].find(&needle) {
         let start = search_from + rel;
         let after = start + needle.len();
-        let boundary_ok = source[after..].chars().next().is_none_or(|c| {
-            c.is_whitespace() || c == '=' || c == '{' || c == '<'
-        });
+        let boundary_ok = source[after..]
+            .chars()
+            .next()
+            .is_none_or(|c| c.is_whitespace() || c == '=' || c == '{' || c == '<');
         let prefix_ok = start == 0
             || source
                 .as_bytes()
@@ -415,9 +416,8 @@ fn extract_type_sum_arm_pairs(
     })?;
     let needle = format!("type {type_name}");
     let after_type = &source[start + needle.len()..];
-    let after_type = skip_angle_generics(after_type.trim_start()).ok_or_else(|| {
-        format!("syntactic coproduct arm pairs: `{type_name}` has unclosed `<`")
-    })?;
+    let after_type = skip_angle_generics(after_type.trim_start())
+        .ok_or_else(|| format!("syntactic coproduct arm pairs: `{type_name}` has unclosed `<`"))?;
     let eq_rel = after_type
         .find('=')
         .ok_or_else(|| format!("syntactic coproduct arm pairs: `{type_name}` missing `=`"))?;
@@ -684,24 +684,24 @@ fn marshal_disj_from_source(
     source: &str,
     type_name: &str,
 ) -> InterpResult<Value> {
-    let arms = extract_type_sum_arm_pairs(source, type_name).map_err(|msg| {
-        InterpError::TypeError {
+    let arms =
+        extract_type_sum_arm_pairs(source, type_name).map_err(|msg| InterpError::TypeError {
             msg: format!("marshal_disj_from_source `{type_name}`: {msg}"),
-        }
-    })?;
+        })?;
     let mut edges = Vec::new();
     for arm in arms {
         let target = if arm.payload_type_name == NULLARY_PAYLOAD_TYPE_NAME {
             unit_type_node(ctx)
         } else if arm.payload_type_name.starts_with('{') {
-            let fields = parse_inline_record_field_heads(&arm.payload_type_name).map_err(|msg| {
-                InterpError::TypeError {
-                    msg: format!(
-                        "marshal_disj_from_source `{type_name}` arm `{}`: {msg}",
-                        arm.label
-                    ),
-                }
-            })?;
+            let fields =
+                parse_inline_record_field_heads(&arm.payload_type_name).map_err(|msg| {
+                    InterpError::TypeError {
+                        msg: format!(
+                            "marshal_disj_from_source `{type_name}` arm `{}`: {msg}",
+                            arm.label
+                        ),
+                    }
+                })?;
             let mut inner = Vec::new();
             for (field_name, head) in fields {
                 let t = node_record(
@@ -756,10 +756,7 @@ fn concept_decl_node_parse_only_from_source(
 /// whole-tree resolve). Uses head type-name marshaling so compound fields like
 /// `List<T>` never fail silently — the lens only needs exact `String`/`NonEmptyStr`
 /// matches on field heads.
-pub fn eval_concept_decl_facts(
-    ctx: &InterpContext,
-    pool_roots: &[String],
-) -> InterpResult<Value> {
+pub fn eval_concept_decl_facts(ctx: &InterpContext, pool_roots: &[String]) -> InterpResult<Value> {
     let ws = crate::module_path_index::workspace_root();
     let abs_pool_roots: Vec<String> = pool_roots
         .iter()
@@ -773,10 +770,8 @@ pub fn eval_concept_decl_facts(
     let mut files_parsed = 0usize;
     for (module_name, rel_path) in modules {
         let abs = ws.join(&rel_path);
-        let file_content = std::fs::read_to_string(&abs).map_err(|e| {
-            InterpError::TypeError {
-                msg: format!("concept_decl_facts: failed to read `{rel_path}`: {e}"),
-            }
+        let file_content = std::fs::read_to_string(&abs).map_err(|e| InterpError::TypeError {
+            msg: format!("concept_decl_facts: failed to read `{rel_path}`: {e}"),
         })?;
         let (items, si) = crate::medium_structure_project::parse_file(&abs).ok_or_else(|| {
             InterpError::TypeError {
