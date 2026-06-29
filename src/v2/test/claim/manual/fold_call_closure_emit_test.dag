@@ -1,0 +1,283 @@
+module v2.test.manual.fold_call_closure_emit
+
+import v2.compiler.translate { translate_project_transform_in_arrow_scope }
+import v2.extdeps.languages.dag { dag_value_expression_projection }
+import v2.extdeps.languages.typescript {
+  ts_mvp1_binding_spellings,
+  ts_mvp1_source_text_authority,
+  ts_wave1_lex_rules
+}
+import v2.std.collection { List }
+import v2.std.diagnostic {
+  Accepted,
+  None,
+  Outcome,
+  Rejected,
+  bind_outcome
+}
+import v2.std.logic { Bool }
+import v2.std.node {
+  Arrow,
+  Atom,
+  ComputationNode,
+  Conj,
+  Edge,
+  Named,
+  Node,
+  Positional,
+  Transform,
+  TypeNode,
+  content_hash,
+  node_synthetic,
+  well_formed
+}
+import v2.std.compilers.target_model {
+  BoundToken,
+  ConcreteSyntaxToken,
+  FixedToken,
+  InfixToken,
+  TargetModel,
+  target_model_emit_transforms_empty,
+  canonical_operation_op_add,
+  concrete_syntax_token_list_to_node,
+  target_operator_realization_node,
+  target_operator_realizations_catalog_node,
+  target_project_arrow_body_to_value_expression,
+  target_value_expression_projection_from_target,
+  target_value_expression_tokens_from_target,
+  value_expr_projection_bundle_node
+}
+
+fn fold_call_atom(id: Symbol) -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: id } }, children: [])
+}
+
+fn fold_call_named_edge(name: Symbol, target: Node) -> Edge {
+  Edge { label: Named { name: name }, target: target }
+}
+
+fn fold_call_positional(target: Node) -> Edge {
+  Edge { label: Positional, target: target }
+}
+
+fn fold_call_domain_conj(params: List<Symbol>) -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Conj },
+    children: [
+      fold_call_named_edge(name: ^fold_call_param_xs, target: fold_call_atom(id: ^fold_call_type_int)),
+      fold_call_named_edge(name: ^fold_call_param_z, target: fold_call_atom(id: ^fold_call_type_int))
+    ]
+  )
+}
+
+fn fold_call_closure_arrow(left_operand: Symbol, right_operand: Symbol) -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Arrow },
+    children: [
+      fold_call_positional(
+        target: node_synthetic(
+          kind: TypeNode { connective: Conj },
+          children: [
+            fold_call_named_edge(
+              name: ^fold_call_closure_acc,
+              target: fold_call_atom(id: ^fold_call_type_int)
+            ),
+            fold_call_named_edge(
+              name: ^fold_call_closure_h,
+              target: fold_call_atom(id: ^fold_call_type_int)
+            )
+          ]
+        )
+      ),
+      fold_call_positional(target: fold_call_atom(id: ^fold_call_type_int)),
+      fold_call_named_edge(
+        name: ^arrow_body_edge,
+        target: node_synthetic(
+          kind: ComputationNode { behavior: Transform },
+          children: [
+            fold_call_positional(target: fold_call_atom(id: ^dag_token_plus)),
+            fold_call_positional(target: fold_call_atom(id: left_operand)),
+            fold_call_positional(target: fold_call_atom(id: right_operand))
+          ]
+        )
+      )
+    ]
+  )
+}
+
+fn fold_call_body(closure: Node) -> Node {
+  node_synthetic(
+    kind: ComputationNode { behavior: Transform },
+    children: [
+      fold_call_positional(target: fold_call_atom(id: ^fold_call_callee)),
+      fold_call_positional(target: fold_call_atom(id: ^fold_call_param_xs)),
+      fold_call_positional(target: fold_call_atom(id: ^fold_call_param_z)),
+      fold_call_positional(target: closure)
+    ]
+  )
+}
+
+fn fold_call_arrow(closure: Node) -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Arrow },
+    children: [
+      fold_call_positional(
+        target: fold_call_domain_conj(params: [^fold_call_param_xs, ^fold_call_param_z])
+      ),
+      fold_call_positional(target: fold_call_atom(id: ^fold_call_type_int)),
+      fold_call_named_edge(
+        name: ^arrow_body_edge,
+        target: fold_call_body(closure: closure)
+      )
+    ]
+  )
+}
+
+fn fold_call_canonical_arrow() -> Node {
+  fold_call_arrow(
+    closure: fold_call_closure_arrow(
+      left_operand: ^fold_call_closure_acc,
+      right_operand: ^fold_call_closure_h
+    )
+  )
+}
+
+fn fold_call_swapped_arrow() -> Node {
+  fold_call_arrow(
+    closure: fold_call_closure_arrow(
+      left_operand: ^fold_call_closure_h,
+      right_operand: ^fold_call_closure_acc
+    )
+  )
+}
+
+fn fold_call_operator_catalog() -> Node {
+  target_operator_realizations_catalog_node(
+    rows: [
+      target_operator_realization_node(
+        operation: canonical_operation_op_add(),
+        shape: InfixToken { token: ^dag_token_plus }
+      )
+    ]
+  )
+}
+
+fn fold_call_target_model() -> TargetModel {
+  TargetModel {
+    bundle: node_synthetic(
+      kind: TypeNode { connective: Conj },
+      children: [
+        fold_call_named_edge(
+          name: ^target_model_edge_value_expression_projection,
+          target: value_expr_projection_bundle_node(
+            projection: dag_value_expression_projection()
+          )
+        ),
+        fold_call_named_edge(
+          name: ^target_model_edge_operator_realizations,
+          target: fold_call_operator_catalog()
+        )
+      ]
+    ),
+    lex: ts_wave1_lex_rules(),
+    binding_spellings: ts_mvp1_binding_spellings(),
+    token_class_emit_transforms: target_model_emit_transforms_empty,
+    authority_source_text: ts_mvp1_source_text_authority()
+  }
+}
+
+fn fold_call_emit_body_tokens(arrow: Node) -> Outcome<List<ConcreteSyntaxToken>> {
+  let target = fold_call_target_model()
+  bind_outcome(
+    o: target_project_arrow_body_to_value_expression(
+      arrow: arrow,
+      target: target,
+      handle_transform: fn(a, b, t) {
+        translate_project_transform_in_arrow_scope(arrow: a, body: b, target: t)
+      }
+    ),
+    f: fn(expr) {
+      bind_outcome(
+        o: target_value_expression_projection_from_target(target: target),
+        f: fn(projection) {
+          target_value_expression_tokens_from_target(
+            expr: expr,
+            target: target,
+            projection: projection
+          )
+        }
+      )
+    }
+  )
+}
+
+fn fold_call_expected_canonical_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    BoundToken { token_class: ^dag_token_ident, binding: ^fold_call_callee },
+    FixedToken { token_class: ^dag_token_lparen },
+    BoundToken { token_class: ^dag_token_ident, binding: ^fold_call_param_xs },
+    FixedToken { token_class: ^dag_token_comma },
+    BoundToken { token_class: ^dag_token_ident, binding: ^fold_call_param_z },
+    FixedToken { token_class: ^dag_token_comma },
+    FixedToken { token_class: ^dag_token_kw_fn },
+    FixedToken { token_class: ^dag_token_lparen },
+    BoundToken { token_class: ^dag_token_ident, binding: ^fold_call_closure_acc },
+    FixedToken { token_class: ^dag_token_comma },
+    BoundToken { token_class: ^dag_token_ident, binding: ^fold_call_closure_h },
+    FixedToken { token_class: ^dag_token_rparen },
+    FixedToken { token_class: ^dag_token_lbrace },
+    BoundToken { token_class: ^dag_token_ident, binding: ^fold_call_closure_acc },
+    FixedToken { token_class: ^dag_token_plus },
+    BoundToken { token_class: ^dag_token_ident, binding: ^fold_call_closure_h },
+    FixedToken { token_class: ^dag_token_rbrace },
+    FixedToken { token_class: ^dag_token_rparen }
+  ]
+}
+
+fn fold_call_tokens_equal(
+  left: List<ConcreteSyntaxToken>,
+  right: List<ConcreteSyntaxToken>
+) -> Bool {
+  content_hash(n: concrete_syntax_token_list_to_node(tokens: left)) == content_hash(n: concrete_syntax_token_list_to_node(tokens: right))
+}
+
+fn fold_call_emit_matches(arrow: Node, expected: List<ConcreteSyntaxToken>) -> Bool {
+  match fold_call_emit_body_tokens(arrow: arrow) {
+    Accepted { value: tokens, diagnostics: d } =>
+      fold_call_tokens_equal(left: tokens, right: expected) && (d == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn fold_call_fixtures_well_formed() -> Bool {
+  well_formed(n: fold_call_canonical_arrow()) && well_formed(n: fold_call_swapped_arrow())
+}
+
+fn fold_call_emit_holds() -> Bool {
+  fold_call_emit_matches(
+    arrow: fold_call_canonical_arrow(),
+    expected: fold_call_expected_canonical_tokens()
+  )
+}
+
+fn fold_call_swap_discriminates() -> Bool {
+  !fold_call_emit_matches(
+    arrow: fold_call_swapped_arrow(),
+    expected: fold_call_expected_canonical_tokens()
+  )
+  && match fold_call_emit_body_tokens(arrow: fold_call_canonical_arrow()) {
+    Accepted { value: canonical, diagnostics: _ } =>
+      match fold_call_emit_body_tokens(arrow: fold_call_swapped_arrow()) {
+        Accepted { value: swapped, diagnostics: _ } =>
+          !fold_call_tokens_equal(left: canonical, right: swapped)
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn fold_call_closure_emit_keystone_holds() -> Bool {
+  fold_call_fixtures_well_formed()
+    && fold_call_emit_holds()
+    && fold_call_swap_discriminates()
+}

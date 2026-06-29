@@ -1,0 +1,484 @@
+module v2.test.manual.loop_eval_by_execution
+
+import v2.compiler.body_producer {
+  produce_mvp1_loop_arrow_with_body,
+  produce_mvp1_loop_arrow_with_body_wrong_value
+}
+import v2.test.complexity_gate.source_bridged_loop_subject_producer {
+  source_bridged_loop_arrow_with_body,
+  source_bridged_loop_wrong_value_arrow_with_body
+}
+import v2.compiler.eval {
+  EvalContext,
+  TestClaimEvalSubject,
+  TestClaimRun,
+  eval_context_with_semantics,
+  eval,
+  inputs_root_only,
+  run_test_claim,
+  test_claim_run_verdict,
+  test_claim_typed_input_node
+}
+import v2.compiler.infer { InferredFacts, InferredTree }
+import v2.std.collection {
+  Absent,
+  List,
+  Map,
+  Present,
+  list_at_optional,
+  map_insert
+}
+import v2.std.cardinality {
+  RankingDimension,
+  TerminationProof,
+  structural_node_size_termination_proof
+}
+import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  Outcome,
+  Rejected,
+  Unavailable,
+  bind_outcome,
+  node_locus,
+  outcome_accepted,
+  outcome_rejected
+}
+import v2.std.logic { Bool }
+import v2.std.machine { Byte }
+import v2.std.node {
+  Atom,
+  Arrow,
+  ComputationNode,
+  Conj,
+  Edge,
+  Loop,
+  Named,
+  Node,
+  Positional,
+  Symbol,
+  Transform,
+  TypeNode,
+  SyntheticOccurrence,
+}
+import v2.std.node_query { node_positional_child_targets }
+import v2.std.runtime {
+  BindInterpreter,
+  BranchInterpreter,
+  ControlTransfer,
+  Continue,
+  EnvironmentBindingKey,
+  EvaluationEnvironment,
+  InterpretationAlgebra,
+  InterpretationStructureWitness,
+  LoopInterpreter,
+  RuntimePrimitive,
+  RuntimePrimitiveValue,
+  RuntimeValue,
+  TransformInterpreter,
+  ValueInterpreter
+}
+import v2.std.witness { Holds, Witness }
+import v2.std.verdict { Pass }
+import v2.std.verification {
+  BoolWitness,
+  BoolWitnessClaim,
+  CompilesClaim,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  UnifiedTestClaim,
+  Unit,
+  manual_claim_anchor
+}
+
+fn loop_atom(s: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: s } },
+    occurrence_id: SyntheticOccurrence,
+    children: []
+  }
+}
+
+fn loop_byte() -> Byte {
+  Byte { bits: [true] }
+}
+
+fn loop_i64_node() -> Node {
+  loop_atom(s: ^loop_i64)
+}
+
+fn loop_int_value(bytes: List<Byte>) -> RuntimeValue {
+  RuntimePrimitive {
+    value: RuntimePrimitiveValue {
+      primitive_type: loop_i64_node(),
+      bytes: bytes
+    }
+  }
+}
+
+fn loop_one_value() -> RuntimeValue {
+  loop_int_value(bytes: [loop_byte()])
+}
+
+fn loop_two_value() -> RuntimeValue {
+  loop_int_value(bytes: [loop_byte(), loop_byte()])
+}
+
+fn loop_literal_one_node() -> Node {
+  loop_atom(s: ^dag_mvp1_pick_lit_one)
+}
+
+fn loop_literal_two_node() -> Node {
+  loop_atom(s: ^dag_mvp1_pick_lit_two)
+}
+
+fn loop_runtime_diagnostic(n: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^loop_runtime_rejected,
+    at: node_locus(node: n),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn loop_runtime_int_is_one(value: RuntimeValue) -> Bool {
+  match value {
+    RuntimePrimitive { value: p } =>
+      (p.primitive_type == loop_i64_node()) && (count(p.bytes) == 1)
+    _ => false
+  }
+}
+
+fn loop_runtime_int_is_two(value: RuntimeValue) -> Bool {
+  match value {
+    RuntimePrimitive { value: p } =>
+      (p.primitive_type == loop_i64_node()) && (count(p.bytes) == 2)
+    _ => false
+  }
+}
+
+fn loop_allocate_literal(node: Node, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
+  if node == loop_literal_one_node() {
+    outcome_accepted(value: loop_one_value())
+  } else if node == loop_literal_two_node() {
+    outcome_accepted(value: loop_two_value())
+  } else {
+    outcome_rejected(d: loop_runtime_diagnostic(n: node))
+  }
+}
+
+fn loop_call_primitive(
+  _node: Node,
+  _args: List<RuntimeValue>,
+  _env: EvaluationEnvironment
+) -> Outcome<RuntimeValue> {
+  outcome_rejected(d: loop_runtime_diagnostic(n: _node))
+}
+
+fn loop_choose_branch(
+  node: Node,
+  _condition: RuntimeValue,
+  _env: EvaluationEnvironment
+) -> Outcome<Node> {
+  outcome_rejected(d: loop_runtime_diagnostic(n: node))
+}
+
+fn loop_step_loop(node: Node, env: EvaluationEnvironment) -> Outcome<ControlTransfer> {
+  match list_at_optional(xs: node_positional_child_targets(node: node), index: 0) {
+    Present { value: body } =>
+      bind_outcome(
+        o: loop_allocate_literal(node: body, env: env),
+        f: fn(value) {
+          outcome_accepted(value: Continue { value: value })
+        }
+      )
+    Absent =>
+      outcome_rejected(d: loop_runtime_diagnostic(n: node))
+  }
+}
+
+fn loop_bind_value(
+  _key: EnvironmentBindingKey,
+  _value: RuntimeValue,
+  env: EvaluationEnvironment
+) -> Outcome<EvaluationEnvironment> {
+  Accepted { value: env, diagnostics: None }
+}
+
+fn loop_interpretation() -> InterpretationAlgebra {
+  InterpretationAlgebra {
+    value: ValueInterpreter {
+      allocate_literal: loop_allocate_literal
+    },
+    transform: TransformInterpreter {
+      call_primitive: loop_call_primitive
+    },
+    branch: BranchInterpreter {
+      choose_branch: loop_choose_branch
+    },
+    loop: LoopInterpreter {
+      step_loop: loop_step_loop
+    },
+    bind: BindInterpreter {
+      bind_value: loop_bind_value
+    }
+  }
+}
+
+fn loop_interpretation_structure_witness() -> InterpretationStructureWitness {
+  InterpretationStructureWitness {
+    allocate_literal: ^loop_allocate_literal_sym,
+    call_primitive: ^loop_call_primitive_sym,
+    choose_branch: ^loop_choose_branch_sym,
+    step_loop: ^loop_step_loop_sym,
+    bind_value: ^loop_bind_value_sym,
+    choose_arm: ^runtime_reject_match_arm
+  }
+}
+
+fn loop_context() -> EvalContext {
+  eval_context_with_semantics(
+    runtime_identity: ^loop_runtime_id,
+    interpretation: loop_interpretation(),
+    structure_witness: loop_interpretation_structure_witness()
+  )
+}
+
+fn loop_pick_call(callee: Node) -> Node {
+  Node {
+    kind: ComputationNode { behavior: Transform },
+    occurrence_id: SyntheticOccurrence,
+    children: [
+      Edge { label: Positional, target: callee }
+    ]
+  }
+}
+
+fn loop_tree_root(call: Node, expected: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    occurrence_id: SyntheticOccurrence,
+    children: [
+      Edge { label: Named { name: ^loop_actual }, target: call },
+      Edge { label: Named { name: ^loop_expected }, target: expected }
+    ]
+  }
+}
+
+fn loop_node_is_loop(node: Node) -> Bool {
+  match node.kind {
+    ComputationNode { behavior: Loop } => true
+    _ => false
+  }
+}
+
+fn loop_loop_termination_proof() -> TerminationProof {
+  TerminationProof {
+    non_increasing: [],
+    strict: RankingDimension { measured: ^dag_mvp1_loop_measure_sym }
+  }
+}
+
+fn loop_bounded_descent() -> Witness<TerminationProof> {
+  Holds { value: structural_node_size_termination_proof() }
+}
+
+fn loop_facts_lookup(key: Node) -> Witness<InferredFacts> {
+  if loop_node_is_loop(node: key) {
+    Holds {
+      value: claim_inferred_facts_from_nodes(
+        resolved: key,
+        algebra: loop_i64_node(),
+        descent: Holds { value: loop_loop_termination_proof() }
+      )
+    }
+  } else {
+    Holds {
+      value: claim_inferred_facts_from_nodes(
+        resolved: key,
+        algebra: loop_i64_node(),
+        descent: loop_bounded_descent()
+      )
+    }
+  }
+}
+
+fn loop_admitted_tree(root: Node) -> InferredTree {
+  InferredTree {
+    root: root,
+    facts: Map {
+      lookup: loop_facts_lookup
+    }
+  }
+}
+
+fn loop_inferred_run_tree(callee: Node, expected: Node) -> Outcome<InferredTree> {
+  let call = loop_pick_call(callee: callee)
+  let root = loop_tree_root(call: call, expected: expected)
+  outcome_accepted(value: loop_admitted_tree(root: root))
+}
+
+fn loop_claim(input: Node, expected: Node) -> TestClaim {
+  CompilesClaim {
+    label: "manual/loop: source-bridged loop body executes through eval",
+    anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+    input: input,
+    expected_value: expected,
+    classification: TestClassification { tier: Tier1, layer: Unit }
+  }
+}
+
+fn loop_subject(
+  tree: InferredTree,
+  input: Node,
+  expected: Node
+) -> TestClaimEvalSubject<Node> {
+  TestClaimEvalSubject {
+    claim: loop_claim(input: input, expected: expected),
+    context: loop_context(),
+    tree: tree,
+    input: test_claim_typed_input_node(
+      evaluator_input: input,
+      evaluator_pin: ^loop_pick_call_pin
+    )
+  }
+}
+
+fn loop_run(
+  callee: Node,
+  expected: Node
+) -> Outcome<TestClaimRun<Node, RuntimeValue>> {
+  let input = loop_pick_call(callee: callee)
+  bind_outcome(
+    o: loop_inferred_run_tree(callee: callee, expected: expected),
+    f: fn(tree) {
+      outcome_accepted(
+        value: run_test_claim(
+          subject: loop_subject(tree: tree, input: input, expected: expected)
+        )
+      )
+    }
+  )
+}
+
+fn loop_run_passes(run: Outcome<TestClaimRun<Node, RuntimeValue>>) -> Bool {
+  match run {
+    Accepted { value: r, diagnostics: _ } =>
+      match test_claim_run_verdict(run: r) {
+        Pass => true
+        _ => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn loop_source_pipeline_admits_holds() -> Bool {
+  match source_bridged_loop_arrow_with_body() {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn loop_source_driven_executes_holds() -> Bool {
+  match source_bridged_loop_arrow_with_body() {
+    Accepted { value: arrow, diagnostics: _ } =>
+      loop_run_passes(
+        run: loop_run(
+          callee: arrow,
+          expected: loop_literal_one_node()
+        )
+      )
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn loop_source_driven_wrong_value_red_holds() -> Bool {
+  match source_bridged_loop_wrong_value_arrow_with_body() {
+    Accepted { value: arrow, diagnostics: _ } =>
+
+      loop_run_passes(
+        run: loop_run(
+          callee: arrow,
+          expected: loop_literal_two_node()
+        )
+      ) == false
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn loop_direct_runtime_holds() -> Bool {
+  match source_bridged_loop_arrow_with_body() {
+    Accepted { value: arrow, diagnostics: _ } => {
+      let input = loop_pick_call(callee: arrow)
+      match loop_inferred_run_tree(
+        callee: arrow,
+        expected: loop_literal_one_node()
+      ) {
+        Accepted { value: tree, diagnostics: _ } =>
+          match eval(
+            tree: tree,
+            interpretation: loop_interpretation(),
+            inputs: inputs_root_only(root: input)
+          ) {
+            Accepted { value: actual, diagnostics: None } =>
+              loop_runtime_int_is_one(value: actual)
+            _ => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn loop_value_perturbation_red_holds() -> Bool {
+  match source_bridged_loop_arrow_with_body() {
+    Accepted { value: arrow, diagnostics: _ } =>
+      loop_run_passes(
+        run: loop_run(
+          callee: arrow,
+          expected: loop_literal_two_node()
+        )
+      ) == false
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn loop_fixture_producer_holds() -> Bool {
+  match produce_mvp1_loop_arrow_with_body() {
+    Accepted { value: arrow, diagnostics: _ } =>
+      loop_run_passes(
+        run: loop_run(
+          callee: arrow,
+          expected: loop_literal_one_node()
+        )
+      )
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn loop_fixture_wrong_value_red_holds() -> Bool {
+  match produce_mvp1_loop_arrow_with_body_wrong_value() {
+    Accepted { value: arrow, diagnostics: _ } =>
+      loop_run_passes(
+        run: loop_run(
+          callee: arrow,
+          expected: loop_literal_one_node()
+        )
+      ) == false
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn loop_eval_by_execution_keystone_holds() -> Bool {
+  loop_source_driven_executes_holds()
+    && loop_source_driven_wrong_value_red_holds()
+    && loop_direct_runtime_holds()
+    && loop_source_pipeline_admits_holds()
+    && loop_value_perturbation_red_holds()
+    && loop_fixture_producer_holds()
+    && loop_fixture_wrong_value_red_holds()
+}
