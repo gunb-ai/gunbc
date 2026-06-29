@@ -27,7 +27,6 @@ import extdeps.languages.bash.program {
   serialize_stmt
 }
 import v2.compiler.emit { emit }
-import v2.compiler.emit_shell { emit_shell_stmt }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import v2.compiler.translate { target_serialize_source_from_model }
 import v2.extdeps.languages.bash {
@@ -96,8 +95,6 @@ import v2.std.diagnostic {
 import v2.std.logic { Bool }
 import v2.std.node { Conj, Node, SyntheticOccurrence, TypeNode }
 import v2.std.witness { Holds, Violates, Witness }
-
-data bash_fold_emit_shell_equivalence_receipt_dissolution_trigger: String = "🟡 dissolve-on: emit_shell_stmt deleted in cutover STEP 2 — bash_fold_emit_shell_equivalence_receipt_holds is a receipt witness until fold cutover"
 
 fn bash_fold_emit_stmt_with_target(stmt: ShellStmt, target: TargetModel) -> Outcome<String> {
   match stmt {
@@ -572,18 +569,6 @@ fn bash_fold_fold_serialize_stmt(stmt: ShellStmt) -> Outcome<String> {
 fn bash_fold_fold_matches_oracle(stmt: ShellStmt) -> Bool {
   match bash_fold_fold_serialize_stmt(stmt: stmt) {
     Accepted { value: folded, diagnostics: _ } => folded == serialize_stmt(s: stmt)
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-fn bash_fold_fold_matches_emit_shell_stmt(stmt: ShellStmt) -> Bool {
-  match bash_fold_fold_serialize_stmt(stmt: stmt) {
-    Accepted { value: fold_carried, diagnostics: _ } =>
-      match emit_shell_stmt(s: stmt) {
-        Accepted { value: shell_src, diagnostics: d } =>
-          (shell_src.carried == fold_carried) && (d == None)
-        Rejected { diagnostics: _ } => false
-      }
     Rejected { diagnostics: _ } => false
   }
 }
@@ -1162,34 +1147,6 @@ fn bash_fold_delegated_bundle_fail_closed_holds() -> Bool {
     Holds { value: _ } => false
     Violates { diagnostic: _ } => true
   }
-}
-
-fn bash_fold_emit_shell_equivalence_receipt_holds() -> Bool {
-  bash_fold_fold_matches_emit_shell_stmt(
-    stmt: Command { words: [Lit { text: "true" }] }
-  )
-  && bash_fold_fold_matches_emit_shell_stmt(
-    stmt: WithRedir {
-      stmt: Command { words: [Lit { text: "true" }] },
-      redir: StderrToNull
-    }
-  )
-  && bash_fold_fold_matches_emit_shell_stmt(stmt: RawLine { text: "! ( foo )" })
-  && bash_fold_fold_matches_emit_shell_stmt(
-    stmt: RawLine { text: "TMPDIR=$('mktemp' '-d')" }
-  )
-  && bash_fold_fold_matches_emit_shell_stmt(
-    stmt: EnvPrefixed {
-      name: "TMPDIR",
-      value: Lit { text: "/t" },
-      command: Command { words: [Lit { text: "true" }] }
-    }
-  )
-  && bash_fold_fold_matches_emit_shell_stmt(
-    stmt: Negation {
-      stmt: Subshell { body: [Command { words: [Lit { text: "false" }] }] }
-    }
-  )
 }
 
 test fn bash_fold_structural_tier_holds() -> Bool {
