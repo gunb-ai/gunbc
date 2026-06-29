@@ -281,7 +281,6 @@ type CycleDetectState {
 }
 
 type InferScopeComponents {
-  func_sigs: Map<String, DeclaredFuncSig>
   svc_registry: Map<String, List<OpEntry>>
   svc_locals: Map<String, TypeBinding>
 }
@@ -296,32 +295,18 @@ type LocalContributionState {
 }
 
 fn merge_scope_from_imports(remaining: List<ResolvedImport>, parent_index: Map<String, TypedModule>, env: TypeEnv,
-    func_sigs: Map<String, DeclaredFuncSig>,
     svc_registry: Map<String, List<OpEntry>>,
     svc_locals: Map<String, TypeBinding>) -> InferScopeComponents {
   match remaining |> first {
     Absent => InferScopeComponents {
-      func_sigs: func_sigs, svc_registry: svc_registry,
+      svc_registry: svc_registry,
       svc_locals: svc_locals
     }
     Present { value: imp } =>
       match map_get(parent_index, imp.module_path) {
         Present { value: typed_parent } =>
-          let next_func_sigs = fold(typed_parent.func_env.signatures |> map_values, init: func_sigs, f: (acc, rsig) =>
-            let sig_key = rsig.name
-            let sig_params = rsig.params
-            let sig_rt = rsig.inferred
-            let sig_async = rsig.is_async
-            map_insert(acc, sig_key, DeclaredFuncSig {
-              name: sig_key, params: sig_params,
-              inferred: Present { value: sig_rt },
-              is_async: sig_async,
-              output_provenance: rsig.output_provenance,
-              variant_provenance: rsig.variant_provenance
-            })
-          )
           let parent_result = fold(typed_parent.items, init: InferScopeComponents {
-            func_sigs: next_func_sigs, svc_registry: svc_registry,
+            svc_registry: svc_registry,
             svc_locals: svc_locals
           }, f: (acc, titem) =>
             if titem.transport != none && titem.children |> count > 0 {
@@ -330,14 +315,12 @@ fn merge_scope_from_imports(remaining: List<ResolvedImport>, parent_index: Map<S
               )
               let root = namespace_root_from_properties(properties: titem.properties, name: authored_name_at(source_indices: env.source_indices, node: titem), source_indices: env.source_indices)
               InferScopeComponents {
-                func_sigs: acc.func_sigs,
                 svc_registry: map_insert(acc.svc_registry, authored_name_at(source_indices: env.source_indices, node: titem), entries),
                 svc_locals: map_insert(acc.svc_locals, root, nominal_type_binding(name: root))
               }
             }
             else if titem.body != none && (titem.params |> count == 0) && titem.transport == none && titem.connective == NoConnective && titem.inferred != none {
               InferScopeComponents {
-                func_sigs: acc.func_sigs,
                 svc_registry: acc.svc_registry,
                 svc_locals: map_insert(acc.svc_locals, authored_name_at(source_indices: env.source_indices, node: titem), TypeBinding { name: authored_name_at(source_indices: env.source_indices, node: titem), resolved: resolved_type(n: titem), provenance: SubValueUnknown })
               }
@@ -347,11 +330,10 @@ fn merge_scope_from_imports(remaining: List<ResolvedImport>, parent_index: Map<S
             }
           )
           merge_scope_from_imports(remaining: remaining |> skip(1), parent_index: parent_index, env: env,
-            func_sigs: parent_result.func_sigs, svc_registry: parent_result.svc_registry,
-            svc_locals: parent_result.svc_locals)
+            svc_registry: parent_result.svc_registry, svc_locals: parent_result.svc_locals)
         Absent =>
           merge_scope_from_imports(remaining: remaining |> skip(1), parent_index: parent_index, env: env,
-            func_sigs: func_sigs, svc_registry: svc_registry,
+            svc_registry: svc_registry,
             svc_locals: svc_locals)
       }
   }
@@ -3055,7 +3037,7 @@ type DescentContext {
   sub_value_vars: Map<String, SubValueRelation>
   size_aliases: Map<String, SizeExpr>
   scope_locals: Map<String, TypeBinding>
-  func_sigs: Map<String, ResolvedFuncSig>
+  func_env: ResolvedFuncEnv
   per_field_vars: Map<String, Map<String, SubValueRelation>>
 }
 
@@ -3256,7 +3238,7 @@ fn build_per_field_for_let(val: Node, binding_name: String, ctx: DescentContext)
   match val.expr_data {
     ExprCall { call_semantics: _, descent_evidence: _ } =>
       let callee = expr_call_func_at(texpr: val, source_indices: ctx.type_env.source_indices)
-      match map_get(ctx.func_sigs, callee) {
+      match lookup_func_sig(func_env: ctx.func_env, name: callee) {
         Present { value: sig } =>
           if sig.output_provenance |> count > 1 {
             let return_type = sig.inferred
@@ -3274,7 +3256,7 @@ fn build_per_field_for_let(val: Node, binding_name: String, ctx: DescentContext)
       }
     ExprMethodCall { method_semantics: _ } =>
       let callee = expr_method_name_at(texpr: val, source_indices: ctx.type_env.source_indices)
-      match map_get(ctx.func_sigs, callee) {
+      match lookup_func_sig(func_env: ctx.func_env, name: callee) {
         Present { value: sig } =>
           if sig.output_provenance |> count > 1 {
             let return_type = sig.inferred
@@ -3424,7 +3406,7 @@ fn classify_let_value(val: Node, ctx: DescentContext) -> SubValueRelation? {
       }
     ExprCall { call_semantics: _, descent_evidence: _ } =>
       let callee = expr_call_func_at(texpr: val, source_indices: ctx.type_env.source_indices)
-      let from_provenance = match map_get(ctx.func_sigs, callee) {
+      let from_provenance = match lookup_func_sig(func_env: ctx.func_env, name: callee) {
         Present { value: sig } =>
           match sig.output_provenance |> first {
             Present { value: param_map } =>
@@ -3691,7 +3673,7 @@ fn classify_argument(arg_expr: Node, param_name: String, ctx: DescentContext) ->
             ArithmeticDescent { param: _, factor: _ } => inner_rel
             PreservedValue =>
               let callee = expr_call_func_at(texpr: arg_expr, source_indices: ctx.type_env.source_indices)
-              let from_provenance = match map_get(ctx.func_sigs, callee) {
+              let from_provenance = match lookup_func_sig(func_env: ctx.func_env, name: callee) {
                 Present { value: sig } =>
                   match sig.output_provenance |> first {
                     Present { value: param_map } =>
@@ -3941,7 +3923,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                   else { map_insert(ctx.sub_value_vars, p1, rel) }
                 } else { ctx.sub_value_vars },
                 size_aliases: ctx.size_aliases,
-                scope_locals: ctx.scope_locals, func_sigs: ctx.func_sigs,
+                scope_locals: ctx.scope_locals, func_env: ctx.func_env,
                 per_field_vars: ctx.per_field_vars
               }
               make_arg_node(name: arg_name_at(n: child, source_indices: ctx.type_env.source_indices), value: annotate_descent(body: arg_val, ctx: lambda_ctx), span: child.span, name_span: child.span)
@@ -4014,7 +3996,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
       let scrut_variant_sig = match scrut.expr_data {
         ExprCall { call_semantics: _, descent_evidence: _ } =>
           let callee = expr_call_func_at(texpr: scrut, source_indices: ctx.type_env.source_indices)
-          match map_get(ctx.func_sigs, callee) {
+          match lookup_func_sig(func_env: ctx.func_env, name: callee) {
             Present { value: sig } =>
               if map_keys(sig.variant_provenance) |> count > 0 { Present { value: sig } }
               else { none }
@@ -4047,7 +4029,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                             param_order: c.param_order, type_env: c.type_env,
                             sub_value_vars: map_insert(c.sub_value_vars, bname, StrictSubValue { field: ind_field, factor: UnitShrink }),
                             size_aliases: c.size_aliases,
-                            scope_locals: c.scope_locals, func_sigs: c.func_sigs,
+                            scope_locals: c.scope_locals, func_env: c.func_env,
                             per_field_vars: c.per_field_vars
                           }
                         VariantPattern { name: inner_vname, parent_enum: _, field_bindings: inner_bindings } =>
@@ -4068,7 +4050,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                                     param_order: ic.param_order, type_env: ic.type_env,
                                     sub_value_vars: map_insert(ic.sub_value_vars, inner_bind_name, StrictSubValue { field: inner_ind_field, factor: UnitShrink }),
                                     size_aliases: ic.size_aliases,
-                                    scope_locals: ic.scope_locals, func_sigs: ic.func_sigs,
+                                    scope_locals: ic.scope_locals, func_env: ic.func_env,
                                     per_field_vars: ic.per_field_vars
                                   }
                                 } else { ic }
@@ -4095,7 +4077,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                             fn_name: c.fn_name, param_names: c.param_names, param_order: c.param_order, type_env: c.type_env,
                             sub_value_vars: map_insert(c.sub_value_vars, bind_name, StrictSubValue { field: ind_field, factor: UnitShrink }),
                             size_aliases: c.size_aliases,
-                            scope_locals: c.scope_locals, func_sigs: c.func_sigs,
+                            scope_locals: c.scope_locals, func_env: c.func_env,
                             per_field_vars: c.per_field_vars
                           }
                         } else { c }
@@ -4111,7 +4093,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                   param_order: ctx.param_order, type_env: ctx.type_env,
                   sub_value_vars: map_insert(ctx.sub_value_vars, bname, PreservedValue),
                   size_aliases: ctx.size_aliases,
-                  scope_locals: ctx.scope_locals, func_sigs: ctx.func_sigs,
+                  scope_locals: ctx.scope_locals, func_env: ctx.func_env,
                   per_field_vars: ctx.per_field_vars
                 }
               } else {
@@ -4123,7 +4105,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                       param_order: ctx.param_order, type_env: ctx.type_env,
                       sub_value_vars: map_insert(ctx.sub_value_vars, bname, StrictSubValue { field: ind_field, factor: UnitShrink }),
                       size_aliases: ctx.size_aliases,
-                      scope_locals: ctx.scope_locals, func_sigs: ctx.func_sigs,
+                      scope_locals: ctx.scope_locals, func_env: ctx.func_env,
                       per_field_vars: ctx.per_field_vars
                     }
                   Absent => ctx
@@ -4171,7 +4153,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
             sub_value_vars: map_insert(ctx.sub_value_vars, binding_name, rel),
             size_aliases: inner_size_aliases,
             scope_locals: map_insert(ctx.scope_locals, binding_name, TypeBinding { name: binding_name, resolved: resolved_type(n: val), provenance: rel }),
-            func_sigs: ctx.func_sigs,
+            func_env: ctx.func_env,
             per_field_vars: inner_per_field
           }
         Absent =>
@@ -4180,7 +4162,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
             sub_value_vars: ctx.sub_value_vars,
             size_aliases: inner_size_aliases,
             scope_locals: map_insert(ctx.scope_locals, binding_name, TypeBinding { name: binding_name, resolved: resolved_type(n: val), provenance: SubValueUnknown }),
-            func_sigs: ctx.func_sigs,
+            func_env: ctx.func_env,
             per_field_vars: inner_per_field
           }
       }
@@ -4226,7 +4208,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                   sub_value_vars: map_insert(acc.ctx.sub_value_vars, bname, rel),
                   size_aliases: new_sa,
                   scope_locals: map_insert(acc.ctx.scope_locals, bname, TypeBinding { name: bname, resolved: resolved_type(n: val), provenance: rel }),
-                  func_sigs: acc.ctx.func_sigs,
+                  func_env: acc.ctx.func_env,
                   per_field_vars: acc.ctx.per_field_vars
                 }
               Absent =>
@@ -4235,7 +4217,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                   sub_value_vars: acc.ctx.sub_value_vars,
                   size_aliases: new_sa,
                   scope_locals: map_insert(acc.ctx.scope_locals, bname, TypeBinding { name: bname, resolved: resolved_type(n: val), provenance: SubValueUnknown }),
-                  func_sigs: acc.ctx.func_sigs,
+                  func_env: acc.ctx.func_env,
                   per_field_vars: acc.ctx.per_field_vars
                 }
             }
@@ -4328,7 +4310,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                   sub_value_vars: if is_fold { map_insert(empty_map(), elem_name, IteratedSubValue { field: ind_field }) }
                     else { map_insert(ctx.sub_value_vars, elem_name, IteratedSubValue { field: ind_field }) },
                   size_aliases: ctx.size_aliases,
-                  scope_locals: ctx.scope_locals, func_sigs: ctx.func_sigs,
+                  scope_locals: ctx.scope_locals, func_env: ctx.func_env,
                   per_field_vars: ctx.per_field_vars
                 }
               Absent =>
@@ -4337,7 +4319,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                   param_order: ctx.param_order, type_env: ctx.type_env,
                   sub_value_vars: if is_fold { empty_map() } else { ctx.sub_value_vars },
                   size_aliases: ctx.size_aliases,
-                  scope_locals: ctx.scope_locals, func_sigs: ctx.func_sigs,
+                  scope_locals: ctx.scope_locals, func_env: ctx.func_env,
                   per_field_vars: ctx.per_field_vars
                 }
             }
@@ -4380,7 +4362,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
             param_order: ctx.param_order, type_env: ctx.type_env,
             sub_value_vars: map_insert(empty_map(), fe_var, IteratedSubValue { field: ind_field }),
             size_aliases: ctx.size_aliases,
-            scope_locals: ctx.scope_locals, func_sigs: ctx.func_sigs,
+            scope_locals: ctx.scope_locals, func_env: ctx.func_env,
             per_field_vars: ctx.per_field_vars
           }
         Absent =>
@@ -4389,7 +4371,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
             param_order: ctx.param_order, type_env: ctx.type_env,
             sub_value_vars: empty_map(),
             size_aliases: ctx.size_aliases,
-            scope_locals: ctx.scope_locals, func_sigs: ctx.func_sigs,
+            scope_locals: ctx.scope_locals, func_env: ctx.func_env,
             per_field_vars: ctx.per_field_vars
           }
       }
@@ -4421,7 +4403,7 @@ fn resolved_type_name(n: Node, source_indices: Map<String, NewlineIndex>) -> Str
   }
 }
 
-fn infer_output_provenance(body: Node, params: List<Node>, type_env: TypeEnv, scope_locals: Map<String, TypeBinding>, func_sigs: Map<String, ResolvedFuncSig>) -> List<Map<String, SubValueRelation>> {
+fn infer_output_provenance(body: Node, params: List<Node>, type_env: TypeEnv, scope_locals: Map<String, TypeBinding>, func_env: ResolvedFuncEnv) -> List<Map<String, SubValueRelation>> {
   let param_names = params |> map(p => param_node_name_at(n: p, source_indices: type_env.source_indices))
   let param_types = fold(params, init: empty_map(), f: (acc, p) =>
     let pname = param_node_name_at(n: p, source_indices: type_env.source_indices)
@@ -4431,13 +4413,13 @@ fn infer_output_provenance(body: Node, params: List<Node>, type_env: TypeEnv, sc
 
   let scalar = classify_body_provenance(
     expr: body, param_names: param_names, param_types: param_types,
-    type_env: type_env, func_sigs: func_sigs, let_prov: empty_map()
+    type_env: type_env, func_env: func_env, let_prov: empty_map()
   )
   if map_keys(scalar) |> count > 0 { [scalar] }
   else {
     let per_field = classify_body_per_field(
       expr: body, param_names: param_names, param_types: param_types,
-      type_env: type_env, func_sigs: func_sigs, let_prov: empty_map()
+      type_env: type_env, func_env: func_env, let_prov: empty_map()
     )
     if per_field |> count > 0 && per_field |> any(m => map_keys(m) |> count > 0) {
       per_field
@@ -4445,7 +4427,7 @@ fn infer_output_provenance(body: Node, params: List<Node>, type_env: TypeEnv, sc
   }
 }
 
-fn classify_body_provenance(expr: Node, param_names: List<String>, param_types: Map<String, String>, type_env: TypeEnv, func_sigs: Map<String, ResolvedFuncSig>, let_prov: Map<String, Map<String, SubValueRelation>>) -> Map<String, SubValueRelation> {
+fn classify_body_provenance(expr: Node, param_names: List<String>, param_types: Map<String, String>, type_env: TypeEnv, func_env: ResolvedFuncEnv, let_prov: Map<String, Map<String, SubValueRelation>>) -> Map<String, SubValueRelation> {
   match expr.expr_data {
     ExprVar { binding_kind: _ } =>
       let vname = expr_var_name_at(texpr: expr, source_indices: type_env.source_indices)
@@ -4462,7 +4444,7 @@ fn classify_body_provenance(expr: Node, param_names: List<String>, param_types: 
     ExprFieldAccess { summary: _ } =>
       let base = field_access_base(texpr: expr)
       let field = field_access_field_at(texpr: expr, source_indices: type_env.source_indices)
-      let base_prov = classify_body_provenance(expr: base, param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: let_prov)
+      let base_prov = classify_body_provenance(expr: base, param_names: param_names, param_types: param_types, type_env: type_env, func_env: func_env, let_prov: let_prov)
       fold(base_prov |> map_keys, init: empty_map(), f: (acc, pname) =>
         match map_get(base_prov, pname) {
           Present { value: base_rel } =>
@@ -4486,11 +4468,11 @@ fn classify_body_provenance(expr: Node, param_names: List<String>, param_types: 
 
     ExprCall { call_semantics: _, descent_evidence: _ } =>
       let callee = expr_call_func_at(texpr: expr, source_indices: type_env.source_indices)
-      compose_callee_provenance(callee: callee, arg_by_name: call_args_by_name(call: expr, source_indices: type_env.source_indices), param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: let_prov)
+      compose_callee_provenance(callee: callee, arg_by_name: call_args_by_name(call: expr, source_indices: type_env.source_indices), param_names: param_names, param_types: param_types, type_env: type_env, func_env: func_env, let_prov: let_prov)
 
     ExprMethodCall { method_semantics: ms } =>
       let mname = expr_method_name_at(texpr: expr, source_indices: type_env.source_indices)
-      let callee_result = compose_callee_provenance(callee: mname, arg_by_name: method_call_args_by_name(call: expr, func_sigs: func_sigs, source_indices: type_env.source_indices), param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: let_prov)
+      let callee_result = compose_callee_provenance(callee: mname, arg_by_name: method_call_args_by_name(call: expr, func_env: func_env, source_indices: type_env.source_indices), param_names: param_names, param_types: param_types, type_env: type_env, func_env: func_env, let_prov: let_prov)
       if map_keys(callee_result) |> count > 0 { callee_result }
       else {
         let is_shrink = match ms {
@@ -4509,7 +4491,7 @@ fn classify_body_provenance(expr: Node, param_names: List<String>, param_types: 
           }
         {
           let recv = method_receiver(texpr: expr)
-          let recv_prov = classify_body_provenance(expr: recv, param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: let_prov)
+          let recv_prov = classify_body_provenance(expr: recv, param_names: param_names, param_types: param_types, type_env: type_env, func_env: func_env, let_prov: let_prov)
           fold(map_keys(recv_prov), init: empty_map(), f: (acc, pname) =>
             match map_get(recv_prov, pname) {
               Present { value: recv_rel } =>
@@ -4523,7 +4505,7 @@ fn classify_body_provenance(expr: Node, param_names: List<String>, param_types: 
 
     ExprMatch =>
       let scrut = match_scrutinee(texpr: expr)
-      let scrut_prov = classify_body_provenance(expr: scrut, param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: let_prov)
+      let scrut_prov = classify_body_provenance(expr: scrut, param_names: param_names, param_types: param_types, type_env: type_env, func_env: func_env, let_prov: let_prov)
       let arms = match_arm_nodes(texpr: expr)
       let arm_provs = arms |> map(arm =>
 
@@ -4546,15 +4528,15 @@ fn classify_body_provenance(expr: Node, param_names: List<String>, param_types: 
             map_insert(let_prov, bname, scrut_prov)
           _ => let_prov
         }
-        classify_body_provenance(expr: arm_body(n: arm), param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: arm_let_prov)
+        classify_body_provenance(expr: arm_body(n: arm), param_names: param_names, param_types: param_types, type_env: type_env, func_env: func_env, let_prov: arm_let_prov)
       )
       meet_body_provenance_maps(provs: arm_provs)
 
     ExprIf =>
-      let then_prov = classify_body_provenance(expr: if_then_branch(texpr: expr), param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: let_prov)
+      let then_prov = classify_body_provenance(expr: if_then_branch(texpr: expr), param_names: param_names, param_types: param_types, type_env: type_env, func_env: func_env, let_prov: let_prov)
       match if_else_branch(texpr: expr) {
         Present { value: else_expr } =>
-          let else_prov = classify_body_provenance(expr: else_expr, param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: let_prov)
+          let else_prov = classify_body_provenance(expr: else_expr, param_names: param_names, param_types: param_types, type_env: type_env, func_env: func_env, let_prov: let_prov)
           meet_body_provenance_maps(provs: [then_prov, else_prov])
         Absent => then_prov
       }
@@ -4562,11 +4544,11 @@ fn classify_body_provenance(expr: Node, param_names: List<String>, param_types: 
     ExprLet =>
       let value = let_value(texpr: expr)
       let bname = let_binding_name_at(texpr: expr, source_indices: type_env.source_indices)
-      let value_prov = classify_body_provenance(expr: value, param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: let_prov)
+      let value_prov = classify_body_provenance(expr: value, param_names: param_names, param_types: param_types, type_env: type_env, func_env: func_env, let_prov: let_prov)
       let updated = map_insert(let_prov, bname, value_prov)
       match let_body(texpr: expr) {
         Present { value: body } =>
-          classify_body_provenance(expr: body, param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: updated)
+          classify_body_provenance(expr: body, param_names: param_names, param_types: param_types, type_env: type_env, func_env: func_env, let_prov: updated)
         Absent => empty_map()
       }
 
@@ -4576,27 +4558,27 @@ fn classify_body_provenance(expr: Node, param_names: List<String>, param_types: 
           ExprLet =>
             let bname = let_binding_name_at(texpr: stmt, source_indices: type_env.source_indices)
             let value = let_value(texpr: stmt)
-            let value_prov = classify_body_provenance(expr: value, param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: state.prov)
+            let value_prov = classify_body_provenance(expr: value, param_names: param_names, param_types: param_types, type_env: type_env, func_env: func_env, let_prov: state.prov)
             let updated_prov = map_insert(state.prov, bname, value_prov)
             match let_body(texpr: stmt) {
               Present { value: body } =>
-                BlockProvFoldState { prov: state.prov, last: classify_body_provenance(expr: body, param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: updated_prov) }
+                BlockProvFoldState { prov: state.prov, last: classify_body_provenance(expr: body, param_names: param_names, param_types: param_types, type_env: type_env, func_env: func_env, let_prov: updated_prov) }
               Absent =>
                 BlockProvFoldState { prov: updated_prov, last: value_prov }
             }
           _ =>
-            BlockProvFoldState { prov: state.prov, last: classify_body_provenance(expr: stmt, param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: state.prov) }
+            BlockProvFoldState { prov: state.prov, last: classify_body_provenance(expr: stmt, param_names: param_names, param_types: param_types, type_env: type_env, func_env: func_env, let_prov: state.prov) }
         }
       )
       block_result.last
 
     ExprCast =>
-      classify_body_provenance(expr: cast_expr(texpr: expr), param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: let_prov)
+      classify_body_provenance(expr: cast_expr(texpr: expr), param_names: param_names, param_types: param_types, type_env: type_env, func_env: func_env, let_prov: let_prov)
 
     ExprReturn =>
       match expr.children |> first {
         Present { value: inner } =>
-          classify_body_provenance(expr: inner, param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: let_prov)
+          classify_body_provenance(expr: inner, param_names: param_names, param_types: param_types, type_env: type_env, func_env: func_env, let_prov: let_prov)
         Absent => empty_map()
       }
 
@@ -4618,11 +4600,11 @@ fn call_args_by_name(call: Node, source_indices: Map<String, NewlineIndex>) -> M
   )
 }
 
-fn method_call_args_by_name(call: Node, func_sigs: Map<String, ResolvedFuncSig>, source_indices: Map<String, NewlineIndex>) -> Map<String, Node> {
+fn method_call_args_by_name(call: Node, func_env: ResolvedFuncEnv, source_indices: Map<String, NewlineIndex>) -> Map<String, Node> {
   let mname = expr_method_name_at(texpr: call, source_indices: source_indices)
   let recv = method_receiver(texpr: call)
   let mc_args = method_arg_nodes(texpr: call)
-  let base = match map_get(func_sigs, mname) {
+  let base = match lookup_func_sig(func_env: func_env, name: mname) {
     Present { value: sig } =>
       match sig.params |> first {
         Present { value: first_p } =>
@@ -4640,8 +4622,8 @@ fn method_call_args_by_name(call: Node, func_sigs: Map<String, ResolvedFuncSig>,
   )
 }
 
-fn compose_callee_provenance(callee: String, arg_by_name: Map<String, Node>, param_names: List<String>, param_types: Map<String, String>, type_env: TypeEnv, func_sigs: Map<String, ResolvedFuncSig>, let_prov: Map<String, Map<String, SubValueRelation>>) -> Map<String, SubValueRelation> {
-  match map_get(func_sigs, callee) {
+fn compose_callee_provenance(callee: String, arg_by_name: Map<String, Node>, param_names: List<String>, param_types: Map<String, String>, type_env: TypeEnv, func_env: ResolvedFuncEnv, let_prov: Map<String, Map<String, SubValueRelation>>) -> Map<String, SubValueRelation> {
+  match lookup_func_sig(func_env: func_env, name: callee) {
     Present { value: sig } =>
       match sig.output_provenance |> first {
         Present { value: callee_prov } =>
@@ -4650,7 +4632,7 @@ fn compose_callee_provenance(callee: String, arg_by_name: Map<String, Node>, par
               Present { value: callee_rel } =>
                 match map_get(arg_by_name, callee_pname) {
                   Present { value: arg } =>
-                    let arg_prov = classify_body_provenance(expr: arg, param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: let_prov)
+                    let arg_prov = classify_body_provenance(expr: arg, param_names: param_names, param_types: param_types, type_env: type_env, func_env: func_env, let_prov: let_prov)
                     fold(arg_prov |> map_keys, init: acc, f: (inner, pname) =>
                       match map_get(arg_prov, pname) {
                         Present { value: arg_rel } =>
@@ -4675,18 +4657,18 @@ fn compose_callee_provenance(callee: String, arg_by_name: Map<String, Node>, par
   }
 }
 
-fn classify_body_per_field(expr: Node, param_names: List<String>, param_types: Map<String, String>, type_env: TypeEnv, func_sigs: Map<String, ResolvedFuncSig>, let_prov: Map<String, Map<String, SubValueRelation>>) -> List<Map<String, SubValueRelation>> {
+fn classify_body_per_field(expr: Node, param_names: List<String>, param_types: Map<String, String>, type_env: TypeEnv, func_env: ResolvedFuncEnv, let_prov: Map<String, Map<String, SubValueRelation>>) -> List<Map<String, SubValueRelation>> {
   let unwrapped = unwrap_body_terminal(expr: expr, let_prov: let_prov, type_env: type_env)
   let terminal = unwrapped.expr
   let terminal_prov = unwrapped.let_prov
-  classify_terminal_per_field(expr: terminal, param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: terminal_prov)
+  classify_terminal_per_field(expr: terminal, param_names: param_names, param_types: param_types, type_env: type_env, func_env: func_env, let_prov: terminal_prov)
 }
 
-fn classify_terminal_per_field(expr: Node, param_names: List<String>, param_types: Map<String, String>, type_env: TypeEnv, func_sigs: Map<String, ResolvedFuncSig>, let_prov: Map<String, Map<String, SubValueRelation>>) -> List<Map<String, SubValueRelation>> {
+fn classify_terminal_per_field(expr: Node, param_names: List<String>, param_types: Map<String, String>, type_env: TypeEnv, func_env: ResolvedFuncEnv, let_prov: Map<String, Map<String, SubValueRelation>>) -> List<Map<String, SubValueRelation>> {
   match expr.expr_data {
     ExprRecordLit { parent_enum: _ } =>
       expr.children |> map(fi =>
-        classify_body_provenance(expr: field_init_node_value(n: fi), param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: let_prov)
+        classify_body_provenance(expr: field_init_node_value(n: fi), param_names: param_names, param_types: param_types, type_env: type_env, func_env: func_env, let_prov: let_prov)
       )
     ExprMatch =>
       let arm_results = match_arm_nodes(texpr: expr) |> map(arm =>
@@ -4694,7 +4676,7 @@ fn classify_terminal_per_field(expr: Node, param_names: List<String>, param_type
         match arm_unwrapped.expr.expr_data {
           ExprRecordLit { parent_enum: _ } =>
             arm_unwrapped.expr.children |> map(fi =>
-              classify_body_provenance(expr: field_init_node_value(n: fi), param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: arm_unwrapped.let_prov)
+              classify_body_provenance(expr: field_init_node_value(n: fi), param_names: param_names, param_types: param_types, type_env: type_env, func_env: func_env, let_prov: arm_unwrapped.let_prov)
             )
           _ => []
         }
@@ -4705,7 +4687,7 @@ fn classify_terminal_per_field(expr: Node, param_names: List<String>, param_type
       let then_result = match then_unwrapped.expr.expr_data {
         ExprRecordLit { parent_enum: _ } =>
           then_unwrapped.expr.children |> map(fi =>
-            classify_body_provenance(expr: field_init_node_value(n: fi), param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: then_unwrapped.let_prov)
+            classify_body_provenance(expr: field_init_node_value(n: fi), param_names: param_names, param_types: param_types, type_env: type_env, func_env: func_env, let_prov: then_unwrapped.let_prov)
           )
         _ => []
       }
@@ -4715,7 +4697,7 @@ fn classify_terminal_per_field(expr: Node, param_names: List<String>, param_type
           let else_result = match else_unwrapped.expr.expr_data {
             ExprRecordLit { parent_enum: _ } =>
               else_unwrapped.expr.children |> map(fi =>
-                classify_body_provenance(expr: field_init_node_value(n: fi), param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: else_unwrapped.let_prov)
+                classify_body_provenance(expr: field_init_node_value(n: fi), param_names: param_names, param_types: param_types, type_env: type_env, func_env: func_env, let_prov: else_unwrapped.let_prov)
               )
             _ => []
           }
@@ -4805,12 +4787,12 @@ fn arm_ctx_from_variant_provenance(arm_node: Node, sig: ResolvedFuncSig, scrut: 
             else {
               match map_get(variant_field_map, field_label) {
                 Present { value: param_map } =>
-                  let composed = compose_callee_param_map(callee_prov: param_map, arg_by_name: call_args, param_names: c.param_order, param_types: c.param_names, type_env: c.type_env, func_sigs: c.func_sigs, let_prov: empty_map())
+                  let composed = compose_callee_param_map(callee_prov: param_map, arg_by_name: call_args, param_names: c.param_order, param_types: c.param_names, type_env: c.type_env, func_env: c.func_env, let_prov: empty_map())
                   let all_rels = map_keys(composed) |> map(k => match map_get(composed, k) { Present { value: r } => r  Absent => SubValueUnknown })
                   let best = merge_argument_relations(rels: all_rels)
                   match best {
                     SubValueUnknown => c
-                    _ => DescentContext { fn_name: c.fn_name, param_names: c.param_names, param_order: c.param_order, type_env: c.type_env, sub_value_vars: map_insert(c.sub_value_vars, bind_name, best), size_aliases: c.size_aliases, scope_locals: c.scope_locals, func_sigs: c.func_sigs, per_field_vars: c.per_field_vars }
+                    _ => DescentContext { fn_name: c.fn_name, param_names: c.param_names, param_order: c.param_order, type_env: c.type_env, sub_value_vars: map_insert(c.sub_value_vars, bind_name, best), size_aliases: c.size_aliases, scope_locals: c.scope_locals, func_env: c.func_env, per_field_vars: c.per_field_vars }
                   }
                 Absent => c
               }
@@ -4823,13 +4805,13 @@ fn arm_ctx_from_variant_provenance(arm_node: Node, sig: ResolvedFuncSig, scrut: 
   }
 }
 
-fn compose_callee_param_map(callee_prov: Map<String, SubValueRelation>, arg_by_name: Map<String, Node>, param_names: List<String>, param_types: Map<String, String>, type_env: TypeEnv, func_sigs: Map<String, ResolvedFuncSig>, let_prov: Map<String, Map<String, SubValueRelation>>) -> Map<String, SubValueRelation> {
+fn compose_callee_param_map(callee_prov: Map<String, SubValueRelation>, arg_by_name: Map<String, Node>, param_names: List<String>, param_types: Map<String, String>, type_env: TypeEnv, func_env: ResolvedFuncEnv, let_prov: Map<String, Map<String, SubValueRelation>>) -> Map<String, SubValueRelation> {
   fold(callee_prov |> map_keys, init: empty_map(), f: (acc, callee_pname) =>
     match map_get(callee_prov, callee_pname) {
       Present { value: callee_rel } =>
         match map_get(arg_by_name, callee_pname) {
           Present { value: arg } =>
-            let arg_prov = classify_body_provenance(expr: arg, param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: let_prov)
+            let arg_prov = classify_body_provenance(expr: arg, param_names: param_names, param_types: param_types, type_env: type_env, func_env: func_env, let_prov: let_prov)
             fold(arg_prov |> map_keys, init: acc, f: (inner, pname) =>
               match map_get(arg_prov, pname) {
                 Present { value: arg_rel } =>
@@ -4849,7 +4831,7 @@ fn compose_output_relations(arg_rel: SubValueRelation, callee_rel: SubValueRelat
   compose_sub_value_relations(arg_rel: arg_rel, callee_rel: callee_rel)
 }
 
-fn compute_variant_provenance(body: Node, return_type: Node, params: List<Node>, type_env: TypeEnv, func_sigs: Map<String, ResolvedFuncSig>) -> Map<String, Map<String, Map<String, SubValueRelation>>> {
+fn compute_variant_provenance(body: Node, return_type: Node, params: List<Node>, type_env: TypeEnv, func_env: ResolvedFuncEnv) -> Map<String, Map<String, Map<String, SubValueRelation>>> {
   let rt_name = authored_name_at(source_indices: type_env.source_indices, node: return_type)
   let rt_def = lookup_type_by_name(env: type_env, name: rt_name)
   match rt_def {
@@ -4862,14 +4844,14 @@ fn compute_variant_provenance(body: Node, return_type: Node, params: List<Node>,
             let ptype = resolved_type_name(n: p, source_indices: type_env.source_indices)
             if pname != "" && ptype != "" { map_insert(acc, pname, ptype) } else { acc }
           )
-          collect_variant_constructors(body: body, parent_enum: rt_name, param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: empty_map(), acc: empty_map())
+          collect_variant_constructors(body: body, parent_enum: rt_name, param_names: param_names, param_types: param_types, type_env: type_env, func_env: func_env, let_prov: empty_map(), acc: empty_map())
         _ => empty_map()
       }
     Absent => empty_map()
   }
 }
 
-fn collect_variant_constructors(body: Node, parent_enum: String, param_names: List<String>, param_types: Map<String, String>, type_env: TypeEnv, func_sigs: Map<String, ResolvedFuncSig>, let_prov: Map<String, Map<String, SubValueRelation>>, acc: Map<String, Map<String, Map<String, SubValueRelation>>>) -> Map<String, Map<String, Map<String, SubValueRelation>>> {
+fn collect_variant_constructors(body: Node, parent_enum: String, param_names: List<String>, param_types: Map<String, String>, type_env: TypeEnv, func_env: ResolvedFuncEnv, let_prov: Map<String, Map<String, SubValueRelation>>, acc: Map<String, Map<String, Map<String, SubValueRelation>>>) -> Map<String, Map<String, Map<String, SubValueRelation>>> {
   match body.expr_data {
     ExprRecordLit { parent_enum: pe } =>
       match pe {
@@ -4878,7 +4860,7 @@ fn collect_variant_constructors(body: Node, parent_enum: String, param_names: Li
             let variant_name = body.name
             let field_prov_map = body.children |> fold(init: empty_map(), f: (m, fi) =>
               let fname = field_init_node_name_at(n: fi, source_indices: type_env.source_indices)
-              let fprov = classify_body_provenance(expr: field_init_node_value(n: fi), param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: let_prov)
+              let fprov = classify_body_provenance(expr: field_init_node_value(n: fi), param_names: param_names, param_types: param_types, type_env: type_env, func_env: func_env, let_prov: let_prov)
               if fname != "" { map_insert(m, fname, fprov) } else { m }
             )
             match map_get(acc, variant_name) {
@@ -4892,7 +4874,7 @@ fn collect_variant_constructors(body: Node, parent_enum: String, param_names: Li
       }
     ExprCall { call_semantics: _, descent_evidence: _ } =>
       let callee = expr_call_func_at(texpr: body, source_indices: type_env.source_indices)
-      match map_get(func_sigs, callee) {
+      match lookup_func_sig(func_env: func_env, name: callee) {
         Present { value: sig } =>
           if authored_name_at(source_indices: type_env.source_indices, node: sig.inferred) == parent_enum
             && (map_keys(sig.variant_provenance) |> count > 0) {
@@ -4903,7 +4885,7 @@ fn collect_variant_constructors(body: Node, parent_enum: String, param_names: Li
                   let composed_field_map = fold(map_keys(field_map), init: empty_map(), f: (fm_acc, field_name) =>
                     match map_get(field_map, field_name) {
                       Present { value: param_map } =>
-                        let composed = compose_callee_param_map(callee_prov: param_map, arg_by_name: call_args, param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: let_prov)
+                        let composed = compose_callee_param_map(callee_prov: param_map, arg_by_name: call_args, param_names: param_names, param_types: param_types, type_env: type_env, func_env: func_env, let_prov: let_prov)
                         if map_keys(composed) |> count > 0 { map_insert(fm_acc, field_name, composed) }
                         else { fm_acc }
                       Absent => fm_acc
@@ -4923,22 +4905,22 @@ fn collect_variant_constructors(body: Node, parent_enum: String, param_names: Li
       }
     ExprMatch =>
       match_arm_nodes(texpr: body) |> fold(init: acc, f: (a, arm) =>
-        collect_variant_constructors(body: arm_body(n: arm), parent_enum: parent_enum, param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: let_prov, acc: a)
+        collect_variant_constructors(body: arm_body(n: arm), parent_enum: parent_enum, param_names: param_names, param_types: param_types, type_env: type_env, func_env: func_env, let_prov: let_prov, acc: a)
       )
     ExprIf =>
-      let then_acc = collect_variant_constructors(body: if_then_branch(texpr: body), parent_enum: parent_enum, param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: let_prov, acc: acc)
+      let then_acc = collect_variant_constructors(body: if_then_branch(texpr: body), parent_enum: parent_enum, param_names: param_names, param_types: param_types, type_env: type_env, func_env: func_env, let_prov: let_prov, acc: acc)
       match if_else_branch(texpr: body) {
         Present { value: eb } =>
-          collect_variant_constructors(body: eb, parent_enum: parent_enum, param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: let_prov, acc: then_acc)
+          collect_variant_constructors(body: eb, parent_enum: parent_enum, param_names: param_names, param_types: param_types, type_env: type_env, func_env: func_env, let_prov: let_prov, acc: then_acc)
         Absent => then_acc
       }
     ExprLet =>
       match let_body(texpr: body) {
         Present { value: b } =>
           let bname = let_binding_name_at(texpr: body, source_indices: type_env.source_indices)
-          let value_prov = classify_body_provenance(expr: let_value(texpr: body), param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: let_prov)
+          let value_prov = classify_body_provenance(expr: let_value(texpr: body), param_names: param_names, param_types: param_types, type_env: type_env, func_env: func_env, let_prov: let_prov)
           let new_lp = map_insert(let_prov, bname, value_prov)
-          collect_variant_constructors(body: b, parent_enum: parent_enum, param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: new_lp, acc: acc)
+          collect_variant_constructors(body: b, parent_enum: parent_enum, param_names: param_names, param_types: param_types, type_env: type_env, func_env: func_env, let_prov: new_lp, acc: acc)
         Absent => acc
       }
     ExprBlock =>
@@ -4950,14 +4932,14 @@ fn collect_variant_constructors(body: Node, parent_enum: String, param_names: Li
           match stmt.expr_data {
             ExprLet =>
               let bname = let_binding_name_at(texpr: stmt, source_indices: type_env.source_indices)
-              let vprov = classify_body_provenance(expr: let_value(texpr: stmt), param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: lp)
+              let vprov = classify_body_provenance(expr: let_value(texpr: stmt), param_names: param_names, param_types: param_types, type_env: type_env, func_env: func_env, let_prov: lp)
               map_insert(lp, bname, vprov)
             _ => lp
           }
         )
         match stmts |> skip(stmt_count - 1) |> first {
           Present { value: last } =>
-            collect_variant_constructors(body: last, parent_enum: parent_enum, param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: final_lp, acc: acc)
+            collect_variant_constructors(body: last, parent_enum: parent_enum, param_names: param_names, param_types: param_types, type_env: type_env, func_env: func_env, let_prov: final_lp, acc: acc)
           Absent => acc
         }
       }
@@ -5010,7 +4992,7 @@ fn union_prov_maps(a: Map<String, SubValueRelation>, b: Map<String, SubValueRela
 }
 
 fn populate_output_provenance(typed_items: List<Node>, func_env: ResolvedFuncEnv, type_env: TypeEnv, locals: Map<String, TypeBinding>) -> ResolvedFuncEnv {
-  let updated_sigs = fold(typed_items, init: func_env.signatures, f: (acc, item) =>
+  let updated_local = fold(typed_items, init: func_env.local, f: (acc, item) =>
     if item.params |> count > 0 {
       let fn_name = authored_name_at(source_indices: type_env.source_indices, node: item)
       if is_child_accessor_in_model(name: fn_name) || is_tree_size_reducing(func_name: fn_name) {
@@ -5043,10 +5025,11 @@ fn populate_output_provenance(typed_items: List<Node>, func_env: ResolvedFuncEnv
         match item.body {
           Present { value: body } =>
             if !expr_has_self_call(texpr: body, fn_name: fn_name, source_indices: type_env.source_indices) {
-              let provenance = infer_output_provenance(body: body, params: item.params, type_env: type_env, scope_locals: locals, func_sigs: acc)
+              let working_env = ResolvedFuncEnv { local: acc, parents: func_env.parents }
+              let provenance = infer_output_provenance(body: body, params: item.params, type_env: type_env, scope_locals: locals, func_env: working_env)
               let variant_prov = match item.inferred {
                 Present { value: Resolved { node: rt } } =>
-                  compute_variant_provenance(body: body, return_type: rt, params: item.params, type_env: type_env, func_sigs: acc)
+                  compute_variant_provenance(body: body, return_type: rt, params: item.params, type_env: type_env, func_env: working_env)
                 _ => empty_map()
               }
               let has_scalar = provenance |> count > 0
@@ -5069,10 +5052,10 @@ fn populate_output_provenance(typed_items: List<Node>, func_env: ResolvedFuncEnv
       }
     } else { acc }
   )
-  ResolvedFuncEnv { signatures: updated_sigs }
+  ResolvedFuncEnv { local: updated_local, parents: func_env.parents }
 }
 
-fn annotate_descent_evidence(body: Node, fn_name: String, params: List<Node>, type_env: TypeEnv, scope_locals: Map<String, TypeBinding>, func_sigs: Map<String, ResolvedFuncSig>) -> Node {
+fn annotate_descent_evidence(body: Node, fn_name: String, params: List<Node>, type_env: TypeEnv, scope_locals: Map<String, TypeBinding>, func_env: ResolvedFuncEnv) -> Node {
   let param_name_map = params |> fold(init: empty_map(), f: (acc, p) =>
     let pname = param_node_name_at(n: p, source_indices: type_env.source_indices)
     let ptype = resolved_type_name(n: p, source_indices: type_env.source_indices)
@@ -5087,7 +5070,7 @@ fn annotate_descent_evidence(body: Node, fn_name: String, params: List<Node>, ty
     sub_value_vars: empty_map(),
     size_aliases: empty_map(),
     scope_locals: scope_locals,
-    func_sigs: func_sigs,
+    func_env: func_env,
     per_field_vars: empty_map()
   }
   annotate_descent(body: body, ctx: ctx)
@@ -5209,7 +5192,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
 
     let is_recursive = expr_has_self_call(texpr: body_typed, fn_name: authored_name_at(source_indices: scope.type_env.source_indices, node: item), source_indices: scope.type_env.source_indices)
     let annotated_body = if is_recursive {
-      annotate_descent_evidence(body: body_typed, fn_name: authored_name_at(source_indices: scope.type_env.source_indices, node: item), params: item.params, type_env: scope.type_env, scope_locals: fn_scope.locals, func_sigs: scope.func_env.signatures)
+      annotate_descent_evidence(body: body_typed, fn_name: authored_name_at(source_indices: scope.type_env.source_indices, node: item), params: item.params, type_env: scope.type_env, scope_locals: fn_scope.locals, func_env: scope.func_env)
     } else { body_typed }
     TypedItemResult {
       item: Node {
@@ -5925,13 +5908,18 @@ fn build_module_context(contributions: List<ItemContribution>,
     remaining: resolved_imports,
     parent_index: parent_index,
     env: env,
-    func_sigs: empty_map(),
     svc_registry: local.svc_registry,
     svc_locals: local.svc_locals
   )
-  let all_declared_sigs = map_merge(merged_scope.func_sigs, local.func_sigs)
+  let parent_envs = flat_map(resolved_imports, imp =>
+    match map_get(parent_index, imp.module_path) {
+      Present { value: typed_parent } => [typed_parent.func_env]
+      Absent => []
+    }
+  )
   let resolve_result = resolve_func_sigs(
-    declared_sigs: all_declared_sigs,
+    declared_sigs: local.func_sigs,
+    parent_envs: parent_envs,
     items: local.resolved_items,
     module_name: module_name,
     source_indices: env.source_indices
@@ -5967,7 +5955,7 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
         module: resolved.module,
         items: [],
         type_env: env,
-        func_env: ResolvedFuncEnv { signatures: empty_map() },
+        func_env: ResolvedFuncEnv { local: empty_map(), parents: [] },
         item_registry: empty_map()
       },
       diagnostics: concat(env_diags, seed_diags)
@@ -6020,7 +6008,7 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
         body: Present { value: annotate_descent_evidence(
           body: item.body.value, fn_name: authored_name_at(source_indices: source_indices, node: item), params: item.params,
           type_env: env, scope_locals: data_locals,
-          func_sigs: updated_func_env.signatures
+          func_env: updated_func_env
         ) },
         connective: item.connective, transport: item.transport,
         properties: item.properties, type_annotation: item.type_annotation,
@@ -6306,8 +6294,35 @@ fn typecheck_modules(
   }
 }
 
+fn import_module_path_at(imp: Node, source_indices: Map<String, NewlineIndex>) -> String {
+  authored_name_at(source_indices: source_indices, node: imp)
+}
+
+fn rewire_func_env_parent_links(modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>) -> List<TypedModule> {
+  let index = fold(modules, init: empty_map(), f: (acc, m) =>
+    map_insert(acc, authored_name_at(source_indices: source_indices, node: m.module), m)
+  )
+  map(modules, m =>
+    let parents = flat_map(module_imports(n: m.module), imp =>
+      let path = import_module_path_at(imp: imp, source_indices: source_indices)
+      match map_get(index, path) {
+        Present { value: parent } => [parent.func_env]
+        Absent => []
+      }
+    )
+    TypedModule {
+      module: m.module,
+      items: m.items,
+      type_env: m.type_env,
+      func_env: ResolvedFuncEnv { local: m.func_env.local, parents: parents },
+      item_registry: m.item_registry
+    }
+  )
+}
+
 fn reconcile(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>, intern_table: InternTable) -> ResolvedGraph {
   let typed = typecheck(graph: graph, source_indices: source_indices, intern_table: intern_table)
-  let emit_info = build_emit_graph_info(modules: typed.modules)
-  ResolvedGraph { modules: typed.modules, item_registry: typed.item_registry, diagnostics: typed.diagnostics, emit_graph_info: emit_info }
+  let modules = rewire_func_env_parent_links(modules: typed.modules, source_indices: source_indices)
+  let emit_info = build_emit_graph_info(modules: modules)
+  ResolvedGraph { modules: modules, item_registry: typed.item_registry, diagnostics: typed.diagnostics, emit_graph_info: emit_info }
 }
