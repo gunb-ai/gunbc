@@ -148,7 +148,7 @@ All three gates use different `(source_roots, binary)` tuples and therefore each
 |---|---|---|
 | `resolve_entry_graph` × 4 per run (~30–40s each) | × 1 (memo deduplicates calls 2–4 to call 1) | × 1 |
 | `gunbc compile` × 4 per run (~537s each) | × 4 (M1 doesn't help subprocess) | × 3 (oracle pair 2→1; other two tuples unchanged) |
-| **Total compile cost per run** | ~2148s – ~37s ≈ same subprocess cost, saved resolve | **~1611s + ~37s → 3× compile, 1× resolve** |
+| **Total compile cost per run** | ~2148s – ~105s ≈ same subprocess cost, saved resolve | **~1611s + ~105s → 3× compile, 1× resolve** |
 
 M1 saves ~105s per run (3 redundant Axis-B resolves × ~35s each). The mechanism is a construction wall. Unblocked today.
 
