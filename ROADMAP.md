@@ -38,8 +38,6 @@ Cache flakes, un-wired lenses, complexity violations = one problem: modeled, not
 
 → [audit + checklist](docs/plans/fail-closed-lockdown.md)
 
-→ [§5 determinism mechanism](docs/plans/determinism-mechanism-design.md) — signature-derived `DeterminismClass` axis orthogonal to `EffectShape`; P1 primitive roster + compose algebra (#5941); bundles into #3468 `InferredFacts` at P4.
-
 This window = a few days of STABILITY — shrink the fail-open surface, don't "lock" it. The deepest root (`Value::Null` overload, ~131 sites) stays OPEN until its own runway ([fork plan](docs/plans/model-realization-fork.md) §3).
 
 **◆ Milestones:** fail-open audited ✓ · numeric tower grounded ✓ (#5428) → **▸ NOW: cache warm==cold oracle · every lens wired-or-deleted · stage0 census under budget** → `Value::Null` split *(deep root)*
@@ -104,6 +102,8 @@ A flaky or green-but-broken floor means no gate protects anything — so CI is u
 **The <1min lever is resolve-phase incrementality, NOT cross-run resolve-cache** — CI is cold-dominated (the exe-hash re-colds on every code change), so §2 P3 resolve-cache is the *warm* ~18% lever and was measured net-negative as the cold-CI path. Incrementality (don't resolve what didn't change) is upstream of caching (memoize what repeats); the <1min target rides the former. **This re-frames the §2 "core ask" — operator review.**
 
 → [resolved-graph representation minimization](docs/plans/representation-minimization.md) — operator-funded root-first leanness after the #5867 InternTable fix (whole-tree resolve 14.2 to 5.5 GiB): emitter-determinism gate, stream/evict (Lever C — converges with resolve-incrementality above), variant-Node minimal representation, func_env.sigs single-authority. Gated on the root-vs-doomed-seed discriminator (v1 is going away).
+
+→ [§5 determinism mechanism](docs/plans/determinism-mechanism-design.md) — signature-derived DeterminismClass axis orthogonal to EffectShape; P1 primitive roster + compose algebra (#5941); bundles into #3468 InferredFacts at P4.
 
 **What's on `.dag` today (the gap map — detail in the charter §2/§4):**
 
