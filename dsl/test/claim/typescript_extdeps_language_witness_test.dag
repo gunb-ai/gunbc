@@ -23,19 +23,6 @@ import extdeps.languages.typescript.types {
   ts_algebra_inhabitants
 }
 
-fn ts_checkpoint_target(dag_name: String) -> String {
-  match ts_type_checkpoints |> filter(cp => cp.dag_name == dag_name) |> first {
-    Present { value: cp } => cp.target_type
-    Absent => "MISSING"
-  }
-}
-
-fn ts_inhabitant_template(algebra: String) -> String {
-  match ts_algebra_inhabitants |> filter(d => d.algebra == algebra) |> first {
-    Present { value: d } => d.template
-    Absent => "MISSING"
-  }
-}
 
 test fn ts_func_keyword_is_function() -> Bool {
   ts_func_keyword == "function"
@@ -97,21 +84,21 @@ test fn ts_null_coalesce_operator_present() -> Bool {
 }
 
 test fn ts_int_maps_to_number() -> Bool {
-  ts_checkpoint_target(dag_name: "Int") == "number"
+  ts_type_checkpoints |> any(cp => cp.dag_name == "Int" && cp.target_type == "number")
 }
 
 test fn ts_bool_maps_to_boolean() -> Bool {
-  ts_checkpoint_target(dag_name: "Bool") == "boolean"
+  ts_type_checkpoints |> any(cp => cp.dag_name == "Bool" && cp.target_type == "boolean")
 }
 
 test fn ts_unit_maps_to_undefined() -> Bool {
-  ts_checkpoint_target(dag_name: "Unit") == "undefined"
+  ts_type_checkpoints |> any(cp => cp.dag_name == "Unit" && cp.target_type == "undefined")
 }
 
 test fn ts_freemonoid_inhabitant_is_array() -> Bool {
-  string_contains(ts_inhabitant_template(algebra: "FreeMonoid"), "Array")
+  ts_algebra_inhabitants |> any(d => d.algebra == "FreeMonoid" && string_contains(d.template, "Array"))
 }
 
 test fn ts_partialfunction_inhabitant_is_map() -> Bool {
-  string_contains(ts_inhabitant_template(algebra: "PartialFunction"), "Map")
+  ts_algebra_inhabitants |> any(d => d.algebra == "PartialFunction" && string_contains(d.template, "Map"))
 }
