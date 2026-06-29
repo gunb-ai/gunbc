@@ -19,7 +19,8 @@ fn bmc_lifecycle_modeled_fidelity_node() -> Node {
   dag_grammar_atom(id: ^dag_fidelity_disposition_kind_modeled)
 }
 
-fn bmc_lifecycle_lossy_witness_atom() -> Node {
+fn bmc_lifecycle_lossy_witness_node(reason: SecretEpochNotInQuotient) -> Node {
+  let witness = reason
   dag_grammar_atom(id: ^bmc_lifecycle_lossy_secret_epoch_witness)
 }
 
@@ -33,7 +34,9 @@ fn bmc_lifecycle_lossy_fidelity_node() -> Node {
       ),
       dag_named_edge(
         name: ^dag_fidelity_disposition_field_feature,
-        target: bmc_lifecycle_lossy_witness_atom()
+        target: bmc_lifecycle_lossy_witness_node(
+          reason: bmc_credentials_rotated_inverse_lossy_reason()
+        )
       )
     ],
     occurrence_id: SyntheticOccurrence
