@@ -1,64 +1,79 @@
 #!/usr/bin/env bash
-# Pre-push hook: fmt check on push. On drift, auto-fix + commit
-# locally (convenience), then ABORT THE PUSH so the developer
-# re-runs git push to pick up the new commit.
+# Pre-push hook: tidy floor gates (doc reachability + generated-artifact drift)
+# and fmt check. On auto-fixable drift, commit locally then ABORT THE PUSH so
+# the developer re-runs git push to pick up the new commit.
 #
-# Why not auto-continue the push?  Git resolves the local SHA and
-# builds the push pack BEFORE calling this hook. A commit created
-# inside the hook advances the local ref, but git already captured
-# the pre-hook SHA in the pack — the new commit stays local and
-# never reaches the remote. See PR #509 review (codex 35d67a7d).
+# SCAFFOLD — tidy-gate orchestration dissolves-on: emit from gunbc.local_tidy_spec
+# + extdeps.git.hooks (see stern-moth-225 model sketch). Gate entrypoints are
+# single-authority .dag witnesses; this shell is interim transport.
 #
-# Ref matching: we match on the pushed ref NAME (e.g., "refs/heads/main"),
-# not just SHA equality with HEAD. This avoids the alias-ref bug where
-# a push of a tag or a different branch that happens to point at the
-# same commit as HEAD would otherwise be treated as a HEAD push. Per
-# pre-push review (chatgpt on PR #509).
-#
-# Decision table:
-#   Delete-only push                   → skip entirely
-#   Detached HEAD (no current branch)  → fmt-check only; no auto-commit
-#   Push of HEAD's branch, clean       → exit 0, push proceeds
-#   Push of HEAD's branch, drift       → auto-fix + auto-commit + ABORT
-#                                          (developer re-runs `git push`)
-#   Push of other refs, clean          → exit 0, push proceeds
-#   Push of other refs, drift          → fail with actionable message
+# Why not auto-continue the push after auto-commit? Git resolves the local SHA and
+# builds the push pack BEFORE calling this hook. See PR #509 review (codex 35d67a7d).
 #
 # Enable via: git config core.hooksPath .githooks
 
-set -e
+set -euo pipefail
+
+ROOT="$(git rev-parse --show-toplevel)"
+# shellcheck source=lib/tidy-gates.sh
+source "$ROOT/.githooks/lib/tidy-gates.sh"
 
 ZERO_SHA="0000000000000000000000000000000000000000"
 
-# Full ref path of the currently-checked-out branch, e.g. "refs/heads/main".
-# Empty on detached HEAD — in that case no ref-name match is possible.
 head_ref=$(git symbolic-ref HEAD 2>/dev/null || echo "")
 
 pushes_content=0
 head_branch_in_push=0
+declare -a PUSH_LINES=()
+declare -a PUSH_CHANGED=()
 
-# Pre-push stdin format (one line per ref being pushed):
-#   <local_ref> <local_sha> <remote_ref> <remote_sha>
-# All-zero local_sha means delete (no content pushed for this ref).
-while IFS=' ' read -r local_ref local_sha remote_ref remote_sha; do
+collect_push_changed() {
+  local local_ref="$1" local_sha="$2" remote_ref="$3" remote_sha="$4"
+  local range_base range_head
+
   if [[ "$local_sha" == "$ZERO_SHA" ]]; then
-    continue  # delete, no content to check
+    return 0
+  fi
+
+  range_head="$local_sha"
+  if [[ "$remote_sha" == "$ZERO_SHA" ]]; then
+    range_base="$(git hash-object -t tree /dev/null)"
+  else
+    range_base="$remote_sha"
+  fi
+
+  local path
+  while IFS= read -r path; do
+    [[ -z "$path" ]] && continue
+    local seen=0 existing
+    for existing in "${PUSH_CHANGED[@]}"; do
+      if [[ "$existing" == "$path" ]]; then
+        seen=1
+        break
+      fi
+    done
+    if [[ "$seen" == "0" ]]; then
+      PUSH_CHANGED+=("$path")
+    fi
+  done < <(git diff --name-only --diff-filter=ACMR "$range_base" "$range_head")
+}
+
+while IFS=' ' read -r local_ref local_sha remote_ref remote_sha; do
+  PUSH_LINES+=("$local_ref $local_sha $remote_ref $remote_sha")
+  if [[ "$local_sha" == "$ZERO_SHA" ]]; then
+    continue
   fi
   pushes_content=1
-  # Match on ref NAME, not SHA, so tag pushes or other-branch pushes
-  # that alias HEAD's SHA don't spuriously trigger auto-commit.
+  collect_push_changed "$local_ref" "$local_sha" "$remote_ref" "$remote_sha"
   if [[ -n "$head_ref" ]] && [[ "$local_ref" == "$head_ref" ]]; then
     head_branch_in_push=1
   fi
 done
 
-# Delete-only push (e.g., `git push origin --delete branch-name`): skip.
 if [[ "$pushes_content" == "0" ]]; then
   exit 0
 fi
 
-# If auto-commit is in scope (HEAD's branch is being pushed), require a
-# clean tree. Don't silently sweep uncommitted work into a fmt commit.
 if [[ "$head_branch_in_push" == "1" ]]; then
   if ! git diff --quiet || ! git diff --cached --quiet; then
     echo "[pre-push] uncommitted changes in working tree — commit or stash before pushing."
@@ -66,16 +81,32 @@ if [[ "$head_branch_in_push" == "1" ]]; then
   fi
 fi
 
-echo "[pre-push] cargo fmt --all --check"
-if cargo fmt --all --check 2>/dev/null; then
-  exit 0  # clean, push proceeds
+# --- tidy gates (scoped to files in the push range) -------------------------
+if [[ ${#PUSH_CHANGED[@]} -gt 0 ]]; then
+  printf '%s\n' "${PUSH_CHANGED[@]}" | tidy_gates_run_if_needed
 fi
 
-# Fmt drift detected. Two paths:
+# Regen may have staged projection updates; commit + abort like fmt auto-fix.
+if ! git diff --cached --quiet; then
+  if [[ "$head_branch_in_push" != "1" ]]; then
+    echo "[pre-push] regen staged changes but HEAD's branch is not in this push — commit manually."
+    exit 1
+  fi
+  git commit -m "chore: regenerate committed projections"
+  echo ""
+  echo "[pre-push] projection regen committed locally."
+  echo "[pre-push] Re-run 'git push' to include the regen commit."
+  echo ""
+  exit 1
+fi
+
+# --- cargo fmt (existing behavior) ------------------------------------------
+echo "[pre-push] cargo fmt --all --check"
+if cargo fmt --all --check 2>/dev/null; then
+  exit 0
+fi
+
 if [[ "$head_branch_in_push" == "0" ]]; then
-  # Push doesn't include HEAD's branch (or HEAD is detached).
-  # Auto-committing would either land on a ref that isn't being pushed,
-  # or fail in detached state. Fail with an actionable message.
   echo ""
   if [[ -z "$head_ref" ]]; then
     echo "[pre-push] fmt drift detected, but HEAD is detached — no current branch to auto-commit onto."
@@ -93,17 +124,11 @@ if [[ "$head_branch_in_push" == "0" ]]; then
   exit 1
 fi
 
-# HEAD's branch is being pushed. Auto-fix + commit as a convenience,
-# then abort the push so the developer re-runs and the new commit ships.
 echo "[pre-push] fmt drift detected; running cargo fmt --all"
 cargo fmt --all
-
-# Only stage tracked files; never sweep up untracked files.
 git add -u
 
 if git diff --cached --quiet; then
-  # cargo fmt --check reported drift but --all produced no diff?
-  # Shouldn't happen; fail loud rather than exit silently.
   echo "[pre-push] cargo fmt --check reported drift but cargo fmt --all produced no diff."
   echo "[pre-push] this shouldn't happen; please investigate. Aborting push."
   exit 1
