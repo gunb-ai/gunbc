@@ -1,0 +1,104 @@
+module test.claim.typescript_extdeps_language_witness
+
+import std.logic { Bool }
+import extdeps.languages.typescript.emit {
+  ts_func_keyword,
+  ts_param_type_sep,
+  ts_return_arrow,
+  ts_param_separator,
+  ts_source_extension,
+  ts_null_coalesce_template,
+  ts_list_literal_empty,
+  ts_list_literal_template,
+  ts_struct_keyword,
+  ts_type_arg_open,
+  ts_type_arg_close,
+  ts_container_templates
+}
+import extdeps.languages.typescript.syntax {
+  ts_operators
+}
+import extdeps.languages.typescript.types {
+  ts_type_checkpoints,
+  ts_algebra_inhabitants
+}
+
+
+test fn ts_func_keyword_is_function() -> Bool {
+  ts_func_keyword == "function"
+}
+
+test fn ts_param_type_sep_is_colon_space() -> Bool {
+  ts_param_type_sep == ": "
+}
+
+test fn ts_return_arrow_is_colon_space() -> Bool {
+  ts_return_arrow == ": "
+}
+
+test fn ts_source_extension_is_dot_ts() -> Bool {
+  ts_source_extension == ".ts"
+}
+
+test fn ts_struct_keyword_is_interface() -> Bool {
+  ts_struct_keyword == "interface"
+}
+
+test fn ts_add_fn_signature_assembles() -> Bool {
+  let sig = concat(
+    ts_func_keyword, " add(x", ts_param_type_sep, "number", ts_param_separator, "y", ts_param_type_sep, "number)", ts_return_arrow, "number"
+  )
+  sig == "function add(x: number, y: number): number"
+}
+
+test fn ts_list_container_expands_to_array() -> Bool {
+  match map_get(ts_container_templates, "list") {
+    Present { value: tmpl } => replace(tmpl, "{0}", "number") == "Array<number>"
+    Absent => false
+  }
+}
+
+test fn ts_map_container_expands_to_map() -> Bool {
+  match map_get(ts_container_templates, "map") {
+    Present { value: tmpl } =>
+      replace(replace(tmpl, "{0}", "string"), "{1}", "number") == "Map<string, number>"
+    Absent => false
+  }
+}
+
+test fn ts_list_literal_template_is_bracket_form() -> Bool {
+  ts_list_literal_empty == "[]"
+    && replace(ts_list_literal_template, "{0}", "1, 2, 3") == "[1, 2, 3]"
+}
+
+test fn ts_null_coalesce_uses_double_question() -> Bool {
+  string_contains(ts_null_coalesce_template, "??")
+}
+
+test fn ts_strict_equality_operator_present() -> Bool {
+  ts_operators |> any(op => op.symbol == "===")
+}
+
+test fn ts_null_coalesce_operator_present() -> Bool {
+  ts_operators |> any(op => op.symbol == "??")
+}
+
+test fn ts_int_maps_to_number() -> Bool {
+  ts_type_checkpoints |> any(cp => cp.dag_name == "Int" && cp.target_type == "number")
+}
+
+test fn ts_bool_maps_to_boolean() -> Bool {
+  ts_type_checkpoints |> any(cp => cp.dag_name == "Bool" && cp.target_type == "boolean")
+}
+
+test fn ts_unit_maps_to_undefined() -> Bool {
+  ts_type_checkpoints |> any(cp => cp.dag_name == "Unit" && cp.target_type == "undefined")
+}
+
+test fn ts_freemonoid_inhabitant_is_array() -> Bool {
+  ts_algebra_inhabitants |> any(d => d.algebra == "FreeMonoid" && string_contains(d.template, "Array"))
+}
+
+test fn ts_partialfunction_inhabitant_is_map() -> Bool {
+  ts_algebra_inhabitants |> any(d => d.algebra == "PartialFunction" && string_contains(d.template, "Map"))
+}

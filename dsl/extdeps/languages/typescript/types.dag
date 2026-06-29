@@ -1,0 +1,83 @@
+module extdeps.languages.typescript.types
+
+import std.coercion {
+  TypeCheckpoint, InhabitantDecl, CallableRepr, CastSyntax, CastRule
+}
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.typescriptlang.org/docs/handbook/2/types-from-types.html"
+  }
+}
+
+data ts_type_checkpoints: List<TypeCheckpoint> = [
+  { dag_name: "Int",    target_type: "number",     default_expr: "0",               is_copy: true,  literal_suffix: none },
+  { dag_name: "Float",  target_type: "number",     default_expr: "0.0",             is_copy: true,  literal_suffix: none },
+  { dag_name: "Bool",   target_type: "boolean",    default_expr: "false",           is_copy: true,  literal_suffix: none },
+  { dag_name: "Unit",   target_type: "undefined",  default_expr: "undefined",       is_copy: true,  literal_suffix: none },
+  { dag_name: "String", target_type: "string",     default_expr: "\"\"",            is_copy: false, literal_suffix: none },
+  { dag_name: "Bytes",  target_type: "Uint8Array", default_expr: "new Uint8Array()", is_copy: false, literal_suffix: none },
+  { dag_name: "Secret", target_type: "string",     default_expr: "\"\"",            is_copy: false, literal_suffix: none },
+  { dag_name: "Json",   target_type: "unknown",    default_expr: "null",            is_copy: false, literal_suffix: none }
+]
+
+data ts_algebra_inhabitants: List<InhabitantDecl> = [
+
+  { algebra: "FreeMonoid",
+    template: "Array<\{0\}>",
+    arity: 1,
+    identity_expr: "[]",
+    import_path: none,
+    is_copy: false },
+
+  { algebra: "BooleanAlgebra",
+    template: "Set<\{0\}>",
+    arity: 1,
+    identity_expr: "new Set()",
+    import_path: none,
+    is_copy: false },
+
+  { algebra: "PartialFunction",
+    template: "Map<\{0\}, \{1\}>",
+    arity: 2,
+    identity_expr: "new Map()",
+    import_path: none,
+    is_copy: false },
+
+  { algebra: "OrderedRing",
+    template: "number",
+    arity: 0,
+    identity_expr: "0",
+    import_path: none,
+    is_copy: true },
+
+  { algebra: "ApproximateField",
+    template: "number",
+    arity: 0,
+    identity_expr: "0.0",
+    import_path: none,
+    is_copy: true }
+]
+
+data ts_optional_template: String = "\{0\} | undefined"
+data ts_none_expr: String = "undefined"
+data ts_some_template: String = "{0}"
+
+data ts_callable: CallableRepr = CallableRepr {
+  template: "(\{params\}) => \{return\}",
+  param_separator: ", ",
+  return_separator: " => ",
+  import_path: none
+}
+
+data ts_cast_syntax: CastSyntax = {
+  template: "\{expr\} as \{type\}",
+  cast_rules: [
+    { from_type: "number",  to_type: "number" },
+    { from_type: "unknown", to_type: "number" },
+    { from_type: "unknown", to_type: "string" }
+  ]
+}
