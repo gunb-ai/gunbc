@@ -1,6 +1,6 @@
 # Plan — Rust seed-shrink census toward `5-collapse-v1` (DRAFT)
 
-**Status:** DRAFT · **design-for-sign** · **do-not-merge** until operator review (parallel to determinism #5937). Carrier-grounded audit + per-chunk sign-off queue · **DESIGN.md + the carriers remain the authority** — this doc is an audit/tracker, not a fact ledger (DESIGN §6). A chunk's real state is its branch/PR + operator sign, not this file. Linked from `ROADMAP.md` §5 and [v2-self-hosting.md](v2-self-hosting.md) Track Z. **Endorsed** by jolly-cat-29 (Section 5 self-host manager, 2026-06-29).
+**Status:** DRAFT · **design-for-sign** · **do-not-merge** until operator review (parallel to determinism #5937). Carrier-grounded audit + per-chunk sign-off queue · **DESIGN.md + the carriers remain the authority** — this doc is an audit/tracker, not a fact ledger (DESIGN §6). A chunk's real state is its branch/PR + operator sign, not this file. Entry point: [v2-self-hosting.md](v2-self-hosting.md) Track Z (milestone `5-collapse-v1` in `dsl/gunbc/roadmap_authority.dag`; `ROADMAP.md` is emitted realization and is not linked here). **Endorsed** by jolly-cat-29 (Section 5 self-host manager, 2026-06-29).
 
 **Re-verified against the live tree on 2026-06-29 by execution** (session bright-lark-472, receipt `main @ 5acbff0f8b`). Re-run §1 receipt before acting on LOC figures — the seed drifts with every merge.
 
