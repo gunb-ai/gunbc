@@ -1,5 +1,7 @@
 module v2.lens.complexity_linearity_audit
 
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.disposition { SubstrateMandatoryTag }
 import v2.std.logic { Bool }
 
 fn complexity_linearity_syntactic_finding_count_live() -> Int {
@@ -12,4 +14,8 @@ fn complexity_linearity_syntactic_wildcard_finding_count_live() -> Int {
 
 fn complexity_linearity_syntactic_site_fired_live(site: String) -> Bool {
   complexity_linearity_syntactic_site_fired(site: site)
+}
+
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding { dissolves_to: SubstrateMandatoryTag }
 }
