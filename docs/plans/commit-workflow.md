@@ -66,7 +66,7 @@ Dispatch registry (extends `generated_artifact.dag`, no new artifact types):
 
 ## 5. Sequencing (sketch → implement)
 
-1. **Checkpoint 0 (this sketch)** — parent review; no #5924 edits.
+1. **Checkpoint 0 (this sketch)** — parent review; no #5924 edits. Plan source: `dsl/gunbc/plans/commit_workflow.dag`; `docs/plans/commit-workflow.md` is a review projection — **not** enrolled in `plan_registry` until checkpoint 1b.
 2. **Checkpoint 1** — land `gunbc.commit_workflow` (`dsl/gunbc/commit_workflow.dag`) model + projection witnesses only (additive; `ci_spec`/`local_tidy_spec` still own data rows). Projections carry `commit_workflow_projection_scaffold` (`Scaffold { dissolves_to: SingleAuthority }`) — parallel-rep until checkpoint 2 inverts authority. **Do not merge checkpoint 1 as authority dissolution.**
 3. **Checkpoint 2 — HOLD** (operator scope pending): `ci_spec` gate lists → projections. Load-bearing; do not touch until relay.
 4. **Checkpoint 3 — HOLD** (operator scope pending): handler re-expression; mandatory byte-identity on `expected_ci_yml()` + `expected_githooks_pre_push_sh()`; #5924 hook bytes frozen (swap authority import only).

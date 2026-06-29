@@ -1,10 +1,10 @@
-module gunbc.plans.code_commit_workflow
+module gunbc.plans.commit_workflow
 
 import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
 import std.markdown { MarkdownBlock, TableBlock, AlignNone }
 import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, cell, row, quote }
 
-fn code_commit_workflow_body() -> List<MarkdownBlock> {
+fn commit_workflow_body() -> List<MarkdownBlock> {
   [
     quote(blocks: [
       p(text: "**Status: design sketch (checkpoint 0)** — model frame for parent review *before* further substrate migration. DESIGN §6: priced in displaced cost, not elegance. **#5924 frozen** — `.githooks/pre-push` / `githooks_pre_push_emit.dag` / `local_tidy_spec.dag` are not edited until this sketch is approved and handler re-expression is witnessed byte-identical."),
@@ -37,7 +37,7 @@ fn code_commit_workflow_body() -> List<MarkdownBlock> {
       rows: [
         row(cells: [
           cell(text: "**(a) Interface shape** — what runs at commit-time: gate identity, witness entry/fn, exit semantics (`ProcessExit` pass/fail), freshness scoping (path globs)"),
-          cell(text: "**workflow** (`gunbc.commit_workflow` — new)"),
+          cell(text: "**workflow** (`gunbc.commit_workflow`)"),
           cell(text: "`CommitCheckRow { kind, exit_shape, freshness }` reusing `gunbc.ci_spec.Gate` + witness channel (no parallel gate enum)"),
         ]),
         row(cells: [
@@ -53,7 +53,7 @@ fn code_commit_workflow_body() -> List<MarkdownBlock> {
       ],
     },
     p(text: "**Reuse, don't re-coin:** `gunbc.ci_spec` keeps `Gate`, `CiSpec`, `DiffPolicy` as the gate vocabulary; `gunbc.local_tidy_spec` keeps path-glob helpers as **freshness policy** projections, not a second roster authority; `gunbc.generated_artifact` keeps `RepoConsumer` / `CommitPolicy` as the provider registry."),
-    h2(text: "2. Model sketch — `gunbc.commit_workflow` (proposed module)"),
+    h2(text: "2. Model sketch — `gunbc.commit_workflow`"),
     p(text: "Single authority the two handlers project from:"),
     ul(items: [
       li(text: "`CommitWorkflowSpec` — the workflow fact bundle: `checks: List<CommitCheckRow>`, `ci_policy: CiSpec` (existing type), `pre_push_policy: PrePushPolicy` (freshness + auto-fix flags extracted from #5924 emit, not the bash)."),
@@ -96,7 +96,7 @@ fn code_commit_workflow_body() -> List<MarkdownBlock> {
     ]),
     h2(text: "5. Sequencing (sketch → implement)"),
     ol(items: [
-      li(text: "**Checkpoint 0 (this sketch)** — parent review; no #5924 edits. Plan source: `dsl/gunbc/plans/code_commit_workflow.dag`; `docs/plans/code-commit-workflow.md` is a review projection — **not** enrolled in `plan_registry` until checkpoint 1b (avoids pre-push regen on sketch PR)."),
+      li(text: "**Checkpoint 0 (this sketch)** — parent review; no #5924 edits. Plan source: `dsl/gunbc/plans/commit_workflow.dag`; `docs/plans/commit-workflow.md` is a review projection — **not** enrolled in `plan_registry` until checkpoint 1b."),
       li(text: "**Checkpoint 1** — land `gunbc.commit_workflow` (`dsl/gunbc/commit_workflow.dag`) model + projection witnesses only (additive; `ci_spec`/`local_tidy_spec` still own data rows). Projections carry `commit_workflow_projection_scaffold` (`Scaffold { dissolves_to: SingleAuthority }`) — parallel-rep until checkpoint 2 inverts authority. **Do not merge checkpoint 1 as authority dissolution.**"),
       li(text: "**Checkpoint 2 — HOLD** (operator scope pending): `ci_spec` gate lists → projections. Load-bearing; do not touch until relay."),
       li(text: "**Checkpoint 3 — HOLD** (operator scope pending): handler re-expression; mandatory byte-identity on `expected_ci_yml()` + `expected_githooks_pre_push_sh()`; #5924 hook bytes frozen (swap authority import only)."),
@@ -104,10 +104,10 @@ fn code_commit_workflow_body() -> List<MarkdownBlock> {
   ]
 }
 
-data code_commit_workflow_plan: Plan = Plan {
-  slug: "code-commit-workflow",
+data commit_workflow_plan: Plan = Plan {
+  slug: "commit-workflow",
   title: "[SKETCH] Provider-agnostic commit workflow — unify two existing emitters over one gate roster",
-  body: code_commit_workflow_body(),
+  body: commit_workflow_body(),
   dissolution: HasTrigger {
     text: "Delete when `gunbc.commit_workflow` is the sole roster authority, both handlers emit from it byte-identically, and this sketch is superseded by the landed model."
   }
