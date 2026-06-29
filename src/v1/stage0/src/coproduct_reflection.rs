@@ -457,47 +457,6 @@ fn concept_decl_node(ctx: &InterpContext, item: &Rc<Node>) -> InterpResult<Value
     }
 }
 
-pub fn eval_concept_decl_facts(ctx: &InterpContext, pool_roots: &[String]) -> InterpResult<Value> {
-    let ws = crate::module_path_index::workspace_root();
-    let abs_pool_roots: Vec<String> = pool_roots
-        .iter()
-        .map(|r| ws.join(r).to_string_lossy().into_owned())
-        .collect();
-    let index = crate::cli_run::build_module_path_index(&abs_pool_roots);
-    let mut modules: Vec<(String, String)> = index.into_iter().collect();
-    modules.sort();
-    let mut rows: Vec<Value> = Vec::new();
-    for (module_name, rel_path) in modules {
-        let abs = ws.join(&rel_path);
-        let Some((items, si)) = crate::medium_structure_project::parse_file(&abs) else {
-            continue;
-        };
-        for item in items.iter() {
-            if crate::v1_compiler_infer_items::item_kind(item.clone()) != ItemKind::TypeItem {
-                continue;
-            }
-            let name = authored_name_at(si.clone(), item.clone());
-            if name.is_empty() {
-                continue;
-            }
-            let qualified_name = logical_qualified_name(&module_name, &name);
-            let node = match concept_decl_node(ctx, item) {
-                Ok(n) => n,
-                Err(_) => continue,
-            };
-            rows.push(Value::Record {
-                type_name: ctx.sym("ConceptDecl"),
-                fields: Rc::new(sorted_fields(vec![
-                    (ctx.sym("qualified_name"), Value::Str(qualified_name)),
-                    (ctx.sym("name"), Value::Str(name.clone())),
-                    (ctx.sym("node"), node),
-                ])),
-            });
-        }
-    }
-    Ok(crate::v1_interpreter::list_value(rows))
-}
-
 pub fn eval_concept_decl_facts_live(
     ctx: &InterpContext,
     _args: &[(Option<String>, Value)],

@@ -31,10 +31,6 @@ fn concept_decl_facts_live() -> List<ConceptDecl> {
   concept_decl_facts_live()
 }
 
-fn concept_decl_facts_in(pool_roots: List<String>) -> List<ConceptDecl> {
-  concept_decl_facts(pool_roots: pool_roots)
-}
-
 fn field_refs_from_node(node: Node) -> List<FieldRef> {
   fold(coproduct_arm_list_from_node(node: node), init: Empty, f: fn(acc, arm) {
     let pair = coproduct_arm_payload_pair_from_arm(arm: arm)
@@ -54,12 +50,6 @@ fn concept_from_decl(decl: ConceptDecl) -> QualifiedConcept {
 
 fn enumerate_concepts() -> List<QualifiedConcept> {
   fold(concept_decl_facts_live(), init: Empty, f: fn(acc, decl) {
-    list_snoc_item(xs: acc, item: concept_from_decl(decl: decl))
-  })
-}
-
-fn enumerate_concepts_in(pool_roots: List<String>) -> List<QualifiedConcept> {
-  fold(concept_decl_facts_in(pool_roots: pool_roots), init: Empty, f: fn(acc, decl) {
     list_snoc_item(xs: acc, item: concept_from_decl(decl: decl))
   })
 }

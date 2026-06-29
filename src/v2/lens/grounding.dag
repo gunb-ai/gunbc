@@ -6,7 +6,7 @@ import v2.std.collection { List }
 import v2.std.integer { Int }
 import v2.std.logic { Bool }
 import v2.std.text { String }
-import v2.std.concept_index { ConceptStruct, FieldRef, QualifiedConcept, enumerate_concepts, enumerate_concepts_in }
+import v2.std.concept_index { ConceptStruct, FieldRef, QualifiedConcept, enumerate_concepts }
 import v2.lens.common.construction_justification { ConstructionJustification, RatchetForever }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
@@ -136,8 +136,4 @@ fn candidates_in(idx: List<QualifiedConcept>) -> List<GroundingCandidate> {
 
 fn candidates() -> List<GroundingCandidate> {
   candidates_in(idx: enumerate_concepts())
-}
-
-fn candidates_in_roots(pool_roots: List<String>) -> List<GroundingCandidate> {
-  candidates_in(idx: enumerate_concepts_in(pool_roots: pool_roots))
 }
