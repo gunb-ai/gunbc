@@ -1974,29 +1974,24 @@ fn rebuild_emitted_from_production(
 fn rebuild_production_match_fold_step(
   acc: RebuildProductionMatchFold,
   productions: List<FormalProduction>,
-  lhs: Symbol,
   tokens: List<ConcreteSyntaxToken>,
   token_index: Int,
   candidate: FormalProduction
 ) -> RebuildProductionMatchFold {
-  if formal_production_lhs_matches(production: candidate, lhs: lhs) {
-    match rebuild_emitted_from_production(
-      production: candidate,
-      productions: productions,
-      tokens: tokens,
-      token_index: token_index
-    ) {
-      Holds { value: RebuildEmittedOk { emitted: emitted, token_index: end_index } } =>
-        match acc {
-          RebuildProductionMatchNone =>
-            RebuildProductionMatchOne { emitted: emitted, token_index: end_index }
-          RebuildProductionMatchOne { emitted: _, token_index: _ } => RebuildProductionMatchMany
-          RebuildProductionMatchMany => RebuildProductionMatchMany
-        }
-      Violates { diagnostic: _ } => acc
-    }
-  } else {
-    acc
+  match rebuild_emitted_from_production(
+    production: candidate,
+    productions: productions,
+    tokens: tokens,
+    token_index: token_index
+  ) {
+    Holds { value: RebuildEmittedOk { emitted: emitted, token_index: end_index } } =>
+      match acc {
+        RebuildProductionMatchNone =>
+          RebuildProductionMatchOne { emitted: emitted, token_index: end_index }
+        RebuildProductionMatchOne { emitted: _, token_index: _ } => RebuildProductionMatchMany
+        RebuildProductionMatchMany => RebuildProductionMatchMany
+      }
+    Violates { diagnostic: _ } => acc
   }
 }
 
@@ -2006,14 +2001,14 @@ fn grammar_relation_emitted_rebuild_for_lhs(
   tokens: List<ConcreteSyntaxToken>,
   token_index: Int
 ) -> Witness<RebuildEmittedResult> {
+  let lhs_productions = formal_productions_for_lhs(productions: productions, lhs: lhs)
   match fold_list(
-    xs: productions,
+    xs: lhs_productions,
     empty: RebuildProductionMatchNone,
     cons: fn(acc, candidate) {
       rebuild_production_match_fold_step(
         acc: acc,
         productions: productions,
-        lhs: lhs,
         tokens: tokens,
         token_index: token_index,
         candidate: candidate
