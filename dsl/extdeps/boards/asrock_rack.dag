@@ -84,5 +84,4 @@ data asrock_altrad8ud_1l2t_bmc_firmware_capability_catalog: List<BmcFirmwareCapa
   asrock_altrad8ud_openbmc_3_06_00_capabilities,
 ]
 
-data asrock_altrad8ud_shipped_bmc_firmware_capabilities: BmcFirmwareCapabilityRow =
-  asrock_altrad8ud_openbmc_2_07_00_capabilities
+data asrock_altrad8ud_shipped_bmc_firmware_capabilities: BmcFirmwareCapabilityRow = asrock_altrad8ud_openbmc_2_07_00_capabilities

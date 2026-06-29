@@ -1,6 +1,6 @@
 module extdeps.bmc.capability
 
-import std.bmc { BmcFirmwareFamily, OpenBmc }
+import std.bmc { BmcFirmwareFamily }
 import std.types { NonEmptyStr, List }
 import std.logic { Bool }
 
