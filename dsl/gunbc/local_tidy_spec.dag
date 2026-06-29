@@ -5,6 +5,11 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.ci_layer_roots { witness_layer_roots }
 import gunbc.generated_artifact { committed_generated_artifacts, artifact_path }
 import gunbc.ci_spec { GeneratedArtifactDriftGate }
+import gunbc.commit_workflow {
+  commit_gate_roster,
+  project_local_tidy_checks,
+  doc_reachability_witness_entry
+}
 import tools.rust_stage0_gates { rust_monolith_suffixes }
 
 type LocalTidyCheck
@@ -12,22 +17,7 @@ type LocalTidyCheck
   | LocalTidyGateCheck { gate: GeneratedArtifactDriftGate }
   | LocalTidyCargoFmtCheck
 
-data doc_reachability_witness_entry: String = "dsl/test/claim/doc_reachability_witness_test.dag"
-
-data generated_artifact_drift_gate_entry: String = "dsl/tools/generated_artifact_gate.dag"
-
-data generated_artifact_drift_gate_check_fn: String = "run_generated_artifact_drift_gate_body"
-
-data generated_artifact_drift_gate_wet_fn: String = "main_wet"
-
-data local_tidy_checks: List<LocalTidyCheck> = [
-  LocalTidyWitnessCheck {
-    entry: doc_reachability_witness_entry,
-    check_fns: ["doc_graph_has_no_orphan_docs", "doc_graph_has_no_dangling_links"]
-  },
-  LocalTidyGateCheck { gate: GeneratedArtifactDriftGate },
-  LocalTidyCargoFmtCheck
-]
+data local_tidy_checks: List<LocalTidyCheck> = project_local_tidy_checks(roster: commit_gate_roster)
 
 data githooks_pre_push_emit_scaffold: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,

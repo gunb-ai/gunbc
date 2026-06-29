@@ -1,40 +1,20 @@
 module gunbc.commit_workflow
 
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.ci_spec {
   Gate,
   RustMonolithGate, EmitHostGate, LayeringImportsGate,
   ExtdepsExternalAuthorityGate, DslCompileCleanGate, GeneratedArtifactDriftGate,
-  SourceRootIngestGate, RegenVerifyGate, EmitDeterminismGate,
-  gunbc_ci_floor_gates, gunbc_ci_rust_job_gates
+  SourceRootIngestGate, RegenVerifyGate, EmitDeterminismGate
 }
 import gunbc.local_tidy_spec {
-  LocalTidyCheck, LocalTidyWitnessCheck, LocalTidyGateCheck, LocalTidyCargoFmtCheck,
-  local_tidy_checks, doc_reachability_witness_entry
+  LocalTidyCheck, LocalTidyWitnessCheck, LocalTidyGateCheck, LocalTidyCargoFmtCheck
 }
 import gunbc.generated_artifact {
   GeneratedArtifact, CiYamlArtifact, GithooksPrePushArtifact, artifact_path
 }
 import std.realization_schedule { string_list_eq }
 
-data commit_workflow_projection_scaffold: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "gunbc.ci_spec",
-    decl_name: "gunbc_ci_floor_gates",
-    field: WholeDeclaration
-  }
-}
-
-data commit_workflow_coproduct_eq_scaffold: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "gunbc.commit_workflow",
-    decl_name: "commit_workflow_projection_scaffold",
-    field: WholeDeclaration
-  }
-}
+data doc_reachability_witness_entry: String = "dsl/test/claim/doc_reachability_witness_test.dag"
 
 type CommitWorkflowSurface
   = GithubActionsCiJob
@@ -266,26 +246,11 @@ fn local_tidy_lists_eq(left: List<LocalTidyCheck>, right: List<LocalTidyCheck>) 
   }
 }
 
-fn roster_lifts_ci_floor_gates() -> Bool {
-  gate_lists_eq(
-    left: project_ci_floor_gates(roster: commit_gate_roster),
-    right: gunbc_ci_floor_gates
-  )
-}
+data commit_workflow_ci_floor_gates: List<Gate> = project_ci_floor_gates(roster: commit_gate_roster)
 
-fn roster_lifts_ci_rust_job_gates() -> Bool {
-  gate_lists_eq(
-    left: project_ci_rust_job_gates(roster: commit_gate_roster),
-    right: gunbc_ci_rust_job_gates
-  )
-}
+data commit_workflow_ci_rust_job_gates: List<Gate> = project_ci_rust_job_gates(roster: commit_gate_roster)
 
-fn roster_lifts_local_tidy_checks() -> Bool {
-  local_tidy_lists_eq(
-    left: project_local_tidy_checks(roster: commit_gate_roster),
-    right: local_tidy_checks
-  )
-}
+data commit_workflow_local_tidy_checks: List<LocalTidyCheck> = project_local_tidy_checks(roster: commit_gate_roster)
 
 fn realization_artifact_path(surface: CommitWorkflowSurface) -> String {
   match surface {
