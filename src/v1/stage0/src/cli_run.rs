@@ -2497,6 +2497,9 @@ pub fn peak_rss_vhwm_bytes() -> Option<u64> {
     Some(kb.saturating_mul(1024))
 }
 
+/// Mirror of `gunbc.ci_layer_roots.witness_exclusion_substrings` — the .dag model is the
+/// single authority; plan-driven paths read the value from `RunnableDiscoveryBatch.exclude_substrings`.
+/// SCAFFOLD: dissolve this constant when every caller reads from the model-derived value.
 pub const FLOOR_DISCOVERY_EXCLUDES: &[&str] = &[
     "impossible_bug",
     "test/manual/",
@@ -2632,11 +2635,9 @@ pub fn check_floor_filename_hygiene(source_roots: &[String]) -> Result<(), Strin
 pub fn discover_floor_corpus_rows(
     source_roots: &[String],
     scan_dirs: &[String],
+    exclude_substrings: &[String],
 ) -> Result<Vec<DiscoveryRow>, String> {
-    let excludes: Vec<String> = FLOOR_DISCOVERY_EXCLUDES
-        .iter()
-        .map(|s| s.to_string())
-        .collect();
+    let excludes: Vec<String> = exclude_substrings.to_vec();
     let mut rows: Vec<DiscoveryRow> = Vec::new();
     let mut seen: std::collections::BTreeSet<(String, String)> = std::collections::BTreeSet::new();
     for scan_dir in scan_dirs {
@@ -2693,7 +2694,7 @@ pub fn discover_floor_corpus_rows(
                 module_to_path.insert(m, rel.clone());
             }
             path_imports.insert(rel, extract_import_paths(&content));
-            if floor_discovery_path_excluded(&entry) {
+            if excludes.iter().any(|sub| entry.contains(sub.as_str())) {
                 continue;
             }
             let rule_decls: Vec<Vec<String>> = SIDECAR_PLACEMENT_RULES
@@ -2860,6 +2861,9 @@ fn inert_lens_modules(
 pub struct DiscoveryCorpusOptions {
     pub skip_unaffected_node_frontier: bool,
     pub explicit_roster_only: bool,
+    /// Path-substring exclusion list. Non-plan callers default to FLOOR_DISCOVERY_EXCLUDES;
+    /// plan-driven paths supply this from RunnableDiscoveryBatch.exclude_substrings (the model authority).
+    pub exclude_substrings: Vec<String>,
 }
 
 impl Default for DiscoveryCorpusOptions {
@@ -2867,6 +2871,10 @@ impl Default for DiscoveryCorpusOptions {
         Self {
             skip_unaffected_node_frontier: false,
             explicit_roster_only: false,
+            exclude_substrings: FLOOR_DISCOVERY_EXCLUDES
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
         }
     }
 }
@@ -3254,7 +3262,7 @@ pub fn run_discovery_corpus_with_options(
         if options.explicit_roster_only || (scan_dirs.is_empty() && !explicit_entries.is_empty()) {
             Vec::new()
         } else {
-            discover_floor_corpus_rows(source_roots, scan_dirs)?
+            discover_floor_corpus_rows(source_roots, scan_dirs, &options.exclude_substrings)?
         };
     let mut seen: std::collections::BTreeSet<(String, String)> = rows
         .iter()
@@ -4208,7 +4216,8 @@ mod inert_lens_hygiene_tests {
             "dsl/test/claim".to_string(),
             "src/v2/test/claim/manual".to_string(),
         ];
-        let result = discover_floor_corpus_rows(&roots, &scan_dirs);
+        let excludes: Vec<String> = FLOOR_DISCOVERY_EXCLUDES.iter().map(|s| s.to_string()).collect();
+        let result = discover_floor_corpus_rows(&roots, &scan_dirs, &excludes);
         assert!(
             result.is_ok(),
             "floor discovery must succeed — every v2.lens.* is wired or deleted: {}",
@@ -4290,7 +4299,8 @@ mod construction_justification_hygiene_tests {
             "dsl/test/claim".to_string(),
             "src/v2/test/claim/manual".to_string(),
         ];
-        let result = discover_floor_corpus_rows(&roots, &scan_dirs);
+        let excludes: Vec<String> = FLOOR_DISCOVERY_EXCLUDES.iter().map(|s| s.to_string()).collect();
+        let result = discover_floor_corpus_rows(&roots, &scan_dirs, &excludes);
         assert!(
             result.is_ok(),
             "floor discovery must succeed — every v2.lens.* records a construction-justification: {}",
@@ -4354,7 +4364,7 @@ mod sidecar_placement_hygiene_tests {
         )
         .expect("write temp file");
         let root = dir.to_string_lossy().into_owned();
-        let result = discover_floor_corpus_rows(&[root], &[]);
+        let result = discover_floor_corpus_rows(&[root], &[], &[]);
         let _ = std::fs::remove_dir_all(&dir);
         let msg = result
             .err()

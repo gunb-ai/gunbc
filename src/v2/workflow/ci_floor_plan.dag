@@ -1,6 +1,6 @@
 module v2.workflow.ci_floor_plan
 
-import gunbc.ci_layer_roots { witness_layer_roots, witness_discovery_scan_dirs }
+import gunbc.ci_layer_roots { witness_layer_roots, witness_discovery_scan_dirs, witness_exclusion_substrings }
 import gunbc.ci_spec {
   gunbc_ci_spec, CiSpec,
   Gate, RustMonolithGate, EmitHostGate, LayeringImportsGate,
@@ -162,6 +162,7 @@ fn corpus_runnable() -> Runnable {
     scan_dirs: witness_discovery_scan_dirs,
     explicit_entries: [],
     skip_unaffected_node_frontier: true,
+    exclude_substrings: witness_exclusion_substrings,
     profile: runnable_resource_profile(
       heavy_whole_tree_resolve: true,
       spawns_host_compiler: false,

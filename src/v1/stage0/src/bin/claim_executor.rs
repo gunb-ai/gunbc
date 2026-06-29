@@ -9,7 +9,7 @@ use std::time::Instant;
 use v1_compiler::cli_run::{
     compute_histogram_data, make_eval_context, resolve_entry_graph, run_claim,
     run_discovery_corpus_with_options, run_value, ClaimOutcome, DiscoveryCorpusOptions,
-    HistogramData, TimingPercentiles,
+    HistogramData, TimingPercentiles, FLOOR_DISCOVERY_EXCLUDES,
 };
 use v1_compiler::v1_interpreter::{
     color_enabled, paint, run_in_context_with_args, sgr, ExecutionMode, InterpContext, Value,
@@ -26,6 +26,7 @@ enum Runnable {
         scan_dirs: Vec<String>,
         explicit_entries: Vec<(String, String)>,
         skip_unaffected_node_frontier: bool,
+        exclude_substrings: Vec<String>,
     },
 }
 
@@ -175,11 +176,16 @@ fn runnable_from_value(value: &Value, ctx: &InterpContext) -> Result<Runnable, S
                     },
                     None => false,
                 };
+            let exclude_substrings = match ctx.field(fields, "exclude_substrings") {
+                Some(v) => str_list_from_value(v, ctx)?,
+                None => FLOOR_DISCOVERY_EXCLUDES.iter().map(|s| s.to_string()).collect(),
+            };
             Ok(Runnable::DiscoveryBatch {
                 source_roots,
                 scan_dirs,
                 explicit_entries,
                 skip_unaffected_node_frontier,
+                exclude_substrings,
             })
         }
         other => Err(format!(
@@ -241,6 +247,7 @@ enum BatchUnit {
         scan_dirs: Vec<String>,
         explicit_entries: Vec<(String, String)>,
         skip_unaffected_node_frontier: bool,
+        exclude_substrings: Vec<String>,
     },
 }
 
@@ -276,11 +283,13 @@ fn group_batch_units(batch: &[Runnable]) -> Vec<BatchUnit> {
                 scan_dirs,
                 explicit_entries,
                 skip_unaffected_node_frontier,
+                exclude_substrings,
             } => units.push(BatchUnit::Discovery {
                 source_roots: source_roots.clone(),
                 scan_dirs: scan_dirs.clone(),
                 explicit_entries: explicit_entries.clone(),
                 skip_unaffected_node_frontier: *skip_unaffected_node_frontier,
+                exclude_substrings: exclude_substrings.clone(),
             }),
         }
     }
@@ -359,11 +368,13 @@ fn run_batch_unit(
             scan_dirs,
             explicit_entries,
             skip_unaffected_node_frontier,
+            exclude_substrings,
         } => vec![run_discovery_batch_node(
             roots,
             scan_dirs,
             explicit_entries,
             skip_unaffected_node_frontier,
+            exclude_substrings,
             spawn_width,
         )],
         BatchUnit::SharedClaims { entry, functions } => {
@@ -508,6 +519,7 @@ fn run_discovery_batch_node(
     scan_dirs: Vec<String>,
     explicit_entries: Vec<(String, String)>,
     skip_unaffected_node_frontier: bool,
+    exclude_substrings: Vec<String>,
     spawn_width: usize,
 ) -> ClaimResult {
     let label = format!(
@@ -525,6 +537,7 @@ fn run_discovery_batch_node(
         DiscoveryCorpusOptions {
             skip_unaffected_node_frontier,
             explicit_roster_only: false,
+            exclude_substrings,
         },
     ) {
         Ok(summary) if summary.failures.is_empty() => {
@@ -1292,11 +1305,13 @@ fn run_perturb_check(
                         scan_dirs,
                         explicit_entries,
                         skip_unaffected_node_frontier,
+                        exclude_substrings,
                     } => Runnable::DiscoveryBatch {
                         source_roots: roots.iter().map(|r| remap_root(r)).collect(),
                         scan_dirs: scan_dirs.iter().map(|d| remap_root(d)).collect(),
                         explicit_entries: explicit_entries.clone(),
                         skip_unaffected_node_frontier: *skip_unaffected_node_frontier,
+                        exclude_substrings: exclude_substrings.clone(),
                     },
                 })
                 .collect()
@@ -1513,6 +1528,7 @@ mod tests {
             scan_dirs: vec![],
             explicit_entries: vec![],
             skip_unaffected_node_frontier: true,
+            exclude_substrings: vec![],
         }
     }
 

@@ -1229,7 +1229,7 @@ fn parse_resilience_unmasked_typecheck_debt_receipt() {
     use std::collections::BTreeSet;
     use v1_compiler::cli_run::{
         build_multi_entry_index, discover_floor_corpus_rows,
-        resolve_entry_with_index_for_discovery_corpus,
+        resolve_entry_with_index_for_discovery_corpus, FLOOR_DISCOVERY_EXCLUDES,
     };
     use v1_compiler::v1_std_core::{
         is_discovery_corpus_advisory_typecheck_diagnostic, is_interpreter_blocking_diagnostic,
@@ -1245,7 +1245,8 @@ fn parse_resilience_unmasked_typecheck_debt_receipt() {
         "dsl/test/claim".to_string(),
         "src/v2/test/claim/manual".to_string(),
     ];
-    let rows = discover_floor_corpus_rows(&roots, &scan_dirs).expect("discover roster");
+    let excludes: Vec<String> = FLOOR_DISCOVERY_EXCLUDES.iter().map(|s| s.to_string()).collect();
+    let rows = discover_floor_corpus_rows(&roots, &scan_dirs, &excludes).expect("discover roster");
     let unique_entries: BTreeSet<String> = rows.into_iter().map(|r| r.entry).collect();
     let index = build_multi_entry_index(&roots);
 
