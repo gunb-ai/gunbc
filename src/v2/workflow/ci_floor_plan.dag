@@ -80,8 +80,6 @@ fn gate_node(g: Gate) -> Node {
     GeneratedArtifactDriftGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_generated_artifact } }, children: [] }
     SourceRootIngestGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_sourceingest } }, children: [] }
     RegenVerifyGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_regen_verify } }, children: [] }
-    DocReachabilityGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_local_tidy_only } }, children: [] }
-    CargoFmtGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_local_tidy_only } }, children: [] }
   }
 }
 
@@ -125,8 +123,6 @@ fn gate_runnable_profile(g: Gate) -> RunnableResourceProfile {
     LayeringImportsGate => runnable_resource_profile_negligible()
     ExtdepsExternalAuthorityGate => runnable_resource_profile_negligible()
     GeneratedArtifactDriftGate => runnable_resource_profile_negligible()
-    DocReachabilityGate => runnable_resource_profile_negligible()
-    CargoFmtGate => runnable_resource_profile_negligible()
   }
 }
 
@@ -145,8 +141,6 @@ fn gate_runnable(g: Gate) -> Runnable {
       profile: profile
     }
     RegenVerifyGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "regen_verify_gate_passes", profile: profile }
-    DocReachabilityGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "local_tidy_only_gate_unreachable", profile: profile }
-    CargoFmtGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "local_tidy_only_gate_unreachable", profile: profile }
   }
 }
 

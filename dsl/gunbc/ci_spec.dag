@@ -7,7 +7,7 @@ import gunbc.ci_layer_roots {
 import gunbc.gate_registry {
   Gate, RustMonolithGate, EmitHostGate, LayeringImportsGate,
   ExtdepsExternalAuthorityGate, DslCompileCleanGate, GeneratedArtifactDriftGate,
-  SourceRootIngestGate, RegenVerifyGate, DocReachabilityGate, CargoFmtGate,
+  SourceRootIngestGate, RegenVerifyGate,
   gate_floor_variants, gate_rust_job_variants, gate_all_variants
 }
 import tools.build_step { BuildArtifact }

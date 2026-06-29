@@ -1,12 +1,11 @@
 module gunbc.githooks_pre_push_emit
 
 import gunbc.local_tidy_spec {
-  local_tidy_gate_order, local_tidy_gate_entry, local_tidy_gate_check_fns, local_tidy_gate_wet_fn
+  LocalTidyCheck, LocalTidyWitnessCheck, LocalTidyGateCheck, LocalTidyCargoFmtCheck,
+  local_tidy_checks, local_tidy_trigger_globs, local_tidy_has_stale_probe,
+  local_tidy_gate_entry, local_tidy_gate_wet_fn, doc_reachability_witness_entry
 }
-import gunbc.gate_registry {
-  Gate, DocReachabilityGate, GeneratedArtifactDriftGate, CargoFmtGate,
-  local_tidy_trigger_globs, gate_has_stale_probe, gate_binding
-}
+import gunbc.gate_registry { GeneratedArtifactDriftGate, gate_binding }
 import extdeps.git.hooks { pre_push_zero_sha }
 
 data bash_at: String = "@"
@@ -44,7 +43,12 @@ fn emit_freshness_path_fn(label: String, globs: List<String>) -> String {
 }
 
 fn emit_freshness_doc() -> String {
-  let globs = local_tidy_trigger_globs(g: DocReachabilityGate)
+  let globs = local_tidy_trigger_globs(
+    check: LocalTidyWitnessCheck {
+      entry: doc_reachability_witness_entry,
+      check_fns: ["doc_graph_has_no_orphan_docs", "doc_graph_has_no_dangling_links"]
+    }
+  )
   concat(
     emit_freshness_path_fn(label: "fresh_doc", globs: globs),
     concat(
@@ -55,7 +59,7 @@ fn emit_freshness_doc() -> String {
 }
 
 fn emit_freshness_artifact() -> String {
-  let globs = local_tidy_trigger_globs(g: GeneratedArtifactDriftGate)
+  let globs = local_tidy_trigger_globs(check: LocalTidyGateCheck { gate: GeneratedArtifactDriftGate })
   let entry = gate_binding(g: GeneratedArtifactDriftGate).entry
   concat(
     concat(
@@ -73,7 +77,7 @@ fn emit_freshness_artifact() -> String {
 }
 
 fn emit_freshness_fmt() -> String {
-  let globs = local_tidy_trigger_globs(g: CargoFmtGate)
+  let globs = local_tidy_trigger_globs(check: LocalTidyCargoFmtCheck)
   concat(
     emit_freshness_path_fn(label: "fresh_fmt", globs: globs),
     concat(
@@ -84,13 +88,18 @@ fn emit_freshness_fmt() -> String {
 }
 
 fn emit_run_doc() -> String {
-  let entry = local_tidy_gate_entry(g: DocReachabilityGate)
-  fold(local_tidy_gate_check_fns(g: DocReachabilityGate), init: "", f: fn(acc, check_fn) {
-    let block = concat(
-      concat("echo \"[pre-push] doc reachability: ", check_fn),
-      concat("\"\n", concat(emit_claim_batch(entry: entry, function: check_fn, suffix: " --claim-run"), "\n"))
-    )
-    if acc == "" { block } else { concat(acc, block) }
+  fold(local_tidy_checks, init: "", f: fn(acc, check) {
+    match check {
+      LocalTidyWitnessCheck { entry, check_fns } =>
+        fold(check_fns, init: acc, f: fn(inner, check_fn) {
+          let block = concat(
+            concat("echo \"[pre-push] doc reachability: ", check_fn),
+            concat("\"\n", concat(emit_claim_batch(entry: entry, function: check_fn, suffix: " --claim-run"), "\n"))
+          )
+          if inner == "" { block } else { concat(inner, block) }
+        })
+      _ => acc
+    }
   })
 }
 

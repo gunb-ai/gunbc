@@ -1,9 +1,5 @@
 module gunbc.gate_registry
 
-import gunbc.ci_layer_roots { witness_layer_roots }
-import gunbc.generated_artifact { committed_generated_artifacts, artifact_path }
-import tools.rust_stage0_gates { rust_monolith_suffixes }
-
 type Gate
   = RustMonolithGate
   | EmitHostGate
@@ -13,8 +9,6 @@ type Gate
   | GeneratedArtifactDriftGate
   | SourceRootIngestGate
   | RegenVerifyGate
-  | DocReachabilityGate
-  | CargoFmtGate
 
 type GateBinding {
   gate: Gate
@@ -22,21 +16,18 @@ type GateBinding {
   check_fns: List<String>
   wet_fn: String
   floor: Bool
-  local_tidy: Bool
 }
 
 fn gate_binding(g: Gate) -> GateBinding {
   match g {
-    EmitHostGate => GateBinding { gate: EmitHostGate, entry: "dsl/tools/emit_host_gate.dag", check_fns: [], wet_fn: "", floor: true, local_tidy: false }
-    LayeringImportsGate => GateBinding { gate: LayeringImportsGate, entry: "dsl/tools/layering_imports_gate.dag", check_fns: [], wet_fn: "", floor: true, local_tidy: false }
-    ExtdepsExternalAuthorityGate => GateBinding { gate: ExtdepsExternalAuthorityGate, entry: "dsl/tools/extdeps_external_authority_gate.dag", check_fns: [], wet_fn: "", floor: true, local_tidy: false }
-    DslCompileCleanGate => GateBinding { gate: DslCompileCleanGate, entry: "dsl/tools/dsl_compile_clean_gate.dag", check_fns: [], wet_fn: "", floor: true, local_tidy: false }
-    GeneratedArtifactDriftGate => GateBinding { gate: GeneratedArtifactDriftGate, entry: "dsl/tools/generated_artifact_gate.dag", check_fns: ["run_generated_artifact_drift_gate_body"], wet_fn: "main_wet", floor: true, local_tidy: true }
-    SourceRootIngestGate => GateBinding { gate: SourceRootIngestGate, entry: "src/v2/workflow/source_root_ingest_gate.dag", check_fns: [], wet_fn: "", floor: true, local_tidy: false }
-    RegenVerifyGate => GateBinding { gate: RegenVerifyGate, entry: "dsl/tools/regen_verify_gate.dag", check_fns: [], wet_fn: "", floor: true, local_tidy: false }
-    RustMonolithGate => GateBinding { gate: RustMonolithGate, entry: "dsl/tools/rust_gates_ci.dag", check_fns: ["main"], wet_fn: "", floor: false, local_tidy: false }
-    DocReachabilityGate => GateBinding { gate: DocReachabilityGate, entry: "dsl/test/claim/doc_reachability_witness_test.dag", check_fns: ["doc_graph_has_no_orphan_docs", "doc_graph_has_no_dangling_links"], wet_fn: "", floor: false, local_tidy: true }
-    CargoFmtGate => GateBinding { gate: CargoFmtGate, entry: "", check_fns: [], wet_fn: "", floor: false, local_tidy: true }
+    EmitHostGate => GateBinding { gate: EmitHostGate, entry: "dsl/tools/emit_host_gate.dag", check_fns: [], wet_fn: "", floor: true }
+    LayeringImportsGate => GateBinding { gate: LayeringImportsGate, entry: "dsl/tools/layering_imports_gate.dag", check_fns: [], wet_fn: "", floor: true }
+    ExtdepsExternalAuthorityGate => GateBinding { gate: ExtdepsExternalAuthorityGate, entry: "dsl/tools/extdeps_external_authority_gate.dag", check_fns: [], wet_fn: "", floor: true }
+    DslCompileCleanGate => GateBinding { gate: DslCompileCleanGate, entry: "dsl/tools/dsl_compile_clean_gate.dag", check_fns: [], wet_fn: "", floor: true }
+    GeneratedArtifactDriftGate => GateBinding { gate: GeneratedArtifactDriftGate, entry: "dsl/tools/generated_artifact_gate.dag", check_fns: ["run_generated_artifact_drift_gate_body"], wet_fn: "main_wet", floor: true }
+    SourceRootIngestGate => GateBinding { gate: SourceRootIngestGate, entry: "src/v2/workflow/source_root_ingest_gate.dag", check_fns: [], wet_fn: "", floor: true }
+    RegenVerifyGate => GateBinding { gate: RegenVerifyGate, entry: "dsl/tools/regen_verify_gate.dag", check_fns: [], wet_fn: "", floor: true }
+    RustMonolithGate => GateBinding { gate: RustMonolithGate, entry: "dsl/tools/rust_gates_ci.dag", check_fns: ["main"], wet_fn: "", floor: false }
   }
 }
 
@@ -48,9 +39,7 @@ data gate_bindings: List<GateBinding> = [
   gate_binding(g: GeneratedArtifactDriftGate),
   gate_binding(g: SourceRootIngestGate),
   gate_binding(g: RegenVerifyGate),
-  gate_binding(g: RustMonolithGate),
-  gate_binding(g: DocReachabilityGate),
-  gate_binding(g: CargoFmtGate)
+  gate_binding(g: RustMonolithGate)
 ]
 
 fn gate_floor_variants() -> List<Gate> {
@@ -65,57 +54,4 @@ fn gate_rust_job_variants() -> List<Gate> {
 
 fn gate_all_variants() -> List<Gate> {
   map(gate_bindings, row => row.gate)
-}
-
-fn gate_local_tidy_variants() -> List<Gate> {
-  fold(gate_bindings, init: [], f: fn(acc, row) {
-    if row.local_tidy { concat(acc, [row.gate]) } else { acc }
-  })
-}
-
-fn layer_root_glob_prefixes() -> List<String> {
-  map(witness_layer_roots, r => concat(r, "/*"))
-}
-
-fn suffix_to_glob_pattern(suffix: String) -> String {
-  if starts_with(s: suffix, prefix: ".") {
-    concat("*", suffix)
-  } else {
-    suffix
-  }
-}
-
-fn cargo_fmt_trigger_globs() -> List<String> {
-  map(rust_monolith_suffixes(), s => suffix_to_glob_pattern(suffix: s))
-}
-
-fn committed_artifact_trigger_globs() -> List<String> {
-  map(committed_generated_artifacts(), a => artifact_path(a: a))
-}
-
-fn doc_reachability_trigger_globs() -> List<String> {
-  concat(
-    concat(layer_root_glob_prefixes(), ["docs/*", "ROADMAP.md", "DESIGN.md"]),
-    ["*.md", "*.dag"]
-  )
-}
-
-fn generated_artifact_trigger_globs() -> List<String> {
-  concat(committed_artifact_trigger_globs(), layer_root_glob_prefixes())
-}
-
-fn local_tidy_trigger_globs(g: Gate) -> List<String> {
-  match g {
-    DocReachabilityGate => doc_reachability_trigger_globs()
-    GeneratedArtifactDriftGate => generated_artifact_trigger_globs()
-    CargoFmtGate => cargo_fmt_trigger_globs()
-    _ => []
-  }
-}
-
-fn gate_has_stale_probe(g: Gate) -> Bool {
-  match g {
-    GeneratedArtifactDriftGate => true
-    _ => false
-  }
 }

@@ -1,7 +1,7 @@
 module test.claim.githooks_pre_push_emit
 
 import gunbc.githooks_pre_push_emit { expected_githooks_pre_push_sh }
-import gunbc.gate_registry {
+import gunbc.local_tidy_spec {
   doc_reachability_trigger_globs, generated_artifact_trigger_globs, cargo_fmt_trigger_globs
 }
 import extdeps.git.hooks { pre_push_zero_sha }
@@ -33,7 +33,7 @@ fn witness_fmt_subsumed() -> Bool {
     && has(s: sh, p: "chore: apply cargo fmt")
 }
 
-fn witness_doc_gate_wired() -> Bool {
+fn witness_doc_witness_wired() -> Bool {
   let sh = expected_githooks_pre_push_sh()
   has(s: sh, p: "doc_graph_has_no_orphan_docs")
     && has(s: sh, p: "doc_graph_has_no_dangling_links")
@@ -51,6 +51,6 @@ test fn githooks_pre_push_emit_witnesses() -> Bool {
     && witness_zero_sha_from_authority()
     && witness_claim_batch_wired()
     && witness_fmt_subsumed()
-    && witness_doc_gate_wired()
+    && witness_doc_witness_wired()
     && witness_trigger_globs_derived()
 }
