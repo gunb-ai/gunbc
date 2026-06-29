@@ -29,19 +29,21 @@ import gunbc.host_converge {
   RunnerSlice,
   SessionsSlice,
   HostConverge,
-  gunbc_fleet_pinned_tree_sha,
+  gunbc_pinned_tree_desired_label,
   gunbc_root_env_key,
   gunbc_host_gunbc_root_path,
   gunbc_host_ctrl_checkout_path,
   gunbc_dsl_root_submodule_path,
   gunbc_fleet_pinned_binary_registry,
   gunbc_ctrl_read_pin_script,
-  gunbc_ctrl_green_place_marker,
-  gunbc_ctrl_green_place_marker_pin_prefix,
-  gunbc_ctrl_green_place_marker_ts_prefix,
+  gunbc_ctrl_green_place_receipt_path,
+  gunbc_ctrl_green_place_verdict_green,
+  gunbc_ctrl_green_place_entrypoint,
+  gunbc_ctrl_quiescent_reload_hook,
   gunbc_spawn_retry_backstop_seconds,
   gunbc_process_effective_converged,
-  gunbc_green_place_marker_satisfied,
+  gunbc_green_place_receipt_satisfied,
+  gunbc_green_place_receipt_fresh,
   gunbc_sha_triple_coherent,
   converge_apply_mode_label,
   converge_no_op_policy_label,
@@ -50,7 +52,8 @@ import gunbc.host_converge {
   FreshStandup,
   ExistingHostQuiescentReload,
   ProcessEffective,
-  PinCoherentAndGreenPlaceMarker,
+  PinCoherentAndGreenPlaceReceipt,
+  GreenPlaceReceipt,
   gunbc_apply_mode_for_host,
   converge_verdict,
   converge_verdict_label,
@@ -214,25 +217,28 @@ fn witness_gunbc_pinned_tree_emitted() -> Bool {
     && has(s: sh, p: "converge_read_gunbc_host_pin()")
     && has(s: sh, p: "converge_read_ctrl_gunbc_pin()")
     && has(s: sh, p: "converge_dashboard_process_pin()")
-    && has(s: sh, p: "converge_green_place_marker_ok()")
-    && has(s: sh, p: "skip_process_pin_coherent_and_marker")
+    && has(s: sh, p: "converge_green_place_receipt_ok()")
+    && has(s: sh, p: "desired_pin=\"$ctrl_pin\"")
+    && has(s: sh, p: "skip_process_pin_coherent_and_receipt")
     && has(s: sh, p: "quiescent-window restart")
     && has(s: sh, p: "spawn-retry backstop")
     && has(s: sh, p: "converge_resolve_live_binary_root()")
     && has(s: sh, p: "emit_gunbc_pinned_detail()")
     && has(s: sh, p: "binary_dsl_sha_skew")
+    && has(s: sh, p: "gunbc_binary_sha=")
+    && has(s: sh, p: "submodule_dsl_sha=")
     && has(s: sh, p: concat("\"", gunbc_root_env_key, "\""))
     && has(s: sh, p: concat("\"", gunbc_host_gunbc_root_path, "\""))
     && has(s: sh, p: "defer_submodule")
     && has(s: sh, p: concat("\"", gunbc_dsl_root_submodule_path, "\""))
     && has(s: sh, p: "existing_host_quiescent")
-    && has(s: sh, p: to_string(gunbc_fleet_pinned_tree_sha))
+    && !has(s: sh, p: "53e066417e00ee56deb084ea75a969a7f3f96592")
     && has(s: sh, p: gunbc_fleet_pinned_binary_registry)
     && has(s: sh, p: gunbc_ctrl_read_pin_script)
-    && has(s: sh, p: gunbc_ctrl_green_place_marker)
-    && has(s: sh, p: gunbc_ctrl_green_place_marker_pin_prefix)
-    && has(s: sh, p: gunbc_ctrl_green_place_marker_ts_prefix)
-    && has(s: sh, p: "first_green_at=")
+    && has(s: sh, p: gunbc_ctrl_green_place_receipt_path)
+    && has(s: sh, p: gunbc_ctrl_green_place_verdict_green)
+    && has(s: sh, p: gunbc_ctrl_green_place_entrypoint)
+    && has(s: sh, p: gunbc_ctrl_quiescent_reload_hook)
 }
 
 fn witness_gunbc_apply_mode_srv3_fresh_standup() -> Bool {
@@ -241,31 +247,46 @@ fn witness_gunbc_apply_mode_srv3_fresh_standup() -> Bool {
 }
 
 fn witness_gunbc_noop_predicate_process_and_green_place() -> Bool {
-  let sha = to_string(gunbc_fleet_pinned_tree_sha)
-  let marker_line = concat(concat("pin=", sha), " first_green_at=2026-06-29T15:00:00Z")
-  gunbc_sha_triple_coherent(binary_pin: sha, dsl_pin: sha, ctrl_pin: sha, desired_sha: sha)
+  let sha = "53e066417e00ee56deb084ea75a969a7f3f96592"
+  let receipt = GreenPlaceReceipt {
+    gunbc_binary_sha: sha,
+    submodule_dsl_sha: sha,
+    verified_at: "2026-06-29T15:00:00Z",
+    verdict: gunbc_ctrl_green_place_verdict_green,
+    placement_entrypoint: gunbc_ctrl_green_place_entrypoint,
+  }
+  gunbc_sha_triple_coherent(binary_pin: sha, dsl_pin: sha, ctrl_pin: sha)
     && gunbc_pinned_noop_satisfied(
       binary_pin: sha,
       dsl_pin: sha,
       ctrl_pin: sha,
-      desired_sha: sha,
       process_pin: sha,
-      marker_line: marker_line,
-      marker_pin: sha,
+      receipt: receipt,
+      verdict_green: gunbc_ctrl_green_place_verdict_green,
     )
     && !gunbc_pinned_noop_satisfied(
       binary_pin: sha,
       dsl_pin: sha,
       ctrl_pin: sha,
-      desired_sha: sha,
       process_pin: "",
-      marker_line: marker_line,
-      marker_pin: sha,
+      receipt: receipt,
+      verdict_green: gunbc_ctrl_green_place_verdict_green,
     )
-    && !gunbc_green_place_marker_satisfied(marker_line: "pin=deadbeef", marker_pin: "deadbeef", desired_pin: sha)
-    && converge_no_op_policy_label(p: gunbc_pinned_noop_policy()) == "skip_process_pin_coherent_and_marker"
+    && !gunbc_green_place_receipt_fresh(
+      receipt: GreenPlaceReceipt {
+        gunbc_binary_sha: "deadbeef",
+        submodule_dsl_sha: sha,
+        verified_at: "2026-06-29T15:00:00Z",
+        verdict: gunbc_ctrl_green_place_verdict_green,
+        placement_entrypoint: gunbc_ctrl_green_place_entrypoint,
+      },
+      desired_pin: sha,
+      verdict_green: gunbc_ctrl_green_place_verdict_green,
+    )
+    && converge_no_op_policy_label(p: gunbc_pinned_noop_policy()) == "skip_process_pin_coherent_and_receipt"
     && gunbc_process_effective_converged(process_pin: sha, ctrl_pin: sha)
     && gunbc_spawn_retry_backstop_seconds == 600
+    && gunbc_pinned_tree_desired_label == "ctrl:third_party/gunbc"
 }
 
 fn first_host_knob_name(knobs: List<ConvergeKnob>) -> String {
