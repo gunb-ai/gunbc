@@ -1,5 +1,7 @@
 module v2.std.determinism
 
+import v2.std.collection { Optional, Absent, Present, optional_present }
+import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 
 type NonDetSource
@@ -16,3 +18,130 @@ type DeterminismFact {
   signature: Symbol,
   classification: DeterminismClass
 }
+
+fn non_det_source_eq(a: NonDetSource, b: NonDetSource) -> Bool {
+  match a {
+    HashIteration => match b {
+      HashIteration => true
+      _ => false
+    }
+    TimeRead => match b {
+      TimeRead => true
+      _ => false
+    }
+    RandomRead => match b {
+      RandomRead => true
+      _ => false
+    }
+    EnvRead => match b {
+      EnvRead => true
+      _ => false
+    }
+  }
+}
+
+fn determinism_class_eq(a: DeterminismClass, b: DeterminismClass) -> Bool {
+  match a {
+    Deterministic => match b {
+      Deterministic => true
+      _ => false
+    }
+    NonDeterministic { source: sa } => match b {
+      NonDeterministic { source: sb } => non_det_source_eq(a: sa, b: sb)
+      _ => false
+    }
+  }
+}
+
+fn determinism_primitive_lookup(sig: Symbol) -> Optional<DeterminismClass> {
+  if sig == ^pure_add {
+    optional_present(value: Deterministic)
+  } else if sig == ^sorted_export_set_map_keys {
+    optional_present(value: Deterministic)
+  } else if sig == ^unique_imported_variant_owner {
+    optional_present(value: Deterministic)
+  } else if sig == ^alpha_sorted_variant_fold {
+    optional_present(value: Deterministic)
+  } else if sig == ^find_struct_name_by_fields_disambiguation {
+    optional_present(value: Deterministic)
+  } else if sig == ^hash_map_keys_iter {
+    optional_present(value: NonDeterministic { source: HashIteration })
+  } else if sig == ^unordered_hash_map_iteration {
+    optional_present(value: NonDeterministic { source: HashIteration })
+  } else if sig == ^host_clock_now {
+    optional_present(value: NonDeterministic { source: TimeRead })
+  } else if sig == ^host_random_read {
+    optional_present(value: NonDeterministic { source: RandomRead })
+  } else if sig == ^host_env_var_read {
+    optional_present(value: NonDeterministic { source: EnvRead })
+  } else {
+    Absent
+  }
+}
+
+fn determinism_primitive_in_roster(sig: Symbol) -> Bool {
+  match determinism_primitive_lookup(sig: sig) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn determinism_of_primitive(sig: Symbol) -> DeterminismClass {
+  match determinism_primitive_lookup(sig: sig) {
+    Present { value: classification } => classification
+    Absent => NonDeterministic { source: EnvRead }
+  }
+}
+
+fn determinism_compose(outer: DeterminismClass, inner: DeterminismClass) -> DeterminismClass {
+  match outer {
+    NonDeterministic { source: source } => NonDeterministic { source: source }
+    Deterministic => inner
+  }
+}
+
+fn determinism_fact_for_signature(sig: Symbol) -> DeterminismFact {
+  DeterminismFact {
+    signature: sig,
+    classification: determinism_of_primitive(sig: sig)
+  }
+}
+
+data witness_pure_add_is_deterministic: Bool = determinism_class_eq(
+  a: determinism_of_primitive(sig: ^pure_add),
+  b: Deterministic
+)
+
+data witness_hash_map_keys_iter_is_hash_iteration_leak: Bool = determinism_class_eq(
+  a: determinism_of_primitive(sig: ^hash_map_keys_iter),
+  b: NonDeterministic { source: HashIteration }
+)
+
+data witness_deterministic_compose_is_deterministic: Bool = determinism_class_eq(
+  a: determinism_compose(
+    outer: Deterministic,
+    inner: Deterministic
+  ),
+  b: Deterministic
+)
+
+data witness_nondeterministic_compose_propagates_left: Bool = determinism_class_eq(
+  a: determinism_compose(
+    outer: NonDeterministic { source: HashIteration },
+    inner: Deterministic
+  ),
+  b: NonDeterministic { source: HashIteration }
+)
+
+data witness_nondeterministic_compose_propagates_right: Bool = determinism_class_eq(
+  a: determinism_compose(
+    outer: Deterministic,
+    inner: NonDeterministic { source: TimeRead }
+  ),
+  b: NonDeterministic { source: TimeRead }
+)
+
+data witness_sorted_export_set_map_keys_is_deterministic: Bool = determinism_class_eq(
+  a: determinism_of_primitive(sig: ^sorted_export_set_map_keys),
+  b: Deterministic
+)

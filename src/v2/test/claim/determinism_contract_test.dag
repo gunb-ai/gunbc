@@ -1,0 +1,66 @@
+module v2.test.claim.determinism_contract_test
+
+import v2.std.determinism {
+  Deterministic,
+  HashIteration,
+  NonDeterministic,
+  TimeRead,
+  determinism_class_eq,
+  determinism_compose,
+  determinism_fact_for_signature,
+  determinism_of_primitive,
+  determinism_primitive_in_roster,
+  witness_deterministic_compose_is_deterministic,
+  witness_hash_map_keys_iter_is_hash_iteration_leak,
+  witness_nondeterministic_compose_propagates_left,
+  witness_nondeterministic_compose_propagates_right,
+  witness_pure_add_is_deterministic,
+  witness_sorted_export_set_map_keys_is_deterministic
+}
+import v2.std.logic { Bool }
+
+test fn determinism_pure_add_is_deterministic_holds() -> Bool {
+  witness_pure_add_is_deterministic
+    && determinism_class_eq(
+      a: determinism_of_primitive(sig: ^pure_add),
+      b: Deterministic
+    )
+}
+
+test fn determinism_hash_map_keys_iter_is_hash_iteration_leak_holds() -> Bool {
+  witness_hash_map_keys_iter_is_hash_iteration_leak
+    && determinism_class_eq(
+      a: determinism_of_primitive(sig: ^hash_map_keys_iter),
+      b: NonDeterministic { source: HashIteration }
+    )
+}
+
+test fn determinism_compose_algebra_holds() -> Bool {
+  witness_deterministic_compose_is_deterministic
+    && witness_nondeterministic_compose_propagates_left
+    && witness_nondeterministic_compose_propagates_right
+    && determinism_class_eq(
+      a: determinism_compose(
+        outer: NonDeterministic { source: TimeRead },
+        inner: NonDeterministic { source: HashIteration }
+      ),
+      b: NonDeterministic { source: TimeRead }
+    )
+}
+
+test fn determinism_roster_5913_construction_rows_are_deterministic_holds() -> Bool {
+  witness_sorted_export_set_map_keys_is_deterministic
+    && determinism_primitive_in_roster(sig: ^unique_imported_variant_owner)
+    && determinism_primitive_in_roster(sig: ^alpha_sorted_variant_fold)
+    && determinism_primitive_in_roster(sig: ^find_struct_name_by_fields_disambiguation)
+    && determinism_class_eq(
+      a: determinism_of_primitive(sig: ^unique_imported_variant_owner),
+      b: Deterministic
+    )
+}
+
+test fn determinism_fact_for_signature_holds() -> Bool {
+  let fact = determinism_fact_for_signature(sig: ^pure_add)
+  fact.signature == ^pure_add
+    && determinism_class_eq(a: fact.classification, b: Deterministic)
+}
