@@ -27,6 +27,7 @@ import gunbc.host_standup {
   GreenPlacePinCoherentWitness,
   GreenPlaceFromGunbcGate,
   GreenPlacePinGap,
+  GreenPlacePinRefused,
   host_standup_p5_green_place_noop_gate_authority,
   host_standup_p5_green_place_marker_gate_authority,
   host_standup_p5_desired_pin_authority,
