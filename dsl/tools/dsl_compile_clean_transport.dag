@@ -202,3 +202,17 @@ fn run_dsl_shell_primary_precedence_receipt() -> Bool {
   let result = shell.Exec.Run(script: serialize_bash(p: compile_dsl_shell_primary_precedence_program()))
   result.success
 }
+
+fn shell_program_serializes_nonempty(p: ShellProgram) -> Bool {
+  length(serialize_bash(p: p)) > 0
+}
+
+/// Pure transport-shape checks for discovery-corpus witnesses. Host-effect compile
+/// receipts are owned by `tools.dsl_compile_clean_gate` (batch-1 gate), not re-run here.
+fn dsl_compile_clean_transport_programs_well_formed() -> Bool {
+  shell_program_serializes_nonempty(p: clean_tree_compile_program())
+    && shell_program_serializes_nonempty(p: compile_clean_perturb_program())
+    && shell_program_serializes_nonempty(p: compile_clean_unresolved_import_perturb_program())
+    && shell_program_serializes_nonempty(p: compile_cross_tree_green_program())
+    && shell_program_serializes_nonempty(p: compile_dsl_shell_primary_precedence_program())
+}
