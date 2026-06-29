@@ -27,7 +27,7 @@ import gunbc.ci_floor_measurement {
 }
 import gunbc.ci_fleet { fleet_intent_offers }
 import gunbc.fleet_intent_network { operator_host_srv3 }
-import extdeps.ctrl.gunbc_pin { gunbc_pin_match }
+import extdeps.ctrl.gunbc_pin { gunbc_pin_match, gunbc_pin_skewed }
 import gunbc.oomd_install { gunbc_oomd_sessions_policy, gunbc_oomd_sessions_slice }
 import gunbc.runner_slot_enforcement { gunbc_runner_slot_unit_placeholder }
 import extdeps.os.systemd {
@@ -67,13 +67,47 @@ data gunbc_fleet_pinned_binary_registry: String = "ghcr.io/gunb-ai/gunbc/bootstr
 
 data gunbc_fleet_pinned_binary_digest: String = "sha256:BOOTSTRAP_DIGEST_PLACEHOLDER"
 
+data gunbc_fleet_pinned_binary_digest_marker: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.host_converge",
+    decl_name: "gunbc_fleet_pinned_binary_digest",
+    field: WholeDeclaration
+  }
+}
+
 data gunbc_fleet_pinned_binary_name: String = "gunbc"
 
 data gunbc_ctrl_read_pin_script: String = "scripts/session-dashboard/container/read-gunbc-pin.sh"
 
 data gunbc_ctrl_placement_probe_script: String = "scripts/session-dashboard/lib/placement_query.mjs"
 
-data gunbc_ctrl_green_place_receipt: String = ".dashboard/converge-green-place.ok"
+data gunbc_ctrl_green_place_marker: String = ".dashboard/converge-green-place.marker"
+
+data gunbc_ctrl_green_place_marker_pin_prefix: String = "pin="
+
+data gunbc_ctrl_green_place_marker_ts_prefix: String = "first_green_at="
+
+data gunbc_spawn_retry_backstop_seconds: Int = 600
+
+type GreenPlaceReadinessMarker {
+  path: String
+  pin_field: String
+  timestamp_field: String
+}
+
+type SpawnRetryBackstop {
+  cadence_seconds: Int
+  role: String
+}
+
+type GunbcPinnedTreeDriftReceipt {
+  drift: Bool
+  reason: String
+  desired_gunbc_root: String
+  target_sha: String
+  dsl_binding_mode: String
+}
 
 type ConvergeVerdict
   = Converged
@@ -117,7 +151,13 @@ type ConvergeEffectiveSource
 
 type ConvergeDoneCondition
   = EffectiveEqualsDesired
-  | PinMatchAndGreenPlace
+  | PinCoherentAndGreenPlaceMarker
+
+type ConvergeLiveApplyPolicy {
+  restart: String
+  quiescent_window: Bool
+  backstop: SpawnRetryBackstop
+}
 
 type ConvergeNoOpPolicy
   = BlindApply
@@ -153,8 +193,8 @@ type ConvergeTarget
       expected_sha: String
       binary: GunbcBinaryProvenancePolicy
       pin_read_script: String
-      placement_probe_script: String
-      green_place_receipt: String
+      green_place_marker: GreenPlaceReadinessMarker
+      live_apply: ConvergeLiveApplyPolicy
     }
 
 type ConvergeKnob {
@@ -212,8 +252,8 @@ fn converge_apply_mode_label(m: ConvergeApplyMode) -> String {
 fn converge_no_op_policy_label(p: ConvergeNoOpPolicy) -> String {
   match p {
     BlindApply => "blind_apply"
-    SkipApplyWhenConverged { effective_source: ProcessEffective, done: PinMatchAndGreenPlace } =>
-      "skip_process_pin_and_green_place"
+    SkipApplyWhenConverged { effective_source: ProcessEffective, done: PinCoherentAndGreenPlaceMarker } =>
+      "skip_process_pin_coherent_and_marker"
     SkipApplyWhenConverged { effective_source: _, done: _ } => "skip_when_converged"
   }
 }
@@ -228,14 +268,77 @@ fn converge_effective_source_label(s: ConvergeEffectiveSource) -> String {
 fn converge_done_condition_label(d: ConvergeDoneCondition) -> String {
   match d {
     EffectiveEqualsDesired => "effective_equals_desired"
-    PinMatchAndGreenPlace => "pin_match_and_green_place"
+    PinCoherentAndGreenPlaceMarker => "pin_coherent_and_green_place_marker"
   }
 }
 
-fn gunbc_pinned_noop_satisfied(host_pin: String, ctrl_pin: String, desired_sha: String, green_place_ok: Bool) -> Bool {
-  gunbc_pin_match(read_pin: host_pin, desired_pin: desired_sha)
-    && gunbc_pin_match(read_pin: host_pin, desired_pin: ctrl_pin)
-    && green_place_ok
+fn gunbc_green_place_marker_spec() -> GreenPlaceReadinessMarker {
+  GreenPlaceReadinessMarker {
+    path: gunbc_ctrl_green_place_marker,
+    pin_field: gunbc_ctrl_green_place_marker_pin_prefix,
+    timestamp_field: gunbc_ctrl_green_place_marker_ts_prefix,
+  }
+}
+
+fn gunbc_dashboard_live_apply_policy() -> ConvergeLiveApplyPolicy {
+  ConvergeLiveApplyPolicy {
+    restart: "quiescent_window_systemd",
+    quiescent_window: true,
+    backstop: SpawnRetryBackstop {
+      cadence_seconds: gunbc_spawn_retry_backstop_seconds,
+      role: "acknowledged_auto_spawn_retry",
+    },
+  }
+}
+
+fn gunbc_sha_triple_coherent(binary_pin: String, dsl_pin: String, ctrl_pin: String, desired_sha: String) -> Bool {
+  gunbc_pin_match(read_pin: binary_pin, desired_pin: desired_sha)
+    && gunbc_pin_match(read_pin: dsl_pin, desired_pin: desired_sha)
+    && gunbc_pin_match(read_pin: dsl_pin, desired_pin: ctrl_pin)
+    && gunbc_pin_match(read_pin: binary_pin, desired_pin: dsl_pin)
+}
+
+fn gunbc_binary_dsl_skewed(binary_pin: String, dsl_pin: String) -> Bool {
+  binary_pin != "" && dsl_pin != "" && gunbc_pin_skewed(host_pin: binary_pin, ctrl_pin: dsl_pin)
+}
+
+fn gunbc_pinned_drift_receipt(
+  reason: String,
+  gunbc_root_path: String,
+  target_sha: String,
+  dsl_binding: DslRootBinding,
+) -> GunbcPinnedTreeDriftReceipt {
+  GunbcPinnedTreeDriftReceipt {
+    drift: true,
+    reason: reason,
+    desired_gunbc_root: gunbc_root_path,
+    target_sha: target_sha,
+    dsl_binding_mode: dsl_root_binding_mode(binding: dsl_binding),
+  }
+}
+
+fn gunbc_process_effective_converged(process_pin: String, ctrl_pin: String) -> Bool {
+  gunbc_pin_match(read_pin: process_pin, desired_pin: ctrl_pin)
+}
+
+fn gunbc_green_place_marker_satisfied(marker_line: String, marker_pin: String, desired_pin: String) -> Bool {
+  marker_line != ""
+    && gunbc_pin_match(read_pin: marker_pin, desired_pin: desired_pin)
+    && string_contains(s: marker_line, pattern: gunbc_ctrl_green_place_marker_ts_prefix)
+}
+
+fn gunbc_pinned_noop_satisfied(
+  binary_pin: String,
+  dsl_pin: String,
+  ctrl_pin: String,
+  desired_sha: String,
+  process_pin: String,
+  marker_line: String,
+  marker_pin: String,
+) -> Bool {
+  gunbc_sha_triple_coherent(binary_pin: binary_pin, dsl_pin: dsl_pin, ctrl_pin: ctrl_pin, desired_sha: desired_sha)
+    && gunbc_process_effective_converged(process_pin: process_pin, ctrl_pin: ctrl_pin)
+    && gunbc_green_place_marker_satisfied(marker_line: marker_line, marker_pin: marker_pin, desired_pin: desired_sha)
 }
 
 fn dsl_root_binding_mode(binding: DslRootBinding) -> String {
@@ -269,7 +372,7 @@ fn gunbc_apply_mode_for_host(host: HostIdentity) -> ConvergeApplyMode {
 fn gunbc_pinned_noop_policy() -> ConvergeNoOpPolicy {
   SkipApplyWhenConverged {
     effective_source: ProcessEffective,
-    done: PinMatchAndGreenPlace,
+    done: PinCoherentAndGreenPlaceMarker,
   }
 }
 
@@ -307,8 +410,8 @@ fn gunbc_pinned_tree_knob(host: HostIdentity) -> ConvergeKnob {
       expected_sha: gunbc_fleet_pinned_tree_sha,
       binary: gunbc_pinned_binary_provenance_policy(),
       pin_read_script: gunbc_ctrl_read_pin_script,
-      placement_probe_script: gunbc_ctrl_placement_probe_script,
-      green_place_receipt: gunbc_ctrl_green_place_receipt,
+      green_place_marker: gunbc_green_place_marker_spec(),
+      live_apply: gunbc_dashboard_live_apply_policy(),
     },
     apply_mode: gunbc_apply_mode_for_host(host: host),
     no_op: gunbc_pinned_noop_policy(),
