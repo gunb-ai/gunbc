@@ -20,7 +20,6 @@ import v2.std.node_minimal {
   minimal_node_kind_of,
   minimal_node_superset_field_unused_by_kind,
   minimal_substrate_node_from_v2,
-  minimal_superset_field_covered,
   minimal_superset_field_covered_by_kind,
   minimal_superset_partition_covers_all_fields,
   node_superset_field_count
@@ -87,11 +86,23 @@ fn witness_substrate_kind_has_zero_superset_fields() -> Bool {
 }
 
 fn witness_orphan_fields_placed_on_named_decl() -> Bool {
-  minimal_superset_field_covered_by_kind(field: NsfTransport, kind: MnkSurfaceNamedDecl)
-    && minimal_superset_field_covered_by_kind(field: NsfProperties, kind: MnkSurfaceNamedDecl)
-    && minimal_superset_field_covered_by_kind(field: NsfTypeAnnotation, kind: MnkSurfaceNamedDecl)
-    && minimal_superset_field_covered_by_kind(field: NsfIsSelfRecursive, kind: MnkSurfaceNamedDecl)
-    && minimal_superset_field_covered_by_kind(field: NsfHasNonTailSelfCall, kind: MnkSurfaceNamedDecl)
+  if minimal_superset_field_covered_by_kind(field: NsfTransport, kind: MnkSurfaceNamedDecl) {
+    if minimal_superset_field_covered_by_kind(field: NsfProperties, kind: MnkSurfaceNamedDecl) {
+      if minimal_superset_field_covered_by_kind(field: NsfTypeAnnotation, kind: MnkSurfaceNamedDecl) {
+        if minimal_superset_field_covered_by_kind(field: NsfIsSelfRecursive, kind: MnkSurfaceNamedDecl) {
+          minimal_superset_field_covered_by_kind(field: NsfHasNonTailSelfCall, kind: MnkSurfaceNamedDecl)
+        } else {
+          false
+        }
+      } else {
+        false
+      }
+    } else {
+      false
+    }
+  } else {
+    false
+  }
 }
 
 fn witness_minimal_node_kind_of_expr_leaf() -> Bool {
