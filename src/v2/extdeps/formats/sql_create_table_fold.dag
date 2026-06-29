@@ -185,7 +185,7 @@ fn sql_fold_column_def_emitted_witness(col: SqlColumnDefinition) -> Witness<Node
   }
 }
 
-data sql_fold_column_list_pair_encoding_dissolution_trigger: String = "🟡 dissolve-on: PR #5947 lands on main — delete sql_fold_column_list_single_emitted, sql_fold_column_list_pair_emitted, sql_fold_column_list_emitted_from_suffix_witness, sql_fold_column_list_leaf_productions, sql_fold_column_list_pair_productions; wire sql_production_fold_column_list through sql_fold_list_production_for_lhs generic list productions; pilot byte-identical floor witness is proven ONLY on generic list path, pair-encoding must not remain beside it"
+data sql_fold_column_list_catalog_dissolved: String = "dissolved: PR #5947 — leaf-only derive/match catalog split removed; column_list uses unified sql_fold_formal_productions with generic formal_productions_for_lhs filtering (leaf + list recursive productions)"
 
 fn sql_fold_column_list_single_emitted(col: Node) -> Node {
   Node {
@@ -423,7 +423,7 @@ fn sql_fold_column_list_leaf_productions() -> List<FormalProduction> {
   ]
 }
 
-fn sql_fold_column_list_pair_productions() -> List<FormalProduction> {
+fn sql_fold_column_list_list_productions() -> List<FormalProduction> {
   [
     grammar_formal_production(
       lhs: ^sql_production_fold_column_list,
@@ -479,42 +479,11 @@ fn sql_fold_create_table_pk_top_production() -> FormalProduction {
   )
 }
 
-fn sql_fold_derive_productions() -> List<FormalProduction> {
-  list_append(
-    list_append(
-      sql_fold_column_list_leaf_productions(),
-      sql_fold_column_list_pair_productions()
-    ),
-    [
-      sql_fold_column_def_production(),
-      sql_fold_primary_key_production()
-    ]
-  )
-}
-
 fn sql_fold_formal_productions() -> List<FormalProduction> {
   list_append(
     list_append(
-      list_append(
-        sql_fold_column_list_leaf_productions(),
-        sql_fold_column_list_pair_productions()
-      ),
-      [
-        sql_fold_column_def_production(),
-        sql_fold_primary_key_production(),
-        sql_fold_create_table_top_production(),
-        sql_fold_create_table_pk_top_production()
-      ]
-    ),
-    []
-  )
-}
-
-fn sql_fold_leaf_stmt_productions() -> List<FormalProduction> {
-  list_append(
-    list_append(
       sql_fold_column_list_leaf_productions(),
-      sql_fold_column_list_pair_productions()
+      sql_fold_column_list_list_productions()
     ),
     [
       sql_fold_column_def_production(),
@@ -525,32 +494,17 @@ fn sql_fold_leaf_stmt_productions() -> List<FormalProduction> {
   )
 }
 
-fn sql_fold_list_production_for_lhs(_lhs: Symbol) -> List<FormalProduction> {
-  []
-}
-
-fn sql_fold_productions_for_lhs(lhs: Symbol) -> List<FormalProduction> {
-  list_append(
-    list_append(
-      sql_fold_leaf_stmt_productions(),
-      sql_fold_list_production_for_lhs(lhs: lhs)
-    ),
-    []
-  )
-}
-
 fn sql_fold_relation_row_witness(emitted: Node, lhs: Symbol) -> Witness<Node> {
-  let match_productions = sql_fold_productions_for_lhs(lhs: lhs)
-  let derive_productions = sql_fold_derive_productions()
+  let productions = sql_fold_formal_productions()
   match formal_production_for_lhs_exact(
-    productions: match_productions,
+    productions: productions,
     lhs: lhs,
     child: emitted
   ) {
     Holds { value: production } =>
       derive_grammar_relation_row_node(
         production: production,
-        productions: derive_productions,
+        productions: productions,
         emitted: emitted
       )
     Violates { diagnostic: d } => Violates { diagnostic: d }
