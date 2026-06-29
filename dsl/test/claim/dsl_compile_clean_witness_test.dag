@@ -1,31 +1,11 @@
 module test.claim.dsl_compile_clean_witness
 
 import tools.dsl_compile_clean_transport {
-  run_clean_tree_compile,
-  run_cross_tree_import_green_receipt,
-  run_dsl_shell_primary_precedence_receipt,
-  run_perturb_optional_skew_red_receipt
+  dsl_compile_clean_transport_programs_serialize_compile_invocations,
+  red_empty_shell_program_fails_dcc_invocation_check
 }
 
-fn witness_clean_tree_compile_holds() -> Bool {
-  run_clean_tree_compile()
-}
-
-fn witness_cross_tree_import_compiles_green() -> Bool {
-  run_cross_tree_import_green_receipt()
-}
-
-fn witness_dsl_shell_primary_precedence_holds() -> Bool {
-  run_dsl_shell_primary_precedence_receipt()
-}
-
-fn witness_perturb_optional_skew_goes_red() -> Bool {
-  run_perturb_optional_skew_red_receipt()
-}
-
-test fn dsl_compile_clean_witnesses() -> Bool {
-  witness_clean_tree_compile_holds()
-    && witness_cross_tree_import_compiles_green()
-    && witness_dsl_shell_primary_precedence_holds()
-    && witness_perturb_optional_skew_goes_red()
+test fn dsl_compile_clean_transport_serializes_compile_invocations_holds() -> Bool {
+  dsl_compile_clean_transport_programs_serialize_compile_invocations()
+    && red_empty_shell_program_fails_dcc_invocation_check()
 }

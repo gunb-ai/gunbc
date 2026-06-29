@@ -1,0 +1,31 @@
+module v2.test.manual.gha_workflow_yaml_fold_runner
+
+import std.realization_schedule { Runnable, RunnableSingleClaim }
+import v2.std.collection { List }
+
+data gha_fold_structural_test_entry: String = "src/v2/test/claim/gha_workflow_yaml_fold_structural_test.dag"
+
+data gha_fold_serialize_test_entry: String = "src/v2/test/claim/gha_workflow_yaml_fold_serialize_test.dag"
+
+fn gha_workflow_yaml_fold_plan() -> List<List<Runnable>> {
+  [
+    [
+      RunnableSingleClaim {
+        entry: gha_fold_structural_test_entry,
+        function: "gha_fold_relation_row_job_witness_holds"
+      },
+      RunnableSingleClaim {
+        entry: gha_fold_serialize_test_entry,
+        function: "gha_fold_pilot_job_byte_identical_holds"
+      },
+      RunnableSingleClaim {
+        entry: gha_fold_serialize_test_entry,
+        function: "gha_fold_wrong_production_rejects_oracle_holds"
+      },
+      RunnableSingleClaim {
+        entry: gha_fold_serialize_test_entry,
+        function: "gha_fold_flat_steps_perturbation_rejects_oracle_holds"
+      }
+    ]
+  ]
+}

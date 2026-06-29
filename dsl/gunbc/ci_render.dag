@@ -121,3 +121,27 @@ fn render_percentile_box(title: String, p50: Int, p90: Int, p95: Int, p99: Int, 
 fn timing_histogram_frame(p50: Int, p90: Int, p95: Int, p99: Int, p100: Int, width: Int) -> Frame {
   percentiles_box_frame_ns(title: "WITNESS TIMING HISTOGRAM", p50: p50, p90: p90, p95: p95, p99: p99, p100: p100, width: width, tier: Unicode)
 }
+
+fn slowest_witness_row(rank: Int, function: String, entry: String, eval_ns: Int, resolve_ns: Int, total_ns: Int) -> String {
+  concat(
+    pad_to(text: concat(to_string(rank), "."), width: 3),
+    concat(" eval=", concat(
+      format_duration(d: nanosecond(count: eval_ns)),
+      concat(" total=", concat(
+        format_duration(d: nanosecond(count: total_ns)),
+        concat(" resolve=", concat(
+          format_duration(d: nanosecond(count: resolve_ns)),
+          concat("  ", concat(function, concat(" @ ", entry)))
+        ))
+      ))
+    ))
+  )
+}
+
+fn render_slowest_witnesses_box(body: List<String>, width: Int, color: Bool) -> String {
+  let cap = render_capability(color: color)
+  serialize_frame(
+    frame: boxed_frame(title: "TOP SLOWEST WITNESSES (by eval)", body: body, width: width, tier: cap.tier),
+    cap: cap
+  )
+}

@@ -17,10 +17,10 @@ import v2.compiler.infer {
   InferredTree,
   infer
 }
-import v2.test.manual.mvp1_rust_add_translate {
-  anchor_mvp1_emit_accepts,
-  mvp1_rust_inferred_tree,
-  mvp1_rust_target_model
+import v2.test.manual.rust_add_emit_translate {
+  anchor_rust_add_emit_accepts,
+  rust_add_inferred_tree,
+  rust_add_target_model
 }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
 import v2.std.algebra { Empty }
@@ -95,13 +95,13 @@ fn anchor_emit_rejects() -> Outcome<Medium<String>> {
 }
 
 fn anchor_emit_mvp1_accepts() -> Outcome<Medium<String>> {
-  anchor_mvp1_emit_accepts()
+  anchor_rust_add_emit_accepts()
 }
 
 fn anchor_compile_inferred_mvp1_accepts() -> Outcome<CompileOutput> {
   compile_inferred(
-    inferred: mvp1_rust_inferred_tree,
-    mode: TranslateTo { target: mvp1_rust_target_model }
+    inferred: rust_add_inferred_tree,
+    mode: TranslateTo { target: rust_add_target_model }
   )
 }
 
