@@ -1,6 +1,7 @@
 module v2.lens.intent_linearity
 import v2.lens.common.construction_justification { ConstructionJustification, ConstructionClass, WallNow, WallAfterGrounding, RatchetForever }
 import std.disposition { SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.lens.simulated_relationship { chain_is_simulated }
 import v2.lens.structural_similarity { type_decls_anti_unify }
 import v2.lens.complexity_lowering { cost_is_lowerable }
@@ -71,7 +72,7 @@ fn import_graph_rule() -> ParallelRepresentationRule {
     name: ^consumed_input_closure,
     axis: ChangeTime,
     representation: ImportGraph,
-    class: WallNow { construction: "v2.lens.module_graph.import_closure_live" },
+    class: WallNow { mechanism: SingleAuthority, authority: DeclarationRef { module_path: "v2.lens.module_graph", decl_name: "import_closure_live", field: WholeDeclaration } },
     derive: fn(entry, roots) { import_closure_live(entry_path: entry, pool_roots: roots) }
   }
 }
@@ -102,7 +103,7 @@ fn closure_is_clean(
   derived: FreeMonoid<String>
 ) -> Bool {
   match rule.class {
-    WallNow { construction: _ } => !closure_drift(declared: declared, derived: derived)
+    WallNow { mechanism: _, authority: _ } => !closure_drift(declared: declared, derived: derived)
     WallAfterGrounding { dissolves_to: _ } => true
     RatchetForever => true
   }
