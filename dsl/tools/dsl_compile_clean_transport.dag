@@ -212,10 +212,11 @@ data dcc_witness_root_v2_marker: String = "'src/v2'"
 data dcc_pool_index_marker: String = "'--dependency-pool-index' 'primary-precedence'"
 
 data clean_tree_compile_invocation_marker: String = "'compile' '--source-root' 'dsl'"
-data perturb_red_transport_marker: String = "'_perturb_compile_clean_red.dag'"
-data unresolved_import_transport_marker: String = "'_perturb_compile_clean_unresolved_import.dag'"
-data cross_tree_green_transport_marker: String = "'_perturb_compile_clean_cross_tree_green.dag'"
-data dsl_shell_primary_transport_marker: String = "'_perturb_compile_clean_dsl_shell_primary.dag'"
+data perturb_red_transport_marker: String = "_perturb_compile_clean_red.dag"
+data unresolved_import_transport_marker: String = "_perturb_compile_clean_unresolved_import.dag"
+data cross_tree_green_transport_marker: String = "_perturb_compile_clean_cross_tree_green.dag"
+data dsl_shell_primary_transport_marker: String = "_perturb_compile_clean_dsl_shell_primary.dag"
+data perturb_tmp_compile_invocation_marker: String = "'compile' '--source-root' \"$TMP\""
 
 fn shell_serializes_dcc_common_compile_invocation(script: String) -> Bool {
   script != ""
@@ -234,6 +235,13 @@ fn shell_program_serializes_dcc_invocation(p: ShellProgram, program_marker: Stri
     && string_contains(s: script, pattern: program_marker)
 }
 
+fn shell_program_serializes_perturb_dcc_invocation(p: ShellProgram, program_marker: String) -> Bool {
+  let script = serialize_bash(p: p)
+  shell_serializes_dcc_common_compile_invocation(script: script)
+    && string_contains(s: script, pattern: perturb_tmp_compile_invocation_marker)
+    && string_contains(s: script, pattern: program_marker)
+}
+
 fn red_empty_shell_program_fails_dcc_invocation_check() -> Bool {
   !shell_program_serializes_dcc_invocation(
     p: ShellProgram { set_e: true, statements: [] },
@@ -242,9 +250,29 @@ fn red_empty_shell_program_fails_dcc_invocation_check() -> Bool {
 }
 
 fn dsl_compile_clean_transport_programs_well_formed() -> Bool {
+  clean_tree_transport_serializes_dcc_invocation()
+    && perturb_red_transport_serializes_dcc_invocation()
+    && unresolved_import_transport_serializes_dcc_invocation()
+    && cross_tree_green_transport_serializes_dcc_invocation()
+    && dsl_shell_primary_transport_serializes_dcc_invocation()
+}
+
+fn clean_tree_transport_serializes_dcc_invocation() -> Bool {
   shell_program_serializes_dcc_invocation(p: clean_tree_compile_program(), program_marker: clean_tree_compile_invocation_marker)
-    && shell_program_serializes_dcc_invocation(p: compile_clean_perturb_program(), program_marker: perturb_red_transport_marker)
-    && shell_program_serializes_dcc_invocation(p: compile_clean_unresolved_import_perturb_program(), program_marker: unresolved_import_transport_marker)
-    && shell_program_serializes_dcc_invocation(p: compile_cross_tree_green_program(), program_marker: cross_tree_green_transport_marker)
-    && shell_program_serializes_dcc_invocation(p: compile_dsl_shell_primary_precedence_program(), program_marker: dsl_shell_primary_transport_marker)
+}
+
+fn perturb_red_transport_serializes_dcc_invocation() -> Bool {
+  shell_program_serializes_perturb_dcc_invocation(p: compile_clean_perturb_program(), program_marker: perturb_red_transport_marker)
+}
+
+fn unresolved_import_transport_serializes_dcc_invocation() -> Bool {
+  shell_program_serializes_perturb_dcc_invocation(p: compile_clean_unresolved_import_perturb_program(), program_marker: unresolved_import_transport_marker)
+}
+
+fn cross_tree_green_transport_serializes_dcc_invocation() -> Bool {
+  shell_program_serializes_perturb_dcc_invocation(p: compile_cross_tree_green_program(), program_marker: cross_tree_green_transport_marker)
+}
+
+fn dsl_shell_primary_transport_serializes_dcc_invocation() -> Bool {
+  shell_program_serializes_perturb_dcc_invocation(p: compile_dsl_shell_primary_precedence_program(), program_marker: dsl_shell_primary_transport_marker)
 }
