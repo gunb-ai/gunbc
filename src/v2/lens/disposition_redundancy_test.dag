@@ -23,6 +23,8 @@ import gunbc.tools.bmc_onboard {
   bmc_onboard_secret_on_disk_debt,
   bmc_redfish_json_concat_debt
 }
+import gunbc.bmc_onboarding { bmc_lifecycle_inverse_fidelity_inline_scaffold }
+import extdeps.github.expressions { gha_expression_roundtrip_canonical_inline_scaffold }
 import gunbc.ci_runner_placement {
   gunbc_ci_cpu_weight_unit_modeling_marker,
   gunbc_ci_count_field_measure_followup,
@@ -351,4 +353,35 @@ test fn redundancy_region_deconflation_terminal_marks_nonempty() -> Bool {
 
 test fn redundancy_region_deconflation_all_are_terminal() -> Bool {
   terminal_count(dispositions: redundancy_region_deconflation_terminal_marks) == 4
+}
+
+data redundancy_region_path_y_fidelity_carrier_marks: List<Disposition> = [
+  bmc_lifecycle_inverse_fidelity_inline_scaffold,
+  gha_expression_roundtrip_canonical_inline_scaffold
+]
+
+data redundancy_region_path_y_fidelity_carrier_successor_present: List<DeclarationRef> = [
+  DeclarationRef {
+    module_path: "v2.compiler.target_carriers",
+    decl_name: "decode_fidelity_from_target",
+    field: WholeDeclaration
+  }
+]
+
+test fn redundancy_region_path_y_fidelity_carrier_marks_nonempty() -> Bool {
+  length(xs: redundancy_region_path_y_fidelity_carrier_marks) == 2
+}
+
+test fn redundancy_region_path_y_fidelity_carrier_green_against_nonmatching() -> Bool {
+  disposition_redundancy_violation_count(
+    dispositions: redundancy_region_path_y_fidelity_carrier_marks,
+    present: redundancy_present_with_successor
+  ) == 0
+}
+
+test fn redundancy_region_path_y_fidelity_carrier_fires_when_successor_present() -> Bool {
+  disposition_redundancy_violation_count(
+    dispositions: redundancy_region_path_y_fidelity_carrier_marks,
+    present: redundancy_region_path_y_fidelity_carrier_successor_present
+  ) == 2
 }

@@ -9,6 +9,9 @@ import extdeps.bmc.types { RedfishBootSourceOverrideTarget, BootTargetPxe, Redfi
 import extdeps.bmc.openbmc { openbmc_factory_login }
 import extdeps.boards.asrock_rack { asrock_altrad8ud_redfish_system_id }
 import extdeps.communication.medium { DecodeFidelity, Lossless, Lossy, Medium }
+import extdeps.communication.fidelity_carriers { decode_fidelity_from_step_fidelities }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 type BmcOnboardingPhase =
     FactoryDefault
@@ -177,30 +180,28 @@ fn bmc_full_state_is_lossy_after_roundtrip(s: BmcLifecycleState) -> Bool {
   !(recovered == s)
 }
 
-fn bmc_decom_step_fidelity(into_phase: BmcOnboardingPhase) -> DecodeFidelity {
-  match into_phase {
-    FactoryDefault => Lossless
-    CredentialsRotated => Lossy
-    OsInstalled => Lossless
-    FabricJoined => Lossless
-  }
-}
+data bmc_lifecycle_decom_step_fidelities: List<DecodeFidelity> = [
+  Lossless,
+  Lossy,
+  Lossless,
+  Lossless
+]
 
-fn bmc_lifecycle_inverse_fidelity() -> DecodeFidelity {
-  fold(
-    bmc_onboarding_phase_order,
-    init: Lossless,
-    f: (acc, ph) => match acc {
-      Lossy => Lossy
-      Lossless => bmc_decom_step_fidelity(into_phase: ph)
-    }
-  )
+data bmc_lifecycle_inverse_fidelity_inline_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "v2.compiler.target_carriers",
+    decl_name: "decode_fidelity_from_target",
+    field: WholeDeclaration
+  }
 }
 
 fn bmc_lifecycle_roundtrip(s: BmcLifecycleState) -> Medium<BmcRecoverableInvariant> {
   Medium {
-    carried: bmc_recoverable_quotient(s: bmc_decom_to_factory_state(s: bmc_onboard_to_steady_state(s: s))),
-    fidelity: bmc_lifecycle_inverse_fidelity()
+    carried: bmc_recoverable_quotient(
+      s: bmc_decom_to_factory_state(s: bmc_onboard_to_steady_state(s: s))
+    ),
+    fidelity: decode_fidelity_from_step_fidelities(steps: bmc_lifecycle_decom_step_fidelities)
   }
 }
 

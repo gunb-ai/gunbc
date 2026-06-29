@@ -1,5 +1,6 @@
 module v2.compiler.target_carriers
 
+import extdeps.communication.fidelity_carriers { decode_fidelity_merge }
 import extdeps.communication.medium { DecodeFidelity, Lossless, Lossy, Medium }
 import v2.std.compilers.target_model { TargetModel }
 import v2.std.collection { Absent, Optional, Present }
@@ -25,13 +26,6 @@ fn source_medium(text: String, fidelity: DecodeFidelity) -> Medium<String> {
 
 fn lossless_source(text: String) -> Medium<String> {
   source_medium(text: text, fidelity: Lossless)
-}
-
-fn decode_fidelity_merge(left: DecodeFidelity, right: DecodeFidelity) -> DecodeFidelity {
-  match left {
-    Lossy => Lossy
-    Lossless => right
-  }
 }
 
 data target_carriers_fidelity_disposition_decode_dissolution_trigger: String = "🟡 undeclared-sum: atom-id + named-child probe standing in for typed DecodeFidelityDisposition coproduct dispatch — consumes existing Node grammar from extdeps.languages.dag dag_fidelity_disposition_node; dissolves when TargetModel carries DecodeFidelityDisposition = Modeled | DeclaredNormalized | FailClosed so the validator family dispatches on the coproduct instead of predicate probing"
