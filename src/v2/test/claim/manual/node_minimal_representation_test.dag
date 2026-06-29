@@ -1,0 +1,170 @@
+module v2.test.manual.node_minimal_representation_test
+
+import v2.std.node { Node, SyntheticOccurrence, TypeNode, Atom }
+import v2.std.node_minimal {
+  MnkSubstrateGraph,
+  MnkSurfaceExprLeaf,
+  MrnSubstrateGraph,
+  NsfConnective,
+  NsfParams,
+  NsfUses,
+  NsfBody,
+  minimal_expr_leaf_example,
+  minimal_kind_migrated_to_facts,
+  minimal_kind_owed_placement,
+  minimal_kind_placed_fields_union,
+  minimal_node_kind_live_field_count,
+  minimal_node_kind_of,
+  minimal_node_superset_field_unused_by_kind,
+  minimal_substrate_node_from_v2,
+  node_superset_field_count,
+  witness_all_node_superset_fields_roster_length,
+  witness_partition_covers_superset
+}
+import v2.std.verification {
+  CompilesClaim,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Unit,
+  manual_claim_anchor
+}
+
+fn substrate_v2_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^node_minimal_probe } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn witness_expr_leaf_field_count_below_superset() -> Bool {
+  minimal_node_kind_live_field_count(kind: MnkSurfaceExprLeaf) < node_superset_field_count
+}
+
+fn witness_expr_leaf_drops_connective_and_params() -> Bool {
+  if minimal_node_superset_field_unused_by_kind(kind: MnkSurfaceExprLeaf, field: NsfConnective) {
+    if minimal_node_superset_field_unused_by_kind(kind: MnkSurfaceExprLeaf, field: NsfParams) {
+      if minimal_node_superset_field_unused_by_kind(kind: MnkSurfaceExprLeaf, field: NsfUses) {
+        minimal_node_superset_field_unused_by_kind(kind: MnkSurfaceExprLeaf, field: NsfBody)
+      } else {
+        false
+      }
+    } else {
+      false
+    }
+  } else {
+    false
+  }
+}
+
+fn witness_substrate_kind_round_trips_v2_node() -> Bool {
+  match minimal_substrate_node_from_v2(node: substrate_v2_node()) {
+    MrnSubstrateGraph {
+      kind: TypeNode { connective: Atom { identity: sym } },
+      children: c,
+      occurrence_id: SyntheticOccurrence
+    } => (sym == ^node_minimal_probe) && (c |> count == 0)
+    MrnSurfaceExprLeaf { expr: _, provenance: _, inference: _ } => false
+    MrnSurfaceExprParent { expr: _, provenance: _, children: _, inference: _ } => false
+    MrnSurfaceConnective { connective: _, provenance: _, children: _, params: _, uses: _, inference: _ } => false
+    MrnSurfaceNamedDecl { role: _, provenance: _, payload: _, inference: _ } => false
+    MrnSurfaceMatchArm { pattern: _, provenance: _, children: _ } => false
+  }
+}
+
+fn witness_substrate_kind_has_zero_superset_fields() -> Bool {
+  minimal_node_kind_live_field_count(kind: MnkSubstrateGraph) == 0
+}
+
+fn witness_minimal_node_kind_of_expr_leaf() -> Bool {
+  match minimal_node_kind_of(node: minimal_expr_leaf_example()) {
+    MnkSurfaceExprLeaf => true
+    MnkSubstrateGraph => false
+    MnkSurfaceExprParent => false
+    MnkSurfaceConnective => false
+    MnkSurfaceNamedDecl => false
+    MnkSurfaceMatchArm => false
+  }
+}
+
+fn witness_placed_bucket_count() -> Bool {
+  count(minimal_kind_placed_fields_union()) == 12
+}
+
+fn witness_owed_bucket_count() -> Bool {
+  count(minimal_kind_owed_placement) == 3
+}
+
+fn witness_migrated_bucket_count() -> Bool {
+  count(minimal_kind_migrated_to_facts) == 3
+}
+
+data witness_node_minimal_expr_leaf_field_count: Bool = witness_expr_leaf_field_count_below_superset()
+
+data witness_node_minimal_expr_leaf_drops_dead_fields: Bool = witness_expr_leaf_drops_connective_and_params()
+
+data witness_node_minimal_substrate_round_trip: Bool = witness_substrate_kind_round_trips_v2_node()
+
+data witness_node_minimal_substrate_zero_superset: Bool = witness_substrate_kind_has_zero_superset_fields()
+
+data witness_node_minimal_kind_of_expr_leaf: Bool = witness_minimal_node_kind_of_expr_leaf()
+
+data witness_node_minimal_roster_length_matches_count: Bool = witness_all_node_superset_fields_roster_length()
+
+data witness_node_minimal_partition_covers_superset: Bool = witness_partition_covers_superset()
+
+data witness_node_minimal_placed_bucket_count: Bool = witness_placed_bucket_count()
+
+data witness_node_minimal_owed_bucket_count: Bool = witness_owed_bucket_count()
+
+data witness_node_minimal_migrated_bucket_count: Bool = witness_migrated_bucket_count()
+
+test fn node_minimal_expr_leaf_field_count_below_superset_holds() -> Bool {
+  witness_node_minimal_expr_leaf_field_count
+}
+
+test fn node_minimal_expr_leaf_drops_dead_fields_holds() -> Bool {
+  witness_node_minimal_expr_leaf_drops_dead_fields
+}
+
+test fn node_minimal_substrate_round_trips_v2_node_holds() -> Bool {
+  witness_node_minimal_substrate_round_trip
+}
+
+test fn node_minimal_substrate_has_no_superset_fields_holds() -> Bool {
+  witness_node_minimal_substrate_zero_superset
+}
+
+test fn node_minimal_kind_of_expr_leaf_holds() -> Bool {
+  witness_node_minimal_kind_of_expr_leaf
+}
+
+test fn node_minimal_roster_length_matches_superset_count_holds() -> Bool {
+  witness_node_minimal_roster_length_matches_count
+}
+
+test fn witness_partition_covers_superset_holds() -> Bool {
+  witness_node_minimal_partition_covers_superset
+}
+
+test fn node_minimal_placed_bucket_count_holds() -> Bool {
+  witness_node_minimal_placed_bucket_count
+}
+
+test fn node_minimal_owed_bucket_count_holds() -> Bool {
+  witness_node_minimal_owed_bucket_count
+}
+
+test fn node_minimal_migrated_bucket_count_holds() -> Bool {
+  witness_node_minimal_migrated_bucket_count
+}
+
+data claim_node_minimal_representation_compiles: TestClaim = CompilesClaim {
+  label: "manual/node_minimal_representation: per-kind MinimalResolvedNode model sketch compiles",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: substrate_v2_node(),
+  expected_value: substrate_v2_node(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}

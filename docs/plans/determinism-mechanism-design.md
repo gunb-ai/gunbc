@@ -1,7 +1,8 @@
 # Determinism mechanism — design proposal (§5)
 
-> **Status: DESIGN-ONLY — awaiting operator shape-sign.** No `std/` or `lens/` authoring until signed.
-> Lane: `v2.std.determinism` inert-carrier activation (keen-bat-281).
+> **Status: OPERATOR SHAPE-SIGNED — P1 landed in #5941 (sunny-wolf-582).** Supersedes #5937 (keen-bat-281) design-for-sign draft; signed status + FLAG locks authoritative here.
+> **FLAG 1 = A** (bundle determinism into #3468 `InferredFacts` block); **FLAG 2 = C** (refinement + emit + determinism horizontal).
+> Lane: `v2.std.determinism` inert-carrier activation (keen-bat-281 → sunny-wolf-582 P1).
 > DESIGN refs: §2 (horizontal — one perturbation/determinism kernel, many readings; deep — ground `NonDetSource` atoms), §3 (single authority vs `behavioral.determinism`, `perturbation`, `emit_determinism_gate`), §5 (construction over validation; decidability trichotomy), §6 (inert carrier → wired consumer; priced in displaced cost), §7 (signature-derived classification dissolves the lens).
 >
 > Every unresolved item is either a **decided-with-rationale** entry (§8) or one of **two genuine operator FLAGS**.
@@ -352,9 +353,7 @@ Existing witness: unordered classifier → `^naming_the_leak`. Add horizontal li
 ### Genuine operator FLAGS (2 only)
 
 **FLAG 1 — `InferredFacts` seam architecture (#3468 bundle).**
-- **Decision:** bundle determinism with the #3468 signature-derived facts block (effect + ownership + determinism) vs a separate `determinism_facts` side-map.
-- **Options:** (A) one bundled extension on `InferredFacts`; (B) parallel side-map keyed by signature.
-- **Recommendation: A** — one signature-derived authority block; avoids three parallel per-edge ratchets. *This is a shared-seam architecture call the analysis cannot close without operator judgment on #3468 sequencing.*
+- **Decision (OPERATOR-LOCKED): A** — bundle determinism with the #3468 signature-derived facts block (effect + ownership + determinism); not a parallel side-map.
 
 **FLAG 2 — Refinement / emit / determinism horizontal (ordered container construction).**
 - **Decision:** how three subsystems jointly guarantee ordered map iteration on output-affecting paths.
@@ -373,4 +372,4 @@ Delete or fold this doc when:
 4. `emit_determinism_gate` failures surface the first located `NonDetSource` on the emit chain;
 5. `DeterminismAxis` is the single core; `OperationDeterminism` projects from `DeterminismFact` without re-declaring `Deterministic | NonDeterministic`.
 
-Until operator shape-sign on §4–§6, **no `std/` or `lens/` edits** — this document is the sole artifact.
+P1 substrate authoring (`dsl/std/determinism.dag`, `v2.std.determinism` roster/compose/witnesses, `determinism_contract_test.dag`) proceeds under this signed shape; lens wiring remains P2+.
