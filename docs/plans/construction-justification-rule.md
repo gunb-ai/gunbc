@@ -4,13 +4,13 @@
 
 ## 1. The rule
 
-DESIGN §6: a lens is **validation** — it concedes the bad state is *writable*. So **before adding any lens**, justify why its target bad-state class cannot be made *unwritable by construction* (single authority / realization derived from model). Convert what can be converted; reserve a lens only for the genuinely **unstructurable residue**. Each lens must classify its target class into one of DESIGN §5's three buckets, with a rationale:
+DESIGN §6: a lens is **validation** — it concedes the bad state is *writable*. So **before adding any lens**, justify why its target bad-state class cannot be made *unwritable by construction* (single authority / realization derived from model). Convert what can be converted; reserve a lens only for the genuinely **unstructurable residue**. Each lens must classify its target class into one of DESIGN §5's three buckets:
 
 | Class | DESIGN §5 / frontier §2 | Meaning for a lens |
 | --- | --- | --- |
 | `WallNow` | wall-now / ① Wall | Decidable **and** grounded now: a single authority already makes the bad state unwritable, or the value is total-by-construction. A thing in this class **should be construction, not a validation lens** — recording `WallNow` honestly says "this module filed under `v2.lens.*` is actually a construction" (a §3 home question). |
 | `WallAfterGrounding` | wall-after-grounding / ② Lens-residue | Decidable, but the construction is not built yet. An **interim, shrinking** lens that names the `grounding_authority` that will turn it into a wall and the `dissolve_on` trigger that deletes it. |
-| `RatchetForever` | ratchet-forever / ③ Inexpressible | Undecidable (Rice) or needs domain knowledge. A **permanent** residue / honest review — never a wall. `undecidable_because` states which. Pricing this region as a wall is the §5 "never" trap. |
+| `RatchetForever` | ratchet-forever / ③ Inexpressible | Undecidable (Rice) or needs domain knowledge. A **permanent** residue / honest review — never a wall. Pricing this region as a wall is the §5 "never" trap. |
 
 This is **not a parallel taxonomy** (§3): the names are DESIGN §5's, which [expressibility-frontier.md](expressibility-frontier.md) §2 generalizes into regions ①/②/③. The single authority for the typed model is `v2.lens.common.construction_justification`.
 
@@ -25,7 +25,7 @@ A judgment applied at authoring time **executes nothing**, so it can never repla
 
 ## 3. The shape — construction applied to the rule itself (§7 recursion)
 
-The **judgment** (which class, and the rationale) is human and unstructurable — its *correctness* cannot be machine-verified (deciding decidability is itself ③, see frontier §6). But the **requirement to have recorded a judgment is structurable**, so we make the *missing-justification* state unwritable:
+The **judgment** (which class) is human and unstructurable — its *correctness* cannot be machine-verified (deciding decidability is itself ③, see frontier §6). But the **requirement to have recorded a judgment is structurable**, so we make the *missing-justification* state unwritable:
 
 - **Carrier (the mark, §3/§6):** every lens module declares `data construction_justification: ConstructionJustification = …` — the judgment lives **on the lens**, not in a parallel ledger. This mirrors the `extdeps_external_authority_anchor` precedent (a fixed-name required decl per module).
 - **Fail-closed presence check:** `discover_floor_corpus_rows` captures which lenses carry the decl during its single walk (zero extra IO) and **fails the floor closed** on any top-level lens that does not. A lens stripped of its justification goes **RED** (green-by-execution; discriminating on revert — `construction_justification_hygiene_tests`).
@@ -37,7 +37,7 @@ So the bad state ("a lens with no recorded reason to be a lens") is unwritable b
 - `v2.lens.common.construction_justification` — the typed model (`ConstructionClass` + `ConstructionJustification`).
 - All 35 top-level `v2.lens.*` modules carry a recorded justification (retroactive classification from each lens's existing header — the audit that surfaces any lens that is secretly a `WallNow`).
 - Presence check + discriminating tests wired into `discover_floor_corpus_rows`.
-- **Vacuity residual (honest bound):** the presence check enforces that a well-typed `construction_justification` exists, but an empty/stub value (`rationale: ""`, `grounding_authority: ""`) still typechecks — i.e. the carrier is *stub-satisfiable*. Closing this by construction wants a non-empty-string refinement on the payload fields, but v2 has **no `NonEmptyStr`** (it lives in `dsl/std/types.dag`; the v2 std omits it), so making vacuity unwritable is itself a **WallAfterGrounding** — dissolve-on: a v2 refinement-type / `NonEmptyStr` (or the cross-tree import of `dsl`'s), which is nimble-koi's load-bearing lane. Until then the empty-field case is honest review residue, not a silent gap.
+- **Vacuity residual (honest bound):** the free-text prose payloads (the per-justification `rationale` and `RatchetForever`'s `undecidable_because`) were the stub-satisfiable surface — unverifiable strings that no consumer reads, a §6 parallel-ledger — and have been removed; the judgment now lives entirely in the *typed* `ConstructionClass` (the structured `dissolves_to: ConstructionMechanism` on `WallAfterGrounding` is grounded, not free text). The one remaining free string is `WallNow { construction }`; its empty-string vacuity stays a **WallAfterGrounding** until v2 gains a non-empty-string refinement (`NonEmptyStr` lives in `dsl/std/types.dag`; the v2 std omits it). Until then the empty-`construction` case is honest review residue, not a silent gap.
 - **Residue / follow-on (honest):** the *correctness* of each recorded class is review, not gated. Modules recorded as `WallNow` (cost, application_serializer) and the support module `affected_set_examples` flag a §3 home question — they are computations/support filed under `v2.lens.*`, not validation lenses; relocating them is out of scope here (it touches module resolution) and is left as a marked follow-up.
 
 ## Dissolution trigger (DESIGN §6)

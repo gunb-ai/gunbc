@@ -4238,8 +4238,7 @@ mod construction_justification_hygiene_tests {
         let with = "module v2.lens.demo\n\
             import v2.lens.common.construction_justification { ConstructionJustification, RatchetForever }\n\
             data construction_justification: ConstructionJustification = ConstructionJustification {\n\
-              class: RatchetForever { undecidable_because: \"x\" },\n\
-              rationale: \"y\"\n\
+              class: RatchetForever\n\
             }\n";
         assert!(declares_construction_justification(with));
 

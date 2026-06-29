@@ -104,7 +104,7 @@ fn closure_is_clean(
   match rule.class {
     WallNow { construction: _ } => !closure_drift(declared: declared, derived: derived)
     WallAfterGrounding { dissolves_to: _ } => true
-    RatchetForever { undecidable_because: _ } => true
+    RatchetForever => true
   }
 }
 
