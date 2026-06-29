@@ -17,6 +17,8 @@ import gunbc.ci_gate {
   SourceRootIngestGate, RegenVerifyGate, EmitDeterminismGate,
 }
 import std.content_hash { content_hash_atom, content_hash_combine, content_hash_tagged }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 type MergeStrategy
   = SquashMerge
@@ -50,6 +52,15 @@ data gunbc_repo_standard: RepoStandard = RepoStandard {
   require_up_to_date: false,
   merge_queue_required: false,
   branch_name_convention: "session/<id>",
+}
+
+data gate_content_hash_variant_tag_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.merge_admission",
+    decl_name: "gate_content_hash",
+    field: WholeDeclaration
+  }
 }
 
 fn gate_content_hash(g: Gate) -> ContentHash {
