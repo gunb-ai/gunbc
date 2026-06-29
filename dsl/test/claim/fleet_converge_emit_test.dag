@@ -35,17 +35,23 @@ import gunbc.host_converge {
   gunbc_host_ctrl_checkout_path,
   gunbc_dsl_root_submodule_path,
   gunbc_fleet_pinned_binary_registry,
+  gunbc_ctrl_read_pin_script,
+  gunbc_ctrl_green_place_receipt,
   converge_apply_mode_label,
   converge_no_op_policy_label,
+  gunbc_pinned_noop_policy,
+  gunbc_pinned_noop_satisfied,
   FreshStandup,
-  ExistingHostReConverge,
-  SkipApplyWhenConverged,
+  ExistingHostQuiescentReload,
+  ProcessEffective,
+  PinMatchAndGreenPlace,
   gunbc_apply_mode_for_host,
   converge_verdict,
   converge_verdict_label,
   fleet_converge_policy_from,
   fleet_converge_policy,
 }
+import extdeps.ctrl.gunbc_pin { gunbc_pin_match }
 import gunbc.fleet_intent_network { operator_host_srv3 }
 import gunbc.fleet_converge_emit {
   expected_fleet_converge_sh,
@@ -199,21 +205,37 @@ fn witness_drift_perturbed_desired_flips_emit() -> Bool {
 fn witness_gunbc_pinned_tree_emitted() -> Bool {
   let sh = fixture_sound_sh()
   has(s: sh, p: "converge_gunbc_pinned_tree()")
-    && has(s: sh, p: "skip_when_converged")
-    && has(s: sh, p: "refusing blind apply")
+    && has(s: sh, p: "converge_read_gunbc_host_pin()")
+    && has(s: sh, p: "converge_read_ctrl_gunbc_pin()")
+    && has(s: sh, p: "converge_dashboard_process_gunbc_root()")
+    && has(s: sh, p: "converge_green_place_ok()")
+    && has(s: sh, p: "skip_process_pin_and_green_place")
+    && has(s: sh, p: "quiescent-window reload")
     && has(s: sh, p: concat("\"", gunbc_root_env_key, "\""))
     && has(s: sh, p: concat("\"", gunbc_host_gunbc_root_path, "\""))
     && has(s: sh, p: "defer_submodule")
     && has(s: sh, p: concat("\"", gunbc_dsl_root_submodule_path, "\""))
-    && has(s: sh, p: "existing_host")
+    && has(s: sh, p: "existing_host_quiescent")
     && has(s: sh, p: to_string(gunbc_fleet_pinned_tree_sha))
     && has(s: sh, p: gunbc_fleet_pinned_binary_registry)
-    && has(s: sh, p: "NO-OP-WHEN-ALREADY-CORRECT")
+    && has(s: sh, p: gunbc_ctrl_read_pin_script)
+    && has(s: sh, p: gunbc_ctrl_green_place_receipt)
+    && has(s: sh, p: "readGunbcPinStamp authority")
+    && has(s: sh, p: "PROCESS-effective GUNBC_ROOT")
 }
 
 fn witness_gunbc_apply_mode_srv3_fresh_standup() -> Bool {
   converge_apply_mode_label(m: gunbc_apply_mode_for_host(host: operator_host_srv3)) == "fresh_standup"
-    && converge_apply_mode_label(m: gunbc_apply_mode_for_host(host: "srv1")) == "existing_host"
+    && converge_apply_mode_label(m: gunbc_apply_mode_for_host(host: "srv1")) == "existing_host_quiescent"
+}
+
+fn witness_gunbc_noop_predicate_process_and_green_place() -> Bool {
+  let sha = to_string(gunbc_fleet_pinned_tree_sha)
+  gunbc_pinned_noop_satisfied(host_pin: sha, ctrl_pin: sha, desired_sha: sha, green_place_ok: true)
+    && !gunbc_pinned_noop_satisfied(host_pin: sha, ctrl_pin: sha, desired_sha: sha, green_place_ok: false)
+    && !gunbc_pinned_noop_satisfied(host_pin: "deadbeef", ctrl_pin: sha, desired_sha: sha, green_place_ok: true)
+    && converge_no_op_policy_label(p: gunbc_pinned_noop_policy()) == "skip_process_pin_and_green_place"
+    && gunbc_pin_match(read_pin: sha, desired_pin: sha)
 }
 
 fn first_host_knob_name(knobs: List<ConvergeKnob>) -> String {
@@ -249,6 +271,7 @@ test fn fleet_converge_emit_holds() -> Bool {
     && witness_emitted_bash_realizes_verdict()
     && witness_drift_perturbed_desired_flips_emit()
     && witness_gunbc_pinned_tree_emitted()
+    && witness_gunbc_noop_predicate_process_and_green_place()
     && witness_gunbc_apply_mode_srv3_fresh_standup()
     && witness_gunbc_pinned_tree_runs_first()
     && witness_sessions_membership_line_emitted()

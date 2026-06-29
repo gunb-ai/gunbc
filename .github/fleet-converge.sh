@@ -111,24 +111,77 @@ converge_verify_only_cap() {
   record "$verdict"
 }
 
+converge_read_gunbc_host_pin() {
+  # readGunbcPinStamp authority (gunbc_run.mjs): stamp files, then git HEAD — NOT shell env.
+  local root="$1" pin=""
+  for stamp in dsl-version interpreter-version; do
+    if [ -f "$root/$stamp" ]; then
+      pin="$(grep -Eo '[0-9a-f]\{40\}' "$root/$stamp" 2>/dev/null | head -n1 || true)"
+      if [ -n "$pin" ]; then printf '%s\n' "$pin"; return; fi
+    fi
+  done
+  if [ -d "$root/.git" ]; then
+    pin="$(git -C "$root" rev-parse HEAD 2>/dev/null | tr -d ' ' || true)"
+    if [ -n "$pin" ]; then printf '%s\n' "$pin"; return; fi
+  fi
+  printf '\n'
+}
+
+converge_read_ctrl_gunbc_pin() {
+  # readCtrlGunbcPin / read-gunbc-pin.sh authority: third_party/gunbc gitlink.
+  local ctrl="$1" script="$2" pin=""
+  if [ -f "$ctrl/$script" ]; then
+    pin="$(bash "$ctrl/$script" "$ctrl" 2>/dev/null || true)"
+  else
+    pin="$(git -C "$ctrl" rev-parse --verify --quiet 'HEAD:third_party/gunbc' 2>/dev/null || true)"
+  fi
+  printf '%s\n' "$pin"
+}
+
+converge_dashboard_process_gunbc_root() {
+  # PROCESS-effective GUNBC_ROOT: live dashboard PID environ, NOT env file on disk.
+  local pid="" root=""
+  for svc in ctrl-dashboard session-dashboard dashboard; do
+    pid="$(systemctl show "$svc" --property=MainPID --value 2>/dev/null || true)"
+    if [ -n "$pid" ] && [ "$pid" != "0" ] && [ -r "/proc/$pid/environ" ]; then
+      root="$(tr '\0' '\n' < "/proc/$pid/environ" | grep -E '^GUNBC_ROOT=' | head -n1 | cut -d= -f2- || true)"
+      printf '%s\n' "$root"; return
+    fi
+  done
+  printf '\n'
+}
+
+converge_green_place_ok() {
+  # FAIL-CLOSED verify (§5): pinned tree must place() GREEN — receipt from keen-dove consumer.
+  local ctrl="$1" receipt="$2"
+  [ -f "$ctrl/$receipt" ]
+}
+
 converge_gunbc_pinned_tree() {
-  # host slice knob apply_mode no_op gunbc_root_env gunbc_root_path dsl_mode dsl_path ctrl_checkout expected_sha bin_registry bin_digest bin_name
-  # NO-OP-WHEN-ALREADY-CORRECT: skip fetch/checkout/reload when GUNBC_ROOT + submodule sha + bin already match desired.
-  # LIVE-APPLY: existing_host refuses blind apply on drift (drain-aware reload is keen-dove/dashboard seam).
+  # host slice knob apply_mode no_op gunbc_root_env gunbc_root_path dsl_mode dsl_path ctrl_checkout expected_sha
+  #   bin_registry bin_digest bin_name pin_read_script placement_probe_script green_place_receipt
+  # NO-OP: PROCESS-level pin match (readPin===ctrlPin===desired) + green-place receipt — NOT file/env-only.
+  # LIVE-APPLY: existing_host_quiescent refuses blind apply on drift; reload in quiescent window (keen-dove seam).
   if [ "$8" = "defer_submodule" ]; then checkout="$10/$9"; else checkout="$9"; fi
-  effective_sha=""
-  if [ -d "$checkout/.git" ]; then effective_sha="$(cd "$checkout" && git rev-parse HEAD 2>/dev/null | tr -d ' ' || true)"; fi
-  eval "effective_gunbc_root=\${$6:-}"
-  bin_ok=0
-  if [ -x "$7/gunbc" ]; then bin_ok=1; fi
-  if [ "$5" = "skip_when_converged" ] && [ "$effective_sha" = "$11" ] && [ "$effective_gunbc_root" = "$7" ] && [ "$bin_ok" -eq 1 ]; then
-    verdict=converged; effective="$effective_sha"
+  ctrl_pin="$(converge_read_ctrl_gunbc_pin "$10" "$15")"
+  host_pin="$(converge_read_gunbc_host_pin "$checkout")"
+  process_root="$(converge_dashboard_process_gunbc_root)"
+  process_pin=""
+  if [ -n "$process_root" ]; then process_pin="$(converge_read_gunbc_host_pin "$process_root")"; fi
+  pin_ok=0
+  if [ -n "$ctrl_pin" ] && [ -n "$host_pin" ] && [ "$host_pin" = "$ctrl_pin" ] && [ "$host_pin" = "$11" ]; then
+    if [ -z "$process_pin" ] || [ "$process_pin" = "$ctrl_pin" ]; then pin_ok=1; fi
+  fi
+  green_ok=0
+  if converge_green_place_ok "$10" "$17"; then green_ok=1; fi
+  if [ "$5" = "skip_process_pin_and_green_place" ] && [ "$pin_ok" -eq 1 ] && [ "$green_ok" -eq 1 ]; then
+    verdict=converged; effective="$host_pin"
     emit_receipt "$1" "$2" "$3" "$11" "$effective" "$verdict"
     record "$verdict"; return
   fi
-  if [ "$4" = "existing_host" ]; then
-    echo "LIVE-APPLY: gunbc pinned-tree drift on $1 requires drain-aware reload (dashboard/ctrl seam); refusing blind apply" >&2
-    if [ -z "$effective_sha" ]; then effective=ABSENT; verdict=absent; else effective="$effective_sha"; verdict=drifted; fi
+  if [ "$4" = "existing_host_quiescent" ]; then
+    echo "LIVE-APPLY: gunbc pinned-tree drift on $1 requires quiescent-window reload + green-place verify (dashboard/ctrl seam); refusing blind apply" >&2
+    if [ -z "$host_pin" ]; then effective=ABSENT; verdict=absent; else effective="$host_pin"; verdict=drifted; fi
     emit_receipt "$1" "$2" "$3" "$11" "$effective" "$verdict"
     record "$verdict"; return
   fi
@@ -136,8 +189,8 @@ converge_gunbc_pinned_tree() {
   if [ -d "$checkout/.git" ]; then
     (cd "$checkout" && git fetch --prune origin >/dev/null 2>&1) || true
     (cd "$checkout" && git checkout --detach "$11" >/dev/null 2>&1) || true
-    effective_sha="$(cd "$checkout" && git rev-parse HEAD 2>/dev/null | tr -d ' ' || true)"
-  else effective_sha=""; fi
+    host_pin="$(converge_read_gunbc_host_pin "$checkout")"
+  else host_pin=""; fi
   mkdir -p "$7"
   if [ ! -x "$7/$14" ]; then
     echo "binary pull $12@$13 into $7 (steady-state CAS/ghcr transport TBD)" >&2
@@ -147,7 +200,7 @@ converge_gunbc_pinned_tree() {
     fi
   fi
   if [ -x "$7/$14" ]; then export "$6=$7"; fi
-  if [ -z "$effective_sha" ]; then effective=ABSENT; verdict=absent; else decide_verdict "$effective_sha" "$11"; effective="$effective_sha"; fi
+  if [ -z "$host_pin" ]; then effective=ABSENT; verdict=absent; else decide_verdict "$host_pin" "$11"; effective="$host_pin"; fi
   emit_receipt "$1" "$2" "$3" "$11" "$effective" "$verdict"
   record "$verdict"
 }
@@ -164,7 +217,7 @@ emit_sessions_membership() {
 }
 
 host_begin "srv1"
-converge_gunbc_pinned_tree "srv1" "gunbc" "pinned_tree_sha" "existing_host" "skip_when_converged" "GUNBC_ROOT" "$HOME/.local/share/gunbc/pinned" "defer_submodule" "third_party/gunbc" "$HOME/ctrl" "53e066417e00ee56deb084ea75a969a7f3f96592" "ghcr.io/gunb-ai/gunbc/bootstrap" "sha256:BOOTSTRAP_DIGEST_PLACEHOLDER" "gunbc"
+converge_gunbc_pinned_tree "srv1" "gunbc" "pinned_tree_sha" "existing_host_quiescent" "skip_process_pin_and_green_place" "GUNBC_ROOT" "$HOME/.local/share/gunbc/pinned" "defer_submodule" "third_party/gunbc" "$HOME/ctrl" "53e066417e00ee56deb084ea75a969a7f3f96592" "ghcr.io/gunb-ai/gunbc/bootstrap" "sha256:BOOTSTRAP_DIGEST_PLACEHOLDER" "gunbc" "scripts/session-dashboard/container/read-gunbc-pin.sh" "scripts/session-dashboard/lib/placement_query.mjs" ".dashboard/converge-green-place.ok"
 converge_slice_property "srv1" "runner" "runner_slice_cap_bytes" "system-actions-runner.slice" "MemoryMax" "85899345920" "85899345920" "85899345920"
 converge_per_slot_cap "srv1" "runner" "per_slot_memory_max_bytes" "/etc/systemd/system/actions-runner@.service.d/20-fleet-width.conf" "actions-runner@srv1-*.service" "MemoryMax" "8589934592"
 converge_per_slot_cap "srv1" "runner" "per_slot_memory_swap_max_bytes" "/etc/systemd/system/actions-runner@.service.d/30-fleet-swap.conf" "actions-runner@srv1-*.service" "MemorySwapMax" "0"
@@ -179,7 +232,7 @@ converge_slice_property "srv1" "sessions" "cpu_weight" "sessions.slice" "CPUWeig
 emit_sessions_membership "srv1" "/sys/fs/cgroup/sessions.slice" "/sys/fs/cgroup/system.slice"
 host_summary "srv1"
 host_begin "srv2"
-converge_gunbc_pinned_tree "srv2" "gunbc" "pinned_tree_sha" "existing_host" "skip_when_converged" "GUNBC_ROOT" "$HOME/.local/share/gunbc/pinned" "defer_submodule" "third_party/gunbc" "$HOME/ctrl" "53e066417e00ee56deb084ea75a969a7f3f96592" "ghcr.io/gunb-ai/gunbc/bootstrap" "sha256:BOOTSTRAP_DIGEST_PLACEHOLDER" "gunbc"
+converge_gunbc_pinned_tree "srv2" "gunbc" "pinned_tree_sha" "existing_host_quiescent" "skip_process_pin_and_green_place" "GUNBC_ROOT" "$HOME/.local/share/gunbc/pinned" "defer_submodule" "third_party/gunbc" "$HOME/ctrl" "53e066417e00ee56deb084ea75a969a7f3f96592" "ghcr.io/gunb-ai/gunbc/bootstrap" "sha256:BOOTSTRAP_DIGEST_PLACEHOLDER" "gunbc" "scripts/session-dashboard/container/read-gunbc-pin.sh" "scripts/session-dashboard/lib/placement_query.mjs" ".dashboard/converge-green-place.ok"
 converge_slice_property "srv2" "runner" "runner_slice_cap_bytes" "system-actions-runner.slice" "MemoryMax" "85899345920" "85899345920" "85899345920"
 converge_per_slot_cap "srv2" "runner" "per_slot_memory_max_bytes" "/etc/systemd/system/actions-runner@.service.d/20-fleet-width.conf" "actions-runner@srv2-*.service" "MemoryMax" "8589934592"
 converge_per_slot_cap "srv2" "runner" "per_slot_memory_swap_max_bytes" "/etc/systemd/system/actions-runner@.service.d/30-fleet-swap.conf" "actions-runner@srv2-*.service" "MemorySwapMax" "0"
@@ -194,3 +247,4 @@ converge_slice_property "srv2" "sessions" "cpu_weight" "sessions.slice" "CPUWeig
 emit_sessions_membership "srv2" "/sys/fs/cgroup/sessions.slice" "/sys/fs/cgroup/system.slice"
 host_summary "srv2"
 exit "$host_failed"
+

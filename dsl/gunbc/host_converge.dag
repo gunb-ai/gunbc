@@ -205,15 +205,37 @@ fn runner_instance_glob(host: HostIdentity) -> String {
 fn converge_apply_mode_label(m: ConvergeApplyMode) -> String {
   match m {
     FreshStandup => "fresh_standup"
-    ExistingHostReConverge => "existing_host"
+    ExistingHostQuiescentReload => "existing_host_quiescent"
   }
 }
 
 fn converge_no_op_policy_label(p: ConvergeNoOpPolicy) -> String {
   match p {
     BlindApply => "blind_apply"
-    SkipApplyWhenConverged => "skip_when_converged"
+    SkipApplyWhenConverged { effective_source: ProcessEffective, done: PinMatchAndGreenPlace } =>
+      "skip_process_pin_and_green_place"
+    SkipApplyWhenConverged { effective_source: _, done: _ } => "skip_when_converged"
   }
+}
+
+fn converge_effective_source_label(s: ConvergeEffectiveSource) -> String {
+  match s {
+    FileOnDisk => "file_on_disk"
+    ProcessEffective => "process_effective"
+  }
+}
+
+fn converge_done_condition_label(d: ConvergeDoneCondition) -> String {
+  match d {
+    EffectiveEqualsDesired => "effective_equals_desired"
+    PinMatchAndGreenPlace => "pin_match_and_green_place"
+  }
+}
+
+fn gunbc_pinned_noop_satisfied(host_pin: String, ctrl_pin: String, desired_sha: String, green_place_ok: Bool) -> Bool {
+  gunbc_pin_match(read_pin: host_pin, desired_pin: desired_sha)
+    && gunbc_pin_match(read_pin: host_pin, desired_pin: ctrl_pin)
+    && green_place_ok
 }
 
 fn dsl_root_binding_mode(binding: DslRootBinding) -> String {
@@ -241,7 +263,14 @@ fn gunbc_pinned_binary_provenance_policy() -> GunbcBinaryProvenancePolicy {
 }
 
 fn gunbc_apply_mode_for_host(host: HostIdentity) -> ConvergeApplyMode {
-  if host == operator_host_srv3 { FreshStandup } else { ExistingHostReConverge }
+  if host == operator_host_srv3 { FreshStandup } else { ExistingHostQuiescentReload }
+}
+
+fn gunbc_pinned_noop_policy() -> ConvergeNoOpPolicy {
+  SkipApplyWhenConverged {
+    effective_source: ProcessEffective,
+    done: PinMatchAndGreenPlace,
+  }
 }
 
 fn legacy_converge_knob(slice: ConvergeSlice, name: String, desired: String, target: ConvergeTarget) -> ConvergeKnob {
@@ -250,7 +279,7 @@ fn legacy_converge_knob(slice: ConvergeSlice, name: String, desired: String, tar
     name: name,
     desired: desired,
     target: target,
-    apply_mode: ExistingHostReConverge,
+    apply_mode: ExistingHostQuiescentReload,
     no_op: BlindApply,
   }
 }
@@ -277,9 +306,12 @@ fn gunbc_pinned_tree_knob(host: HostIdentity) -> ConvergeKnob {
       ctrl_checkout_path: gunbc_host_ctrl_checkout_path,
       expected_sha: gunbc_fleet_pinned_tree_sha,
       binary: gunbc_pinned_binary_provenance_policy(),
+      pin_read_script: gunbc_ctrl_read_pin_script,
+      placement_probe_script: gunbc_ctrl_placement_probe_script,
+      green_place_receipt: gunbc_ctrl_green_place_receipt,
     },
     apply_mode: gunbc_apply_mode_for_host(host: host),
-    no_op: SkipApplyWhenConverged,
+    no_op: gunbc_pinned_noop_policy(),
   }
 }
 

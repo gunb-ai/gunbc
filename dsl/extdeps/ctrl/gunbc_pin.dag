@@ -11,9 +11,6 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-// Single authority for pin comparison: readPin(tree) === desired_pin in gunbc_run.mjs
-// (resolveGunbcDslRoot: hasDsl(root) && readPin(root) === ctrlPin). Do NOT reinvent.
-
 fn gunbc_pin_match(read_pin: String, desired_pin: String) -> Bool {
   read_pin != "" && desired_pin != "" && read_pin == desired_pin
 }
