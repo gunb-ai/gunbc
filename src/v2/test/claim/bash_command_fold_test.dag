@@ -613,7 +613,7 @@ fn bash_fold_command_arbitrary_lit_quote_escape_holds() -> Bool {
   )
 }
 
-fn bash_fold_wrong_production_oracle_mismatch_holds() -> Bool {
+fn bash_fold_wrong_production_rejects_oracle_holds() -> Bool {
   let stmt = Command { words: [Lit { text: "true" }] }
   match bash_fold_cmd_true_wrong_target_model_witness() {
     Holds { value: target } =>
@@ -623,10 +623,6 @@ fn bash_fold_wrong_production_oracle_mismatch_holds() -> Bool {
       }
     Violates { diagnostic: _ } => false
   }
-}
-
-fn bash_fold_wrong_production_rejects_oracle_holds() -> Bool {
-  bash_fold_wrong_production_oracle_mismatch_holds()
 }
 
 fn bash_fold_direct_serialize_matches_oracle(emitted: Node, target: TargetModel, stmt: ShellStmt) -> Bool {
