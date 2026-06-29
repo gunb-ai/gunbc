@@ -121,6 +121,8 @@ const NON_FOLD_RESIDUE_ROSTER: &[&str] = &[
     "src/v2/std/compilers/target_model.dag::target_type_expr_emitted_validate_wire_shape",
     "src/v2/std/compilers/target_model.dag::target_use_site_ownership_catalog_lookup_step",
     "src/v2/std/effects.dag::key_source_eq",
+    "src/v2/std/determinism.dag::determinism_class_eq",
+    "src/v2/std/determinism.dag::non_det_source_eq",
     "src/v2/std/float.dag::float_body_is_nan",
     "src/v2/std/probe_selector.dag::diagnostic_interface_kind_eq",
     "src/v2/std/qualified_name.dag::qn_fold_step",

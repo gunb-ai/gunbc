@@ -38,6 +38,8 @@ Cache flakes, un-wired lenses, complexity violations = one problem: modeled, not
 
 → [audit + checklist](docs/plans/fail-closed-lockdown.md)
 
+→ [§5 determinism mechanism](docs/plans/determinism-mechanism-design.md) — signature-derived `DeterminismClass` axis orthogonal to `EffectShape`; P1 primitive roster + compose algebra (#5941); bundles into #3468 `InferredFacts` at P4.
+
 This window = a few days of STABILITY — shrink the fail-open surface, don't "lock" it. The deepest root (`Value::Null` overload, ~131 sites) stays OPEN until its own runway ([fork plan](docs/plans/model-realization-fork.md) §3).
 
 **◆ Milestones:** fail-open audited ✓ · numeric tower grounded ✓ (#5428) → **▸ NOW: cache warm==cold oracle · every lens wired-or-deleted · stage0 census under budget** → `Value::Null` split *(deep root)*
