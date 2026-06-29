@@ -17,6 +17,11 @@ import extdeps.bmc.capability {
   CapabilityFirmwareUpdate,
   CapabilityNbdProxyVirtualMedia,
 }
+import extdeps.bmc.webui.nbd_proxy {
+  BmcwebNbdProxyEndpointVariant,
+  NbdSlotEndpoint,
+  VmSlotIndexEndpoint,
+}
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -94,3 +99,7 @@ data asrock_altrad8ud_1l2t_bmc_firmware_capability_catalog: List<BmcFirmwareCapa
 ]
 
 data asrock_altrad8ud_shipped_bmc_firmware_capabilities: BmcFirmwareCapabilityRow = asrock_altrad8ud_openbmc_2_07_00_capabilities
+
+data asrock_altrad8ud_openbmc_2_07_00_nbd_proxy_primary_endpoint: BmcwebNbdProxyEndpointVariant = VmSlotIndexEndpoint
+
+data asrock_altrad8ud_openbmc_2_07_00_nbd_proxy_absent_endpoints: List<BmcwebNbdProxyEndpointVariant> = [NbdSlotEndpoint]

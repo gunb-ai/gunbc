@@ -27,13 +27,6 @@ data openbmc_virtual_media_design_authority: ExternalAuthority = ExternalAuthori
   }
 }
 
-data asrock_altrad8ud_srv3_nbd_proxy_ws_dry_run_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
-    locator: "github.com/gunb-ai/gunbc/blob/main/docs/runbooks/srv3-nbd-proxy-ws-upgrade-dry-run.md"
-  }
-}
-
 type NbdProxyServeInterface {
   export_byte_count: ByteSize
 }
@@ -191,28 +184,21 @@ fn bmcweb_nbd_proxy_endpoint_path_template(variant: BmcwebNbdProxyEndpointVarian
   }
 }
 
-type BmcwebNbdProxyEndpointRank = Primary | Secondary | Absent
-
 type BmcwebNbdProxyWsUpgrade {
   endpoint: BmcwebNbdProxyEndpointVariant
   requires_upgrade_header: Bool
   redfish_session_auth: Bool
-  rank: BmcwebNbdProxyEndpointRank
 }
 
-data bmcweb_nbd_proxy_primary_ws_upgrade_endpoint: BmcwebNbdProxyEndpointVariant = VmSlotIndexEndpoint
-
 data bmcweb_nbd_proxy_ws_upgrade_facts: List<BmcwebNbdProxyWsUpgrade> = [
-  BmcwebNbdProxyWsUpgrade {
-    endpoint: VmSlotIndexEndpoint,
-    requires_upgrade_header: true,
-    redfish_session_auth: true,
-    rank: Primary,
-  },
   BmcwebNbdProxyWsUpgrade {
     endpoint: NbdSlotEndpoint,
     requires_upgrade_header: true,
     redfish_session_auth: true,
-    rank: Absent,
+  },
+  BmcwebNbdProxyWsUpgrade {
+    endpoint: VmSlotIndexEndpoint,
+    requires_upgrade_header: true,
+    redfish_session_auth: true,
   },
 ]
