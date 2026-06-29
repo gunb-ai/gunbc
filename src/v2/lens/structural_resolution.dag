@@ -173,6 +173,5 @@ fn fact_eq(a: StructuralResolutionFact, b: StructuralResolutionFact) -> Bool {
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: WallAfterGrounding { dissolves_to: SingleAuthority },
-  rationale: "Binding status is decidable from the resolved tree; a projection-only per-edge ratchet over the resolver's facts, never a second authority. Grounding authority: the resolver / InferredFacts as the binding-status authority (read at classify time, not stored on the row). Dissolves on: binding status is read from the resolved tree by construction, not projected per-edge by a lens"
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }

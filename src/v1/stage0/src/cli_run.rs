@@ -2761,7 +2761,7 @@ pub fn discover_floor_corpus_rows(
              the bad-state class cannot be made unwritable by construction. Add a `data \
              construction_justification: ConstructionJustification = …` decl (see \
              v2.lens.common.construction_justification) classifying it as WallNow / \
-             WallAfterGrounding / RatchetForever with a rationale: {}",
+             WallAfterGrounding / RatchetForever: {}",
             unjustified.len(),
             unjustified.join(", ")
         ));
@@ -4238,8 +4238,7 @@ mod construction_justification_hygiene_tests {
         let with = "module v2.lens.demo\n\
             import v2.lens.common.construction_justification { ConstructionJustification, RatchetForever }\n\
             data construction_justification: ConstructionJustification = ConstructionJustification {\n\
-              class: RatchetForever { undecidable_because: \"x\" },\n\
-              rationale: \"y\"\n\
+              class: RatchetForever\n\
             }\n";
         assert!(declares_construction_justification(with));
 

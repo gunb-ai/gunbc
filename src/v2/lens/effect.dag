@@ -114,6 +114,5 @@ fn effect_fact_eq(a: EffectFact, b: EffectFact) -> Bool {
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: WallAfterGrounding { dissolves_to: SingleAuthority },
-  rationale: "Effects are a decidable projection of type-signature shape; the lens is a per-edge ratchet until the signature-derived effect-kind set is closed (re-authoring from DependencyKind would be a second authority). Grounding authority: the signature-derived closed effect-kind set (#3468 BLOCKING follow-up). Dissolves on: effect kinds are derived from the type signature by construction (single authority, B3), closing the per-edge classification ratchet"
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }

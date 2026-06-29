@@ -57,8 +57,7 @@ const NON_FOLD_RESIDUE_ROSTER: &[&str] = &[
     // coproduct. This is the honest baseline; the wall is that no NEW residue merges.
     "dsl/extdeps/languages/markdown.dag::md_nested",
     "dsl/gunbc/generated_artifact.dag::artifact_eq",
-    // Category (b) kernel scaffold — tracked beside commit_workflow_coproduct_eq_scaffold;
-    // dissolves with projection authority inversion (checkpoint 2) / exhaustiveness-by-default (gunbc#5364).
+    // Category (b) kernel — `*_eq` off-diagonal; dissolves with exhaustiveness-by-default (gunbc#5364).
     "dsl/gunbc/commit_workflow.dag::commit_workflow_surface_eq",
     "dsl/gunbc/commit_workflow.dag::gate_eq",
     "dsl/gunbc/commit_workflow.dag::local_tidy_check_eq",
@@ -126,7 +125,10 @@ const NON_FOLD_RESIDUE_ROSTER: &[&str] = &[
     "src/v2/std/compilers/target_model.dag::target_type_expr_emitted_validate_wire_shape",
     "src/v2/std/compilers/target_model.dag::target_use_site_ownership_catalog_lookup_step",
     "src/v2/std/effects.dag::key_source_eq",
+    "src/v2/std/determinism.dag::determinism_class_eq",
+    "src/v2/std/determinism.dag::non_det_source_eq",
     "src/v2/std/float.dag::float_body_is_nan",
+    "src/v2/std/node_minimal.dag::node_superset_field_eq",
     "src/v2/std/probe_selector.dag::diagnostic_interface_kind_eq",
     "src/v2/std/qualified_name.dag::qn_fold_step",
 ];

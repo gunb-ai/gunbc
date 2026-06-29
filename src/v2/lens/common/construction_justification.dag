@@ -10,9 +10,8 @@ type ConstructionClass
 
   | WallAfterGrounding { dissolves_to: ConstructionMechanism }
 
-  | RatchetForever { undecidable_because: String }
+  | RatchetForever
 
 type ConstructionJustification {
   class: ConstructionClass
-  rationale: String
 }

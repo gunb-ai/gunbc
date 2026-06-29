@@ -32,6 +32,11 @@ import gunbc.bmc_onboarding {
   bmc_plan_steady_state_phase,
   bmc_plan_steady_state_posture,
   new_altra_onboarding_plan,
+  BmcCredentialProbeResult,
+  FactoryCredentialActive,
+  RotatedCredentialActive,
+  CredentialStateUnknown,
+  bmc_credential_probe_to_phase,
 }
 import extdeps.bmc.types { BootTargetPxe, AccountRoleAdministrator, redfish_boot_target_wire, redfish_account_role_wire }
 import gunbc.assimilate.bmc_token_federation { emit_bmc_token_smoke_workflow_yaml }
@@ -202,4 +207,21 @@ test fn new_altra_plan_starts_factory_default_at_192() -> Bool {
     && redfish_boot_target_wire(t: BootTargetPxe) == "Pxe"
     && redfish_account_role_wire(role: new_altra_onboarding_plan.rotated_account_role) == "Administrator"
     && redfish_account_role_wire(role: AccountRoleAdministrator) == "Administrator"
+}
+
+test fn credential_probe_maps_to_correct_phase() -> Bool {
+  match bmc_credential_probe_to_phase(probe: FactoryCredentialActive) {
+    Present { value: FactoryDefault } => true
+    Present { value: _ } => false
+    Absent => false
+  }
+    && match bmc_credential_probe_to_phase(probe: RotatedCredentialActive) {
+      Present { value: CredentialsRotated } => true
+      Present { value: _ } => false
+      Absent => false
+    }
+    && match bmc_credential_probe_to_phase(probe: CredentialStateUnknown { reason: "test" }) {
+      Absent => true
+      Present { value: _ } => false
+    }
 }

@@ -2,7 +2,7 @@ module test.claim.bmc_capability_solve
 
 import std.logic { Bool }
 import std.bmc { OpenBmc }
-import std.types { List }
+import std.types { List, list_length }
 import extdeps.bmc.capability {
   BmcCapability,
   BmcFirmwareCapabilityRow,
@@ -16,7 +16,11 @@ import extdeps.bmc.capability {
   CapabilityBiosAttributeConfig,
   firmware_has_capability,
   catalog_has_vm_capable_firmware,
-  openbmc_2_07_00_capabilities,
+}
+import extdeps.boards.asrock_rack {
+  asrock_altrad8ud_openbmc_2_07_00_capabilities,
+  asrock_altrad8ud_openbmc_3_06_00_capabilities,
+  asrock_altrad8ud_1l2t_bmc_firmware_capability_catalog,
 }
 import gunbc.os_install_mechanism {
   OsInstallMechanism,
@@ -30,23 +34,32 @@ import gunbc.os_install_mechanism {
 }
 
 test fn srv3_capabilities_are_grounded() -> Bool {
-  firmware_has_capability(row: openbmc_2_07_00_capabilities, cap: CapabilityPowerControl)
-    && firmware_has_capability(row: openbmc_2_07_00_capabilities, cap: CapabilityBootSourceOverride)
-    && firmware_has_capability(row: openbmc_2_07_00_capabilities, cap: CapabilityAccountManagement)
-    && firmware_has_capability(row: openbmc_2_07_00_capabilities, cap: CapabilityFirmwareUpdate)
-    && firmware_has_capability(row: openbmc_2_07_00_capabilities, cap: CapabilityVirtualMedia) == false
-    && firmware_has_capability(row: openbmc_2_07_00_capabilities, cap: CapabilityNbdProxyVirtualMedia) == false
-    && firmware_has_capability(row: openbmc_2_07_00_capabilities, cap: CapabilityBiosAttributeConfig) == false
+  firmware_has_capability(row: asrock_altrad8ud_openbmc_2_07_00_capabilities, cap: CapabilityPowerControl)
+    && firmware_has_capability(row: asrock_altrad8ud_openbmc_2_07_00_capabilities, cap: CapabilityBootSourceOverride)
+    && firmware_has_capability(row: asrock_altrad8ud_openbmc_2_07_00_capabilities, cap: CapabilityAccountManagement)
+    && firmware_has_capability(row: asrock_altrad8ud_openbmc_2_07_00_capabilities, cap: CapabilityFirmwareUpdate)
+    && firmware_has_capability(row: asrock_altrad8ud_openbmc_2_07_00_capabilities, cap: CapabilityVirtualMedia) == false
+    && firmware_has_capability(row: asrock_altrad8ud_openbmc_2_07_00_capabilities, cap: CapabilityNbdProxyVirtualMedia)
+    && firmware_has_capability(row: asrock_altrad8ud_openbmc_2_07_00_capabilities, cap: CapabilityBiosAttributeConfig) == false
+}
+
+test fn altrad8ud_firmware_catalog_is_board_grounded() -> Bool {
+  list_length(items: asrock_altrad8ud_1l2t_bmc_firmware_capability_catalog) == 2
+    && firmware_has_capability(row: asrock_altrad8ud_openbmc_2_07_00_capabilities, cap: CapabilityNbdProxyVirtualMedia)
+    && firmware_has_capability(row: asrock_altrad8ud_openbmc_3_06_00_capabilities, cap: CapabilityFirmwareUpdate)
+    && firmware_has_capability(row: asrock_altrad8ud_openbmc_3_06_00_capabilities, cap: CapabilityVirtualMedia) == false
+    && firmware_has_capability(row: asrock_altrad8ud_openbmc_3_06_00_capabilities, cap: CapabilityNbdProxyVirtualMedia) == false
+    && catalog_has_vm_capable_firmware(catalog: asrock_altrad8ud_1l2t_bmc_firmware_capability_catalog) == false
 }
 
 test fn catalog_has_no_redfish_vm_capable_firmware_today() -> Bool {
   catalog_has_vm_capable_firmware(catalog: srv3_firmware_catalog) == false
 }
 
-test fn srv3_install_mechanism_is_pxe_until_dry_run() -> Bool {
+test fn srv3_install_mechanism_is_nbd_proxy_after_dry_run() -> Bool {
   match srv3_install_mechanism {
-    PxeHttpInstall => true
-    NbdProxyVirtualMediaInstall => false
+    NbdProxyVirtualMediaInstall => true
+    PxeHttpInstall => false
     VirtualMediaInstall => false
     FirmwareUpdateThenVirtualMedia => false
   }

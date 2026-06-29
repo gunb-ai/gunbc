@@ -69,6 +69,5 @@ fn fact_cardinality_live_coexistence_ratchet_holds() -> Bool {
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: WallAfterGrounding { dissolves_to: SingleAuthority },
-  rationale: "Same-key-in-both-trees coexistence is a decidable census; the lens is a shrinking ratchet until per-concept single authority dissolves the duplication. Grounding authority: per-concept single-authority consolidation (the Route-C de-fork) plus substrate content_hash census. Dissolves on: the cross-tree coexistence ratchet reaches 0 as each duplicated concept is consolidated to one authority"
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }

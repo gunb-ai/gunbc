@@ -223,11 +223,9 @@ fn extdeps_external_authority_has_non_external_scheme(
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: WallAfterGrounding { dissolves_to: SubstrateMandatoryTag },
-  rationale: "Anchor presence per extdeps module is a decidable presence check -- the same shape as this construction-justification rule itself -- interim until the substrate requires the field by construction. Grounding authority: a substrate-required external_authority_anchor field (Node-tree projection, dissolve-on #5126). Dissolves on: every extdeps module declaring its anchor is enforced by construction (a required field), not by a presence-checking lens"
+  class: WallAfterGrounding { dissolves_to: SubstrateMandatoryTag }
 }
 
 data shadow_mask_construction_justification: ConstructionJustification = ConstructionJustification {
-  class: WallAfterGrounding { dissolves_to: SingleAuthority },
-  rationale: "Residue lens (not the fix) over the two-tree shadow fork: the module-path index resolves a doubly-declared module to one file (src/v2 wins), and the anchor projection reads only that file -- so an anchor in the non-resolved copy is masked (reads absent) and the backfill short-circuit hides it until drain (the extdeps.shell #5565 case). A decidable cross-file presence check; the de-fork is the construction that makes it unwritable. Grounding authority: a single declaring file per extdeps module (the dsl<->src/v2 two-tree extdeps shadow collapsed by the dsl->v2 de-fork lane). Dissolves on: extdeps.shell (and the two-tree extdeps dsl<->src/v2 shadow) de-forked to a single authority; when every extdeps module is declared in exactly one source root, an anchor cannot land in a non-index-resolved copy and the masking class is unwritable by construction, deleting this residue lens"
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }
