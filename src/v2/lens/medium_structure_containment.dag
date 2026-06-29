@@ -137,6 +137,7 @@ data medium_structure_exception_roster: List<String> = [
   "dsl/gunbc/githooks_pre_push_emit.dag",
   "dsl/gunbc/ci_spec.dag",
   "dsl/tools/emit_host_transport.dag",
+  "dsl/tools/dsl_compile_clean_transport.dag",
   "dsl/gunbc/assimilate/bmc_token_federation.dag",
   "dsl/gunbc/tools/review.dag",
   "dsl/test/claim/fleet_converge_emit_test.dag",
