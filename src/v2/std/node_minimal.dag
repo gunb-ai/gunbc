@@ -1,0 +1,430 @@
+module v2.std.node_minimal
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import v2.std.algebra { any }
+import v2.std.collection { List }
+import v2.std.integer { UInt32 }
+import v2.std.node {
+  Connective,
+  Edge,
+  Node,
+  NodeKind,
+  NodeOccurrenceId,
+  Symbol
+}
+
+type NodeSupersetField
+  = NsfName
+  | NsfIdent
+  | NsfSpan
+  | NsfIdentSpan
+  | NsfChildren
+  | NsfConnective
+  | NsfParams
+  | NsfInferred
+  | NsfReturnCardinality
+  | NsfUses
+  | NsfBody
+  | NsfTransport
+  | NsfProperties
+  | NsfTypeAnnotation
+  | NsfIsSelfRecursive
+  | NsfHasNonTailSelfCall
+  | NsfMatchPattern
+  | NsfExprData
+
+data node_superset_field_count: Int = 18
+
+data all_node_superset_fields: List<NodeSupersetField> = [
+  NsfName,
+  NsfIdent,
+  NsfSpan,
+  NsfIdentSpan,
+  NsfChildren,
+  NsfConnective,
+  NsfParams,
+  NsfInferred,
+  NsfReturnCardinality,
+  NsfUses,
+  NsfBody,
+  NsfTransport,
+  NsfProperties,
+  NsfTypeAnnotation,
+  NsfIsSelfRecursive,
+  NsfHasNonTailSelfCall,
+  NsfMatchPattern,
+  NsfExprData
+]
+
+fn witness_all_node_superset_fields_roster_length() -> Bool {
+  count(all_node_superset_fields) == node_superset_field_count
+}
+
+type SpanRef {
+  file_id: UInt32
+  start: UInt32
+  end: UInt32
+}
+
+type IdentRef {
+  value: UInt32
+}
+
+data ident_ref_absent: IdentRef = IdentRef { value: 0 }
+
+type InferenceSlot
+  = InferenceAbsent
+  | InferencePresent { slot: UInt32 }
+
+type MatchPatternSlot {
+  tag: Symbol
+}
+
+type SurfaceExprTag
+  = SetNoExprData
+  | SetExprLiteral
+  | SetExprError
+  | SetExprVar
+  | SetExprFieldAccess
+  | SetExprCall
+  | SetExprMethodCall
+  | SetExprMatch
+  | SetExprIf
+  | SetExprLet
+  | SetExprRecordLit
+  | SetExprListLit
+  | SetExprBinOp
+  | SetExprUnaryOp
+  | SetExprLambda
+  | SetExprStringInterp
+  | SetExprBlock
+  | SetExprCast
+  | SetExprForEach
+  | SetExprIndex
+  | SetExprSlice
+  | SetExprReturn
+
+type SurfaceProvenance {
+  span: SpanRef
+  ident: IdentRef
+}
+
+type NamedProvenance {
+  span: SpanRef
+  ident_span: SpanRef
+  ident: IdentRef
+  name: Symbol
+}
+
+type SurfaceDeclRole
+  = SdrParam
+  | SdrField
+  | SdrVariant
+  | SdrFnItem
+  | SdrModuleItem
+  | SdrImport
+  | SdrResourceUse
+  | SdrProperty
+  | SdrServiceOp
+
+type FnItemDescentFlags {
+  is_self_recursive: Bool
+  has_non_tail_self_call: Bool
+}
+
+type ReturnCardinalitySlot
+  = ReturnRequired
+  | ReturnOptional
+
+type TypeAnnotationSlot
+  = TypeAnnotationAbsent
+  | TypeAnnotationPresent { annotation: Edge }
+
+type TransportSlot
+  = TransportAbsent
+  | TransportPresent { transport: Edge }
+
+type SurfaceDeclPayload
+  = SdpChildrenOnly { children: List<Edge> }
+  | SdpWithParams { params: List<Edge>, children: List<Edge> }
+  | SdpWithBody { body: Edge, children: List<Edge> }
+  | SdpWithUses { uses: List<Edge>, children: List<Edge> }
+  | SdpFnItem {
+      params: List<Edge>
+      body: Edge
+      children: List<Edge>
+      uses: List<Edge>
+      return_cardinality: ReturnCardinalitySlot
+      descent: FnItemDescentFlags
+    }
+  | SdpTypedMember {
+      type_annotation: TypeAnnotationSlot
+      properties: List<Edge>
+      children: List<Edge>
+    }
+  | SdpServiceOp {
+      transport: TransportSlot
+      children: List<Edge>
+    }
+
+type MinimalNodeKind
+  = MnkSubstrateGraph
+  | MnkSurfaceExprLeaf
+  | MnkSurfaceExprParent
+  | MnkSurfaceConnective
+  | MnkSurfaceNamedDecl
+  | MnkSurfaceMatchArm
+
+type MinimalResolvedNode
+  = MrnSubstrateGraph {
+      kind: NodeKind
+      children: List<Edge>
+      occurrence_id: NodeOccurrenceId
+    }
+  | MrnSurfaceExprLeaf {
+      expr: SurfaceExprTag
+      provenance: SurfaceProvenance
+      inference: InferenceSlot
+    }
+  | MrnSurfaceExprParent {
+      expr: SurfaceExprTag
+      provenance: SurfaceProvenance
+      children: List<Edge>
+      inference: InferenceSlot
+    }
+  | MrnSurfaceConnective {
+      connective: Connective
+      provenance: SurfaceProvenance
+      children: List<Edge>
+      params: List<Edge>
+      uses: List<Edge>
+      inference: InferenceSlot
+    }
+  | MrnSurfaceNamedDecl {
+      role: SurfaceDeclRole
+      provenance: NamedProvenance
+      payload: SurfaceDeclPayload
+      inference: InferenceSlot
+    }
+  | MrnSurfaceMatchArm {
+      pattern: MatchPatternSlot
+      provenance: SurfaceProvenance
+      children: List<Edge>
+    }
+
+fn minimal_node_kind_of(node: MinimalResolvedNode) -> MinimalNodeKind {
+  match node {
+    MrnSubstrateGraph { kind: _, children: _, occurrence_id: _ } => MnkSubstrateGraph
+    MrnSurfaceExprLeaf { expr: _, provenance: _, inference: _ } => MnkSurfaceExprLeaf
+    MrnSurfaceExprParent { expr: _, provenance: _, children: _, inference: _ } => MnkSurfaceExprParent
+    MrnSurfaceConnective { connective: _, provenance: _, children: _, params: _, uses: _, inference: _ } => MnkSurfaceConnective
+    MrnSurfaceNamedDecl { role: _, provenance: _, payload: _, inference: _ } => MnkSurfaceNamedDecl
+    MrnSurfaceMatchArm { pattern: _, provenance: _, children: _ } => MnkSurfaceMatchArm
+  }
+}
+
+fn minimal_node_kind_placed_fields(kind: MinimalNodeKind) -> List<NodeSupersetField> {
+  match kind {
+    MnkSubstrateGraph => []
+    MnkSurfaceExprLeaf => [NsfSpan, NsfIdent, NsfExprData]
+    MnkSurfaceExprParent => [NsfSpan, NsfIdent, NsfExprData, NsfChildren]
+    MnkSurfaceConnective =>
+      [NsfSpan, NsfIdent, NsfConnective, NsfChildren, NsfParams, NsfUses]
+    MnkSurfaceNamedDecl =>
+      [
+        NsfName,
+        NsfIdent,
+        NsfSpan,
+        NsfIdentSpan,
+        NsfChildren,
+        NsfParams,
+        NsfUses,
+        NsfBody,
+        NsfReturnCardinality
+      ]
+    MnkSurfaceMatchArm => [NsfSpan, NsfIdent, NsfMatchPattern, NsfChildren]
+  }
+}
+
+fn minimal_node_kind_live_field_count(kind: MinimalNodeKind) -> Int {
+  minimal_node_kind_placed_fields(kind: kind) |> count
+}
+
+fn node_superset_field_eq(left: NodeSupersetField, right: NodeSupersetField) -> Bool {
+  match left {
+    NsfName => match right { NsfName => true  _ => false }
+    NsfIdent => match right { NsfIdent => true  _ => false }
+    NsfSpan => match right { NsfSpan => true  _ => false }
+    NsfIdentSpan => match right { NsfIdentSpan => true  _ => false }
+    NsfChildren => match right { NsfChildren => true  _ => false }
+    NsfConnective => match right { NsfConnective => true  _ => false }
+    NsfParams => match right { NsfParams => true  _ => false }
+    NsfInferred => match right { NsfInferred => true  _ => false }
+    NsfReturnCardinality => match right { NsfReturnCardinality => true  _ => false }
+    NsfUses => match right { NsfUses => true  _ => false }
+    NsfBody => match right { NsfBody => true  _ => false }
+    NsfTransport => match right { NsfTransport => true  _ => false }
+    NsfProperties => match right { NsfProperties => true  _ => false }
+    NsfTypeAnnotation => match right { NsfTypeAnnotation => true  _ => false }
+    NsfIsSelfRecursive => match right { NsfIsSelfRecursive => true  _ => false }
+    NsfHasNonTailSelfCall => match right { NsfHasNonTailSelfCall => true  _ => false }
+    NsfMatchPattern => match right { NsfMatchPattern => true  _ => false }
+    NsfExprData => match right { NsfExprData => true  _ => false }
+  }
+}
+
+fn list_contains_node_superset_field(
+  xs: List<NodeSupersetField>,
+  field: NodeSupersetField
+) -> Bool {
+  xs |> any(f => node_superset_field_eq(left: f, right: field))
+}
+
+fn dedup_node_superset_fields(xs: List<NodeSupersetField>) -> List<NodeSupersetField> {
+  fold(xs, init: [], f: fn(acc, field) {
+    if list_contains_node_superset_field(xs: acc, field: field) {
+      acc
+    } else {
+      concat(acc, [field])
+    }
+  })
+}
+
+fn concat_node_superset_field_lists(
+  left: List<NodeSupersetField>,
+  right: List<NodeSupersetField>
+) -> List<NodeSupersetField> {
+  concat(left, right)
+}
+
+fn minimal_kind_placed_fields_union() -> List<NodeSupersetField> {
+  dedup_node_superset_fields(
+    xs: concat_node_superset_field_lists(
+      left: concat_node_superset_field_lists(
+        left: concat_node_superset_field_lists(
+          left: concat_node_superset_field_lists(
+            left: concat_node_superset_field_lists(
+              left: minimal_node_kind_placed_fields(kind: MnkSurfaceExprLeaf),
+              right: minimal_node_kind_placed_fields(kind: MnkSurfaceExprParent)
+            ),
+            right: minimal_node_kind_placed_fields(kind: MnkSurfaceConnective)
+          ),
+          right: minimal_node_kind_placed_fields(kind: MnkSurfaceNamedDecl)
+        ),
+        right: minimal_node_kind_placed_fields(kind: MnkSurfaceMatchArm)
+      ),
+      right: minimal_node_kind_placed_fields(kind: MnkSubstrateGraph)
+    )
+  )
+}
+
+data minimal_kind_owed_placement: List<NodeSupersetField> = [
+  NsfTransport,
+  NsfProperties,
+  NsfTypeAnnotation
+]
+
+data minimal_kind_migrated_to_facts: List<NodeSupersetField> = [
+  NsfInferred,
+  NsfIsSelfRecursive,
+  NsfHasNonTailSelfCall
+]
+
+fn node_superset_field_lists_disjoint(
+  left: List<NodeSupersetField>,
+  right: List<NodeSupersetField>
+) -> Bool {
+  fold(left, init: true, f: fn(acc, field) {
+    if acc {
+      !list_contains_node_superset_field(xs: right, field: field)
+    } else {
+      false
+    }
+  })
+}
+
+fn node_superset_field_three_way_disjoint(
+  placed: List<NodeSupersetField>,
+  owed: List<NodeSupersetField>,
+  migrated: List<NodeSupersetField>
+) -> Bool {
+  node_superset_field_lists_disjoint(left: placed, right: owed)
+    && node_superset_field_lists_disjoint(left: placed, right: migrated)
+    && node_superset_field_lists_disjoint(left: owed, right: migrated)
+}
+
+fn minimal_kind_partition_field_union() -> List<NodeSupersetField> {
+  dedup_node_superset_fields(
+    xs: concat_node_superset_field_lists(
+      left: concat_node_superset_field_lists(
+        left: minimal_kind_placed_fields_union(),
+        right: minimal_kind_owed_placement
+      ),
+      right: minimal_kind_migrated_to_facts
+    )
+  )
+}
+
+fn node_superset_field_in_partition(field: NodeSupersetField) -> Bool {
+  list_contains_node_superset_field(
+    xs: minimal_kind_partition_field_union(),
+    field: field
+  )
+}
+
+fn witness_all_node_superset_fields_covered_by_partition() -> Bool {
+  fold(all_node_superset_fields, init: true, f: fn(acc, field) {
+    if acc {
+      node_superset_field_in_partition(field: field)
+    } else {
+      false
+    }
+  })
+}
+
+fn witness_partition_covers_superset() -> Bool {
+  node_superset_field_three_way_disjoint(
+    placed: minimal_kind_placed_fields_union(),
+    owed: minimal_kind_owed_placement,
+    migrated: minimal_kind_migrated_to_facts
+  ) && count(minimal_kind_partition_field_union()) == node_superset_field_count && witness_all_node_superset_fields_roster_length() && witness_all_node_superset_fields_covered_by_partition()
+}
+
+fn minimal_node_superset_field_unused_by_kind(
+  kind: MinimalNodeKind,
+  field: NodeSupersetField
+) -> Bool {
+  !(
+    minimal_node_kind_placed_fields(kind: kind)
+      |> any(f => node_superset_field_eq(left: f, right: field))
+  )
+}
+
+fn minimal_substrate_node_from_v2(node: Node) -> MinimalResolvedNode {
+  MrnSubstrateGraph {
+    kind: node.kind,
+    children: node.children,
+    occurrence_id: node.occurrence_id
+  }
+}
+
+fn minimal_expr_leaf_example() -> MinimalResolvedNode {
+  MrnSurfaceExprLeaf {
+    expr: SetExprVar,
+    provenance: SurfaceProvenance {
+      span: SpanRef { file_id: 1, start: 10, end: 12 },
+      ident: ident_ref_absent
+    },
+    inference: InferenceAbsent
+  }
+}
+
+data node_minimal_representation_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "v2.std.node",
+    decl_name: "Node",
+    field: WholeDeclaration
+  }
+}

@@ -211,8 +211,5 @@ fn synthesis_lens_diagnostics(n: Node, declared_technique: LowerBoundTechnique) 
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: RatchetForever {
-    undecidable_because: "producing a specific faster realization has no constructive patch (feedback_no_engine) -- the optimum can be unknown (e.g. matmul omega), so a lower-bound GAP is provable but the closing program is not"
-  },
-  rationale: "Surfacing that a realization's cost exceeds the I/O relation's complexity lower bound is decidable, but the faster program that would close the gap cannot be constructed -- a permanent residue, distinct from same-algorithm complexity tightness."
+  class: RatchetForever
 }

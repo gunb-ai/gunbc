@@ -25,6 +25,5 @@ fn inert_carrier_live_declared_count() -> Int {
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: WallAfterGrounding { dissolves_to: RealizationDispatch },
-  rationale: "Inertness (self-tested + zero real consumer) is decidable, but cannot be made unwritable by construction -- modeling a carrier ahead of its consumer is the project's deliberate model-first discipline, so the bad state is legitimately writable in transit. So this is the unstructurable residue a lens is for: a fail-closed wall against a named, shrinking roster, not a construction. Grounding authority: the realization loop wiring each carrier's real consumer, plus gunbc#5364 (.dag compile-graph / BindsTo enumeration) folding the host token census into a pure .dag reachability reader. Dissolves on: the exception roster reaches 0 as each self-tested carrier's consumer lands; the lens then walls any new self-tested-but-unconsumed carrier outright"
+  class: WallAfterGrounding { dissolves_to: RealizationDispatch }
 }

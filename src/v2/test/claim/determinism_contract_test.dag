@@ -1,0 +1,87 @@
+module v2.test.claim.determinism_contract_test
+
+import v2.std.collection { Absent, Present }
+import v2.std.determinism {
+  Deterministic,
+  HashIteration,
+  NonDeterministic,
+  TimeRead,
+  determinism_class_eq,
+  determinism_compose,
+  determinism_fact_for_signature,
+  determinism_primitive_in_roster,
+  determinism_primitive_lookup,
+  witness_deterministic_compose_is_deterministic,
+  witness_hash_map_keys_iter_is_hash_iteration_leak,
+  witness_nondeterministic_compose_propagates_left,
+  witness_nondeterministic_compose_propagates_right,
+  witness_pure_add_is_deterministic,
+  witness_sorted_export_set_map_keys_is_deterministic,
+  witness_unknown_primitive_absent_from_roster
+}
+import v2.std.logic { Bool }
+
+fn rostered_classification_eq(sig: Symbol, expected: DeterminismClass) -> Bool {
+  match determinism_primitive_lookup(sig: sig) {
+    Present { value: classification } =>
+      determinism_class_eq(a: classification, b: expected)
+    Absent => false
+  }
+}
+
+test fn determinism_pure_add_is_deterministic_holds() -> Bool {
+  witness_pure_add_is_deterministic
+    && rostered_classification_eq(sig: ^pure_add, expected: Deterministic)
+}
+
+test fn determinism_hash_map_keys_iter_is_hash_iteration_leak_holds() -> Bool {
+  witness_hash_map_keys_iter_is_hash_iteration_leak
+    && rostered_classification_eq(
+      sig: ^hash_map_keys_iter,
+      expected: NonDeterministic { source: HashIteration }
+    )
+}
+
+test fn determinism_unknown_primitive_absent_from_roster_holds() -> Bool {
+  witness_unknown_primitive_absent_from_roster
+}
+
+test fn determinism_compose_algebra_holds() -> Bool {
+  witness_deterministic_compose_is_deterministic
+    && witness_nondeterministic_compose_propagates_left
+    && witness_nondeterministic_compose_propagates_right
+    && determinism_class_eq(
+      a: determinism_compose(
+        outer: NonDeterministic { source: TimeRead },
+        inner: NonDeterministic { source: HashIteration }
+      ),
+      b: NonDeterministic { source: TimeRead }
+    )
+}
+
+test fn determinism_roster_5913_construction_rows_are_deterministic_holds() -> Bool {
+  witness_sorted_export_set_map_keys_is_deterministic
+    && determinism_primitive_in_roster(sig: ^unique_imported_variant_owner)
+    && determinism_primitive_in_roster(sig: ^alpha_sorted_variant_fold)
+    && determinism_primitive_in_roster(sig: ^find_struct_name_by_fields_disambiguation)
+    && rostered_classification_eq(
+      sig: ^unique_imported_variant_owner,
+      expected: Deterministic
+    )
+}
+
+test fn determinism_fact_for_signature_holds() -> Bool {
+  match determinism_fact_for_signature(sig: ^pure_add) {
+    Present { value: fact } =>
+      fact.signature == ^pure_add
+        && determinism_class_eq(a: fact.classification, b: Deterministic)
+    Absent => false
+  }
+}
+
+test fn determinism_fact_for_unknown_signature_is_absent_holds() -> Bool {
+  match determinism_fact_for_signature(sig: ^unknown_determinism_roster_probe) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}

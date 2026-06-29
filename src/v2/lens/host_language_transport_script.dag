@@ -107,6 +107,5 @@ fn transport_script_live_literal_violation_count_for_path(path: String) -> Int {
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: WallAfterGrounding { dissolves_to: RealizationDispatch },
-  rationale: "A compile-time-known literal in script: position is a decidable shape read; an interim structural guard until emit(intent, Bash) makes the literal unrepresentable there by construction. Grounding authority: emit(intent, Bash) -- the bash-as-target terminal (warm-badger-46 arc). Dissolves on: raw String literals become unrepresentable in shell.Exec.Run script: position once emit(intent, Bash) owns shell construction"
+  class: WallAfterGrounding { dissolves_to: RealizationDispatch }
 }

@@ -322,8 +322,5 @@ fn complexity_bound_dominates(a: ComplexityBound, b: ComplexityBound) -> Bool {
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: RatchetForever {
-    undecidable_because: "tight asymptotic class / optimality is undecidable (Rice), and cost is a runtime property -- slow code is never a representational error, so it can never be made unwritable by construction"
-  },
-  rationale: "Budget-dominance is a complete decidable hard-gate (DESIGN's wall), but the asymptotic optimum the lens projects toward is undecidable; the lens is the residue mechanism for a class that has no representational wall."
+  class: RatchetForever
 }

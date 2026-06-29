@@ -19,7 +19,6 @@ import extdeps.github.expressions {
   ingest_expression,
   ingest_expression_with,
   ingest_template,
-  gha_expression_medium_lossless,
   Github,
   Runner,
   HashFiles,
@@ -27,7 +26,8 @@ import extdeps.github.expressions {
   FromJSON,
   Format,
 }
-import extdeps.communication.medium { Lossless, Lossy }
+import extdeps.communication.fidelity_carriers { source_medium_carried }
+import extdeps.communication.medium { Lossless }
 
 fn core_expr() -> Expression {
   LogicalOr {
@@ -53,22 +53,11 @@ fn core_template() -> ExpressionTemplate {
   }
 }
 
-fn roundtrips_canonical(e: Expression) -> Bool {
-  match ingest_expression(src: serialize_expression(expression: e)) {
-    Present { value: v } => v == e
+fn witness_roundtrip_expression() -> Bool {
+  match ingest_expression(src: serialize_expression(expression: core_expr())) {
+    Present { value: v } => v == core_expr()
     Absent => false
   }
-}
-
-fn does_not_roundtrip(e: Expression) -> Bool {
-  match ingest_expression(src: serialize_expression(expression: e)) {
-    Present { value: v } => !(v == e)
-    Absent => true
-  }
-}
-
-fn witness_roundtrip_expression() -> Bool {
-  roundtrips_canonical(e: core_expr())
 }
 
 fn witness_roundtrip_template() -> Bool {
@@ -142,7 +131,14 @@ fn right_nested_or() -> Expression {
 }
 
 fn witness_or_associativity_partition() -> Bool {
-  roundtrips_canonical(e: left_nested_or()) && does_not_roundtrip(e: right_nested_or())
+  match ingest_expression(src: serialize_expression(expression: left_nested_or())) {
+    Present { value: left_v } =>
+      match ingest_expression(src: serialize_expression(expression: right_nested_or())) {
+        Present { value: right_v } => (left_v == left_nested_or()) && !(right_v == right_nested_or())
+        Absent => false
+      }
+    Absent => false
+  }
 }
 
 fn frontier_string_with_or() -> Expression {
@@ -167,15 +163,27 @@ fn frontier_nested_multiarg_call() -> Expression {
 }
 
 fn witness_frontier_not_roundtripped() -> Bool {
-  does_not_roundtrip(e: right_nested_or())
-    && does_not_roundtrip(e: frontier_string_with_or())
-    && does_not_roundtrip(e: frontier_nested_multiarg_call())
+  match ingest_expression(src: serialize_expression(expression: right_nested_or())) {
+    Present { value: v1 } =>
+      match ingest_expression(src: serialize_expression(expression: frontier_string_with_or())) {
+        Present { value: v2 } =>
+          match ingest_expression(src: serialize_expression(expression: frontier_nested_multiarg_call())) {
+            Present { value: v3 } =>
+              !(v1 == right_nested_or())
+                && !(v2 == frontier_string_with_or())
+                && !(v3 == frontier_nested_multiarg_call())
+            Absent => true
+          }
+        Absent => true
+      }
+    Absent => true
+  }
 }
 
 fn witness_core_advertised_lossless() -> Bool {
   match ingest_expression(src: serialize_expression(expression: core_expr())) {
     Present { value: v } => {
-      let m = gha_expression_medium_lossless(expr: v)
+      let m = source_medium_carried(carried: v, fidelity: Lossless)
       match m.fidelity {
         Lossless => m.carried == core_expr()
         Lossy => false

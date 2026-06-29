@@ -103,6 +103,8 @@ A flaky or green-but-broken floor means no gate protects anything — so CI is u
 
 → [resolved-graph representation minimization](docs/plans/representation-minimization.md) — operator-funded root-first leanness after the #5867 InternTable fix (whole-tree resolve 14.2 to 5.5 GiB): emitter-determinism gate, stream/evict (Lever C — converges with resolve-incrementality above), variant-Node minimal representation, func_env.sigs single-authority. Gated on the root-vs-doomed-seed discriminator (v1 is going away).
 
+→ [§5 determinism mechanism](docs/plans/determinism-mechanism-design.md) — signature-derived DeterminismClass axis orthogonal to EffectShape; P1 primitive roster + compose algebra (#5941); bundles into #3468 InferredFacts at P4.
+
 **What's on `.dag` today (the gap map — detail in the charter §2/§4):**
 
 - [x] **execution = a dependency-graph walk** — `claim_executor` interprets `ci_floor_plan.dag`; one fold, batches from dependency edges (the realest layer)

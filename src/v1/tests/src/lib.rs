@@ -63,6 +63,10 @@ mod fold_list_generic_instantiation_test;
 #[cfg(test)]
 mod fold_unused_element_clone_elision_test;
 #[cfg(test)]
+mod func_env_scope_chain_test;
+#[cfg(test)]
+mod func_env_semantic_equivalence_test;
+#[cfg(test)]
 mod generator_match_arm_test;
 #[cfg(test)]
 mod generic_return_clone_bound_test;
@@ -112,6 +116,8 @@ mod module_authority_resolution_test;
 mod money_carrier_cost_witness_test;
 #[cfg(test)]
 mod nested_list_alias_emit_test;
+#[cfg(test)]
+mod node_minimal_representation_test;
 #[cfg(test)]
 mod nodefold_generic_instantiation_test;
 #[cfg(test)]

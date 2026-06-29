@@ -18,6 +18,7 @@ pub use crate::v1_compiler_infer_env::{
 pub use crate::v1_compiler_infer_env::{TypeBinding, TypeEnv};
 pub use crate::v1_compiler_infer_service::check_service_method_call_node;
 pub use crate::v1_compiler_infer_service::{OpEntry, ServiceMethodResult};
+pub use crate::v1_compiler_infer_sigs::lookup_resolved_sig;
 pub use crate::v1_compiler_infer_sigs::{ResolvedFuncEnv, ResolvedFuncSig};
 pub use crate::v1_compiler_infer_types::{
     child_type_node, emit_map_has, enrich_kernel_type, is_declared_container_alias_spelling,
@@ -79,7 +80,7 @@ pub fn lookup_in_scope(
 }
 
 pub fn lookup_func_sig(func_env: Rc<ResolvedFuncEnv>, name: String) -> Option<Rc<ResolvedFuncSig>> {
-    v1_rt::map_get(&func_env.signatures.clone(), name)
+    lookup_resolved_sig(func_env, name)
 }
 
 pub fn lookup_field_type_node(

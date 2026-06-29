@@ -96,3 +96,7 @@ path = "src/bin/wiring_liveness_whole_tree.rs"
 [[bin]]
 name = "measure_whole_tree_resolve"
 path = "src/bin/measure_whole_tree_resolve.rs"
+
+[[bin]]
+name = "capture_func_env_semantic_oracle"
+path = "src/bin/capture_func_env_semantic_oracle.rs"

@@ -29,6 +29,5 @@ fn non_fold_residue_discovery_roots_follow_authority() -> Bool {
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: WallAfterGrounding { dissolves_to: SubstrateMandatoryTag },
-  rationale: "A wildcard over a closed coproduct is decidable residue, but cannot be banned by construction yet -- exhaustiveness-by-default is a load-bearing typechecker change, and a wildcard is legitimate over open/primitive domains. So this is the unstructurable residue a lens is for: a fail-closed wall against a named, shrinking roster, not a construction. Grounding authority: exhaustiveness-by-default in the typechecker (the DESIGN §4 CoproductExhaustiveness direction) making a wildcard over a closed coproduct unwritable, plus gunbc#5364 (.dag compile-graph access) folding the host match scan into a pure .dag Node-tree reader. Dissolves on: the un-migrated-modeling subset of the roster shrinks to 0 as each hand-rolled match migrates to a total fold; the named irreducible kernels (eq / lattice join+meet / collapse algebraic totals, whose off-diagonal IS the residue) remain by DESIGN section 6; the lens walls any NEW wildcard over a closed coproduct outright"
+  class: WallAfterGrounding { dissolves_to: SubstrateMandatoryTag }
 }

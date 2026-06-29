@@ -173,8 +173,5 @@ fn unit_modeling_gate(node: Node) -> Outcome<Witness<Node>> {
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: RatchetForever {
-    undecidable_because: "whether a bare scalar DENOTES a modeled quantity needs domain knowledge (is 4926 a contact_count? is count a magnitude?) -- the DESIGN sec 2 leaf-side, undecidable"
-  },
-  rationale: "The Measure<Quantity,Scale> phantom-type wall is the region-1 construction; flagging a scalar NOT yet on Measure requires deciding whether the scalar is a quantity, which is domain knowledge -- so this stays an ADVISORY region-3 lens."
+  class: RatchetForever
 }

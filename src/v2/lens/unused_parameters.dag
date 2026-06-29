@@ -176,6 +176,5 @@ fn unused_parameters_fact_eq(a: UnusedParametersFact, b: UnusedParametersFact) -
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: WallAfterGrounding { dissolves_to: SingleAuthority },
-  rationale: "A parameter unused in a body is decidable by dataflow; a per-edge classification ratchet (behavioral roll-up composed over projection) until use-classification is a substrate construction. Grounding authority: substrate dataflow use-classification (the per-edge classification family becoming a construction; LensIdV0::UnusedParameters registry split-contract). Dissolves on: an unused parameter is a dataflow fact the substrate computes by construction, not a per-edge lens ratchet"
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }

@@ -56,6 +56,7 @@ import v1.compiler.infer_items {
   TypedModule, ResolvedGraph, ItemInfo
 }
 import v1.compiler.infer_service { UniqueAccum, OpEntry, is_typed_service_call_receiver, extract_typed_service_name }
+import v1.compiler.infer_lookup { lookup_func_sig }
 import v1.compiler.infer {
   InferScope,
   build_params_scope, extend_scope
@@ -270,7 +271,7 @@ fn emit_simple_string_interp(parts: List<StringPart>, target: RenderTarget, sour
 fn empty_emit_scope() -> InferScope {
   InferScope {
     type_env: TypeEnv { bindings: empty_map(), recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_indices: empty_map(), intern_table: empty_intern_table() },
-    func_env: ResolvedFuncEnv { signatures: empty_map() },
+    func_env: ResolvedFuncEnv { local: empty_map(), parents: [] },
     locals: empty_map(),
     match_bound_names: empty_map(),
     module_name: "",
@@ -313,7 +314,7 @@ fn lookup_item(registry: Map<String, ItemInfo>, name: String) -> ItemInfo? {
 }
 
 fn lookup_func_sig_in_scope(scope: InferScope, name: String) -> ResolvedFuncSig? {
-  map_get(scope.func_env.signatures, name)
+  lookup_func_sig(func_env: scope.func_env, name: name)
 }
 
 fn typed_named_arg_matches(arg: Node, name: String, source_indices: Map<String, NewlineIndex>) -> Bool {

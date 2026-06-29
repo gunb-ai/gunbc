@@ -2,7 +2,9 @@ module extdeps.github.expressions
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import extdeps.communication.medium { Medium, Lossless }
+import extdeps.communication.medium { Lossless }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -303,8 +305,13 @@ fn ingest_template(src: String) -> ExpressionTemplate? {
   ingest_template_with(src: src, sp: default_expression_spellings)
 }
 
-fn gha_expression_medium_lossless(expr: Expression) -> Medium<Expression> {
-  Medium { carried: expr, fidelity: Lossless }
+data gha_expression_roundtrip_canonical_inline_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "v2.compiler.target_carriers",
+    decl_name: "decode_fidelity_from_target",
+    field: WholeDeclaration
+  }
 }
 
 fn runner_os() -> Expression { ContextAccess { context: Runner, path: ["os"] } }
