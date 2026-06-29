@@ -99,6 +99,7 @@ import std.termination {
 import std.algebra { CollectionSizeEffect, ShrinkEffect }
 import v1.compiler.infer_resolve {
   resolve_node, resolve_item_types, peel_nominal_alias_identity, preserve_nominal_brand_on_resolve,
+  resolve_generic_use_decl,
   is_user_generic_use_site,
   NodeResolveResult, ItemResult
 }
@@ -2725,17 +2726,65 @@ fn record_has_unresolved_param_field(record: Node, env: TypeEnv) -> Bool {
   record.children |> any(f => record_field_type_is_unresolved_param(field: f, param_names: param_names, env: env))
 }
 
+fn alias_chain_generic_decl(env: TypeEnv, carrier: Node, target: Node) -> Node {
+  if target.params |> count > 0 { target }
+  else { resolve_generic_use_decl(env: env, n: carrier) }
+}
+
+fn alias_chain_type_arg_subst(env: TypeEnv, carrier: Node, target: Node, type_args: List<Node>) -> Map<String, Node> {
+  let decl = alias_chain_generic_decl(env: env, carrier: carrier, target: target)
+  fold(decl.params |> enumerate, init: empty_map(), f: (acc, pair) =>
+    let slot = generic_param_name_at(n: pair.second, source_indices: env.source_indices)
+    match type_args |> skip(pair.first) |> first {
+      Present { value: arg } => map_insert(acc, slot, resolve_scrutinee_type_node(env: env, n: arg))
+      Absent => acc
+    }
+  )
+}
+
+fn alias_chain_target_after_args(target: Node, carrier: Node, env: TypeEnv) -> Node {
+  let type_args = carrier.children
+  if type_args |> count == 0 { target }
+  else {
+    let decl = alias_chain_generic_decl(env: env, carrier: carrier, target: target)
+    let subst = alias_chain_type_arg_subst(env: env, carrier: carrier, target: target, type_args: type_args)
+    let is_parameterized_alias = decl.inferred != none && decl.children |> count == 0 && decl.connective == NoConnective
+    if is_parameterized_alias {
+      match decl.inferred {
+        Present { value: Resolved { node: alias_body } } => substitute_generics(n: alias_body, subst: subst, source_indices: env.source_indices)
+        _ => target
+      }
+    } else {
+      substitute_generics(n: decl, subst: subst, source_indices: env.source_indices)
+    }
+  }
+}
+
+fn alias_chain_carrier(n: Node) -> Node {
+  if n.connective == NoConnective && n.name != "" { n }
+  else { structural_from_expanded_type(normed: n) }
+}
+
 fn expand_alias_chain_for_field_access(n: Node, env: TypeEnv, module_name: String, origin_name: String, seen: Map<String, Bool>, lossy: Bool) -> Node {
   let peeled = if needs_alias_field_expansion(n: n, env: env) { peel_alias_once_for_field_access(n: n, env: env, module_name: module_name) } else { n }
+  let carrier = alias_chain_carrier(n: peeled)
   let structural = structural_from_expanded_type(normed: resolve_scrutinee_type_node(env: env, n: peeled))
   let is_record = structural.connective == Conj || structural.connective == Disj
   if is_record {
-    let fail_closed = lossy && record_has_unresolved_param_field(record: structural, env: env)
+    let resolved_record = if record_has_unresolved_param_field(record: structural, env: env) && (carrier.children |> count) > 0 && carrier.name != "" {
+      match lookup_type_by_name(env: env, name: carrier.name) {
+        Present { value: target } =>
+          let subst = alias_chain_type_arg_subst(env: env, carrier: carrier, target: target, type_args: carrier.children)
+          substitute_generics(n: structural, subst: subst, source_indices: env.source_indices)
+        Absent => structural
+      }
+    } else { structural }
+    let fail_closed = lossy && record_has_unresolved_param_field(record: resolved_record, env: env)
     if fail_closed {
       nominal_type_ref(name: origin_name)
-    } else { structural }
+    } else { resolved_record }
   } else {
-    let next_name = structural.name
+    let next_name = carrier.name
 
     let is_optional = structural.return_cardinality == CardOptional
     let stop = is_optional || next_name == "" || emit_map_has(m: seen, key: next_name)
@@ -2745,9 +2794,15 @@ fn expand_alias_chain_for_field_access(n: Node, env: TypeEnv, module_name: Strin
       match lookup_type_by_name(env: env, name: next_name) {
         Present { value: target } =>
           let next_seen = map_insert(seen, next_name, true)
-          let dropped_args = structural.children |> count > 0
+          let type_arg_count = carrier.children |> count
+          let decl = alias_chain_generic_decl(env: env, carrier: carrier, target: target)
+          let param_count = decl.params |> count
+          let dropped_args = type_arg_count > 0 && param_count > 0 && param_count != type_arg_count
           let next_lossy = lossy || dropped_args
-          expand_alias_chain_for_field_access(n: target, env: env, module_name: module_name, origin_name: origin_name, seen: next_seen, lossy: next_lossy)
+          let next_n = if type_arg_count > 0 && !dropped_args {
+            alias_chain_target_after_args(target: target, carrier: carrier, env: env)
+          } else { target }
+          expand_alias_chain_for_field_access(n: next_n, env: env, module_name: module_name, origin_name: origin_name, seen: next_seen, lossy: next_lossy)
         Absent => structural
       }
     }
@@ -5783,6 +5838,46 @@ fn fold_module_contributions(remaining: List<ItemContribution>,
   }
 }
 
+fn enum_parents_for_variant_in_items(variant_name: String, items: List<Node>, source_indices: Map<String, NewlineIndex>) -> List<String> {
+  items
+    |> filter(item => item.connective == Disj)
+    |> filter(item => item.children |> any(child => authored_name_at(source_indices: source_indices, node: child) == variant_name))
+    |> map(item => authored_name_at(source_indices: source_indices, node: item))
+}
+
+fn unique_imported_variant_owner(variant_name: String, items: List<Node>, source_indices: Map<String, NewlineIndex>) -> String? {
+  let parents = enum_parents_for_variant_in_items(variant_name: variant_name, items: items, source_indices: source_indices)
+  if parents |> count == 1 {
+    parents |> first
+  } else { none }
+}
+
+fn is_imported_variant_owned_by(imported_variants: Map<String, String>, variant_name: String, enum_name: String) -> Bool {
+  match map_get(imported_variants, variant_name) {
+    Present { value: unique_parent } => unique_parent == enum_name
+    Absent => false
+  }
+}
+
+fn build_imported_variants(resolved_imports: List<ResolvedImport>, parent_index: Map<String, TypedModule>, source_indices: Map<String, NewlineIndex>) -> Map<String, String> {
+  fold(resolved_imports, init: empty_map(), f: (acc, imp) =>
+    fold(imp.specific_names, init: acc, f: (inner, variant_name) =>
+      if map_contains_key(inner, variant_name) {
+        inner
+      } else {
+        let source_items = match map_get(parent_index, imp.module_path) {
+          Present { value: parent_tm } => parent_tm.items
+          Absent => []
+        }
+        match unique_imported_variant_owner(variant_name: variant_name, items: source_items, source_indices: source_indices) {
+          Present { value: parent } => map_insert(inner, variant_name, parent)
+          Absent => inner
+        }
+      }
+    )
+  )
+}
+
 fn build_module_context(contributions: List<ItemContribution>,
     parent_index: Map<String, TypedModule>,
     resolved_imports: List<ResolvedImport>,
@@ -5798,31 +5893,25 @@ fn build_module_context(contributions: List<ItemContribution>,
     diag_chunks: [],
     source_indices: env.source_indices
   )
-  let imported_enum_names = fold(resolved_imports, init: empty_map(), f: (acc, imp) =>
-    fold(imp.specific_names, init: acc, f: (inner, n) => map_insert(inner, n, true))
-  )
-  let variant_fold = fold(env.bindings |> map_values, init: VariantFoldState { locals: empty_map(), collision_errors: [] }, f: (acc, binding) =>
+  let imported_variants = build_imported_variants(resolved_imports: resolved_imports, parent_index: parent_index, source_indices: env.source_indices)
+  let variant_fold = fold(env.bindings |> map_values |> sort_by(b => b.name), init: VariantFoldState { locals: empty_map(), collision_errors: [] }, f: (acc, binding) =>
     let is_coproduct = binding.resolved.connective == Disj
     if is_coproduct {
-      let curr_is_imported = map_get(imported_enum_names, authored_name_at(source_indices: env.source_indices, node: binding.resolved)) != none
+      let binding_enum_name = authored_name_at(source_indices: env.source_indices, node: binding.resolved)
       fold(binding.resolved.children, init: acc, f: (vacc, child) =>
-        match map_get(vacc.locals, authored_name_at(source_indices: env.source_indices, node: child)) {
-          Present { value: prev } =>
-            let prev_is_imported = map_get(imported_enum_names, authored_name_at(source_indices: env.source_indices, node: prev.resolved)) != none
-            if curr_is_imported && prev_is_imported {
+        let child_name = authored_name_at(source_indices: env.source_indices, node: child)
+        let curr_child_is_imported = is_imported_variant_owned_by(imported_variants: imported_variants, variant_name: child_name, enum_name: binding_enum_name)
+        match map_get(vacc.locals, child_name) {
+          Present { value: _prev } =>
+            if curr_child_is_imported {
               VariantFoldState {
-                locals: vacc.locals,
-                collision_errors: list_push(vacc.collision_errors, make_error_node(diagnostic: VariantCollision { variant: authored_name_at(source_indices: env.source_indices, node: child), enum1: authored_name_at(source_indices: env.source_indices, node: prev.resolved), enum2: authored_name_at(source_indices: env.source_indices, node: binding.resolved), span: no_span() }, module_name: module_name))
-              }
-            } else if curr_is_imported {
-              VariantFoldState {
-                locals: map_insert(vacc.locals, authored_name_at(source_indices: env.source_indices, node: child), TypeBinding { name: authored_name_at(source_indices: env.source_indices, node: child), resolved: binding.resolved, provenance: SubValueUnknown }),
+                locals: map_insert(vacc.locals, child_name, TypeBinding { name: child_name, resolved: binding.resolved, provenance: SubValueUnknown }),
                 collision_errors: vacc.collision_errors
               }
             } else { vacc }
           Absent =>
             VariantFoldState {
-              locals: map_insert(vacc.locals, authored_name_at(source_indices: env.source_indices, node: child), TypeBinding { name: authored_name_at(source_indices: env.source_indices, node: child), resolved: binding.resolved, provenance: SubValueUnknown }),
+              locals: map_insert(vacc.locals, child_name, TypeBinding { name: child_name, resolved: binding.resolved, provenance: SubValueUnknown }),
               collision_errors: vacc.collision_errors
             }
         }

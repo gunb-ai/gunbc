@@ -86,10 +86,6 @@ type KeyDerivationClass
   | HandAuthoredString
   | NativeInternalHash
 
-type InputSurface
-  = UpsertSubject
-  | FilePaths
-
 type VisibilityScope = Repo | Org | Network | World
 
 type InvalidationTrigger

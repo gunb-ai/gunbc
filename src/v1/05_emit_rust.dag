@@ -2072,7 +2072,7 @@ fn import_module_enum_scope(import_module: String, registry: Map<String, ItemInf
   let physical = enum_names_in_module(module_name: import_module, typed_modules: typed_modules, source_indices: source_indices, type_summaries: type_summaries, module_index: module_index)
   let reexport_parents = match map_get(export_sets, import_module) {
     Present { value: exported } =>
-      map_keys(exported) |> filter(n =>
+      map_keys(exported) |> sort_by(k => k) |> filter(n =>
         is_known_variant(type_summaries: type_summaries, name: n)
         && is_enum_in_summaries(type_summaries: type_summaries, type_name: n) == false
       ) |> map(n =>
@@ -2129,7 +2129,7 @@ fn wildcard_import_pool_surface_names(module_name: String, visited: List<String>
           |> flat_map(imp =>
             let src_mod = authored_name_at(source_indices: source_indices, node: imp)
             let direct = match map_get(export_sets, src_mod) {
-              Present { value: exported } => map_keys(exported)
+              Present { value: exported } => map_keys(exported) |> sort_by(k => k)
               Absent => []
             }
             concat(
@@ -2149,7 +2149,7 @@ fn wildcard_import_pool_surface_names(module_name: String, visited: List<String>
 
 fn wildcard_reexport_surface_names(import_module: String, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> List<String> {
   let local_candidates = match map_get(export_sets, import_module) {
-    Present { value: exported } => map_keys(exported)
+    Present { value: exported } => map_keys(exported) |> sort_by(k => k)
     Absent => []
   }
   let wildcard_pool_candidates = wildcard_import_pool_surface_names(
@@ -6450,10 +6450,10 @@ fn emit_field_value_with_context(field_value: Node, struct_node: Node, outer_typ
   }
 }
 
-fn find_struct_name_by_fields(field_names: List<String>, type_summaries: Map<String, TypeSummary>) -> String? {
+fn struct_candidates_by_field_names(field_names: List<String>, type_summaries: Map<String, TypeSummary>) -> List<TypeSummary> {
   let n_fields = field_names |> count
-  if n_fields == 0 { return none }
-  let candidates = map_values(type_summaries) |> filter(summary =>
+  if n_fields == 0 { return [] }
+  map_values(type_summaries) |> filter(summary =>
     match summary.repr {
       StructRepr =>
         let ftm_keys = map_keys(summary.field_type_map)
@@ -6463,25 +6463,44 @@ fn find_struct_name_by_fields(field_names: List<String>, type_summaries: Map<Str
       _ => false
     }
   )
-  match candidates |> first {
-    Present { value: s } => Present { value: s.name }
-    Absent => none
+}
+
+fn find_struct_name_by_fields(field_names: List<String>, field_type_hints: Map<String, String>, type_summaries: Map<String, TypeSummary>) -> String? {
+  let candidates = struct_candidates_by_field_names(field_names: field_names, type_summaries: type_summaries)
+  if candidates |> count <= 1 {
+    match candidates |> first {
+      Present { value: s } => Present { value: s.name }
+      Absent => none
+    }
+  } else {
+    let typed_candidates = candidates |> filter(cand =>
+      map_keys(field_type_hints) |> all(fname =>
+        match map_get(field_type_hints, fname) {
+          Present { value: hint_type } =>
+            match map_get(cand.field_type_map, fname) {
+              Present { value: cand_type } => cand_type == hint_type
+              Absent => true
+            }
+          Absent => true
+        }
+      )
+    )
+    if typed_candidates |> count == 1 {
+      match typed_candidates |> first {
+        Present { value: s } => Present { value: s.name }
+        Absent => none
+      }
+    } else {
+      match candidates |> sort_by(c => c.name) |> first {
+        Present { value: s } => Present { value: s.name }
+        Absent => none
+      }
+    }
   }
 }
 
 fn find_unique_struct_name_by_fields(field_names: List<String>, type_summaries: Map<String, TypeSummary>) -> String? {
-  let n_fields = field_names |> count
-  if n_fields == 0 { return none }
-  let candidates = map_values(type_summaries) |> filter(summary =>
-    match summary.repr {
-      StructRepr =>
-        let ftm_keys = map_keys(summary.field_type_map)
-        if ftm_keys |> count == n_fields {
-          field_names |> all(fn_name => map_contains_key(summary.field_type_map, fn_name))
-        } else { false }
-      _ => false
-    }
-  )
+  let candidates = struct_candidates_by_field_names(field_names: field_names, type_summaries: type_summaries)
   if candidates |> count == 1 {
     match candidates |> first {
       Present { value: s } => Present { value: s.name }
@@ -6525,7 +6544,16 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
           }
         } else {
           let lit_field_names = fields |> map(f => field_init_node_name_at(n: f, source_indices: scope.type_env.source_indices))
-          match find_struct_name_by_fields(field_names: lit_field_names, type_summaries: emit_info.type_summaries) {
+          let field_type_hints = fold(fields, init: empty_map(), f: (acc, f) =>
+            let fname = field_init_node_name_at(n: f, source_indices: scope.type_env.source_indices)
+            let fval = field_init_node_value(n: f)
+            match fval.inferred {
+              Present { value: Resolved { node: type_node } } =>
+                map_insert(acc, fname, authored_name_at(source_indices: scope.type_env.source_indices, node: type_node))
+              _ => acc
+            }
+          )
+          match find_struct_name_by_fields(field_names: lit_field_names, field_type_hints: field_type_hints, type_summaries: emit_info.type_summaries) {
             Present { value: resolved_sn } =>
               let field_strs = fields |> map(f =>
                 let fname = field_init_node_name_at(n: f, source_indices: scope.type_env.source_indices)

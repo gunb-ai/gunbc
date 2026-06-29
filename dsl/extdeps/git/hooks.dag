@@ -1,0 +1,36 @@
+module extdeps.git.hooks
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import std.list { List }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "git-scm.com/docs/githooks"
+  }
+}
+
+type PrePushStdinRow {
+  local_ref: String
+  local_sha: String
+  remote_ref: String
+  remote_sha: String
+}
+
+data pre_push_stdin_field_names: List<String> = [
+  "local_ref",
+  "local_sha",
+  "remote_ref",
+  "remote_sha",
+]
+
+fn pre_push_stdin_read_vars() -> String {
+  fold(pre_push_stdin_field_names, init: "", f: fn(acc, field) {
+    if acc == "" { field } else { concat(acc, concat(" ", field)) }
+  })
+}
+
+data zero_sha: String = "0000000000000000000000000000000000000000"
+
+data pre_push_zero_sha: String = zero_sha

@@ -976,11 +976,18 @@ pub fn closure_subject_for_entry(index: &MultiEntryIndex, entry: &str) -> Result
 }
 
 pub fn run_claim(ctx: &v1_interpreter::InterpContext, function: &str) -> ClaimOutcome {
+    // ProcessExit is the wet-gate return convention (ExitSuccess => Pass, ExitFailure => Fail).
+    // NotProcessExit stays NotBool — fail-closed preserved for genuine type errors. Reuses
+    // pre-existing classify_exit. Required: emitted pre-push drift --wet gate runs through
+    // claim_batch -> run_claim; without this mapping ExitSuccess -> exit 1 false-blocks push
+    // (receipt: claim_batch rebuilt on reverted seed reproduced the false-block).
     match v1_interpreter::run_in_context(ctx, function, false) {
         Ok(v1_interpreter::Value::Bool(true)) => ClaimOutcome::Pass,
         Ok(v1_interpreter::Value::Bool(false)) => ClaimOutcome::Fail,
-        Ok(other) => ClaimOutcome::NotBool {
-            got: ctx.format_value(&other),
+        Ok(other) => match classify_exit(&other, ctx) {
+            ExitClass::Success => ClaimOutcome::Pass,
+            ExitClass::Failure(_) => ClaimOutcome::Fail,
+            ExitClass::NotProcessExit { type_name } => ClaimOutcome::NotBool { got: type_name },
         },
         Err(e) => ClaimOutcome::RuntimeError {
             message: format!("{}", e),
@@ -2277,6 +2284,14 @@ pub fn wet_hermetic_discovery_outcome_divergences(
         }
     }
     divergences
+}
+
+/// Peak resident set from `/proc/self/status` VmHWM (high water mark), in bytes.
+pub fn peak_rss_vhwm_bytes() -> Option<u64> {
+    let status = std::fs::read_to_string("/proc/self/status").ok()?;
+    let line = status.lines().find(|l| l.starts_with("VmHWM"))?;
+    let kb: u64 = line.split_whitespace().nth(1)?.parse().ok()?;
+    Some(kb.saturating_mul(1024))
 }
 
 pub const FLOOR_DISCOVERY_EXCLUDES: &[&str] = &[

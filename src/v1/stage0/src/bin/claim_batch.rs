@@ -8,7 +8,7 @@ use std::time::Instant;
 
 use v1_compiler::cli_run::{
     build_multi_entry_index, check_floor_filename_hygiene, closure_subject_for_entry,
-    discover_floor_corpus_rows, make_eval_context_with_runtime_options,
+    discover_floor_corpus_rows, make_eval_context_with_runtime_options, peak_rss_vhwm_bytes,
     precompute_whole_tree_published_mock_keys, resolve_entry_with_index, run_claim_measured,
     ClaimOutcome, DiscoveryRow, MultiEntryIndex,
 };
@@ -39,10 +39,48 @@ fn peak_rss_lines() -> String {
 }
 
 fn peak_rss_bytes() -> Option<u64> {
-    let status = std::fs::read_to_string("/proc/self/status").ok()?;
-    let line = status.lines().find(|l| l.starts_with("VmHWM"))?;
-    let kb: u64 = line.split_whitespace().nth(1)?.parse().ok()?;
-    Some(kb.saturating_mul(1024))
+    peak_rss_vhwm_bytes()
+}
+
+/// Peak RSS of terminated child processes (Linux `getrusage(RUSAGE_CHILDREN)`).
+#[cfg(all(target_os = "linux", target_pointer_width = "64"))]
+fn children_max_rss_bytes() -> Option<u64> {
+    // Hand-decoded `struct rusage` (no libc dep): layout assumes Linux lp64
+    // (x86_64 / aarch64) — 144-byte buffer, `ru_maxrss` at byte offset 32 after
+    // two 16-byte `timeval`s. Non-lp64 Linux is gated out below; syscall failure → None.
+    // If this probe survives phase-0, replace with `libc::rusage` (dissolves with PerformanceReceipt).
+    extern "C" {
+        fn getrusage(who: i32, usage: *mut std::ffi::c_void) -> i32;
+    }
+    const RUSAGE_CHILDREN: i32 = -1;
+    const RU_MAXRSS_OFFSET: usize = 32; // after two struct timeval (16 bytes each)
+    let mut buf = [0u8; 144];
+    if unsafe { getrusage(RUSAGE_CHILDREN, buf.as_mut_ptr().cast()) } != 0 {
+        return None;
+    }
+    let ru_maxrss = i64::from_ne_bytes(
+        buf[RU_MAXRSS_OFFSET..RU_MAXRSS_OFFSET + 8]
+            .try_into()
+            .ok()?,
+    );
+    Some(ru_maxrss as u64 * 1024)
+}
+
+#[cfg(all(target_os = "linux", not(target_pointer_width = "64")))]
+fn children_max_rss_bytes() -> Option<u64> {
+    None
+}
+
+#[cfg(not(target_os = "linux"))]
+fn children_max_rss_bytes() -> Option<u64> {
+    None
+}
+
+fn emit_rss_measurement(label: &str) {
+    match peak_rss_bytes() {
+        Some(bytes) => eprintln!("[measurement] {label}: {bytes} bytes (VmHWM)"),
+        None => eprintln!("[measurement] {label}: unavailable (no /proc/self/status)"),
+    }
 }
 
 fn print_interp_stats(ctx: &InterpContext, flatten_baseline: (u64, u64)) {
@@ -270,6 +308,9 @@ fn resolve_timed(
             );
             timings.resolves += 1;
             timings.resolve_ms += ms;
+            if timings.resolves == 1 {
+                emit_rss_measurement("post-first-entry-resolve-rss");
+            }
             Ok((graph, source_indices))
         }
         Err(msg) => {
@@ -482,6 +523,10 @@ fn run() -> Result<ExitCode, ExitCode> {
 
     let whole_tree_published_keys = match precompute_whole_tree_published_mock_keys(&source_roots) {
         Ok(keys) => {
+            emit_rss_measurement("post-mock-precompute-rss");
+            if let Some(bytes) = children_max_rss_bytes() {
+                eprintln!("[measurement] post-mock-precompute-children-max-rss: {bytes} bytes (getrusage RUSAGE_CHILDREN)");
+            }
             if keys.is_empty() {
                 eprintln!(
                     "claim_batch: whole-tree published mock corpus — no dsl/ corpora precomputed; \
@@ -566,9 +611,9 @@ fn run() -> Result<ExitCode, ExitCode> {
         timings.resolves, timings.resolve_ms, timings.witnesses, timings.witness_ms,
     );
 
-    match peak_rss_bytes() {
-        Some(bytes) => eprintln!("[measurement] per-shard-peak-rss: {bytes} bytes"),
-        None => eprintln!("[measurement] per-shard-peak-rss: unavailable (no /proc/self/status)"),
+    emit_rss_measurement("per-shard-peak-rss");
+    if let Some(bytes) = children_max_rss_bytes() {
+        eprintln!("[measurement] children-max-rss: {bytes} bytes (getrusage RUSAGE_CHILDREN)");
     }
 
     if any_failed {

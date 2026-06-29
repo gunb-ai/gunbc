@@ -3,11 +3,14 @@ module ctrl.review_verdict
 import std.types { ArtifactId, CommitSha, ContentHash, NonEmptyStr, Timestamp }
 import extdeps.github.pulls { ReviewState }
 
-type ReviewProvider
+type LlmReviewProvider
   = OpenaiPro
   | Codex
   | Claude
   | Cursor
+
+type ReviewProvider
+  = Llm { provider: LlmReviewProvider }
   | HumanReviewer
   | ProviderOther { name: NonEmptyStr }
 
@@ -21,12 +24,6 @@ type PolicyRef {
   id: NonEmptyStr
   version: NonEmptyStr
 }
-
-type LlmReviewProvider
-  = OpenaiPro
-  | Codex
-  | Claude
-  | Cursor
 
 type Reviewer
   = AgentReviewer { provider: LlmReviewProvider }

@@ -1,31 +1,90 @@
 module gunbc.ci_fleet
 
-import extdeps.cpu.ampere { altra_q6430_catalog }
-import extdeps.github.actions { RunnerSpec }
-import gunbc.runner_spec_from_offer { runner_spec_from_offer }
-import product.compute_fabric {
-  ComputeOffer,
-  ComputeSupplyFacts,
+import gunbc.fleet_intent {
   ComputeHost,
   ExecutionSurface,
-  MemoryDevice,
+  PerformanceReceipt,
+  ProviderIdentity,
   CpuProcessor,
-  AvailabilityWindow,
-  CostModel,
-  ProviderCostModel,
-  OwnedMarginalZero,
-  PerJobFilesystem,
-  Dram,
+  MemoryDevice,
+  fleet_intent_execution_surface,
+  srv1_host,
+  srv2_host,
 }
+import gunbc.fleet_intent { IsolationBoundary, PerJobFilesystem }
+import extdeps.cpu.ampere { altra_q6430_catalog }
 import extdeps.cpu.types { CpuFacts, CpuDeploymentFacts }
-import std.measure { byte_size, hertz }
-import std.os.types {
-  OperatingSystemSurface,
-  Linux,
-  Posix,
-  PosixProcess,
-}
+import extdeps.memory.types { MemoryKind, Dram }
 import product.placement_supply { HostIdentity }
+import std.currency { CurrencyCode }
+import std.measure { byte_size, hertz, MoneyAmountMicro, money_amount_micro_count }
+import std.nat { Nat }
+import std.types { NonEmptyStr, List, LogicalTime }
+import std.os.types { OperatingSystemSurface, Linux, Posix, PosixProcess }
+
+type CostClass = OwnedMarginalZero | PerSecondBilled | Metered | DeveloperAttention
+
+type CostModel { cost_class: CostClass }
+
+type AvailabilityWindow { open: LogicalTime, close: LogicalTime? }
+
+type CostEstimate { model: CostModel, unit_price: MoneyAmountMicro, currency: CurrencyCode }
+
+type ComputeSupplyFacts {
+  physical: ComputeHost
+  execution: ExecutionSurface
+  cost: CostModel?
+  observed_performance: List<PerformanceReceipt>
+}
+
+type ComputeOffer {
+  provider: ProviderIdentity
+  supply: ComputeSupplyFacts
+  available_window: AvailabilityWindow
+  cost_quote: CostEstimate?
+}
+
+fn per_second_billed_cost_quote(unit_price: MoneyAmountMicro, currency: CurrencyCode) -> CostEstimate {
+  CostEstimate {
+    model: CostModel { cost_class: PerSecondBilled },
+    unit_price: unit_price,
+    currency: currency,
+  }
+}
+
+fn cost_estimate_unit_price_micros(quote: CostEstimate) -> Nat {
+  money_amount_micro_count(m: quote.unit_price)
+}
+
+fn operator_owned_cost() -> CostModel {
+  CostModel { cost_class: OwnedMarginalZero }
+}
+
+data srv1_offer: ComputeOffer = ComputeOffer {
+  provider: "gunbc-operator-srv1",
+  supply: ComputeSupplyFacts {
+    physical: srv1_host,
+    execution: fleet_intent_execution_surface(),
+    cost: Present { value: operator_owned_cost() },
+    observed_performance: [],
+  },
+  available_window: AvailabilityWindow { open: "always-open", close: none },
+  cost_quote: none,
+}
+
+data srv2_offer: ComputeOffer = ComputeOffer {
+  provider: "gunbc-operator-srv2",
+  supply: ComputeSupplyFacts {
+    physical: srv2_host,
+    execution: fleet_intent_execution_surface(),
+    cost: Present { value: operator_owned_cost() },
+    observed_performance: [],
+  },
+  available_window: AvailabilityWindow { open: "always-open", close: none },
+  cost_quote: none,
+}
+
+data fleet_intent_offers: List<ComputeOffer> = [srv1_offer, srv2_offer]
 
 data gunbc_ci_host_identity: HostIdentity = "gunbc-ci-fleet"
 
@@ -63,19 +122,10 @@ data gunbc_ci_fleet_offer: ComputeOffer = ComputeOffer {
       mounted_storage: [],
       network: [],
     },
-    cost: Present {
-      value: CostModel {
-        cost_class: OwnedMarginalZero,
-        rates: ProviderCostModel { placeholder: true },
-      },
-    },
+    cost: Present { value: operator_owned_cost() },
     observed_performance: [],
   },
   available_window: AvailabilityWindow { open: "always-open", close: none },
   cost_quote: none,
-  constraints: [],
 }
 
-fn gunbc_ci_runner_spec() -> RunnerSpec {
-  runner_spec_from_offer(offer: gunbc_ci_fleet_offer)
-}

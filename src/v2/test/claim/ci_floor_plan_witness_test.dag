@@ -8,7 +8,10 @@ import v2.workflow.ci_floor_plan {
   gunbc_ci_floor_schedule_without_serialization,
   gunbc_ci_floor_plan_serializes_heavy_resolves,
   gunbc_ci_floor_plan_co_runs_heavy_without_serialization,
-  floor_expected_readiness_layers,
+  gate_runnable,
+  witness_floor_corpus_exclusion_edges_exist,
+  witness_floor_compile_gate_honest_heavy_profile,
+  witness_floor_no_corpus_resource_edge_to_compile_anchor,
   witness_floor_tight_budget_backs_off_envelope,
   witness_floor_fail_open_would_exceed_budget,
   witness_floor_unreadable_budget_uses_conservative_envelope,
@@ -20,7 +23,8 @@ import v2.workflow.ci_floor_plan {
   witness_floor_derived_width_leaves_headroom_at_cap,
 }
 import gunbc.ci_layer_roots { witness_discovery_scan_dirs, witness_layer_roots }
-import gunbc.ci_spec { gunbc_ci_spec }
+import gunbc.ci_spec { gunbc_ci_spec, EmitHostGate, LayeringImportsGate }
+import std.realization_schedule { runnable_forbids_corpus_co_residence }
 import v2.std.algebra { length, list_snoc_item }
 import v2.std.collection { List }
 
@@ -28,8 +32,8 @@ data corpus_sentinel: String = "__corpus__"
 
 fn runnable_function(r: Runnable) -> String {
   match r {
-    RunnableSingleClaim { entry: _, function: f } => f
-    RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, skip_unaffected_node_frontier: _ } => corpus_sentinel
+    RunnableSingleClaim { entry: _, function: f, profile: _ } => f
+    RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, skip_unaffected_node_frontier: _, profile: _ } => corpus_sentinel
   }
 }
 
@@ -39,10 +43,6 @@ fn batch_functions(b: List<Runnable>) -> List<String> {
 
 fn list_contains_str(xs: List<String>, target: String) -> Bool {
   fold(xs, init: false, f: fn(acc, x) { acc || (x == target) })
-}
-
-fn witness_readiness_layers_match_heavy_chain() -> Bool {
-  gunbc_ci_floor_batches().length() == floor_expected_readiness_layers(spec: gunbc_ci_spec)
 }
 
 fn witness_compile_root_runs_first() -> Bool {
@@ -62,7 +62,7 @@ fn witness_independent_jobs_parallelize() -> Bool {
 
 fn witness_discovery_scan_dirs_in_plan() -> Bool {
   match corpus_runnable() {
-    RunnableDiscoveryBatch { source_roots: _, scan_dirs: dirs, explicit_entries: _, skip_unaffected_node_frontier: _ } =>
+    RunnableDiscoveryBatch { source_roots: _, scan_dirs: dirs, explicit_entries: _, skip_unaffected_node_frontier: _, profile: _ } =>
       list_contains_str(xs: dirs, target: "dsl/test/claim")
     _ => false
   }
@@ -70,7 +70,7 @@ fn witness_discovery_scan_dirs_in_plan() -> Bool {
 
 fn witness_scan_dirs_match_layer_authority() -> Bool {
   match corpus_runnable() {
-    RunnableDiscoveryBatch { source_roots: _, scan_dirs: dirs, explicit_entries: _, skip_unaffected_node_frontier: _ } =>
+    RunnableDiscoveryBatch { source_roots: _, scan_dirs: dirs, explicit_entries: _, skip_unaffected_node_frontier: _, profile: _ } =>
       list_contains_str(xs: dirs, target: witness_discovery_scan_dirs.first())
     _ => false
   }
@@ -78,7 +78,7 @@ fn witness_scan_dirs_match_layer_authority() -> Bool {
 
 fn witness_corpus_has_no_explicit_entries() -> Bool {
   match corpus_runnable() {
-    RunnableDiscoveryBatch { source_roots: roots, scan_dirs: _, explicit_entries: entries, skip_unaffected_node_frontier: _ } =>
+    RunnableDiscoveryBatch { source_roots: roots, scan_dirs: _, explicit_entries: entries, skip_unaffected_node_frontier: _, profile: _ } =>
       (length(xs: entries) == 0) &&
         list_contains_str(xs: roots, target: "src/v2") &&
         list_contains_str(xs: roots, target: "dsl") &&
@@ -89,7 +89,7 @@ fn witness_corpus_has_no_explicit_entries() -> Bool {
 
 fn witness_corpus_skip_node_frontier_enabled() -> Bool {
   match corpus_runnable() {
-    RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, skip_unaffected_node_frontier: enabled } =>
+    RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, skip_unaffected_node_frontier: enabled, profile: _ } =>
       enabled
     _ => false
   }
@@ -127,8 +127,18 @@ fn witness_emit_host_co_runs_corpus_without_serialization() -> Bool {
   })
 }
 
+fn witness_emit_host_profile_forbids_corpus_co_residence() -> Bool {
+  runnable_forbids_corpus_co_residence(r: gate_runnable(g: EmitHostGate))
+}
+
+fn witness_light_gate_profile_allows_corpus_co_residence() -> Bool {
+  !runnable_forbids_corpus_co_residence(r: gate_runnable(g: LayeringImportsGate))
+}
+
 test fn ci_floor_plan_witnesses() -> Bool {
-  witness_readiness_layers_match_heavy_chain() &&
+  witness_floor_compile_gate_honest_heavy_profile() &&
+    witness_floor_no_corpus_resource_edge_to_compile_anchor() &&
+    witness_floor_corpus_exclusion_edges_exist() &&
     witness_compile_root_runs_first() &&
     witness_corpus_not_before_compile() &&
     witness_independent_jobs_parallelize() &&
@@ -139,7 +149,9 @@ test fn ci_floor_plan_witnesses() -> Bool {
     witness_source_ingest_serialized_after_corpus() &&
     witness_plan_serializes_heavy_resolves() &&
     witness_emit_host_isolated_from_corpus() &&
-    witness_emit_host_co_runs_corpus_without_serialization()
+    witness_emit_host_co_runs_corpus_without_serialization() &&
+    witness_emit_host_profile_forbids_corpus_co_residence() &&
+    witness_light_gate_profile_allows_corpus_co_residence()
 }
 
 test fn ci_floor_run_envelope_witnesses() -> Bool {

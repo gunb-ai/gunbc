@@ -65,7 +65,7 @@ fn byte_size_count(b: ByteSize) -> Nat {
 }
 
 #[test]
-fn g3_param_dependent_field_through_parametric_alias_chain_fails_closed() {
+fn g3_param_dependent_field_through_parametric_alias_chain_resolves() {
     let src = r#"
 module m
 
@@ -82,11 +82,9 @@ fn unwrap(w: IntWrap) -> Int {
 "#;
     let msgs = hard_diagnostic_messages(&compile_dag_resolved(src));
     assert!(
-        msgs.iter()
-            .any(|m| m.contains("no field 'value' on type 'IntWrap'")),
-        "param-dependent field through a parametric-alias chain must fail closed with the \
-         origin-nominal `no field 'value' on type 'IntWrap'` diagnostic (proving \
-         nominal_type_ref(origin) fired at the lossy && unresolved-param boundary), got: {msgs:?}"
+        msgs.is_empty(),
+        "param-dependent field through a parametric-alias chain should resolve once type args \
+         are preserved across hops, got: {msgs:?}"
     );
 }
 
@@ -113,6 +111,34 @@ fn get_tag(w: IntTagged) -> Nat {
         msgs.is_empty(),
         "param-independent (phantom) field through the same parametric-alias chain shape should \
          resolve, isolating fail-closed to param-dependent fields, got: {msgs:?}"
+    );
+}
+
+/// G3 (A) stale witness: C=B=A with rebrand on the *intermediate* hop (B). Post-#5925
+/// main must resolve field access without the lookup:188 self-ref-guard mis-fire that
+/// would stop chain-following before reaching the struct. Distinct from G3 (B)
+/// (param-dependent multihop type-arg drop, closed by #5925).
+#[test]
+fn g3_branded_intermediate_alias_chain_field_access() {
+    let src = r#"
+module m
+
+type A {
+  val: Int
+}
+
+type B = A where brand("B")
+type C = B
+
+fn get(x: C) -> Int {
+  x.val
+}
+"#;
+    let msgs = hard_diagnostic_messages(&compile_dag_resolved(src));
+    assert!(
+        msgs.is_empty(),
+        "G3 (A): branded intermediate hop in C=B=A chain should resolve field access, got: \
+         {msgs:?}"
     );
 }
 

@@ -1,6 +1,7 @@
 module gunbc.ci_runner_placement
 
-import product.compute_fabric { ComputeOffer, compute_host_ram_bytes_total, compute_host_primary_cpu }
+import gunbc.ci_fleet { ComputeOffer }
+import gunbc.fleet_intent { compute_host_ram_bytes_total, compute_host_primary_cpu }
 import product.placement_supply { HostIdentity }
 import std.measure { ByteSize, byte_size, byte_size_count, measure_scale_fraction_floor, measure_le, HardwareThreadCount }
 import std.types { Int, List, String, Bool }
@@ -38,7 +39,7 @@ import gunbc.ci_floor_measurement {
   gunbc_ci_session_reservation_mode,
   gunbc_ci_runner_cgroup_memory_cap,
 }
-import gunbc.fleet_intent { fleet_intent_offers }
+import gunbc.ci_fleet { fleet_intent_offers }
 
 type WorkloadClass
   = BatchLatencyTolerant

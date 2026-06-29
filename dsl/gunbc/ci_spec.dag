@@ -17,6 +17,7 @@ type Gate
   | GeneratedArtifactDriftGate
   | SourceRootIngestGate
   | RegenVerifyGate
+  | EmitDeterminismGate
 
 type DiffMode = DiffMergeBase | DiffTwoDot
 
@@ -39,7 +40,8 @@ data gunbc_ci_floor_gates: List<Gate> = [
   DslCompileCleanGate,
   GeneratedArtifactDriftGate,
   SourceRootIngestGate,
-  RegenVerifyGate
+  RegenVerifyGate,
+  EmitDeterminismGate
 ]
 
 data gunbc_ci_rust_job_gates: List<Gate> = [
@@ -231,3 +233,4 @@ fn gunbc_ci_rust_job_run() -> String {
     )
   )
 }
+
