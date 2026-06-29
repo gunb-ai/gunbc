@@ -45,7 +45,7 @@ import gunbc.ci_floor_measurement {
   Regime2AggregateOomd,
   SessionReservationModeUnset,
 }
-import gunbc.fleet_intent { fleet_intent_offers }
+import gunbc.ci_fleet { fleet_intent_offers }
 import gunbc.runner_deploy_emit {
   expected_runner_deploy_manifest,
   runner_deploy_drifted,

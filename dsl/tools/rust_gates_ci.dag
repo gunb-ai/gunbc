@@ -11,8 +11,7 @@ import gunbc.ci_spec {
   DiffTwoDot,
 }
 import gunbc.ci_compile_jobs { ci_compile_jobs, compile_jobs_count_or_serial }
-import gunbc.fleet_intent { srv1_host }
-import product.compute_fabric { compute_host_ram_bytes_total }
+import gunbc.fleet_intent { srv1_host, compute_host_ram_bytes_total }
 
 fn rust_gate_build_jobs_args() -> List<String> {
   let jobs = ci_compile_jobs(
