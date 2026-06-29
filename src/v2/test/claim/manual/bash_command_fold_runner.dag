@@ -183,6 +183,70 @@ fn bash_command_fold_plan() -> List<List<Runnable>> {
       RunnableSingleClaim {
         entry: bash_fold_test_entry,
         function: "bash_fold_with_redir_pipe_soundness_holds"
+      },
+      RunnableSingleClaim {
+        entry: bash_fold_test_entry,
+        function: "bash_fold_raw_line_orch_emit_holds"
+      },
+      RunnableSingleClaim {
+        entry: bash_fold_test_entry,
+        function: "bash_fold_raw_line_x_eq_holds"
+      },
+      RunnableSingleClaim {
+        entry: bash_fold_test_entry,
+        function: "bash_fold_raw_line_cmdsubst_holds"
+      },
+      RunnableSingleClaim {
+        entry: bash_fold_test_entry,
+        function: "bash_fold_raw_line_paren_holds"
+      },
+      RunnableSingleClaim {
+        entry: bash_fold_test_entry,
+        function: "bash_fold_raw_line_quoted_holds"
+      },
+      RunnableSingleClaim {
+        entry: bash_fold_test_entry,
+        function: "bash_fold_raw_line_mktemp_holds"
+      },
+      RunnableSingleClaim {
+        entry: bash_fold_test_entry,
+        function: "bash_fold_raw_line_trailing_nl_holds"
+      },
+      RunnableSingleClaim {
+        entry: bash_fold_test_entry,
+        function: "bash_fold_raw_line_wrong_spellings_rejects_oracle_holds"
+      },
+      RunnableSingleClaim {
+        entry: bash_fold_test_entry,
+        function: "bash_fold_raw_line_wrong_production_rejects_oracle_holds"
+      },
+      RunnableSingleClaim {
+        entry: bash_fold_test_entry,
+        function: "bash_fold_negation_subshell_false_holds"
+      },
+      RunnableSingleClaim {
+        entry: bash_fold_test_entry,
+        function: "bash_fold_negation_subshell_rawline_holds"
+      },
+      RunnableSingleClaim {
+        entry: bash_fold_test_entry,
+        function: "bash_fold_negation_wrong_spellings_rejects_oracle_holds"
+      },
+      RunnableSingleClaim {
+        entry: bash_fold_test_entry,
+        function: "bash_fold_negation_wrong_production_rejects_oracle_holds"
+      },
+      RunnableSingleClaim {
+        entry: bash_fold_test_entry,
+        function: "bash_fold_env_prefixed_lit_t_holds"
+      },
+      RunnableSingleClaim {
+        entry: bash_fold_test_entry,
+        function: "bash_fold_env_prefixed_wrong_spellings_rejects_oracle_holds"
+      },
+      RunnableSingleClaim {
+        entry: bash_fold_test_entry,
+        function: "bash_fold_env_prefixed_wrong_production_rejects_oracle_holds"
       }
     ]
   ]

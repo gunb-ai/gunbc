@@ -20,13 +20,19 @@ import extdeps.languages.bash.program {
 }
 import v2.extdeps.languages.bash {
   bash_named_edge,
+  bash_stmt_env_prefixed_emitted,
+  bash_stmt_env_prefixed_target_model,
   bash_stmt_heredoc_emitted,
   bash_stmt_heredoc_target_model,
+  bash_stmt_negation_emitted,
+  bash_stmt_negation_target_model,
   bash_stmt_with_redir_emitted,
   bash_stmt_with_redir_target_model,
   bash_token_class_emit_transforms,
   bash_target_model_bundle,
-  bash_word_atom
+  bash_word_atom,
+  bash_word_pass_emitted,
+  bash_word_pass_target_model
 }
 import v2.std.algebra { list_append }
 import v2.std.collection {
@@ -534,7 +540,13 @@ fn bash_fold_stmt_bundle_witness(stmt: ShellStmt) -> Witness<BashFoldStmtBundle>
     BraceGroup { body: _ } =>
       Violates { diagnostic: bash_fold_unsupported_variant_diagnostic(variant: ^bash_fold_stmt_brace_group) }
     EnvPrefixed { name: _, value: _, command: _ } =>
-      Violates { diagnostic: bash_fold_unsupported_variant_diagnostic(variant: ^bash_fold_stmt_env_prefixed) }
+      Holds {
+        value: BashFoldStmtBundle {
+          production_binding: ^bash_production_stmt_env_prefixed,
+          relation_rule: ^bash_relation_rule_stmt_env_prefixed,
+          emitted: bash_stmt_env_prefixed_emitted
+        }
+      }
     WithRedir { stmt: _, redir: _ } =>
       Holds {
         value: BashFoldStmtBundle {
@@ -552,9 +564,21 @@ fn bash_fold_stmt_bundle_witness(stmt: ShellStmt) -> Witness<BashFoldStmtBundle>
         }
       }
     Negation { stmt: _ } =>
-      Violates { diagnostic: bash_fold_unsupported_variant_diagnostic(variant: ^bash_fold_stmt_negation) }
+      Holds {
+        value: BashFoldStmtBundle {
+          production_binding: ^bash_production_stmt_negation,
+          relation_rule: ^bash_relation_rule_stmt_negation,
+          emitted: bash_stmt_negation_emitted
+        }
+      }
     RawLine { text: _ } =>
-      Violates { diagnostic: bash_fold_unsupported_variant_diagnostic(variant: ^bash_fold_stmt_raw_line) }
+      Holds {
+        value: BashFoldStmtBundle {
+          production_binding: ^bash_production_word_pass,
+          relation_rule: ^bash_relation_rule_word_pass,
+          emitted: bash_word_pass_emitted
+        }
+      }
   }
 }
 
@@ -1248,6 +1272,9 @@ fn bash_fold_stmt_uses_delegated_grammar(stmt: ShellStmt) -> Bool {
   match stmt {
     WithRedir { stmt: _, redir: _ } => true
     Heredoc { path: _, delimiter: _, body: _ } => true
+    RawLine { text: _ } => true
+    Negation { stmt: _ } => true
+    EnvPrefixed { name: _, value: _, command: _ } => true
     Command { words: _ } => false
     Assign { name: _, value: _ } => false
     If { cond: _, then: _ } => false
@@ -1255,11 +1282,28 @@ fn bash_fold_stmt_uses_delegated_grammar(stmt: ShellStmt) -> Bool {
     BraceGroup { body: _ } => false
     AndOr { left: _, op: _, right: _ } => false
     Pipe { left: _, right: _ } => false
-    EnvPrefixed { name: _, value: _, command: _ } => false
     Exit { code: _ } => false
-    Negation { stmt: _ } => false
-    RawLine { text: _ } => false
   }
+}
+
+fn bash_fold_raw_line_target_model(text: String) -> TargetModel {
+  bash_word_pass_target_model(spelling: text)
+}
+
+fn bash_fold_negation_target_model(inner_spelling: String) -> TargetModel {
+  bash_stmt_negation_target_model(inner: inner_spelling)
+}
+
+fn bash_fold_env_prefixed_target_model(
+  name: String,
+  value_spelling: String,
+  command_spelling: String
+) -> TargetModel {
+  bash_stmt_env_prefixed_target_model(
+    name: name,
+    value: value_spelling,
+    command: command_spelling
+  )
 }
 
 fn bash_fold_with_redir_target_model(stmt_spelling: String, redir_spelling: String) -> TargetModel {
@@ -1309,6 +1353,28 @@ fn bash_fold_heredoc_wrong_target_model_witness() -> Witness<TargetModel> {
       path_spelling: "'out'",
       delimiter: "EOF",
       body: "world"
+    )
+  }
+}
+
+fn bash_fold_raw_line_wrong_target_model_witness() -> Witness<TargetModel> {
+  Holds {
+    value: bash_fold_raw_line_target_model(text: "wrong")
+  }
+}
+
+fn bash_fold_negation_wrong_target_model_witness() -> Witness<TargetModel> {
+  Holds {
+    value: bash_fold_negation_target_model(inner_spelling: "(true)")
+  }
+}
+
+fn bash_fold_env_prefixed_wrong_target_model_witness() -> Witness<TargetModel> {
+  Holds {
+    value: bash_fold_env_prefixed_target_model(
+      name: "TMPDIR",
+      value_spelling: "'/x'",
+      command_spelling: "'true'"
     )
   }
 }
