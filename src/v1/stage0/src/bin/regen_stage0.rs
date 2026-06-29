@@ -122,7 +122,6 @@ const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
     "fact_cardinality_census.rs",
     "import_resolution_project.rs",
     "inert_carrier_project.rs",
-    "languages_consumer_census.rs",
     "layering_imports_project.rs",
     "module_path_index.rs",
     "non_fold_residue_project.rs",
@@ -794,20 +793,6 @@ fn patch_bootstrap_dag_collect(src_dir: &Path) -> Result<(), String> {
     let DagCollectPatch { compile_text, .. } = patch_bootstrap_dag_collect_text(&text)?;
     fs::write(&compile_path, compile_text)
         .map_err(|e| format!("write {}: {e}", compile_path.display()))?;
-    Ok(())
-}
-
-fn patch_languages_consumer_census_mod(src_dir: &Path) -> Result<(), String> {
-    let lib_path = src_dir.join("lib.rs");
-    let mut lib_text =
-        fs::read_to_string(&lib_path).map_err(|e| format!("read {}: {e}", lib_path.display()))?;
-    if !lib_text.contains("pub mod languages_consumer_census;") {
-        lib_text = lib_text.replace(
-            "pub mod import_resolution_project;\n",
-            "pub mod import_resolution_project;\npub mod languages_consumer_census;\n",
-        );
-    }
-    fs::write(&lib_path, lib_text).map_err(|e| format!("write {}: {e}", lib_path.display()))?;
     Ok(())
 }
 
