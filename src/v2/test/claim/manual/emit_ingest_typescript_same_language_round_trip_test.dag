@@ -185,6 +185,22 @@ fn emit_typescript_backward_fails_closed_on_foreign_emitted_holds() -> Bool {
   }
 }
 
+test fn ts_diag_backward_selects() -> Bool { emit_typescript_backward_selects_canonical_row_holds() }
+test fn ts_diag_forward_selects() -> Bool { ingest_typescript_forward_selects_canonical_emitted_holds() }
+test fn ts_diag_emit_then_ingest() -> Bool { emit_then_ingest_typescript_selector_identity_holds() }
+test fn ts_diag_ingest_then_emit() -> Bool { ingest_then_emit_typescript_selector_identity_holds() }
+test fn ts_diag_perturbed_fails() -> Bool { emit_ingest_typescript_perturbed_frontier_fails_closed() }
+test fn ts_diag_off_frontier_fails() -> Bool { ingest_typescript_forward_fails_closed_off_frontier_holds() }
+test fn ts_diag_foreign_fails() -> Bool { emit_typescript_backward_fails_closed_on_foreign_emitted_holds() }
+test fn ts_diag_parse_bridge() -> Bool { typescript_same_language_parse_bridge_holds() }
+test fn ts_diag_discriminates() -> Bool { typescript_same_language_discriminates_on_real_tree() }
+test fn ts_diag_grammar_parse() -> Bool {
+  match typescript_mvp1_grammar_parse_fixture() {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 test fn emit_ingest_typescript_selector_bijectivity_holds() -> Bool {
   emit_typescript_backward_selects_canonical_row_holds()
     && ingest_typescript_forward_selects_canonical_emitted_holds()
