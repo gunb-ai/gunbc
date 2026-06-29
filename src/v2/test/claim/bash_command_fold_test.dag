@@ -27,6 +27,7 @@ import extdeps.languages.bash.program {
   serialize_stmt
 }
 import v2.compiler.emit { emit }
+import v2.compiler.emit_shell { emit_shell_stmt }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import v2.compiler.translate { target_serialize_source_from_model }
 import v2.extdeps.languages.bash {
@@ -452,56 +453,111 @@ fn bash_fold_fold_serialize(stmt: ShellStmt, target: TargetModel) -> Outcome<Str
   }
 }
 
-fn bash_fold_fold_native_matches_oracle(stmt: ShellStmt) -> Bool {
-  match bash_fold_target_model_for_stmt_witness(stmt: stmt) {
-    Holds { value: target } =>
-      match bash_fold_fold_serialize(stmt: stmt, target: target) {
-        Accepted { value: folded, diagnostics: _ } => folded == serialize_stmt(s: stmt)
-        Rejected { diagnostics: _ } => false
+fn bash_fold_fold_serialize_stmt(stmt: ShellStmt) -> Outcome<String> {
+  match stmt {
+    RawLine { text: _ } =>
+      bash_fold_delegated_fold_serialize(stmt: stmt)
+    WithRedir { stmt: _, redir: _ } =>
+      bash_fold_delegated_fold_serialize(stmt: stmt)
+    Heredoc { path: _, delimiter: _, body: _ } =>
+      bash_fold_delegated_fold_serialize(stmt: stmt)
+    Negation { stmt: _ } =>
+      bash_fold_delegated_fold_serialize(stmt: stmt)
+    EnvPrefixed { name: _, value: _, command: _ } =>
+      bash_fold_delegated_fold_serialize(stmt: stmt)
+    Subshell { body: b } =>
+      if bash_fold_stmt_list_has_delegated(stmts: b) {
+        match bash_fold_emit_stmts_semi_spelling(stmts: b) {
+          Accepted { value: body_spelling, diagnostics: d } =>
+            match bash_fold_emit_from_emitted(
+              emitted: bash_stmt_subshell_emitted,
+              target: bash_stmt_subshell_target_model(body: body_spelling)
+            ) {
+              Accepted { value: folded, diagnostics: fd } =>
+                match fd {
+                  None => Accepted { value: folded, diagnostics: None }
+                  Some { diagnostics: r } => Rejected { diagnostics: r }
+                }
+              Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            }
+          Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        }
+      } else {
+        match bash_fold_target_model_for_stmt_witness(stmt: stmt) {
+          Holds { value: target } =>
+            bash_fold_fold_serialize(stmt: stmt, target: target)
+          Violates { diagnostic: d } =>
+            Rejected { diagnostics: Some { diagnostics: [d] } }
+        }
       }
-    Violates { diagnostic: _ } => false
+    Command { words: _ } =>
+      match bash_fold_target_model_for_stmt_witness(stmt: stmt) {
+        Holds { value: target } =>
+          bash_fold_fold_serialize(stmt: stmt, target: target)
+        Violates { diagnostic: d } =>
+          Rejected { diagnostics: Some { diagnostics: [d] } }
+      }
+    Assign { name: _, value: _ } =>
+      match bash_fold_target_model_for_stmt_witness(stmt: stmt) {
+        Holds { value: target } =>
+          bash_fold_fold_serialize(stmt: stmt, target: target)
+        Violates { diagnostic: d } =>
+          Rejected { diagnostics: Some { diagnostics: [d] } }
+      }
+    Exit { code: _ } =>
+      match bash_fold_target_model_for_stmt_witness(stmt: stmt) {
+        Holds { value: target } =>
+          bash_fold_fold_serialize(stmt: stmt, target: target)
+        Violates { diagnostic: d } =>
+          Rejected { diagnostics: Some { diagnostics: [d] } }
+      }
+    AndOr { left: _, op: _, right: _ } =>
+      match bash_fold_target_model_for_stmt_witness(stmt: stmt) {
+        Holds { value: target } =>
+          bash_fold_fold_serialize(stmt: stmt, target: target)
+        Violates { diagnostic: d } =>
+          Rejected { diagnostics: Some { diagnostics: [d] } }
+      }
+    Pipe { left: _, right: _ } =>
+      match bash_fold_target_model_for_stmt_witness(stmt: stmt) {
+        Holds { value: target } =>
+          bash_fold_fold_serialize(stmt: stmt, target: target)
+        Violates { diagnostic: d } =>
+          Rejected { diagnostics: Some { diagnostics: [d] } }
+      }
+    If { cond: _, then: _ } =>
+      match bash_fold_target_model_for_stmt_witness(stmt: stmt) {
+        Holds { value: target } =>
+          bash_fold_fold_serialize(stmt: stmt, target: target)
+        Violates { diagnostic: d } =>
+          Rejected { diagnostics: Some { diagnostics: [d] } }
+      }
+    BraceGroup { body: _ } =>
+      match bash_fold_target_model_for_stmt_witness(stmt: stmt) {
+        Holds { value: target } =>
+          bash_fold_fold_serialize(stmt: stmt, target: target)
+        Violates { diagnostic: d } =>
+          Rejected { diagnostics: Some { diagnostics: [d] } }
+      }
   }
 }
 
-fn bash_fold_delegated_matches_oracle(stmt: ShellStmt) -> Bool {
-  match bash_fold_delegated_fold_serialize(stmt: stmt) {
+fn bash_fold_fold_matches_oracle(stmt: ShellStmt) -> Bool {
+  match bash_fold_fold_serialize_stmt(stmt: stmt) {
     Accepted { value: folded, diagnostics: _ } => folded == serialize_stmt(s: stmt)
     Rejected { diagnostics: _ } => false
   }
 }
 
-fn bash_fold_fold_matches_oracle(stmt: ShellStmt) -> Bool {
-  match stmt {
-    RawLine { text: _ } => bash_fold_delegated_matches_oracle(stmt: stmt)
-    WithRedir { stmt: _, redir: _ } => bash_fold_delegated_matches_oracle(stmt: stmt)
-    Heredoc { path: _, delimiter: _, body: _ } => bash_fold_delegated_matches_oracle(stmt: stmt)
-    Negation { stmt: _ } => bash_fold_delegated_matches_oracle(stmt: stmt)
-    EnvPrefixed { name: _, value: _, command: _ } =>
-      bash_fold_delegated_matches_oracle(stmt: stmt)
-    Subshell { body: b } =>
-      if bash_fold_stmt_list_has_delegated(stmts: b) {
-        match bash_fold_emit_stmts_semi_spelling(stmts: b) {
-          Accepted { value: body_spelling, diagnostics: _ } =>
-            match bash_fold_emit_from_emitted(
-              emitted: bash_stmt_subshell_emitted,
-              target: bash_stmt_subshell_target_model(body: body_spelling)
-            ) {
-              Accepted { value: folded, diagnostics: _ } =>
-                folded == serialize_stmt(s: stmt)
-              Rejected { diagnostics: _ } => false
-            }
-          Rejected { diagnostics: _ } => false
-        }
-      } else {
-        bash_fold_fold_native_matches_oracle(stmt: stmt)
+fn bash_fold_fold_matches_emit_shell_stmt(stmt: ShellStmt) -> Bool {
+  match bash_fold_fold_serialize_stmt(stmt: stmt) {
+    Accepted { value: fold_carried, diagnostics: _ } =>
+      match emit_shell_stmt(s: stmt) {
+        Accepted { value: shell_src, diagnostics: d } =>
+          (shell_src.carried == fold_carried) && (d == None)
+        Rejected { diagnostics: _ } => false
       }
-    Command { words: _ } => bash_fold_fold_native_matches_oracle(stmt: stmt)
-    Assign { name: _, value: _ } => bash_fold_fold_native_matches_oracle(stmt: stmt)
-    Exit { code: _ } => bash_fold_fold_native_matches_oracle(stmt: stmt)
-    AndOr { left: _, op: _, right: _ } => bash_fold_fold_native_matches_oracle(stmt: stmt)
-    Pipe { left: _, right: _ } => bash_fold_fold_native_matches_oracle(stmt: stmt)
-    If { cond: _, then: _ } => bash_fold_fold_native_matches_oracle(stmt: stmt)
-    BraceGroup { body: _ } => bash_fold_fold_native_matches_oracle(stmt: stmt)
+    Rejected { diagnostics: _ } => false
   }
 }
 
