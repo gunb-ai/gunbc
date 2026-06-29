@@ -1,0 +1,87 @@
+module v2.workflow.floor_diff_observe
+
+import gunbc.ci_spec {
+  DiffPolicy,
+  DiffMergeBase,
+  DiffTwoDot,
+  gunbc_ci_spec
+}
+import gunbc.ci_fleet { gunbc_ci_host }
+import gunbc.host_effect {
+  ShellCommand,
+  NodeControlPlane,
+  HostOs,
+  OneShotIdempotent,
+  HostEffectIntent,
+  HostEffectEvidence,
+  ShellEffectApplied
+}
+import gunbc.host_effect_realize { host_effect_apply }
+import std.realization_reconcile {
+  Reconciliation,
+  Converged,
+  NotConverged
+}
+import std.types { String }
+
+type FloorUnifiedDiffResult
+  = UnifiedDiffOk { text: String }
+  | UnifiedDiffFail { reason: String }
+
+fn floor_ci_host_os() -> NodeControlPlane {
+  HostOs { node: gunbc_ci_host }
+}
+
+fn floor_git_diff_env_preamble(policy: DiffPolicy) -> String {
+  concat(
+    concat(
+      "if [ -n \"${GUNBC_CI_DIFF_UNIFIED:-}\" ]; then printf '%s' \"$GUNBC_CI_DIFF_UNIFIED\"; exit 0; fi\n",
+      concat("BASE=\"${GUNBC_CI_DIFF_BASE:-", concat(policy.base, "\"}\n")))
+    ),
+    concat("HEAD=\"${GUNBC_CI_DIFF_HEAD:-", concat(policy.head, "\"}\n"))
+  )
+}
+
+fn floor_git_diff_unified_script(policy: DiffPolicy) -> String {
+  let preamble = floor_git_diff_env_preamble(policy: policy)
+  match policy.mode {
+    DiffMergeBase =>
+      concat(
+        preamble,
+        concat(
+          "if [ \"${GUNBC_CI_DIFF_MERGE_BASE:-1}\" = \"0\" ] || [ \"${GUNBC_CI_DIFF_MERGE_BASE:-1}\" = \"false\" ]; then\n",
+          concat(
+            "  git diff -U0 \"$BASE\" \"$HEAD\"\n",
+            "else\n  git diff -U0 \"${BASE}...${HEAD}\"\nfi\n"
+          )
+        )
+      )
+    DiffTwoDot =>
+      concat(preamble, "git diff -U0 \"$BASE\" \"$HEAD\"\n")
+  }
+}
+
+fn floor_unified_diff_from_reconciliation(
+  r: Reconciliation<HostEffectIntent, HostEffectEvidence>
+) -> FloorUnifiedDiffResult {
+  match r {
+    Converged { evidence: ShellEffectApplied { stdout: text, .. }, applied: _ } =>
+      UnifiedDiffOk { text: text }
+    NotConverged { reason: why, applied: _ } =>
+      UnifiedDiffFail { reason: why }
+  }
+}
+
+fn floor_observe_git_diff_unified(policy: DiffPolicy) -> FloorUnifiedDiffResult {
+  floor_unified_diff_from_reconciliation(
+    r: host_effect_apply(
+      target: floor_ci_host_os(),
+      effect: ShellCommand { script: floor_git_diff_unified_script(policy: policy) },
+      policy: OneShotIdempotent
+    )
+  )
+}
+
+fn floor_observe_git_diff_unified_for_ci() -> FloorUnifiedDiffResult {
+  floor_observe_git_diff_unified(policy: gunbc_ci_spec.diff_policy)
+}
