@@ -1,0 +1,204 @@
+module extdeps.bmc.webui.nbd_proxy
+
+import std.types { Int, List, Bool }
+import std.measure { ByteSize }
+import std.http_path { PathTemplate, LiteralToken, ParamToken }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/openbmc/jsnbd"
+  }
+}
+
+data nbd_protocol_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/NetworkBlockDevice/nbd/blob/master/doc/proto.md"
+  }
+}
+
+data openbmc_virtual_media_design_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/openbmc/docs/blob/master/designs/virtual-media.md"
+  }
+}
+
+type NbdProxyServeInterface {
+  export_byte_count: ByteSize
+}
+
+type NbdPeerRole = NbdClient | NbdServer
+
+type NbdProxyRoleAssignment {
+  bmc_role: NbdPeerRole
+  host_program_role: NbdPeerRole
+}
+
+data nbd_proxy_role_assignment: NbdProxyRoleAssignment = NbdProxyRoleAssignment {
+  bmc_role: NbdClient,
+  host_program_role: NbdServer,
+}
+
+type NbdOverWssCarrier {
+  tls_required: Bool
+  bidirectional_byte_pipe: Bool
+}
+
+data nbd_over_wss_carrier: NbdOverWssCarrier = NbdOverWssCarrier {
+  tls_required: true,
+  bidirectional_byte_pipe: true,
+}
+
+data nbd_magic: Int = 5639144782019643715
+data nbd_ihaveopt_magic: Int = 5280542401877725268
+
+type NbdHandshakeFlag =
+    NbdFlagFixedNewstyle
+  | NbdFlagNoZeroes
+
+fn nbd_handshake_flag_wire(f: NbdHandshakeFlag) -> Int {
+  match f {
+    NbdFlagFixedNewstyle => 1
+    NbdFlagNoZeroes => 2
+  }
+}
+
+data nbd_fixed_newstyle_server_handshake_flags: Int = 3
+
+type NbdFixedNewstyleServerGreeting {
+  magic: Int
+  ihaveopt: Int
+  handshake_flags: Int
+}
+
+data nbd_fixed_newstyle_server_greeting: NbdFixedNewstyleServerGreeting = NbdFixedNewstyleServerGreeting {
+  magic: nbd_magic,
+  ihaveopt: nbd_ihaveopt_magic,
+  handshake_flags: nbd_fixed_newstyle_server_handshake_flags,
+}
+
+data nbd_client_option_export_name_wire: Int = 1
+
+data nbd_proxy_honored_client_options: List<Int> = [nbd_client_option_export_name_wire]
+
+type NbdTransmissionFlag =
+    NbdTransmissionFlagHasFlags
+  | NbdTransmissionFlagReadOnly
+
+fn nbd_transmission_flag_wire(f: NbdTransmissionFlag) -> Int {
+  match f {
+    NbdTransmissionFlagHasFlags => 1
+    NbdTransmissionFlagReadOnly => 2
+  }
+}
+
+data nbd_read_only_export_transmission_flags: Int = 3
+
+type NbdExportReply {
+  export_size: ByteSize
+  transmission_flags: Int
+}
+
+data nbd_request_magic: Int = 627086611
+data nbd_reply_magic: Int = 1732535960
+
+type NbdTransmissionCommand =
+    NbdCmdRead
+  | NbdCmdWrite
+  | NbdCmdDisc
+  | NbdCmdTrim
+
+fn nbd_transmission_command_wire(cmd: NbdTransmissionCommand) -> Int {
+  match cmd {
+    NbdCmdRead => 0
+    NbdCmdWrite => 1
+    NbdCmdDisc => 2
+    NbdCmdTrim => 4
+  }
+}
+
+type NbdTransmissionRequest {
+  magic: Int
+  command: NbdTransmissionCommand
+  handle: Int
+  offset: Int
+  length: Int
+}
+
+data nbd_error_eperm_wire: Int = 1
+
+type NbdTransmissionReply
+  = NbdDataReply { magic: Int, handle: Int, data_length: Int }
+  | NbdErrorReply { magic: Int, handle: Int, error_wire: Int }
+
+type NbdReadOnlyCommandPolicy =
+    NbdPolicyServeRead
+  | NbdPolicyRefuseEperm
+  | NbdPolicyCleanDisconnect
+
+fn nbd_read_only_export_command_policy(cmd: NbdTransmissionCommand) -> NbdReadOnlyCommandPolicy {
+  match cmd {
+    NbdCmdRead => NbdPolicyServeRead
+    NbdCmdWrite => NbdPolicyRefuseEperm
+    NbdCmdTrim => NbdPolicyRefuseEperm
+    NbdCmdDisc => NbdPolicyCleanDisconnect
+  }
+}
+
+fn nbd_read_only_export_refuses_command(cmd: NbdTransmissionCommand) -> Bool {
+  match nbd_read_only_export_command_policy(cmd: cmd) {
+    NbdPolicyRefuseEperm => true
+    NbdPolicyServeRead => false
+    NbdPolicyCleanDisconnect => false
+  }
+}
+
+type BmcwebNbdProxyEndpointVariant =
+    NbdSlotEndpoint
+  | VmSlotIndexEndpoint
+
+data nbd_slot_endpoint_path_template: PathTemplate = PathTemplate {
+  tokens: [
+    LiteralToken { text: "/nbd/" },
+    ParamToken { name: "slot" },
+  ],
+}
+
+data vm_slot_index_endpoint_path_template: PathTemplate = PathTemplate {
+  tokens: [
+    LiteralToken { text: "/vm/" },
+    ParamToken { name: "slot" },
+    LiteralToken { text: "/" },
+    ParamToken { name: "index" },
+  ],
+}
+
+fn bmcweb_nbd_proxy_endpoint_path_template(variant: BmcwebNbdProxyEndpointVariant) -> PathTemplate {
+  match variant {
+    NbdSlotEndpoint => nbd_slot_endpoint_path_template
+    VmSlotIndexEndpoint => vm_slot_index_endpoint_path_template
+  }
+}
+
+type BmcwebNbdProxyWsUpgrade {
+  endpoint: BmcwebNbdProxyEndpointVariant
+  requires_upgrade_header: Bool
+  redfish_session_auth: Bool
+}
+
+data bmcweb_nbd_proxy_ws_upgrade_facts: List<BmcwebNbdProxyWsUpgrade> = [
+  BmcwebNbdProxyWsUpgrade {
+    endpoint: NbdSlotEndpoint,
+    requires_upgrade_header: true,
+    redfish_session_auth: true,
+  },
+  BmcwebNbdProxyWsUpgrade {
+    endpoint: VmSlotIndexEndpoint,
+    requires_upgrade_header: true,
+    redfish_session_auth: true,
+  },
+]
