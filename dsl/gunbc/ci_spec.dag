@@ -1,5 +1,6 @@
 module gunbc.ci_spec
 
+import gunbc.ci_gate { Gate }
 import gunbc.ci_layer_roots {
   witness_layer_roots,
   witness_layer_source_flags
@@ -12,17 +13,6 @@ import gunbc.commit_workflow {
 import tools.build_step { BuildArtifact }
 import extdeps.languages.bash.program { Concat, lit, var_ref }
 import gunbc.ci_failure_class { infra_retry_grep_alternation }
-
-type Gate
-  = RustMonolithGate
-  | EmitHostGate
-  | LayeringImportsGate
-  | ExtdepsExternalAuthorityGate
-  | DslCompileCleanGate
-  | GeneratedArtifactDriftGate
-  | SourceRootIngestGate
-  | RegenVerifyGate
-  | EmitDeterminismGate
 
 type DiffMode = DiffMergeBase | DiffTwoDot
 

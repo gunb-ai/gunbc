@@ -2,15 +2,15 @@ module gunbc.githooks_pre_push_emit
 
 import gunbc.commit_workflow {
   commit_workflow_local_tidy_checks,
+  LocalTidyCheck, LocalTidyWitnessCheck, LocalTidyGateCheck, LocalTidyCargoFmtCheck,
   doc_reachability_witness_entry
 }
 import gunbc.local_tidy_spec {
-  LocalTidyCheck, LocalTidyWitnessCheck, LocalTidyGateCheck, LocalTidyCargoFmtCheck,
   local_tidy_trigger_globs,
   local_tidy_gate_entry, local_tidy_gate_wet_fn,
   generated_artifact_drift_gate_check_fn
 }
-import gunbc.ci_spec { GeneratedArtifactDriftGate }
+import gunbc.ci_gate { GeneratedArtifactDriftGate }
 import extdeps.git.hooks { pre_push_zero_sha, pre_push_stdin_read_vars }
 
 data bash_at: String = "@"

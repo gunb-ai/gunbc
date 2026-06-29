@@ -1,13 +1,10 @@
 module gunbc.commit_workflow
 
-import gunbc.ci_spec {
+import gunbc.ci_gate {
   Gate,
   RustMonolithGate, EmitHostGate, LayeringImportsGate,
   ExtdepsExternalAuthorityGate, DslCompileCleanGate, GeneratedArtifactDriftGate,
   SourceRootIngestGate, RegenVerifyGate, EmitDeterminismGate
-}
-import gunbc.local_tidy_spec {
-  LocalTidyCheck, LocalTidyWitnessCheck, LocalTidyGateCheck, LocalTidyCargoFmtCheck
 }
 import gunbc.generated_artifact {
   GeneratedArtifact, CiYamlArtifact, GithooksPrePushArtifact, artifact_path
@@ -15,6 +12,11 @@ import gunbc.generated_artifact {
 import std.realization_schedule { string_list_eq }
 
 data doc_reachability_witness_entry: String = "dsl/test/claim/doc_reachability_witness_test.dag"
+
+type LocalTidyCheck
+  = LocalTidyWitnessCheck { entry: String, check_fns: List<String> }
+  | LocalTidyGateCheck { gate: GeneratedArtifactDriftGate }
+  | LocalTidyCargoFmtCheck
 
 type CommitWorkflowSurface
   = GithubActionsCiJob
