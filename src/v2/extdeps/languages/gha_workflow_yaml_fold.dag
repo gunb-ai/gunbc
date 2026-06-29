@@ -1,18 +1,17 @@
 module v2.extdeps.languages.gha_workflow_yaml_fold
 
-import extdeps.formats.yaml { YamlKeyValue, emit_inline_scalar_text }
+import extdeps.formats.yaml { emit_inline_scalar_text }
 import extdeps.github.actions {
   ActionRef,
   Job,
   RunnerSpec,
-  SelfHosted,
-  ShellType
+  SelfHosted
 }
 import gunbc.gha_yaml_fold_pilot {
-  GhaFoldPilotDecomposedRun,
-  GhaFoldPilotDecomposedStep,
-  GhaFoldPilotDecomposedUses,
-  gha_fold_pilot_decompose_step
+  GhaPilotRunEmit,
+  GhaPilotStepEmit,
+  GhaPilotUsesEmit,
+  gha_fold_pilot_emit_step
 }
 import v2.extdeps.languages.bash {
   bash_named_edge,
@@ -266,284 +265,44 @@ fn gha_fold_step_tail_uses_emitted(scalar: Node) -> Node {
   }
 }
 
-fn gha_fold_pilot_run_step_fields_absent(
-  name: String?,
-  id: String?,
-  shell: ShellType?,
-  env: List<YamlKeyValue>?,
-  working_directory: String?,
-  if_condition: String?,
-  continue_on_error: Bool?,
-  timeout_minutes: Int?
-) -> Bool {
-  match name {
-    Absent =>
-      match id {
-        Absent =>
-          match shell {
-            Absent =>
-              match env {
-                Absent =>
-                  match working_directory {
-                    Absent =>
-                      match if_condition {
-                        Absent =>
-                          match continue_on_error {
-                            Absent =>
-                              match timeout_minutes {
-                                Absent => true
-                                Present { value: _ } => false
-                              }
-                            Present { value: _ } => false
-                          }
-                        Present { value: _ } => false
-                      }
-                    Present { value: _ } => false
-                  }
-                Present { value: _ } => false
-              }
-            Present { value: _ } => false
-          }
-        Present { value: _ } => false
-      }
-    Present { value: _ } => false
-  }
+fn gha_fold_uses_ref_text(uses: ActionRef) -> String {
+  concat(
+    concat(concat(concat(uses.owner, "/"), uses.repo), "@"),
+    uses.ref
+  )
 }
 
-fn gha_fold_pilot_uses_step_fields_absent(
-  name: String?,
-  id: String?,
-  with: List<YamlKeyValue>?,
-  env: List<YamlKeyValue>?,
-  if_condition: String?,
-  continue_on_error: Bool?,
-  timeout_minutes: Int?
-) -> Bool {
-  match name {
-    Absent =>
-      match id {
-        Absent =>
-          match with {
-            Absent =>
-              match env {
-                Absent =>
-                  match if_condition {
-                    Absent =>
-                      match continue_on_error {
-                        Absent =>
-                          match timeout_minutes {
-                            Absent => true
-                            Present { value: _ } => false
-                          }
-                        Present { value: _ } => false
-                      }
-                    Present { value: _ } => false
-                  }
-                Present { value: _ } => false
-              }
-            Present { value: _ } => false
-          }
-        Present { value: _ } => false
-      }
-    Present { value: _ } => false
-  }
-}
-
-fn gha_fold_step_head_emitted_from_run_step(
-  name: String?,
-  id: String?,
-  run: String,
-  shell: ShellType?,
-  env: List<YamlKeyValue>?,
-  working_directory: String?,
-  if_condition: String?,
-  continue_on_error: Bool?,
-  timeout_minutes: Int?
-) -> Witness<Node> {
-  if gha_fold_pilot_run_step_fields_absent(
-    name: name,
-    id: id,
-    shell: shell,
-    env: env,
-    working_directory: working_directory,
-    if_condition: if_condition,
-    continue_on_error: continue_on_error,
-    timeout_minutes: timeout_minutes
-  ) {
-    Holds {
-      value: gha_fold_step_head_run_emitted(
-        scalar: gha_fold_scalar_emitted(text: run)
-      )
-    }
-  } else {
-    Violates {
-      diagnostic: gha_fold_unsupported_variant_diagnostic(variant: ^gha_fold_run_step_non_pilot_fields)
-    }
-  }
-}
-
-fn gha_fold_step_head_emitted_from_uses_step(
-  name: String?,
-  id: String?,
-  uses: ActionRef,
-  with: List<YamlKeyValue>?,
-  env: List<YamlKeyValue>?,
-  if_condition: String?,
-  continue_on_error: Bool?,
-  timeout_minutes: Int?
-) -> Witness<Node> {
-  if gha_fold_pilot_uses_step_fields_absent(
-    name: name,
-    id: id,
-    with: with,
-    env: env,
-    if_condition: if_condition,
-    continue_on_error: continue_on_error,
-    timeout_minutes: timeout_minutes
-  ) {
-    Holds {
-      value: gha_fold_step_head_uses_emitted(
-        scalar: gha_fold_scalar_emitted(
-          text: concat(
-            concat(concat(concat(uses.owner, "/"), uses.repo), "@"),
-            uses.ref
-          )
+fn gha_fold_step_head_emitted_from_emit(emit: GhaPilotStepEmit) -> Witness<Node> {
+  match emit {
+    GhaPilotRunEmit { run: r } =>
+      Holds {
+        value: gha_fold_step_head_run_emitted(
+          scalar: gha_fold_scalar_emitted(text: r)
         )
-      )
-    }
-  } else {
-    Violates {
-      diagnostic: gha_fold_unsupported_variant_diagnostic(variant: ^gha_fold_uses_step_non_pilot_fields)
-    }
-  }
-}
-
-fn gha_fold_step_tail_emitted_from_run_step(
-  name: String?,
-  id: String?,
-  run: String,
-  shell: ShellType?,
-  env: List<YamlKeyValue>?,
-  working_directory: String?,
-  if_condition: String?,
-  continue_on_error: Bool?,
-  timeout_minutes: Int?
-) -> Witness<Node> {
-  if gha_fold_pilot_run_step_fields_absent(
-    name: name,
-    id: id,
-    shell: shell,
-    env: env,
-    working_directory: working_directory,
-    if_condition: if_condition,
-    continue_on_error: continue_on_error,
-    timeout_minutes: timeout_minutes
-  ) {
-    Holds {
-      value: gha_fold_step_tail_run_emitted(
-        scalar: gha_fold_scalar_emitted(text: run)
-      )
-    }
-  } else {
-    Violates {
-      diagnostic: gha_fold_unsupported_variant_diagnostic(variant: ^gha_fold_run_step_non_pilot_fields)
-    }
-  }
-}
-
-fn gha_fold_step_tail_emitted_from_uses_step(
-  name: String?,
-  id: String?,
-  uses: ActionRef,
-  with: List<YamlKeyValue>?,
-  env: List<YamlKeyValue>?,
-  if_condition: String?,
-  continue_on_error: Bool?,
-  timeout_minutes: Int?
-) -> Witness<Node> {
-  if gha_fold_pilot_uses_step_fields_absent(
-    name: name,
-    id: id,
-    with: with,
-    env: env,
-    if_condition: if_condition,
-    continue_on_error: continue_on_error,
-    timeout_minutes: timeout_minutes
-  ) {
-    Holds {
-      value: gha_fold_step_tail_uses_emitted(
-        scalar: gha_fold_scalar_emitted(
-          text: concat(
-            concat(concat(concat(uses.owner, "/"), uses.repo), "@"),
-            uses.ref
-          )
+      }
+    GhaPilotUsesEmit { uses: u } =>
+      Holds {
+        value: gha_fold_step_head_uses_emitted(
+          scalar: gha_fold_scalar_emitted(text: gha_fold_uses_ref_text(uses: u))
         )
-      )
-    }
-  } else {
-    Violates {
-      diagnostic: gha_fold_unsupported_variant_diagnostic(variant: ^gha_fold_uses_step_non_pilot_fields)
-    }
+      }
   }
 }
 
-fn gha_fold_step_head_emitted_from_decomposed(
-  decomposed: GhaFoldPilotDecomposedStep
-) -> Witness<Node> {
-  match decomposed {
-    GhaFoldPilotDecomposedRun { name: n, id: i, run: r, shell: sh, env: e, working_directory: wd, if_condition: ic, continue_on_error: coe, timeout_minutes: tm } =>
-      gha_fold_step_head_emitted_from_run_step(
-        name: n,
-        id: i,
-        run: r,
-        shell: sh,
-        env: e,
-        working_directory: wd,
-        if_condition: ic,
-        continue_on_error: coe,
-        timeout_minutes: tm
-      )
-    GhaFoldPilotDecomposedUses { name: n, id: i, uses: u, with: w, env: e, if_condition: ic, continue_on_error: coe, timeout_minutes: tm } =>
-      gha_fold_step_head_emitted_from_uses_step(
-        name: n,
-        id: i,
-        uses: u,
-        with: w,
-        env: e,
-        if_condition: ic,
-        continue_on_error: coe,
-        timeout_minutes: tm
-      )
-  }
-}
-
-fn gha_fold_step_tail_emitted_from_decomposed(
-  decomposed: GhaFoldPilotDecomposedStep
-) -> Witness<Node> {
-  match decomposed {
-    GhaFoldPilotDecomposedRun { name: n, id: i, run: r, shell: sh, env: e, working_directory: wd, if_condition: ic, continue_on_error: coe, timeout_minutes: tm } =>
-      gha_fold_step_tail_emitted_from_run_step(
-        name: n,
-        id: i,
-        run: r,
-        shell: sh,
-        env: e,
-        working_directory: wd,
-        if_condition: ic,
-        continue_on_error: coe,
-        timeout_minutes: tm
-      )
-    GhaFoldPilotDecomposedUses { name: n, id: i, uses: u, with: w, env: e, if_condition: ic, continue_on_error: coe, timeout_minutes: tm } =>
-      gha_fold_step_tail_emitted_from_uses_step(
-        name: n,
-        id: i,
-        uses: u,
-        with: w,
-        env: e,
-        if_condition: ic,
-        continue_on_error: coe,
-        timeout_minutes: tm
-      )
+fn gha_fold_step_tail_emitted_from_emit(emit: GhaPilotStepEmit) -> Witness<Node> {
+  match emit {
+    GhaPilotRunEmit { run: r } =>
+      Holds {
+        value: gha_fold_step_tail_run_emitted(
+          scalar: gha_fold_scalar_emitted(text: r)
+        )
+      }
+    GhaPilotUsesEmit { uses: u } =>
+      Holds {
+        value: gha_fold_step_tail_uses_emitted(
+          scalar: gha_fold_scalar_emitted(text: gha_fold_uses_ref_text(uses: u))
+        )
+      }
   }
 }
 
@@ -554,9 +313,9 @@ fn gha_fold_step_list_emitted_from_suffix_witness(
 ) -> Witness<Node> {
   match list_at_optional(xs: job.steps, index: index) {
     Present { value: step } =>
-      match gha_fold_pilot_decompose_step(step: step) {
-        Present { value: decomposed } =>
-          match gha_fold_step_tail_emitted_from_decomposed(decomposed: decomposed) {
+      match gha_fold_pilot_emit_step(step: step) {
+        Present { value: emit } =>
+          match gha_fold_step_tail_emitted_from_emit(emit: emit) {
             Holds { value: tail } =>
               gha_fold_step_list_emitted_from_suffix_witness(
                 job: job,
@@ -581,9 +340,9 @@ fn gha_fold_step_list_emitted_witness(job: Job) -> Witness<Node> {
     absent: gha_fold_unsupported_variant_diagnostic(variant: ^gha_fold_step_list_empty)
   ) {
     Holds { value: first } =>
-      match gha_fold_pilot_decompose_step(step: first) {
-        Present { value: decomposed } =>
-          match gha_fold_step_head_emitted_from_decomposed(decomposed: decomposed) {
+      match gha_fold_pilot_emit_step(step: first) {
+        Present { value: emit } =>
+          match gha_fold_step_head_emitted_from_emit(emit: emit) {
             Holds { value: head } =>
               gha_fold_step_list_emitted_from_suffix_witness(
                 job: job,
