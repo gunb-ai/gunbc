@@ -13,7 +13,7 @@ import std.realization_measurement {
   witness_concurrent_memory_peak_per_share_divides,
 }
 import extdeps.realization.v1_handler { v1_eval_expr_measure_handler_id }
-import product.compute_fabric {
+import gunbc.fleet_intent {
   WorkUnitId,
   performance_receipt_host_single_sample,
   cost_account_from_performance_receipts,

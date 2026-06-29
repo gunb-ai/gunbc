@@ -73,7 +73,7 @@ The machinery to import `dsl/` from `src/v2/` is **wired and on**, proven by exe
 - **Activation arbiter witness** (#5506, `src/v2/test/claim/cross_tree_real_ingest_activation_test.dag`) feeds a host-tagged `SourceRootIngest` through the *real* grounding machinery (`program_assembly_fold_ingest` builds the QN→`SourceRootRef` index; `source_root_set_from_ingest` builds the active-root set) and runs the real per-edge decision: v2→dsl ⟹ `EdgeCrossAdmitted`, tags-reversed dsl→v2 ⟹ `EdgeCrossDenied`. So cross-tree import is **live on main, carrier consumed, no operator flip pending**.
 - The source-root admission abs-vs-rel host bug (#5473's `source_root_ref_token_for_path`) that blocked the rust gate is **fixed** (#5504): file paths and `--source-root` values are grounded through `repo_relative_dag_path` before matching, so admission is invocation-independent.
 
-Remaining concrete blocker, scoped to the first real cross-tree **data** import only (NOT the std collapses — std collapses resolve cross-tree clean, no `std.*` collision, no `Option`/`Optional`): `src/v2/std/probe_selector.dag:52` — v2 cannot import `dsl/product/compute_fabric` (`Option<T>` vs `Optional<T>`; `std.*` namespace collision under dual source-root). Repro: `dsl/test/claim/probe_selector_compute_fabric_import_repro_test.dag`. This is step-4 below.
+Remaining concrete blocker, scoped to the first real cross-tree **data** import only (NOT the std collapses — std collapses resolve cross-tree clean, no `std.*` collision, no `Option`/`Optional`): `src/v2/std/probe_selector.dag:52` — v2 cannot import `dsl/product/compute_fabric` (`Option<T>` vs `Optional<T>`; `std.*` namespace collision under dual source-root). **RESOLVED (#5904):** `compute_fabric` is now the 130-line thin connector (imports only `std.types` + `std.measure`); the namespace collision is gone. Repro test `dsl/test/claim/probe_selector_compute_fabric_import_repro_test.dag` deleted (blocker dissolved).
 
 ---
 
@@ -87,7 +87,7 @@ Three tiers. **Mirror** = v2's used symbols ⊆ dsl → mechanical delete + repo
 | --- | --- | --- | --- |
 | **reducible** | 8 (full set) | v2 header self-declares "ported from dsl" | **Mirror — DONE** (#5507) |
 | **measure** | dsl 40-decl authority ⊇ all 10 importer symbols (only 1 importer, `timeseries_signal`, across all trees) | v2 = 3-decl declared mirror | **Mirror — in flight** (#5509, CI-green, ready) |
-| **probe_selector** (step-4) | — | `Option<T>` vs `Optional<T>` + `std.*` collision on the `compute_fabric` data import | **Unblock** (dispatched). Independent of the grounding cluster. |
+| **probe_selector** (step-4) | — | `Option<T>` vs `Optional<T>` + `std.*` collision on the `compute_fabric` data import | **DONE** (#5904). Thin connector replaces `compute_fabric`; `std.*` collision gone; repro test deleted. |
 
 ### Name-collision renames — V1-SEED-COUPLED (held for ruling)
 
@@ -119,7 +119,7 @@ Each row is **operator decision-input**: what is shared (and whether the shared 
 **Mechanical lane — proceeds now (still-deer authority + bright-stag review, each PR atomic):**
 
 1. **Mirrors:** `reducible` (DONE #5507), `measure` (#5509). Delete the v2 copy, repoint imports to `dsl/std/*`; decrement the `fact_cardinality.dag` cross-tree baseline by *exactly* the deleted symbol count; stay green by execution (the existing witnesses are the oracle).
-2. **Step-4 data import:** `probe_selector` `Option`/`Optional` + `std.*` collision, so `dsl/product/compute_fabric` imports cleanly into v2.
+2. **Step-4 data import:** `probe_selector` `Option`/`Optional` + `std.*` collision, so `dsl/product/compute_fabric` imports cleanly into v2. **DONE (#5904).**
 
 **Deferred to v1-shrink (the not-a-fork renames):** `coercion`, `node`. v1-seed-coupled; ruled DEFER with the dissolution trigger *"when v1's consumers of `dsl/std/{node,coercion}` are removed"* — at which point `node` self-dissolves (delete the dead file) and `coercion` shrinks to a v1-free disambiguation. Not dispatched until then.
 

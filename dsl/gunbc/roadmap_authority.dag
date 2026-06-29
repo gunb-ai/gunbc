@@ -154,6 +154,7 @@ fn section_1() -> RoadmapSection {
           authored(id: "1-double-resolve", done: false, content: "**kill the within-run double-resolve** — the corpus resolves once for discovery and again for execution (~275s second pass); execution should piggyback the discovery resolve. Pure within-run win, no cross-run cache needed."),
           authored(id: "1-resolver-pathology", done: false, content: "**profile the 518s resolve** — ~0.6s/witness average, but a known machine-independent resolver bug resolves `budget_roster` ~450x its structural twin; a few pathological witnesses likely dominate the 518s. Profile which, fix the resolver."),
           authored_doc(id: "1-gantt-receipt", done: true, content: "**fractal Gantt profiling receipt (#5757 baseline)** — per-claim timing tap (`GUNBC_FLOOR_GANTT=1`) + Batch 1/2/3 breakdown; hot spots: rust gate ~530s (host-effect, architectural sep), discovery eval ~229s (interpreter, `width=3`), cold resolve ~50s (resolve-cache lever).", path: "docs/plans/ci-floor-fractal-gantt.md"),
+          authored_doc(id: "1-memory-chronicle", done: true, content: "**interpreter memory chronicle (post-#5910)** — execution-grounded floor RSS receipt (width=1 @ 8 GiB: ~5.12 GiB self-RSS, ~5.31 GiB cgroup) + per-shard/per-resolve probes vs the 14.2→5.5→5.1 GiB arc; phase-0 measurement scaffold toward `PerformanceReceipt`.", path: "docs/plans/interpreter-memory-chronicle.md"),
         ],
         edges: [],
       ),

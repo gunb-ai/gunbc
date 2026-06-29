@@ -92,3 +92,7 @@ path = "src/bin/v1_src_dag_parse.rs"
 [[bin]]
 name = "wiring_liveness_whole_tree"
 path = "src/bin/wiring_liveness_whole_tree.rs"
+
+[[bin]]
+name = "measure_whole_tree_resolve"
+path = "src/bin/measure_whole_tree_resolve.rs"

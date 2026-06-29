@@ -18,7 +18,7 @@ import extdeps.github.actions {
 }
 import extdeps.formats.yaml { YamlKeyValue, kv, yaml_string, serialize_yaml }
 import gunbc.workflow_yaml_project { project_workflow_to_yaml }
-import gunbc.ci_fleet { gunbc_ci_runner_spec }
+import gunbc.runner_spec_from_offer { gunbc_ci_runner_spec }
 
 data bmc_secrets_project_id: GcpProjectId = "gunbai-secrets"
 

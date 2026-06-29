@@ -1,19 +1,26 @@
 module test.claim.compute_fabric_resource_witness
 
+import std.types { Bool }
 import product.compute_fabric {
-  witness_resource_offer_rejects_insufficient_threads,
-  witness_resource_offer_rejects_insufficient_memory,
-  witness_resource_offer_admits_feasible_demand,
+  witness_need_is_only_fabric_plus_program,
+  witness_shape_is_derived_from_program,
+  witness_fabric_binds_need_to_opportunity,
+  witness_exec_and_ci_are_just_programs,
+  witness_hard_requirement_unmet_is_unmet,
+}
+import gunbc.fleet_container {
   witness_run_demand_envelope_fits_budget,
   witness_high_demand_shrinks_envelope_and_fits,
   witness_fail_open_memory_blind_demand_exceeds_budget,
   witness_unreadable_budget_uses_conservative_demand,
 }
 
-test fn compute_fabric_resource_feasibility_holds() -> Bool {
-  witness_resource_offer_rejects_insufficient_threads()
-    && witness_resource_offer_rejects_insufficient_memory()
-    && witness_resource_offer_admits_feasible_demand()
+test fn compute_fabric_connector_model_holds() -> Bool {
+  witness_need_is_only_fabric_plus_program()
+    && witness_shape_is_derived_from_program()
+    && witness_fabric_binds_need_to_opportunity()
+    && witness_exec_and_ci_are_just_programs()
+    && witness_hard_requirement_unmet_is_unmet()
 }
 
 test fn ci_floor_run_demand_envelope_model_holds() -> Bool {

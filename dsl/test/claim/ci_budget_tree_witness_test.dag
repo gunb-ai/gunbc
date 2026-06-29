@@ -3,7 +3,7 @@ module test.claim.ci_budget_tree_witness
 import std.logic { Bool }
 import std.measure { byte_size, byte_size_count }
 import product.budget_tree { node_conserves, budget_child_named, BudgetChildFound, BudgetChildMissing }
-import gunbc.fleet_intent { srv1_offer, srv2_offer }
+import gunbc.ci_fleet { srv1_offer, srv2_offer }
 import gunbc.ci_budget_tree {
   srv1_budget_tree,
   srv2_budget_tree,
