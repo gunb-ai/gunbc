@@ -260,7 +260,7 @@ data bmc_decom_inverse_law_scaffold: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
   bind: DeclarationRef {
     module_path: "v2.compiler.06_translate",
-    decl_name: "translate_grammar_inverse_not_realized",
+    decl_name: "TranslateDiagnosticReason",
     field: WholeDeclaration
   }
 }
