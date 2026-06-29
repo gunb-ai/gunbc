@@ -33,7 +33,7 @@
 
 use std::process::ExitCode;
 
-use v1_compiler::cli_run::{whole_tree_resolved_ctx, WholeTreeCtx};
+use v1_compiler::cli_run::{peak_rss_vhwm_bytes, whole_tree_resolved_ctx, WholeTreeCtx};
 use v1_compiler::v1_interpreter::{self, ExecutionMode, Value};
 
 const DEAD_WIRES_FN: &str = "wiring_liveness_corpus_dead_wires";
@@ -98,6 +98,14 @@ fn run() -> Result<ExitCode, ExitCode> {
         modules_excluded,
         exclude_subpaths
     );
+    match peak_rss_vhwm_bytes() {
+        Some(bytes) => eprintln!(
+            "[measurement] whole-tree resolve peak RSS: {bytes} bytes (VmHWM) modules={modules_resolved}"
+        ),
+        None => eprintln!(
+            "[measurement] whole-tree resolve peak RSS: unavailable (no /proc/self/status) modules={modules_resolved}"
+        ),
+    }
 
     let dead = v1_interpreter::run_in_context(&ctx, DEAD_WIRES_FN, false).map_err(|e| {
         eprintln!("wiring_liveness_whole_tree: interpreter error running {DEAD_WIRES_FN}: {e}");
