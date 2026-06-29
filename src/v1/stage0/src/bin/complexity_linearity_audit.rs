@@ -11,7 +11,7 @@
 use std::process::ExitCode;
 
 use v1_compiler::complexity_linearity_audit_project::{
-    audit_corpus_default_roots, audit_corpus_parse_only,
+    audit_corpus_default_roots, audit_corpus_parse_only, roster_fiction_report,
 };
 use v1_compiler::inert_carrier_project::{inert_carrier_count, inert_carrier_unrostered_count};
 use v1_compiler::non_fold_residue_project::{
@@ -74,6 +74,26 @@ fn print_summary(
         non_fold_residue_unrostered_count(),
         inert_carrier_count(),
         inert_carrier_unrostered_count()
+    );
+    let fiction = roster_fiction_report(summary);
+    eprintln!(
+        "complexity_linearity_audit: ROSTER-FICTION — floor GREEN today only because \
+         {}/{} closed-coproduct residue site(s) are on the exception roster; \
+         drop roster → floor RED on {} site(s) (unrostered today: {})",
+        fiction.resolved_residue_sites - fiction.resolved_unrostered_sites,
+        fiction.resolved_residue_sites,
+        fiction.floor_red_if_roster_dropped,
+        fiction.resolved_unrostered_sites
+    );
+    eprintln!(
+        "complexity_linearity_audit: syntactic wildcard arms — total={} on_roster={} off_roster={} \
+         | triage: eval-interpreter-debt={} grammar-ladder-debt={} kernel-permanent={}",
+        fiction.syntactic_wildcard_total,
+        fiction.syntactic_wildcard_on_roster,
+        fiction.syntactic_wildcard_off_roster,
+        fiction.eval_interpreter_debt,
+        fiction.grammar_ladder_debt,
+        fiction.kernel_permanent
     );
     eprintln!("site\tlens\trule\ttriage");
     for f in &summary.findings {
