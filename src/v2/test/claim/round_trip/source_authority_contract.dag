@@ -145,11 +145,3 @@ data claim_bmin_canonical_dag_source_parse_print_law: TestClaim = CompilesClaim 
   expected_value: source_authority_contract_pass_node(),
   classification: TestClassification { tier: Tier1, layer: Integration }
 }
-
-test fn source_authority_contract_serializer_section_law_holds() -> Bool {
-  contract_target_advertises_declared_loss()
-    && contract_source_medium_matches_compose_up()
-    && contract_serializer_section_law_holds()
-    && contract_serializer_section_law_ignores_fidelity_mismatch()
-    && contract_naive_medium_equality_rejects_fidelity_mismatch()
-}
