@@ -89,9 +89,9 @@ type AssimilationCompleteVerdict
   = AssimilationComplete
   | AssimilationIncomplete { input: AssimilationCompleteInput, reason: String }
 
-data host_standup_p3_gunbc_pinned_tree_landing_gate: String = "gunbc.host_converge.GunbcPinnedTree (#5948 nimble-koi-42)"
+data host_standup_p3_gunbc_pinned_tree_landing_gate: String = "gunbc.host_converge.GunbcPinnedTree (#5948 merged)"
 
-data host_standup_p3_gunbc_pinned_tree_landed: Bool = false
+data host_standup_p3_gunbc_pinned_tree_landed: Bool = true
 
 data host_standup_p3_green_place_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
@@ -300,8 +300,8 @@ data host_standup_gap_ledger: List<GapLedgerRow> = [
   },
   GapLedgerRow {
     phase_label: "P3:green-place-readiness",
-    modeling: "modeled-pending-landing",
-    authority_or_interim: "gunbc AUTHORITY: GunbcPinnedTree/gunbc_pinned_noop_satisfied/gunbc_green_place_marker_spec (#5948); ctrl VERIFY/WRITER → plans/reconcile/converge/green_place.dag (shadow_connect pattern; #1848 hand-mjs closed); desired pin: read-gunbc-pin.sh"
+    modeling: "modeled",
+    authority_or_interim: "gunbc AUTHORITY (landed #5948): GunbcPinnedTree/gunbc_pinned_noop_satisfied/gunbc_green_place_marker_spec; ctrl VERIFY/WRITER → plans/reconcile/converge/green_place.dag (#1851); desired pin: read-gunbc-pin.sh"
   },
   GapLedgerRow {
     phase_label: "P4:session-placement-enrollment",
@@ -338,9 +338,7 @@ fn host_standup_step_is_effective_gap(step: HostStandupStep) -> Bool {
 
 fn host_standup_p3_green_place_input_witness() -> GreenPlacePinCoherentWitness {
   if host_standup_p3_gunbc_pinned_tree_landed {
-    GreenPlacePinGap {
-      interim_realization: "runtime: inject gate_verdict from gunbc_pinned_noop_satisfied after #5948 lands"
-    }
+    host_standup_p5_default_green_place_gate_verdict()
   } else {
     GreenPlacePinGap {
       interim_realization: host_standup_p3_gunbc_pinned_tree_landing_gate

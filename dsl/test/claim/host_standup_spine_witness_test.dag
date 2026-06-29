@@ -34,6 +34,7 @@ import gunbc.host_standup {
   green_place_pin_coherent_satisfied,
   host_standup_p3_fail_closed_blocks_complete,
   host_standup_p3_gunbc_pinned_tree_landed,
+  host_standup_default_assimilation_gate_unsatisfied,
   HostStandupStep,
   Prefix,
   Assimilation,
@@ -90,7 +91,7 @@ fn spine_tags_are_linear() -> Bool {
 test fn host_standup_spine_is_nine_step_linear_prefix_then_p0_p5() -> Bool {
   host_standup_spine_length() == 9
     && spine_tags_are_linear()
-    && host_standup_gap_count() == 4
+    && host_standup_gap_count() == 3
     && host_standup_gap_ledger.length() == 9
 }
 
@@ -175,9 +176,25 @@ test fn assimilation_complete_passes_only_when_all_four_inputs_satisfied() -> Bo
     }
 }
 
-test fn p3_green_place_fail_closed_until_gunbc_pinned_tree_lands() -> Bool {
-  !host_standup_p3_gunbc_pinned_tree_landed
-    && host_standup_p3_fail_closed_blocks_complete()
+test fn p3_green_place_contributes_via_gunbc_gate_after_pinned_tree_lands() -> Bool {
+  host_standup_p3_gunbc_pinned_tree_landed
+    && !host_standup_p3_fail_closed_blocks_complete()
+    && match assimilation_complete(gate: host_standup_default_assimilation_gate_unsatisfied()) {
+      AssimilationIncomplete { input: GreenPlacePinCoherent, reason: r } =>
+        string_contains(s: r, pattern: "gunbc gate verdict false")
+      AssimilationIncomplete { input: NodeRegistered, reason: _ } => true
+      AssimilationComplete => false
+    }
+}
+
+test fn assimilation_gate_still_refuses_p0_p2_p4_gaps_when_p3_landed() -> Bool {
+  host_standup_p3_gunbc_pinned_tree_landed
+    && host_standup_gap_count() == 3
+    && match assimilation_complete(gate: host_standup_default_assimilation_gate_unsatisfied()) {
+      AssimilationIncomplete { input: NodeRegistered, reason: r } =>
+        string_contains(s: r, pattern: "P5:gap-refused:")
+      AssimilationComplete => false
+    }
 }
 
 test fn declared_gap_steps_carry_interim_ctrl_realization_paths() -> Bool {
