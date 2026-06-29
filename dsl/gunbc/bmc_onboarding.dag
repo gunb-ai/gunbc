@@ -9,8 +9,6 @@ import extdeps.bmc.types { RedfishBootSourceOverrideTarget, BootTargetPxe, Redfi
 import extdeps.bmc.openbmc { openbmc_factory_login }
 import extdeps.boards.asrock_rack { asrock_altrad8ud_redfish_system_id }
 import extdeps.communication.medium { DecodeFidelity, Lossless, Lossy, Medium }
-import std.disposition { Disposition, Scaffold, RealizationDispatch }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 type BmcOnboardingPhase =
     FactoryDefault
@@ -220,15 +218,6 @@ fn bmc_decom_to_factory_state(s: BmcLifecycleState) -> BmcLifecycleState {
   }
 }
 
-data bmc_decom_inverse_law_scaffold: Disposition = Scaffold {
-  dissolves_to: RealizationDispatch,
-  bind: DeclarationRef {
-    module_path: "v2.compiler.target_carriers",
-    decl_name: "lossless_source",
-    field: WholeDeclaration
-  }
-}
-
 type BmcOnboardingPlan {
   bmc: BmcEndpoint
   redfish_system_id: NonEmptyStr
@@ -238,15 +227,14 @@ type BmcOnboardingPlan {
   os_target: OperatingSystemProduct
   os_install_boot_target: RedfishBootSourceOverrideTarget
   start_phase: BmcOnboardingPhase
-  steady_state_phase: BmcOnboardingPhase
+}
+
+fn bmc_plan_steady_state_phase(plan: BmcOnboardingPlan) -> BmcOnboardingPhase {
+  bmc_onboard_to_steady(phase: plan.start_phase)
 }
 
 fn bmc_plan_steady_state_posture(plan: BmcOnboardingPlan) -> BmcCredentialPosture {
-  bmc_phase_credential_posture(phase: plan.steady_state_phase)
-}
-
-fn bmc_plan_steady_state_is_keyless(plan: BmcOnboardingPlan) -> Bool {
-  bmc_posture_is_keyless(posture: bmc_plan_steady_state_posture(plan: plan))
+  bmc_phase_credential_posture(phase: bmc_plan_steady_state_phase(plan: plan))
 }
 
 data new_altra_onboarding_plan: BmcOnboardingPlan = BmcOnboardingPlan {
@@ -258,5 +246,4 @@ data new_altra_onboarding_plan: BmcOnboardingPlan = BmcOnboardingPlan {
   os_target: UbuntuOs { distro: NobleNumbat2404Lts },
   os_install_boot_target: BootTargetPxe,
   start_phase: FactoryDefault,
-  steady_state_phase: FabricJoined,
 }
