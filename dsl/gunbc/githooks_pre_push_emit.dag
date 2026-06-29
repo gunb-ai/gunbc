@@ -99,7 +99,8 @@ fn emit_run_doc() -> String {
           )
           if inner == "" { block } else { concat(inner, block) }
         })
-      _ => acc
+      LocalTidyGateCheck { gate: _ } => acc
+      LocalTidyCargoFmtCheck => acc
     }
   })
 }

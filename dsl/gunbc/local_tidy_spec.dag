@@ -76,13 +76,6 @@ fn local_tidy_trigger_globs(check: LocalTidyCheck) -> List<String> {
   }
 }
 
-fn local_tidy_has_stale_probe(check: LocalTidyCheck) -> Bool {
-  match check {
-    LocalTidyGateCheck { gate: _ } => true
-    _ => false
-  }
-}
-
 fn local_tidy_gate_entry() -> String {
   generated_artifact_drift_gate_entry
 }
