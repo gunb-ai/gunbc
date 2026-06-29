@@ -1137,6 +1137,35 @@ fn bash_fold_delegated_bundle_fail_closed_holds() -> Bool {
   }
 }
 
+// SCAFFOLD dissolve-on: emit_shell_stmt deleted in cutover STEP 2 — receipt helper only.
+fn bash_fold_emit_shell_equivalence_receipt_holds() -> Bool {
+  bash_fold_fold_matches_emit_shell_stmt(
+    stmt: Command { words: [Lit { text: "true" }] }
+  )
+  && bash_fold_fold_matches_emit_shell_stmt(
+    stmt: WithRedir {
+      stmt: Command { words: [Lit { text: "true" }] },
+      redir: StderrToNull
+    }
+  )
+  && bash_fold_fold_matches_emit_shell_stmt(stmt: RawLine { text: "! ( foo )" })
+  && bash_fold_fold_matches_emit_shell_stmt(
+    stmt: RawLine { text: "TMPDIR=$('mktemp' '-d')" }
+  )
+  && bash_fold_fold_matches_emit_shell_stmt(
+    stmt: EnvPrefixed {
+      name: "TMPDIR",
+      value: Lit { text: "/t" },
+      command: Command { words: [Lit { text: "true" }] }
+    }
+  )
+  && bash_fold_fold_matches_emit_shell_stmt(
+    stmt: Negation {
+      stmt: Subshell { body: [Command { words: [Lit { text: "false" }] }] }
+    }
+  )
+}
+
 test fn bash_fold_structural_tier_holds() -> Bool {
   bash_fold_relation_row_true_witness_holds()
   && bash_fold_emitted_tree_differs_on_wrong_fixture_holds()
