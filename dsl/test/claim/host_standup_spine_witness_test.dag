@@ -34,6 +34,9 @@ import gunbc.host_standup {
   GreenPlaceReadiness,
   SessionPlacementEnrollment,
   StandupAssimilationComplete,
+  host_standup_p3_fail_closed_blocks_complete,
+  host_standup_p3_gunbc_pinned_tree_landed,
+  GreenPlacePinCoherent,
   DeclaredGap,
   ModeledCompose,
 }
@@ -78,7 +81,7 @@ fn spine_tags_are_linear() -> Bool {
 test fn host_standup_spine_is_nine_step_linear_prefix_then_p0_p5() -> Bool {
   host_standup_spine_length() == 9
     && spine_tags_are_linear()
-    && host_standup_gap_count() == 3
+    && host_standup_gap_count() == 4
     && host_standup_gap_ledger.length() == 9
 }
 
@@ -138,6 +141,11 @@ test fn assimilation_complete_passes_only_when_all_four_inputs_satisfied() -> Bo
       AssimilationComplete => true
       AssimilationIncomplete { input: _, reason: _ } => false
     }
+}
+
+test fn p3_green_place_fail_closed_until_gunbc_pinned_tree_lands() -> Bool {
+  !host_standup_p3_gunbc_pinned_tree_landed
+    && host_standup_p3_fail_closed_blocks_complete()
 }
 
 test fn declared_gap_steps_carry_interim_ctrl_realization_paths() -> Bool {

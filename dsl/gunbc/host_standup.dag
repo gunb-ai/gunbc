@@ -79,6 +79,10 @@ type AssimilationCompleteVerdict
   = AssimilationComplete
   | AssimilationIncomplete { input: AssimilationCompleteInput, reason: String }
 
+data host_standup_p3_gunbc_pinned_tree_landing_gate: String = "gunbc.host_converge.GunbcPinnedTree (#5948 nimble-koi-42)"
+
+data host_standup_p3_gunbc_pinned_tree_landed: Bool = false
+
 data host_standup_p3_green_place_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
@@ -288,11 +292,52 @@ fn host_standup_step_is_gap(step: HostStandupStep) -> Bool {
   }
 }
 
+fn host_standup_step_is_effective_gap(step: HostStandupStep) -> Bool {
+  match step.phase {
+    Assimilation { phase: GreenPlaceReadiness } =>
+      !host_standup_p3_gunbc_pinned_tree_landed || host_standup_step_is_gap(step: step)
+    _ => host_standup_step_is_gap(step: step)
+  }
+}
+
+fn host_standup_p3_green_place_input_witness() -> AssimilationInputWitness {
+  if host_standup_p3_gunbc_pinned_tree_landed {
+    InputGap {
+      input: GreenPlacePinCoherent,
+      interim_realization: "runtime: green-place marker witness required after #5948 lands"
+    }
+  } else {
+    InputGap {
+      input: GreenPlacePinCoherent,
+      interim_realization: host_standup_p3_gunbc_pinned_tree_landing_gate
+    }
+  }
+}
+
+fn host_standup_default_assimilation_gate_unsatisfied() -> AssimilationCompleteGate {
+  AssimilationCompleteGate {
+    node_registered: InputGap { input: NodeRegistered, interim_realization: "ctrl:node_registry.mjs" },
+    resources_present: InputGap { input: ResourcesPresent, interim_realization: "ctrl:resources-present-unmodeled" },
+    green_place_pin: host_standup_p3_green_place_input_witness(),
+    runner_healthy: InputGap { input: RunnerSlotHealthy, interim_realization: "gunbc.runner_slot_enforcement until P1 converged" },
+  }
+}
+
+fn host_standup_p3_fail_closed_blocks_complete() -> Bool {
+  !host_standup_p3_gunbc_pinned_tree_landed
+    && match assimilation_complete(gate: host_standup_default_assimilation_gate_unsatisfied()) {
+      AssimilationIncomplete { input: GreenPlacePinCoherent, reason: r } =>
+        string_contains(s: r, pattern: "#5948")
+      AssimilationComplete => false
+      AssimilationIncomplete { input: _, reason: _ } => true
+    }
+}
+
 fn host_standup_gap_count() -> Int {
   fold(
     host_standup_spine,
     init: 0,
-    f: (acc, s) => if host_standup_step_is_gap(step: s) { acc + 1 } else { acc }
+    f: (acc, s) => if host_standup_step_is_effective_gap(step: s) { acc + 1 } else { acc }
   )
 }
 
