@@ -39,6 +39,7 @@ const GENERATED_STAGE0_FILES: &[&str] = &[
     "extdeps_version.rs",
     "extdeps_version_semver.rs",
     "lib.rs",
+    "main.rs",
     "std_algebra.rs",
     "std_coercion.rs",
     "std_computation.rs",
@@ -131,14 +132,6 @@ const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
     "rest_transport_facts.rs",
     "transport_script_position_project.rs",
     "wire_value_serialize.rs",
-    // Un-dissolved bootstrap CLI seed: --dependency-pool-index +
-    // DependencyPoolIndex(Strict|PrimaryPrecedence) + parse_dependency_pool_index +
-    // collision-aware index_source_root + multi-root build_module_index live in this
-    // hand-maintained file, NOT grounded in 05_emit_rust.dag's main-emit template (a
-    // hardcoded string today). A faithful regen drops them. Dissolution: model the
-    // gunbc CLI + dependency-pool indexing in the emitter, then move this file back to
-    // GENERATED_STAGE0_FILES.
-    "main.rs",
     // Un-dissolved bootstrap parser seed: #5864's O(N) cursor optimization lives in
     // this hand-maintained file, NOT in src/v1/02_parse.dag (which still models the
     // O(N^2) baseline). A faithful regen from 02_parse.dag would revert #5864, so
@@ -149,46 +142,6 @@ const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
     "v1_compiler_dag_collect.rs",
     "v1_compiler_dag_collect_support.rs",
     "v1_interpreter.rs",
-];
-
-const BOOTSTRAP_DAG_COLLECT_USE: &str = r#"pub use crate::v1_compiler_dag_collect::{
-    collect_dag_nodes, dag_collect_from_module, dag_collect_insert, dag_collect_inferred,
-    dag_collect_match_pattern, dag_collect_node_tree, dag_collect_nodes_list,
-    dag_collect_optional_node, dag_node_collection_anchor, dag_node_fingerprint,
-    dag_node_is_resolved_identity_shell, dag_node_key,
-};
-
-"#;
-
-const BOOTSTRAP_DAG_COLLECT_SUPPORT_USE: &str = r#"pub use crate::v1_compiler_dag_collect_support::{
-    connective_name, dag_node_key_collision_error, dag_node_surface_fingerprint, expr_data_variant,
-    inferred_fingerprint, json_quote, DagCollectAcc,
-};
-
-"#;
-
-const DELEGATED_DAG_COLLECT_SYMBOLS: &[&str] = &[
-    "collect_dag_nodes",
-    "dag_collect_from_module",
-    "dag_collect_insert",
-    "dag_collect_inferred",
-    "dag_collect_match_pattern",
-    "dag_collect_node_tree",
-    "dag_collect_nodes_list",
-    "dag_collect_optional_node",
-    "dag_node_collection_anchor",
-    "dag_node_fingerprint",
-    "dag_node_is_resolved_identity_shell",
-    "dag_node_key",
-];
-
-const DELEGATED_DAG_COLLECT_SUPPORT_SYMBOLS: &[&str] = &[
-    "connective_name",
-    "dag_node_key_collision_error",
-    "dag_node_surface_fingerprint",
-    "expr_data_variant",
-    "inferred_fingerprint",
-    "json_quote",
 ];
 
 fn main() -> ExitCode {
@@ -251,9 +204,6 @@ fn run() -> Result<(), String> {
     })?;
     time_phase(&mut phases, "copy_hand_maintained_support", || {
         copy_hand_maintained_support(&stage0_src, &fresh_dir.join("src"))
-    })?;
-    time_phase(&mut phases, "patch_bootstrap_dag_collect", || {
-        patch_bootstrap_dag_collect(&fresh_dir.join("src"))
     })?;
     time_phase(&mut phases, "patch_languages_consumer_census_mod", || {
         patch_languages_consumer_census_mod(&fresh_dir.join("src"))
@@ -770,33 +720,6 @@ fn copy_hand_maintained_support(stage0_src: &Path, dest_src: &Path) -> Result<()
                 .map_err(|e| format!("copy {}: {e}", source.display()))?;
         }
     }
-    Ok(())
-}
-
-fn patch_bootstrap_dag_collect(src_dir: &Path) -> Result<(), String> {
-    let lib_path = src_dir.join("lib.rs");
-    let mut lib_text =
-        fs::read_to_string(&lib_path).map_err(|e| format!("read {}: {e}", lib_path.display()))?;
-    if !lib_text.contains("pub mod v1_compiler_dag_collect;") {
-        lib_text = lib_text.replace(
-            "pub mod v1_compiler_complexity;\n",
-            "pub mod v1_compiler_complexity;\npub mod v1_compiler_dag_collect;\n",
-        );
-    }
-    if !lib_text.contains("pub mod v1_compiler_dag_collect_support;") {
-        lib_text = lib_text.replace(
-            "pub mod v1_compiler_dag_collect;\n",
-            "pub mod v1_compiler_dag_collect;\npub mod v1_compiler_dag_collect_support;\n",
-        );
-    }
-    fs::write(&lib_path, lib_text).map_err(|e| format!("write {}: {e}", lib_path.display()))?;
-
-    let compile_path = src_dir.join("v1_compiler_compile.rs");
-    let text = fs::read_to_string(&compile_path)
-        .map_err(|e| format!("read {}: {e}", compile_path.display()))?;
-    let DagCollectPatch { compile_text, .. } = patch_bootstrap_dag_collect_text(&text)?;
-    fs::write(&compile_path, compile_text)
-        .map_err(|e| format!("write {}: {e}", compile_path.display()))?;
     Ok(())
 }
 
