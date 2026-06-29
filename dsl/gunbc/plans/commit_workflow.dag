@@ -1,3 +1,4 @@
+// bind: docs/plans/commit-workflow.md
 module gunbc.plans.commit_workflow
 
 import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
