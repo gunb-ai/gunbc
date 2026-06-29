@@ -1245,7 +1245,7 @@ test fn bash_fold_subshell_if_tier_holds() -> Bool {
   && bash_fold_if_wrong_production_rejects_oracle_holds()
 }
 
-test fn bash_fold_cutover_variants_tier_holds() -> Bool {
+test fn bash_fold_rawline_tier_holds() -> Bool {
   bash_fold_raw_line_orch_emit_holds()
   && bash_fold_raw_line_x_eq_holds()
   && bash_fold_raw_line_cmdsubst_holds()
@@ -1255,7 +1255,10 @@ test fn bash_fold_cutover_variants_tier_holds() -> Bool {
   && bash_fold_raw_line_trailing_nl_holds()
   && bash_fold_raw_line_wrong_spellings_rejects_oracle_holds()
   && bash_fold_raw_line_wrong_production_rejects_oracle_holds()
-  && bash_fold_with_redir_stderr_null_holds()
+}
+
+test fn bash_fold_redir_heredoc_tier_holds() -> Bool {
+  bash_fold_with_redir_stderr_null_holds()
   && bash_fold_with_redir_stdout_and_stderr_null_holds()
   && bash_fold_with_redir_stdout_to_stderr_holds()
   && bash_fold_with_redir_redir_to_file_var_holds()
@@ -1265,7 +1268,10 @@ test fn bash_fold_cutover_variants_tier_holds() -> Bool {
   && bash_fold_heredoc_holds()
   && bash_fold_heredoc_wrong_spellings_rejects_oracle_holds()
   && bash_fold_heredoc_wrong_production_rejects_oracle_holds()
-  && bash_fold_negation_subshell_false_holds()
+}
+
+test fn bash_fold_negation_env_tier_holds() -> Bool {
+  bash_fold_negation_subshell_false_holds()
   && bash_fold_negation_subshell_rawline_holds()
   && bash_fold_negation_wrong_spellings_rejects_oracle_holds()
   && bash_fold_negation_wrong_production_rejects_oracle_holds()
