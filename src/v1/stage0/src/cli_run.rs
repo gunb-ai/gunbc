@@ -102,7 +102,7 @@ fn extract_module_path(content: &str) -> Option<String> {
 /// Module-less `.dag` fragments (parse fixtures) are excluded from the compile entry
 /// set. Fail-closed visibility: list every skipped path so a forgotten `module` decl
 /// in real source is surfaced, not silently dropped.
-pub(crate) fn report_moduleless_dag_entry_skips(skipped_paths: &[String]) {
+pub fn report_moduleless_dag_entry_skips(skipped_paths: &[String]) {
     if skipped_paths.is_empty() {
         return;
     }
@@ -115,7 +115,7 @@ pub(crate) fn report_moduleless_dag_entry_skips(skipped_paths: &[String]) {
     }
 }
 
-pub(crate) fn moduleless_dag_entry_paths(entry_files: &[(String, String)]) -> Vec<String> {
+pub fn moduleless_dag_entry_paths(entry_files: &[(String, String)]) -> Vec<String> {
     entry_files
         .iter()
         .filter(|(_, content)| extract_module_path(content).is_none())
