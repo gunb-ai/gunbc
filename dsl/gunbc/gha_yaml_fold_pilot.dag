@@ -15,6 +15,13 @@ type GhaPilotStepEmit
   = GhaPilotRunEmit { run: String }
   | GhaPilotUsesEmit { uses: ActionRef }
 
+fn optional_is_absent<T>(opt: T?) -> Bool {
+  match opt {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
 fn gha_pilot_run_step_non_emit_fields_absent(
   name: String?,
   id: String?,
@@ -25,38 +32,19 @@ fn gha_pilot_run_step_non_emit_fields_absent(
   continue_on_error: Bool?,
   timeout_minutes: Int?
 ) -> Bool {
-  match name {
-    Absent =>
-      match id {
-        Absent =>
-          match shell {
-            Absent =>
-              match env {
-                Absent =>
-                  match working_directory {
-                    Absent =>
-                      match if_condition {
-                        Absent =>
-                          match continue_on_error {
-                            Absent =>
-                              match timeout_minutes {
-                                Absent => true
-                                Present { value: _ } => false
-                              }
-                            Present { value: _ } => false
-                          }
-                        Present { value: _ } => false
-                      }
-                    Present { value: _ } => false
-                  }
-                Present { value: _ } => false
-              }
-            Present { value: _ } => false
-          }
-        Present { value: _ } => false
-      }
-    Present { value: _ } => false
-  }
+  all(
+    [
+      optional_is_absent(name),
+      optional_is_absent(id),
+      optional_is_absent(shell),
+      optional_is_absent(env),
+      optional_is_absent(working_directory),
+      optional_is_absent(if_condition),
+      optional_is_absent(continue_on_error),
+      optional_is_absent(timeout_minutes)
+    ],
+    b => b
+  )
 }
 
 fn gha_pilot_uses_step_non_emit_fields_absent(
@@ -68,34 +56,18 @@ fn gha_pilot_uses_step_non_emit_fields_absent(
   continue_on_error: Bool?,
   timeout_minutes: Int?
 ) -> Bool {
-  match name {
-    Absent =>
-      match id {
-        Absent =>
-          match with {
-            Absent =>
-              match env {
-                Absent =>
-                  match if_condition {
-                    Absent =>
-                      match continue_on_error {
-                        Absent =>
-                          match timeout_minutes {
-                            Absent => true
-                            Present { value: _ } => false
-                          }
-                        Present { value: _ } => false
-                      }
-                    Present { value: _ } => false
-                  }
-                Present { value: _ } => false
-              }
-            Present { value: _ } => false
-          }
-        Present { value: _ } => false
-      }
-    Present { value: _ } => false
-  }
+  all(
+    [
+      optional_is_absent(name),
+      optional_is_absent(id),
+      optional_is_absent(with),
+      optional_is_absent(env),
+      optional_is_absent(if_condition),
+      optional_is_absent(continue_on_error),
+      optional_is_absent(timeout_minutes)
+    ],
+    b => b
+  )
 }
 
 fn gha_fold_pilot_emit_step(step: Step) -> Optional<GhaPilotStepEmit> {
