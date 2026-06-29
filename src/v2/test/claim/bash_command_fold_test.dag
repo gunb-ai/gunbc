@@ -126,7 +126,22 @@ fn bash_fold_emit_stmt_with_target(stmt: ShellStmt, target: TargetModel) -> Outc
         emitted: bash_stmt_env_prefixed_emitted,
         target: target
       )
-    _ => bash_fold_fold_serialize(stmt: stmt, target: target)
+    Command { words: _ } =>
+      bash_fold_fold_serialize(stmt: stmt, target: target)
+    Assign { name: _, value: _ } =>
+      bash_fold_fold_serialize(stmt: stmt, target: target)
+    Exit { code: _ } =>
+      bash_fold_fold_serialize(stmt: stmt, target: target)
+    AndOr { left: _, op: _, right: _ } =>
+      bash_fold_fold_serialize(stmt: stmt, target: target)
+    Pipe { left: _, right: _ } =>
+      bash_fold_fold_serialize(stmt: stmt, target: target)
+    Subshell { body: _ } =>
+      bash_fold_fold_serialize(stmt: stmt, target: target)
+    If { cond: _, then: _ } =>
+      bash_fold_fold_serialize(stmt: stmt, target: target)
+    BraceGroup { body: _ } =>
+      bash_fold_fold_serialize(stmt: stmt, target: target)
   }
 }
 
@@ -355,6 +370,24 @@ fn bash_fold_emit_inner_stmt_spelling(stmt: ShellStmt) -> Outcome<String> {
   }
 }
 
+fn bash_fold_delegated_fold_unexpected_stmt_rejected() -> Outcome<String> {
+  Rejected {
+    diagnostics: Some {
+      diagnostics: [
+        Diagnostic {
+          reason: ^bash_fold_delegated_fold_unexpected_stmt,
+          at: node_locus(node: Node {
+            kind: TypeNode { connective: Conj },
+            children: [],
+            occurrence_id: SyntheticOccurrence
+          }),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        }
+      ]
+    }
+  }
+}
+
 fn bash_fold_delegated_fold_serialize(stmt: ShellStmt) -> Outcome<String> {
   match stmt {
     RawLine { text: t } =>
@@ -417,22 +450,14 @@ fn bash_fold_delegated_fold_serialize(stmt: ShellStmt) -> Outcome<String> {
           }
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
       }
-    _ =>
-      Rejected {
-        diagnostics: Some {
-          diagnostics: [
-            Diagnostic {
-              reason: ^bash_fold_delegated_fold_unexpected_stmt,
-              at: node_locus(node: Node {
-                kind: TypeNode { connective: Conj },
-                children: [],
-                occurrence_id: SyntheticOccurrence
-              }),
-              correction: Unavailable { reason: ExternalContractUnknown }
-            }
-          ]
-        }
-      }
+    Command { words: _ } => bash_fold_delegated_fold_unexpected_stmt_rejected()
+    Assign { name: _, value: _ } => bash_fold_delegated_fold_unexpected_stmt_rejected()
+    Exit { code: _ } => bash_fold_delegated_fold_unexpected_stmt_rejected()
+    AndOr { left: _, op: _, right: _ } => bash_fold_delegated_fold_unexpected_stmt_rejected()
+    Pipe { left: _, right: _ } => bash_fold_delegated_fold_unexpected_stmt_rejected()
+    Subshell { body: _ } => bash_fold_delegated_fold_unexpected_stmt_rejected()
+    If { cond: _, then: _ } => bash_fold_delegated_fold_unexpected_stmt_rejected()
+    BraceGroup { body: _ } => bash_fold_delegated_fold_unexpected_stmt_rejected()
   }
 }
 

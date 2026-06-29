@@ -1244,6 +1244,20 @@ fn bash_fold_target_model_for_emitted_witness(
   }
 }
 
+fn bash_fold_target_model_from_native_bundle_witness(stmt: ShellStmt) -> Witness<TargetModel> {
+  match bash_fold_stmt_bundle_witness(stmt: stmt) {
+    Holds { value: bundle } =>
+      bash_fold_target_model_for_emitted_witness(
+        emitted: bundle.emitted,
+        source_literal: ^bash_fold_dynamic_source_literal,
+        source_text: serialize_stmt(s: stmt),
+        production_binding: bundle.production_binding,
+        rule_name: bundle.relation_rule
+      )
+    Violates { diagnostic: d } => Violates { diagnostic: d }
+  }
+}
+
 fn bash_fold_target_model_for_stmt_witness(stmt: ShellStmt) -> Witness<TargetModel> {
   match stmt {
     WithRedir { stmt: _, redir: _ } =>
@@ -1256,18 +1270,22 @@ fn bash_fold_target_model_for_stmt_witness(stmt: ShellStmt) -> Witness<TargetMod
       Violates { diagnostic: bash_fold_delegated_needs_component_spellings_diagnostic() }
     EnvPrefixed { name: _, value: _, command: _ } =>
       Violates { diagnostic: bash_fold_delegated_needs_component_spellings_diagnostic() }
-    _ =>
-      match bash_fold_stmt_bundle_witness(stmt: stmt) {
-        Holds { value: bundle } =>
-          bash_fold_target_model_for_emitted_witness(
-            emitted: bundle.emitted,
-            source_literal: ^bash_fold_dynamic_source_literal,
-            source_text: serialize_stmt(s: stmt),
-            production_binding: bundle.production_binding,
-            rule_name: bundle.relation_rule
-          )
-        Violates { diagnostic: d } => Violates { diagnostic: d }
-      }
+    Command { words: _ } =>
+      bash_fold_target_model_from_native_bundle_witness(stmt: stmt)
+    Assign { name: _, value: _ } =>
+      bash_fold_target_model_from_native_bundle_witness(stmt: stmt)
+    Exit { code: _ } =>
+      bash_fold_target_model_from_native_bundle_witness(stmt: stmt)
+    AndOr { left: _, op: _, right: _ } =>
+      bash_fold_target_model_from_native_bundle_witness(stmt: stmt)
+    Pipe { left: _, right: _ } =>
+      bash_fold_target_model_from_native_bundle_witness(stmt: stmt)
+    Subshell { body: _ } =>
+      bash_fold_target_model_from_native_bundle_witness(stmt: stmt)
+    If { cond: _, then: _ } =>
+      bash_fold_target_model_from_native_bundle_witness(stmt: stmt)
+    BraceGroup { body: _ } =>
+      bash_fold_target_model_from_native_bundle_witness(stmt: stmt)
   }
 }
 
