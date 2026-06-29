@@ -6,6 +6,7 @@ import gunbc.commit_workflow {
   commit_workflow_ci_floor_gates,
   commit_workflow_ci_rust_job_gates,
   commit_workflow_local_tidy_checks,
+  project_local_tidy_checks,
   CommitWorkflowSurface, GithubActionsCiJob, GithubActionsRustTestsJob, GitPrePushHook,
   CiYamlHandler, GitPrePushScriptHandler,
   gate_lists_eq, local_tidy_lists_eq,
@@ -13,8 +14,12 @@ import gunbc.commit_workflow {
   realization_handler_for_surface,
   realization_artifact_for_surface
 }
-import gunbc.ci_spec { gunbc_ci_floor_gates, gunbc_ci_rust_job_gates }
+import gunbc.ci_spec { gunbc_ci_spec, gunbc_ci_floor_gates, gunbc_ci_rust_job_gates, gunbc_ci_workflow_run }
+import gunbc.ci_workflow { ci_floor_spec_from_roster }
+import gunbc.ci_yaml_emit { expected_ci_yml, ci_yml_drifted }
+import gunbc.githooks_pre_push_emit { expected_githooks_pre_push_sh }
 import gunbc.local_tidy_spec { local_tidy_checks }
+import gunbc.generated_artifact_emit { artifact_generate }
 import gunbc.generated_artifact {
   CiYamlArtifact, GithooksPrePushArtifact, artifact_path
 }
@@ -58,6 +63,26 @@ fn witness_roster_nonempty() -> Bool {
     && length(commit_workflow_realization_bindings) == 3
 }
 
+fn witness_ci_workflow_handler_folds_roster() -> Bool {
+  gate_lists_eq(left: ci_floor_spec_from_roster().gates, right: gunbc_ci_spec.gates)
+    && gunbc_ci_workflow_run(spec: ci_floor_spec_from_roster()) == gunbc_ci_workflow_run(spec: gunbc_ci_spec)
+}
+
+fn witness_pre_push_handler_folds_roster() -> Bool {
+  local_tidy_lists_eq(
+    left: project_local_tidy_checks(roster: commit_gate_roster),
+    right: commit_workflow_local_tidy_checks
+  )
+}
+
+fn witness_ci_yaml_byte_ident() -> Bool {
+  !ci_yml_drifted(committed: expected_ci_yml())
+}
+
+fn witness_pre_push_byte_ident() -> Bool {
+  expected_githooks_pre_push_sh() == artifact_generate(a: GithooksPrePushArtifact)
+}
+
 test fn commit_workflow_witnesses() -> Bool {
   witness_roster_nonempty()
     && witness_ci_spec_projects_from_roster()
@@ -66,4 +91,8 @@ test fn commit_workflow_witnesses() -> Bool {
     && witness_pre_push_handler_binding()
     && witness_realization_bindings_match_dispatch()
     && witness_realization_artifact_paths()
+    && witness_ci_workflow_handler_folds_roster()
+    && witness_pre_push_handler_folds_roster()
+    && witness_ci_yaml_byte_ident()
+    && witness_pre_push_byte_ident()
 }
