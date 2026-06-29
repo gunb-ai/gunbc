@@ -53,7 +53,7 @@ fn dag_round_trip_input_node() -> Node {
 }
 
 data claim_dag_ingest_round_trip: TestClaim = RoundTripClaim {
-  label: "T-36 W1 wave-1 readiness: dag_round_trip_mvp1 fixture + lex/grammar/C5 authorities re-derived (emit→ingest fidelity W1b)",
+  label: "T-36 W1 wave-1 readiness: dag_add_fn_round_trip_fixture + lex/grammar/C5 authorities re-derived (emit→ingest fidelity W1b)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: dag_round_trip_input_node(),
   classification: TestClassification { tier: Tier3, layer: Integration }
