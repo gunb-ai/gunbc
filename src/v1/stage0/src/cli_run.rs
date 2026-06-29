@@ -3551,7 +3551,12 @@ pub fn run_discovery_corpus_with_options(
         (false, NodeFrontierSeeds::default())
     };
 
-    let width = parallel_width.max(1);
+    let capped_width = if options.spawn_width_cap > 0 {
+        parallel_width.min(options.spawn_width_cap)
+    } else {
+        parallel_width
+    };
+    let width = capped_width.max(1);
     if width == 1 {
         return run_discovery_rows(
             &rows,

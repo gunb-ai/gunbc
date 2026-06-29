@@ -182,7 +182,7 @@ data execution_corpus_node: Node = Node {
 data execution_witness_memory_reservation: ByteSize = byte_size(2147483648)
 
 fn execution_corpus_spawn_width() -> Int {
-  byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap) / byte_size_count(b: execution_witness_memory_reservation)
+  gunbc_ci_execution_corpus_available_width(each: execution_witness_memory_reservation)
 }
 
 fn execution_corpus_runnable() -> Runnable {
