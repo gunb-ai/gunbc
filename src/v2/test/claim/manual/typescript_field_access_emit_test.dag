@@ -21,7 +21,7 @@ import v2.extdeps.languages.typescript {
   ts_value_expression_projection,
   ts_wave1_lex
 }
-import v2.test.manual.mvp1_typescript_add_translate { anchor_mvp1_ts_emit_accepts }
+import v2.test.manual.typescript_add_emit_translate { anchor_typescript_add_emit_accepts }
 
 fn field_access_binding_spellings() -> Map<Symbol, String> {
   map_insert(
@@ -77,7 +77,7 @@ test fn ts_field_access_emit_source_holds() -> Bool {
 }
 
 fn ts_add_emit_source() -> String {
-  match anchor_mvp1_ts_emit_accepts() {
+  match anchor_typescript_add_emit_accepts() {
     Accepted { value: source, diagnostics: _ } => source.carried
     Rejected { diagnostics: _ } => "ADD_EMIT_REJECTED"
   }
