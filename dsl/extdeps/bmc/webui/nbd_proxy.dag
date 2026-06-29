@@ -1,6 +1,6 @@
 module extdeps.bmc.webui.nbd_proxy
 
-import std.types { Int, NonEmptyStr, List, Bool }
+import std.types { Int, List, Bool }
 import std.measure { ByteSize }
 import std.http_path { PathTemplate, LiteralToken, ParamToken }
 import extdeps.external_authority { ExternalAuthority }
