@@ -25,6 +25,7 @@ import gunbc.host_converge {
   Absent,
   ConvergeKnob,
   ConvergeSlice,
+  GunbcSlice,
   RunnerSlice,
   SessionsSlice,
   HostConverge,
@@ -120,6 +121,7 @@ fn witness_fold_cpu_weight_and_build_tokens_as_rows() -> Bool {
 
 fn last_runner_knob_name(knobs: List<ConvergeKnob>) -> String {
   fold(knobs, init: "", f: (acc, k) => match k.slice {
+    GunbcSlice => acc
     RunnerSlice => k.name
     SessionsSlice => acc
   })
