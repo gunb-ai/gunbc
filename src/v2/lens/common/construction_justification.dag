@@ -1,12 +1,12 @@
 module v2.lens.common.construction_justification
 
-import v2.std.text { String }
-
 import std.disposition { ConstructionMechanism }
+
+import std.decl_ref { DeclarationRef }
 
 type ConstructionClass
 
-  = WallNow { construction: String }
+  = WallNow { mechanism: ConstructionMechanism, authority: DeclarationRef }
 
   | WallAfterGrounding { dissolves_to: ConstructionMechanism }
 
