@@ -465,6 +465,7 @@ fn extract_type_sum_arm_pairs(
                 || suffix.starts_with("service ")
                 || suffix.starts_with("data ")
                 || suffix.starts_with("pattern ")
+                || suffix.starts_with("test ")
             {
                 break;
             }
@@ -588,7 +589,14 @@ fn split_top_level_commas(s: &str) -> Vec<&str> {
     let mut parts = Vec::new();
     let mut start = 0usize;
     let mut depth = 0i32;
-    for (i, ch) in s.char_indices() {
+    let mut chars = s.char_indices().peekable();
+    while let Some((i, ch)) = chars.next() {
+        if ch == '-' {
+            if let Some(&(_, '>')) = chars.peek() {
+                chars.next();
+                continue;
+            }
+        }
         match ch {
             '<' | '{' | '(' => depth += 1,
             '>' | '}' | ')' => depth -= 1,
