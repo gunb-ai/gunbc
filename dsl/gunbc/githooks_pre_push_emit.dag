@@ -71,7 +71,7 @@ fn emit_freshness_artifact() -> String {
       )
     ),
     concat(
-      emit_claim_batch(entry: entry, function: "run_generated_artifact_drift_gate_body", suffix: ""),
+      emit_claim_batch(entry: entry, function: "run_generated_artifact_drift_gate_body", suffix: " --wet"),
       " 2>/dev/null; then return 0; fi\n  return 1\n}\n"
     )
   )
@@ -107,14 +107,14 @@ fn emit_run_doc() -> String {
 fn emit_run_artifact() -> String {
   let entry = local_tidy_gate_entry()
   concat(
-    concat("echo \"[pre-push] generated-artifact drift gate\"\nif ", emit_claim_batch(entry: entry, function: "run_generated_artifact_drift_gate_body", suffix: "")),
+    concat("echo \"[pre-push] generated-artifact drift gate\"\nif ", emit_claim_batch(entry: entry, function: "run_generated_artifact_drift_gate_body", suffix: " --wet")),
     concat(
       "; then :; else\n  echo \"[pre-push] drift detected; running main_wet\"\n  ",
       concat(
         emit_claim_batch(entry: entry, function: "main_wet", suffix: " --wet"),
         concat(
           "\n  echo \"[pre-push] staging regen outputs:\"\n  git diff --name-only --diff-filter=ACMR | while IFS= read -r p; do\n    [ -n \"$p\" ] || continue\n    echo \"  + $p\"\n    git add -u -- \"$p\"\n  done\n  git ls-files --others --exclude-standard | while IFS= read -r p; do\n    [ -n \"$p\" ] || continue\n    echo \"  + $p (untracked)\"\n    git add -- \"$p\"\n  done\n  echo \"[pre-push] re-checking drift after regen\"\n  ",
-          concat(emit_claim_batch(entry: entry, function: "run_generated_artifact_drift_gate_body", suffix: ""), "\nfi\n")
+          concat(emit_claim_batch(entry: entry, function: "run_generated_artifact_drift_gate_body", suffix: " --wet"), "\nfi\n")
         )
       )
     )
