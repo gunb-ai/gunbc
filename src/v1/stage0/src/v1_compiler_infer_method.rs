@@ -396,36 +396,6 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
             "fact_cardinality_cross_tree_is_diverged_fork".to_string(),
             bool_type(),
         );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "languages_consumer_census_data_decl_count".to_string(),
-            int_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "languages_consumer_census_per_language_row_count".to_string(),
-            int_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "languages_consumer_census_format_row_count".to_string(),
-            int_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "languages_consumer_census_external_consumer_count".to_string(),
-            int_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "languages_consumer_census_is_composition_only".to_string(),
-            bool_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "languages_consumer_census_has_external_consumer".to_string(),
-            bool_type(),
-        );
         let m = v1_rt::rc_map_insert(m.clone(), "is_xid_start".to_string(), bool_type());
         let m = v1_rt::rc_map_insert(m.clone(), "is_xid_continue".to_string(), bool_type());
         let m = v1_rt::rc_map_insert(m.clone(), "is_emoji_ident".to_string(), bool_type());

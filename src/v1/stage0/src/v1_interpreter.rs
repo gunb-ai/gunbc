@@ -5401,54 +5401,6 @@ fn eval_builtin(
             )))
         }
 
-        "languages_consumer_census_data_decl_count" => Ok(Some(Value::Int(
-            crate::languages_consumer_census::languages_consumer_census_data_decl_count(),
-        ))),
-
-        "languages_consumer_census_per_language_row_count" => Ok(Some(Value::Int(
-            crate::languages_consumer_census::languages_consumer_census_per_language_row_count(),
-        ))),
-
-        "languages_consumer_census_format_row_count" => Ok(Some(Value::Int(
-            crate::languages_consumer_census::languages_consumer_census_format_row_count(),
-        ))),
-
-        "languages_consumer_census_external_consumer_count" => {
-            let decl_name = expect_str(
-                positional.first().copied(),
-                "languages_consumer_census_external_consumer_count",
-            )?;
-            Ok(Some(Value::Int(
-                crate::languages_consumer_census::languages_consumer_census_external_consumer_count(
-                    decl_name,
-                ),
-            )))
-        }
-
-        "languages_consumer_census_is_composition_only" => {
-            let decl_name = expect_str(
-                positional.first().copied(),
-                "languages_consumer_census_is_composition_only",
-            )?;
-            Ok(Some(Value::Bool(
-                crate::languages_consumer_census::languages_consumer_census_is_composition_only(
-                    decl_name,
-                ),
-            )))
-        }
-
-        "languages_consumer_census_has_external_consumer" => {
-            let decl_name = expect_str(
-                positional.first().copied(),
-                "languages_consumer_census_has_external_consumer",
-            )?;
-            Ok(Some(Value::Bool(
-                crate::languages_consumer_census::languages_consumer_census_has_external_consumer(
-                    decl_name,
-                ),
-            )))
-        }
-
         "extdeps_dead_param_count_for_operation" => {
             let path = expect_str(
                 positional.first().copied(),

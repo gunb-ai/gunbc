@@ -255,9 +255,6 @@ fn run() -> Result<(), String> {
     time_phase(&mut phases, "patch_bootstrap_dag_collect", || {
         patch_bootstrap_dag_collect(&fresh_dir.join("src"))
     })?;
-    time_phase(&mut phases, "patch_languages_consumer_census_mod", || {
-        patch_languages_consumer_census_mod(&fresh_dir.join("src"))
-    })?;
     time_phase(&mut phases, "assert_bootstrap_emit_core_support", || {
         assert_bootstrap_emit_core_support(&fresh_dir.join("src"))
     })?;
