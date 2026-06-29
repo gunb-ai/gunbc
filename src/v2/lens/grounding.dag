@@ -2,7 +2,7 @@ module v2.lens.grounding
 
 
 import gunbc.ci_layer_roots { witness_layer_roots }
-import v2.std.algebra { fold_list, is_empty, is_prefix_of, list_snoc_item }
+import v2.std.algebra { Empty, fold_list, is_empty, is_prefix_of, list_snoc_item }
 import v2.std.collection { List }
 import v2.std.integer { Int }
 import v2.std.logic { Bool }
@@ -15,9 +15,7 @@ import v2.std.concept_index {
   QualifiedConcept,
   build_concept_name_index,
   concept_decl_facts,
-  concept_from_decl,
-  enumerate_concepts_in,
-  field_refs_from_node
+  concept_from_decl
 }
 import v2.std.node { Node }
 import v2.std.node_query {
@@ -409,9 +407,15 @@ fn filter_layer_included(rows: List<GroundingWorklistEntry>) -> List<GroundingWo
   })
 }
 
+fn enumerate_concepts_from_decls(decls: List<ConceptDecl>) -> List<QualifiedConcept> {
+  fold(decls, init: Empty, f: fn(acc, decl) {
+    list_snoc_item(xs: acc, item: concept_from_decl(decl: decl))
+  })
+}
+
 fn candidates_in(pool_roots: List<String>) -> List<GroundingWorklistEntry> {
   let decls = concept_decl_facts(pool_roots: pool_roots)
-  let all_concepts = enumerate_concepts_in(pool_roots: pool_roots)
+  let all_concepts = enumerate_concepts_from_decls(decls: decls)
   filter_layer_included(
     rows: candidates_from_decls(decls: decls, all_concepts: all_concepts)
   )
@@ -423,6 +427,6 @@ fn candidates() -> List<GroundingWorklistEntry> {
 
 fn worklist() -> List<GroundingWorklistEntry> {
   let decls = concept_decl_facts(pool_roots: witness_layer_roots)
-  let all_concepts = enumerate_concepts_in(pool_roots: witness_layer_roots)
+  let all_concepts = enumerate_concepts_from_decls(decls: decls)
   candidates_from_decls(decls: decls, all_concepts: all_concepts)
 }

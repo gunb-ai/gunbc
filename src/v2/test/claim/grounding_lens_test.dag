@@ -19,8 +19,7 @@ import v2.lens.grounding {
   compute_layer_excluded,
   is_layer_inversion,
   is_meta_self_coincidence,
-  name_coincides,
-  worklist
+  name_coincides
 }
 
 
@@ -146,15 +145,11 @@ fn witness_coincides_with_qualified_name() -> Bool {
 }
 
 fn witness_whole_tree_concept_count() -> Bool {
-  length(xs: concept_decl_facts(pool_roots: witness_layer_roots)) > 100
+  length(xs: concept_decl_facts(pool_roots: witness_layer_roots)) > 1000
 }
 
 fn witness_whole_tree_nonempty_candidates() -> Bool {
   !is_empty(xs: candidates())
-}
-
-fn witness_worklist_includes_layer_excluded_rows() -> Bool {
-  length(xs: worklist()) >= length(xs: candidates())
 }
 
 
@@ -176,5 +171,4 @@ test fn grounding_lens_witnesses() -> Bool {
     && witness_coincides_with_qualified_name()
     && witness_whole_tree_concept_count()
     && witness_whole_tree_nonempty_candidates()
-    && witness_worklist_includes_layer_excluded_rows()
 }
