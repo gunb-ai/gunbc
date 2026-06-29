@@ -180,6 +180,8 @@ fn bmc_full_state_is_lossy_after_roundtrip(s: BmcLifecycleState) -> Bool {
   !(recovered == s)
 }
 
+data bmc_lifecycle_decom_step_fidelities_dissolution_trigger: String = "🟡 parallel-representation: positional List<DecodeFidelity> indexed implicitly by bmc_onboarding_phase_order — phase↔fidelity correspondence is silent; dissolves when bmc lifecycle reads fidelity via decode_fidelity_from_target on a TargetModel fidelity_quotient (same bind as bmc_lifecycle_inverse_fidelity_inline_scaffold)"
+
 data bmc_lifecycle_decom_step_fidelities: List<DecodeFidelity> = [
   Lossless,
   Lossy,
