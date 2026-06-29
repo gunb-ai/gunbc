@@ -139,8 +139,8 @@ All three gates use different `(source_roots, binary)` tuples and therefore each
 | Cost today | Cost after M1 | Cost after M1+M2 (gated on determinism) |
 |---|---|---|
 | `resolve_entry_graph` × 2 per run (~30–40s each) | × 1 (memo deduplicates Batch 1 → Batch 2) | × 1 |
-| `gunbc compile` × 4 per run (~537s each) | × 4 (M1 doesn't help subprocess) | × 2 (determinism oracle pair survives) |
-| **Total compile cost per run** | ~2148s – ~37s ≈ same subprocess cost, saved resolve | **~1074s + ~37s → 2× compile, 1× resolve** |
+| `gunbc compile` × 4 per run (~537s each) | × 4 (M1 doesn't help subprocess) | × 3 (oracle pair 2→1; other two tuples unchanged) |
+| **Total compile cost per run** | ~2148s – ~37s ≈ same subprocess cost, saved resolve | **~1611s + ~37s → 3× compile, 1× resolve** |
 
 M1 saves ~30–40s per run (the Axis-B double-resolve). Small absolute, but the mechanism is a construction wall. Unblocked today.
 
@@ -165,6 +165,6 @@ M1 (`ResolveScopeShared` memo):
 
 M2 (`RunnableCompile`):
 - **Gated on**: `v2.std.determinism` (#5941) closing non-reproducible emit. Content-addressing the artifact is unsound until emit is deterministic. Do not land M2 before this gate closes.
-- After determinism closes: `EmitDeterminismGate` dissolves from an empirical oracle into a construction-verified witness; the 2× oracle pair becomes 1× (and M2 can collapse further to 1× total compile).
+- After determinism closes: `EmitDeterminismGate` dissolves from an empirical oracle into a construction-verified witness; the 2× oracle pair becomes 1×, reducing total compiles from 4× to 3× (DslCompileClean, EmitDeterminism×1, RegenVerify each use distinct tuples and all remain necessary). Further reduction below 3× would require either collapsing two of the existing tuples to the same `(source_roots, binary)` or removing a gate — neither is in scope here.
 - Dissolves into the v2 scheduler (resource-aware-scheduler.md Node B/C) once the scheduler derives `Runnable.cost` from the compile node's output rather than static measurement rows.
 - Dissolves into the Realization pattern (#4867) for cross-run caching once M2's content-addressed artifact is stored on disk between runs.
