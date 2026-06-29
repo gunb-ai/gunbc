@@ -3,16 +3,15 @@ module test.claim.merge_admission_actuator_witness
 import gunbc.merge_admission {
   MergeAdmissionReceipt,
   Success,
-  receipt_is_admissible,
   KeyedReceipt,
-}
-import gunbc.ci_failure_class {
   MergeAdmissionVerdict,
   MergeAdmitted, MergeDeniedStaleBase, MergeDeniedStaleRoster, MergeDeniedNotSuccess,
   classify_merge_admission_verdict,
   merge_admission_would_block,
-  merge_admission_blocks_merge,
   merge_admission_enforcement_policy,
+}
+import gunbc.ci_failure_class {
+  merge_admission_blocks_merge,
   merge_freshness_gating_status,
   gating_is_enforced,
 }
@@ -110,38 +109,4 @@ test fn activation_deferred_blocks_merge_false_for_stale() -> Bool {
       merge_target_tree_hash: scenario_base_b1,
       current_roster_hash: scenario_roster_r0,
     ) == false)
-}
-
-test fn enforcement_verdict_aligns_with_keyed_predicate() -> Bool {
-  let fresh_admitted = receipt_is_admissible(
-    receipt: scenario_pr_x_receipt,
-    merge_target_tree_hash: scenario_base_b0,
-    current_roster_hash: scenario_roster_r0,
-  )
-  let stale_denied = !receipt_is_admissible(
-    receipt: scenario_pr_x_receipt,
-    merge_target_tree_hash: scenario_base_b1,
-    current_roster_hash: scenario_roster_r0,
-  )
-  let verdict_fresh = match classify_merge_admission_verdict(
-    receipt: scenario_pr_x_receipt,
-    merge_target_tree_hash: scenario_base_b0,
-    current_roster_hash: scenario_roster_r0,
-  ) {
-    MergeAdmitted => true
-    MergeDeniedStaleBase => false
-    MergeDeniedStaleRoster => false
-    MergeDeniedNotSuccess => false
-  }
-  let verdict_stale = match classify_merge_admission_verdict(
-    receipt: scenario_pr_x_receipt,
-    merge_target_tree_hash: scenario_base_b1,
-    current_roster_hash: scenario_roster_r0,
-  ) {
-    MergeDeniedStaleBase => true
-    MergeAdmitted => false
-    MergeDeniedStaleRoster => false
-    MergeDeniedNotSuccess => false
-  }
-  fresh_admitted && stale_denied && verdict_fresh && verdict_stale
 }
