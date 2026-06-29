@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::rc::Rc;
 use std::sync::Mutex;
@@ -9,11 +9,12 @@ use v1_compiler::cli_run::{
     FLOOR_DISCOVERY_EXCLUDES,
 };
 use v1_compiler::v1_compiler_compile::{compile_to_resolved, SourceFile};
+use v1_compiler::v1_compiler_infer::{infer_expr, InferScope};
 use v1_compiler::v1_compiler_infer_items::{ResolvedGraph, TypedModule};
 use v1_compiler::v1_compiler_infer_lookup::lookup_func_sig;
 use v1_compiler::v1_compiler_infer_sigs::{lookup_resolved_sig, ResolvedFuncEnv, ResolvedFuncSig};
 use v1_compiler::v1_interpreter::{self, ExecutionMode, Value};
-use v1_compiler::v1_std_core::authored_name_at;
+use v1_compiler::v1_std_core::{authored_name_at, diagnostic_to_message};
 
 use crate::helpers::workspace_root;
 
@@ -304,8 +305,41 @@ fn func_env_dropped_parent_chain_fails_lookup() {
         parents: Rc::new(vec![]),
     });
     assert!(
-        lookup_func_sig(stripped, "shared_fn".to_string()).is_none(),
+        lookup_func_sig(stripped.clone(), "shared_fn".to_string()).is_none(),
         "perturbation: stripping parents from a real import consumer must break \
          imported name lookup (chain-walk is load-bearing, not decorative)"
+    );
+
+    let call_shared = consumer
+        .items
+        .iter()
+        .find(|item| {
+            authored_name_at(resolved.source_indices.clone(), (*item).clone()) == "call_shared"
+        })
+        .expect("call_shared item in rc_identity consumer fixture");
+    let body = call_shared.body.clone().expect("call_shared body expr");
+    let stripped_scope = Rc::new(InferScope {
+        type_env: consumer.type_env.clone(),
+        func_env: stripped,
+        locals: Rc::new(HashMap::new()),
+        match_bound_names: Rc::new(HashMap::new()),
+        module_name: "test.func_env_rc_consumer".to_string(),
+        service_registry: Rc::new(HashMap::new()),
+        item_registry: consumer.item_registry.clone(),
+        lambda_param_provenance: Rc::new(HashMap::new()),
+    });
+    let reinfer = infer_expr(body, stripped_scope, None);
+    let diag_msgs: Vec<String> = reinfer
+        .diagnostics
+        .iter()
+        .map(|diag| diagnostic_to_message(diag.diagnostic.clone()))
+        .collect();
+    assert!(
+        diag_msgs.iter().any(|msg| {
+            msg.contains("shared_fn")
+                && (msg.contains("undefined variable")
+                    || msg.contains("not found in scope"))
+        }),
+        "perturbation must surface lookup failure diagnostic on reinfer, got {diag_msgs:?}"
     );
 }

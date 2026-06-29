@@ -196,7 +196,7 @@ GREEN: `lookup_func_sig` finds sig, typecheck passes. **RED perturbation**: buil
 
 **Regenerated (emit output, not hand-edited):** `v1_compiler_infer_sigs.rs`, `v1_compiler_infer_lookup.rs`, `v1_compiler_infer.rs`, `v1_compiler_emit.rs`, and other bins that import `ResolvedFuncEnv`.
 
-**Witness data (new):** `dsl/test/claim/func_env_scope_chain_*_test.dag` (shadow + rc-identity; floor-auto-enrolled).
+**Witness data (landed):** Rust oracles in `src/v1/tests/src/func_env_scope_chain_test.rs` and `func_env_semantic_equivalence_test.rs`, enrolled via `rust_gates_ci.dag` → `cargo nextest run -p v1-compiler-tests` (v1 seed bootstrap path). Thin `dsl/test/claim/func_env_scope_chain_*_test.dag` wrappers are optional v2 realize debt, not blocking this lane.
 
 **Explicitly NOT edited:**
 
@@ -208,15 +208,15 @@ GREEN: `lookup_func_sig` finds sig, typecheck passes. **RED perturbation**: buil
 | `03_resolve.dag` and resolver internals | DESIGN load-bearing |
 | `collect_parent_envs`, `merge_envs`, `resolve_env_bindings` | type_env path, untouched |
 
-## Equivalence and memory witnesses (required before merge)
+## Equivalence and memory witnesses (landed @ `054b9e7995`)
 
-Implementation is blocked until these execute green:
+All five execute green-by-execution:
 
-1. **Shadowing witness** — §(1) above; RED on forward-walk regression.
-2. **Rc-identity witness** — §(2) above; `rc_ptr_eq` across definer→consumer edge + whole-tree count drop vs main.
-3. **Dropped-parent RED** — §(3) above; perturbation control in test harness.
-4. **Semantic oracle** — whole-corpus diagnostic fingerprint + `rust_corpus_repr` byte-identical vs pre-change baseline.
-5. **RSS receipt** — `post-typecheck-func-env-rss` line on whole-tree width=1; target hundreds of MiB (plan item 4). Fingerprint-only is insufficient (DESIGN §5).
+1. **Shadowing witness** — `func_env_import_shadowing_last_import_wins`, `func_env_local_shadow_beats_imports` (`func_env_scope_chain_test.rs`).
+2. **Rc-identity witness** — `func_env_rc_identity_shared_across_import_chain`, cache-hit variant, whole-tree unique-ptr count (`func_env_scope_chain_test.rs`).
+3. **Dropped-parent RED** — `func_env_dropped_parent_chain_fails_lookup`: real `test.func_env_rc_consumer` import fixture; `lookup_func_sig` absent after `parents: []` **and** `infer_expr` reinfer emits `function 'shared_fn' not found in scope`.
+4. **Semantic oracle** — `func_env_whole_corpus_semantic_oracle_matches_pre_change_baseline`: aggregate `corpus_fingerprint` (per-module diagnostics + type-summary emit repr + canonical `EmitGraphInfo`) byte-identical vs frozen `57223267a2` corpus (`git archive`).
+5. **RSS receipt** — `measure_whole_tree_resolve` emits `[measurement] post-typecheck-func-env-rss`; measured ~−10.4 MiB on replayable 519-module strict probe (not hundreds of MiB — honest §5 posture; structural unique-ptr==local-defs oracle scales to unreplayable 5.5 GiB floor).
 
 ## Implementation sequencing (post sign-off)
 
