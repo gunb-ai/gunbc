@@ -1,0 +1,41 @@
+module v2.test.manual.sql_create_table_fold_runner
+
+import std.realization_schedule { Runnable, RunnableSingleClaim }
+import v2.std.collection { List }
+
+data sql_fold_test_entry: String = "src/v2/test/claim/sql_create_table_fold_test.dag"
+
+fn sql_create_table_fold_plan() -> List<List<Runnable>> {
+  [
+    [
+      RunnableSingleClaim {
+        entry: sql_fold_test_entry,
+        function: "sql_fold_relation_row_single_col_witness_holds"
+      },
+      RunnableSingleClaim {
+        entry: sql_fold_test_entry,
+        function: "sql_fold_create_table_single_col_holds"
+      },
+      RunnableSingleClaim {
+        entry: sql_fold_test_entry,
+        function: "sql_fold_create_table_two_col_holds"
+      },
+      RunnableSingleClaim {
+        entry: sql_fold_test_entry,
+        function: "sql_fold_create_table_with_pk_holds"
+      },
+      RunnableSingleClaim {
+        entry: sql_fold_test_entry,
+        function: "sql_fold_wrong_production_rejects_oracle_holds"
+      },
+      RunnableSingleClaim {
+        entry: sql_fold_test_entry,
+        function: "sql_fold_direct_serialize_single_col_holds"
+      },
+      RunnableSingleClaim {
+        entry: sql_fold_test_entry,
+        function: "sql_fold_emitted_tree_differs_on_two_col_fixture_holds"
+      }
+    ]
+  ]
+}

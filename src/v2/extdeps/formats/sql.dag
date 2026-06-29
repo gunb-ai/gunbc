@@ -1,7 +1,7 @@
 module v2.extdeps.formats.sql
 
 import v2.std.grammar { GrammarSchema }
-import v2.std.algebra { Cons, Empty, fold_list, list_append }
+import v2.std.algebra { fold_list, list_append }
 import v2.std.collection { Absent, List, Map, Optional, Present }
 import v2.std.nat { Nat }
 import v2.std.cardinality { NonZeroNat }
@@ -409,30 +409,15 @@ fn sql_serialize_column_definition(col: SqlColumnDefinition) -> String {
   )
 }
 
-fn sql_join_column_definitions(acc: String, first: Bool, part: String) -> String {
-  if first { part } else { concat(acc, concat(", ", part)) }
-}
-
-fn sql_serialize_column_definitions_from(
-  acc: String,
-  first: Bool,
-  cols: List<SqlColumnDefinition>
-) -> String {
-  match cols {
-    Empty => acc
-    Cons { head: col, tail: rest } => {
-      let part = sql_serialize_column_definition(col: col)
-      sql_serialize_column_definitions_from(
-        acc: sql_join_column_definitions(acc: acc, first: first, part: part),
-        first: false,
-        cols: rest
-      )
-    }
-  }
-}
-
 fn sql_serialize_column_definitions(cols: List<SqlColumnDefinition>) -> String {
-  sql_serialize_column_definitions_from(acc: "", first: true, cols: cols)
+  fold(
+    cols,
+    init: "",
+    f: fn(acc, col) {
+      let part = sql_serialize_column_definition(col: col)
+      if acc == "" { part } else { concat(acc, concat(", ", part)) }
+    }
+  )
 }
 
 fn sql_serialize_primary_key_clause(pk: Optional<List<SqlIdentifier>>) -> String {
@@ -477,10 +462,6 @@ fn sql_serialize_table_definition(table: SqlTableDefinition) -> String {
       )
     )
   )
-}
-
-fn sql_serialize_create_table(op: SqlCreateTable) -> String {
-  sql_serialize_table_definition(table: op.table)
 }
 
 fn sql_serialize_schema_operation(op: SqlSchemaOperation) -> String {

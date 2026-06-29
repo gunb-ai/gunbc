@@ -1,0 +1,193 @@
+module v2.test.claim.sql_create_table_fold
+
+import v2.extdeps.formats.sql {
+  SqlColumnConstraints,
+  SqlColumnDefaultAbsent,
+  SqlColumnDefinition,
+  SqlRegularIdentifier,
+  SqlSchemaOperation,
+  SqlTypeCharacterLargeObject,
+  sql_serialize_schema_operation
+}
+import v2.extdeps.formats.sql_create_table_fold {
+  sql_fold_operation_emitted_witness,
+  sql_fold_relation_row_witness,
+  sql_fold_schema_operation_bundle_witness,
+  sql_fold_target_model_for_operation_witness,
+  sql_fold_tasks_pk_table,
+  sql_fold_tasks_single_col_table,
+  sql_fold_tasks_two_col_table
+}
+import v2.compiler.emit { emit }
+import v2.compiler.infer { InferredFacts, InferredTree }
+import v2.compiler.translate { target_serialize_source_from_model }
+import v2.std.compilers.target_model { TargetModel }
+import v2.std.collection { Map }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  None,
+  Outcome,
+  Rejected,
+  Some,
+  Unavailable,
+  node_locus
+}
+import v2.std.logic { Bool }
+import v2.std.node { Conj, Node, SyntheticOccurrence, TypeNode }
+import v2.std.witness { Holds, Violates, Witness }
+
+fn sql_fold_facts_lookup(key: Node) -> Witness<InferredFacts> {
+  Violates {
+    diagnostic: Diagnostic {
+      reason: ^sql_fold_facts_unexpected_consultation,
+      at: node_locus(node: key),
+      correction: Unavailable { reason: ExternalContractUnknown }
+    }
+  }
+}
+
+fn sql_fold_fold_serialize(
+  op: SqlSchemaOperation,
+  target: TargetModel
+) -> Outcome<String> {
+  match sql_fold_operation_emitted_witness(op: op) {
+    Holds { value: emitted } =>
+      let tree = InferredTree {
+        root: emitted,
+        facts: Map { lookup: sql_fold_facts_lookup }
+      }
+      match emit(tree: tree, target: target) {
+        Accepted { value: source, diagnostics: d } =>
+          match d {
+            None => Accepted { value: source.carried, diagnostics: None }
+            Some { diagnostics: r } => Rejected { diagnostics: r }
+          }
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      }
+    Violates { diagnostic: d } => Rejected { diagnostics: Some { diagnostics: [d] } }
+  }
+}
+
+fn sql_fold_fold_serialize_operation(op: SqlSchemaOperation) -> Outcome<String> {
+  match sql_fold_target_model_for_operation_witness(op: op) {
+    Holds { value: target } =>
+      sql_fold_fold_serialize(op: op, target: target)
+    Violates { diagnostic: d } =>
+      Rejected { diagnostics: Some { diagnostics: [d] } }
+  }
+}
+
+fn sql_fold_fold_matches_oracle(op: SqlSchemaOperation) -> Bool {
+  match sql_fold_fold_serialize_operation(op: op) {
+    Accepted { value: folded, diagnostics: _ } =>
+      folded == sql_serialize_schema_operation(op: op)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn sql_fold_single_col_operation() -> SqlSchemaOperation {
+  SqlCreateTable { table: sql_fold_tasks_single_col_table }
+}
+
+fn sql_fold_two_col_operation() -> SqlSchemaOperation {
+  SqlCreateTable { table: sql_fold_tasks_two_col_table }
+}
+
+fn sql_fold_pk_operation() -> SqlSchemaOperation {
+  SqlCreateTable { table: sql_fold_tasks_pk_table }
+}
+
+fn sql_fold_relation_row_single_col_witness_holds() -> Bool {
+  let op = sql_fold_single_col_operation()
+  match sql_fold_schema_operation_bundle_witness(op: op) {
+    Holds { value: bundle } =>
+      match sql_fold_relation_row_witness(
+        emitted: bundle.emitted,
+        lhs: bundle.production_binding
+      ) {
+        Holds { value: _ } => true
+        Violates { diagnostic: _ } => false
+      }
+    Violates { diagnostic: _ } => false
+  }
+}
+
+fn sql_fold_create_table_single_col_holds() -> Bool {
+  sql_fold_fold_matches_oracle(op: sql_fold_single_col_operation())
+}
+
+fn sql_fold_create_table_two_col_holds() -> Bool {
+  sql_fold_fold_matches_oracle(op: sql_fold_two_col_operation())
+}
+
+fn sql_fold_create_table_with_pk_holds() -> Bool {
+  sql_fold_fold_matches_oracle(op: sql_fold_pk_operation())
+}
+
+fn sql_fold_direct_serialize_matches_oracle(
+  op: SqlSchemaOperation,
+  target: TargetModel
+) -> Bool {
+  match sql_fold_operation_emitted_witness(op: op) {
+    Holds { value: emitted } =>
+      match target_serialize_source_from_model(target: target, emitted: emitted) {
+        Accepted { value: source, diagnostics: d } =>
+          (source.carried == sql_serialize_schema_operation(op: op)) && (d == None)
+        Rejected { diagnostics: _ } => false
+      }
+    Violates { diagnostic: _ } => false
+  }
+}
+
+fn sql_fold_direct_serialize_single_col_holds() -> Bool {
+  let op = sql_fold_single_col_operation()
+  match sql_fold_target_model_for_operation_witness(op: op) {
+    Holds { value: target } =>
+      sql_fold_direct_serialize_matches_oracle(op: op, target: target)
+    Violates { diagnostic: _ } => false
+  }
+}
+
+fn sql_fold_wrong_production_rejects_oracle_holds() -> Bool {
+  let op = sql_fold_single_col_operation()
+  match sql_fold_schema_operation_bundle_witness(op: op) {
+    Holds { value: bundle } =>
+      match sql_fold_relation_row_witness(
+        emitted: bundle.emitted,
+        lhs: ^sql_production_fold_create_table_pk
+      ) {
+        Holds { value: _ } => false
+        Violates { diagnostic: _ } => true
+      }
+    Violates { diagnostic: _ } => false
+  }
+}
+
+fn sql_fold_emitted_tree_differs_on_two_col_fixture_holds() -> Bool {
+  match sql_fold_operation_emitted_witness(op: sql_fold_single_col_operation()) {
+    Holds { value: single } =>
+      match sql_fold_operation_emitted_witness(op: sql_fold_two_col_operation()) {
+        Holds { value: two } => single != two
+        Violates { diagnostic: _ } => false
+      }
+    Violates { diagnostic: _ } => false
+  }
+}
+
+test fn sql_fold_structural_tier_holds() -> Bool {
+  sql_fold_relation_row_single_col_witness_holds()
+  && sql_fold_emitted_tree_differs_on_two_col_fixture_holds()
+  && sql_fold_wrong_production_rejects_oracle_holds()
+}
+
+test fn sql_fold_create_table_tier_holds() -> Bool {
+  sql_fold_create_table_single_col_holds()
+  && sql_fold_create_table_two_col_holds()
+  && sql_fold_create_table_with_pk_holds()
+}
+
+test fn sql_fold_direct_serialize_tier_holds() -> Bool {
+  sql_fold_direct_serialize_single_col_holds()
+}
