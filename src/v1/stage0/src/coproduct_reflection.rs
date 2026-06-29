@@ -457,6 +457,178 @@ fn concept_decl_node(ctx: &InterpContext, item: &Rc<Node>) -> InterpResult<Value
     }
 }
 
+fn type_expr_head_name(
+    type_expr: &Rc<Node>,
+    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> InterpResult<String> {
+    let name = authored_name_at(si.clone(), type_expr.clone());
+    if !name.is_empty() {
+        return Ok(name);
+    }
+    if type_expr.connective == Connective::Conj {
+        let mut parts: Vec<String> = Vec::new();
+        for field in type_expr.children.iter() {
+            let field_name = authored_name_at(si.clone(), field.clone());
+            if field_name.is_empty() {
+                return Err(InterpError::TypeError {
+                    msg: "type_expr_head_name: anonymous field in inline record type".to_string(),
+                });
+            }
+            let type_child = field_node_type_expr(field.clone());
+            let head = type_expr_head_name(&type_child, si)?;
+            parts.push(format!("{field_name}: {head}"));
+        }
+        return Ok(format!("{{ {} }}", parts.join(", ")));
+    }
+    Err(InterpError::TypeError {
+        msg: format!(
+            "type_expr_head_name: cannot extract head type name (connective={:?})",
+            type_expr.connective
+        ),
+    })
+}
+
+fn marshal_type_expr_head_ref(
+    ctx: &InterpContext,
+    type_expr: &Rc<Node>,
+    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> InterpResult<Value> {
+    let name = type_expr_head_name(type_expr, si)?;
+    Ok(node_record(
+        ctx,
+        node_kind_type_node(ctx, atom_connective_variant(ctx, &name)),
+        vec![],
+    ))
+}
+
+fn marshal_variant_arm_target_parse_only(
+    ctx: &InterpContext,
+    variant: &Rc<Node>,
+    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> InterpResult<Value> {
+    if variant.children.is_empty() {
+        return Ok(unit_type_node(ctx));
+    }
+    let mut edges = Vec::with_capacity(variant.children.len());
+    for field in variant.children.iter() {
+        let field_name = authored_name_at(si.clone(), field.clone());
+        if field_name.is_empty() {
+            return Err(InterpError::TypeError {
+                msg: "marshal_variant_arm_target_parse_only: anonymous field".to_string(),
+            });
+        }
+        let type_expr = field_node_type_expr(field.clone());
+        let target = marshal_type_expr_head_ref(ctx, &type_expr, si)?;
+        edges.push(edge_named(ctx, &field_name, target));
+    }
+    Ok(node_record(
+        ctx,
+        node_kind_type_node(ctx, nullary_connective_variant(ctx, "Conj")),
+        edges,
+    ))
+}
+
+fn marshal_disj_type_item_parse_only(
+    ctx: &InterpContext,
+    item: &Rc<Node>,
+    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> InterpResult<Value> {
+    if item.connective != Connective::Disj {
+        return Err(InterpError::TypeError {
+            msg: "marshal_disj_type_item_parse_only: type is not a coproduct (Disj)".to_string(),
+        });
+    }
+    let mut edges = Vec::with_capacity(item.children.len());
+    for child in item.children.iter() {
+        let label = authored_name_at(si.clone(), child.clone());
+        if label.is_empty() {
+            return Err(InterpError::TypeError {
+                msg: "marshal_disj_type_item_parse_only: anonymous coproduct arm".to_string(),
+            });
+        }
+        let target = marshal_variant_arm_target_parse_only(ctx, child, si)?;
+        edges.push(edge_named(ctx, &label, target));
+    }
+    Ok(node_record(
+        ctx,
+        node_kind_type_node(ctx, nullary_connective_variant(ctx, "Disj")),
+        edges,
+    ))
+}
+
+fn concept_decl_node_parse_only(
+    ctx: &InterpContext,
+    item: &Rc<Node>,
+    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> InterpResult<Value> {
+    match item.connective {
+        Connective::Disj => marshal_disj_type_item_parse_only(ctx, item, si),
+        Connective::Conj => marshal_variant_arm_target_parse_only(ctx, item, si),
+        _ => Ok(unit_type_node(ctx)),
+    }
+}
+
+/// Whole-tree concept enumeration over `pool_roots` via parse-only file walk (no
+/// whole-tree resolve). Uses head type-name marshaling so compound fields like
+/// `List<T>` never fail silently — the lens only needs exact `String`/`NonEmptyStr`
+/// matches on field heads.
+pub fn eval_concept_decl_facts(
+    ctx: &InterpContext,
+    pool_roots: &[String],
+) -> InterpResult<Value> {
+    let ws = crate::module_path_index::workspace_root();
+    let abs_pool_roots: Vec<String> = pool_roots
+        .iter()
+        .map(|r| ws.join(r).to_string_lossy().into_owned())
+        .collect();
+    let index = crate::cli_run::build_module_path_index(&abs_pool_roots);
+    let mut modules: Vec<(String, String)> = index.into_iter().collect();
+    modules.sort();
+    let module_count = modules.len();
+    let mut rows: Vec<Value> = Vec::new();
+    let mut files_parsed = 0usize;
+    for (module_name, rel_path) in modules {
+        let abs = ws.join(&rel_path);
+        let (items, si) = crate::medium_structure_project::parse_file(&abs).ok_or_else(|| {
+            InterpError::TypeError {
+                msg: format!(
+                    "concept_decl_facts: failed to parse `{rel_path}` (fail-closed; no silent skip)"
+                ),
+            }
+        })?;
+        files_parsed += 1;
+        for item in items.iter() {
+            if crate::v1_compiler_infer_items::item_kind(item.clone()) != ItemKind::TypeItem {
+                continue;
+            }
+            let name = authored_name_at(si.clone(), item.clone());
+            if name.is_empty() {
+                continue;
+            }
+            let qualified_name = logical_qualified_name(&module_name, &name);
+            let node = concept_decl_node_parse_only(ctx, item, &si).map_err(|e| {
+                InterpError::TypeError {
+                    msg: format!(
+                        "concept_decl_facts: failed to marshal `{qualified_name}` in `{rel_path}`: {e}"
+                    ),
+                }
+            })?;
+            rows.push(Value::Record {
+                type_name: ctx.sym("ConceptDecl"),
+                fields: Rc::new(sorted_fields(vec![
+                    (ctx.sym("qualified_name"), Value::Str(qualified_name)),
+                    (ctx.sym("name"), Value::Str(name.clone())),
+                    (ctx.sym("node"), node),
+                ])),
+            });
+        }
+    }
+    eprintln!(
+        "concept_decl_facts: {} type concepts from {module_count} modules ({files_parsed} files parsed)"
+    );
+    Ok(crate::v1_interpreter::list_value(rows))
+}
+
 pub fn eval_concept_decl_facts_live(
     ctx: &InterpContext,
     _args: &[(Option<String>, Value)],

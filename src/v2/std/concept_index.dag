@@ -1,7 +1,9 @@
 module v2.std.concept_index
 
-import v2.std.algebra { Empty, list_snoc_item }
+import gunbc.ci_layer_roots { witness_layer_roots }
+import v2.std.algebra { Empty, fold_list, is_empty, list_snoc_item }
 import v2.std.collection { List }
+import v2.std.logic { Bool }
 import v2.std.node { Node }
 import v2.std.node_query { CoproductArm, coproduct_arm_list_from_node, coproduct_arm_payload_pair_from_arm, node_is_coproduct }
 import v2.std.text { String }
@@ -27,8 +29,17 @@ type ConceptDecl {
   node: Node
 }
 
+type ConceptByName {
+  name: String
+  concepts: List<QualifiedConcept>
+}
+
 fn concept_decl_facts_live() -> List<ConceptDecl> {
   concept_decl_facts_live()
+}
+
+fn concept_decl_facts(pool_roots: List<String>) -> List<ConceptDecl> {
+  concept_decl_facts(pool_roots: pool_roots)
 }
 
 fn field_refs_from_node(node: Node) -> List<FieldRef> {
@@ -51,6 +62,46 @@ fn concept_from_decl(decl: ConceptDecl) -> QualifiedConcept {
 fn enumerate_concepts() -> List<QualifiedConcept> {
   fold(concept_decl_facts_live(), init: Empty, f: fn(acc, decl) {
     list_snoc_item(xs: acc, item: concept_from_decl(decl: decl))
+  })
+}
+
+fn enumerate_concepts_in(pool_roots: List<String>) -> List<QualifiedConcept> {
+  fold(concept_decl_facts(pool_roots: pool_roots), init: Empty, f: fn(acc, decl) {
+    list_snoc_item(xs: acc, item: concept_from_decl(decl: decl))
+  })
+}
+
+fn enumerate_concepts_whole_tree() -> List<QualifiedConcept> {
+  enumerate_concepts_in(pool_roots: witness_layer_roots)
+}
+
+fn list_contains_name_index(acc: List<ConceptByName>, name: String) -> Bool {
+  fold(acc, init: false, f: fn(found, row) { found || (row.name == name) })
+}
+
+fn append_to_name_bucket(acc: List<ConceptByName>, qc: QualifiedConcept) -> List<ConceptByName> {
+  fold(acc, init: Empty, f: fn(done, row) {
+    if row.name == qc.concept.name {
+      list_snoc_item(
+        xs: done,
+        item: ConceptByName {
+          name: row.name,
+          concepts: list_snoc_item(xs: row.concepts, item: qc)
+        }
+      )
+    } else {
+      list_snoc_item(xs: done, item: row)
+    }
+  })
+}
+
+fn build_concept_name_index(idx: List<QualifiedConcept>) -> List<ConceptByName> {
+  fold(idx, init: Empty, f: fn(acc, qc) {
+    if list_contains_name_index(acc: acc, name: qc.concept.name) {
+      append_to_name_bucket(acc: acc, qc: qc)
+    } else {
+      list_snoc_item(xs: acc, item: ConceptByName { name: qc.concept.name, concepts: [qc] })
+    }
   })
 }
 
