@@ -1,11 +1,11 @@
 module test.claim.dsl_compile_clean_witness
 
 import tools.dsl_compile_clean_transport {
-  dsl_compile_clean_transport_programs_well_formed,
+  dsl_compile_clean_transport_programs_serialize_compile_invocations,
   red_empty_shell_program_fails_dcc_invocation_check
 }
 
-test fn dsl_compile_clean_transport_programs_well_formed_holds() -> Bool {
-  dsl_compile_clean_transport_programs_well_formed()
+test fn dsl_compile_clean_transport_serializes_compile_invocations_holds() -> Bool {
+  dsl_compile_clean_transport_programs_serialize_compile_invocations()
     && red_empty_shell_program_fails_dcc_invocation_check()
 }

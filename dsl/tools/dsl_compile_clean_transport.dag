@@ -2,6 +2,8 @@ module tools.dsl_compile_clean_transport
 
 import extdeps.shell
 import gunbc.ci_layer_roots { witness_layer_roots }
+import std.disposition { Disposition, Scaffold, RealizationDispatch }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.languages.bash.program {
   ShellProgram, ShellStmt, ShellWord,
   Command, Assign, If, Subshell, AndOr, WithRedir, Heredoc, Exit,
@@ -203,6 +205,15 @@ fn run_dsl_shell_primary_precedence_receipt() -> Bool {
   result.success
 }
 
+data dcc_transport_invocation_substring_witness_disposition: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "v2.lens.medium_structure_containment",
+    decl_name: "medium_structure_containment_holds",
+    field: WholeDeclaration
+  }
+}
+
 data dcc_gunbc_var_marker: String = "\"$GUNBC\""
 data dcc_compile_marker: String = "'compile'"
 data dcc_target_rust_marker: String = "'--target' 'rust'"
@@ -249,7 +260,7 @@ fn red_empty_shell_program_fails_dcc_invocation_check() -> Bool {
   )
 }
 
-fn dsl_compile_clean_transport_programs_well_formed() -> Bool {
+fn dsl_compile_clean_transport_programs_serialize_compile_invocations() -> Bool {
   clean_tree_transport_serializes_dcc_invocation()
     && perturb_red_transport_serializes_dcc_invocation()
     && unresolved_import_transport_serializes_dcc_invocation()
