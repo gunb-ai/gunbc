@@ -929,18 +929,18 @@ pub struct WholeTreeCtx {
     pub modules_excluded: usize,
 }
 
-pub fn whole_tree_resolved_ctx(
+pub struct WholeTreeStrictSources {
+    pub sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
+    pub modules_resolved: usize,
+    pub modules_excluded: usize,
+}
+
+pub fn whole_tree_strict_sources(
     source_roots: &[String],
     exclude_substrings: &[String],
-    execution_mode: v1_interpreter::ExecutionMode,
-) -> Result<WholeTreeCtx, String> {
+) -> Result<WholeTreeStrictSources, String> {
     let index = build_module_index(source_roots);
     let total = index.len();
-    // Drop a module if EITHER its source path OR its declared module path contains
-    // an excluded substring. Module-path matching is required because the corpus's
-    // unresolvable test scaffolds are keyed by module NAME (`v2.test.*` importing
-    // `v2.test.rung_3_4_common` / `v2.test.fixture.*`), not by a shared file path —
-    // many live physically under `compiler/` and `extdeps/` dirs.
     let all_sources: Vec<Rc<v1_compiler_compile::SourceFile>> = index
         .iter()
         .filter(|(module_path, sf)| {
@@ -955,8 +955,68 @@ pub fn whole_tree_resolved_ctx(
         return Err("whole-tree corpus is empty (no .dag modules under source roots)".to_string());
     }
     let modules_excluded = total - all_sources.len();
+    Ok(WholeTreeStrictSources {
+        sources: all_sources,
+        modules_resolved: total - modules_excluded,
+        modules_excluded,
+    })
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WholeCorpusSemanticOracle {
+    pub diagnostic_fingerprint: String,
+    pub rust_corpus_repr: String,
+    pub modules_resolved: usize,
+}
+
+pub fn whole_corpus_semantic_oracle_snapshot(
+    source_roots: &[String],
+    exclude_substrings: &[String],
+) -> Result<WholeCorpusSemanticOracle, String> {
+    use crate::v1_compiler_infer_emit_info::RustCorpusRepr::{FaithfulFreeMonoid, HostNative};
+
+    let picked = whole_tree_strict_sources(source_roots, exclude_substrings)?;
+    let result = v1_compiler_compile::compile_to_resolved(Rc::new(picked.sources));
+    let graph = result.graph.as_ref().ok_or_else(|| {
+        let si: HashMap<String, Rc<NewlineIndex>> = result
+            .newline_indices
+            .iter()
+            .map(|idx| (idx.file.clone(), idx.clone()))
+            .collect();
+        format!(
+            "whole-corpus strict resolve failed:\n{}",
+            format_error_nodes(&result.diagnostics, &Rc::new(si))
+        )
+    })?;
+    let mut diag_lines: Vec<String> = graph
+        .diagnostics
+        .iter()
+        .map(|d| v1_compiler_compile::serialize_diagnostic(d.clone()))
+        .collect();
+    diag_lines.sort();
+    let diagnostic_fingerprint =
+        v1_rt::bytes_identity_hash(diag_lines.join("\n").as_bytes());
+    let rust_corpus_repr = match graph.emit_graph_info.corpus_repr {
+        HostNative => "HostNative".to_string(),
+        FaithfulFreeMonoid => "FaithfulFreeMonoid".to_string(),
+    };
+    Ok(WholeCorpusSemanticOracle {
+        diagnostic_fingerprint,
+        rust_corpus_repr,
+        modules_resolved: picked.modules_resolved,
+    })
+}
+
+pub fn whole_tree_resolved_ctx(
+    source_roots: &[String],
+    exclude_substrings: &[String],
+    execution_mode: v1_interpreter::ExecutionMode,
+) -> Result<WholeTreeCtx, String> {
+    let picked = whole_tree_strict_sources(source_roots, exclude_substrings)?;
+    let modules_resolved = picked.modules_resolved;
+    let modules_excluded = picked.modules_excluded;
     let (graph, source_indices) =
-        resolved_graph_from_sources(all_sources, ResolveTypecheckGate::Strict)?;
+        resolved_graph_from_sources(picked.sources, ResolveTypecheckGate::Strict)?;
     Ok(WholeTreeCtx {
         ctx: v1_interpreter::InterpContext::with_runtime_options(
             graph.as_ref(),
@@ -965,7 +1025,7 @@ pub fn whole_tree_resolved_ctx(
             None,
             None,
         ),
-        modules_resolved: total - modules_excluded,
+        modules_resolved,
         modules_excluded,
     })
 }

@@ -83,9 +83,14 @@ fn run() -> Result<ExitCode, ExitCode> {
     );
 
     match peak_rss_vhwm_bytes() {
-        Some(bytes) => eprintln!(
-            "[measurement] whole-tree resolve peak RSS: {bytes} bytes (VmHWM) modules={modules_resolved}"
-        ),
+        Some(bytes) => {
+            eprintln!(
+                "[measurement] whole-tree resolve peak RSS: {bytes} bytes (VmHWM) modules={modules_resolved}"
+            );
+            eprintln!(
+                "[measurement] post-typecheck-func-env-rss: {bytes} bytes (VmHWM) modules={modules_resolved}"
+            );
+        }
         None => eprintln!(
             "[measurement] whole-tree resolve peak RSS: unavailable (no /proc/self/status) modules={modules_resolved}"
         ),

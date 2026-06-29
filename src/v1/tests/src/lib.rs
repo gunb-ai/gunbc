@@ -64,6 +64,8 @@ mod fold_list_generic_instantiation_test;
 mod fold_unused_element_clone_elision_test;
 mod func_env_scope_chain_test;
 #[cfg(test)]
+mod func_env_semantic_equivalence_test;
+#[cfg(test)]
 mod generator_match_arm_test;
 #[cfg(test)]
 mod generic_return_clone_bound_test;
