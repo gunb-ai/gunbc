@@ -15,6 +15,7 @@ import extdeps.bmc.capability {
   CapabilityBootSourceOverride,
   CapabilityAccountManagement,
   CapabilityFirmwareUpdate,
+  CapabilityNbdProxyVirtualMedia,
 }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -40,10 +41,10 @@ data asrock_altrad8ud_bmc_manual_authority: ExternalAuthority = ExternalAuthorit
   }
 }
 
-data asrock_altrad8ud_srv3_live_probe_authority: ExternalAuthority = ExternalAuthority {
+data asrock_altrad8ud_srv3_nbd_proxy_ws_dry_run_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
-    locator: "github.com/gunb-ai/gunbc/blob/main/docs/plans/srv3-webui-kvm-virtual-media.md"
+    locator: "github.com/gunb-ai/gunbc/blob/main/docs/runbooks/srv3-nbd-proxy-ws-upgrade-dry-run.md"
   }
 }
 
@@ -63,12 +64,20 @@ data altrad8ud_openbmc_base_capabilities: List<BmcCapability> = [
   CapabilityFirmwareUpdate,
 ]
 
+data altrad8ud_openbmc_2_07_00_capabilities_list: List<BmcCapability> = [
+  CapabilityPowerControl,
+  CapabilityBootSourceOverride,
+  CapabilityAccountManagement,
+  CapabilityFirmwareUpdate,
+  CapabilityNbdProxyVirtualMedia,
+]
+
 data asrock_altrad8ud_openbmc_2_07_00_capabilities: BmcFirmwareCapabilityRow = BmcFirmwareCapabilityRow {
   firmware: BmcFirmwareVersion {
     family: OpenBmc,
     version: "2.07.00",
   },
-  capabilities: altrad8ud_openbmc_base_capabilities,
+  capabilities: altrad8ud_openbmc_2_07_00_capabilities_list,
 }
 
 data asrock_altrad8ud_openbmc_3_06_00_capabilities: BmcFirmwareCapabilityRow = BmcFirmwareCapabilityRow {
