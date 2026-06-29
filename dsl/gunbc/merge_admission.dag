@@ -1,0 +1,177 @@
+module gunbc.merge_admission
+
+import std.types { ContentHash, CommitSha, String, List, Bool, Int }
+import extdeps.github.checks {
+  CheckConclusion,
+  Success, Failure, Cancelled, Skipped, Stale, Neutral, TimedOut, ActionRequired,
+}
+import gunbc.commit_workflow {
+  commit_gate_roster,
+  CommitCheckEnrollment, CommitCheckKind,
+  CommitSpecGate, CommitWitnessClaim, CommitCargoFmtCheck,
+}
+import gunbc.ci_gate {
+  Gate,
+  RustMonolithGate, EmitHostGate, LayeringImportsGate,
+  ExtdepsExternalAuthorityGate, DslCompileCleanGate, GeneratedArtifactDriftGate,
+  SourceRootIngestGate, RegenVerifyGate, EmitDeterminismGate,
+}
+import std.content_hash { content_hash_atom, content_hash_combine, content_hash_tagged }
+
+type MergeStrategy
+  = SquashMerge
+  | MergeCommit
+  | RebaseMerge
+
+type RepoStandard {
+  default_branch: String
+  allowed_strategies: List<MergeStrategy>
+  require_up_to_date: Bool
+  merge_queue_required: Bool
+  branch_name_convention: String
+}
+
+type MergeAdmissionReceipt {
+  pr_number: Int
+  head_sha: CommitSha
+  base_tree_hash: ContentHash
+  gate_roster_hash: ContentHash
+  conclusion: CheckConclusion
+}
+
+type AdmissionPolicy
+  = PerPrGateOnly
+  | RequireUpToDateBase
+  | KeyedReceipt
+  | MergeQueueAtomic
+
+data gunbc_repo_standard: RepoStandard = RepoStandard {
+  default_branch: "main",
+  allowed_strategies: [SquashMerge],
+  require_up_to_date: false,
+  merge_queue_required: false,
+  branch_name_convention: "session/<id>",
+}
+
+fn gate_content_hash(g: Gate) -> ContentHash {
+  match g {
+    RustMonolithGate => content_hash_atom(value: "RustMonolithGate")
+    EmitHostGate => content_hash_atom(value: "EmitHostGate")
+    LayeringImportsGate => content_hash_atom(value: "LayeringImportsGate")
+    ExtdepsExternalAuthorityGate => content_hash_atom(value: "ExtdepsExternalAuthorityGate")
+    DslCompileCleanGate => content_hash_atom(value: "DslCompileCleanGate")
+    GeneratedArtifactDriftGate => content_hash_atom(value: "GeneratedArtifactDriftGate")
+    SourceRootIngestGate => content_hash_atom(value: "SourceRootIngestGate")
+    RegenVerifyGate => content_hash_atom(value: "RegenVerifyGate")
+    EmitDeterminismGate => content_hash_atom(value: "EmitDeterminismGate")
+  }
+}
+
+fn witness_fn_list_hash(fns: List<String>) -> ContentHash {
+  fold(fns, init: content_hash_atom(value: "witness-fn-list"), f: fn(acc, fn_name) {
+    content_hash_combine(acc, content_hash_atom(value: fn_name))
+  })
+}
+
+fn check_kind_content_hash(check: CommitCheckKind) -> ContentHash {
+  match check {
+    CommitSpecGate { gate: g } =>
+      content_hash_tagged(tag: "CommitSpecGate", payload: gate_content_hash(g: g))
+    CommitWitnessClaim { entry, check_fns } =>
+      content_hash_combine(
+        content_hash_tagged(tag: "CommitWitnessClaim", payload: content_hash_atom(value: entry)),
+        witness_fn_list_hash(fns: check_fns)
+      )
+    CommitCargoFmtCheck =>
+      content_hash_atom(value: "CommitCargoFmtCheck")
+  }
+}
+
+fn enrollment_content_hash(e: CommitCheckEnrollment) -> ContentHash {
+  check_kind_content_hash(check: e.check)
+}
+
+fn gate_roster_content_hash(roster: List<CommitCheckEnrollment>) -> ContentHash {
+  fold(roster, init: content_hash_atom(value: "gate-roster-v1"), f: fn(acc, row) {
+    content_hash_combine(acc, enrollment_content_hash(e: row))
+  })
+}
+
+data current_gate_roster_hash: ContentHash = gate_roster_content_hash(roster: commit_gate_roster)
+
+fn check_conclusion_is_success(c: CheckConclusion) -> Bool {
+  match c {
+    Success => true
+    ActionRequired => false
+    Cancelled => false
+    Failure => false
+    Neutral => false
+    Skipped => false
+    Stale => false
+    TimedOut => false
+  }
+}
+
+fn receipt_is_admissible_keyed(
+  receipt: MergeAdmissionReceipt,
+  current_base_tree: ContentHash,
+  current_roster_hash: ContentHash,
+) -> Bool {
+  check_conclusion_is_success(c: receipt.conclusion)
+    && receipt.base_tree_hash == current_base_tree
+    && receipt.gate_roster_hash == current_roster_hash
+}
+
+fn policy_admits(
+  policy: AdmissionPolicy,
+  receipt: MergeAdmissionReceipt,
+  current_base_tree: ContentHash,
+  current_roster_hash: ContentHash,
+) -> Bool {
+  match policy {
+    PerPrGateOnly => check_conclusion_is_success(c: receipt.conclusion)
+    RequireUpToDateBase =>
+      check_conclusion_is_success(c: receipt.conclusion)
+        && receipt.base_tree_hash == current_base_tree
+    KeyedReceipt =>
+      receipt_is_admissible_keyed(
+        receipt: receipt,
+        current_base_tree: current_base_tree,
+        current_roster_hash: current_roster_hash,
+      )
+    MergeQueueAtomic =>
+      receipt_is_admissible_keyed(
+        receipt: receipt,
+        current_base_tree: current_base_tree,
+        current_roster_hash: current_roster_hash,
+      )
+  }
+}
+
+fn merge_strategy_eq(a: MergeStrategy, b: MergeStrategy) -> Bool {
+  match a {
+    SquashMerge => match b { SquashMerge => true  _ => false }
+    MergeCommit => match b { MergeCommit => true  _ => false }
+    RebaseMerge => match b { RebaseMerge => true  _ => false }
+  }
+}
+
+fn merge_strategy_list_eq(left: List<MergeStrategy>, right: List<MergeStrategy>) -> Bool {
+  if length(left) != length(right) {
+    false
+  } else if length(left) == 0 {
+    true
+  } else if !merge_strategy_eq(a: left.first(), b: right.first()) {
+    false
+  } else {
+    merge_strategy_list_eq(left: left.skip(n: 1), right: right.skip(n: 1))
+  }
+}
+
+fn repo_standard_eq(a: RepoStandard, b: RepoStandard) -> Bool {
+  a.default_branch == b.default_branch
+    && merge_strategy_list_eq(left: a.allowed_strategies, right: b.allowed_strategies)
+    && a.require_up_to_date == b.require_up_to_date
+    && a.merge_queue_required == b.merge_queue_required
+    && a.branch_name_convention == b.branch_name_convention
+}
