@@ -60,7 +60,11 @@ fn is_wildcard_arm(arm: &Rc<Node>) -> bool {
     matches!(arm_pattern(arm.clone()).as_ref(), MatchPattern::Wildcard)
 }
 
-fn walk_expr(node: &Rc<Node>, si: &Rc<std::collections::HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>, stats: &mut FnBodyStats) {
+fn walk_expr(
+    node: &Rc<Node>,
+    si: &Rc<std::collections::HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+    stats: &mut FnBodyStats,
+) {
     stats.node_count += 1;
     if let ExprData::ExprMatch = node.expr_data.as_ref() {
         stats.match_count += 1;
@@ -119,7 +123,12 @@ fn triage_complexity(site: &str) -> &'static str {
     }
 }
 
-fn audit_function(rel: &str, fn_name: &str, body: &Rc<Node>, si: &Rc<std::collections::HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>) -> Vec<AuditFinding> {
+fn audit_function(
+    rel: &str,
+    fn_name: &str,
+    body: &Rc<Node>,
+    si: &Rc<std::collections::HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+) -> Vec<AuditFinding> {
     let mut stats = FnBodyStats::default();
     walk_expr(body, si, &mut stats);
     let site = format!("{rel}::{fn_name}");
@@ -202,10 +211,7 @@ pub fn complexity_linearity_syntactic_wildcard_finding_count() -> i64 {
 }
 
 pub fn complexity_linearity_syntactic_site_fired(site: &str) -> bool {
-    cached_summary()
-        .findings
-        .iter()
-        .any(|f| f.site == site)
+    cached_summary().findings.iter().any(|f| f.site == site)
 }
 
 #[cfg(test)]
@@ -240,12 +246,17 @@ mod tests {
                }\n\
              }\n",
         );
-        let root = Path::new(&path).parent().unwrap().to_string_lossy().to_string();
+        let root = Path::new(&path)
+            .parent()
+            .unwrap()
+            .to_string_lossy()
+            .to_string();
         let summary = audit_corpus_parse_only(&[root]);
         assert!(
-            summary.findings.iter().any(|f| {
-                f.rule == "syntactic_match_wildcard_arm" && f.site.contains("::f")
-            }),
+            summary
+                .findings
+                .iter()
+                .any(|f| { f.rule == "syntactic_match_wildcard_arm" && f.site.contains("::f") }),
             "expected wildcard finding; got {:?}",
             summary.findings
         );
