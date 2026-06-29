@@ -34,7 +34,30 @@ type NodeSupersetField
   | NsfMatchPattern
   | NsfExprData
 
-data node_superset_field_count: Int = 18
+data node_superset_field_all: List<NodeSupersetField> = [
+  NsfName,
+  NsfIdent,
+  NsfSpan,
+  NsfIdentSpan,
+  NsfChildren,
+  NsfConnective,
+  NsfParams,
+  NsfInferred,
+  NsfReturnCardinality,
+  NsfUses,
+  NsfBody,
+  NsfTransport,
+  NsfProperties,
+  NsfTypeAnnotation,
+  NsfIsSelfRecursive,
+  NsfHasNonTailSelfCall,
+  NsfMatchPattern,
+  NsfExprData
+]
+
+fn node_superset_field_count() -> Int {
+  count(node_superset_field_all)
+}
 
 type SpanRef {
   file_id: UInt32
@@ -347,7 +370,7 @@ fn witness_partition_covers_superset() -> Bool {
     owed: minimal_kind_owed_placement,
     migrated: minimal_kind_migrated_to_facts
   ) {
-    if count(minimal_kind_partition_field_union()) == node_superset_field_count {
+    if count(minimal_kind_partition_field_union()) == node_superset_field_count() {
       true
     } else {
       false
@@ -361,11 +384,10 @@ fn minimal_node_superset_field_unused_by_kind(
   kind: MinimalNodeKind,
   field: NodeSupersetField
 ) -> Bool {
-  if minimal_node_kind_placed_fields(kind: kind) |> any(f => f == field) {
-    false
-  } else {
-    true
-  }
+  !(
+    minimal_node_kind_placed_fields(kind: kind)
+      |> any(f => node_superset_field_eq(left: f, right: field))
+  )
 }
 
 fn minimal_substrate_node_from_v2(node: Node) -> MinimalResolvedNode {
