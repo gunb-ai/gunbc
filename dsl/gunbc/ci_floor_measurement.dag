@@ -84,6 +84,15 @@ fn gunbc_ci_floor_executor_base_overhead_bytes() -> ByteSize {
   }
 }
 
+fn gunbc_ci_execution_corpus_available_width(each: ByteSize) -> Int {
+  let after_floor = byte_size_saturating_sub(
+    total: gunbc_ci_runner_cgroup_memory_cap,
+    reserved: gunbc_ci_floor_per_shard_peak_rss_bytes()
+  )
+  let available = byte_size_saturating_sub(total: after_floor, reserved: gunbc_ci_floor_executor_base_overhead_bytes())
+  byte_size_count(b: available) / byte_size_count(b: each)
+}
+
 fn gunbc_ci_floor_usable_shard_budget(cap: ByteSize) -> ByteSize {
   byte_size_saturating_sub(
     total: measure_scale_fraction_floor(

@@ -27,6 +27,7 @@ import gunbc.ci_floor_measurement {
   gunbc_ci_floor_conservative_fallback_width,
   gunbc_ci_floor_memory_derived_width,
   gunbc_ci_runner_cgroup_memory_cap,
+  gunbc_ci_execution_corpus_available_width,
 }
 import gunbc.ci_budget_tree { srv1_floor_memory_budget }
 import extdeps.cpu.ampere { altra_max_m12830_catalog }
