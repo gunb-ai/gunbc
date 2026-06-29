@@ -2953,10 +2953,21 @@ fn inert_lens_modules(
     let mut queue: Vec<String> = Vec::new();
     let path_to_module: std::collections::HashMap<&String, &String> =
         module_to_path.iter().map(|(m, p)| (p, m)).collect();
-    let entry_paths: std::collections::BTreeSet<String> = rows
-        .iter()
-        .map(|r| repo_relative_dag_path(&r.entry))
-        .collect();
+    // Seed reachability from ALL *_test.dag files found in the source tree (not
+    // just enrolled rows), so that witnesses in the execution corpus also count
+    // for lens coverage even though they are excluded from the main corpus rows.
+    let entry_paths: std::collections::BTreeSet<String> = {
+        let mut s: std::collections::BTreeSet<String> = rows
+            .iter()
+            .map(|r| repo_relative_dag_path(&r.entry))
+            .collect();
+        for path in path_imports.keys() {
+            if path.ends_with("_test.dag") {
+                s.insert(path.clone());
+            }
+        }
+        s
+    };
     for ep in &entry_paths {
         if let Some(module) = path_to_module.get(ep) {
             if reached.insert((*module).clone()) {
