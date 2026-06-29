@@ -1,0 +1,14 @@
+module v2.lens.anemia_dump
+
+import v2.std.algebra { Empty, list_append }
+import v2.std.collection { List }
+import v2.std.text { String }
+import v2.lens.anemia { AnemiaCandidate, candidates }
+
+fn render_one(c: AnemiaCandidate) -> String {
+  list_append(left: c.enclosing, right: list_append(left: ".", right: list_append(left: c.field, right: list_append(left: " : ", right: list_append(left: c.declared_type, right: list_append(left: " ~ ", right: list_append(left: c.coincides_with, right: "\n")))))))
+}
+
+fn main() -> String {
+  fold(candidates(), init: "", f: fn(acc, c) { list_append(left: acc, right: render_one(c: c)) })
+}

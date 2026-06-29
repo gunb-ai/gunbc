@@ -1,0 +1,90 @@
+module gunbc.tools.anemia_confirm
+
+import extdeps.llm.anthropic
+import extdeps.llm.anthropic_rest
+
+data judge_model: String = "claude-haiku-4-5-20251001"
+
+type AnemiaFinding {
+  enclosing: String
+  field: String
+  declared_type: String
+  coincides_with: String
+  target_kind: String
+  target_definition: String
+}
+
+data bare_system: String = "You decide whether a struct field typed as a bare string is an ANEMIC NICKNAME (it should point at an existing concept type) or LEGITIMATELY A STRING.\n\nDecompose the value: if it has named internal parts or a closed/fixed structure -> answer REAL (anemic). If it is an extensible registry, a constraint/grammar string, or an opaque/free-form value -> answer CLEARED.\n\nReply with exactly one word: REAL or CLEARED."
+
+data enriched_system: String = "You decide whether a struct field typed as a bare string is an ANEMIC NICKNAME (it should point at an existing concept type) or LEGITIMATELY A STRING.\n\nYou are given the matched target concept's KIND and DEFINITION. Use them decisively:\n- target_kind=ClosedEnum or Record (named internal parts) -> the field should point at it -> REAL.\n- target_kind=OpenRegistry (extensible set; a closed type would reject valid values) -> CLEARED.\n- target_kind=GrammarString (a constraint/grammar/format string, e.g. a version range or cron expression) -> CLEARED.\n- target_kind=Opaque (an opaque token/handle whose internals are not ours to model) -> CLEARED.\n- If the matched target is structurally the WRONG concept for this field (the names coincide but the definition does not fit), -> CLEARED.\n\nReply with exactly one word: REAL or CLEARED."
+
+fn bare_user(f: AnemiaFinding) -> String {
+  "enclosing_concept: {f.enclosing}\nfield: {f.field}\ndeclared_type: {f.declared_type}\ncoincides_with: {f.coincides_with}"
+}
+
+fn enriched_user(f: AnemiaFinding) -> String {
+  "enclosing_concept: {f.enclosing}\nfield: {f.field}\ndeclared_type: {f.declared_type}\ncoincides_with: {f.coincides_with}\ntarget_kind: {f.target_kind}\ntarget_definition: {f.target_definition}"
+}
+
+data ask: List<AnthropicChatMessage> = [
+  UserMessage { content: [UserTextBlock { text: "Decide REAL or CLEARED for the candidate in the system prompt." }] }
+]
+
+data findings: List<AnemiaFinding> = [
+  AnemiaFinding {
+    enclosing: "TransportRequest", field: "url", declared_type: "String", coincides_with: "Url",
+    target_kind: "Record",
+    target_definition: "Url = { scheme: UriScheme, host: NonEmptyStr, path: String, query: String }"
+  },
+  AnemiaFinding {
+    enclosing: "CargoDepSource.RegistryDep", field: "version", declared_type: "String", coincides_with: "SemVer",
+    target_kind: "GrammarString",
+    target_definition: "the value is a Cargo version REQUIREMENT string like \"^1.2\", \">=1.0, <2.0\" — a constraint grammar, not a single version"
+  },
+  AnemiaFinding {
+    enclosing: "OciDescriptor", field: "mediaType", declared_type: "String", coincides_with: "OciMediaType",
+    target_kind: "OpenRegistry",
+    target_definition: "OCI media types are an open, vendor-extensible registry (application/vnd.*); a closed enum would reject valid custom types"
+  },
+  AnemiaFinding {
+    enclosing: "Pagination", field: "cursor", declared_type: "String", coincides_with: "Cursor",
+    target_kind: "Opaque",
+    target_definition: "an opaque server-issued pagination token; its internal structure is the server's, not ours to model"
+  },
+  AnemiaFinding {
+    enclosing: "RepeatState", field: "lexeme", declared_type: "String", coincides_with: "Lexeme",
+    target_kind: "GrammarString",
+    target_definition: "raw matched source text (parse input); it is the unstructured input a lexer consumes, not a value to re-type"
+  },
+  AnemiaFinding {
+    enclosing: "CronEntry", field: "schedule", declared_type: "String", coincides_with: "Schedule",
+    target_kind: "GrammarString",
+    target_definition: "the field is a cron expression string; the matched Schedule = List<List<Runnable>> is a parallelism schedule — the WRONG concept entirely"
+  }
+]
+
+func judge_one(f: AnemiaFinding, sys: String) -> { verdict: String } {
+  resp = llm.Anthropic.Messages(
+    api_key: "",
+    model: judge_model,
+    messages: ask,
+    max_tokens: 8,
+    temperature: 0.0,
+    system: sys
+  )
+  return { verdict: resp.content }
+}
+
+func confirm_bare() -> { lines: String } {
+  verdicts = for f in findings {
+    judge_one(f: f, sys: "{bare_system}\n\n{bare_user(f: f)}").verdict
+  }
+  return { lines: join(verdicts, " | ") }
+}
+
+func confirm_enriched() -> { lines: String } {
+  verdicts = for f in findings {
+    judge_one(f: f, sys: "{enriched_system}\n\n{enriched_user(f: f)}").verdict
+  }
+  return { lines: join(verdicts, " | ") }
+}
