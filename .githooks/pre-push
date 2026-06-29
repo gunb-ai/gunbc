@@ -79,7 +79,6 @@ fresh_artifact_path() {
     docs/plans/host-effect-orchestration.md*) return 0 ;;
     docs/plans/ci-floor-fractal-gantt.md*) return 0 ;;
     docs/plans/representation-minimization.md*) return 0 ;;
-    docs/plans/code-commit-workflow.md*) return 0 ;;
     dsl/**) return 0 ;;
     src/v2/**) return 0 ;;
   esac
