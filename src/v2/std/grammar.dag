@@ -981,6 +981,31 @@ fn formal_production_lhs_matches(production: FormalProduction, lhs: Symbol) -> B
   production.lhs.identity == lhs
 }
 
+fn formal_productions_for_lhs_step(
+  acc: List<FormalProduction>,
+  production: FormalProduction,
+  lhs: Symbol
+) -> List<FormalProduction> {
+  if formal_production_lhs_matches(production: production, lhs: lhs) {
+    list_snoc_item(xs: acc, item: production)
+  } else {
+    acc
+  }
+}
+
+fn formal_productions_for_lhs(
+  productions: List<FormalProduction>,
+  lhs: Symbol
+) -> List<FormalProduction> {
+  fold_list(
+    xs: productions,
+    empty: Empty,
+    cons: fn(acc, production) {
+      formal_productions_for_lhs_step(acc: acc, production: production, lhs: lhs)
+    }
+  )
+}
+
 fn formal_production_matches_lhs_and_slot_count(
   production: FormalProduction,
   lhs: Symbol,
@@ -1260,7 +1285,7 @@ fn formal_production_for_lhs_exact_supported(
   child: Node
 ) -> Witness<FormalProduction> {
   formal_production_unique_lhs_exact_match(
-    productions: productions,
+    productions: formal_productions_for_lhs(productions: productions, lhs: lhs),
     lhs: lhs,
     child: child
   )

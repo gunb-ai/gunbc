@@ -1,0 +1,78 @@
+module v2.test.claim.grammar.formal_productions_for_lhs
+
+import v2.std.algebra { fold_list }
+import v2.std.collection { List }
+import v2.std.grammar {
+  FormalProduction,
+  formal_production_lhs_matches,
+  formal_productions_for_lhs,
+  grammar_formal_production,
+  grammar_formal_terminal
+}
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+
+data formal_productions_for_lhs_fixture_a: Symbol = ^formal_productions_for_lhs_fixture_a
+data formal_productions_for_lhs_fixture_b: Symbol = ^formal_productions_for_lhs_fixture_b
+data formal_productions_for_lhs_fixture_t: Symbol = ^formal_productions_for_lhs_fixture_t
+data formal_productions_for_lhs_fixture_missing: Symbol = ^formal_productions_for_lhs_fixture_missing
+
+fn formal_productions_for_lhs_fixture_catalog() -> List<FormalProduction> {
+  [
+    grammar_formal_production(
+      lhs: ^formal_productions_for_lhs_fixture_a,
+      rhs: [grammar_formal_terminal(identity: ^formal_productions_for_lhs_fixture_t)]
+    ),
+    grammar_formal_production(
+      lhs: ^formal_productions_for_lhs_fixture_b,
+      rhs: [grammar_formal_terminal(identity: ^formal_productions_for_lhs_fixture_t)]
+    ),
+    grammar_formal_production(
+      lhs: ^formal_productions_for_lhs_fixture_a,
+      rhs: [
+        grammar_formal_terminal(identity: ^formal_productions_for_lhs_fixture_t),
+        grammar_formal_terminal(identity: ^formal_productions_for_lhs_fixture_t)
+      ]
+    )
+  ]
+}
+
+fn formal_productions_for_lhs_all_match_lhs(filtered: List<FormalProduction>, lhs: Symbol) -> Bool {
+  fold_list(
+    xs: filtered,
+    empty: true,
+    cons: fn(ok, production) {
+      ok && formal_production_lhs_matches(production: production, lhs: lhs)
+    }
+  )
+}
+
+fn formal_productions_for_lhs_filters_to_lhs_holds() -> Bool {
+  let catalog = formal_productions_for_lhs_fixture_catalog()
+  let filtered = formal_productions_for_lhs(
+    productions: catalog,
+    lhs: ^formal_productions_for_lhs_fixture_a
+  )
+  formal_productions_for_lhs_all_match_lhs(
+    filtered: filtered,
+    lhs: ^formal_productions_for_lhs_fixture_a
+  )
+}
+
+fn formal_productions_for_lhs_empty_when_missing_holds() -> Bool {
+  let catalog = formal_productions_for_lhs_fixture_catalog()
+  let filtered = formal_productions_for_lhs(
+    productions: catalog,
+    lhs: ^formal_productions_for_lhs_fixture_missing
+  )
+  fold_list(
+    xs: filtered,
+    empty: true,
+    cons: fn(_, _) { false }
+  )
+}
+
+test fn formal_productions_for_lhs_witnesses() -> Bool {
+  formal_productions_for_lhs_filters_to_lhs_holds()
+    && formal_productions_for_lhs_empty_when_missing_holds()
+}
