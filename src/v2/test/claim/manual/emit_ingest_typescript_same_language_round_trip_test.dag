@@ -1,0 +1,256 @@
+module v2.test.manual.emit_ingest_typescript_same_language_round_trip
+
+import v2.compiler.ingest {
+  cross_language_compile,
+  grammar_relation_row_forward_selection,
+  parse_tree_to_emitted_node,
+  parse_tree_to_target_model_bridge
+}
+import v2.compiler.translate { grammar_relation_row_for_emitted }
+import v2.extdeps.languages.dag {
+  dag_mvp1_fixture_emitted_add_fn,
+  dag_mvp1_target_model
+}
+import v2.extdeps.languages.typescript {
+  ts_mvp1_emitted_add_fn_node,
+  ts_mvp1_fn_add_scaffold_relation_row_node,
+  ts_mvp1_source_text,
+  ts_mvp1_target_model,
+  ts_mvp1_translation_rules_node
+}
+import v2.test.manual.typescript_mvp1_grammar_claim {
+  typescript_mvp1_grammar_parse_fixture
+}
+import v2.std.algebra { Cons, Empty, list_append }
+import v2.std.collection { List }
+import v2.std.compilers.target_model {
+  concrete_syntax_token_class,
+  concrete_syntax_token_list_from_node,
+}
+import v2.std.diagnostic {
+  Accepted,
+  Outcome,
+  Rejected,
+  bind_outcome,
+  outcome_accepted
+}
+import v2.std.grammar { ParseTree }
+import v2.std.logic { Bool }
+import v2.std.node { Node, Symbol }
+import v2.std.node_query { find_named_child }
+import v2.std.verification {
+  BoolWitness,
+  BoolWitnessClaim,
+  UnifiedTestClaim
+}
+
+fn emit_ingest_typescript_row_token_spine_classes(row: Node) -> Outcome<List<Symbol>> {
+  bind_outcome(
+    o: find_named_child(root: row, name: ^grammar_relation_field_tokens),
+    f: fn(tokens_root) {
+      bind_outcome(
+        o: concrete_syntax_token_list_from_node(list_node: tokens_root),
+        f: fn(tokens) {
+          let classes = fold(
+            tokens,
+            init: Empty,
+            f: fn(acc, t) {
+              list_append(left: acc, right: [concrete_syntax_token_class(token: t)])
+            }
+          )
+          outcome_accepted(value: classes)
+        }
+      )
+    }
+  )
+}
+
+fn emit_ingest_typescript_shared_rules() -> Node {
+  ts_mvp1_translation_rules_node()
+}
+
+fn emit_ingest_typescript_canonical_row() -> Node {
+  ts_mvp1_fn_add_scaffold_relation_row_node()
+}
+
+fn emit_ingest_typescript_canonical_emitted() -> Node {
+  ts_mvp1_emitted_add_fn_node()
+}
+
+fn emit_typescript_backward_selects_canonical_row_holds() -> Bool {
+  match grammar_relation_row_for_emitted(
+    rules: emit_ingest_typescript_shared_rules(),
+    emitted: emit_ingest_typescript_canonical_emitted()
+  ) {
+    Accepted { value: row, diagnostics: _ } =>
+      row == emit_ingest_typescript_canonical_row()
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn ingest_typescript_forward_selects_canonical_emitted_holds() -> Bool {
+  match emit_ingest_typescript_row_token_spine_classes(row: emit_ingest_typescript_canonical_row()) {
+    Accepted { value: frontier, diagnostics: _ } =>
+      match grammar_relation_row_forward_selection(
+        frontier: frontier,
+        rules: emit_ingest_typescript_shared_rules()
+      ) {
+        Accepted { value: emitted, diagnostics: _ } =>
+          emitted == emit_ingest_typescript_canonical_emitted()
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn emit_then_ingest_typescript_selector_identity_holds() -> Bool {
+  match grammar_relation_row_for_emitted(
+    rules: emit_ingest_typescript_shared_rules(),
+    emitted: emit_ingest_typescript_canonical_emitted()
+  ) {
+    Accepted { value: row, diagnostics: _ } =>
+      match emit_ingest_typescript_row_token_spine_classes(row: row) {
+        Accepted { value: frontier, diagnostics: _ } =>
+          match grammar_relation_row_forward_selection(
+            frontier: frontier,
+            rules: emit_ingest_typescript_shared_rules()
+          ) {
+            Accepted { value: recovered, diagnostics: _ } =>
+              recovered == emit_ingest_typescript_canonical_emitted()
+            Rejected { diagnostics: _ } => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn ingest_then_emit_typescript_selector_identity_holds() -> Bool {
+  match emit_ingest_typescript_row_token_spine_classes(row: emit_ingest_typescript_canonical_row()) {
+    Accepted { value: frontier, diagnostics: _ } =>
+      match grammar_relation_row_forward_selection(
+        frontier: frontier,
+        rules: emit_ingest_typescript_shared_rules()
+      ) {
+        Accepted { value: emitted, diagnostics: _ } =>
+          match grammar_relation_row_for_emitted(
+            rules: emit_ingest_typescript_shared_rules(),
+            emitted: emitted
+          ) {
+            Accepted { value: row, diagnostics: _ } =>
+              row == emit_ingest_typescript_canonical_row()
+            Rejected { diagnostics: _ } => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn emit_ingest_typescript_perturbed_frontier_fails_closed() -> Bool {
+  match emit_ingest_typescript_row_token_spine_classes(row: emit_ingest_typescript_canonical_row()) {
+    Accepted { value: frontier, diagnostics: _ } =>
+      match grammar_relation_row_forward_selection(
+        frontier: list_append(left: frontier, right: [^emit_ingest_typescript_perturb_bogus_tok]),
+        rules: emit_ingest_typescript_shared_rules()
+      ) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: _ } => true
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn emit_ingest_typescript_unperturbed_frontier_accepts() -> Bool {
+  ingest_typescript_forward_selects_canonical_emitted_holds()
+}
+
+fn ingest_typescript_forward_fails_closed_off_frontier_holds() -> Bool {
+  match grammar_relation_row_forward_selection(
+    frontier: Cons { head: ^emit_ingest_typescript_perturb_bogus_tok, tail: Empty },
+    rules: emit_ingest_typescript_shared_rules()
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+fn emit_typescript_backward_fails_closed_on_foreign_emitted_holds() -> Bool {
+  match grammar_relation_row_for_emitted(
+    rules: emit_ingest_typescript_shared_rules(),
+    emitted: dag_mvp1_fixture_emitted_add_fn
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+test fn emit_ingest_typescript_selector_bijectivity_holds() -> Bool {
+  emit_typescript_backward_selects_canonical_row_holds()
+    && ingest_typescript_forward_selects_canonical_emitted_holds()
+    && emit_then_ingest_typescript_selector_identity_holds()
+    && ingest_then_emit_typescript_selector_identity_holds()
+    && emit_ingest_typescript_perturbed_frontier_fails_closed()
+    && ingest_typescript_forward_fails_closed_off_frontier_holds()
+    && emit_typescript_backward_fails_closed_on_foreign_emitted_holds()
+}
+
+fn typescript_same_language_parse_bridge_holds() -> Bool {
+  match typescript_mvp1_grammar_parse_fixture() {
+    Accepted { value: tree, diagnostics: _ } =>
+      match parse_tree_to_target_model_bridge(
+        parse_tree: tree,
+        source_model: ts_mvp1_target_model()
+      ) {
+        Accepted { value: recovered, diagnostics: _ } =>
+          recovered == emit_ingest_typescript_canonical_emitted()
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn typescript_same_language_source_emit_round_trip_holds() -> Bool {
+  match typescript_mvp1_grammar_parse_fixture() {
+    Accepted { value: tree, diagnostics: _ } =>
+      match cross_language_compile(
+        parse_tree: tree,
+        source_model: ts_mvp1_target_model(),
+        target_model: ts_mvp1_target_model()
+      ) {
+        Accepted { value: source, diagnostics: _ } =>
+          (source.carried == ts_mvp1_source_text)
+            && typescript_same_language_discriminates_on_real_tree()
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn typescript_same_language_discriminates_on_real_tree() -> Bool {
+  match typescript_mvp1_grammar_parse_fixture() {
+    Accepted { value: tree, diagnostics: _ } =>
+      match parse_tree_to_emitted_node(
+        parse_tree: tree,
+        source_model: dag_mvp1_target_model()
+      ) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: _ } => true
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn emit_ingest_typescript_same_language_round_trip_holds() -> Bool {
+  emit_ingest_typescript_selector_bijectivity_holds()
+    && typescript_same_language_parse_bridge_holds()
+    && typescript_same_language_source_emit_round_trip_holds()
+    && typescript_same_language_discriminates_on_real_tree()
+}
+
+data claim_emit_ingest_typescript_same_language_round_trip: UnifiedTestClaim = BoolWitnessClaim {
+  label: "S4: TypeScript same-language emit↔ingest round-trip (selector bijectivity + parse bridge + source round-trip)",
+  witness: BoolWitness {
+  predicate: emit_ingest_typescript_same_language_round_trip_holds
+  }
+}
