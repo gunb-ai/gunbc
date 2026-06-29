@@ -2,8 +2,10 @@ module v2.test.round_trip.source_authority_contract_test
 
 import v2.test.round_trip.source_authority_contract {
   contract_naive_medium_equality_rejects_fidelity_mismatch,
+  contract_perturbed_strict_section_equal_flips_fidelity_mismatch_red,
   contract_serializer_section_law_holds,
   contract_serializer_section_law_ignores_fidelity_mismatch,
+  contract_serializer_section_law_violates_on_carried_mismatch,
   contract_source_medium_matches_compose_up,
   contract_target_advertises_declared_loss
 }
@@ -14,5 +16,7 @@ test fn source_authority_contract_serializer_section_law_holds() -> Bool {
     && contract_source_medium_matches_compose_up()
     && contract_serializer_section_law_holds()
     && contract_serializer_section_law_ignores_fidelity_mismatch()
+    && contract_serializer_section_law_violates_on_carried_mismatch()
+    && contract_perturbed_strict_section_equal_flips_fidelity_mismatch_red()
     && contract_naive_medium_equality_rejects_fidelity_mismatch()
 }

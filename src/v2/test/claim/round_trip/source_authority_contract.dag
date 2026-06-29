@@ -130,6 +130,50 @@ fn contract_naive_medium_equality_rejects_fidelity_mismatch() -> Bool {
   }
 }
 
+fn medium_section_and_fidelity_equal<R>(left: Medium<R>, right: Medium<R>) -> Bool {
+  medium_section_equal(left: left, right: right) && left.fidelity == right.fidelity
+}
+
+fn contract_perturbed_strict_section_equal_flips_fidelity_mismatch_red() -> Bool {
+  match target_serialize_source_from_model(
+    target: source_authority_contract_target_model,
+    emitted: dag_mvp1_fixture_emitted_add_fn
+  ) {
+    Accepted { value: lossy, diagnostics: _ } => {
+      let lossless_retag = Medium { carried: lossy.carried, fidelity: Lossless }
+      medium_section_equal(left: lossy, right: lossless_retag)
+        && !medium_section_and_fidelity_equal(left: lossy, right: lossless_retag)
+    }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+data contract_carried_mismatch_probe: String = "fn add(x:Int, y:Int) -> Int { x + y }X"
+
+fn contract_serializer_section_law_violates_on_carried_mismatch() -> Bool {
+  match target_serialize_source_from_model(
+    target: source_authority_contract_target_model,
+    emitted: dag_mvp1_fixture_emitted_add_fn
+  ) {
+    Accepted { value: canonical, diagnostics: _ } => {
+      let perturbed = Medium {
+        carried: contract_carried_mismatch_probe,
+        fidelity: canonical.fidelity
+      }
+      (canonical.carried != contract_carried_mismatch_probe)
+        && !medium_section_equal(left: canonical, right: perturbed)
+        && match deterministic_dag_source_serializer_witness(
+          first: canonical,
+          second: perturbed
+        ) {
+          Violates { diagnostic: _ } => true
+          Holds { value: _ } => false
+        }
+    }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 data claim_source_authority_contract_compiles: TestClaim = CompilesClaim {
   label: "Branch H.7.2 source-authority round-trip shape contract compiles without JSON IR authority",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
