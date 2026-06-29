@@ -398,8 +398,8 @@ fn run_batch_unit(
             skip_unaffected_node_frontier,
             exclude_substrings,
             discovery_scope_dirs,
-            if *spawn_width_cap > 0 {
-                spawn_width.min(*spawn_width_cap)
+            if spawn_width_cap > 0 {
+                spawn_width.min(spawn_width_cap)
             } else {
                 spawn_width
             },
