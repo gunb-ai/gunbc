@@ -112,6 +112,8 @@ Fixture: a pure elementwise chain — `y = relu(a*b + c)` (mul → add → max).
 
 ## 6. Sequencing — seam first, silicon last
 
+> **PR sequencing note.** This charter doc and its inbound ROADMAP link are one unit (the live doc-graph wall, `doc_reachability_project.rs`, fails on an orphan doc). The linking roadmap node (`accel-*`, incl. `accel-exec`) is authored in the roadmap-authority reconciliation **#5968** (single authority for the generated roadmap — kept out of this PR to avoid a generated-artifact merge collision). So this doc PR merges **after #5968 lands**; at that point the inbound link and the tracking rows are on main and the doc is reachable. Until then this PR is held (draft).
+
 1. **Modeling lane** — `+LocalAccelerator` placement variant; the recognizer's output as a `RealizationPlan<S>`; the `NumericalContract` type + its `DecodeFidelity` coupling; the refusal diagnostic. All in `std/` + `extdeps/languages/<accel>/`. Lands consumed-or-marked (Ergonomics-lane "wire the seams" rule).
 2. **Execution lane** — the recognizer pass (elementwise-array-fold detection over the core graph) + the SoA fused-kernel handler (CPU contiguous loop) in the v2 interpreter; the differential harness; the **integer bit-exact witness** + the **refusal witness**, green-by-execution with a red-on-revert discriminator.
 3. **Numerical-contract bar** — float fixture under declared contract; refuse-on-contraction-violation witness.
