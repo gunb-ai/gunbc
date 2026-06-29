@@ -12,6 +12,7 @@ import v2.std.node {
 }
 import v2.compiler.self_host {
   self_host_equality_representation,
+  self_host_equality_representation_is_canonical_node_emission,
   self_host_fixpoint_witness,
   self_host_fixed_point_digests_match,
   self_host_fixed_point_validate,
@@ -19,7 +20,6 @@ import v2.compiler.self_host {
   self_host_stage1,
   self_host_stage2,
   stage_emission_equality,
-  CanonicalNodeEmission,
   SourceModels
 }
 import v2.std.diagnostic { Accepted, Rejected }
@@ -74,9 +74,7 @@ test fn self_host_fixed_point_digests_match_on_equal() -> Bool {
 }
 
 test fn self_host_equality_representation_is_canonical_node_emission() -> Bool {
-  match self_host_equality_representation() {
-    CanonicalNodeEmission => true
-  }
+  self_host_equality_representation_is_canonical_node_emission()
 }
 
 test fn self_host_snake_closes_on_equal_stages() -> Bool {
