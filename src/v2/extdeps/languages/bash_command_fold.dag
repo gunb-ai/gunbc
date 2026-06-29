@@ -947,30 +947,6 @@ fn bash_fold_if_top_production() -> FormalProduction {
   )
 }
 
-fn bash_fold_leaf_stmt_productions() -> List<FormalProduction> {
-  list_append(
-    list_append(
-      bash_fold_word_leaf_productions(),
-      bash_fold_command_words_leaf_productions()
-    ),
-    list_append(
-      list_append(
-        bash_fold_command_words_list_productions(),
-        bash_fold_stmt_list_leaf_productions()
-      ),
-      list_append(
-        bash_fold_stmt_list_pair_productions(),
-        [
-          bash_fold_command_top_production(),
-          bash_fold_exit_top_production(),
-          bash_fold_assign_lit_top_production(),
-          bash_fold_assign_var_top_production()
-        ]
-      )
-    )
-  )
-}
-
 fn bash_fold_list_stmt_productions() -> List<FormalProduction> {
   [
     bash_fold_and_then_top_production(),
@@ -981,66 +957,33 @@ fn bash_fold_list_stmt_productions() -> List<FormalProduction> {
   ]
 }
 
-fn bash_fold_list_production_for_lhs(lhs: Symbol) -> List<FormalProduction> {
-  if lhs == ^bash_production_fold_and_then {
-    [bash_fold_and_then_top_production()]
-  } else {
-    if lhs == ^bash_production_fold_or_else {
-      [bash_fold_or_else_top_production()]
-    } else {
-      if lhs == ^bash_production_fold_pipe {
-        [bash_fold_pipe_top_production()]
-      } else {
-        if lhs == ^bash_production_fold_subshell {
-          [bash_fold_subshell_top_production()]
-        } else {
-          if lhs == ^bash_production_fold_if {
-            [bash_fold_if_top_production()]
-          } else {
-            []
-          }
-        }
-      }
-    }
-  }
-}
-
-fn bash_fold_derive_productions() -> List<FormalProduction> {
-  list_append(
-    list_append(
-      bash_fold_word_leaf_productions(),
-      bash_fold_command_words_leaf_productions()
-    ),
-    list_append(
-      bash_fold_command_words_list_productions(),
-      list_append(
-        bash_fold_stmt_list_leaf_productions(),
-        list_append(
-          bash_fold_stmt_list_pair_productions(),
-          bash_fold_operand_productions()
-        )
-      )
-    )
-  )
-}
-
 fn bash_fold_formal_productions() -> List<FormalProduction> {
   list_append(
     list_append(
-      bash_fold_leaf_stmt_productions(),
-      bash_fold_list_stmt_productions()
+      list_append(
+        list_append(
+          bash_fold_word_leaf_productions(),
+          bash_fold_command_words_leaf_productions()
+        ),
+        bash_fold_command_words_list_productions()
+      ),
+      list_append(
+        bash_fold_stmt_list_leaf_productions(),
+        bash_fold_stmt_list_pair_productions()
+      )
     ),
-    bash_fold_operand_productions()
-  )
-}
-
-fn bash_fold_productions_for_lhs(lhs: Symbol) -> List<FormalProduction> {
-  list_append(
     list_append(
-      bash_fold_leaf_stmt_productions(),
-      bash_fold_list_production_for_lhs(lhs: lhs)
-    ),
-    bash_fold_operand_productions()
+      list_append(
+        [
+          bash_fold_command_top_production(),
+          bash_fold_exit_top_production(),
+          bash_fold_assign_lit_top_production(),
+          bash_fold_assign_var_top_production()
+        ],
+        bash_fold_list_stmt_productions()
+      ),
+      bash_fold_operand_productions()
+    )
   )
 }
 
@@ -1074,17 +1017,16 @@ fn bash_fold_translation_rules_node_for_emitted(
 }
 
 fn bash_fold_relation_row_witness(emitted: Node, lhs: Symbol) -> Witness<Node> {
-  let match_productions = bash_fold_productions_for_lhs(lhs: lhs)
-  let derive_productions = bash_fold_derive_productions()
+  let productions = bash_fold_formal_productions()
   match formal_production_for_lhs_exact(
-    productions: match_productions,
+    productions: productions,
     lhs: lhs,
     child: emitted
   ) {
     Holds { value: production } =>
       derive_grammar_relation_row_node(
         production: production,
-        productions: derive_productions,
+        productions: productions,
         emitted: emitted
       )
     Violates { diagnostic: d } => Violates { diagnostic: d }
