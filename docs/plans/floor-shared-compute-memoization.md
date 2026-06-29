@@ -150,7 +150,7 @@ All three gates use different `(source_roots, binary)` tuples and therefore each
 | `gunbc compile` × 4 per run (~537s each) | × 4 (M1 doesn't help subprocess) | × 3 (oracle pair 2→1; other two tuples unchanged) |
 | **Total compile cost per run** | ~2148s – ~37s ≈ same subprocess cost, saved resolve | **~1611s + ~37s → 3× compile, 1× resolve** |
 
-M1 saves ~30–40s per run (the Axis-B double-resolve). Small absolute, but the mechanism is a construction wall. Unblocked today.
+M1 saves ~105s per run (3 redundant Axis-B resolves × ~35s each). The mechanism is a construction wall. Unblocked today.
 
 M2 saves **0 compiles today** — the current gate set has no duplicate `(source_roots, binary)` tuples (each gate uses a distinct one, verified). M2's value is forward-proofing: once the plan explicitly declares `RunnableCompile` nodes, a future gate that accidentally duplicates an existing tuple is caught by the lens before it silently adds another ~537s to CI.
 
@@ -158,8 +158,8 @@ M2 saves **0 compiles today** — the current gate set has no duplicate `(source
 
 | Mechanism | Compiles today | Compiles after | Resolve calls | Time saved |
 |---|---|---|---|---|
-| baseline | 4× | — | 2× | — |
-| + M1 | 4× | 4× | 1× | ~35s |
+| baseline | 4× | — | 4× | — |
+| + M1 | 4× | 4× | 1× | ~105s (3 calls × ~35s) |
 | + M2 (gated on #5941) | 4× | 3× or 4× | 1× | ~537s (if oracle pair collapses) |
 
 ---
