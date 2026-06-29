@@ -3,13 +3,15 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+use std::rc::Rc;
 use std::thread;
 use std::time::Instant;
 
 use v1_compiler::cli_run::{
-    compute_histogram_data, make_eval_context, resolve_entry_graph, run_claim,
-    run_discovery_corpus_with_options, run_value, ClaimOutcome, DiscoveryCorpusOptions,
-    HistogramData, TimingPercentiles,
+    compute_histogram_data, compute_witness_timing_rows, make_eval_context, resolve_entry_graph,
+    run_claim, run_discovery_corpus_with_options, run_value, top_n_slowest_witnesses, ClaimOutcome,
+    DiscoveryCorpusOptions, DiscoverySummary, HistogramData, TimingPercentiles, WitnessTimingRow,
+    DEFAULT_SLOWEST_WITNESS_ATTRIBUTION_N,
 };
 use v1_compiler::v1_interpreter::{
     color_enabled, paint, run_in_context_with_args, sgr, ExecutionMode, InterpContext, Value,
@@ -503,6 +505,123 @@ fn render_timing_histogram(
     Ok(out)
 }
 
+fn slowest_witness_attribution_n() -> usize {
+    std::env::var("GUNBC_FLOOR_SLOWEST_N")
+        .ok()
+        .and_then(|v| v.trim().parse::<usize>().ok())
+        .filter(|n| *n > 0)
+        .unwrap_or(DEFAULT_SLOWEST_WITNESS_ATTRIBUTION_N)
+}
+
+fn str_list_value(lines: &[String]) -> Value {
+    Value::List(Rc::new(
+        lines
+            .iter()
+            .cloned()
+            .map(Value::Str)
+            .collect::<Vec<_>>()
+            .into(),
+    ))
+}
+
+/// Render the top-N slowest witnesses through `dsl/gunbc/ci_render.dag`.
+fn render_slowest_witnesses(
+    source_roots: &[String],
+    rows: &[WitnessTimingRow],
+) -> Result<String, String> {
+    if rows.is_empty() {
+        return Ok(String::new());
+    }
+    let entry = "dsl/gunbc/ci_render.dag";
+    let (graph, indices) = resolve_entry_graph(source_roots, entry)
+        .map_err(|m| format!("resolve failed for {entry}:\n{m}"))?;
+    let ctx = make_eval_context(&graph, indices, ExecutionMode::Wet);
+    let width = histogram_output_width();
+    let color = color_enabled();
+
+    let mut body_lines: Vec<String> = Vec::with_capacity(rows.len());
+    for (i, row) in rows.iter().enumerate() {
+        let line = run_in_context_with_args(
+            &ctx,
+            "slowest_witness_row",
+            &[
+                (Some("rank".to_string()), Value::Int((i + 1) as i64)),
+                (
+                    Some("function".to_string()),
+                    Value::Str(row.function.clone()),
+                ),
+                (Some("entry".to_string()), Value::Str(row.entry.clone())),
+                (
+                    Some("eval_ns".to_string()),
+                    Value::Int(clamp_nanos_to_i64(row.eval_nanos)),
+                ),
+                (
+                    Some("resolve_ns".to_string()),
+                    Value::Int(clamp_nanos_to_i64(row.resolve_nanos)),
+                ),
+                (
+                    Some("total_ns".to_string()),
+                    Value::Int(clamp_nanos_to_i64(row.total_nanos)),
+                ),
+            ],
+            false,
+        )
+        .map_err(|e| format!("slowest_witness_row eval failed: {e}"))?;
+        match line {
+            Value::Str(s) => body_lines.push(s),
+            other => return Err(format!("slowest_witness_row returned non-string: {other}")),
+        }
+    }
+
+    let value = run_in_context_with_args(
+        &ctx,
+        "render_slowest_witnesses_box",
+        &[
+            (Some("body".to_string()), str_list_value(&body_lines)),
+            (Some("width".to_string()), Value::Int(width)),
+            (Some("color".to_string()), Value::Bool(color)),
+        ],
+        false,
+    )
+    .map_err(|e| format!("render_slowest_witnesses_box eval failed: {e}"))?;
+    match value {
+        Value::Str(s) => Ok(s),
+        other => Err(format!(
+            "render_slowest_witnesses_box returned non-string: {other}"
+        )),
+    }
+}
+
+fn emit_slowest_witness_attribution(source_roots: &[String], summary: &DiscoverySummary) {
+    match compute_witness_timing_rows(summary) {
+        Ok(rows) => {
+            let n = slowest_witness_attribution_n().min(rows.len());
+            if n == 0 {
+                return;
+            }
+            let top = top_n_slowest_witnesses(&rows, n);
+            match render_slowest_witnesses(source_roots, &top) {
+                Ok(boxed) => {
+                    eprintln!("{boxed}");
+                    let tail_eval_ms: u128 =
+                        top.iter().map(|r| r.eval_nanos).sum::<u128>() / 1_000_000;
+                    let total_eval_ms = summary.total_measured_nanos / 1_000_000;
+                    let pct = if total_eval_ms == 0 {
+                        0.0
+                    } else {
+                        100.0 * tail_eval_ms as f64 / total_eval_ms as f64
+                    };
+                    eprintln!(
+                        "[attribution] top-{n} slowest witnesses: eval serial-sum {tail_eval_ms}ms ({pct:.1}% of corpus eval)"
+                    );
+                }
+                Err(e) => eprintln!("[attribution] render failed (timings unaffected): {e}"),
+            }
+        }
+        Err(msg) => eprintln!("{msg}"),
+    }
+}
+
 fn run_discovery_batch_node(
     source_roots: Vec<String>,
     scan_dirs: Vec<String>,
@@ -543,6 +662,7 @@ fn run_discovery_batch_node(
                 },
                 Err(msg) => eprintln!("{msg}"),
             }
+            emit_slowest_witness_attribution(&source_roots, &summary);
             ClaimResult {
                 function: format!("{label} ({} witnesses)", summary.total),
                 ok: true,
