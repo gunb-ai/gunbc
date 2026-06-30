@@ -168,7 +168,7 @@ fn serialize_string_literal(value: String, quote: TsStringQuote) -> String {
 
 fn join_expr_args(args: List<TsExpr>) -> String {
   fold(args, init: "", f: (acc, a) => {
-    let part = serialize_expr(e: a)
+    let part = serialize_ts_expr(e: a)
     if acc == "" { part } else { concat(acc, concat(", ", part)) }
   })
 }
@@ -177,9 +177,9 @@ fn serialize_object_field(f: TsObjectField) -> String {
   match f {
     Field { key: k, value: v, quote_key: qk } =>
       if qk {
-        concat(serialize_string_literal(value: k, quote: SingleQuote), concat(": ", serialize_expr(e: v)))
+        concat(serialize_string_literal(value: k, quote: SingleQuote), concat(": ", serialize_ts_expr(e: v)))
       } else {
-        concat(k, concat(": ", serialize_expr(e: v)))
+        concat(k, concat(": ", serialize_ts_expr(e: v)))
       }
   }
 }
@@ -193,68 +193,68 @@ fn join_object_fields(fields: List<TsObjectField>) -> String {
 
 fn join_array_elements(elements: List<TsExpr>) -> String {
   fold(elements, init: "", f: (acc, el) => {
-    let part = serialize_expr(e: el)
+    let part = serialize_ts_expr(e: el)
     if acc == "" { part } else { concat(acc, concat(", ", part)) }
   })
 }
 
-fn serialize_expr(e: TsExpr) -> String {
+fn serialize_ts_expr(e: TsExpr) -> String {
   match e {
     LitStr { value: v, quote: q } => serialize_string_literal(value: v, quote: q)
     LitNum { text: t } => t
     LitRegex { source: s } => concat("/", concat(s, "/"))
     Ident { name: n } => n
-    Member { object: o, property: p } => concat(serialize_expr(e: o), concat(".", p))
+    Member { object: o, property: p } => concat(serialize_ts_expr(e: o), concat(".", p))
     Index { object: o, index: i } =>
-      concat(serialize_expr(e: o), concat("[", concat(serialize_expr(e: i), "]")))
+      concat(serialize_ts_expr(e: o), concat("[", concat(serialize_ts_expr(e: i), "]")))
     Call { callee: c, args: a } =>
-      concat(serialize_expr(e: c), concat("(", concat(join_expr_args(args: a), ")")))
+      concat(serialize_ts_expr(e: c), concat("(", concat(join_expr_args(args: a), ")")))
     ArrowFn { params: ps, body: b } =>
-      concat("(", concat(join(ps, ", "), concat(") => ", serialize_stmt_body(s: b))))
+      concat("(", concat(join(ps, ", "), concat(") => ", serialize_ts_stmt_body(s: b))))
     BinOp { left: l, op: o, right: r } =>
-      concat(serialize_expr(e: l), concat(concat(" ", o), concat(" ", serialize_expr(e: r))))
-    Prefix { op: o, expr: x } => concat(o, serialize_expr(e: x))
+      concat(serialize_ts_expr(e: l), concat(concat(" ", o), concat(" ", serialize_ts_expr(e: r))))
+    Prefix { op: o, expr: x } => concat(o, serialize_ts_expr(e: x))
     ArrayLit { elements: els } => concat("[", concat(join_array_elements(elements: els), "]"))
     ObjectLit { fields: fs } => concat("{ ", concat(join_object_fields(fields: fs), " }"))
-    Spread { expr: x } => concat("...", serialize_expr(e: x))
+    Spread { expr: x } => concat("...", serialize_ts_expr(e: x))
     Cond { test: t, consequent: c, alternate: a } =>
-      concat(serialize_expr(e: t), concat(" ? ", concat(serialize_expr(e: c), concat(" : ", serialize_expr(e: a)))))
+      concat(serialize_ts_expr(e: t), concat(" ? ", concat(serialize_ts_expr(e: c), concat(" : ", serialize_ts_expr(e: a)))))
   }
 }
 
-fn serialize_stmt_body(s: TsStmt) -> String {
+fn serialize_ts_stmt_body(s: TsStmt) -> String {
   match s {
-    Block { stmts: ss } => concat("{ ", concat(serialize_stmts_indented(stmts: ss, indent: "  "), " }"))
-    _ => serialize_stmt(s: s)
+    Block { stmts: ss } => concat("{ ", concat(serialize_ts_stmts_indented(stmts: ss, indent: "  "), " }"))
+    _ => serialize_ts_stmt(s: s)
   }
 }
 
-fn serialize_stmt(s: TsStmt) -> String {
+fn serialize_ts_stmt(s: TsStmt) -> String {
   match s {
-    Const { name: n, value: v } => concat("const ", concat(n, concat(" = ", concat(serialize_expr(e: v), ";"))))
-    Let { name: n, value: v } => concat("let ", concat(n, concat(" = ", concat(serialize_expr(e: v), ";"))))
-    ExprStmt { expr: e } => concat(serialize_expr(e: e), ";")
+    Const { name: n, value: v } => concat("const ", concat(n, concat(" = ", concat(serialize_ts_expr(e: v), ";"))))
+    Let { name: n, value: v } => concat("let ", concat(n, concat(" = ", concat(serialize_ts_expr(e: v), ";"))))
+    ExprStmt { expr: e } => concat(serialize_ts_expr(e: e), ";")
     If { cond: c, then: t, else_stmt: e } =>
       match e {
         Present { value: es } =>
-          concat("if (", concat(serialize_expr(e: c), concat(") ", concat(serialize_stmt_body(s: t), concat(" else ", serialize_stmt_body(s: es))))))
+          concat("if (", concat(serialize_ts_expr(e: c), concat(") ", concat(serialize_ts_stmt_body(s: t), concat(" else ", serialize_ts_stmt_body(s: es))))))
         Absent =>
-          concat("if (", concat(serialize_expr(e: c), concat(") ", serialize_stmt_body(s: t))))
+          concat("if (", concat(serialize_ts_expr(e: c), concat(") ", serialize_ts_stmt_body(s: t))))
       }
     ForOf { var_name: vn, iterable: it, body: b } =>
-      concat("for (const ", concat(vn, concat(" of ", concat(serialize_expr(e: it), concat(") ", serialize_stmt_body(s: b))))))
+      concat("for (const ", concat(vn, concat(" of ", concat(serialize_ts_expr(e: it), concat(") ", serialize_ts_stmt_body(s: b))))))
     Return { expr: e } =>
       match e {
-        Present { value: x } => concat("return ", concat(serialize_expr(e: x), ";"))
+        Present { value: x } => concat("return ", concat(serialize_ts_expr(e: x), ";"))
         Absent => "return;"
       }
-    Block { stmts: ss } => concat("{\n", concat(serialize_stmts_indented(stmts: ss, indent: "  "), "\n}"))
+    Block { stmts: ss } => concat("{\n", concat(serialize_ts_stmts_indented(stmts: ss, indent: "  "), "\n}"))
   }
 }
 
-fn serialize_stmts_indented(stmts: List<TsStmt>, indent: String) -> String {
+fn serialize_ts_stmts_indented(stmts: List<TsStmt>, indent: String) -> String {
   fold(stmts, init: "", f: (acc, s) => {
-    let line = concat(indent, serialize_stmt(s: s))
+    let line = concat(indent, serialize_ts_stmt(s: s))
     if acc == "" { line } else { concat(acc, concat("\n", line)) }
   })
 }
@@ -266,7 +266,7 @@ fn serialize_typescript_program(p: TsProgram) -> String {
   })
   let nocheck = if p.ts_nocheck { "// @ts-nocheck\n" } else { "" }
   let body = fold(p.statements, init: "", f: (acc, s) => {
-    let part = serialize_stmt(s: s)
+    let part = serialize_ts_stmt(s: s)
     if acc == "" { part } else { concat(acc, concat("\n", part)) }
   })
   if header == "" {
