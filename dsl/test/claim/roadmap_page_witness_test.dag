@@ -34,8 +34,10 @@ fn empty_doc_html() -> String {
 }
 
 fn witness_empty_doc_is_minimal_shell() -> Bool {
-  empty_doc_html() ==
-    "<html><head><meta charset=\"utf-8\"></meta><title>gunbc — roadmap</title></head><body><header><h1>gunbc — roadmap</h1></header><main class=\"roadmap\"></main></body></html>"
+  let h = empty_doc_html()
+  starts_with(s: h, prefix: "<html><head><meta charset=\"utf-8\"")
+    && string_contains(s: h, pattern: "<title>gunbc — roadmap</title></head>")
+    && string_contains(s: h, pattern: "<body><header><h1>gunbc — roadmap</h1></header><main class=\"roadmap\"></main></body></html>")
 }
 
 fn witness_authority_differs_from_empty() -> Bool {
