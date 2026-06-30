@@ -5871,7 +5871,7 @@ fn eval_builtin(
             crate::non_fold_residue_project::non_fold_residue_coproduct_universe_count(),
         ))),
         "census_corpus_roots_follow_layer_authority" => Ok(Some(Value::Bool(
-            crate::module_path_index::census_corpus_roots_follow_layer_authority(),
+            crate::cli_run::census_corpus_roots_follow_layer_authority(),
         ))),
 
         _ => Ok(None),
