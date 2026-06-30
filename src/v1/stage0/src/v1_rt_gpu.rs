@@ -255,6 +255,10 @@ fn gpu_ctx() -> std::sync::MutexGuard<'static, Option<GpuDispatchContext>> {
     guard
 }
 
+pub fn wgpu_adapter_available() -> bool {
+    wgpu_probe_adapter().is_ok()
+}
+
 pub fn wgpu_probe_adapter() -> Result<String, String> {
     pollster::block_on(async {
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
