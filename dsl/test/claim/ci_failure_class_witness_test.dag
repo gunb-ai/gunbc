@@ -65,13 +65,16 @@ fn witness_real_infra_reasons_are_non_blocking() -> Bool {
   let eagain = "error: failed to run custom build command\nResource temporarily unavailable (os error 11)"
   let spawn = "error: could not compile; caused by: failed to spawn process"
   let sccache = "sccache: encountered fatal error\nsccache: error: Connection refused (os error 111)"
+  let sccache254 = "process didn't exit successfully: `sccache /usr/bin/rustc ...` (exit status: 254)"
   let runner = "The runner has received a shutdown signal. Stopping current job."
   reason_classifies_infra(reason: eagain)
     && reason_classifies_infra(reason: spawn)
     && reason_classifies_infra(reason: sccache)
+    && reason_classifies_infra(reason: sccache254)
     && reason_classifies_infra(reason: runner)
     && (floor_failure_blocks_merge(c: classify_failure_reason(reason: eagain)) == false)
     && (floor_failure_blocks_merge(c: classify_failure_reason(reason: sccache)) == false)
+    && (floor_failure_blocks_merge(c: classify_failure_reason(reason: sccache254)) == false)
 }
 
 fn witness_structural_not_swallowed_as_infra() -> Bool {
@@ -109,15 +112,15 @@ fn witness_floor_green_does_not_block() -> Bool {
 }
 
 fn witness_grep_alternation_is_single_authority() -> Bool {
-  let expected = "Resource temporarily unavailable|failed to spawn|sccache: encountered fatal error"
+  let expected = "Resource temporarily unavailable|failed to spawn|sccache: encountered fatal error|(exit status: 254)"
   (infra_retry_grep_alternation() == expected)
     && string_contains(s: infra_retry_grep_alternation(), pattern: "Resource temporarily unavailable|failed to spawn")
 }
 
 fn witness_build_retry_subset_excludes_job_signals() -> Bool {
   let build = build_retry_infra_signatures()
-  (list_len(xs: build) == 3)
-    && (list_len(xs: verdict_infra_signatures) == 4)
+  (list_len(xs: build) == 4)
+    && (list_len(xs: verdict_infra_signatures) == 5)
     && (list_has_signature(xs: build, target: RunnerLost) == false)
     && (string_contains(s: infra_retry_grep_alternation(), pattern: infra_signature_match_substring(sig: RunnerLost)) == false)
 }
