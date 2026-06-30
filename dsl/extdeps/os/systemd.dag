@@ -1,6 +1,6 @@
 module extdeps.os.systemd
 
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, String, Int }
 import std.list { List }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -31,6 +31,27 @@ data systemd_memory_max_property: NonEmptyStr = "MemoryMax"
 data systemd_memory_swap_max_property: NonEmptyStr = "MemorySwapMax"
 
 data systemd_cpu_weight_property: NonEmptyStr = "CPUWeight"
+
+type SystemdMemoryMaxShowValue
+  = MemoryMaxBounded { bytes: Int }
+  | MemoryMaxUnbounded
+
+fn parse_systemd_memory_max_show_value(raw: String) -> SystemdMemoryMaxShowValue? {
+  let trimmed = trim(raw)
+  if trimmed == "infinity" {
+    Present { value: MemoryMaxUnbounded }
+  } else {
+    match parse_int(s: trimmed) {
+      Present { value: n } =>
+        if n > 0 {
+          Present { value: MemoryMaxBounded { bytes: n } }
+        } else {
+          Present { value: MemoryMaxUnbounded }
+        }
+      Absent => none
+    }
+  }
+}
 
 fn parse_systemd_unit_active_state(raw: String) -> SystemdUnitActiveState? {
   if raw == "active" { Present { value: Active } }

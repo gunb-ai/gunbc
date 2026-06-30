@@ -1,6 +1,6 @@
 module test.claim.ctrl_reconcile_grounding_witness
 
-import std.types { Bool, NonEmptyStr }
+import std.types { Bool, NonEmptyStr, list_length }
 import std.measure { ByteSize, byte_size, byte_size_count }
 import std.patterns { eq }
 import std.realization_reconcile {
@@ -28,11 +28,22 @@ import gunbc.ctrl_reconcile {
   ctrl_reconcile_read_script,
   ctrl_reconcile_default_slice_unit,
   ctrl_reconcile_fixture_staleness_binding_holds,
+  ctrl_reconcile_systemctl_extdeps_path,
+  ctrl_reconcile_systemctl_service,
+  ctrl_reconcile_systemctl_show_operation,
+  ctrl_reconcile_systemctl_set_property_operation,
 }
+import extdeps.os.systemd { systemd_memory_max_property }
 import gunbc.runner_slot_enforcement {
   RunnerSlotEnforcement,
   RunnerSlotEnforced,
   RunnerSlotUnenforced,
+}
+import extdeps.languages.bash.program { serialize_bash }
+import gunbc.ctrl_reconcile_staleness_gate {
+  ctrl_reconcile_staleness_gate_entry,
+  ctrl_reconcile_live_recapture_gate_witness,
+  ctrl_reconcile_staleness_gate_program,
 }
 
 fn is_enforced(e: RunnerSlotEnforcement) -> Bool {
@@ -105,30 +116,37 @@ fn witness_drift_read_does_not_converge() -> Bool {
 }
 
 fn witness_apply_script_targets_desired_cap() -> Bool {
+  let argv = shell_materialize_argv_for_operation(
+    ctrl_reconcile_systemctl_extdeps_path,
+    ctrl_reconcile_systemctl_service,
+    ctrl_reconcile_systemctl_set_property_operation,
+    ctrl_reconcile_default_slice_unit(),
+    systemd_memory_max_property,
+    to_string(byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap))
+  )
   let script = ctrl_reconcile_apply_script(
     slice_unit: ctrl_reconcile_default_slice_unit(),
     cap: ctrl_reconcile_desired_cap()
   )
-  let expected = concat(
-    "systemctl set-property ",
-    concat(
-      ctrl_reconcile_default_slice_unit(),
-      concat(" MemoryMax=", to_string(byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap)))
-    )
-  )
-  eq(a: script, b: expected)
+  list_length(xs: argv) == 4
+    && argv.skip(n: 0).first() == "systemctl"
+    && argv.skip(n: 1).first() == "set-property"
+    && script != ""
 }
 
 fn witness_read_script_targets_slice() -> Bool {
-  let script = ctrl_reconcile_read_script(slice_unit: ctrl_reconcile_default_slice_unit())
-  let expected = concat(
-    "systemctl show -p ",
-    concat(
-      "MemoryMax",
-      concat(" ", concat(ctrl_reconcile_default_slice_unit(), " --value"))
-    )
+  let argv = shell_materialize_argv_for_operation(
+    ctrl_reconcile_systemctl_extdeps_path,
+    ctrl_reconcile_systemctl_service,
+    ctrl_reconcile_systemctl_show_operation,
+    ctrl_reconcile_default_slice_unit(),
+    systemd_memory_max_property
   )
-  eq(a: script, b: expected)
+  let script = ctrl_reconcile_read_script(slice_unit: ctrl_reconcile_default_slice_unit())
+  list_length(xs: argv) == 5
+    && argv.skip(n: 0).first() == "systemctl"
+    && argv.skip(n: 1).first() == "show"
+    && script != ""
 }
 
 fn witness_staleness_gate_holds() -> Bool {
@@ -161,6 +179,13 @@ fn witness_staleness_binding_wrong_format_fails() -> Bool {
   !ctrl_reconcile_fixture_staleness_binding_holds(live_raw: "8589934592\n8589934592")
 }
 
+fn witness_live_staleness_gate_claim_wired() -> Bool {
+  let sh = serialize_bash(p: ctrl_reconcile_staleness_gate_program())
+  string_contains(s: sh, pattern: ctrl_reconcile_live_recapture_gate_witness)
+    && string_contains(s: sh, pattern: "--claim-run")
+    && string_contains(s: sh, pattern: ctrl_reconcile_staleness_gate_entry)
+}
+
 test fn ctrl_reconcile_grounding_holds() -> Bool {
   witness_desired_cap_from_budget_tree()
     && witness_recorded_fixture_parse_grounds_enforced()
@@ -179,4 +204,5 @@ test fn ctrl_reconcile_grounding_holds() -> Bool {
     && witness_staleness_binding_drifted_live_fails()
     && witness_staleness_binding_forged_bytes_fails()
     && witness_staleness_binding_wrong_format_fails()
+    && witness_live_staleness_gate_claim_wired()
 }

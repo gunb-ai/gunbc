@@ -8,6 +8,9 @@ import extdeps.os.systemd {
   Failed,
   parse_systemd_unit_active_state,
   systemd_unit_active_state_wire_label,
+  parse_systemd_memory_max_show_value,
+  MemoryMaxBounded,
+  MemoryMaxUnbounded,
 }
 import std.types { NonEmptyStr }
 
@@ -27,4 +30,25 @@ test fn witness_wrong_case_does_not_decode() -> Bool {
 
 test fn witness_roundtrip_failed() -> Bool {
   systemd_unit_active_state_wire_label(s: Failed) == "failed"
+}
+
+test fn witness_memory_max_show_infinity_decodes_unbounded() -> Bool {
+  match parse_systemd_memory_max_show_value(raw: "infinity") {
+    Present { value: MemoryMaxUnbounded } => true
+    _ => false
+  }
+}
+
+test fn witness_memory_max_show_bytes_decodes_bounded() -> Bool {
+  match parse_systemd_memory_max_show_value(raw: "8589934592") {
+    Present { value: MemoryMaxBounded { bytes: n } } => n == 8589934592
+    _ => false
+  }
+}
+
+test fn witness_memory_max_show_garbage_fails_closed() -> Bool {
+  match parse_systemd_memory_max_show_value(raw: "not-a-number") {
+    none => true
+    _ => false
+  }
 }
