@@ -114,6 +114,7 @@ const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
     "cli_run.rs",
     "complexity_linearity_audit_project.rs",
     "corpus_lex.rs",
+    "decl_facts_project.rs",
     "coproduct_reflection.rs",
     "corpus_lex.rs",
     "doc_reachability_project.rs",
@@ -826,6 +827,12 @@ fn patch_complexity_linearity_audit_mod(src_dir: &Path) -> Result<(), String> {
         lib_text = lib_text.replace(
             "pub mod cli_run;\n",
             "pub mod cli_run;\npub mod complexity_linearity_audit_project;\n",
+        );
+    }
+    if !lib_text.contains("pub mod decl_facts_project;") {
+        lib_text = lib_text.replace(
+            "pub mod corpus_lex;\n",
+            "pub mod corpus_lex;\npub mod decl_facts_project;\n",
         );
     }
     fs::write(&lib_path, lib_text).map_err(|e| format!("write {}: {e}", lib_path.display()))?;

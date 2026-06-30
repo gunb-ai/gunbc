@@ -1,26 +1,25 @@
 // Emit-only whole-corpus audit for the complexity/linearity lens family (SYNTACTIC half).
 //
-// Substrate: parse-only `medium_structure_project::parse_dag_file` over
-// `witness_layer_roots` — the same walk `decl_facts(roots)` will supersede when it
-// merges (#5966). DISSOLUTION: swap the file walk for `decl_facts(roots)`; keep the
-// pure Node projections unchanged.
+// Substrate: `decl_facts_project::decl_facts_parse_only(roots)` — locked carrier shape
+// `{qualified_name, name, kind, node}` stubbed with parse-only walk until the additive
+// host builtin merges (#5966 follow-up). DISSOLUTION: swap stub for real `decl_facts(roots)`;
+// keep pure Node projections unchanged.
 //
 // RESOLVED-half findings (closed-coproduct-param non_fold, inert-carrier consumers)
 // remain #5364-gated — reported via existing roster builtins, not whole-corpus here.
 
 use std::collections::BTreeSet;
-use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::OnceLock;
 
-use crate::cli_run::collect_dag_files_tolerant;
 use crate::corpus_lex::{is_test_dag, repo_rel};
+use crate::decl_facts_project::{decl_facts_is_fn_like, logical_qualified_name_from_module, DeclFact};
 use crate::medium_structure_project::parse_dag_file;
 use crate::module_path_index::witness_layer_roots;
-use crate::v1_compiler_infer_items::{item_kind, ItemKind};
+use crate::v1_compiler_infer_items::item_kind;
+use crate::v1_std_core::authored_name_at;
 use crate::v1_std_core::{
-    arm_pattern, authored_name_at, expr_var_name_at, match_arm_nodes, match_scrutinee, ExprData,
-    MatchPattern, Node,
+    arm_pattern, expr_var_name_at, match_arm_nodes, match_scrutinee, ExprData, MatchPattern, Node,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -39,25 +38,47 @@ pub struct AuditSummary {
     pub findings: Vec<AuditFinding>,
 }
 
-fn rel_path(path: &Path) -> String {
-    repo_rel(path)
-}
-
-fn corpus_dag_files(roots: &[String]) -> Vec<PathBuf> {
-    let ws = crate::module_path_index::workspace_root();
-    let mut files = Vec::new();
-    for root in roots {
-        let root_path = ws.join(root);
-        if root_path.is_dir() {
-            collect_dag_files_tolerant(&root_path, &mut files);
-        }
-    }
-    files.sort();
-    files
-}
-
 fn is_wildcard_arm(arm: &Rc<Node>) -> bool {
     matches!(arm_pattern(arm.clone()).as_ref(), MatchPattern::Wildcard)
+}
+
+fn audit_decl_fact(
+    fact: &DeclFact,
+    si: &Rc<std::collections::HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+) -> Vec<AuditFinding> {
+    let Some(body) = fact.node.body.as_ref() else {
+        return Vec::new();
+    };
+    audit_function_body(&fact.rel_path, &fact.name, body, si)
+}
+
+fn audit_function_body(
+    rel: &str,
+    fn_name: &str,
+    body: &Rc<Node>,
+    si: &Rc<std::collections::HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+) -> Vec<AuditFinding> {
+    let mut stats = FnBodyStats::default();
+    walk_expr(body, si, &mut stats);
+    let site = format!("{rel}::{fn_name}");
+    let mut out = Vec::new();
+    if stats.wildcard_matches > 0 {
+        out.push(AuditFinding {
+            site: site.clone(),
+            lens: "non_fold_residue",
+            rule: "syntactic_match_wildcard_arm",
+            triage: triage_wildcard(&site, fn_name),
+        });
+    }
+    if stats.match_count >= 8 || (stats.node_count >= 200 && stats.match_count >= 4) {
+        out.push(AuditFinding {
+            site,
+            lens: "cost",
+            rule: "syntactic_high_match_fanout",
+            triage: triage_complexity(rel),
+        });
+    }
+    out
 }
 
 fn walk_expr(
@@ -97,7 +118,10 @@ struct FnBodyStats {
 pub struct RosterFictionReport {
     pub resolved_residue_sites: i64,
     pub resolved_unrostered_sites: i64,
-    pub floor_red_if_roster_dropped: i64,
+    pub migration_debt_live: i64,
+    pub irreducible_live: i64,
+    pub floor_red_if_migration_roster_fiction_dropped: i64,
+    pub honest_irreducible_rostered: i64,
     pub syntactic_wildcard_total: i64,
     pub syntactic_wildcard_on_roster: i64,
     pub syntactic_wildcard_off_roster: i64,
@@ -110,10 +134,17 @@ pub fn roster_fiction_report(summary: &AuditSummary) -> RosterFictionReport {
     let resolved_residue_sites = crate::non_fold_residue_project::non_fold_residue_count();
     let resolved_unrostered_sites =
         crate::non_fold_residue_project::non_fold_residue_unrostered_count();
+    let migration_debt_live =
+        crate::non_fold_residue_project::non_fold_residue_migration_debt_live_count();
+    let irreducible_live =
+        crate::non_fold_residue_project::non_fold_residue_irreducible_live_count();
     let mut report = RosterFictionReport {
         resolved_residue_sites,
         resolved_unrostered_sites,
-        floor_red_if_roster_dropped: resolved_residue_sites,
+        migration_debt_live,
+        irreducible_live,
+        floor_red_if_migration_roster_fiction_dropped: migration_debt_live,
+        honest_irreducible_rostered: irreducible_live,
         ..Default::default()
     };
     for f in &summary.findings {
@@ -162,6 +193,15 @@ fn triage_wildcard(site: &str, fn_name: &str) -> &'static str {
     if site.contains("dag.dag::dag_grammar_terminal_for_mvp1_") {
         return "grammar-ladder-debt";
     }
+    if fn_name.contains("infer_match") && site.contains("04_infer.dag") {
+        return "migration-debt";
+    }
+    if matches!(
+        crate::non_fold_residue_project::non_fold_residue_roster_bucket(site),
+        Some(crate::non_fold_residue_project::NonFoldRosterBucket::MigrationDebt)
+    ) {
+        return "migration-debt";
+    }
     if site.contains("src/v2/compiler/")
         || site.contains("src/v2/extdeps/languages/")
         || site.contains("dsl/std/induction.dag")
@@ -181,101 +221,97 @@ fn triage_complexity(site: &str) -> &'static str {
     }
 }
 
-fn audit_function(
-    rel: &str,
-    fn_name: &str,
-    body: &Rc<Node>,
-    si: &Rc<std::collections::HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
-) -> Vec<AuditFinding> {
-    let mut stats = FnBodyStats::default();
-    walk_expr(body, si, &mut stats);
-    let site = format!("{rel}::{fn_name}");
-    let mut out = Vec::new();
-    if stats.wildcard_matches > 0 {
-        out.push(AuditFinding {
-            site: site.clone(),
-            lens: "non_fold_residue",
-            rule: "syntactic_match_wildcard_arm",
-            triage: triage_wildcard(&site, fn_name),
-        });
-    }
-    if stats.match_count >= 8 || (stats.node_count >= 200 && stats.match_count >= 4) {
-        out.push(AuditFinding {
-            site,
-            lens: "cost",
-            rule: "syntactic_high_match_fanout",
-            triage: triage_complexity(rel),
-        });
-    }
-    out
-}
-
-pub fn audit_corpus_parse_only(roots: &[String]) -> AuditSummary {
+pub fn audit_corpus_over_decl_facts(roots: &[String]) -> AuditSummary {
     let mut summary = AuditSummary::default();
-    for file in corpus_dag_files(roots) {
-        let rel = rel_path(&file);
+
+    for file in crate::decl_facts_project::corpus_dag_files_for_roots(roots) {
+        let rel = repo_rel(&file);
         if is_test_dag(&rel) {
             continue;
         }
         summary.files_scanned += 1;
+        let content = std::fs::read_to_string(&file).ok();
+        let module_path = content
+            .as_ref()
+            .and_then(|c| crate::decl_facts_project::extract_module_path_from_content(c))
+            .unwrap_or_default();
         let Some(parsed) = parse_dag_file(&file) else {
             continue;
         };
         summary.files_parsed += 1;
         let si = parsed.source_indices;
         for item in parsed.items.iter() {
-            if !matches!(
-                item_kind(item.clone()),
-                ItemKind::FnItem | ItemKind::FuncItem
-            ) {
+            let kind = item_kind(item.clone());
+            if !decl_facts_is_fn_like(kind) {
                 continue;
             }
-            let fn_name = authored_name_at(si.clone(), item.clone());
-            if fn_name.is_empty() {
+            let name = authored_name_at(si.clone(), item.clone());
+            if name.is_empty() {
                 continue;
             }
-            let Some(body) = item.body.as_ref() else {
-                continue;
-            };
             summary.fns_scanned += 1;
-            summary
-                .findings
-                .extend(audit_function(&rel, &fn_name, body, &si));
+            let fact = DeclFact {
+                qualified_name: logical_qualified_name_from_module(&module_path, &name),
+                name,
+                kind,
+                node: item.clone(),
+                rel_path: rel.clone(),
+            };
+            summary.findings.extend(audit_decl_fact(&fact, &si));
         }
     }
     summary.findings.sort();
     summary
 }
 
+/// Parse-only audit walk — implemented via `decl_facts` stub carrier.
+pub fn audit_corpus_parse_only(roots: &[String]) -> AuditSummary {
+    audit_corpus_over_decl_facts(roots)
+}
+
 pub fn audit_corpus_default_roots() -> AuditSummary {
     audit_corpus_parse_only(&witness_layer_roots())
 }
 
-fn cached_summary() -> &'static AuditSummary {
-    static REPORT: OnceLock<AuditSummary> = OnceLock::new();
-    REPORT.get_or_init(audit_corpus_default_roots)
+struct AuditBuiltinCache {
+    finding_count: i64,
+    wildcard_count: i64,
+    sites: BTreeSet<String>,
+}
+
+fn cached_builtin_cache() -> &'static AuditBuiltinCache {
+    static CACHE: OnceLock<AuditBuiltinCache> = OnceLock::new();
+    CACHE.get_or_init(|| {
+        let summary = audit_corpus_default_roots();
+        AuditBuiltinCache {
+            finding_count: summary.findings.len() as i64,
+            wildcard_count: summary
+                .findings
+                .iter()
+                .filter(|f| f.rule == "syntactic_match_wildcard_arm")
+                .count() as i64,
+            sites: summary.findings.iter().map(|f| f.site.clone()).collect(),
+        }
+    })
 }
 
 pub fn complexity_linearity_syntactic_finding_count() -> i64 {
-    cached_summary().findings.len() as i64
+    cached_builtin_cache().finding_count
 }
 
 pub fn complexity_linearity_syntactic_wildcard_finding_count() -> i64 {
-    cached_summary()
-        .findings
-        .iter()
-        .filter(|f| f.rule == "syntactic_match_wildcard_arm")
-        .count() as i64
+    cached_builtin_cache().wildcard_count
 }
 
 pub fn complexity_linearity_syntactic_site_fired(site: &str) -> bool {
-    cached_summary().findings.iter().any(|f| f.site == site)
+    cached_builtin_cache().sites.contains(site)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::fs;
+    use std::path::{Path, PathBuf};
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn write_temp_module(content: &str) -> (String, PathBuf) {
