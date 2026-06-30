@@ -21,6 +21,10 @@ import extdeps.languages.simd.kernel {
   contiguous_loop_relu_mul_add_kernel,
 }
 
+data accelerator_demo_recognizer_dissolution_trigger: String = "dissolve-on: feature:dag-elementwise-recognizer-lens — ElementwiseFoldClass stand-in produces RealizationPlan shape; replace with read-only Node-tree lens before self-host"
+
+data accelerator_demo_differential_harness_dissolution_trigger: String = "dissolve-on: feature:dag-differential-witness — oracle is pure .dag decomposed mul/add/relu chain; kernel is host contiguous_loop_relu_mul_add_kernel; float+FMA bars land in follow-on slice"
+
 type DifferentialVerdict
   = BitExact
   | Mismatch

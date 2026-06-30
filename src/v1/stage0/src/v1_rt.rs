@@ -591,8 +591,9 @@ fn int_relu(x: i64) -> i64 {
     }
 }
 
-/// Host handler for `simd-contiguous-loop`: one fused pass over contiguous SoA buffers
-/// (mul → add → relu per element). The differential oracle lives in `.dag` (`gunbc.accelerator_demo_realize`).
+/// Host handler for `simd-contiguous-loop` (dissolve-on: feature:dag-kernel-realization-handler).
+/// One fused pass over contiguous SoA buffers (mul → add → relu per element).
+/// Differential oracle: `gunbc.accelerator_demo_realize.decomposed_scalar_relu_mul_add_oracle`.
 pub fn contiguous_loop_relu_mul_add_kernel(a: &[i64], b: &[i64], c: &[i64]) -> Vec<i64> {
     assert_eq!(a.len(), b.len());
     assert_eq!(b.len(), c.len());
