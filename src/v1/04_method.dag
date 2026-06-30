@@ -133,6 +133,7 @@ fn builtin_function_registry() -> Map<String, Node> {
   let m = map_insert(m, "layer_import_facts", list_of_type_variable(id: "layer_import_fact_elem"))
   let m = map_insert(m, "import_resolution_facts", list_of_type_variable(id: "import_resolution_fact_elem"))
   let m = map_insert(m, "module_declaration_facts", list_of_type_variable(id: "module_declaration_fact_elem"))
+  let m = map_insert(m, "concept_decl_facts", list_of_type_variable(id: "concept_decl_elem"))
   let m = map_insert(m, "medium_structure_leak_facts", list_of_type_variable(id: "medium_structure_leak_fact_elem"))
   let m = map_insert(m, "fact_cardinality_cross_tree_coexistence_count", int_type)
   let m = map_insert(m, "fact_cardinality_cross_tree_diverged_fork_count", int_type)

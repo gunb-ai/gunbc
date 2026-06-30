@@ -155,6 +155,10 @@ fn qn_fold_step(acc: QnFoldStatus, edge: Edge, child: QnFoldStatus) -> QnFoldSta
   }
 }
 
+fn qualified_name_from_dotted_string(dotted: String) -> QualifiedName {
+  qualified_name_from_dotted_string(dotted: dotted)
+}
+
 fn qualified_name_from_node(root: Node) -> Outcome<QualifiedName> {
   match root.kind {
     TypeNode { connective: Conj } =>
