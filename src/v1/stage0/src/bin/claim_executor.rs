@@ -9,9 +9,9 @@ use std::time::Instant;
 
 use v1_compiler::cli_run::{
     compute_histogram_data, compute_witness_timing_rows, make_eval_context, resolve_entry_graph,
-    run_claim, run_discovery_corpus_with_options, run_value, top_n_slowest_witnesses, ClaimOutcome,
-    DiscoveryCorpusOptions, DiscoverySummary, HistogramData, TimingPercentiles, WitnessTimingRow,
-    DEFAULT_SLOWEST_WITNESS_ATTRIBUTION_N,
+    run_claim, run_discovery_corpus_with_options, run_value, top_n_slowest_witnesses,
+    workspace_root, ClaimOutcome, DiscoveryCorpusOptions, DiscoverySummary, HistogramData,
+    TimingPercentiles, WitnessTimingRow, DEFAULT_SLOWEST_WITNESS_ATTRIBUTION_N,
 };
 use v1_compiler::v1_interpreter::{
     color_enabled, paint, run_in_context_with_args, sgr, ExecutionMode, InterpContext, Value,
@@ -131,17 +131,20 @@ fn runnable_from_value(value: &Value, ctx: &InterpContext) -> Result<Runnable, S
             let entry = str_field(fields, "entry", "RunnableSingleClaim", ctx)?;
             let function = str_field(fields, "function", "RunnableSingleClaim", ctx)?;
             let use_walk_memo = match ctx.field(fields, "profile") {
-                Some(Value::Record { fields: pf, .. }) | Some(Value::Variant { fields: pf, .. }) => {
-                    match ctx.field(pf, "resolve_scope") {
-                        Some(Value::Variant { variant_name: vn, .. }) => {
-                            ctx.sym_eq(*vn, "ResolveScopeShared")
-                        }
-                        _ => false,
-                    }
-                }
+                Some(Value::Record { fields: pf, .. })
+                | Some(Value::Variant { fields: pf, .. }) => match ctx.field(pf, "resolve_scope") {
+                    Some(Value::Variant {
+                        variant_name: vn, ..
+                    }) => ctx.sym_eq(*vn, "ResolveScopeShared"),
+                    _ => false,
+                },
                 _ => false,
             };
-            Ok(Runnable::SingleClaim { entry, function, use_walk_memo })
+            Ok(Runnable::SingleClaim {
+                entry,
+                function,
+                use_walk_memo,
+            })
         }
         Value::Variant {
             variant_name,
@@ -293,12 +296,18 @@ fn group_batch_units(batch: &[Runnable]) -> Vec<BatchUnit> {
         std::collections::HashMap::new();
     for runnable in batch {
         match runnable {
-            Runnable::SingleClaim { entry, function, .. } if entry.is_empty() => {
+            Runnable::SingleClaim {
+                entry, function, ..
+            } if entry.is_empty() => {
                 units.push(BatchUnit::UnrunnableSentinel {
                     function: function.clone(),
                 });
             }
-            Runnable::SingleClaim { entry, function, use_walk_memo } => {
+            Runnable::SingleClaim {
+                entry,
+                function,
+                use_walk_memo,
+            } => {
                 if let Some(&idx) = entry_to_unit.get(entry) {
                     if let BatchUnit::SharedClaims { functions, .. } = &mut units[idx] {
                         functions.push(function.clone());
@@ -419,9 +428,9 @@ fn run_batch_unit(
             spawn_width,
             spawn_width_cap,
         )],
-        BatchUnit::SharedClaims { entry, functions, .. } => {
-            run_shared_entry_claims(&source_roots, &entry, &functions)
-        }
+        BatchUnit::SharedClaims {
+            entry, functions, ..
+        } => run_shared_entry_claims(&source_roots, &entry, &functions),
     }
 }
 
@@ -1312,7 +1321,10 @@ fn run_walk(source_roots: &[String], batches: &[Vec<Runnable>], spawn_width: usi
         let mut thread_units: Vec<BatchUnit> = Vec::new();
         for unit in units {
             match &unit {
-                BatchUnit::SharedClaims { use_walk_memo: true, .. } => memo_units.push(unit),
+                BatchUnit::SharedClaims {
+                    use_walk_memo: true,
+                    ..
+                } => memo_units.push(unit),
                 _ => thread_units.push(unit),
             }
         }
@@ -1337,7 +1349,10 @@ fn run_walk(source_roots: &[String], batches: &[Vec<Runnable>], spawn_width: usi
         // Run memo units on the main thread while spawned threads are working.
         let mut memo_results: Vec<ClaimResult> = Vec::new();
         for unit in memo_units {
-            if let BatchUnit::SharedClaims { entry, functions, .. } = unit {
+            if let BatchUnit::SharedClaims {
+                entry, functions, ..
+            } = unit
+            {
                 let results =
                     run_memo_shared_claims(source_roots, &entry, &functions, &mut walk_memo);
                 memo_results.extend(results);
@@ -1501,9 +1516,9 @@ fn run_perturb_check(
         return Err(ExitCode::from(2));
     }
     let (gating_entry, gating_function) = match batches[0].first() {
-        Some(Runnable::SingleClaim { entry, function, .. }) if !entry.is_empty() => {
-            (entry.clone(), function.clone())
-        }
+        Some(Runnable::SingleClaim {
+            entry, function, ..
+        }) if !entry.is_empty() => (entry.clone(), function.clone()),
         _ => {
             eprintln!(
                 "claim_executor: --perturb-check: batch 1 has no plantable SingleClaim gating node"
@@ -1542,7 +1557,11 @@ fn run_perturb_check(
             batch
                 .iter()
                 .map(|r| match r {
-                    Runnable::SingleClaim { entry, function, use_walk_memo } => Runnable::SingleClaim {
+                    Runnable::SingleClaim {
+                        entry,
+                        function,
+                        use_walk_memo,
+                    } => Runnable::SingleClaim {
                         entry: if entry.is_empty() {
                             entry.clone()
                         } else {
@@ -1800,7 +1819,9 @@ mod tests {
         let mut out = Vec::new();
         for unit in units {
             match unit {
-                BatchUnit::SharedClaims { entry, functions, .. } => {
+                BatchUnit::SharedClaims {
+                    entry, functions, ..
+                } => {
                     for f in functions {
                         out.push((entry.clone(), f.clone()));
                     }
@@ -1830,7 +1851,9 @@ mod tests {
             "three same-entry claims => one resolve-group"
         );
         match &units[0] {
-            BatchUnit::SharedClaims { entry, functions, .. } => {
+            BatchUnit::SharedClaims {
+                entry, functions, ..
+            } => {
                 assert_eq!(entry, "gate.dag");
                 assert_eq!(functions, &["rust_gate", "emit_gate", "layering_gate"]);
             }
@@ -1869,7 +1892,9 @@ mod tests {
         let a = units
             .iter()
             .find_map(|u| match u {
-                BatchUnit::SharedClaims { entry, functions, .. } if entry == "a.dag" => Some(functions),
+                BatchUnit::SharedClaims {
+                    entry, functions, ..
+                } if entry == "a.dag" => Some(functions),
                 _ => None,
             })
             .expect("a.dag group present");
@@ -1914,9 +1939,9 @@ mod tests {
         let gate = units
             .iter()
             .find_map(|u| match u {
-                BatchUnit::SharedClaims { entry, functions, .. } if entry == "gate.dag" => {
-                    Some(functions)
-                }
+                BatchUnit::SharedClaims {
+                    entry, functions, ..
+                } if entry == "gate.dag" => Some(functions),
                 _ => None,
             })
             .expect("gate group present");
@@ -1982,6 +2007,56 @@ mod tests {
         assert!(
             matches!(r, Err(c) if c == ExitCode::from(2)),
             "no declared artifacts is a usage error, fail closed"
+        );
+    }
+
+    /// Warm==cold purity oracle for the cross-batch resolve memo (DESIGN §5).
+    ///
+    /// Proves that `run_memo_shared_claims` (warm path: 2nd+ calls share the cached
+    /// `InterpContext`) produces byte-identical `(function, ok, detail)` results vs
+    /// `run_shared_entry_claims` (cold path: fresh resolve each time). Goes RED if
+    /// the shared `InterpContext` has interior mutability that contaminates results
+    /// across claims — the failure mode the declaration-validity lenses cannot catch.
+    #[test]
+    fn memo_warm_cold_results_are_identical() {
+        let root = workspace_root();
+        let source_roots = vec![
+            root.join("src/v2").to_string_lossy().into_owned(),
+            root.join("dsl").to_string_lossy().into_owned(),
+        ];
+        let entry = root
+            .join("dsl/test/claim/runnable_resource_profile_witness_test.dag")
+            .to_string_lossy()
+            .into_owned();
+        let functions = vec![
+            "witness_negligible_profile_is_not_heavy".to_string(),
+            "witness_substantial_memory_forbids_corpus_co_residence".to_string(),
+        ];
+
+        // Cold path: two independent resolves, one function each.
+        let cold: Vec<(String, bool, String)> = functions
+            .iter()
+            .flat_map(|f| {
+                run_shared_entry_claims(&source_roots, &entry, std::slice::from_ref(f))
+                    .into_iter()
+                    .map(|r| (r.function, r.ok, r.detail))
+            })
+            .collect();
+
+        // Warm path: single memo, first call resolves fresh, second hits the cache.
+        let mut memo = std::collections::HashMap::new();
+        let warm: Vec<(String, bool, String)> = functions
+            .iter()
+            .flat_map(|f| {
+                run_memo_shared_claims(&source_roots, &entry, std::slice::from_ref(f), &mut memo)
+                    .into_iter()
+                    .map(|r| (r.function, r.ok, r.detail))
+            })
+            .collect();
+
+        assert_eq!(
+            warm, cold,
+            "memo warm path must be byte-identical to cold path — shared InterpContext is pure"
         );
     }
 }

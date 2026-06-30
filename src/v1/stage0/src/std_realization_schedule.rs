@@ -2,9 +2,9 @@
 // Source module: std.realization_schedule
 
 use self::CostBasis::*;
+use self::ResolveScope::*;
 use self::Runnable::*;
 use self::RunnableMemoryClass::*;
-use self::ResolveScope::*;
 use self::ScheduleLensViolation::*;
 use crate::std_lens_verdict::LensVerdict::{Holds, Violation};
 use crate::std_lens_verdict::LensVerdictLocus::ModuleWholeFile;
