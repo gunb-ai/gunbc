@@ -582,3 +582,66 @@ pub fn filesystem_read(path: String) -> FilesystemReadResult {
         std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("failed to read {}: {}", path, e));
     FilesystemReadResult { content }
 }
+fn int_relu(x: i64) -> i64 {
+    if x > 0 {
+        x
+    } else {
+        0
+    }
+}
+
+/// Opcode wire authority: `extdeps.languages.simd.kernel.relu_mul_add_wire_op_codes`.
+/// Scaffold regen-sync: see `host_kernel_relu_mul_add_op_codes_scaffold_note` until feature:dag-kernel-realization-handler.
+const RELU_MUL_ADD_OP_CODES: [i64; 3] = [1, 2, 3];
+
+fn assert_relu_mul_add_op_codes(op_codes: &[i64], _handler: &str) {
+    if op_codes != RELU_MUL_ADD_OP_CODES {
+        panic!("unsupported op_codes in accelerator demo kernel");
+    }
+}
+
+/// Host bridge: `.dag` passes `std.numerical_contract.FmaContractionPolicy`; interpreter maps to 0/1 until target_model emit.
+pub fn contiguous_loop_elementwise_float_kernel(
+    op_codes: &[i64],
+    fma_contraction_policy: i64,
+    a: &[f64],
+    b: &[f64],
+    c: &[f64],
+) -> Vec<f64> {
+    assert_relu_mul_add_op_codes(op_codes, "contiguous_loop_elementwise_float_kernel");
+    assert_eq!(a.len(), b.len());
+    assert_eq!(b.len(), c.len());
+    let mut out = Vec::with_capacity(a.len());
+    for i in 0..a.len() {
+        let elem = match fma_contraction_policy {
+            0 => {
+                let prod = a[i] * b[i];
+                prod + c[i]
+            }
+            1 => a[i].mul_add(b[i], c[i]),
+            _ => panic!("unknown fma_contraction_policy"),
+        };
+        out.push(if elem > 0.0 { elem } else { 0.0 });
+    }
+    out
+}
+
+/// Integer oracle authority: `gunbc.accelerator_demo_eval` via interpreter `Int` binops (`*`/`+`).
+/// Host kernel uses `wrapping_*` to mirror release interpreter overflow semantics; demo fixtures
+/// stay in-range under `IntegerExact` — out-of-range inputs are outside the bit-exact bar.
+pub fn contiguous_loop_elementwise_kernel(
+    op_codes: &[i64],
+    a: &[i64],
+    b: &[i64],
+    c: &[i64],
+) -> Vec<i64> {
+    assert_relu_mul_add_op_codes(op_codes, "contiguous_loop_elementwise_kernel");
+    assert_eq!(a.len(), b.len());
+    assert_eq!(b.len(), c.len());
+    let mut out = Vec::with_capacity(a.len());
+    for i in 0..a.len() {
+        let tmp = a[i].wrapping_mul(b[i]).wrapping_add(c[i]);
+        out.push(int_relu(tmp));
+    }
+    out
+}

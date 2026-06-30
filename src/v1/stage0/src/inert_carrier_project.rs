@@ -39,7 +39,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
 
-use crate::corpus_lex::{brace_delta, corpus_dag_files, is_test_dag, strip_line_comment};
+use crate::module_path_index::{brace_delta, corpus_dag_files, is_test_dag, strip_line_comment};
 
 // The NAMED, SHRINKING exception roster: carriers deliberately modeled ahead of their consumer (the
 // realization loop is model-first by design — docs/plans/inert-layer-lens.md §5). Each entry is a
@@ -77,7 +77,7 @@ const INERT_CARRIER_ROSTER: &[&str] = &[
 /// Returning the block lets the consumer count distinguish a carrier's OWN self-references (the
 /// declaration, recursive arms) from a real USE elsewhere — including a use by another fn in the same
 /// declaring file (a lens-local fact type IS consumed by its lens fn; only a use outside the type
-/// block counts). The corpus walk + lexical normalization live in `crate::corpus_lex` (shared with
+/// block counts). The corpus walk + lexical normalization live in `crate::module_path_index` (shared with
 /// the non-fold-residue census — DESIGN §2/§3: one authority for "what is code text").
 fn type_carrier_blocks(content: &str) -> Vec<(String, String)> {
     let lines: Vec<&str> = content.lines().collect();
