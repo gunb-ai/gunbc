@@ -1,3 +1,8 @@
+// SCAFFOLD — Concern B split from extdeps_shape_transport_policy_project.rs (lens E).
+// Dissolution: migrate extdeps_external_authority.dag to a host-surface builtin that reads
+// module structure directly, replacing these Rust projectors with a single structured-facts
+// builtin (parallel to extdeps_shape_transport_policy_facts_for_qualified_name). Tracked as
+// a separate migration lane from Concern A; gunbc#5364 successor.
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
