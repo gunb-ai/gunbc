@@ -59,19 +59,17 @@ fn witness_component_name_parameterizes_tsx() -> Bool {
     component_name: "PageB",
     content: gunbhub_browse_page(),
   }
-  match (
-    try_emit_site_page(page: page_a),
-    try_emit_site_page(page: page_b),
-  ) {
-    (
-      DualEmitOk { html: ha, tsx: ta },
-      DualEmitOk { html: hb, tsx: tb },
-    ) =>
-      (ha == hb)
-        && starts_with(s: ta, prefix: "export function PageA():")
-        && starts_with(s: tb, prefix: "export function PageB():")
-        && !(ta == tb)
-    _ => false
+  match try_emit_site_page(page: page_a) {
+    DualEmitOk { html: ha, tsx: ta } =>
+      match try_emit_site_page(page: page_b) {
+        DualEmitOk { html: hb, tsx: tb } =>
+          (ha == hb)
+            && starts_with(s: ta, prefix: "export function PageA():")
+            && starts_with(s: tb, prefix: "export function PageB():")
+            && !(ta == tb)
+        DualEmitRejected { reason: _ } => false
+      }
+    DualEmitRejected { reason: _ } => false
   }
 }
 
