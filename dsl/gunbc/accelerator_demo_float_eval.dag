@@ -7,9 +7,7 @@ import gunbc.accelerator_demo_program {
   EffectfulElementwiseMap,
   DataDependentGatherMap,
   ElementwiseArrayOp,
-  ElemwiseMul,
-  ElemwiseAdd,
-  ElemwiseRelu,
+  pure_elementwise_ops_shape_recognizable,
 }
 
 fn float_relu(x: Float) -> Float {
@@ -20,56 +18,8 @@ fn float_relu(x: Float) -> Float {
   }
 }
 
-fn eval_float_elementwise_ops_at_index(
-  ops: List<ElementwiseArrayOp>,
-  ai: Float,
-  bi: Float,
-  ci: Float,
-  acc: Float,
-  phase: Int
-) -> Float {
-  match ops.first() {
-    Absent =>
-      if phase == 2 {
-        float_relu(x: acc)
-      } else {
-        0.0
-      }
-    Present { value: op } =>
-      let tail = ops.skip(n: 1)
-      match op {
-        ElemwiseMul =>
-          eval_float_elementwise_ops_at_index(
-            ops: tail,
-            ai: ai,
-            bi: bi,
-            ci: ci,
-            acc: ai * bi,
-            phase: 1
-          )
-        ElemwiseAdd =>
-          if phase != 1 {
-            0.0
-          } else {
-            eval_float_elementwise_ops_at_index(
-              ops: tail,
-              ai: ai,
-              bi: bi,
-              ci: ci,
-              acc: acc + ci,
-              phase: 2
-            )
-          }
-        ElemwiseRelu =>
-          if tail.length() != 0 {
-            0.0
-          } else if phase != 2 {
-            0.0
-          } else {
-            float_relu(x: acc)
-          }
-      }
-  }
+fn eval_relu_mul_add_elem_at_index(ai: Float, bi: Float, ci: Float) -> Float {
+  float_relu(x: ai * bi + ci)
 }
 
 fn eval_float_pure_map_at_indices(
@@ -79,36 +29,31 @@ fn eval_float_pure_map_at_indices(
   c: List<Float>,
   acc: List<Float>
 ) -> List<Float> {
-  match a.first() {
-    Absent => acc
-    Present { value: ai } =>
-      match b.first() {
-        Absent => acc
-        Present { value: bi } =>
-          match c.first() {
-            Absent => acc
-            Present { value: ci } =>
-              eval_float_pure_map_at_indices(
-                ops: ops,
-                a: a.skip(n: 1),
-                b: b.skip(n: 1),
-                c: c.skip(n: 1),
-                acc: concat(
-                  acc,
-                  [
-                    eval_float_elementwise_ops_at_index(
-                      ops: ops,
-                      ai: ai,
-                      bi: bi,
-                      ci: ci,
-                      acc: 0.0,
-                      phase: 0
-                    ),
-                  ]
+  if !pure_elementwise_ops_shape_recognizable(ops: ops) {
+    []
+  } else {
+    match a.first() {
+      Absent => acc
+      Present { value: ai } =>
+        match b.first() {
+          Absent => acc
+          Present { value: bi } =>
+            match c.first() {
+              Absent => acc
+              Present { value: ci } =>
+                eval_float_pure_map_at_indices(
+                  ops: ops,
+                  a: a.skip(n: 1),
+                  b: b.skip(n: 1),
+                  c: c.skip(n: 1),
+                  acc: concat(
+                    acc,
+                    [eval_relu_mul_add_elem_at_index(ai: ai, bi: bi, ci: ci)]
+                  )
                 )
-              )
-          }
-      }
+            }
+        }
+    }
   }
 }
 

@@ -18,6 +18,15 @@ data relu_mul_add_ops: List<ElementwiseArrayOp> = [
   ElemwiseRelu,
 ]
 
+data relu_mul_add_incomplete_ops: List<ElementwiseArrayOp> = [
+  ElemwiseMul,
+  ElemwiseAdd,
+]
+
+data relu_mul_add_incomplete_pure_program: AcceleratorDemoProgram = PureElementwiseMap {
+  ops: relu_mul_add_incomplete_ops
+}
+
 data relu_mul_add_pure_program: AcceleratorDemoProgram = PureElementwiseMap {
   ops: relu_mul_add_ops
 }

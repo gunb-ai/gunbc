@@ -18,6 +18,7 @@ import gunbc.accelerator_demo_program {
   relu_mul_add_pure_program,
   relu_mul_add_effectful_program,
   relu_mul_add_gather_program,
+  relu_mul_add_incomplete_pure_program,
   program_op_codes,
 }
 import gunbc.accelerator_demo_recognizer {
@@ -197,6 +198,24 @@ fn witness_differential_would_red_on_wrong_golden() -> Bool {
     ),
     right: demo_fixture_wrong_golden()
   )
+}
+
+fn witness_oracle_empty_on_noncanonical_ops_shape() -> Bool {
+  eval_accelerator_program(
+    program: relu_mul_add_incomplete_pure_program,
+    a: [1],
+    b: [2],
+    c: [3]
+  ).length() == 0
+}
+
+fn witness_float_oracle_empty_on_noncanonical_ops_shape() -> Bool {
+  eval_accelerator_program_float(
+    program: relu_mul_add_incomplete_pure_program,
+    a: [1.0],
+    b: [2.0],
+    c: [3.0]
+  ).length() == 0
 }
 
 fn witness_pure_program_executes_bit_exact() -> Bool {
