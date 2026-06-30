@@ -225,6 +225,7 @@ fn serialize_ts_expr(e: TsExpr) -> String {
 fn serialize_ts_stmt_body(s: TsStmt) -> String {
   match s {
     Block { stmts: ss } => concat("{ ", concat(serialize_ts_stmts_indented(stmts: ss, indent: "  "), " }"))
+    ExprStmt { expr: e } => serialize_ts_expr(e: e)
     _ => serialize_ts_stmt(s: s)
   }
 }

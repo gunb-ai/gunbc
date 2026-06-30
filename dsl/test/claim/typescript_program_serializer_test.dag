@@ -52,6 +52,33 @@ test fn typescript_program_serialize_regex_holds() -> Bool {
   serialize_typescript_program(p: regex_literal_program()) == "const re = /^\\/$/;"
 }
 
+test fn typescript_program_serialize_arrow_expr_body_holds() -> Bool {
+  serialize_typescript_program(p: TsProgram {
+    ts_nocheck: false,
+    header_lines: [],
+    statements: [
+      ts_const(
+        name: "ok",
+        value: ts_call(
+          callee: ts_member(object: ts_ident(name: "routes"), property: "some"),
+          args: [
+            ts_arrow(
+              params: ["r"],
+              body: ts_expr_stmt(expr: ts_call(
+                callee: ts_member(
+                  object: ts_member(object: ts_ident(name: "r"), property: "pathRe"),
+                  property: "test"
+                ),
+                args: [ts_ident(name: "path")]
+              ))
+            ),
+          ]
+        )
+      ),
+    ],
+  }) == "const ok = routes.some((r) => r.pathRe.test(path));"
+}
+
 test fn typescript_program_serialize_create_server_fragment_holds() -> Bool {
   let src = serialize_typescript_program(p: TsProgram {
     ts_nocheck: true,

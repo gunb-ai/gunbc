@@ -190,13 +190,13 @@ fn node_http_request_handler_block() -> TsStmt {
         args: [
           ts_arrow(
             params: ["r"],
-            body: ts_call(
+            body: ts_expr_stmt(expr: ts_call(
               callee: ts_member(
                 object: ts_member(object: ts_ident(name: "r"), property: "pathRe"),
                 property: "test"
               ),
               args: [ts_ident(name: "path")]
-            )
+            ))
           ),
         ]
       )
@@ -220,7 +220,7 @@ fn node_http_request_handler_block() -> TsStmt {
                     args: [
                       ts_arrow(
                         params: ["r"],
-                        body: ts_member(object: ts_ident(name: "r"), property: "method")
+                        body: ts_expr_stmt(expr: ts_member(object: ts_ident(name: "r"), property: "method"))
                       ),
                     ]
                   ),
