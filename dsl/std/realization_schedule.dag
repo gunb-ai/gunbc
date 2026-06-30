@@ -65,15 +65,10 @@ type RunnableMemoryClass
   = RunnableMemoryNegligible
   | RunnableMemorySubstantial { peak: RunnableMemoryPeak }
 
-type ResolveScope
-  = ResolveScopeIsolated
-  | ResolveScopeShared
-
 type RunnableResourceProfile {
   heavy_whole_tree_resolve: Bool
   spawns_host_compiler: Bool
   memory: RunnableMemoryClass
-  resolve_scope: ResolveScope
 }
 
 fn runnable_memory_negligible() -> RunnableMemoryClass {
@@ -112,24 +107,10 @@ fn runnable_memory_substantial_sum(left: RunnableMemoryClass, right: RunnableMem
   runnable_memory_substantial(predicted_peak: byte_size(count: left_count + right_count))
 }
 
-fn resolve_scope_eq(left: ResolveScope, right: ResolveScope) -> Bool {
-  match left {
-    ResolveScopeIsolated => match right {
-      ResolveScopeIsolated => true
-      ResolveScopeShared => false
-    }
-    ResolveScopeShared => match right {
-      ResolveScopeIsolated => false
-      ResolveScopeShared => true
-    }
-  }
-}
-
 fn runnable_resource_profile_eq(left: RunnableResourceProfile, right: RunnableResourceProfile) -> Bool {
   (left.heavy_whole_tree_resolve == right.heavy_whole_tree_resolve)
     && (left.spawns_host_compiler == right.spawns_host_compiler)
     && runnable_memory_class_eq(left: left.memory, right: right.memory)
-    && resolve_scope_eq(left: left.resolve_scope, right: right.resolve_scope)
 }
 
 fn runnable_resource_profile_negligible() -> RunnableResourceProfile {
@@ -137,32 +118,18 @@ fn runnable_resource_profile_negligible() -> RunnableResourceProfile {
     heavy_whole_tree_resolve: false
     spawns_host_compiler: false
     memory: runnable_memory_negligible()
-    resolve_scope: ResolveScopeIsolated
   }
 }
 
 fn runnable_resource_profile(
   heavy_whole_tree_resolve: Bool,
   spawns_host_compiler: Bool,
-  memory: RunnableMemoryClass,
-  resolve_scope: ResolveScope
+  memory: RunnableMemoryClass
 ) -> RunnableResourceProfile {
   RunnableResourceProfile {
     heavy_whole_tree_resolve: heavy_whole_tree_resolve
     spawns_host_compiler: spawns_host_compiler
     memory: memory
-    resolve_scope: resolve_scope
-  }
-}
-
-fn runnable_profile_resolve_scope_valid(profile: RunnableResourceProfile) -> Bool {
-  if profile.heavy_whole_tree_resolve {
-    match profile.resolve_scope {
-      ResolveScopeShared => true
-      ResolveScopeIsolated => false
-    }
-  } else {
-    true
   }
 }
 
@@ -216,19 +183,6 @@ type Runnable
 
 data runnable_kernel_workload_dissolution_trigger: String = "dissolve-on: execution lane attaches extdeps.languages kernel_surface rows to RunnableKernelWorkload when fused_op_count alone is insufficient; op_count is structural on substrate (not a string-label nickname)."
 
-fn runnable_resolve_scope_valid(r: Runnable) -> Bool {
-  runnable_profile_resolve_scope_valid(profile: runnable_profile(r: r))
-}
-
-fn batch_all_resolve_scope_valid(batch: List<Runnable>) -> Bool {
-  if batch.count() == 0 {
-    true
-  } else {
-    runnable_resolve_scope_valid(r: batch.first()) &&
-      batch_all_resolve_scope_valid(batch: batch.skip(n: 1))
-  }
-}
-
 type Schedule = List<List<Runnable>>
 
 type RealizationPlan<S> {
@@ -237,19 +191,6 @@ type RealizationPlan<S> {
   schedule: Schedule
 
   total: CostAccount<S>
-}
-
-fn schedule_list_all_resolve_scope_valid(sched: Schedule) -> Bool {
-  if sched.count() == 0 {
-    true
-  } else {
-    batch_all_resolve_scope_valid(batch: sched.first()) &&
-      schedule_list_all_resolve_scope_valid(sched: sched.skip(n: 1))
-  }
-}
-
-fn schedule_all_runnables_valid_resolve_scope<S>(plan: RealizationPlan<S>) -> Bool {
-  schedule_list_all_resolve_scope_valid(sched: plan.schedule)
 }
 
 fn runnable_step_label(r: Runnable) -> String {
