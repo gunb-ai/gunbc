@@ -79,20 +79,6 @@ type NodeHttpServerRouteBinding {
   listener: NodeHttpRequestListener
 }
 
-type NodeHttpCreateServerServe {
-  route_bindings: List<NodeHttpServerRouteBinding>
-}
-
-type NodeHttpCreateServerEffectChain {
-  serve: NodeHttpCreateServerServe
-  listen: HttpServerListenConfig
-}
-
-type NodeHttpCreateServerEmissionTarget {
-  service_name: String
-  effects: NodeHttpCreateServerEffectChain
-}
-
 type ServedStaticRoute {
   method: HttpMethod
   path_pattern: PathTemplate
