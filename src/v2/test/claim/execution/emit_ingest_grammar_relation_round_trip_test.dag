@@ -1,4 +1,4 @@
-module v2.test.manual.emit_ingest_grammar_relation_round_trip
+module v2.test.execution.emit_ingest_grammar_relation_round_trip
 
 import v2.compiler.ingest {
   grammar_relation_row_forward_selection,
