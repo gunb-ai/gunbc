@@ -6,6 +6,9 @@ import std.markup {
   ElementNode,
   TextNode,
 }
+import extdeps.communication.medium { Medium, Lossy }
+import std.disposition { Disposition, Scaffold, SubstrateMandatoryTag }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 type JsSitePageId = Home | Browse | About
 
@@ -167,4 +170,26 @@ fn js_site_pages() -> List<JsSitePage> {
 
 fn js_site_page_count() -> Int {
   count(xs: js_site_pages())
+}
+
+fn js_site_interactivity_exhaustion_exemplar() -> MarkupNode {
+  ElementNode {
+    tag: "button",
+    attrs: [ MarkupAttr { name: "onClick", value: "handleClick" } ],
+    children: [ TextNode { text: "Go" } ],
+  }
+}
+
+data js_site_markup_to_jsx_interactivity_medium: Medium<MarkupNode> = Medium {
+  carried: js_site_interactivity_exhaustion_exemplar(),
+  fidelity: Lossy
+}
+
+data js_site_expression_prop_markup_debt: Disposition = Scaffold {
+  dissolves_to: SubstrateMandatoryTag,
+  bind: DeclarationRef {
+    module_path: "std.markup",
+    decl_name: "MarkupAttr",
+    field: WholeDeclaration
+  }
 }

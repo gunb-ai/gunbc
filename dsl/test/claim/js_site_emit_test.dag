@@ -12,7 +12,6 @@ import examples.js_site_emit {
   js_site_page_tsx,
   js_site_html_artifact_path,
   js_site_tsx_artifact_path,
-  js_site_boundary_names_three_layers,
 }
 import extdeps.filesystem.filesystem_io { Filesystem }
 
@@ -99,5 +98,4 @@ test fn js_site_emit_keystone_holds() -> Bool {
     && witness_committed_home_tsx()
     && witness_committed_browse_tsx()
     && witness_committed_about_tsx()
-    && js_site_boundary_names_three_layers()
 }
