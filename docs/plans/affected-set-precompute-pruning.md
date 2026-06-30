@@ -34,12 +34,16 @@ They compose cleanly: a scoped diff that doesn't touch the mock closure → prec
 // Current (unconditional):
 let whole_tree_published_keys = match precompute_whole_tree_published_mock_keys(source_roots) { … };
 
-// Sketch (guarded):
-let whole_tree_published_keys =
+// Sketch (guarded) — uses PrecomputeOutcome tri-state (see §6):
+let outcome: PrecomputeOutcome =
     if skip_enabled && !diff_touches_published_mock_closure(source_roots, &line_ranges_by_file) {
-        None   // safe: no affected witness in the pruned corpus uses mock keys
+        PrecomputeOutcome::Skipped
     } else {
-        match precompute_whole_tree_published_mock_keys(source_roots) { … }
+        match precompute_whole_tree_published_mock_keys(source_roots) {
+            Ok(keys) if keys.is_empty() => PrecomputeOutcome::EmptyKeys,
+            Ok(keys) => PrecomputeOutcome::Keys(keys),
+            Err(e) => return Err(…),
+        }
     };
 ```
 
@@ -100,7 +104,7 @@ enum PrecomputeOutcome {
 
 5. Log wall-clock delta and peak-RSS delta (VmHWM before/after) for both branches. These are reported as `[measurement]` lines satisfying the operator success bar ("wall-clock must move on a scoped diff") without being threshold assertions that flake on noisy runners.
 
-The structural None/Some is the executable green-by-execution proof. The measured delta is the evidence that the skip is economically meaningful. Both are required; only the structural assertion is the pass/fail gate.
+The structural `PrecomputeOutcome::Skipped` / `Keys(_)` check is the executable green-by-execution proof. The measured delta is the evidence that the skip is economically meaningful. Both are required; only the structural assertion is the pass/fail gate.
 
 ---
 
@@ -108,7 +112,7 @@ The structural None/Some is the executable green-by-execution proof. The measure
 
 Over-declaration is always safe: if `diff_touches_published_mock_closure` returns `true` (or errors), `precompute_whole_tree_published_mock_keys` runs in full. Skipping is only sound when `false` — the predicate is monotonically safe to be conservative. If the intersection check itself fails, fall back to running the precompute (fail-closed, same pattern as `floor_git_diff_range` failure at line 3524).
 
-Passing `None` for `whole_tree_published_keys` when skipped is sound **only** when no affected witness in the pruned run actually uses the mock key set at eval time. This is the second discriminating assertion in §6 item 3 (the fail-closed control). If unsound, the fallback is trivially available: run the precompute.
+The `PrecomputeOutcome::Skipped` path produces no keys for `run_discovery_rows`. This is sound **only** when no affected witness in the pruned run actually uses the mock key set at eval time. The fail-closed control in §6 item 4 confirms this by asserting `Keys(_)` on an in-closure diff. If unsound in a given run, the fallback is trivially available: run the precompute.
 
 ---
 
@@ -136,9 +140,9 @@ Verified against `precompute_whole_tree_published_mock_keys` (cli_run.rs:890–9
 
 **Demonstration must be on the REAL gunbc test floor** (live glob-discovery CI floor on the actual corpus — not a synthetic fixture). Three parts, all required:
 
-- **(a) Structural:** `gunbc test` on a scoped 1-file diff that is disjoint from the PublishedMockCase closure shows `whole_tree_published_keys == None` (precompute skipped) in the run output.
+- **(a) Structural:** `gunbc test` on a scoped 1-file diff that is disjoint from the PublishedMockCase closure logs `outcome == PrecomputeOutcome::Skipped` (precompute not called). This is the `PrecomputeOutcome` tri-state from §6, not `whole_tree_published_keys == None` (which is ambiguous — see §6 implementation prerequisite).
 - **(b) Measured:** wall-clock AND peak-RSS on that real floor run drop materially vs a full-corpus baseline run. Logged as `[measurement]` output, not a threshold assertion.
-- **(c) Control:** a hub / in-closure 1-file diff (a file inside the PublishedMockCase transitive import closure) pays the precompute (`Some(_)`) and runs the affected witness slice — proves the skip is conditional, not always-on.
+- **(c) Control:** a hub / in-closure 1-file diff (a file inside the PublishedMockCase transitive import closure) logs `outcome == PrecomputeOutcome::Keys(_)` (precompute ran and produced keys) and runs the affected witness slice — proves the skip is conditional, not always-on.
 
 Synthetic corpus numbers (e.g., a test-file-only mini-corpus) do NOT satisfy this bar. The acceptance receipt must be a real `gunbc test` invocation against the live floor showing parts (a)–(c).
 
@@ -150,4 +154,4 @@ Sign-off on this sketch = commitment to deliver that green-by-execution receipt 
 
 tidy-hawk-120 (#5959) owns M1 (within-walk resolve memo) and M2 (`RunnableCompile` content-addressed plan node). Neither addresses the **skip-the-precompute-entirely** case — they optimize the precompute when it runs. This sketch owns the **decision not to run it**. The two lanes can land independently and compose additively.
 
-Coordinate with tidy-hawk-120 before implementation: confirm their M1 memo does not assume `precompute_whole_tree_published_mock_keys` always runs (i.e., the `None` early-exit path in §3 must not break M1's cache contract).
+Coordinate with tidy-hawk-120 before implementation: confirm their M1 memo does not assume `precompute_whole_tree_published_mock_keys` always runs (i.e., the `PrecomputeOutcome::Skipped` early-exit path in §3 must not break M1's cache contract).
