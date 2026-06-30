@@ -3431,32 +3431,29 @@ fn floor_git_diff_range() -> Result<String, String> {
     use v1_interpreter::Value;
     let roots = default_source_roots();
     let entry = "src/v2/workflow/floor_diff_observe.dag";
-    let (graph, indices) =
-        resolve_entry_graph(&roots, entry).map_err(|e| format!("floor_diff_observe resolve: {e}"))?;
+    let (graph, indices) = resolve_entry_graph(&roots, entry)
+        .map_err(|e| format!("floor_diff_observe resolve: {e}"))?;
     let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
-    let result = v1_interpreter::run_in_context(&ctx, "floor_observe_git_diff_unified_for_ci", false)
-        .map_err(|e| format!("floor_observe_git_diff_unified_for_ci: {e}"))?;
+    let result =
+        v1_interpreter::run_in_context(&ctx, "floor_observe_git_diff_unified_for_ci", false)
+            .map_err(|e| format!("floor_observe_git_diff_unified_for_ci: {e}"))?;
     match &result {
         Value::Variant {
             variant_name,
             fields,
             ..
-        } if ctx.sym_eq(*variant_name, "UnifiedDiffOk") => {
-            match ctx.field(fields, "text") {
-                Some(Value::Str(s)) => Ok(s.clone()),
-                _ => Err("UnifiedDiffOk missing `text` field".to_string()),
-            }
-        }
+        } if ctx.sym_eq(*variant_name, "UnifiedDiffOk") => match ctx.field(fields, "text") {
+            Some(Value::Str(s)) => Ok(s.clone()),
+            _ => Err("UnifiedDiffOk missing `text` field".to_string()),
+        },
         Value::Variant {
             variant_name,
             fields,
             ..
-        } if ctx.sym_eq(*variant_name, "UnifiedDiffFail") => {
-            match ctx.field(fields, "reason") {
-                Some(Value::Str(r)) => Err(r.clone()),
-                _ => Err("git diff observation failed (no reason)".to_string()),
-            }
-        }
+        } if ctx.sym_eq(*variant_name, "UnifiedDiffFail") => match ctx.field(fields, "reason") {
+            Some(Value::Str(r)) => Err(r.clone()),
+            _ => Err("git diff observation failed (no reason)".to_string()),
+        },
         other => Err(format!(
             "floor_observe_git_diff_unified_for_ci returned `{}`, expected FloorUnifiedDiffResult",
             ctx.format_value(other)
