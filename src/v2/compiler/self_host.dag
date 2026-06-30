@@ -19,7 +19,7 @@ import v2.std.find_witness {
   UniqueOnly,
   find_witness,
 }
-import v2.std.node { content_hash, Node, Symbol }
+import v2.std.node { content_hash, Hash, Node, Symbol }
 import v2.std.witness {
   Holds,
   StructuralPropertyWitness,
@@ -33,6 +33,19 @@ type SourceModels {
   model_corpus: List<CoreNode>
 }
 
+data self_host_equality_authority: Symbol = ^canonical_node_emission
+
+type SelfHostStageEmission {
+  node: CoreNode
+  digest: Hash
+}
+
+type SelfHostFixpointEqual {
+  over: Symbol
+  stage1: SelfHostStageEmission
+  stage2: SelfHostStageEmission
+}
+
 type StructurallyEqual {
   left: CoreNode
   right: CoreNode
@@ -43,16 +56,11 @@ type BootstrapRoundtripEqual {
   expected_stage: CoreNode
 }
 
-type FixedPointEqual {
-  emitted_stage: CoreNode
-  reference_stage: CoreNode
-}
-
 type StageEmissionEquality = Witness<StructurallyEqual>
 
 type BootstrapRoundtripCheck = Witness<BootstrapRoundtripEqual>
 
-type FixedPointCheck = Witness<FixedPointEqual>
+type FixedPointCheck = Witness<SelfHostFixpointEqual>
 
 type PromotionWitness {
   candidate_bootstrap_roundtrip_sub_check: BootstrapRoundtripCheck
@@ -64,6 +72,60 @@ fn self_host_runner_not_realized_diagnostic() -> Diagnostic {
     reason: ^self_host_runner_not_realized,
     at: port_locus(port: ^self_host_runner_port),
     correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn self_host_fixpoint_digest_mismatch_diagnostic(
+  stage1: SelfHostStageEmission,
+  stage2: SelfHostStageEmission
+) -> Diagnostic {
+  Diagnostic {
+    reason: ^self_host_fixpoint_digest_mismatch,
+    at: node_locus(node: stage2.node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn self_host_stage_emission(node: CoreNode) -> SelfHostStageEmission {
+  SelfHostStageEmission {
+    node: node,
+    digest: content_hash(n: node)
+  }
+}
+
+fn self_host_fixpoint_equal(
+  stage1: SelfHostStageEmission,
+  stage2: SelfHostStageEmission
+) -> SelfHostFixpointEqual {
+  SelfHostFixpointEqual {
+    over: self_host_equality_authority,
+    stage1: stage1,
+    stage2: stage2
+  }
+}
+
+fn self_host_snake_closes(
+  stage1: SelfHostStageEmission,
+  stage2: SelfHostStageEmission
+) -> Bool {
+  stage1.digest == stage2.digest
+}
+
+fn self_host_fixpoint_witness(
+  stage1: SelfHostStageEmission,
+  stage2: SelfHostStageEmission
+) -> FixedPointCheck {
+  if self_host_snake_closes(stage1: stage1, stage2: stage2) {
+    Holds {
+      value: self_host_fixpoint_equal(stage1: stage1, stage2: stage2)
+    }
+  } else {
+    Violates {
+      diagnostic: self_host_fixpoint_digest_mismatch_diagnostic(
+        stage1: stage1,
+        stage2: stage2
+      )
+    }
   }
 }
 
@@ -100,13 +162,10 @@ fn fixed_point_scaffold(
   emitted_stage: CoreNode,
   reference_stage: CoreNode
 ) -> FixedPointCheck {
-  Violates {
-    diagnostic: Diagnostic {
-      reason: ^fixed_point_not_realized,
-      at: node_locus(node: reference_stage),
-      correction: Unavailable { reason: ExternalContractUnknown }
-    }
-  }
+  self_host_fixpoint_witness(
+    stage1: self_host_stage_emission(node: reference_stage),
+    stage2: self_host_stage_emission(node: emitted_stage)
+  )
 }
 
 fn stage_emission_closedness(reference_stage1: CoreNode) -> StructuralPropertyWitness {
@@ -120,7 +179,10 @@ fn self_host_fixed_point_digests_match(
   emitted_stage1: CoreNode,
   emitted_stage2: CoreNode
 ) -> Bool {
-  content_hash(n: emitted_stage1) == content_hash(n: emitted_stage2)
+  self_host_snake_closes(
+    stage1: self_host_stage_emission(node: emitted_stage1),
+    stage2: self_host_stage_emission(node: emitted_stage2)
+  )
 }
 
 fn stage_emission_equality(
