@@ -100,10 +100,10 @@ fn audit_function_body(
     }
     if stats.match_count >= 8 || (stats.node_count >= 200 && stats.match_count >= 4) {
         out.push(AuditFinding {
-            site,
+            site: site.clone(),
             lens: "cost",
             rule: "syntactic_high_match_fanout",
-            triage: triage_complexity(rel),
+            triage: triage_complexity(&site),
         });
     }
     out
@@ -160,6 +160,10 @@ pub struct RosterFictionReport {
     pub eval_interpreter_debt: i64,
     pub grammar_ladder_debt: i64,
     pub kernel_permanent: i64,
+    pub migration_debt_tagged: i64,
+    pub real_debt: i64,
+    pub open_domain: i64,
+    pub triage_pending: i64,
 }
 
 pub fn roster_fiction_report(summary: &AuditSummary) -> RosterFictionReport {
@@ -193,24 +197,72 @@ pub fn roster_fiction_report(summary: &AuditSummary) -> RosterFictionReport {
             "eval-interpreter-debt" => report.eval_interpreter_debt += 1,
             "grammar-ladder-debt" => report.grammar_ladder_debt += 1,
             "kernel-permanent" => report.kernel_permanent += 1,
+            "migration-debt" => report.migration_debt_tagged += 1,
+            "real-debt" => report.real_debt += 1,
+            "open-domain" => report.open_domain += 1,
+            "triage-pending" => report.triage_pending += 1,
             _ => {}
         }
     }
     report
 }
 
-// TRIAGE (meaning layer): emit-only heuristics until a `.dag` triage carrier lands with
-// `decl_facts(roots)` (#5966 follow-up). DISSOLUTION: move kernel-permanent / migration-debt
-// tags on-carrier alongside decl_facts — do not let hand-Rust substring tables survive the swap.
-fn triage_wildcard(site: &str, fn_name: &str) -> &'static str {
-    if fn_name.ends_with("_eq")
+fn is_kernel_permanent_fn(fn_name: &str) -> bool {
+    fn_name.ends_with("_eq")
         || fn_name.contains("dominates")
         || fn_name.contains("lattice_join")
         || fn_name.contains("lattice_meet")
         || fn_name == "exit_ok"
         || fn_name.contains("_relation_eq")
         || fn_name.contains("_mode_eq")
-    {
+        || fn_name.ends_with("_combine")
+        || fn_name == "constant_bound_value"
+        || fn_name == "is_constant_bound"
+        || fn_name == "create_double_init_collapsible"
+        || fn_name == "create_effect_is_dedupable"
+        || fn_name.starts_with("compose_sub_value")
+        || fn_name == "promote_to_strict"
+        || fn_name.starts_with("program_runtime_bool")
+        || fn_name == "is_text_encoding"
+        || fn_name == "is_strict_style_structural"
+}
+
+fn is_open_domain_site(site: &str, fn_name: &str) -> bool {
+    site.starts_with("dsl/extdeps/")
+        || site.starts_with("dsl/ctrl/")
+        || site.starts_with("dsl/gunbc/plans/")
+        || site.starts_with("dsl/test/")
+        || (fn_name.ends_with("_claim_holds") && site.contains("test/claim"))
+        || (fn_name.starts_with("witness_") && (site.starts_with("dsl/") || site.contains("extdeps/")))
+        || (fn_name.starts_with("parse_") && site.starts_with("dsl/extdeps/"))
+}
+
+fn is_real_debt_site(site: &str, fn_name: &str) -> bool {
+    site.starts_with("src/v2/compiler/")
+        || site.starts_with("src/v2/std/compilers/")
+        || site.starts_with("src/v2/std/grammar.dag")
+        || site.starts_with("src/v2/lens/")
+        || site.starts_with("src/v2/std/")
+        || site.starts_with("src/v2/program.dag")
+        || site.starts_with("src/v2/workflow/")
+        || site.starts_with("src/v2/extdeps/")
+        || site.starts_with("dsl/std/")
+        || (site.starts_with("dsl/gunbc/") && !site.starts_with("dsl/gunbc/plans/"))
+        || site.starts_with("dsl/tools/")
+        || (site.starts_with("src/v2/test/claim/") && !fn_name.ends_with("_claim_holds"))
+}
+
+// TRIAGE (meaning layer): emit-only heuristics until a `.dag` triage carrier lands with
+// `decl_facts(roots)` (#5966 follow-up). DISSOLUTION: move kernel-permanent / migration-debt
+// tags on-carrier alongside decl_facts — do not let hand-Rust substring tables survive the swap.
+fn triage_wildcard(site: &str, fn_name: &str) -> &'static str {
+    if is_kernel_permanent_fn(fn_name) {
+        return "kernel-permanent";
+    }
+    if matches!(
+        crate::non_fold_residue_project::non_fold_residue_roster_bucket(site),
+        Some(crate::non_fold_residue_project::NonFoldRosterBucket::Irreducible)
+    ) {
         return "kernel-permanent";
     }
     if matches!(
@@ -237,18 +289,35 @@ fn triage_wildcard(site: &str, fn_name: &str) -> &'static str {
     ) {
         return "migration-debt";
     }
-    if site.contains("src/v2/compiler/")
-        || site.contains("src/v2/extdeps/languages/")
-        || site.contains("dsl/std/induction.dag")
-    {
+    if is_open_domain_site(site, fn_name) {
+        return "open-domain";
+    }
+    if is_real_debt_site(site, fn_name) {
         return "real-debt";
     }
     "triage-pending"
 }
 
 fn triage_complexity(site: &str) -> &'static str {
+    let fn_name = site.rsplit("::").next().unwrap_or("");
+    if is_kernel_permanent_fn(fn_name) {
+        return "kernel-permanent";
+    }
     if site.contains("src/v2/compiler/") || site.contains("src/v2/std/compilers/") {
         "real-debt"
+    } else if site.starts_with("dsl/extdeps/")
+        || site.starts_with("dsl/ctrl/")
+        || site.starts_with("dsl/gunbc/plans/")
+        || site.starts_with("dsl/test/")
+    {
+        "open-domain"
+    } else if site.starts_with("src/v2/lens/")
+        || site.starts_with("src/v2/std/")
+        || site.starts_with("src/v2/extdeps/languages/")
+    {
+        "real-debt"
+    } else if site.starts_with("dsl/std/") || site.starts_with("dsl/gunbc/") {
+        "kernel-permanent"
     } else {
         "triage-pending"
     }

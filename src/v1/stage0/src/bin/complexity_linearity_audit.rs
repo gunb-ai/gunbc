@@ -95,14 +95,18 @@ fn print_summary(
     );
     eprintln!(
         "complexity_linearity_audit: syntactic wildcard arms — total={} on_roster={} off_roster={} \
-         | triage: eval-interpreter-debt={} grammar-ladder-debt={} kernel-permanent={} migration-debt={}",
+         | triage: eval-interpreter-debt={} grammar-ladder-debt={} kernel-permanent={} \
+         migration-debt={} real-debt={} open-domain={} triage-pending={}",
         fiction.syntactic_wildcard_total,
         fiction.syntactic_wildcard_on_roster,
         fiction.syntactic_wildcard_off_roster,
         fiction.eval_interpreter_debt,
         fiction.grammar_ladder_debt,
         fiction.kernel_permanent,
-        fiction.migration_debt_live
+        fiction.migration_debt_tagged,
+        fiction.real_debt,
+        fiction.open_domain,
+        fiction.triage_pending
     );
     let cost_findings = summary.findings.iter().filter(|f| f.lens == "cost").count();
     eprintln!(
