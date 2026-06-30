@@ -2080,4 +2080,48 @@ mod tests {
             "memo warm path must be byte-identical to cold path — shared InterpContext is pure"
         );
     }
+
+    /// Resolve-count oracle: proves the memo fires resolve_entry_graph exactly once
+    /// per distinct entry per walk (DESIGN §2 — no redundant resolve).
+    ///
+    /// Goes RED if the memo is bypassed: both calls would have resolve_nanos > 0,
+    /// meaning resolve_entry_graph fired twice for the same entry instead of once.
+    #[test]
+    fn memo_deduplicates_resolve_count() {
+        let root = workspace_root();
+        let source_roots = vec![
+            root.join("src/v2").to_string_lossy().into_owned(),
+            root.join("dsl").to_string_lossy().into_owned(),
+        ];
+        let entry = root
+            .join("dsl/test/claim/runnable_resource_profile_witness_test.dag")
+            .to_string_lossy()
+            .into_owned();
+
+        let mut memo = std::collections::HashMap::new();
+
+        // First call for this entry: must resolve (resolve_nanos > 0).
+        let first = run_memo_shared_claims(
+            &source_roots,
+            &entry,
+            &["witness_negligible_profile_is_not_heavy".to_string()],
+            &mut memo,
+        );
+        assert!(
+            first[0].resolve_nanos > 0,
+            "first call must pay the resolve cost (resolve_entry_graph fires)"
+        );
+
+        // Second call for the same entry: must cache-hit (resolve_nanos == 0).
+        let second = run_memo_shared_claims(
+            &source_roots,
+            &entry,
+            &["witness_substantial_memory_forbids_corpus_co_residence".to_string()],
+            &mut memo,
+        );
+        assert_eq!(
+            second[0].resolve_nanos, 0,
+            "second call must cache-hit — resolve_entry_graph must NOT fire again"
+        );
+    }
 }
