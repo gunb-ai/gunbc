@@ -3613,7 +3613,7 @@ pub fn emit_lib_rs_from_files(
             __result
         });
         let hand_maintained_mods = if has_compiler_tests.clone() {
-            "\npub mod v1_interpreter;\npub mod cli_run;\npub mod rest_transport_facts;\npub mod wire_value_serialize;\npub mod coproduct_reflection;\npub mod resolved_graph_cache;\npub mod recorded_fixture;\npub mod cache_purity_oracle;\npub mod corpus_lex;\npub mod doc_reachability_project;\npub mod inert_carrier_project;\npub mod medium_structure_project;\npub mod extdeps_shape_transport_policy_project;\npub mod fact_cardinality_census;\npub mod import_resolution_project;\npub mod languages_consumer_census;\npub mod non_fold_residue_project;\npub mod layering_imports_project;\npub mod module_path_index;\npub mod transport_script_position_project;".to_string()
+            "\npub mod v1_interpreter;\npub mod cli_run;\npub mod rest_transport_facts;\npub mod wire_value_serialize;\npub mod coproduct_reflection;\npub mod resolved_graph_cache;\npub mod recorded_fixture;\npub mod cache_purity_oracle;\npub mod corpus_lex;\npub mod doc_reachability_project;\npub mod inert_carrier_project;\npub mod medium_structure_project;\npub mod extdeps_shape_transport_policy_project;\npub mod fact_cardinality_census;\npub mod import_resolution_project;\npub mod languages_consumer_census;\npub mod non_fold_residue_project;\npub mod layering_imports_project;\npub mod module_path_index;\npub mod transport_script_position_project;\npub mod v1_compiler_dag_collect;\npub mod v1_compiler_dag_collect_support;".to_string()
         } else {
             "".to_string()
         };
@@ -7200,380 +7200,386 @@ pub fn emit_typed_item(
             authored_name(env.clone(), item.clone()),
         );
         let item_text = authored_name(env.clone(), item.clone());
-        if is_type_def_item(item.clone()) {
-            emit_type_def_from_connective(
-                item.clone(),
-                emit_info.recursive_type_set.clone(),
-                shared_types,
-                env.clone(),
-                emit_info.clone(),
-                wire_contract_item,
-                data_items,
-                module_items,
-                imports.clone(),
-            )
-        } else {
-            if is_type_alias_item(item.clone(), env.source_indices.clone()) {
-                if (corpus_repr_is_host(emit_info.corpus_repr.clone())
-                    && (item_text.clone() == "String".to_string()))
-                {
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            rust_visibility_prefix(),
-                            rust_items().type_alias_keyword.clone(),
-                        ),
-                        " String = std::string::String;".to_string(),
-                    )
-                } else {
-                    if (((item.params.clone().len() as i64) == 0)
-                        && rust_nominal_identity_carrier_type_eligible(item_text.clone()))
-                    {
-                        rust_nominal_identity_carrier_def(item_text.clone())
-                    } else {
-                        if is_zero_param_self_referential_opaque_decl(
-                            item.clone(),
-                            env.source_indices.clone(),
-                        ) {
-                            emit_zero_param_phantom_opaque_struct(
-                                item.clone(),
-                                env.source_indices.clone(),
-                            )
-                        } else {
-                            match rust_seed_host_numeric_alias(
-                                item_text.clone(),
-                                emit_info.corpus_repr.clone(),
-                            ) {
-                                Some(host) => v1_rt::concat(
-                                    v1_rt::concat(
-                                        v1_rt::concat(
-                                            v1_rt::concat(
-                                                v1_rt::concat(
-                                                    v1_rt::concat(
-                                                        rust_visibility_prefix(),
-                                                        rust_items().type_alias_keyword.clone(),
-                                                    ),
-                                                    " ".to_string(),
-                                                ),
-                                                item_text.clone(),
-                                            ),
-                                            " = ".to_string(),
-                                        ),
-                                        host.clone(),
-                                    ),
-                                    ";".to_string(),
-                                ),
-                                None => v1_rt::concat(
-                                    v1_rt::concat(
-                                        v1_rt::concat(
-                                            v1_rt::concat(
-                                                v1_rt::concat(
-                                                    v1_rt::concat(
-                                                        rust_visibility_prefix(),
-                                                        rust_items().type_alias_keyword.clone(),
-                                                    ),
-                                                    " ".to_string(),
-                                                ),
-                                                item_text.clone(),
-                                            ),
-                                            " = ".to_string(),
-                                        ),
-                                        render_rust_alias_rhs_type(
-                                            resolved_type(item.clone()),
-                                            Rc::new(vec![]),
-                                            shared_types,
-                                            emit_info.corpus_repr.clone(),
-                                            env.source_indices.clone(),
-                                            scope.clone(),
-                                            imports.clone(),
-                                            registry.clone(),
-                                            module_name.clone(),
-                                            export_sets.clone(),
-                                            typed_modules.clone(),
-                                            module_index.clone(),
-                                            emit_info.variant_to_enum.clone(),
-                                        ),
-                                    ),
-                                    ";".to_string(),
-                                ),
-                            }
-                        }
-                    }
+        let dag_collect_delegated = Rc::new(vec![
+            "json_quote".to_string(),
+            "DagCollectAcc".to_string(),
+            "DagCollectPending".to_string(),
+            "inferred_fingerprint".to_string(),
+            "expr_data_variant".to_string(),
+            "dag_node_surface_fingerprint".to_string(),
+            "dag_node_fingerprint".to_string(),
+            "dag_node_key_collision_error".to_string(),
+            "dag_node_key".to_string(),
+            "dag_node_is_resolved_identity_shell".to_string(),
+            "dag_node_collection_anchor".to_string(),
+            "dag_collect_nodes_list".to_string(),
+            "dag_collect_optional_node".to_string(),
+            "dag_collect_inferred".to_string(),
+            "dag_collect_match_pattern".to_string(),
+            "dag_collect_node_tree".to_string(),
+            "dag_collect_insert".to_string(),
+            "dag_collect_from_module".to_string(),
+            "collect_dag_nodes".to_string(),
+            "connective_name".to_string(),
+        ]);
+        let is_compile_module = (module_name.clone() == "v1.compiler.compile".to_string());
+        if (is_compile_module.clone() && {
+            let mut __found = false;
+            for d in dag_collect_delegated.iter().cloned() {
+                if (d.clone() == item_text.clone()) {
+                    __found = true;
+                    break;
                 }
-            } else {
-                if is_type_decl_item(item.clone(), env.source_indices.clone()) {
-                    if (((item.params.clone().len() as i64) == 0)
-                        && rust_nominal_identity_carrier_type_eligible(item_text.clone()))
-                    {
-                        rust_nominal_identity_carrier_def(item_text.clone())
+            }
+            __found
+        }) {
+            "".to_string()
+        } else {
+            {
+                let dag_collect_delegation = if (is_compile_module.clone()
+                    && (item_text.clone() == "dag_node_missing_ref_error".to_string()))
+                {
+                    v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("pub use crate::v1_compiler_dag_collect_support::".to_string(), "{".to_string()), "connective_name, dag_node_key_collision_error, dag_node_surface_fingerprint, expr_data_variant, inferred_fingerprint, json_quote, DagCollectAcc".to_string()), "}".to_string()), ";\n\npub use crate::v1_compiler_dag_collect::".to_string()), "{".to_string()), "collect_dag_nodes, dag_collect_from_module, dag_collect_inferred, dag_collect_insert, dag_collect_match_pattern, dag_collect_node_tree, dag_collect_nodes_list, dag_collect_optional_node, dag_node_collection_anchor, dag_node_fingerprint, dag_node_is_resolved_identity_shell, dag_node_key".to_string()), "}".to_string()), ";\n\n".to_string())
+                } else {
+                    "".to_string()
+                };
+                v1_rt::concat(
+                    dag_collect_delegation,
+                    if is_type_def_item(item.clone()) {
+                        emit_type_def_from_connective(
+                            item.clone(),
+                            emit_info.recursive_type_set.clone(),
+                            shared_types,
+                            env.clone(),
+                            emit_info.clone(),
+                            wire_contract_item,
+                            data_items,
+                            module_items,
+                            imports.clone(),
+                        )
                     } else {
-                        match rust_seed_host_container_base(
-                            item_text.clone(),
-                            emit_info.corpus_repr.clone(),
-                        ) {
-                            Some(host) => {
-                                let type_params = emit_type_params(
-                                    item.params.clone(),
-                                    env.source_indices.clone(),
-                                );
-                                let generic_names = item_generic_param_names(
-                                    item.clone(),
-                                    env.source_indices.clone(),
-                                );
+                        if is_type_alias_item(item.clone(), env.source_indices.clone()) {
+                            if (corpus_repr_is_host(emit_info.corpus_repr.clone())
+                                && (item_text.clone() == "String".to_string()))
+                            {
                                 v1_rt::concat(
                                     v1_rt::concat(
-                                        v1_rt::concat(
-                                            v1_rt::concat(
-                                                v1_rt::concat(
-                                                    v1_rt::concat(
-                                                        v1_rt::concat(
-                                                            v1_rt::concat(
-                                                                v1_rt::concat(
-                                                                    rust_visibility_prefix(),
-                                                                    rust_items()
-                                                                        .type_alias_keyword
-                                                                        .clone(),
-                                                                ),
-                                                                " ".to_string(),
-                                                            ),
-                                                            item_text.clone(),
-                                                        ),
-                                                        type_params,
-                                                    ),
-                                                    " = ".to_string(),
-                                                ),
-                                                host.clone(),
-                                            ),
-                                            "<".to_string(),
-                                        ),
-                                        Rc::new({
-                                            let mut __result = Vec::new();
-                                            for n in generic_names.clone().iter().cloned() {
-                                                __result.push(to_pascal(n.clone()));
-                                            }
-                                            __result
-                                        })
-                                        .join(&", ".to_string()),
+                                        rust_visibility_prefix(),
+                                        rust_items().type_alias_keyword.clone(),
                                     ),
-                                    ">;".to_string(),
+                                    " String = std::string::String;".to_string(),
                                 )
-                            }
-                            None => {
-                                if is_emittable_parametric_type_alias_item(
-                                    item.clone(),
-                                    item_text.clone(),
-                                    env.source_indices.clone(),
-                                    module_name.clone(),
-                                    imports.clone(),
-                                    scope.clone(),
-                                    registry.clone(),
-                                    export_sets.clone(),
-                                    typed_modules.clone(),
-                                    module_index.clone(),
-                                ) {
-                                    {
-                                        let type_params = emit_type_params(
-                                            item.params.clone(),
-                                            env.source_indices.clone(),
-                                        );
-                                        let generic_names = item_generic_param_names(
-                                            item.clone(),
-                                            env.source_indices.clone(),
-                                        );
-                                        let alias_rhs = resolved_type(item.clone());
-                                        let unused_params = alias_unused_param_names(
-                                            generic_names.clone(),
-                                            alias_rhs.clone(),
-                                            env.source_indices.clone(),
-                                        );
-                                        let rhs_str = if ((unused_params.clone().len() as i64) > 0)
-                                        {
-                                            v1_rt::concat(
-                                                v1_rt::concat(
-                                                    "std::marker::PhantomData<".to_string(),
-                                                    rust_phantom_marker_inner(
-                                                        unused_params.clone(),
-                                                    ),
-                                                ),
-                                                ">".to_string(),
-                                            )
-                                        } else {
-                                            render_rust_alias_rhs_type(
-                                                alias_rhs.clone(),
-                                                generic_names.clone(),
-                                                shared_types,
-                                                emit_info.corpus_repr.clone(),
-                                                env.source_indices.clone(),
-                                                scope.clone(),
-                                                imports.clone(),
-                                                registry.clone(),
-                                                module_name.clone(),
-                                                export_sets.clone(),
-                                                typed_modules.clone(),
-                                                module_index.clone(),
-                                                emit_info.variant_to_enum.clone(),
-                                            )
-                                        };
-                                        v1_rt::concat(
-                                            v1_rt::concat(
-                                                v1_rt::concat(
-                                                    v1_rt::concat(
-                                                        v1_rt::concat(
-                                                            v1_rt::concat(
-                                                                v1_rt::concat(
-                                                                    rust_visibility_prefix(),
-                                                                    rust_items()
-                                                                        .type_alias_keyword
-                                                                        .clone(),
-                                                                ),
-                                                                " ".to_string(),
-                                                            ),
-                                                            item_text.clone(),
-                                                        ),
-                                                        type_params,
-                                                    ),
-                                                    " = ".to_string(),
-                                                ),
-                                                rhs_str,
-                                            ),
-                                            ";".to_string(),
-                                        )
-                                    }
+                            } else {
+                                if (((item.params.clone().len() as i64) == 0)
+                                    && rust_nominal_identity_carrier_type_eligible(
+                                        item_text.clone(),
+                                    ))
+                                {
+                                    rust_nominal_identity_carrier_def(item_text.clone())
                                 } else {
-                                    if is_parametric_opaque_type_decl_item(
+                                    if is_zero_param_self_referential_opaque_decl(
                                         item.clone(),
                                         env.source_indices.clone(),
                                     ) {
-                                        emit_parametric_phantom_opaque_struct(
+                                        emit_zero_param_phantom_opaque_struct(
                                             item.clone(),
                                             env.source_indices.clone(),
                                         )
                                     } else {
-                                        "".to_string()
+                                        match rust_seed_host_numeric_alias(
+                                            item_text.clone(),
+                                            emit_info.corpus_repr.clone(),
+                                        ) {
+                                            Some(host) => v1_rt::concat(
+                                                v1_rt::concat(
+                                                    v1_rt::concat(
+                                                        v1_rt::concat(
+                                                            v1_rt::concat(
+                                                                v1_rt::concat(
+                                                                    rust_visibility_prefix(),
+                                                                    rust_items()
+                                                                        .type_alias_keyword
+                                                                        .clone(),
+                                                                ),
+                                                                " ".to_string(),
+                                                            ),
+                                                            item_text.clone(),
+                                                        ),
+                                                        " = ".to_string(),
+                                                    ),
+                                                    host.clone(),
+                                                ),
+                                                ";".to_string(),
+                                            ),
+                                            None => v1_rt::concat(
+                                                v1_rt::concat(
+                                                    v1_rt::concat(
+                                                        v1_rt::concat(
+                                                            v1_rt::concat(
+                                                                v1_rt::concat(
+                                                                    rust_visibility_prefix(),
+                                                                    rust_items()
+                                                                        .type_alias_keyword
+                                                                        .clone(),
+                                                                ),
+                                                                " ".to_string(),
+                                                            ),
+                                                            item_text.clone(),
+                                                        ),
+                                                        " = ".to_string(),
+                                                    ),
+                                                    render_rust_alias_rhs_type(
+                                                        resolved_type(item.clone()),
+                                                        Rc::new(vec![]),
+                                                        shared_types,
+                                                        emit_info.corpus_repr.clone(),
+                                                        env.source_indices.clone(),
+                                                        scope.clone(),
+                                                        imports.clone(),
+                                                        registry.clone(),
+                                                        module_name.clone(),
+                                                        export_sets.clone(),
+                                                        typed_modules.clone(),
+                                                        module_index.clone(),
+                                                        emit_info.variant_to_enum.clone(),
+                                                    ),
+                                                ),
+                                                ";".to_string(),
+                                            ),
+                                        }
+                                    }
+                                }
+                            }
+                        } else {
+                            if is_type_decl_item(item.clone(), env.source_indices.clone()) {
+                                if (((item.params.clone().len() as i64) == 0)
+                                    && rust_nominal_identity_carrier_type_eligible(
+                                        item_text.clone(),
+                                    ))
+                                {
+                                    rust_nominal_identity_carrier_def(item_text.clone())
+                                } else {
+                                    match rust_seed_host_container_base(
+                                        item_text.clone(),
+                                        emit_info.corpus_repr.clone(),
+                                    ) {
+                                        Some(host) => {
+                                            let type_params = emit_type_params(
+                                                item.params.clone(),
+                                                env.source_indices.clone(),
+                                            );
+                                            let generic_names = item_generic_param_names(
+                                                item.clone(),
+                                                env.source_indices.clone(),
+                                            );
+                                            v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(rust_visibility_prefix(), rust_items().type_alias_keyword.clone()), " ".to_string()), item_text.clone()), type_params), " = ".to_string()), host.clone()), "<".to_string()), Rc::new({ let mut __result = Vec::new(); for n in generic_names.clone().iter().cloned() { __result.push(to_pascal(n.clone())); } __result }).join(&", ".to_string())), ">;".to_string())
+                                        }
+                                        None => {
+                                            if is_emittable_parametric_type_alias_item(
+                                                item.clone(),
+                                                item_text.clone(),
+                                                env.source_indices.clone(),
+                                                module_name.clone(),
+                                                imports.clone(),
+                                                scope.clone(),
+                                                registry.clone(),
+                                                export_sets.clone(),
+                                                typed_modules.clone(),
+                                                module_index.clone(),
+                                            ) {
+                                                {
+                                                    let type_params = emit_type_params(
+                                                        item.params.clone(),
+                                                        env.source_indices.clone(),
+                                                    );
+                                                    let generic_names = item_generic_param_names(
+                                                        item.clone(),
+                                                        env.source_indices.clone(),
+                                                    );
+                                                    let alias_rhs = resolved_type(item.clone());
+                                                    let unused_params = alias_unused_param_names(
+                                                        generic_names.clone(),
+                                                        alias_rhs.clone(),
+                                                        env.source_indices.clone(),
+                                                    );
+                                                    let rhs_str = if ((unused_params.clone().len()
+                                                        as i64)
+                                                        > 0)
+                                                    {
+                                                        v1_rt::concat(
+                                                            v1_rt::concat(
+                                                                "std::marker::PhantomData<"
+                                                                    .to_string(),
+                                                                rust_phantom_marker_inner(
+                                                                    unused_params.clone(),
+                                                                ),
+                                                            ),
+                                                            ">".to_string(),
+                                                        )
+                                                    } else {
+                                                        render_rust_alias_rhs_type(
+                                                            alias_rhs.clone(),
+                                                            generic_names.clone(),
+                                                            shared_types,
+                                                            emit_info.corpus_repr.clone(),
+                                                            env.source_indices.clone(),
+                                                            scope.clone(),
+                                                            imports.clone(),
+                                                            registry.clone(),
+                                                            module_name.clone(),
+                                                            export_sets.clone(),
+                                                            typed_modules.clone(),
+                                                            module_index.clone(),
+                                                            emit_info.variant_to_enum.clone(),
+                                                        )
+                                                    };
+                                                    v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(rust_visibility_prefix(), rust_items().type_alias_keyword.clone()), " ".to_string()), item_text.clone()), type_params), " = ".to_string()), rhs_str), ";".to_string())
+                                                }
+                                            } else {
+                                                if is_parametric_opaque_type_decl_item(
+                                                    item.clone(),
+                                                    env.source_indices.clone(),
+                                                ) {
+                                                    emit_parametric_phantom_opaque_struct(
+                                                        item.clone(),
+                                                        env.source_indices.clone(),
+                                                    )
+                                                } else {
+                                                    "".to_string()
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            } else {
+                                if is_function_item(item.clone()) {
+                                    {
+                                        let fn_movable = match v1_rt::map_get(
+                                            &emit_info.ownership_index.clone(),
+                                            qualified_name.clone(),
+                                        ) {
+                                            Some(m) => m.clone(),
+                                            None => v1_rt::rc_empty_set::<String>(),
+                                        };
+                                        let item_is_tco = is_tco_eligible(
+                                            authored_name(env.clone(), item.clone()),
+                                            item.body.clone().clone().unwrap(),
+                                            registry.clone(),
+                                            env.source_indices.clone(),
+                                        );
+                                        let fn_read_only = if item_is_tco {
+                                            v1_rt::rc_empty_set::<String>()
+                                        } else {
+                                            match v1_rt::map_get(
+                                                &emit_info.read_only_params_index.clone(),
+                                                qualified_name.clone(),
+                                            ) {
+                                                Some(m) => m.clone(),
+                                                None => v1_rt::rc_empty_set::<String>(),
+                                            }
+                                        };
+                                        let fn_emit_info = Rc::new(EmitGraphInfo {
+                                            type_summaries: emit_info.type_summaries.clone(),
+                                            recursive_type_set: emit_info
+                                                .recursive_type_set
+                                                .clone(),
+                                            fielded_variants: emit_info.fielded_variants.clone(),
+                                            positional_payload_variants: emit_info
+                                                .positional_payload_variants
+                                                .clone(),
+                                            shared_types: emit_info.shared_types.clone(),
+                                            ownership_index: emit_info.ownership_index.clone(),
+                                            movable: fn_movable,
+                                            variant_to_enum: emit_info.variant_to_enum.clone(),
+                                            owned_bindings: v1_rt::rc_empty_set::<String>(),
+                                            read_only_params_index: emit_info
+                                                .read_only_params_index
+                                                .clone(),
+                                            read_only_params: fn_read_only,
+                                            corpus_repr: emit_info.corpus_repr.clone(),
+                                        });
+                                        let is_effectful = match lookup_item(
+                                            registry.clone(),
+                                            authored_name(env.clone(), item.clone()),
+                                        ) {
+                                            Some(info) => {
+                                                (((info.service_names.clone().len() as i64) > 0)
+                                                    || ((info.resource_names.clone().len() as i64)
+                                                        > 0))
+                                            }
+                                            None => false,
+                                        };
+                                        if is_effectful {
+                                            emit_func_def(
+                                                item_text.clone(),
+                                                item.params.clone(),
+                                                resolved_type(item.clone()),
+                                                item.uses.clone(),
+                                                item.body.clone().clone().unwrap(),
+                                                registry.clone(),
+                                                scope.clone(),
+                                                shared_types,
+                                                fn_emit_info,
+                                            )
+                                        } else {
+                                            emit_fn_def(
+                                                item_text.clone(),
+                                                item.params.clone(),
+                                                resolved_type(item.clone()),
+                                                item.body.clone().clone().unwrap(),
+                                                registry.clone(),
+                                                scope.clone(),
+                                                shared_types,
+                                                fn_emit_info,
+                                            )
+                                        }
+                                    }
+                                } else {
+                                    if is_data_def_item(item.clone()) {
+                                        emit_data_def(
+                                            item_text.clone(),
+                                            item.type_annotation.clone().clone().unwrap(),
+                                            item.body.clone().clone().unwrap(),
+                                            registry.clone(),
+                                            scope.clone(),
+                                            0,
+                                            shared_types,
+                                            emit_info.clone(),
+                                        )
+                                    } else {
+                                        if is_service_def_item(item.clone()) {
+                                            emit_service_def(
+                                                item.clone(),
+                                                registry.clone(),
+                                                shared_types,
+                                                emit_info.corpus_repr.clone(),
+                                                env.clone(),
+                                            )
+                                        } else {
+                                            if is_resource_def_item(item.clone()) {
+                                                emit_resource_def(
+                                                    item.clone(),
+                                                    shared_types,
+                                                    emit_info.corpus_repr.clone(),
+                                                    env.clone(),
+                                                )
+                                            } else {
+                                                v1_rt::concat(
+                                                    v1_rt::concat(
+                                                        "compile_error!(\"unhandled item: "
+                                                            .to_string(),
+                                                        item_text.clone(),
+                                                    ),
+                                                    "\");".to_string(),
+                                                )
+                                            }
+                                        }
                                     }
                                 }
                             }
                         }
-                    }
-                } else {
-                    if is_function_item(item.clone()) {
-                        {
-                            let fn_movable = match v1_rt::map_get(
-                                &emit_info.ownership_index.clone(),
-                                qualified_name.clone(),
-                            ) {
-                                Some(m) => m.clone(),
-                                None => v1_rt::rc_empty_set::<String>(),
-                            };
-                            let item_is_tco = is_tco_eligible(
-                                authored_name(env.clone(), item.clone()),
-                                item.body.clone().clone().unwrap(),
-                                registry.clone(),
-                                env.source_indices.clone(),
-                            );
-                            let fn_read_only = if item_is_tco {
-                                v1_rt::rc_empty_set::<String>()
-                            } else {
-                                match v1_rt::map_get(
-                                    &emit_info.read_only_params_index.clone(),
-                                    qualified_name.clone(),
-                                ) {
-                                    Some(m) => m.clone(),
-                                    None => v1_rt::rc_empty_set::<String>(),
-                                }
-                            };
-                            let fn_emit_info = Rc::new(EmitGraphInfo {
-                                type_summaries: emit_info.type_summaries.clone(),
-                                recursive_type_set: emit_info.recursive_type_set.clone(),
-                                fielded_variants: emit_info.fielded_variants.clone(),
-                                positional_payload_variants: emit_info
-                                    .positional_payload_variants
-                                    .clone(),
-                                shared_types: emit_info.shared_types.clone(),
-                                ownership_index: emit_info.ownership_index.clone(),
-                                movable: fn_movable,
-                                variant_to_enum: emit_info.variant_to_enum.clone(),
-                                owned_bindings: v1_rt::rc_empty_set::<String>(),
-                                read_only_params_index: emit_info.read_only_params_index.clone(),
-                                read_only_params: fn_read_only,
-                                corpus_repr: emit_info.corpus_repr.clone(),
-                            });
-                            let is_effectful = match lookup_item(
-                                registry.clone(),
-                                authored_name(env.clone(), item.clone()),
-                            ) {
-                                Some(info) => {
-                                    (((info.service_names.clone().len() as i64) > 0)
-                                        || ((info.resource_names.clone().len() as i64) > 0))
-                                }
-                                None => false,
-                            };
-                            if is_effectful {
-                                emit_func_def(
-                                    item_text.clone(),
-                                    item.params.clone(),
-                                    resolved_type(item.clone()),
-                                    item.uses.clone(),
-                                    item.body.clone().clone().unwrap(),
-                                    registry.clone(),
-                                    scope.clone(),
-                                    shared_types,
-                                    fn_emit_info,
-                                )
-                            } else {
-                                emit_fn_def(
-                                    item_text.clone(),
-                                    item.params.clone(),
-                                    resolved_type(item.clone()),
-                                    item.body.clone().clone().unwrap(),
-                                    registry.clone(),
-                                    scope.clone(),
-                                    shared_types,
-                                    fn_emit_info,
-                                )
-                            }
-                        }
-                    } else {
-                        if is_data_def_item(item.clone()) {
-                            emit_data_def(
-                                item_text.clone(),
-                                item.type_annotation.clone().clone().unwrap(),
-                                item.body.clone().clone().unwrap(),
-                                registry.clone(),
-                                scope.clone(),
-                                0,
-                                shared_types,
-                                emit_info.clone(),
-                            )
-                        } else {
-                            if is_service_def_item(item.clone()) {
-                                emit_service_def(
-                                    item.clone(),
-                                    registry.clone(),
-                                    shared_types,
-                                    emit_info.corpus_repr.clone(),
-                                    env.clone(),
-                                )
-                            } else {
-                                if is_resource_def_item(item.clone()) {
-                                    emit_resource_def(
-                                        item.clone(),
-                                        shared_types,
-                                        emit_info.corpus_repr.clone(),
-                                        env.clone(),
-                                    )
-                                } else {
-                                    v1_rt::concat(
-                                        v1_rt::concat(
-                                            "compile_error!(\"unhandled item: ".to_string(),
-                                            item_text.clone(),
-                                        ),
-                                        "\");".to_string(),
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
+                    },
+                )
             }
         }
     }
@@ -24313,7 +24319,7 @@ pub fn emit_subcommand_enum(
             __result
         });
         let compile_variant = if has_pipeline.clone() {
-            v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("/// Compile .dag source files to a target language\n".to_string(), make_indent((depth.clone() + 1))), "Compile {\n".to_string()), make_indent((depth.clone() + 2))), "/// Source root directories (searched recursively for .dag files).\n".to_string()), make_indent((depth.clone() + 2))), "/// Module imports are resolved transitively from these roots.\n".to_string()), make_indent((depth.clone() + 2))), "#[arg(long = \"source-root\")]\n".to_string()), make_indent((depth.clone() + 2))), "source_roots: Vec<String>,\n".to_string()), make_indent((depth.clone() + 2))), "/// Legacy: single source directory (all .dag files loaded, no import resolution)\n".to_string()), make_indent((depth.clone() + 2))), "#[arg(long = \"source-dir\")]\n".to_string()), make_indent((depth.clone() + 2))), "source_dir: Option<String>,\n".to_string()), make_indent((depth.clone() + 2))), "#[arg(long)]\n".to_string()), make_indent((depth.clone() + 2))), "output_dir: String,\n".to_string()), make_indent((depth.clone() + 2))), "/// Target language: rust, python, go, dag, or + separated set such as rust+dag\n".to_string()), make_indent((depth.clone() + 2))), "#[arg(long, default_value = \"rust\")]\n".to_string()), make_indent((depth.clone() + 2))), "target: String,\n".to_string()), make_indent((depth.clone() + 1))), "},".to_string())
+            v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("/// Compile .dag source files to a target language\n".to_string(), make_indent((depth.clone() + 1))), "Compile {\n".to_string()), make_indent((depth.clone() + 2))), "/// Source root directories (searched recursively for .dag files).\n".to_string()), make_indent((depth.clone() + 2))), "/// Module imports are resolved transitively from these roots.\n".to_string()), make_indent((depth.clone() + 2))), "#[arg(long = \"source-root\")]\n".to_string()), make_indent((depth.clone() + 2))), "source_roots: Vec<String>,\n".to_string()), make_indent((depth.clone() + 2))), "/// Legacy: single source directory (all .dag files loaded, no import resolution)\n".to_string()), make_indent((depth.clone() + 2))), "#[arg(long = \"source-dir\")]\n".to_string()), make_indent((depth.clone() + 2))), "source_dir: Option<String>,\n".to_string()), make_indent((depth.clone() + 2))), "#[arg(long)]\n".to_string()), make_indent((depth.clone() + 2))), "output_dir: String,\n".to_string()), make_indent((depth.clone() + 2))), "/// Target language: rust, python, go, dag, or + separated set such as rust+dag\n".to_string()), make_indent((depth.clone() + 2))), "#[arg(long, default_value = \"rust\")]\n".to_string()), make_indent((depth.clone() + 2))), "target: String,\n".to_string()), make_indent((depth.clone() + 2))), "#[arg(long = \"dependency-pool-index\", default_value = \"strict\")]\n".to_string()), make_indent((depth.clone() + 2))), "dependency_pool_index: String,\n".to_string()), make_indent((depth.clone() + 1))), "},".to_string())
         } else {
             "".to_string()
         };
@@ -24610,7 +24616,7 @@ pub fn emit_main_fn(
 pub fn emit_compile_match_arm(crate_name: String) -> String {
     {
         let pipeline_mod = module_to_filename("v1.compiler.compile".to_string());
-        v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("Commands::Compile { source_roots, source_dir, output_dir, target } => {\n".to_string(), "            let render_targets = parse_render_targets(&target);\n".to_string()), "\n".to_string()), "            let sources = if !source_roots.is_empty() {\n".to_string()), "                // FF-9: Import-driven resolution from source roots\n".to_string()), "                let index = build_module_index(&source_roots);\n".to_string()), "                eprintln!(\"indexed {} modules from {} source roots\", index.len(), source_roots.len());\n".to_string()), "\n".to_string()), "                // Entry modules: all .dag files in the FIRST source root.\n".to_string()), "                // Additional roots are dependency pools resolved via imports.\n".to_string()), "                // This is intentional: --source-root src/v1 --source-root dsl\n".to_string()), "                // means 'compile src/v1, using dsl as a dependency pool.'\n".to_string()), "                let first_root = std::path::Path::new(&source_roots[0]);\n".to_string()), "                let mut entry_files = Vec::new();\n".to_string()), "                if first_root.is_dir() {\n".to_string()), "                    let mut dag_paths = Vec::new();\n".to_string()), "                    collect_dag_files(first_root, &mut dag_paths);\n".to_string()), "                    for path in dag_paths {\n".to_string()), "                        let content = std::fs::read_to_string(&path)\n".to_string()), "                            .unwrap_or_else(|e| panic!(\"failed to read {:?}: {}\", path, e));\n".to_string()), "                        entry_files.push((path.to_string_lossy().to_string(), content));\n".to_string()), "                    }\n".to_string()), "                }\n".to_string()), "\n".to_string()), "                let mut seen: HashMap<String, Rc<".to_string()), pipeline_mod.clone()), "::SourceFile>> = HashMap::new();\n".to_string()), "                let mut entry_for_queue = Vec::new();\n".to_string()), "                for (path, content) in &entry_files {\n".to_string()), "                    if let Some(mod_path) = extract_module_path(content) {\n".to_string()), "                        let source = Rc::new(".to_string()), pipeline_mod.clone()), "::SourceFile {\n".to_string()), "                            path: path.clone(),\n".to_string()), "                            content: content.clone(),\n".to_string()), "                        });\n".to_string()), "                        seen.insert(mod_path, source);\n".to_string()), "                    }\n".to_string()), "                    entry_for_queue.push((path.clone(), content.clone()));\n".to_string()), "                }\n".to_string()), "\n".to_string()), "                let mut resolved = resolve_transitively_with_seen(entry_for_queue, &index, seen);\n".to_string()), "                for (path, content) in entry_files {\n".to_string()), "                    let already_there = resolved.iter().any(|s| s.path == path);\n".to_string()), "                    if !already_there {\n".to_string()), "                        resolved.push(Rc::new(".to_string()), pipeline_mod.clone()), "::SourceFile { path, content }));\n".to_string()), "                    }\n".to_string()), "                }\n".to_string()), "                eprintln!(\"resolved {} sources (transitive import closure)\", resolved.len());\n".to_string()), "                resolved\n".to_string()), "\n".to_string()), "            } else if let Some(dir) = source_dir {\n".to_string()), "                // Legacy: flat directory scan (backward compatibility)\n".to_string()), "                let mut dag_paths = Vec::new();\n".to_string()), "                collect_dag_files(std::path::Path::new(&dir), &mut dag_paths);\n".to_string()), "                let mut sources = Vec::new();\n".to_string()), "                for path in &dag_paths {\n".to_string()), "                    let content = std::fs::read_to_string(path)\n".to_string()), "                        .unwrap_or_else(|e| panic!(\"failed to read {:?}: {}\", path, e));\n".to_string()), "                    let filename = path.file_name().unwrap().to_string_lossy().to_string();\n".to_string()), "                    sources.push(Rc::new(".to_string()), pipeline_mod.clone()), "::SourceFile {\n".to_string()), "                        path: filename,\n".to_string()), "                        content,\n".to_string()), "                    }));\n".to_string()), "                }\n".to_string()), "                eprintln!(\"compiling {} .dag files from {} (target: {})\", sources.len(), dir, target);\n".to_string()), "                sources\n".to_string()), "\n".to_string()), "            } else {\n".to_string()), "                eprintln!(\"error: provide --source-root or --source-dir\");\n".to_string()), "                std::process::exit(1);\n".to_string()), "            };\n".to_string()), "\n".to_string()), "            if render_targets.len() == 1 {\n".to_string()), "                let result = ".to_string()), pipeline_mod.clone()), "::compile_sources(Rc::new(sources), render_targets[0].1.clone());\n".to_string()), "                write_output_files(&output_dir, &result);\n".to_string()), "                eprintln!(\"compiled: {} files emitted, {} diagnostics\", result.files.len(), result.diagnostics.len());\n".to_string()), "                render_diagnostics(&result);\n".to_string()), "                if hard_errors(&result) {\n".to_string()), "                    std::process::exit(1);\n".to_string()), "                }\n".to_string()), "                if result.files.is_empty() {\n".to_string()), "                    eprintln!(\"error: no files emitted\");\n".to_string()), "                    std::process::exit(1);\n".to_string()), "                }\n".to_string()), "            } else {\n".to_string()), "                let resolved = ".to_string()), pipeline_mod.clone()), "::compile_to_resolved(Rc::new(sources));\n".to_string()), "                let mut any_hard_errors = false;\n".to_string()), "                let mut any_empty = false;\n".to_string()), "                let mut total_files = 0usize;\n".to_string()), "                let mut total_diagnostics = 0usize;\n".to_string()), "                for (name, render_target) in render_targets {\n".to_string()), "                    let result = ".to_string()), pipeline_mod.clone()), "::emit_resolved_for_target(resolved.clone(), render_target);\n".to_string()), "                    let target_output_dir = format!(\"{}/{}\", output_dir, name);\n".to_string()), "                    write_output_files(&target_output_dir, &result);\n".to_string()), "                    eprintln!(\"compiled[{}]: {} files emitted, {} diagnostics\", name, result.files.len(), result.diagnostics.len());\n".to_string()), "                    render_diagnostics(&result);\n".to_string()), "                    any_hard_errors |= hard_errors(&result);\n".to_string()), "                    any_empty |= result.files.is_empty();\n".to_string()), "                    total_files += result.files.len();\n".to_string()), "                    total_diagnostics += result.diagnostics.len();\n".to_string()), "                }\n".to_string()), "                eprintln!(\"compiled: {} files emitted, {} diagnostics\", total_files, total_diagnostics);\n".to_string()), "                if any_hard_errors {\n".to_string()), "                    std::process::exit(1);\n".to_string()), "                }\n".to_string()), "                if any_empty {\n".to_string()), "                    eprintln!(\"error: no files emitted for at least one target\");\n".to_string()), "                    std::process::exit(1);\n".to_string()), "                }\n".to_string()), "            }\n".to_string()), "        },".to_string())
+        v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("Commands::Compile { source_roots, source_dir, output_dir, target, dependency_pool_index } => {\n".to_string(), "            let render_targets = parse_render_targets(&target);\n".to_string()), "            let pool_index = parse_dependency_pool_index(&dependency_pool_index);\n".to_string()), "\n".to_string()), "            let sources = if !source_roots.is_empty() {\n".to_string()), "                let index = build_module_index(&source_roots, pool_index);\n".to_string()), "                eprintln!(\"indexed {} modules from {} source roots\", index.len(), source_roots.len());\n".to_string()), "\n".to_string()), "                // Entry modules: all .dag files in the FIRST source root.\n".to_string()), "                // Additional roots are dependency pools resolved via imports.\n".to_string()), "                // This is intentional: --source-root src/v1 --source-root dsl\n".to_string()), "                // means 'compile src/v1, using dsl as a dependency pool.'\n".to_string()), "                let first_root = std::path::Path::new(&source_roots[0]);\n".to_string()), "                let mut entry_files = Vec::new();\n".to_string()), "                if first_root.is_dir() {\n".to_string()), "                    let mut dag_paths = Vec::new();\n".to_string()), "                    collect_dag_files(first_root, &mut dag_paths);\n".to_string()), "                    for path in dag_paths {\n".to_string()), "                        let content = std::fs::read_to_string(&path)\n".to_string()), "                            .unwrap_or_else(|e| panic!(\"failed to read {:?}: {}\", path, e));\n".to_string()), "                        entry_files.push((path.to_string_lossy().to_string(), content));\n".to_string()), "                    }\n".to_string()), "                }\n".to_string()), "                let skipped_moduleless = cli_run::moduleless_dag_entry_paths(&entry_files);\n".to_string()), "                cli_run::report_moduleless_dag_entry_skips(&skipped_moduleless);\n".to_string()), "\n".to_string()), "                let mut seen: HashMap<String, Rc<".to_string()), pipeline_mod.clone()), "::SourceFile>> = HashMap::new();\n".to_string()), "                let mut entry_for_queue = Vec::new();\n".to_string()), "                for (path, content) in &entry_files {\n".to_string()), "                    if let Some(mod_path) = extract_module_path(content) {\n".to_string()), "                        let source = Rc::new(".to_string()), pipeline_mod.clone()), "::SourceFile {\n".to_string()), "                            path: path.clone(),\n".to_string()), "                            content: content.clone(),\n".to_string()), "                        });\n".to_string()), "                        seen.insert(mod_path, source);\n".to_string()), "                        entry_for_queue.push((path.clone(), content.clone()));\n".to_string()), "                    }\n".to_string()), "                }\n".to_string()), "\n".to_string()), "                let mut resolved = resolve_transitively_with_seen(entry_for_queue, &index, seen);\n".to_string()), "                for (path, content) in entry_files {\n".to_string()), "                    if extract_module_path(&content).is_none() { continue; }\n".to_string()), "                    let already_there = resolved.iter().any(|s| s.path == path);\n".to_string()), "                    if !already_there {\n".to_string()), "                        resolved.push(Rc::new(".to_string()), pipeline_mod.clone()), "::SourceFile { path, content }));\n".to_string()), "                    }\n".to_string()), "                }\n".to_string()), "                eprintln!(\"resolved {} sources (transitive import closure)\", resolved.len());\n".to_string()), "                resolved\n".to_string()), "\n".to_string()), "            } else if let Some(dir) = source_dir {\n".to_string()), "                // Legacy: flat directory scan (backward compatibility)\n".to_string()), "                let mut dag_paths = Vec::new();\n".to_string()), "                collect_dag_files(std::path::Path::new(&dir), &mut dag_paths);\n".to_string()), "                let mut sources = Vec::new();\n".to_string()), "                for path in &dag_paths {\n".to_string()), "                    let content = std::fs::read_to_string(path)\n".to_string()), "                        .unwrap_or_else(|e| panic!(\"failed to read {:?}: {}\", path, e));\n".to_string()), "                    let filename = path.file_name().unwrap().to_string_lossy().to_string();\n".to_string()), "                    sources.push(Rc::new(".to_string()), pipeline_mod.clone()), "::SourceFile {\n".to_string()), "                        path: filename,\n".to_string()), "                        content,\n".to_string()), "                    }));\n".to_string()), "                }\n".to_string()), "                eprintln!(\"compiling {} .dag files from {} (target: {})\", sources.len(), dir, target);\n".to_string()), "                sources\n".to_string()), "\n".to_string()), "            } else {\n".to_string()), "                eprintln!(\"error: provide --source-root or --source-dir\");\n".to_string()), "                std::process::exit(1);\n".to_string()), "            };\n".to_string()), "\n".to_string()), "            if render_targets.len() == 1 {\n".to_string()), "                let result = ".to_string()), pipeline_mod.clone()), "::compile_sources(Rc::new(sources), render_targets[0].1.clone());\n".to_string()), "                write_output_files(&output_dir, &result);\n".to_string()), "                eprintln!(\"compiled: {} files emitted, {} diagnostics\", result.files.len(), result.diagnostics.len());\n".to_string()), "                render_diagnostics(&result);\n".to_string()), "                if hard_errors(&result) {\n".to_string()), "                    std::process::exit(1);\n".to_string()), "                }\n".to_string()), "                if result.files.is_empty() {\n".to_string()), "                    eprintln!(\"error: no files emitted\");\n".to_string()), "                    std::process::exit(1);\n".to_string()), "                }\n".to_string()), "            } else {\n".to_string()), "                let resolved = ".to_string()), pipeline_mod.clone()), "::compile_to_resolved(Rc::new(sources));\n".to_string()), "                let mut any_hard_errors = false;\n".to_string()), "                let mut any_empty = false;\n".to_string()), "                let mut total_files = 0usize;\n".to_string()), "                let mut total_diagnostics = 0usize;\n".to_string()), "                for (name, render_target) in render_targets {\n".to_string()), "                    let result = ".to_string()), pipeline_mod.clone()), "::emit_resolved_for_target(resolved.clone(), render_target);\n".to_string()), "                    let target_output_dir = format!(\"{}/{}\", output_dir, name);\n".to_string()), "                    write_output_files(&target_output_dir, &result);\n".to_string()), "                    eprintln!(\"compiled[{}]: {} files emitted, {} diagnostics\", name, result.files.len(), result.diagnostics.len());\n".to_string()), "                    render_diagnostics(&result);\n".to_string()), "                    any_hard_errors |= hard_errors(&result);\n".to_string()), "                    any_empty |= result.files.is_empty();\n".to_string()), "                    total_files += result.files.len();\n".to_string()), "                    total_diagnostics += result.diagnostics.len();\n".to_string()), "                }\n".to_string()), "                eprintln!(\"compiled: {} files emitted, {} diagnostics\", total_files, total_diagnostics);\n".to_string()), "                if any_hard_errors {\n".to_string()), "                    std::process::exit(1);\n".to_string()), "                }\n".to_string()), "                if any_empty {\n".to_string()), "                    eprintln!(\"error: no files emitted for at least one target\");\n".to_string()), "                    std::process::exit(1);\n".to_string()), "                }\n".to_string()), "            }\n".to_string()), "        },".to_string())
     }
 }
 
@@ -24629,7 +24635,7 @@ pub fn emit_main_pipeline_fns(crate_name: String) -> String {
                         v1_rt::concat(emit_collect_dag_files_fn(), emit_extract_module_path_fn()),
                         emit_extract_import_paths_fn(),
                     ),
-                    emit_build_module_index_fn(),
+                    emit_dep_pool_type_and_fns(),
                 ),
                 emit_resolve_transitively_fn(crate_name.clone(), pipeline_mod.clone()),
             ),
@@ -24658,8 +24664,8 @@ pub fn emit_extract_import_paths_fn() -> String {
     v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("/// Extract import module paths from a .dag file's import declarations.\n".to_string(), "fn extract_import_paths(content: &str) -> Vec<String> {\n".to_string()), "    let mut imports = Vec::new();\n".to_string()), "    for line in content.lines() {\n".to_string()), "        let trimmed = line.trim();\n".to_string()), "        if trimmed.starts_with(\"import \") {\n".to_string()), "            let rest = trimmed[\"import \".len()..].trim();\n".to_string()), "            let module_path = rest.split('{').next().unwrap_or(rest).trim();\n".to_string()), "            if !module_path.is_empty() {\n".to_string()), "                imports.push(module_path.to_string());\n".to_string()), "            }\n".to_string()), "        }\n".to_string()), "    }\n".to_string()), "    imports\n".to_string()), "}\n\n".to_string())
 }
 
-pub fn emit_build_module_index_fn() -> String {
-    v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("/// Build module index: scan all source roots, map module_path -> file_path.\n".to_string(), "/// Fail-closed: panics on missing roots, unreadable files, and duplicate module paths.\n".to_string()), "fn build_module_index(source_roots: &[String]) -> HashMap<String, std::path::PathBuf> {\n".to_string()), "    let mut index = HashMap::new();\n".to_string()), "    for root in source_roots {\n".to_string()), "        let root_path = std::path::Path::new(root);\n".to_string()), "        if !root_path.exists() {\n".to_string()), "            panic!(\"source root does not exist: {}\", root);\n".to_string()), "        }\n".to_string()), "        let mut dag_files = Vec::new();\n".to_string()), "        collect_dag_files(root_path, &mut dag_files);\n".to_string()), "        for path in dag_files {\n".to_string()), "            let content = std::fs::read_to_string(&path)\n".to_string()), "                .unwrap_or_else(|e| panic!(\"failed to read {:?}: {}\", path, e));\n".to_string()), "            if let Some(module_path) = extract_module_path(&content) {\n".to_string()), "                if let Some(existing) = index.get(&module_path) {\n".to_string()), "                    panic!(\"duplicate module path '{}': declared in both {:?} and {:?}\",\n".to_string()), "                        module_path, existing, path);\n".to_string()), "                }\n".to_string()), "                index.insert(module_path, path);\n".to_string()), "            }\n".to_string()), "        }\n".to_string()), "    }\n".to_string()), "    index\n".to_string()), "}\n\n".to_string())
+pub fn emit_dep_pool_type_and_fns() -> String {
+    v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("#[derive(Clone, Copy, PartialEq, Eq)]\nenum DependencyPoolIndex {\n    Strict,\n    PrimaryPrecedence,\n}\n\n".to_string(), "fn parse_dependency_pool_index(value: &str) -> DependencyPoolIndex {\n".to_string()), "    match value {\n".to_string()), "        \"strict\" => DependencyPoolIndex::Strict,\n".to_string()), "        \"primary-precedence\" => DependencyPoolIndex::PrimaryPrecedence,\n".to_string()), "        other => {\n".to_string()), "            eprintln!(\"unknown --dependency-pool-index: {} (expected strict | primary-precedence)\", other);\n".to_string()), "            std::process::exit(1);\n".to_string()), "        }\n".to_string()), "    }\n".to_string()), "}\n\n".to_string()), "fn insert_module_path(\n".to_string()), "    index: &mut HashMap<String, std::path::PathBuf>,\n".to_string()), "    module_path: String,\n".to_string()), "    path: std::path::PathBuf,\n".to_string()), "    within_root: &mut HashMap<String, std::path::PathBuf>,\n".to_string()), ") {\n".to_string()), "    if let Some(existing) = within_root.get(&module_path) {\n".to_string()), "        panic!(\"duplicate module path '{}' within source root: declared in both {:?} and {:?}\", module_path, existing, path);\n".to_string()), "    }\n".to_string()), "    within_root.insert(module_path.clone(), path.clone());\n".to_string()), "    index.insert(module_path, path);\n".to_string()), "}\n\n".to_string()), "fn index_source_root(root: &str, index: &mut HashMap<String, std::path::PathBuf>, pool_fill_only: bool) {\n".to_string()), "    let root_path = std::path::Path::new(root);\n".to_string()), "    if !root_path.exists() {\n".to_string()), "        panic!(\"source root does not exist: {}\", root);\n".to_string()), "    }\n".to_string()), "    let mut dag_files = Vec::new();\n".to_string()), "    collect_dag_files(root_path, &mut dag_files);\n".to_string()), "    let mut within_root = HashMap::new();\n".to_string()), "    for path in dag_files {\n".to_string()), "        let content = std::fs::read_to_string(&path)\n".to_string()), "            .unwrap_or_else(|e| panic!(\"failed to read {:?}: {}\", path, e));\n".to_string()), "        if let Some(module_path) = extract_module_path(&content) {\n".to_string()), "            if pool_fill_only {\n".to_string()), "                if index.contains_key(&module_path) {\n".to_string()), "                    continue;\n".to_string()), "                }\n".to_string()), "                insert_module_path(index, module_path, path, &mut within_root);\n".to_string()), "            } else if let Some(existing) = index.get(&module_path) {\n".to_string()), "                panic!(\"duplicate module path '{}': declared in both {:?} and {:?}\", module_path, existing, path);\n".to_string()), "            } else {\n".to_string()), "                insert_module_path(index, module_path, path, &mut within_root);\n".to_string()), "            }\n".to_string()), "        }\n".to_string()), "    }\n".to_string()), "}\n\n".to_string()), "fn build_module_index(source_roots: &[String], pool_index: DependencyPoolIndex) -> HashMap<String, std::path::PathBuf> {\n".to_string()), "    let mut index = HashMap::new();\n".to_string()), "    if source_roots.is_empty() {\n".to_string()), "        return index;\n".to_string()), "    }\n".to_string()), "    match pool_index {\n".to_string()), "        DependencyPoolIndex::Strict => {\n".to_string()), "            for root in source_roots {\n".to_string()), "                index_source_root(root, &mut index, false);\n".to_string()), "            }\n".to_string()), "        }\n".to_string()), "        DependencyPoolIndex::PrimaryPrecedence => {\n".to_string()), "            index_source_root(&source_roots[0], &mut index, false);\n".to_string()), "            for root in &source_roots[1..] {\n".to_string()), "                index_source_root(root, &mut index, true);\n".to_string()), "            }\n".to_string()), "        }\n".to_string()), "    }\n".to_string()), "    index\n".to_string()), "}\n\n".to_string())
 }
 
 pub fn emit_resolve_transitively_fn(crate_name: String, pipeline_mod: String) -> String {

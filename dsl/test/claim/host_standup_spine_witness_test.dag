@@ -56,6 +56,7 @@ import gunbc.bmc_onboarding {
   RotatedCredentialActive,
 }
 import gunbc.fleet_intent_network { operator_host_srv3 }
+import gunbc.ci_fleet { fleet_intent_offers, srv3_offer }
 import gunbc.host_converge { ConvergePolicyDerived, ConvergePolicyUnsound }
 import product.compute_fabric { witness_fabric_binds_need_to_opportunity }
 
@@ -99,6 +100,11 @@ test fn host_standup_spine_is_nine_step_linear_prefix_then_p0_p5() -> Bool {
 test fn srv3_target_and_install_mechanism_are_grounded() -> Bool {
   srv3_host_standup_target == operator_host_srv3
     && srv3_install_mechanism_is_nbd_proxy_no_fallback()
+}
+
+test fn srv3_live_fleet_offer_carries_ci() -> Bool {
+  fleet_intent_offers.length() == 3
+    && srv3_offer.supply.physical.identity == operator_host_srv3
 }
 
 test fn credential_probe_projection_matches_onboarding_authority() -> Bool {

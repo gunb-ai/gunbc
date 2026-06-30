@@ -3894,6 +3894,202 @@ diff --git a/src/v2/lens/affected_set.dag b/src/v2/lens/affected_set.dag
     }
 }
 
+// SCAFFOLD: folds into a .dag execution witness when the discovery/diff seed plumbing
+// migrates off the v1 host layer (§6 dissolution trigger)
+#[cfg(test)]
+mod node_frontier_plumbing_controls {
+    use super::{
+        build_multi_entry_index, collect_frontier_seeds_from_diff_line_ranges,
+        entry_touches_frontier_seeds, parse_unified_diff_line_ranges,
+    };
+    use crate::v1_interpreter::ExecutionMode;
+    use std::path::PathBuf;
+
+    fn workspace_root() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("workspace root")
+            .to_path_buf()
+    }
+
+    const FIXTURE: &str = "src/v2/test/fixture/floor_skip/node_precise_discriminator_test.dag";
+    // File outside FIXTURE's import closure — precondition asserted at runtime in green control.
+    // If a future import edge adds this file to FIXTURE's closure, the precondition assertion
+    // fails loudly rather than letting the control silently degrade (§3 anti-drift).
+    const OUTSIDE_FILE: &str = "src/v2/lens/affected_set.dag";
+    // A known data-declaration line in OUTSIDE_FILE.
+    // If this line shifts the test may generate force_run_all — a loud failure, not a silent pass.
+    const OUTSIDE_DATA_LINE: i64 = 1295;
+
+    fn abs(ws: &PathBuf, rel: &str) -> String {
+        ws.join(rel).to_string_lossy().into_owned()
+    }
+
+    // parse_unified_diff_line_ranges strips "+++ b/" prefix; "b//abs/path" yields "/abs/path".
+    fn diff_at(file: &str, line: i64) -> String {
+        format!(
+            "diff --git a/{file} b/{file}\n--- a/{file}\n+++ b/{file}\n\
+             @@ -{line},0 +{line},1 @@\n+// synthetic touch\n"
+        )
+    }
+
+    fn setup_roots(ws: &PathBuf) -> Vec<String> {
+        vec![
+            ws.join("src/v2").to_string_lossy().into_owned(),
+            ws.join("dsl").to_string_lossy().into_owned(),
+        ]
+    }
+
+    // Control 1 (GREEN/skip): diff on file outside FIXTURE's import closure → skip fires.
+    // Q1 precondition asserted at runtime: if a future import edge adds OUTSIDE_FILE to
+    // FIXTURE's closure, this assertion fires before the skip assertion can silently degrade.
+    #[test]
+    fn green_skip_for_file_outside_import_closure() {
+        let ws = workspace_root();
+        let roots = setup_roots(&ws);
+        let index = build_multi_entry_index(&roots);
+
+        // Q1 precondition: assert OUTSIDE_FILE is not in FIXTURE's transitive import closure.
+        let (graph, source_indices) =
+            super::resolve_entry_with_index(&index, &abs(&ws, FIXTURE)).expect("fixture resolves");
+        let outside = OUTSIDE_FILE.replace('\\', "/");
+        let in_closure = graph.modules.iter().any(|m| {
+            m.items
+                .iter()
+                .any(|item| item.span.file.replace('\\', "/").contains(&outside))
+        });
+        assert!(
+            !in_closure,
+            "precondition: {OUTSIDE_FILE} must not be in {FIXTURE}'s import closure; \
+             if it now is, update OUTSIDE_FILE to a different out-of-closure file"
+        );
+
+        // Build diff touching a data declaration in OUTSIDE_FILE (absolute path so parse_unified_diff
+        // resolves it without process-global cwd — "b//abs" strips to "/abs" after the b/ prefix).
+        let diff = diff_at(&abs(&ws, OUTSIDE_FILE), OUTSIDE_DATA_LINE);
+        let ranges = parse_unified_diff_line_ranges(&diff);
+        let seeds = collect_frontier_seeds_from_diff_line_ranges(&index, &ranges)
+            .expect("seeds from outside-file diff");
+        assert!(
+            !seeds.force_run_all,
+            "diff on a .dag file at a data-item line must not force_run_all \
+             (if it does, OUTSIDE_DATA_LINE may have drifted off the data declaration)"
+        );
+
+        // FIXTURE's context does not hold OUTSIDE_FILE's items → frontier empty → skip.
+        let ctx = super::make_eval_context(&graph, source_indices, ExecutionMode::Wet);
+        assert!(
+            !entry_touches_frontier_seeds(&ctx, &abs(&ws, FIXTURE), &seeds).expect("touch check"),
+            "entry must NOT touch frontier when diff is on a file outside its import closure"
+        );
+    }
+
+    // Control 2 (RED/function_edited): diff edits a test fn declaration →
+    // edited_test_fns populated → function_edited=true forces run for that row.
+    #[test]
+    fn red_function_edited_populates_edited_test_fns() {
+        let ws = workspace_root();
+        let roots = setup_roots(&ws);
+        let index = build_multi_entry_index(&roots);
+        // Line 74: `test fn floor_disc_witness_a_only_holds() -> Bool {`
+        let diff = diff_at(&abs(&ws, FIXTURE), 74);
+        let ranges = parse_unified_diff_line_ranges(&diff);
+        let seeds = collect_frontier_seeds_from_diff_line_ranges(&index, &ranges)
+            .expect("seeds from test-fn-line diff");
+        assert!(
+            !seeds.force_run_all,
+            "editing a test fn declaration line must not force_run_all"
+        );
+        assert!(
+            seeds
+                .edited_test_fns
+                .iter()
+                .any(|(_, name)| name == "floor_disc_witness_a_only_holds"),
+            "diff at test fn declaration line must populate edited_test_fns with the function name"
+        );
+    }
+
+    // Control 3 (RED/node_frontier): diff on a data item referenced by a claim →
+    // entry_touches_frontier_seeds returns true → runs.
+    #[test]
+    fn red_node_frontier_fires_for_referenced_data_item() {
+        let ws = workspace_root();
+        let roots = setup_roots(&ws);
+        let index = build_multi_entry_index(&roots);
+        // Line 15: `data floor_disc_node_a` — directly referenced by floor_disc_claim_on_a.
+        let diff = diff_at(&abs(&ws, FIXTURE), 15);
+        let ranges = parse_unified_diff_line_ranges(&diff);
+        let seeds = collect_frontier_seeds_from_diff_line_ranges(&index, &ranges)
+            .expect("seeds from referenced-node diff");
+        assert!(
+            !seeds.force_run_all,
+            "diff on a referenced data item must not force_run_all"
+        );
+        let (graph, source_indices) =
+            super::resolve_entry_with_index(&index, &abs(&ws, FIXTURE)).expect("fixture resolves");
+        let ctx = super::make_eval_context(&graph, source_indices, ExecutionMode::Wet);
+        assert!(
+            entry_touches_frontier_seeds(&ctx, &abs(&ws, FIXTURE), &seeds).expect("touch check"),
+            "entry must touch frontier when diff is on a data item referenced by a claim"
+        );
+    }
+
+    // Control 4 (fail-closed): non-.dag changed file → force_run_all.
+    #[test]
+    fn fail_closed_non_dag_file_forces_run_all() {
+        let ws = workspace_root();
+        let roots = setup_roots(&ws);
+        let index = build_multi_entry_index(&roots);
+        let diff = "diff --git a/src/v1/stage0/src/cli_run.rs b/src/v1/stage0/src/cli_run.rs\n\
+                    --- a/src/v1/stage0/src/cli_run.rs\n\
+                    +++ b/src/v1/stage0/src/cli_run.rs\n\
+                    @@ -1,0 +2,1 @@\n+// synthetic\n";
+        let ranges = parse_unified_diff_line_ranges(diff);
+        let seeds = collect_frontier_seeds_from_diff_line_ranges(&index, &ranges)
+            .expect("seeds from .rs diff");
+        assert!(
+            seeds.force_run_all,
+            "diff on a non-.dag file must force_run_all (fail-closed)"
+        );
+    }
+
+    // Control 5 (fail-closed): diff before first declaration in a .dag file → force_run_all.
+    // The module header (line 1) precedes the first data/fn declaration.
+    #[test]
+    fn fail_closed_edit_before_first_decl_forces_run_all() {
+        let ws = workspace_root();
+        let roots = setup_roots(&ws);
+        let index = build_multi_entry_index(&roots);
+        let diff = diff_at(&abs(&ws, FIXTURE), 1);
+        let ranges = parse_unified_diff_line_ranges(&diff);
+        let seeds = collect_frontier_seeds_from_diff_line_ranges(&index, &ranges)
+            .expect("seeds from pre-decl diff");
+        assert!(
+            seeds.force_run_all,
+            "diff before first declaration must force_run_all (fail-closed)"
+        );
+    }
+
+    // Control 6 (fail-closed / Q2 resolve-failure): diff names a .dag path that does not
+    // exist → resolve_entry_with_index fails → force_run_all. Exercises the
+    // collect_frontier_seeds_from_diff_line_ranges:Err arm at the resolve site.
+    #[test]
+    fn fail_closed_nonexistent_dag_path_forces_run_all() {
+        let ws = workspace_root();
+        let roots = setup_roots(&ws);
+        let index = build_multi_entry_index(&roots);
+        let diff = diff_at(&abs(&ws, "src/v2/lens/does_not_exist_sentinel.dag"), 10);
+        let ranges = parse_unified_diff_line_ranges(&diff);
+        let seeds = collect_frontier_seeds_from_diff_line_ranges(&index, &ranges)
+            .expect("seeds from nonexistent-path diff");
+        assert!(
+            seeds.force_run_all,
+            "diff naming a non-existent .dag path must force_run_all (resolve failure → fail-closed)"
+        );
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct SourceRootReadRecord {
     pub file_path: String,
