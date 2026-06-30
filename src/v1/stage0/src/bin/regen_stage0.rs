@@ -110,6 +110,7 @@ const GENERATED_STAGE0_FILES: &[&str] = &[
 ];
 
 const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
+    "cache_purity_oracle.rs",
     "cli_run.rs",
     "corpus_lex.rs",
     "coproduct_reflection.rs",
