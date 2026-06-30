@@ -51,6 +51,8 @@ import std.realization_schedule {
   runnable_excludes_corpus_co_residence,
   runnable_heavy_whole_tree_resolve,
   runnable_forbids_corpus_co_residence,
+  runnable_profile_resolve_scope_valid,
+  schedule_all_runnables_valid_resolve_scope,
   cost_account_predicted_zero,
   schedule_lens_verdict_for_ci_floor
 }
@@ -554,4 +556,18 @@ fn witness_floor_derived_width_leaves_headroom_at_cap() -> Bool {
   let width = gunbc_ci_floor_memory_derived_width(cap: gunbc_ci_runner_cgroup_memory_cap, cpu_bound: 128)
   let committed = byte_size_count(b: gunbc_ci_floor_per_shard_peak_rss_bytes()) * width
   committed < byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap)
+}
+
+fn witness_all_heavy_runnables_declare_shared_scope() -> Bool {
+  schedule_all_runnables_valid_resolve_scope(plan: gunbc_ci_floor_realization_plan())
+}
+
+fn witness_heavy_scope_lens_rejects_isolated_profile() -> Bool {
+  let bad_profile = runnable_resource_profile(
+    heavy_whole_tree_resolve: true,
+    spawns_host_compiler: false,
+    memory: runnable_memory_negligible(),
+    resolve_scope: ResolveScopeIsolated
+  )
+  !runnable_profile_resolve_scope_valid(profile: bad_profile)
 }
