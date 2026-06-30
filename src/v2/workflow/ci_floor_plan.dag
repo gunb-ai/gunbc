@@ -40,9 +40,6 @@ import std.realization_schedule {
   RunnableSingleClaim,
   RunnableDiscoveryBatch,
   RunnableResourceProfile,
-  ResolveScope,
-  ResolveScopeShared,
-  ResolveScopeIsolated,
   runnable_resource_profile,
   runnable_resource_profile_negligible,
   runnable_memory_negligible,
@@ -51,8 +48,6 @@ import std.realization_schedule {
   runnable_excludes_corpus_co_residence,
   runnable_heavy_whole_tree_resolve,
   runnable_forbids_corpus_co_residence,
-  runnable_profile_resolve_scope_valid,
-  schedule_all_runnables_valid_resolve_scope,
   cost_account_predicted_zero,
   schedule_lens_verdict_for_ci_floor
 }
@@ -108,36 +103,31 @@ fn gate_runnable_profile(g: Gate) -> RunnableResourceProfile {
       runnable_resource_profile(
         heavy_whole_tree_resolve: true,
         spawns_host_compiler: false,
-        memory: per_shard,
-        resolve_scope: ResolveScopeShared
+        memory: per_shard
       )
     SourceRootIngestGate =>
       runnable_resource_profile(
         heavy_whole_tree_resolve: true,
         spawns_host_compiler: false,
-        memory: per_shard,
-        resolve_scope: ResolveScopeShared
+        memory: per_shard
       )
     RegenVerifyGate =>
       runnable_resource_profile(
         heavy_whole_tree_resolve: true,
         spawns_host_compiler: true,
-        memory: runnable_memory_substantial_sum(left: per_shard, right: host_compiler),
-        resolve_scope: ResolveScopeShared
+        memory: runnable_memory_substantial_sum(left: per_shard, right: host_compiler)
       )
     EmitDeterminismGate =>
       runnable_resource_profile(
         heavy_whole_tree_resolve: true,
         spawns_host_compiler: true,
-        memory: runnable_memory_substantial_sum(left: per_shard, right: host_compiler),
-        resolve_scope: ResolveScopeShared
+        memory: runnable_memory_substantial_sum(left: per_shard, right: host_compiler)
       )
     EmitHostGate =>
       runnable_resource_profile(
         heavy_whole_tree_resolve: false,
         spawns_host_compiler: true,
-        memory: host_compiler,
-        resolve_scope: ResolveScopeIsolated
+        memory: host_compiler
       )
     RustMonolithGate => runnable_resource_profile_negligible()
     LayeringImportsGate => runnable_resource_profile_negligible()
@@ -181,8 +171,7 @@ fn corpus_runnable() -> Runnable {
     profile: runnable_resource_profile(
       heavy_whole_tree_resolve: true,
       spawns_host_compiler: false,
-      memory: runnable_memory_substantial(predicted_peak: gunbc_ci_floor_per_shard_peak_rss_bytes()),
-      resolve_scope: ResolveScopeShared
+      memory: runnable_memory_substantial(predicted_peak: gunbc_ci_floor_per_shard_peak_rss_bytes())
     )
   }
 }
@@ -208,8 +197,7 @@ fn execution_corpus_runnable() -> Runnable {
     profile: runnable_resource_profile(
       heavy_whole_tree_resolve: true,
       spawns_host_compiler: false,
-      memory: runnable_memory_substantial(predicted_peak: gunbc_ci_floor_execution_corpus_per_witness_rss),
-      resolve_scope: ResolveScopeShared
+      memory: runnable_memory_substantial(predicted_peak: gunbc_ci_floor_execution_corpus_per_witness_rss)
     )
   }
 }
@@ -558,16 +546,3 @@ fn witness_floor_derived_width_leaves_headroom_at_cap() -> Bool {
   committed < byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap)
 }
 
-fn witness_all_heavy_runnables_declare_shared_scope() -> Bool {
-  schedule_all_runnables_valid_resolve_scope(plan: gunbc_ci_floor_realization_plan())
-}
-
-fn witness_heavy_scope_lens_rejects_isolated_profile() -> Bool {
-  let bad_profile = runnable_resource_profile(
-    heavy_whole_tree_resolve: true,
-    spawns_host_compiler: false,
-    memory: runnable_memory_negligible(),
-    resolve_scope: ResolveScopeIsolated
-  )
-  !runnable_profile_resolve_scope_valid(profile: bad_profile)
-}

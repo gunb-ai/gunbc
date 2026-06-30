@@ -134,12 +134,12 @@ fn runnable_from_value(value: &Value, ctx: &InterpContext) -> Result<Runnable, S
             let function = str_field(fields, "function", "RunnableSingleClaim", ctx)?;
             let use_walk_memo = match ctx.field(fields, "profile") {
                 Some(Value::Record { fields: pf, .. })
-                | Some(Value::Variant { fields: pf, .. }) => match ctx.field(pf, "resolve_scope") {
-                    Some(Value::Variant {
-                        variant_name: vn, ..
-                    }) => ctx.sym_eq(*vn, "ResolveScopeShared"),
-                    _ => false,
-                },
+                | Some(Value::Variant { fields: pf, .. }) => {
+                    matches!(
+                        ctx.field(pf, "heavy_whole_tree_resolve"),
+                        Some(Value::Bool(true))
+                    )
+                }
                 _ => false,
             };
             Ok(Runnable::SingleClaim {
