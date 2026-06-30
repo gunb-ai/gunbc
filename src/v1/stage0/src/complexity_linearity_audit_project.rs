@@ -167,6 +167,9 @@ pub fn roster_fiction_report(summary: &AuditSummary) -> RosterFictionReport {
     report
 }
 
+// TRIAGE (meaning layer): emit-only heuristics until a `.dag` triage carrier lands with
+// `decl_facts(roots)` (#5966 follow-up). DISSOLUTION: move kernel-permanent / migration-debt
+// tags on-carrier alongside decl_facts — do not let hand-Rust substring tables survive the swap.
 fn triage_wildcard(site: &str, fn_name: &str) -> &'static str {
     if fn_name.ends_with("_eq")
         || fn_name.contains("dominates")
@@ -214,8 +217,6 @@ fn triage_wildcard(site: &str, fn_name: &str) -> &'static str {
 fn triage_complexity(site: &str) -> &'static str {
     if site.contains("src/v2/compiler/") || site.contains("src/v2/std/compilers/") {
         "real-debt"
-    } else if site.contains("dsl/gunbc/plans/") {
-        "triage-pending"
     } else {
         "triage-pending"
     }
@@ -279,6 +280,8 @@ struct AuditBuiltinCache {
     sites: BTreeSet<String>,
 }
 
+// Host builtins cache a single witness-layer-roots census (global / default-roots-only).
+// Per-root `audit_corpus_parse_only(roots)` is for the emit bin and unit tests only.
 fn cached_builtin_cache() -> &'static AuditBuiltinCache {
     static CACHE: OnceLock<AuditBuiltinCache> = OnceLock::new();
     CACHE.get_or_init(|| {
