@@ -9,6 +9,8 @@ import gunbc.accelerator_demo_plan {
   witness_float_no_contraction_contract_accepted_lossless,
   witness_float_fma_fused_kernel_refused_when_contraction_refused,
   witness_simd_target_medium_is_inspectable,
+  witness_lowering_fma_refusal_maps_to_accelerator_refusal,
+  witness_lowering_unsupported_domain_maps_to_accelerator_refusal,
 }
 import extdeps.communication.numerical_fidelity {
   lowering_fidelity_verdict_for_contract,
@@ -59,6 +61,8 @@ test fn accelerator_demo_modeling_lane_witnesses() -> Bool {
     && witness_float_no_contraction_contract_accepted_lossless()
     && witness_float_fma_fused_kernel_refused_when_contraction_refused()
     && witness_simd_target_medium_is_inspectable()
+    && witness_lowering_fma_refusal_maps_to_accelerator_refusal()
+    && witness_lowering_unsupported_domain_maps_to_accelerator_refusal()
     && witness_integer_contract_maps_to_lossless_fidelity()
     && witness_float_no_contraction_maps_to_lossless_fidelity()
     && witness_float_contraction_permitted_maps_to_lossy_fidelity()

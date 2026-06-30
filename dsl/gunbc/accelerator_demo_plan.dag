@@ -24,6 +24,8 @@ import std.realization_schedule {
 }
 import std.numerical_contract {
   NumericalContract,
+  IntegerExact,
+  FloatApproximate,
   integer_exact_contract,
   float_contract,
   FmaContractionRefused,
@@ -57,9 +59,9 @@ type AcceleratorRefusalReason
   = NotElementwisePure
   | CarriesEffects
   | FmaContractionViolatesContract
-  | UnsupportedNumericalDomain
+  | AcceleratorUnsupportedNumericalDomain
 
-data accelerator_refusal_reason_mirror_dissolution_trigger: String = "dissolve-on: execution lane lands; fold lowering-aligned variants into extdeps.communication.numerical_fidelity.LoweringRefusalReason as single authority and retire accelerator_refusal_from_lowering (DESIGN §3 parallel-representation bridge — modeling lane only)."
+data accelerator_refusal_reason_mirror_dissolution_trigger: String = "dissolve-on: execution lane lands; fold AcceleratorRefusalReason lowering-aligned variants (FmaContractionViolatesContract, AcceleratorUnsupportedNumericalDomain) into extdeps.communication.numerical_fidelity.LoweringRefusalReason as single authority and retire accelerator_refusal_from_lowering (DESIGN §3 parallel-representation bridge — modeling lane only)."
 
 type AcceleratorRecognitionOutcome
   = Recognized {
@@ -115,7 +117,7 @@ fn build_realization_plan(schedule: Schedule) -> RealizationPlan<Nano> {
 fn accelerator_refusal_from_lowering(reason: LoweringRefusalReason) -> AcceleratorRefusalReason {
   match reason {
     FmaContractionRefusedByContract => FmaContractionViolatesContract
-    UnsupportedNumericalDomain => UnsupportedNumericalDomain
+    UnsupportedNumericalDomain => AcceleratorUnsupportedNumericalDomain
   }
 }
 
@@ -234,7 +236,7 @@ fn witness_effectful_subgraph_refused() -> Bool {
       CarriesEffects => true
       NotElementwisePure => false
       FmaContractionViolatesContract => false
-      UnsupportedNumericalDomain => false
+      AcceleratorUnsupportedNumericalDomain => false
     }
   }
 }
@@ -246,7 +248,7 @@ fn witness_data_dependent_gather_refused() -> Bool {
       NotElementwisePure => true
       CarriesEffects => false
       FmaContractionViolatesContract => false
-      UnsupportedNumericalDomain => false
+      AcceleratorUnsupportedNumericalDomain => false
     }
   }
 }
@@ -269,7 +271,7 @@ fn witness_float_fma_fused_kernel_refused_when_contraction_refused() -> Bool {
       FmaContractionViolatesContract => true
       NotElementwisePure => false
       CarriesEffects => false
-      UnsupportedNumericalDomain => false
+      AcceleratorUnsupportedNumericalDomain => false
     }
   }
 }
@@ -280,4 +282,22 @@ fn relu_mul_add_demo_plan() -> RealizationPlan<Nano> {
 
 fn witness_simd_target_medium_is_inspectable() -> Bool {
   witness_relu_mul_add_kernel_surface_shape()
+}
+
+fn witness_lowering_fma_refusal_maps_to_accelerator_refusal() -> Bool {
+  match accelerator_refusal_from_lowering(reason: FmaContractionRefusedByContract) {
+    FmaContractionViolatesContract => true
+    NotElementwisePure => false
+    CarriesEffects => false
+    AcceleratorUnsupportedNumericalDomain => false
+  }
+}
+
+fn witness_lowering_unsupported_domain_maps_to_accelerator_refusal() -> Bool {
+  match accelerator_refusal_from_lowering(reason: UnsupportedNumericalDomain) {
+    AcceleratorUnsupportedNumericalDomain => true
+    NotElementwisePure => false
+    CarriesEffects => false
+    FmaContractionViolatesContract => false
+  }
 }
