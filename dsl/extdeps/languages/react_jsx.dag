@@ -1,0 +1,44 @@
+module extdeps.languages.react_jsx
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import std.markup {
+  MarkupNode,
+  serialize_markup_node_with,
+}
+import extdeps.languages.html {
+  html_markup_medium,
+}
+import extdeps.uri_validation {
+  find_first_rejected_url,
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "react.dev/learn/writing-markup-with-jsx"
+  }
+}
+
+fn jsx_component_prefix(fn_name: String) -> String {
+  join(["export function ", fn_name, "(): JSX.Element { return "], "")
+}
+
+fn serialize_jsx_fragment(node: MarkupNode) -> String {
+  serialize_markup_node_with(node: node, medium: html_markup_medium())
+}
+
+fn serialize_jsx_component(fn_name: String, node: MarkupNode) -> String {
+  join([jsx_component_prefix(fn_name: fn_name), serialize_jsx_fragment(node: node), "; }"], "")
+}
+
+type JsxEmitResult
+  = JsxOk { tsx: String }
+  | JsxRejected { reason: String }
+
+fn try_serialize_jsx_component(fn_name: String, node: MarkupNode) -> JsxEmitResult {
+  match find_first_rejected_url(node: node) {
+    Present { value: r } => JsxRejected { reason: r.url }
+    Absent => JsxOk { tsx: serialize_jsx_component(fn_name: fn_name, node: node) }
+  }
+}
