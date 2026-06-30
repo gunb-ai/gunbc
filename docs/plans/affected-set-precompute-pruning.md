@@ -65,7 +65,7 @@ This requires moving the diff-parsing block (currently lines 3520–3552) **befo
 
 ## 5. Input carrier
 
-`NodeArtifactProvenance` (the diff base → affected-closure carrier). The `line_ranges_by_file` it yields (via `collect_frontier_seeds_from_diff_line_ranges`) is the same set used by execution-skip and is reused here without re-derivation.
+`line_ranges_by_file: HashMap<String, Vec<LineRange>>` — produced by `floor_git_diff_range() → parse_unified_diff_line_ranges` at cli_run.rs:3533–3536 (the diff-parse block moved before the precompute call in §3). This is the **same map** already consumed by `collect_frontier_seeds_from_diff_line_ranges` at cli_run.rs:3541 for execution-skip. `diff_touches_published_mock_closure` is a second consumer of the same map — no re-derivation. `collect_frontier_seeds_from_diff_line_ranges` produces `NodeFrontierSeeds` for the execution-skip guard; it does not yield `line_ranges_by_file`. (`NodeArtifactProvenance` is a `.dag` type; it is not present in this v1 Rust path.)
 
 ---
 
@@ -75,12 +75,26 @@ This requires moving the diff-parsing block (currently lines 3520–3552) **befo
 
 **Required new witness:** `witness_precompute_skipped_on_scoped_diff` — a Rust control (SCAFFOLD, same dissolution trigger as Move A) that:
 
+**Implementation prerequisite — tri-state carrier:**
+
+Today `whole_tree_published_keys: Option<HashSet<String>>` has two `None` meanings: (a) precompute ran and returned empty keys (`keys.is_empty()` at cli_run.rs:3510), and (b) the proposed skip. These are indistinguishable and make a structural `None`-assertion flaky on a corpus with no declarers, or ambiguous by construction. The implementation **must** introduce a tri-state:
+
+```rust
+enum PrecomputeOutcome {
+    Skipped,                        // diff does not touch mock closure → precompute not called
+    EmptyKeys,                      // ran, declarers found, produced zero keys
+    Keys(HashSet<String>),          // ran, produced non-empty keys
+}
+```
+
+`run_discovery_corpus_with_options` and `run_discovery_rows` take `PrecomputeOutcome` instead of `Option<HashSet<String>>`. The existing `None`/`Some` split at line 3510 becomes `EmptyKeys`/`Keys(_)`; the new skip path is `Skipped`.
+
 **Structural assertions (the wall — non-flaky, §5 correct):**
 
 1. Constructs a synthetic diff that modifies one file **outside** the PublishedMockCase transitive closure (e.g. a change to a test-only `.dag` file).
 2. Calls `run_discovery_corpus_with_options` with `skip_unaffected_node_frontier: true`.
-3. Asserts `whole_tree_published_keys == None` — the precompute returned `None` (was skipped). This is the structural proof: None = precompute did not run; Some(_) = it ran. Cannot flake.
-4. Fail-closed control (second assertion): a synthetic diff that modifies a file **inside** the PublishedMockCase closure → assert `whole_tree_published_keys == Some(_)` (precompute IS invoked).
+3. Asserts `outcome == PrecomputeOutcome::Skipped`. Unambiguous: `Skipped` cannot arise from a ran-empty path. Cannot flake.
+4. Fail-closed control (second assertion): a synthetic diff that modifies a file **inside** the PublishedMockCase closure → assert `outcome == PrecomputeOutcome::Keys(_)` (precompute ran and produced keys).
 
 **Measured evidence (logged, not the pass/fail gate):**
 
