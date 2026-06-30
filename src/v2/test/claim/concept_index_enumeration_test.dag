@@ -3,19 +3,34 @@ module v2.test.claim.concept_index_enumeration
 import v2.std.logic { Bool }
 import v2.std.text { String }
 import v2.std.collection { List }
-import v2.std.concept_index { FieldRef, QualifiedConcept, enumerate_concepts }
+import v2.std.concept_index { FieldRef, QualifiedConcept, enumerate_concepts, enumerate_concepts_in }
 
 type ConceptIndexWitnessRecord {
   alpha: String
   beta: Bool
 }
 
+type ConceptIndexWitnessRecordPerturb {
+  alpha: String
+  beta: Int
+}
+
+data concept_index_enumeration_pool_roots: List<String> = ["src/v2/test/claim"]
+
 fn idx() -> List<QualifiedConcept> {
   enumerate_concepts()
 }
 
+fn parse_only_idx() -> List<QualifiedConcept> {
+  enumerate_concepts_in(pool_roots: concept_index_enumeration_pool_roots)
+}
+
 fn idx_has_qn(target: String) -> Bool {
   fold(idx(), init: false, f: fn(acc, qc) { acc || (qc.qualified_name == target) })
+}
+
+fn parse_only_idx_has_qn(target: String) -> Bool {
+  fold(parse_only_idx(), init: false, f: fn(acc, qc) { acc || (qc.qualified_name == target) })
 }
 
 fn fields_contains(fields: List<FieldRef>, fname: String, tname: String) -> Bool {
@@ -29,6 +44,24 @@ fn concept_matches(
   check: fn(List<FieldRef>) -> Bool
 ) -> Bool {
   fold(idx(), init: false, f: fn(acc, qc) {
+    if qc.qualified_name == target_qn {
+      acc
+        || ((qc.concept.name == short_name)
+            && (qc.concept.fields.length() == field_count)
+            && check(qc.concept.fields))
+    } else {
+      acc
+    }
+  })
+}
+
+fn parse_only_concept_matches(
+  target_qn: String,
+  short_name: String,
+  field_count: Int,
+  check: fn(List<FieldRef>) -> Bool
+) -> Bool {
+  fold(parse_only_idx(), init: false, f: fn(acc, qc) {
     if qc.qualified_name == target_qn {
       acc
         || ((qc.concept.name == short_name)
@@ -85,10 +118,56 @@ fn witness_absent_concept_is_false() -> Bool {
     && (idx_has_qn(target: "std.concept_index.FieldRef") == false)
 }
 
+fn witness_parse_only_extract_reflects_canonical_field_types() -> Bool {
+  parse_only_concept_matches(
+    target_qn: "v2.test.claim.concept_index_enumeration.ConceptIndexWitnessRecord",
+    short_name: "ConceptIndexWitnessRecord",
+    field_count: 2,
+    check: fn(fields) {
+      fields_contains(fields: fields, fname: "alpha", tname: "String")
+        && fields_contains(fields: fields, fname: "beta", tname: "Bool")
+    }
+  )
+}
+
+fn witness_parse_only_extract_reflects_perturbed_field_type() -> Bool {
+  parse_only_concept_matches(
+    target_qn: "v2.test.claim.concept_index_enumeration.ConceptIndexWitnessRecordPerturb",
+    short_name: "ConceptIndexWitnessRecordPerturb",
+    field_count: 2,
+    check: fn(fields) {
+      fields_contains(fields: fields, fname: "alpha", tname: "String")
+        && fields_contains(fields: fields, fname: "beta", tname: "Int")
+    }
+  )
+}
+
+fn witness_parse_only_extract_stale_field_type_red_on_canonical() -> Bool {
+  !parse_only_concept_matches(
+    target_qn: "v2.test.claim.concept_index_enumeration.ConceptIndexWitnessRecord",
+    short_name: "ConceptIndexWitnessRecord",
+    field_count: 2,
+    check: fn(fields) {
+      fields_contains(fields: fields, fname: "beta", tname: "Int")
+    }
+  )
+}
+
+fn witness_parse_only_extract_nonempty_in_scoped_pool() -> Bool {
+  parse_only_idx().length() > 0
+    && parse_only_idx_has_qn(
+      target: "v2.test.claim.concept_index_enumeration.ConceptIndexWitnessRecord"
+    )
+}
+
 test fn concept_index_enumeration_witnesses() -> Bool {
   witness_enumeration_nonempty()
     && witness_fieldref_self_projection()
     && witness_qualified_concept_self_projection()
     && witness_local_record_enumerated()
     && witness_absent_concept_is_false()
+    && witness_parse_only_extract_nonempty_in_scoped_pool()
+    && witness_parse_only_extract_reflects_canonical_field_types()
+    && witness_parse_only_extract_reflects_perturbed_field_type()
+    && witness_parse_only_extract_stale_field_type_red_on_canonical()
 }

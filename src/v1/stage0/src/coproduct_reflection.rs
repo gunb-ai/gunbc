@@ -630,6 +630,14 @@ fn type_expr_head_from_token(ty: &str) -> String {
 }
 
 fn split_top_level_commas(s: &str) -> Vec<&str> {
+    split_top_level_separators(s, &[','])
+}
+
+fn split_top_level_field_separators(s: &str) -> Vec<&str> {
+    split_top_level_separators(s, &[',', '\n'])
+}
+
+fn split_top_level_separators<'a>(s: &'a str, seps: &[char]) -> Vec<&'a str> {
     let mut parts = Vec::new();
     let mut start = 0usize;
     let mut depth = 0i32;
@@ -644,8 +652,11 @@ fn split_top_level_commas(s: &str) -> Vec<&str> {
         match ch {
             '<' | '{' | '(' => depth += 1,
             '>' | '}' | ')' => depth -= 1,
-            ',' if depth == 0 => {
-                parts.push(s[start..i].trim());
+            ch if depth == 0 && seps.contains(&ch) => {
+                let piece = s[start..i].trim();
+                if !piece.is_empty() {
+                    parts.push(piece);
+                }
                 start = i + ch.len_utf8();
             }
             _ => {}
@@ -668,7 +679,7 @@ fn parse_inline_record_field_heads(payload: &str) -> Result<Vec<(String, String)
         return Ok(Vec::new());
     }
     let mut out = Vec::new();
-    for part in split_top_level_commas(inner) {
+    for part in split_top_level_field_separators(inner) {
         let (name, ty) = part
             .split_once(':')
             .ok_or_else(|| format!("expected field: type in `{part}`"))?;
@@ -1703,5 +1714,45 @@ mod tests {
         assert_eq!(type_expr_head_from_token("A, B"), "A");
         assert_eq!(type_expr_head_from_token("((Foo))"), "Foo");
         assert_eq!(type_expr_head_from_token("Optional<(A, B)>"), "Optional");
+    }
+
+    #[test]
+    fn parse_inline_record_field_heads_splits_newline_separated_fields() {
+        let fields =
+            parse_inline_record_field_heads("{ alpha: String\n  beta: Bool }").expect("parse");
+        assert_eq!(
+            fields,
+            vec![
+                ("alpha".to_string(), "String".to_string()),
+                ("beta".to_string(), "Bool".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn extract_concept_index_witness_record_fields_from_test_file() {
+        let source = std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../../src/v2/test/claim/concept_index_enumeration_test.dag"
+        ))
+        .expect("read concept_index_enumeration_test.dag");
+        let canonical = extract_record_type_field_pairs(&source, "ConceptIndexWitnessRecord")
+            .expect("canonical");
+        assert_eq!(
+            canonical,
+            vec![
+                ("alpha".to_string(), "String".to_string()),
+                ("beta".to_string(), "Bool".to_string()),
+            ]
+        );
+        let perturb = extract_record_type_field_pairs(&source, "ConceptIndexWitnessRecordPerturb")
+            .expect("perturb");
+        assert_eq!(
+            perturb,
+            vec![
+                ("alpha".to_string(), "String".to_string()),
+                ("beta".to_string(), "Int".to_string()),
+            ]
+        );
     }
 }
