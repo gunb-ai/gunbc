@@ -209,6 +209,9 @@ pub fn runnable_profile(r: Rc<Runnable>) -> Rc<RunnableResourceProfile> {
     match (*r).clone() {
         Runnable::RunnableSingleClaim { profile: p, .. } => p.clone(),
         Runnable::RunnableDiscoveryBatch { profile: p, .. } => p.clone(),
+        Runnable::RunnableKernelWorkload {
+            fused_op_count: _, ..
+        } => runnable_resource_profile_negligible(),
     }
 }
 
@@ -218,6 +221,9 @@ pub fn runnable_forbids_corpus_co_residence(r: Rc<Runnable>) -> bool {
         Runnable::RunnableSingleClaim { profile: p, .. } => {
             runnable_excludes_corpus_co_residence(p.clone())
         }
+        Runnable::RunnableKernelWorkload {
+            fused_op_count: _, ..
+        } => false,
     }
 }
 
@@ -239,14 +245,18 @@ pub enum Runnable {
         spawn_width_cap: i64,
         profile: Rc<RunnableResourceProfile>,
     },
+    RunnableKernelWorkload {
+        fused_op_count: i64,
+    },
 }
-impl Runnable {
-    pub fn profile(&self) -> Rc<RunnableResourceProfile> {
-        match self {
-            Runnable::RunnableSingleClaim { profile: __val, .. } => __val.clone(),
-            Runnable::RunnableDiscoveryBatch { profile: __val, .. } => __val.clone(),
-        }
+
+pub fn runnable_kernel_workload_dissolution_trigger() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "dissolve-on: execution lane attaches extdeps.languages kernel_surface rows to RunnableKernelWorkload when fused_op_count alone is insufficient; op_count is structural on substrate (not a string-label nickname).".to_string()
+        };
     }
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub type Schedule = Rc<Vec<Rc<Vec<Rc<Runnable>>>>>;
@@ -264,6 +274,9 @@ pub fn runnable_step_label(r: Rc<Runnable>) -> String {
     match (*r).clone() {
         Runnable::RunnableSingleClaim { function: f, .. } => f.clone(),
         Runnable::RunnableDiscoveryBatch { .. } => "__discovery_corpus__".to_string(),
+        Runnable::RunnableKernelWorkload {
+            fused_op_count: _, ..
+        } => "__kernel_workload__".to_string(),
     }
 }
 
@@ -480,6 +493,9 @@ pub fn runnable_eq(left: Rc<Runnable>, right: Rc<Runnable>) -> bool {
                     && runnable_resource_profile_eq(lp.clone(), rp.clone()))
             }
             Runnable::RunnableDiscoveryBatch { .. } => false,
+            Runnable::RunnableKernelWorkload {
+                fused_op_count: _, ..
+            } => false,
         },
         Runnable::RunnableDiscoveryBatch {
             source_roots: lsr,
@@ -513,6 +529,20 @@ pub fn runnable_eq(left: Rc<Runnable>, right: Rc<Runnable>) -> bool {
                     && (lwc.clone() == rwc.clone()))
                     && runnable_resource_profile_eq(lp.clone(), rp.clone()))
             }
+            Runnable::RunnableKernelWorkload {
+                fused_op_count: _, ..
+            } => false,
+        },
+        Runnable::RunnableKernelWorkload {
+            fused_op_count: lleft,
+            ..
+        } => match (*right).clone() {
+            Runnable::RunnableSingleClaim { .. } => false,
+            Runnable::RunnableDiscoveryBatch { .. } => false,
+            Runnable::RunnableKernelWorkload {
+                fused_op_count: rcount,
+                ..
+            } => (lleft.clone() == rcount.clone()),
         },
     }
 }
