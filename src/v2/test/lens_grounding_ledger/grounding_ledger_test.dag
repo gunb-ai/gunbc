@@ -1,54 +1,12 @@
 module v2.test.lens_grounding_ledger.grounding_ledger_test
 
 import v2.lens.grounding_ledger {
-  GroundingWorklistEntry,
   GroundingVerdict, Reference, ReferenceUri, ReferencePath, Role, StayString, GenuineProse, PendingJudge,
   ResidueReason, DecodeReturnedNone, UnrecognizedSiblingArm,
-  residue_forced_verdict
+  DecidedBy, StructuralRule, Judge, OperatorReview,
+  residue_forced_verdict, structural_ledger_entry
 }
 import v2.std.logic { Bool }
-
-data entry_decode_optional: GroundingWorklistEntry = GroundingWorklistEntry {
-  enclosing: "Widget",
-  field: "owner",
-  declared_type: "String",
-  coincides_with: "v2.model.Owner",
-  target_kind: "Structured",
-  target_structure: "",
-  qualified_name: "v2.model.Widget",
-  layer_excluded: false,
-  sibling_variant_names: "",
-  has_unrecognized_sibling: false,
-  sibling_decode_optional: true
-}
-
-data entry_unrecognized_sibling: GroundingWorklistEntry = GroundingWorklistEntry {
-  enclosing: "Node",
-  field: "kind_name",
-  declared_type: "String",
-  coincides_with: "v2.model.KindName",
-  target_kind: "Structured",
-  target_structure: "",
-  qualified_name: "v2.model.Node",
-  layer_excluded: false,
-  sibling_variant_names: "Unrecognized",
-  has_unrecognized_sibling: true,
-  sibling_decode_optional: false
-}
-
-data entry_clean_candidate: GroundingWorklistEntry = GroundingWorklistEntry {
-  enclosing: "Link",
-  field: "href",
-  declared_type: "String",
-  coincides_with: "extdeps.uri.Uri",
-  target_kind: "Structured",
-  target_structure: "",
-  qualified_name: "v2.model.Link",
-  layer_excluded: false,
-  sibling_variant_names: "",
-  has_unrecognized_sibling: false,
-  sibling_decode_optional: false
-}
 
 fn verdict_is_stay_string_decode_none(v: GroundingVerdict) -> Bool {
   match v {
@@ -98,19 +56,61 @@ fn verdict_is_any_reference(v: GroundingVerdict) -> Bool {
   }
 }
 
+fn decided_by_is_structural(d: DecidedBy) -> Bool {
+  match d {
+    StructuralRule => true
+    Judge { rationale: _ } => false
+    OperatorReview { note: _ } => false
+  }
+}
+
 test fn decode_optional_forces_stay_string() -> Bool {
-  verdict_is_stay_string_decode_none(v: residue_forced_verdict(entry: entry_decode_optional))
+  verdict_is_stay_string_decode_none(
+    v: residue_forced_verdict(sibling_decode_optional: true, has_unrecognized_sibling: false)
+  )
 }
 
 test fn unrecognized_sibling_forces_stay_string() -> Bool {
-  verdict_is_stay_string_unrecognized(v: residue_forced_verdict(entry: entry_unrecognized_sibling))
+  verdict_is_stay_string_unrecognized(
+    v: residue_forced_verdict(sibling_decode_optional: false, has_unrecognized_sibling: true)
+  )
 }
 
 test fn clean_candidate_routes_to_pending_judge() -> Bool {
-  verdict_is_pending_judge(v: residue_forced_verdict(entry: entry_clean_candidate))
+  verdict_is_pending_judge(
+    v: residue_forced_verdict(sibling_decode_optional: false, has_unrecognized_sibling: false)
+  )
 }
 
 test fn residue_is_never_a_reference_verdict() -> Bool {
-  !verdict_is_any_reference(v: residue_forced_verdict(entry: entry_decode_optional))
-    && !verdict_is_any_reference(v: residue_forced_verdict(entry: entry_unrecognized_sibling))
+  !verdict_is_any_reference(
+    v: residue_forced_verdict(sibling_decode_optional: true, has_unrecognized_sibling: false)
+  )
+    && !verdict_is_any_reference(
+      v: residue_forced_verdict(sibling_decode_optional: false, has_unrecognized_sibling: true)
+    )
+}
+
+test fn structural_entry_residue_verdict_is_stay_string() -> Bool {
+  verdict_is_stay_string_decode_none(
+    v: structural_ledger_entry(
+      site_qn: "v2.model.Widget",
+      field: "owner",
+      coincides_with: "v2.model.Owner",
+      sibling_decode_optional: true,
+      has_unrecognized_sibling: false
+    ).verdict
+  )
+}
+
+test fn structural_entry_is_decided_by_structural_rule() -> Bool {
+  decided_by_is_structural(
+    d: structural_ledger_entry(
+      site_qn: "v2.model.Link",
+      field: "href",
+      coincides_with: "extdeps.uri.Uri",
+      sibling_decode_optional: false,
+      has_unrecognized_sibling: false
+    ).decided_by
+  )
 }
