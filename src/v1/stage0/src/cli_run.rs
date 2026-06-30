@@ -5476,37 +5476,6 @@ pub fn module_declaration_facts(pool_roots: &[String]) -> Vec<ModuleDeclarationF
 // Host-fed; DISSOLUTION: folds into a pure `.dag` Node-tree reader (match nodes + scrutinee type)
 // when exhaustiveness-by-default / compile-graph access lands (gunbc#5364).
 
-const NON_FOLD_MIGRATION_DEBT_ROSTER: &[&str] = &[
-    // (a) eval interpreter escapes — §5 fail-open on EVAL path; escalate before editing 05_eval.
-    "src/v2/compiler/05_eval.dag::eval_bind_node_eval",
-    "src/v2/compiler/05_eval.dag::eval_branch_node_eval",
-    "src/v2/compiler/05_eval.dag::eval_loop_node",
-    "src/v2/compiler/05_eval.dag::eval_match_node_eval",
-    "src/v2/compiler/05_eval.dag::eval_transform_node",
-    "src/v2/compiler/05_eval.dag::eval_value_node",
-    "src/v2/compiler/05_eval.dag::run_test_claim_assert_decided",
-    "src/v2/compiler/05_eval.dag::run_test_claim_runtime_assert",
-    // (a) grammar-ladder dispatch + other pipeline stages (escalate before stage edits).
-    "src/v2/compiler/01_tokenize.dag::lex_try_rules_prefer_longer",
-    "src/v2/compiler/06_translate.dag::translate_algebra_finalize",
-    "src/v2/compiler/emit_host.dag::run_test_claim_emit_vs_eval_verdict",
-    // (a) other un-migrated modeling awaiting total fold.
-    "dsl/extdeps/languages/markdown.dag::md_nested",
-    "src/v2/extdeps/formats/spice_passive_projection.dag::passive_spec_from_component",
-    "src/v2/extdeps/formats/spice_passive_projection.dag::passive_topology_from_component",
-    "src/v2/extdeps/runtimes/v2_effect_io_pure.dag::effect_io_pure_backends_match",
-    "src/v2/std/compilers/target_model.dag::target_type_expr_emitted_validate_wire_shape",
-    "src/v2/std/compilers/target_model.dag::target_use_site_ownership_catalog_lookup_step",
-    "src/v2/test/claim/manual/eval_runtime_mvp.dag::eval_mvp2_arg_is_two_literal",
-    // (a) ManualAnchorKey closed-coproduct wildcards discovered by multiline type-index fix.
-    "src/v2/lens/testgen.dag::algebra_law_subject_for_manual_anchor",
-    "src/v2/lens/testgen.dag::nat_manual_anchor_key_eq",
-    "src/v2/lens/testgen.dag::testgen_emit_language_behavior_equivalence_claim",
-    "src/v2/lens/testgen.dag::testgen_emit_refinement_preservation_claim",
-    "src/v2/test/claim/generated/coproduct_exhaustiveness.dag::anchor_is",
-    "src/v2/test/claim/generated/cross_representation_equality.dag::anchor_is_straddle",
-];
-
 const NON_FOLD_RESIDUE_ROSTER: &[&str] = &[
     "dsl/extdeps/languages/markdown.dag::md_nested",
     "dsl/gunbc/generated_artifact.dag::artifact_eq",
@@ -5892,57 +5861,6 @@ pub fn non_fold_residue_site_is_rostered(site: &str) -> bool {
     NON_FOLD_RESIDUE_ROSTER.contains(&site)
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum NonFoldRosterBucket {
-    Irreducible,
-    MigrationDebt,
-}
-
-pub fn non_fold_residue_roster_bucket(site: &str) -> Option<NonFoldRosterBucket> {
-    if !non_fold_residue_site_is_rostered(site) {
-        return None;
-    }
-    if NON_FOLD_MIGRATION_DEBT_ROSTER.contains(&site) {
-        Some(NonFoldRosterBucket::MigrationDebt)
-    } else {
-        Some(NonFoldRosterBucket::Irreducible)
-    }
-}
-
-pub fn non_fold_residue_migration_debt_live_count() -> i64 {
-    nfr_build_report()
-        .sites
-        .iter()
-        .filter(|s| {
-            matches!(
-                non_fold_residue_roster_bucket(s),
-                Some(NonFoldRosterBucket::MigrationDebt)
-            )
-        })
-        .count() as i64
-}
-
-pub fn non_fold_residue_irreducible_live_count() -> i64 {
-    nfr_build_report()
-        .sites
-        .iter()
-        .filter(|s| {
-            matches!(
-                non_fold_residue_roster_bucket(s),
-                Some(NonFoldRosterBucket::Irreducible)
-            )
-        })
-        .count() as i64
-}
-
-pub fn non_fold_residue_migration_debt_roster_slots() -> i64 {
-    NON_FOLD_MIGRATION_DEBT_ROSTER.len() as i64
-}
-
-pub fn non_fold_residue_irreducible_roster_slots() -> i64 {
-    (NON_FOLD_RESIDUE_ROSTER.len() - NON_FOLD_MIGRATION_DEBT_ROSTER.len()) as i64
-}
-
 pub fn non_fold_residue_stale_roster_count() -> i64 {
     let live: std::collections::BTreeSet<&str> = nfr_build_report()
         .sites
@@ -5957,6 +5875,14 @@ pub fn non_fold_residue_stale_roster_count() -> i64 {
 
 pub fn non_fold_residue_coproduct_universe_count() -> i64 {
     nfr_build_report().coproduct_universe as i64
+}
+
+pub fn non_fold_residue_live_sites() -> &'static [String] {
+    &nfr_build_report().sites
+}
+
+pub fn non_fold_residue_roster_size() -> i64 {
+    NON_FOLD_RESIDUE_ROSTER.len() as i64
 }
 
 #[cfg(test)]

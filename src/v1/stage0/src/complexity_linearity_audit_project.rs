@@ -22,7 +22,61 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::rc::Rc;
 use std::sync::OnceLock;
 
-use crate::cli_run::{is_test_dag, repo_rel, witness_layer_roots};
+use crate::cli_run::{
+    is_test_dag, non_fold_residue_count, non_fold_residue_live_sites, non_fold_residue_roster_size,
+    non_fold_residue_site_is_rostered, non_fold_residue_unrostered_count, repo_rel,
+    witness_layer_roots,
+};
+
+// Migration-debt sub-roster — subset of NON_FOLD_RESIDUE_ROSTER in cli_run.
+// Dissolves to Chunk F when residue classification moves on-carrier (gunbc#5364).
+const NON_FOLD_MIGRATION_DEBT_ROSTER: &[&str] = &[
+    // (a) eval interpreter escapes — §5 fail-open on EVAL path; escalate before editing 05_eval.
+    "src/v2/compiler/05_eval.dag::eval_bind_node_eval",
+    "src/v2/compiler/05_eval.dag::eval_branch_node_eval",
+    "src/v2/compiler/05_eval.dag::eval_loop_node",
+    "src/v2/compiler/05_eval.dag::eval_match_node_eval",
+    "src/v2/compiler/05_eval.dag::eval_transform_node",
+    "src/v2/compiler/05_eval.dag::eval_value_node",
+    "src/v2/compiler/05_eval.dag::run_test_claim_assert_decided",
+    "src/v2/compiler/05_eval.dag::run_test_claim_runtime_assert",
+    // (a) grammar-ladder dispatch + other pipeline stages (escalate before stage edits).
+    "src/v2/compiler/01_tokenize.dag::lex_try_rules_prefer_longer",
+    "src/v2/compiler/06_translate.dag::translate_algebra_finalize",
+    "src/v2/compiler/emit_host.dag::run_test_claim_emit_vs_eval_verdict",
+    // (a) other un-migrated modeling awaiting total fold.
+    "dsl/extdeps/languages/markdown.dag::md_nested",
+    "src/v2/extdeps/formats/spice_passive_projection.dag::passive_spec_from_component",
+    "src/v2/extdeps/formats/spice_passive_projection.dag::passive_topology_from_component",
+    "src/v2/extdeps/runtimes/v2_effect_io_pure.dag::effect_io_pure_backends_match",
+    "src/v2/std/compilers/target_model.dag::target_type_expr_emitted_validate_wire_shape",
+    "src/v2/std/compilers/target_model.dag::target_use_site_ownership_catalog_lookup_step",
+    "src/v2/test/claim/manual/eval_runtime_mvp.dag::eval_mvp2_arg_is_two_literal",
+    // (a) ManualAnchorKey closed-coproduct wildcards discovered by multiline type-index fix.
+    "src/v2/lens/testgen.dag::algebra_law_subject_for_manual_anchor",
+    "src/v2/lens/testgen.dag::nat_manual_anchor_key_eq",
+    "src/v2/lens/testgen.dag::testgen_emit_language_behavior_equivalence_claim",
+    "src/v2/lens/testgen.dag::testgen_emit_refinement_preservation_claim",
+    "src/v2/test/claim/generated/coproduct_exhaustiveness.dag::anchor_is",
+    "src/v2/test/claim/generated/cross_representation_equality.dag::anchor_is_straddle",
+];
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum NonFoldRosterBucket {
+    Irreducible,
+    MigrationDebt,
+}
+
+fn nfr_roster_bucket(site: &str) -> Option<NonFoldRosterBucket> {
+    if !non_fold_residue_site_is_rostered(site) {
+        return None;
+    }
+    if NON_FOLD_MIGRATION_DEBT_ROSTER.contains(&site) {
+        Some(NonFoldRosterBucket::MigrationDebt)
+    } else {
+        Some(NonFoldRosterBucket::Irreducible)
+    }
+}
 use crate::decl_facts_project::{
     decl_facts_is_fn_like, logical_qualified_name_from_module, DeclFact,
 };
@@ -188,6 +242,8 @@ pub struct RosterFictionReport {
     pub resolved_unrostered_sites: i64,
     pub migration_debt_live: i64,
     pub irreducible_live: i64,
+    pub migration_debt_roster_slots: i64,
+    pub irreducible_roster_slots: i64,
     pub floor_red_if_migration_roster_fiction_dropped: i64,
     pub honest_irreducible_rostered: i64,
     pub syntactic_wildcard_total: i64,
@@ -203,15 +259,32 @@ pub struct RosterFictionReport {
 }
 
 pub fn roster_fiction_report(summary: &AuditSummary) -> RosterFictionReport {
-    let resolved_residue_sites = crate::cli_run::non_fold_residue_count();
-    let resolved_unrostered_sites = crate::cli_run::non_fold_residue_unrostered_count();
-    let migration_debt_live = crate::cli_run::non_fold_residue_migration_debt_live_count();
-    let irreducible_live = crate::cli_run::non_fold_residue_irreducible_live_count();
+    let resolved_residue_sites = non_fold_residue_count();
+    let resolved_unrostered_sites = non_fold_residue_unrostered_count();
+    let live_sites = crate::cli_run::non_fold_residue_live_sites();
+    let migration_debt_roster_slots = NON_FOLD_MIGRATION_DEBT_ROSTER.len() as i64;
+    let migration_debt_live = live_sites
+        .iter()
+        .filter(|s| {
+            matches!(
+                nfr_roster_bucket(s),
+                Some(NonFoldRosterBucket::MigrationDebt)
+            )
+        })
+        .count() as i64;
+    let irreducible_live = live_sites
+        .iter()
+        .filter(|s| matches!(nfr_roster_bucket(s), Some(NonFoldRosterBucket::Irreducible)))
+        .count() as i64;
+    let irreducible_roster_slots =
+        crate::cli_run::non_fold_residue_roster_size() - migration_debt_roster_slots;
     let mut report = RosterFictionReport {
         resolved_residue_sites,
         resolved_unrostered_sites,
         migration_debt_live,
         irreducible_live,
+        migration_debt_roster_slots,
+        irreducible_roster_slots,
         floor_red_if_migration_roster_fiction_dropped: migration_debt_live,
         honest_irreducible_rostered: irreducible_live,
         ..Default::default()
@@ -221,7 +294,7 @@ pub fn roster_fiction_report(summary: &AuditSummary) -> RosterFictionReport {
             continue;
         }
         report.syntactic_wildcard_total += 1;
-        if crate::cli_run::non_fold_residue_site_is_rostered(&f.site) {
+        if non_fold_residue_site_is_rostered(&f.site) {
             report.syntactic_wildcard_on_roster += 1;
         } else {
             report.syntactic_wildcard_off_roster += 1;
@@ -265,14 +338,14 @@ fn triage_wildcard(site: &str, fn_name: &str, has_closed_coproduct_wildcard: boo
         return "open-domain";
     }
     if matches!(
-        crate::cli_run::non_fold_residue_roster_bucket(site),
-        Some(crate::cli_run::NonFoldRosterBucket::MigrationDebt)
+        nfr_roster_bucket(site),
+        Some(NonFoldRosterBucket::MigrationDebt)
     ) {
         return "migration-debt";
     }
     if matches!(
-        crate::cli_run::non_fold_residue_roster_bucket(site),
-        Some(crate::cli_run::NonFoldRosterBucket::Irreducible)
+        nfr_roster_bucket(site),
+        Some(NonFoldRosterBucket::Irreducible)
     ) {
         return "kernel-permanent";
     }
