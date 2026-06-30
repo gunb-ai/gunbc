@@ -1,0 +1,107 @@
+module test.claim.merge_admission_witness
+
+import gunbc.merge_admission {
+  MergeAdmissionReceipt,
+  AdmissionPolicy,
+  PerPrGateOnly, RequireUpToDateBase, KeyedReceipt,
+  Success,
+  policy_admits,
+  receipt_is_admissible,
+  current_gate_roster_hash,
+  gate_roster_content_hash,
+  gunbc_repo_standard,
+  SquashMerge,
+}
+import gunbc.commit_workflow {
+  commit_gate_roster,
+  CommitCheckEnrollment, CommitSpecGate,
+  GitPrePushHook,
+}
+import gunbc.ci_gate { EmitHostGate }
+import std.types { ContentHash }
+
+data roster_surface_only_variant: List<CommitCheckEnrollment> = concat(
+  [CommitCheckEnrollment {
+    check: CommitSpecGate { gate: EmitHostGate },
+    surfaces: [GitPrePushHook]
+  }],
+  commit_gate_roster.skip(n: 1)
+)
+
+data scenario_base_b0: ContentHash = "merge-admission-witness-base-b0"
+data scenario_base_b1: ContentHash = "merge-admission-witness-base-b1"
+data scenario_roster_r0: ContentHash = "merge-admission-witness-roster-r0"
+data scenario_roster_r1: ContentHash = "merge-admission-witness-roster-r1"
+
+data scenario_pr_x_receipt: MergeAdmissionReceipt = MergeAdmissionReceipt {
+  pr_number: 5933,
+  head_sha: "abc1234def5678901234567890abcd1234567890",
+  base_tree_hash: scenario_base_b0,
+  gate_roster_hash: scenario_roster_r0,
+  conclusion: Success,
+}
+
+fn scenario_stale_base_admits_policy(policy: AdmissionPolicy) -> Bool {
+  policy_admits(
+    policy: policy,
+    receipt: scenario_pr_x_receipt,
+    merge_target_tree_hash: scenario_base_b1,
+    current_roster_hash: scenario_roster_r0,
+  )
+}
+
+fn scenario_stale_roster_admits_policy(policy: AdmissionPolicy) -> Bool {
+  policy_admits(
+    policy: policy,
+    receipt: scenario_pr_x_receipt,
+    merge_target_tree_hash: scenario_base_b0,
+    current_roster_hash: scenario_roster_r1,
+  )
+}
+
+test fn per_pr_gate_only_red_on_stale_base() -> Bool {
+  scenario_stale_base_admits_policy(policy: PerPrGateOnly)
+}
+
+test fn require_up_to_date_catches_stale_base() -> Bool {
+  !scenario_stale_base_admits_policy(policy: RequireUpToDateBase)
+}
+
+test fn require_up_to_date_misses_stale_roster() -> Bool {
+  scenario_stale_roster_admits_policy(policy: RequireUpToDateBase)
+}
+
+test fn keyed_receipt_blocks_stale_base() -> Bool {
+  !scenario_stale_base_admits_policy(policy: KeyedReceipt)
+}
+
+test fn keyed_receipt_blocks_stale_roster() -> Bool {
+  !scenario_stale_roster_admits_policy(policy: KeyedReceipt)
+}
+
+test fn keyed_receipt_admits_when_fresh() -> Bool {
+  receipt_is_admissible(
+    receipt: scenario_pr_x_receipt,
+    merge_target_tree_hash: scenario_base_b0,
+    current_roster_hash: scenario_roster_r0,
+  )
+}
+
+test fn gate_roster_hash_sensitive_to_roster_content() -> Bool {
+  let empty_roster_hash = gate_roster_content_hash(roster: [])
+  let truncated_roster_hash = gate_roster_content_hash(roster: commit_gate_roster.skip(n: 1))
+  (empty_roster_hash != current_gate_roster_hash)
+    && (truncated_roster_hash != current_gate_roster_hash)
+    && (empty_roster_hash != truncated_roster_hash)
+}
+
+test fn gate_roster_hash_unchanged_on_surface_only_move() -> Bool {
+  gate_roster_content_hash(roster: roster_surface_only_variant) == current_gate_roster_hash
+}
+
+test fn gunbc_repo_standard_is_squash_only() -> Bool {
+  gunbc_repo_standard.default_branch == "main"
+    && length(gunbc_repo_standard.allowed_strategies) == 1
+    && gunbc_repo_standard.allowed_strategies.first() == SquashMerge
+    && gunbc_repo_standard.require_up_to_date == false
+}
