@@ -52,7 +52,6 @@ fn witness_shell_on_host_success_converges() -> Bool {
     target: host_os_target(),
     effect: ShellCommand { script: "true" },
     policy: OneShotIdempotent,
-    transport: LocalShell,
     transport: LocalShell
   ))
 }
