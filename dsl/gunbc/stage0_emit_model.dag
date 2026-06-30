@@ -9,9 +9,6 @@ type Stage0EmitRegistryPhase
 
 data stage0_emit_registry_current_phase: Stage0EmitRegistryPhase = ModelAndWitnessOnly
 
-// Witness-layer projection of v1.compiler.stage0_emit_roster.generated_stage0_files.
-// Kept byte-synced with the compiler authority until regen_stage0 reads the emitted
-// roster by execution (dissolve-on: delete this duplicate row).
 data generated_stage0_files: List<String> = [
   "compiler_tests.rs",
   "extdeps_cargo.rs",

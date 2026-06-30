@@ -2,9 +2,6 @@ module v1.compiler.stage0_emit_roster
 
 import std.types { List, String, Bool, Int }
 
-// Emitter-side authority for the stage0 generated-file roster.
-// Floor witness projection: gunbc.stage0_emit_model (kept in sync until regen_stage0
-// reads the emitted roster by execution).
 data generated_stage0_files: List<String> = [
   "compiler_tests.rs",
   "extdeps_cargo.rs",
