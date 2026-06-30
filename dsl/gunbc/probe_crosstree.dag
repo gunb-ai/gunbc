@@ -1,0 +1,18 @@
+module gunbc.probe_crosstree
+
+import v2.std.orchestration { Step, Do, Run }
+import v2.compiler.emit_orchestration { orch_emit_step }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.collection { Present, Absent }
+import v2.std.algebra { FreeMonoid }
+
+fn probe_intent() -> Step {
+  Do { run: Run { command: "echo hi", env: [], redirect: Absent, capture: Absent } }
+}
+
+fn probe_emits() -> Bool {
+  match orch_emit_step(s: probe_intent()) {
+    Accepted { value: src, diagnostics: _ } => src.carried == "echo hi\n"
+    Rejected { diagnostics: _ } => false
+  }
+}
