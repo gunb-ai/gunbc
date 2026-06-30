@@ -1684,7 +1684,7 @@ fn emit_lib_rs_from_files(all_module_files: List<TextFile>, has_compiler_tests: 
   )
 
   let hand_maintained_mods = if has_compiler_tests {
-    "\npub mod v1_interpreter;\npub mod cli_run;\npub mod rest_transport_facts;\npub mod wire_value_serialize;\npub mod coproduct_reflection;\npub mod resolved_graph_cache;\npub mod recorded_fixture;\npub mod doc_reachability_project;\npub mod inert_carrier_project;\npub mod medium_structure_project;\npub mod extdeps_shape_transport_policy_project;\npub mod fact_cardinality_census;\npub mod languages_consumer_census;\npub mod non_fold_residue_project;\npub mod module_path_index;\npub mod transport_script_position_project;\npub mod v1_compiler_dag_collect;\npub mod v1_compiler_dag_collect_support;"
+    "\npub mod v1_interpreter;\npub mod cli_run;\npub mod complexity_linearity_audit_project;\npub mod rest_transport_facts;\npub mod wire_value_serialize;\npub mod coproduct_reflection;\npub mod resolved_graph_cache;\npub mod recorded_fixture;\npub mod doc_reachability_project;\npub mod inert_carrier_project;\npub mod medium_structure_project;\npub mod extdeps_shape_transport_policy_project;\npub mod fact_cardinality_census;\npub mod languages_consumer_census;\npub mod non_fold_residue_project;\npub mod transport_script_position_project;\npub mod v1_compiler_dag_collect;\npub mod v1_compiler_dag_collect_support;"
   } else {
     ""
   }
@@ -8510,13 +8510,15 @@ fn emit_main_rs(workflow_funcs: List<WorkflowFunc>, modules: List<TypedModule>, 
   let pipeline_fns = if has_pipeline { emit_main_pipeline_fns(crate_name: crate_name) } else { "" }
   let main_fn = emit_main_fn(workflow_funcs: workflow_funcs, has_services: has_services, has_pipeline: has_pipeline, crate_name: crate_name)
   let diagnostic_fns = if has_pipeline { emit_main_diagnostic_fns(crate_name: crate_name) } else { "" }
+  let main_tests = if has_pipeline { emit_main_extract_module_path_tests() } else { "" }
   let content = concat(
     header, crate_use, resource_use, svc_use, mod_uses, "\n",
     cli_struct, "\n\n",
     subcommand_enum, "\n\n",
     pipeline_fns,
     main_fn, "\n",
-    diagnostic_fns
+    diagnostic_fns,
+    main_tests
   )
   TextFile { path: concat(rust_source_root(), "main", rust_source_ext()), content: content }
 }
@@ -8583,6 +8585,7 @@ fn emit_subcommand_enum(workflow_funcs: List<WorkflowFunc>, has_pipeline: Bool) 
       make_indent(level: depth + 2), "dependency_pool_index: String,\n",
       make_indent(level: depth + 1), "},")
   } else { "" }
+  let ci_variant = if has_pipeline { "    Ci,\n" } else { "" }
   let run_variant_lines = [
     "/// Execute a .dag program directly (interpreter)\n",
     make_indent(level: depth + 1), "Run {\n",
@@ -8601,7 +8604,7 @@ fn emit_subcommand_enum(workflow_funcs: List<WorkflowFunc>, has_pipeline: Bool) 
     make_indent(level: depth + 2), "claim_run: bool,\n",
     make_indent(level: depth + 1), "},"]
   let run_variant = if has_pipeline { run_variant_lines |> join(separator: "") } else { "" }
-  let all_variants = if has_pipeline { concat(variants, [compile_variant, run_variant]) } else { variants }
+  let all_variants = if has_pipeline { concat(variants, [compile_variant, ci_variant, run_variant]) } else { variants }
   let variants_str = all_variants |> join(separator: "\n")
   concat(
     "#[derive(Subcommand)]\n",
@@ -8675,8 +8678,9 @@ fn emit_main_fn(workflow_funcs: List<WorkflowFunc>, has_services: Bool, has_pipe
   }
   let match_arms = workflow_funcs |> map(wf => emit_main_match_arm(wf: wf, has_services: has_services))
   let compile_arm = if has_pipeline { emit_compile_match_arm(crate_name: crate_name) } else { "" }
+  let ci_arm = if has_pipeline { emit_ci_match_arm() } else { "" }
   let run_arm = if has_pipeline { emit_run_match_arm(crate_name: crate_name) } else { "" }
-  let all_arms = if has_pipeline { concat(match_arms, [compile_arm, run_arm]) } else { match_arms }
+  let all_arms = if has_pipeline { concat(match_arms, [compile_arm, ci_arm, run_arm]) } else { match_arms }
   let arms_str = all_arms |> join(separator: "\n")
   let match_block = concat("match cli.command {\n", make_indent(level: depth + 2),arms_str, "\n    }")
   let result_handling = if has_services {
@@ -8808,11 +8812,39 @@ fn emit_compile_match_arm(crate_name: String) -> String {
     "        },")
 }
 
+fn emit_ci_match_arm() -> String {
+  concat(
+    "\n        Commands::Ci {} => {\n",
+    "            cli_run::handle_ci();\n",
+    "        }\n")
+}
+
 fn emit_run_match_arm(crate_name: String) -> String {
   concat(
     "\n        Commands::Run { source_roots, function, entry, claim_run } => {\n",
     "            cli_run::handle_run_with_options(source_roots, function, entry, cli.dry_run, claim_run);\n",
     "        },")
+}
+
+fn emit_main_extract_module_path_tests() -> String {
+  concat(
+    "\n#[cfg(test)]\n",
+    "mod tests {\n",
+    "    use super::*;\n\n",
+    "    #[test]\n",
+    "    fn extract_module_path_none_for_moduleless_parse_fixture() {\n",
+    "        let fixture =\n",
+    "            \"data split_brace_sample: SplitBraceSample =\\nSplitBraceSample { field: \\\"x\\\" }\\n\";\n",
+    "        assert!(extract_module_path(fixture).is_none());\n",
+    "    }\n\n",
+    "    #[test]\n",
+    "    fn extract_module_path_some_for_module_decl() {\n",
+    "        assert_eq!(\n",
+    "            extract_module_path(\"module v1.test.fixture\\n\"),\n",
+    "            Some(\"v1.test.fixture\".to_string())\n",
+    "        );\n",
+    "    }\n",
+    "}\n")
 }
 
 fn emit_main_pipeline_fns(crate_name: String) -> String {

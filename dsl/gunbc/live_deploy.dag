@@ -1,0 +1,153 @@
+module gunbc.live_deploy
+
+import std.types { String, NonEmptyStr, List, Int, Bool }
+import std.os.types { NobleNumbat2404Lts, OsPackageManager }
+import extdeps.os.ubuntu { ubuntu_distribution_catalog_row }
+import extdeps.apt {
+  package_tailscale,
+  package_nodejs,
+}
+import gunbc.fleet_intent { srv1_host, ComputeHost }
+import gunbc.fleet_intent_network {
+  srv1_tailscale_endpoint,
+  fleet_intent_network,
+}
+import gunbc.node_http_server_emit {
+  gunbhub_node_http_static_server_spec,
+}
+import extdeps.http.server { HttpServerListenConfig }
+import product.network_topology { NetworkEndpoint }
+
+type OwnedArtifactKind =
+    ServerScript
+  | SystemdUnit
+  | TailscaleServeMapping
+
+type EnsuredDependencyKind =
+    TailscalePackage
+  | NodeJsPackage
+
+type DeploymentOwnedStep {
+  kind: OwnedArtifactKind
+  path: NonEmptyStr
+}
+
+type DeploymentEnsuredStep {
+  kind: EnsuredDependencyKind
+  package: NonEmptyStr
+}
+
+type DeploymentStep
+  = Owned { step: DeploymentOwnedStep }
+  | Ensured { step: DeploymentEnsuredStep }
+
+type DeploymentHostTarget {
+  host: ComputeHost
+  ssh_host: NonEmptyStr
+  tailscale_endpoint: NetworkEndpoint
+  tailnet_domain: NonEmptyStr?
+  os_package_manager: OsPackageManager
+}
+
+type DeploymentServiceConfig {
+  unit_name: NonEmptyStr
+  server_path: NonEmptyStr
+  listen: HttpServerListenConfig
+}
+
+type DeploymentSpec {
+  target: DeploymentHostTarget
+  steps: List<DeploymentStep>
+  service: DeploymentServiceConfig
+}
+
+data gunbc_roadmap_unit_name: NonEmptyStr = "gunbc-roadmap.service"
+data gunbc_roadmap_server_path: NonEmptyStr = "/opt/gunbc/server.js"
+data gunbc_roadmap_systemd_unit_path: NonEmptyStr = "/etc/systemd/system/gunbc-roadmap.service"
+data tailscale_serve_owned_path: NonEmptyStr = "tailscale-serve"
+
+fn srv1_os_package_manager() -> OsPackageManager {
+  ubuntu_distribution_catalog_row(distro: NobleNumbat2404Lts).package_manager
+}
+
+fn deployment_owned_steps() -> List<DeploymentOwnedStep> {
+  [
+    DeploymentOwnedStep { kind: ServerScript, path: gunbc_roadmap_server_path },
+    DeploymentOwnedStep { kind: SystemdUnit, path: gunbc_roadmap_systemd_unit_path },
+    DeploymentOwnedStep { kind: TailscaleServeMapping, path: tailscale_serve_owned_path },
+  ]
+}
+
+fn deployment_ensured_steps() -> List<DeploymentEnsuredStep> {
+  [
+    DeploymentEnsuredStep { kind: TailscalePackage, package: package_tailscale },
+    DeploymentEnsuredStep { kind: NodeJsPackage, package: package_nodejs },
+  ]
+}
+
+fn deployment_steps_apply_order() -> List<DeploymentStep> {
+  concat(
+    map(deployment_ensured_steps(), s => Ensured { step: s }),
+    map(deployment_owned_steps(), s => Owned { step: s })
+  )
+}
+
+fn deployment_owned_steps_retract_order() -> List<DeploymentOwnedStep> {
+  [
+    DeploymentOwnedStep { kind: TailscaleServeMapping, path: tailscale_serve_owned_path },
+    DeploymentOwnedStep { kind: SystemdUnit, path: gunbc_roadmap_systemd_unit_path },
+    DeploymentOwnedStep { kind: ServerScript, path: gunbc_roadmap_server_path },
+  ]
+}
+
+fn deployment_srv1_target() -> DeploymentHostTarget {
+  DeploymentHostTarget {
+    host: srv1_host,
+    ssh_host: srv1_tailscale_endpoint.address,
+    tailscale_endpoint: srv1_tailscale_endpoint,
+    tailnet_domain: fleet_intent_network.tailnet_domain,
+    os_package_manager: srv1_os_package_manager(),
+  }
+}
+
+fn deployment_service_config() -> DeploymentServiceConfig {
+  let spec = gunbhub_node_http_static_server_spec()
+  DeploymentServiceConfig {
+    unit_name: gunbc_roadmap_unit_name,
+    server_path: gunbc_roadmap_server_path,
+    listen: spec.listen,
+  }
+}
+
+fn deployment_spec_srv1() -> DeploymentSpec {
+  DeploymentSpec {
+    target: deployment_srv1_target(),
+    steps: deployment_steps_apply_order(),
+    service: deployment_service_config(),
+  }
+}
+
+fn deployment_plan_host_identity(spec: DeploymentSpec) -> String {
+  spec.target.host.identity
+}
+
+fn deployment_plan_ssh_host(spec: DeploymentSpec) -> NonEmptyStr {
+  spec.target.ssh_host
+}
+
+fn deployment_plan_listen_port(spec: DeploymentSpec) -> Int {
+  spec.service.listen.port
+}
+
+fn deployment_tailnet_url(spec: DeploymentSpec) -> String? {
+  match spec.target.tailnet_domain {
+    Present { value: domain } =>
+      Present {
+        value: concat(
+          concat("https://", spec.target.host.identity),
+          concat(".", domain)
+        )
+      }
+    Absent => none
+  }
+}

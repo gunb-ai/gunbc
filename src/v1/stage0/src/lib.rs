@@ -14,7 +14,9 @@
 #![recursion_limit = "256"]
 
 pub mod cli_run;
+pub mod complexity_linearity_audit_project;
 pub mod coproduct_reflection;
+pub mod decl_facts_project;
 pub mod doc_reachability_project;
 pub mod extdeps_cargo;
 pub mod extdeps_cargo_version;
@@ -40,7 +42,6 @@ pub mod fact_cardinality_census;
 pub mod inert_carrier_project;
 pub mod languages_consumer_census;
 pub mod medium_structure_project;
-pub mod module_path_index;
 pub mod non_fold_residue_project;
 pub mod recorded_fixture;
 pub mod resolved_graph_cache;
