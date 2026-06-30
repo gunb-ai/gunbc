@@ -4433,8 +4433,11 @@ mod node_frontier_plumbing_controls {
     }
 }
 
-// Witness (a) — `.dag` floor disposition vs Rust `NodeFrontierSeeds` full-predicate equivalence
-// on the real node_precise_discriminator corpus fixture (#5994 acceptance).
+// Witness (a) PARTIAL — disposition-model coverage only (#5994 Step 3 WIP).
+// Compares floor_kernel_would_skip against Rust skip predicate when both sides share
+// Rust-computed touches_frontier/function_edited (disposition tautology, NOT impl-vs-impl).
+// PROVE gate still open: independent .dag affected_set_closure vs NodeFrontierSeeds on a
+// real origin/main...HEAD diff, superset assertion, full run/skip on both axes, RED control.
 #[cfg(test)]
 mod affected_set_full_predicate_equivalence {
     use super::{
