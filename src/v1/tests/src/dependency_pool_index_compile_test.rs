@@ -150,3 +150,31 @@ fn primary_precedence_keeps_dsl_extdeps_shell_for_dsl_only_services() {
     rm_rf(&entry_root);
     rm_rf(&out);
 }
+
+#[test]
+fn two_root_compile_with_shadow_masked_fixture_succeeds() {
+    let Some(gunbc) = gunbc_bin() else {
+        eprintln!("skipping: release gunbc binary not found");
+        return;
+    };
+    let ws = workspace_root();
+    let out = temp_dir("shadow-masked-two-root-out");
+    for pool_index in ["strict", "primary-precedence"] {
+        let output = compile_with_roots(
+            &gunbc,
+            &ws,
+            &[&ws.join("dsl"), &ws.join("src/v2")],
+            pool_index,
+            &out,
+        );
+        if !output.status.success() {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            panic!(
+                "two-root compile must succeed after shadow plant rename (pool_index={pool_index}); exit {:?}\n--- stdout ---\n{stdout}\n--- stderr ---\n{stderr}",
+                output.status.code()
+            );
+        }
+    }
+    rm_rf(&out);
+}
