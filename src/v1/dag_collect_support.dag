@@ -1,0 +1,123 @@
+module v1.compiler.dag_collect_support
+
+import v1.std.core {
+  Node,
+  InferredNode, Resolved, CompilerError, TypeVariable,
+  ExprData,
+  Connective, NoConnective, Arrow,
+  SourceSpan, ErrorNode, make_error_node, InternalError
+}
+import v1.compiler.emit { escape_json_string }
+
+type DagCollectAcc {
+  seen: Map<String, String>
+  order: List<Node>
+  collision_errors: List<ErrorNode>
+}
+
+type DagCollectPending {
+  anchor: Node
+  key: String
+  fp: String
+}
+
+fn json_quote(s: String) -> String {
+  concat("\"", escape_json_string(s: s), "\"")
+}
+
+fn inferred_fingerprint(value: InferredNode?) -> String {
+  match value {
+    Absent => "none"
+    Present { value: Resolved { node: _ } } => "Resolved"
+    Present { value: TypeVariable { id } } => concat("TypeVariable:", id)
+    Present { value: CompilerError { message: m } } => concat("CompilerError:", m)
+  }
+}
+
+fn expr_data_variant(data: ExprData) -> String {
+  match data {
+    NoExprData => "NoExprData"
+    ExprLiteral { value: _ } => "ExprLiteral"
+    ExprError { kind: _, message: _ } => "ExprError"
+    ExprVar { binding_kind: _ } => "ExprVar"
+    ExprFieldAccess { summary: _ } => "ExprFieldAccess"
+    ExprCall { call_semantics: _, descent_evidence: _ } => "ExprCall"
+    ExprMethodCall { method_semantics: _ } => "ExprMethodCall"
+    ExprMatch => "ExprMatch"
+    ExprIf => "ExprIf"
+    ExprLet => "ExprLet"
+    ExprRecordLit { parent_enum: _ } => "ExprRecordLit"
+    ExprListLit => "ExprListLit"
+    ExprBinOp { op: _, algebra_field: _ } => "ExprBinOp"
+    ExprUnaryOp { op: _ } => "ExprUnaryOp"
+    ExprLambda => "ExprLambda"
+    ExprStringInterp => "ExprStringInterp"
+    ExprBlock => "ExprBlock"
+    ExprCast => "ExprCast"
+    ExprForEach => "ExprForEach"
+    ExprIndex => "ExprIndex"
+    ExprSlice => "ExprSlice"
+    ExprReturn => "ExprReturn"
+  }
+}
+
+fn connective_name(value: Connective) -> String {
+  match value {
+    Conj => "Conj"
+    Disj => "Disj"
+    NoConnective => "NoConnective"
+    Arrow => "Arrow"
+  }
+}
+
+fn dag_node_bag_hash(digests: List<String>) -> String {
+  digests |> sort_by(d => d) |> fold(init: atom_identity_hash("^dag_collect_bag_empty"), f: (acc, d) => hash_combine(acc, d))
+}
+
+fn dag_node_seq_hash(digests: List<String>) -> String {
+  digests |> fold(init: atom_identity_hash("^dag_collect_seq_empty"), f: (acc, d) => hash_combine(acc, d))
+}
+
+fn child_subtree_hash(connective: Connective, digests: List<String>) -> String {
+  match connective {
+    Conj => dag_node_bag_hash(digests: digests)
+    Disj => dag_node_bag_hash(digests: digests)
+    Arrow => dag_node_seq_hash(digests: digests)
+    NoConnective => dag_node_seq_hash(digests: digests)
+  }
+}
+
+fn dag_node_surface_leaf_mix(node: Node) -> String {
+  atom_identity_hash(concat(
+    node.name, "|",
+    connective_name(value: node.connective), "|",
+    inferred_fingerprint(value: node.inferred), "|",
+    expr_data_variant(data: node.expr_data)))
+}
+
+fn dag_node_surface_fingerprint_rec(node: Node) -> String {
+  let child_hashes = node.children |> map(c => dag_node_surface_fingerprint_rec(node: c))
+  let param_hashes = node.params |> map(p => dag_node_surface_fingerprint_rec(node: p))
+  let with_children = hash_combine(dag_node_surface_leaf_mix(node: node), child_subtree_hash(connective: node.connective, digests: child_hashes))
+  hash_combine(with_children, dag_node_seq_hash(digests: param_hashes))
+}
+
+fn dag_node_surface_fingerprint(node: Node) -> String {
+  dag_node_surface_fingerprint_rec(node: node)
+}
+
+fn dag_node_key_collision_error(key: String, span: SourceSpan) -> ErrorNode {
+  let synthetic = span.start == 0 && span.end == 0
+  let detail = if synthetic {
+    " (synthetic 0..0 span; provisional key cannot alias distinct scaffold nodes)"
+  } else {
+    ""
+  }
+  make_error_node(
+    diagnostic: InternalError {
+      message: concat("dag artifact: distinct nodes share identity key ", json_quote(s: key), detail),
+      span: span
+    },
+    module_name: ""
+  )
+}
