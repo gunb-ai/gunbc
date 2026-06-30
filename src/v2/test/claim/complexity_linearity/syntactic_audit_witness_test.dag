@@ -1,8 +1,5 @@
 module v2.test.claim.complexity_linearity.syntactic_audit_witness
 
-// Site-pinned witnesses below are intentional ratchets: rename or fold the named fn → test
-// RED → delete or update the line (dissolution receipt, not a maintenance burden).
-
 import v2.lens.complexity_linearity_audit {
   complexity_linearity_syntactic_finding_count_live,
   complexity_linearity_syntactic_wildcard_finding_count_live,
