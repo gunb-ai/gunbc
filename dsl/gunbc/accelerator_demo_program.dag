@@ -121,3 +121,7 @@ fn witness_relu_mul_add_program_op_codes_are_authority() -> Bool {
     right: relu_mul_add_wire_op_codes
   )
 }
+
+fn witness_relu_mul_add_ops_shape_recognizable() -> Bool {
+  pure_elementwise_ops_shape_recognizable(ops: relu_mul_add_ops)
+}

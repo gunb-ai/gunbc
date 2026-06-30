@@ -68,10 +68,25 @@ data simd_kernel_handler_roadmap_bind: String = "bind: docs/plans/accelerator-de
 data host_kernel_relu_mul_add_op_codes_scaffold_note: String = "regen-sync: src/v1/runtime_rust.dag RELU_MUL_ADD_OP_CODES must mirror relu_mul_add_wire_op_codes until feature:dag-kernel-realization-handler dissolves host literals into target_model emit; roadmap: simd_kernel_handler_roadmap_bind"
 
 fn witness_relu_mul_add_wire_op_codes_are_locked_triplet() -> Bool {
-  relu_mul_add_wire_op_codes.length() == 3
-    && relu_mul_add_wire_op_codes.first() == Present { value: elemwise_mul_wire_op_code }
-    && relu_mul_add_wire_op_codes.skip(n: 1).first() == Present { value: elemwise_add_wire_op_code }
-    && relu_mul_add_wire_op_codes.skip(n: 2).first() == Present { value: elemwise_relu_wire_op_code }
+  if relu_mul_add_wire_op_codes.length() != 3 {
+    false
+  } else {
+    match relu_mul_add_wire_op_codes.first() {
+      Present { value: c0 } =>
+        match relu_mul_add_wire_op_codes.skip(n: 1).first() {
+          Present { value: c1 } =>
+            match relu_mul_add_wire_op_codes.skip(n: 2).first() {
+              Present { value: c2 } =>
+                c0 == elemwise_mul_wire_op_code
+                  && c1 == elemwise_add_wire_op_code
+                  && c2 == elemwise_relu_wire_op_code
+              Absent => false
+            }
+          Absent => false
+        }
+      Absent => false
+    }
+  }
 }
 
 fn contiguous_loop_elementwise_kernel(

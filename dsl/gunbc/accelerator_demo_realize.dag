@@ -167,15 +167,49 @@ fn witness_integer_differential_bit_exact_on_fixture() -> Bool {
 }
 
 fn witness_oracle_matches_expected_fixture() -> Bool {
-  int_list_eq(
-    left: eval_accelerator_program(
-      program: relu_mul_add_pure_program,
-      a: demo_fixture_a(),
-      b: demo_fixture_b(),
-      c: demo_fixture_c()
-    ),
-    right: demo_fixture_expected()
+  let oracle = eval_accelerator_program(
+    program: relu_mul_add_pure_program,
+    a: demo_fixture_a(),
+    b: demo_fixture_b(),
+    c: demo_fixture_c()
   )
+  int_list_eq(left: oracle, right: demo_fixture_expected())
+}
+
+fn witness_oracle_third_is_10() -> Bool {
+  match eval_accelerator_program(
+    program: relu_mul_add_pure_program,
+    a: demo_fixture_a(),
+    b: demo_fixture_b(),
+    c: demo_fixture_c()
+  ).skip(n: 2).first() {
+    Present { value: v } => v == 10
+    Absent => false
+  }
+}
+
+fn witness_oracle_third_is_7() -> Bool {
+  match eval_accelerator_program(
+    program: relu_mul_add_pure_program,
+    a: demo_fixture_a(),
+    b: demo_fixture_b(),
+    c: demo_fixture_c()
+  ).skip(n: 2).first() {
+    Present { value: v } => v == 7
+    Absent => false
+  }
+}
+
+fn witness_oracle_fixture_fourth_elem() -> Bool {
+  match eval_accelerator_program(
+    program: relu_mul_add_pure_program,
+    a: demo_fixture_a(),
+    b: demo_fixture_b(),
+    c: demo_fixture_c()
+  ).skip(n: 3).first() {
+    Present { value: v } => v == 0
+    Absent => false
+  }
 }
 
 fn witness_kernel_matches_expected_fixture() -> Bool {
