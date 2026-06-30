@@ -450,9 +450,10 @@ mod tests {
         let summary = audit_corpus_default_roots();
         let eval_bind_site = "src/v2/compiler/05_eval.dag::eval_bind_node_eval";
         assert!(
-            !summary.findings.iter().any(|f| {
-                f.site == eval_bind_site && f.rule == "syntactic_match_wildcard_arm"
-            }),
+            !summary
+                .findings
+                .iter()
+                .any(|f| { f.site == eval_bind_site && f.rule == "syntactic_match_wildcard_arm" }),
             "eval_bind_node_eval wildcard dissolved; should not fire syntactic_match_wildcard_arm"
         );
         let site = "src/v2/compiler/05_eval.dag::eval_match_node_eval";
