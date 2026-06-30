@@ -159,7 +159,7 @@ fn witness_image_serializes() -> Bool {
   }
   match try_serialize_markdown_document(doc: doc) {
     Serialized { html: h } =>
-      h == "<div><p><img src=\"/static/logo.png\" alt=\"logo\"></img></p></div>"
+      h == "<div><p><img src=\"/static/logo.png\" alt=\"logo\"></p></div>"
     Rejected { reason: _ } => false
   }
 }

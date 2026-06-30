@@ -5336,7 +5336,7 @@ fn eval_builtin(
             let std_roots = expect_str_list(positional.first().copied(), "layer_import_facts")?;
             let extdeps_roots = expect_str_list(positional.get(1).copied(), "layer_import_facts")?;
             let facts =
-                crate::layering_imports_project::layer_import_facts(&std_roots, &extdeps_roots);
+                crate::cli_run::layer_import_facts(&std_roots, &extdeps_roots);
             let mut items: Vec<Value> = Vec::new();
             for f in facts {
                 let layer = Value::Variant {
@@ -5363,7 +5363,7 @@ fn eval_builtin(
                 expect_str_list(positional.get(1).copied(), "import_resolution_facts")?;
             let exclude_substrings =
                 expect_str_list(positional.get(2).copied(), "import_resolution_facts")?;
-            let facts = crate::import_resolution_project::import_resolution_facts(
+            let facts = crate::cli_run::import_resolution_facts(
                 &pool_roots,
                 &importer_roots,
                 &exclude_substrings,
@@ -5393,7 +5393,7 @@ fn eval_builtin(
         "module_declaration_facts" => {
             let pool_roots =
                 expect_str_list(positional.first().copied(), "module_declaration_facts")?;
-            let facts = crate::import_resolution_project::module_declaration_facts(&pool_roots);
+            let facts = crate::cli_run::module_declaration_facts(&pool_roots);
             let mut items: Vec<Value> = Vec::new();
             for f in facts {
                 items.push(Value::Record {
@@ -5851,6 +5851,13 @@ fn eval_builtin(
             crate::inert_carrier_project::inert_carrier_declared_count(),
         ))),
 
+        "inert_lens_unreached_module_count" => Ok(Some(Value::Int(
+            crate::cli_run::inert_lens_unreached_module_count(),
+        ))),
+        "inert_lens_top_level_module_count" => Ok(Some(Value::Int(
+            crate::cli_run::inert_lens_top_level_module_count(),
+        ))),
+
         "non_fold_residue_count" => Ok(Some(Value::Int(
             crate::non_fold_residue_project::non_fold_residue_count(),
         ))),
@@ -5863,8 +5870,28 @@ fn eval_builtin(
         "non_fold_residue_coproduct_universe_count" => Ok(Some(Value::Int(
             crate::non_fold_residue_project::non_fold_residue_coproduct_universe_count(),
         ))),
+
+        "complexity_linearity_syntactic_finding_count" => Ok(Some(Value::Int(
+            crate::complexity_linearity_audit_project::complexity_linearity_syntactic_finding_count(
+            ),
+        ))),
+        "complexity_linearity_syntactic_wildcard_finding_count" => Ok(Some(Value::Int(
+            crate::complexity_linearity_audit_project::complexity_linearity_syntactic_wildcard_finding_count(
+            ),
+        ))),
+        "complexity_linearity_syntactic_site_fired" => {
+            let site = expect_str(
+                positional.first().copied(),
+                "complexity_linearity_syntactic_site_fired",
+            )?;
+            Ok(Some(Value::Bool(
+                crate::complexity_linearity_audit_project::complexity_linearity_syntactic_site_fired(
+                    &site,
+                ),
+            )))
+        }
         "census_corpus_roots_follow_layer_authority" => Ok(Some(Value::Bool(
-            crate::module_path_index::census_corpus_roots_follow_layer_authority(),
+            crate::cli_run::census_corpus_roots_follow_layer_authority(),
         ))),
 
         _ => Ok(None),

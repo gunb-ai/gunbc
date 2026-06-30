@@ -25,8 +25,8 @@ fn w_pinned_host_physics_roster() -> Bool {
   is_pinned_host_physics_stage0_file(basename: "resolved_graph_cache.rs") &&
   is_pinned_host_physics_stage0_file(basename: "rest_transport_facts.rs") &&
   is_pinned_host_physics_stage0_file(basename: "wire_value_serialize.rs") &&
-  is_pinned_host_physics_stage0_file(basename: "cache_purity_oracle.rs") &&
-  pinned_host_physics_file_count() == 5 &&
+  pinned_host_physics_file_count() == 4 &&
+  !is_pinned_host_physics_stage0_file(basename: "cache_purity_oracle.rs") &&
   !is_pinned_host_physics_stage0_file(basename: "cli_run.rs")
 }
 

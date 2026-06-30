@@ -16,6 +16,7 @@ import tools.emit_host_fixtures {
   mvp2_stdout_byte_count,
   ts_signed_i32_le_byte_count
 }
+import gunbc.node_http_server_emit { gunbhub_node_http_server_source }
 import tools.host_prelude { toolchain_provision_shell_exec }
 
 data fixture_cargo_toml: String = "[package]\nname = \"emit_host_fixture\"\nversion = \"0.0.0\"\nedition = \"2021\"\n\n[[bin]]\nname = \"fixture\"\npath = \"src/main.rs\""
@@ -91,5 +92,11 @@ fn run_go_mvp2_smoke() -> Bool {
 fn run_ts_mvp1_smoke() -> Bool {
   let expected = byte_size_count(ts_signed_i32_le_byte_count)
   let script = "set -e\ncommand -v node >/dev/null 2>&1\ncommand -v npx >/dev/null 2>&1\nWORKDIR=$(mktemp -d)\ncat > \"$WORKDIR/fixture.ts\" <<'EOF'\n{ts_mvp1_host_fixture_source}\nEOF\ncd \"$WORKDIR\" && npx -y -p typescript@5.9.2 tsc --target ES2022 --module commonjs --outDir . fixture.ts\nBYTES=$(node \"$WORKDIR/fixture.js\" | wc -c | tr -d ' ')\nrm -rf \"$WORKDIR\"\ntest \"$BYTES\" -eq {expected}"
+  toolchain_provision_shell_exec(script: script)
+}
+
+fn run_node_http_serve_smoke() -> Bool {
+  let server_source = gunbhub_node_http_server_source()
+  let script = "set -e\ncommand -v node >/dev/null 2>&1\ncommand -v curl >/dev/null 2>&1\nWORKDIR=$(mktemp -d)\ncat > \"$WORKDIR/server.js\" <<'GUNBC_EOF'\n{server_source}\nGUNBC_EOF\nPORT=18471\nHOST=127.0.0.1 PORT=$PORT node \"$WORKDIR/server.js\" &\nSERVER_PID=$!\ntrap 'kill $SERVER_PID 2>/dev/null; rm -rf \"$WORKDIR\"' EXIT\nfor i in 1 2 3 4 5; do\n  sleep 0.3\n  if curl -sf http://127.0.0.1:$PORT/ >/dev/null 2>&1; then break; fi\ndone\nSTATUS=$(curl -s -o /dev/null -w '%\{http_code\}' http://127.0.0.1:$PORT/)\ntest \"$STATUS\" -eq 200"
   toolchain_provision_shell_exec(script: script)
 }

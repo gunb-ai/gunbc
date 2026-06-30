@@ -30,7 +30,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
 
-use crate::corpus_lex::{brace_delta, corpus_dag_files, is_test_dag, strip_line_comment};
+use crate::cli_run::{brace_delta, corpus_dag_files, is_test_dag, strip_line_comment};
 
 // The NAMED exception roster: `file::fn` sites carrying a wildcard over a closed-coproduct param.
 // Per DESIGN §6 each is EITHER (a) un-migrated modeling awaiting its fold OR (b) a named irreducible
@@ -51,6 +51,40 @@ use crate::corpus_lex::{brace_delta, corpus_dag_files, is_test_dag, strip_line_c
 // Node-tree reader carries each site's match shape and scrutinee type structurally, so the
 // classification is derived, not hand-maintained here, where a mistag would dishonestly mark
 // migratable debt as a permanent kernel.)
+//
+// Roster partition (operator adjudication 2026-06-29): DECIDABLE-IRREDUCIBLE only vs MIGRATION-DEBT
+// (must drain as folds land — must never stay hidden as permanent roster fiction).
+const NON_FOLD_MIGRATION_DEBT_ROSTER: &[&str] = &[
+    // (a) eval interpreter escapes — §5 fail-open on EVAL path; escalate before editing 05_eval.
+    "src/v2/compiler/05_eval.dag::eval_bind_node_eval",
+    "src/v2/compiler/05_eval.dag::eval_branch_node_eval",
+    "src/v2/compiler/05_eval.dag::eval_loop_node",
+    "src/v2/compiler/05_eval.dag::eval_match_node_eval",
+    "src/v2/compiler/05_eval.dag::eval_transform_node",
+    "src/v2/compiler/05_eval.dag::eval_value_node",
+    "src/v2/compiler/05_eval.dag::run_test_claim_assert_decided",
+    "src/v2/compiler/05_eval.dag::run_test_claim_runtime_assert",
+    // (a) grammar-ladder dispatch + other pipeline stages (escalate before stage edits).
+    "src/v2/compiler/01_tokenize.dag::lex_try_rules_prefer_longer",
+    "src/v2/compiler/06_translate.dag::translate_algebra_finalize",
+    "src/v2/compiler/emit_host.dag::run_test_claim_emit_vs_eval_verdict",
+    // (a) other un-migrated modeling awaiting total fold.
+    "dsl/extdeps/languages/markdown.dag::md_nested",
+    "src/v2/extdeps/formats/spice_passive_projection.dag::passive_spec_from_component",
+    "src/v2/extdeps/formats/spice_passive_projection.dag::passive_topology_from_component",
+    "src/v2/extdeps/runtimes/v2_effect_io_pure.dag::effect_io_pure_backends_match",
+    "src/v2/std/compilers/target_model.dag::target_type_expr_emitted_validate_wire_shape",
+    "src/v2/std/compilers/target_model.dag::target_use_site_ownership_catalog_lookup_step",
+    "src/v2/test/claim/manual/eval_runtime_mvp.dag::eval_mvp2_arg_is_two_literal",
+    // (a) ManualAnchorKey closed-coproduct wildcards discovered by multiline type-index fix (2026-06-30).
+    "src/v2/lens/testgen.dag::algebra_law_subject_for_manual_anchor",
+    "src/v2/lens/testgen.dag::nat_manual_anchor_key_eq",
+    "src/v2/lens/testgen.dag::testgen_emit_language_behavior_equivalence_claim",
+    "src/v2/lens/testgen.dag::testgen_emit_refinement_preservation_claim",
+    "src/v2/test/claim/generated/coproduct_exhaustiveness.dag::anchor_is",
+    "src/v2/test/claim/generated/cross_representation_equality.dag::anchor_is_straddle",
+];
+
 const NON_FOLD_RESIDUE_ROSTER: &[&str] = &[
     // SEEDED FROM THE LIVE CENSUS 2026-06-22 (re-derive with the live_tree gate below). Each is a
     // `file::fn` with a `match <coproduct-param> { ... _ => ... }` — a wildcard escape over a closed
@@ -95,12 +129,13 @@ const NON_FOLD_RESIDUE_ROSTER: &[&str] = &[
     "src/v2/test/claim/manual/eval_runtime_mvp.dag::eval_mvp2_arg_is_two_literal",
     "src/v2/extdeps/formats/spice_passive_projection.dag::passive_spec_from_component",
     "src/v2/extdeps/formats/spice_passive_projection.dag::passive_topology_from_component",
-    "src/v2/extdeps/languages/dag.dag::dag_grammar_terminal_for_mvp1_bind_token",
-    "src/v2/extdeps/languages/dag.dag::dag_grammar_terminal_for_mvp1_loop_token",
-    "src/v2/extdeps/languages/dag.dag::dag_grammar_terminal_for_mvp1_match_token",
-    "src/v2/extdeps/languages/dag.dag::dag_grammar_terminal_for_mvp1_pick_token",
-    "src/v2/extdeps/languages/dag.dag::dag_grammar_terminal_for_mvp1_rec_token",
     "src/v2/extdeps/runtimes/v2_effect_io_pure.dag::effect_io_pure_backends_match",
+    "src/v2/lens/testgen.dag::algebra_law_subject_for_manual_anchor",
+    "src/v2/lens/testgen.dag::nat_manual_anchor_key_eq",
+    "src/v2/lens/testgen.dag::testgen_emit_language_behavior_equivalence_claim",
+    "src/v2/lens/testgen.dag::testgen_emit_refinement_preservation_claim",
+    "src/v2/test/claim/generated/coproduct_exhaustiveness.dag::anchor_is",
+    "src/v2/test/claim/generated/cross_representation_equality.dag::anchor_is_straddle",
     "src/v2/lens/complexity.dag::complexity_bound_dominates",
     "src/v2/lens/complexity.dag::complexity_bound_from_class",
     "src/v2/lens/cost.dag::asymptotic_class_dominates",
@@ -134,7 +169,7 @@ const NON_FOLD_RESIDUE_ROSTER: &[&str] = &[
 ];
 
 // Corpus walk + lexical normalization (`corpus_dag_files`, `strip_line_comment`, `brace_delta`,
-// `is_test_dag`) live in `crate::corpus_lex`, shared with the inert-carrier census — DESIGN §2/§3:
+// `is_test_dag`) live in `crate::cli_run`, shared with the inert-carrier census — DESIGN §2/§3:
 // one authority for "what is code text", not a copy per census module.
 
 /// Source with every line's `//` comment removed and string-literal interiors blanked (positions
@@ -179,8 +214,14 @@ fn closed_coproduct_names(files: &[(String, String)]) -> BTreeSet<String> {
             i += 1;
             while i < lines.len() {
                 let nt = lines[i].trim_start();
-                if depth <= 0 && !(nt.starts_with('|') || nt.starts_with('=')) {
-                    break;
+                if depth <= 0 {
+                    if nt.is_empty() {
+                        i += 1;
+                        continue;
+                    }
+                    if !(nt.starts_with('|') || nt.starts_with('=')) {
+                        break;
+                    }
                 }
                 block.push('\n');
                 block.push_str(&strip_line_comment(lines[i]));
@@ -424,17 +465,24 @@ fn residue_sites(files: &[(String, String)]) -> Vec<String> {
 struct NonFoldReport {
     sites: Vec<String>,
     coproduct_universe: usize,
+    closed_coproduct_names: BTreeSet<String>,
 }
 
 fn build_report() -> &'static NonFoldReport {
     static REPORT: OnceLock<NonFoldReport> = OnceLock::new();
     REPORT.get_or_init(|| {
         let files = corpus_dag_files();
+        let closed_coproduct_names = closed_coproduct_names(&files);
         NonFoldReport {
             sites: residue_sites(&files),
-            coproduct_universe: closed_coproduct_names(&files).len(),
+            coproduct_universe: closed_coproduct_names.len(),
+            closed_coproduct_names,
         }
     })
+}
+
+pub fn non_fold_residue_closed_coproduct_type_names() -> &'static BTreeSet<String> {
+    &build_report().closed_coproduct_names
 }
 
 pub fn non_fold_residue_count() -> i64 {
@@ -449,6 +497,61 @@ pub fn non_fold_residue_unrostered_count() -> i64 {
         .iter()
         .filter(|s| !roster.contains(s.as_str()))
         .count() as i64
+}
+
+pub fn non_fold_residue_site_is_rostered(site: &str) -> bool {
+    NON_FOLD_RESIDUE_ROSTER.contains(&site)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NonFoldRosterBucket {
+    Irreducible,
+    MigrationDebt,
+}
+
+pub fn non_fold_residue_roster_bucket(site: &str) -> Option<NonFoldRosterBucket> {
+    if !non_fold_residue_site_is_rostered(site) {
+        return None;
+    }
+    if NON_FOLD_MIGRATION_DEBT_ROSTER.contains(&site) {
+        Some(NonFoldRosterBucket::MigrationDebt)
+    } else {
+        Some(NonFoldRosterBucket::Irreducible)
+    }
+}
+
+pub fn non_fold_residue_migration_debt_live_count() -> i64 {
+    build_report()
+        .sites
+        .iter()
+        .filter(|s| {
+            matches!(
+                non_fold_residue_roster_bucket(s),
+                Some(NonFoldRosterBucket::MigrationDebt)
+            )
+        })
+        .count() as i64
+}
+
+pub fn non_fold_residue_irreducible_live_count() -> i64 {
+    build_report()
+        .sites
+        .iter()
+        .filter(|s| {
+            matches!(
+                non_fold_residue_roster_bucket(s),
+                Some(NonFoldRosterBucket::Irreducible)
+            )
+        })
+        .count() as i64
+}
+
+pub fn non_fold_residue_migration_debt_roster_slots() -> i64 {
+    NON_FOLD_MIGRATION_DEBT_ROSTER.len() as i64
+}
+
+pub fn non_fold_residue_irreducible_roster_slots() -> i64 {
+    (NON_FOLD_RESIDUE_ROSTER.len() - NON_FOLD_MIGRATION_DEBT_ROSTER.len()) as i64
 }
 
 /// The RATCHET: roster entries that are no longer residue (migrated to a fold, or deleted).
@@ -588,6 +691,29 @@ mod tests {
         assert!(
             sites.contains(&"m.dag::f".to_string()),
             "a real wildcard arm must still be flagged despite an in-string decoy; got {sites:?}"
+        );
+    }
+
+    #[test]
+    fn roster_partition_covers_every_entry_without_overlap() {
+        let migration: BTreeSet<&str> = NON_FOLD_MIGRATION_DEBT_ROSTER.iter().copied().collect();
+        let roster: BTreeSet<&str> = NON_FOLD_RESIDUE_ROSTER.iter().copied().collect();
+        assert!(
+            migration.is_subset(&roster),
+            "migration-debt roster must be subset of full roster; extra={:?}",
+            migration.difference(&roster).collect::<Vec<_>>()
+        );
+        assert_eq!(
+            NON_FOLD_MIGRATION_DEBT_ROSTER.len()
+                + non_fold_residue_irreducible_roster_slots() as usize,
+            NON_FOLD_RESIDUE_ROSTER.len(),
+            "roster partition must cover every slot"
+        );
+        assert_eq!(
+            non_fold_residue_migration_debt_live_count()
+                + non_fold_residue_irreducible_live_count(),
+            non_fold_residue_count(),
+            "live residue sites must partition into migration-debt + irreducible"
         );
     }
 }
