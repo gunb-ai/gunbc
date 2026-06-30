@@ -21,6 +21,8 @@ pub use crate::v1_compiler_artifact::RenderTarget;
 use crate::v1_compiler_artifact::RenderTarget::Rust;
 pub use crate::v1_compiler_coercion::{coerce_primitive_type, is_copy, lookup_checkpoint};
 pub use crate::v1_compiler_compiler_tests_rust::compiler_tests_source;
+pub use crate::v1_compiler_dag_collect_rust::dag_collect_source;
+pub use crate::v1_compiler_dag_collect_support_rust::dag_collect_support_source;
 pub use crate::v1_compiler_emit::{
     compute_service_fields, effective_operation_transport, emit_bin_op_symbol, emit_container,
     emit_data_value_json, emit_error_expr, emit_ident, emit_keyword, emit_lambda,
@@ -3531,6 +3533,14 @@ pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
         } else {
             Rc::new(vec![])
         };
+        let dag_collect_files = if has_pipeline.clone() {
+            Rc::new(vec![
+                emit_dag_collect_module(),
+                emit_dag_collect_support_module(),
+            ])
+        } else {
+            Rc::new(vec![])
+        };
         let dry_run_file = if has_services.clone() {
             Rc::new(vec![emit_dry_run_module()])
         } else {
@@ -3544,10 +3554,13 @@ pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
         let files = v1_rt::concat(
             v1_rt::concat(
                 v1_rt::concat(
-                    Rc::new(vec![cargo, lib_file, main_file]),
-                    all_mod_files.clone(),
+                    v1_rt::concat(
+                        Rc::new(vec![cargo, lib_file, main_file]),
+                        all_mod_files.clone(),
+                    ),
+                    compiler_tests_file,
                 ),
-                compiler_tests_file,
+                dag_collect_files,
             ),
             test_files,
         );
@@ -3575,6 +3588,29 @@ pub fn emit_compiler_tests_module() -> Rc<TextFile> {
             rust_source_ext(),
         ),
         content: compiler_tests_source(),
+    })
+}
+
+pub fn emit_dag_collect_module() -> Rc<TextFile> {
+    Rc::new(TextFile {
+        path: v1_rt::concat(
+            v1_rt::concat(rust_source_root(), "v1_compiler_dag_collect".to_string()),
+            rust_source_ext(),
+        ),
+        content: dag_collect_source(),
+    })
+}
+
+pub fn emit_dag_collect_support_module() -> Rc<TextFile> {
+    Rc::new(TextFile {
+        path: v1_rt::concat(
+            v1_rt::concat(
+                rust_source_root(),
+                "v1_compiler_dag_collect_support".to_string(),
+            ),
+            rust_source_ext(),
+        ),
+        content: dag_collect_support_source(),
     })
 }
 
