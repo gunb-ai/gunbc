@@ -1,0 +1,439 @@
+module gunbc.accelerator_demo_realize
+
+import std.types { Bool, Int, List, Float }
+import std.numerical_contract {
+  NumericalContract,
+  FloatApproximate,
+  FmaContractionRefused,
+  FmaContractionPermitted,
+  float_contract,
+}
+import std.approximate_field { ToNearestEven }
+import extdeps.communication.medium { DecodeFidelity, Lossless, Lossy }
+import gunbc.accelerator_demo_program {
+  AcceleratorDemoProgram,
+  PureElementwiseMap,
+  EffectfulElementwiseMap,
+  DataDependentGatherMap,
+  relu_mul_add_pure_program,
+  relu_mul_add_effectful_program,
+  relu_mul_add_gather_program,
+  relu_mul_add_incomplete_pure_program,
+  program_op_codes,
+}
+import gunbc.accelerator_demo_recognizer {
+  recognize_accelerator_program,
+  recognize_accelerator_program_with_contract,
+  witness_pure_program_structurally_recognized,
+  witness_effectful_program_structurally_refused,
+  witness_gather_program_structurally_refused,
+}
+import gunbc.accelerator_demo_eval { eval_accelerator_program }
+import gunbc.accelerator_demo_float_eval { eval_accelerator_program_float }
+import gunbc.accelerator_demo_plan {
+  AcceleratorRecognitionOutcome,
+  AcceleratorRefusalReason,
+  Recognized,
+  Refused,
+  NotElementwisePure,
+  CarriesEffects,
+  FmaContractionViolatesContract,
+  AcceleratorUnsupportedNumericalDomain,
+}
+import extdeps.languages.simd.kernel {
+  contiguous_loop_elementwise_kernel,
+  contiguous_loop_elementwise_float_kernel,
+  relu_mul_add_wire_op_codes,
+}
+
+data accelerator_demo_recognizer_dissolution_trigger: String = "dissolve-on: feature:dag-elementwise-recognizer-lens — AcceleratorDemoProgram struct is stepping stone; replace with read-only Node-tree lens inspecting real map(i => …) program values"
+
+data accelerator_demo_differential_harness_dissolution_trigger: String = "dissolve-on: feature:dag-differential-witness — integer oracle is eval_accelerator_program; float oracle is eval_accelerator_program_float (separate mul/add roundings); kernels lower program_op_codes with fma policy; triptych render lands in accelerator_demo_render"
+
+type DifferentialVerdict
+  = BitExact
+  | Mismatch
+
+type ExecutionOutcome
+  = Executed { verdict: DifferentialVerdict }
+  | ExecutionRefused { reason: AcceleratorRefusalReason }
+
+fn demo_fixture_a() -> List<Int> {
+  [2, -1, 0, 5]
+}
+
+fn demo_fixture_b() -> List<Int> {
+  [3, 4, 7, -2]
+}
+
+fn demo_fixture_c() -> List<Int> {
+  [1, 10, -3, 8]
+}
+
+fn demo_fixture_expected() -> List<Int> {
+  [7, 6, 0, 0]
+}
+
+fn demo_fixture_wrong_golden() -> List<Int> {
+  [0, 0, 0, 0]
+}
+
+fn int_list_eq(left: List<Int>, right: List<Int>) -> Bool {
+  if left.length() != right.length() {
+    false
+  } else if left.length() == 0 {
+    true
+  } else {
+    match left.first() {
+      Present { value: l } =>
+        match right.first() {
+          Present { value: r } =>
+            if l != r {
+              false
+            } else {
+              int_list_eq(left: left.skip(n: 1), right: right.skip(n: 1))
+            }
+          Absent => false
+        }
+      Absent => false
+    }
+  }
+}
+
+fn eval_program_via_kernel(
+  program: AcceleratorDemoProgram,
+  a: List<Int>,
+  b: List<Int>,
+  c: List<Int>
+) -> List<Int> {
+  match program {
+    PureElementwiseMap { ops: _ } =>
+      contiguous_loop_elementwise_kernel(
+        op_codes: program_op_codes(program: program),
+        a: a,
+        b: b,
+        c: c
+      )
+    EffectfulElementwiseMap { ops: _ } => []
+    DataDependentGatherMap { ops: _ } => []
+  }
+}
+
+fn differential_harness_for_program(
+  program: AcceleratorDemoProgram,
+  a: List<Int>,
+  b: List<Int>,
+  c: List<Int>
+) -> DifferentialVerdict {
+  let oracle = eval_accelerator_program(program: program, a: a, b: b, c: c)
+  let kernel = eval_program_via_kernel(program: program, a: a, b: b, c: c)
+  if int_list_eq(left: oracle, right: kernel) {
+    BitExact
+  } else {
+    Mismatch
+  }
+}
+
+fn execute_accelerator_program(
+  program: AcceleratorDemoProgram,
+  a: List<Int>,
+  b: List<Int>,
+  c: List<Int>
+) -> ExecutionOutcome {
+  match recognize_accelerator_program(program: program) {
+    Recognized { plan: _, kernel_step: _, contract: _, fidelity: _, target_medium: _ } =>
+      Executed {
+        verdict: differential_harness_for_program(program: program, a: a, b: b, c: c)
+      }
+    Refused { reason: reason } =>
+      ExecutionRefused { reason: reason }
+  }
+}
+
+fn witness_single_source_program_fixture_authority() -> Bool {
+  witness_pure_program_structurally_recognized()
+    && witness_integer_differential_bit_exact_on_fixture()
+}
+
+fn witness_integer_differential_bit_exact_on_fixture() -> Bool {
+  match differential_harness_for_program(
+    program: relu_mul_add_pure_program,
+    a: demo_fixture_a(),
+    b: demo_fixture_b(),
+    c: demo_fixture_c()
+  ) {
+    BitExact => true
+    Mismatch => false
+  }
+}
+
+fn witness_oracle_matches_expected_fixture() -> Bool {
+  int_list_eq(
+    left: eval_accelerator_program(
+      program: relu_mul_add_pure_program,
+      a: demo_fixture_a(),
+      b: demo_fixture_b(),
+      c: demo_fixture_c()
+    ),
+    right: demo_fixture_expected()
+  )
+}
+
+fn witness_kernel_matches_expected_fixture() -> Bool {
+  let kernel = eval_program_via_kernel(
+    program: relu_mul_add_pure_program,
+    a: demo_fixture_a(),
+    b: demo_fixture_b(),
+    c: demo_fixture_c()
+  )
+  int_list_eq(left: kernel, right: demo_fixture_expected())
+}
+
+fn witness_differential_would_red_on_wrong_golden() -> Bool {
+  !int_list_eq(
+    left: eval_accelerator_program(
+      program: relu_mul_add_pure_program,
+      a: demo_fixture_a(),
+      b: demo_fixture_b(),
+      c: demo_fixture_c()
+    ),
+    right: demo_fixture_wrong_golden()
+  )
+}
+
+fn witness_oracle_empty_on_noncanonical_ops_shape() -> Bool {
+  eval_accelerator_program(
+    program: relu_mul_add_incomplete_pure_program,
+    a: [1],
+    b: [2],
+    c: [3]
+  ).length() == 0
+}
+
+fn witness_float_oracle_empty_on_noncanonical_ops_shape() -> Bool {
+  eval_accelerator_program_float(
+    program: relu_mul_add_incomplete_pure_program,
+    a: [1.0],
+    b: [2.0],
+    c: [3.0]
+  ).length() == 0
+}
+
+fn witness_program_and_simd_wire_op_codes_single_authority() -> Bool {
+  int_list_eq(
+    left: program_op_codes(program: relu_mul_add_pure_program),
+    right: relu_mul_add_wire_op_codes
+  )
+}
+
+fn witness_pure_program_executes_bit_exact() -> Bool {
+  match execute_accelerator_program(
+    program: relu_mul_add_pure_program,
+    a: demo_fixture_a(),
+    b: demo_fixture_b(),
+    c: demo_fixture_c()
+  ) {
+    Executed { verdict: v } => match v {
+      BitExact => true
+      Mismatch => false
+    }
+    ExecutionRefused { reason: _ } => false
+  }
+}
+
+fn witness_effectful_program_execution_refused() -> Bool {
+  match execute_accelerator_program(
+    program: relu_mul_add_effectful_program,
+    a: demo_fixture_a(),
+    b: demo_fixture_b(),
+    c: demo_fixture_c()
+  ) {
+    Executed { verdict: _ } => false
+    ExecutionRefused { reason: r } => match r {
+      CarriesEffects => true
+      NotElementwisePure => false
+      FmaContractionViolatesContract => false
+      AcceleratorUnsupportedNumericalDomain => false
+    }
+  }
+}
+
+fn witness_gather_program_execution_refused() -> Bool {
+  match execute_accelerator_program(
+    program: relu_mul_add_gather_program,
+    a: demo_fixture_a(),
+    b: demo_fixture_b(),
+    c: demo_fixture_c()
+  ) {
+    Executed { verdict: _ } => false
+    ExecutionRefused { reason: r } => match r {
+      NotElementwisePure => true
+      CarriesEffects => false
+      FmaContractionViolatesContract => false
+      AcceleratorUnsupportedNumericalDomain => false
+    }
+  }
+}
+
+fn witness_structural_recognition_refusal_arms() -> Bool {
+  witness_effectful_program_structurally_refused()
+    && witness_gather_program_structurally_refused()
+}
+
+fn float_fma_discriminating_a() -> List<Float> {
+  [1.0000000596046446]
+}
+
+fn float_fma_discriminating_b() -> List<Float> {
+  [1.0000000596046446]
+}
+
+fn float_fma_discriminating_c() -> List<Float> {
+  [-1.0]
+}
+
+fn float_contract_refused() -> NumericalContract {
+  float_contract(rounding: ToNearestEven, fma: FmaContractionRefused)
+}
+
+fn float_contract_permitted() -> NumericalContract {
+  float_contract(rounding: ToNearestEven, fma: FmaContractionPermitted)
+}
+
+fn float_list_eq(left: List<Float>, right: List<Float>) -> Bool {
+  if left.length() != right.length() {
+    false
+  } else if left.length() == 0 {
+    true
+  } else {
+    match left.first() {
+      Present { value: l } =>
+        match right.first() {
+          Present { value: r } =>
+            if l != r {
+              false
+            } else {
+              float_list_eq(left: left.skip(n: 1), right: right.skip(n: 1))
+            }
+          Absent => false
+        }
+      Absent => false
+    }
+  }
+}
+
+fn eval_float_program_via_kernel(
+  program: AcceleratorDemoProgram,
+  fma_contraction_policy: FmaContractionPolicy,
+  a: List<Float>,
+  b: List<Float>,
+  c: List<Float>
+) -> List<Float> {
+  match program {
+    PureElementwiseMap { ops: _ } =>
+      contiguous_loop_elementwise_float_kernel(
+        op_codes: program_op_codes(program: program),
+        fma_contraction_policy: fma_contraction_policy,
+        a: a,
+        b: b,
+        c: c
+      )
+    EffectfulElementwiseMap { ops: _ } => []
+    DataDependentGatherMap { ops: _ } => []
+  }
+}
+
+fn float_differential_harness_for_program(
+  program: AcceleratorDemoProgram,
+  fma_contraction_policy: FmaContractionPolicy,
+  a: List<Float>,
+  b: List<Float>,
+  c: List<Float>
+) -> DifferentialVerdict {
+  let oracle = eval_accelerator_program_float(program: program, a: a, b: b, c: c)
+  let kernel = eval_float_program_via_kernel(
+    program: program,
+    fma_contraction_policy: fma_contraction_policy,
+    a: a,
+    b: b,
+    c: c
+  )
+  if float_list_eq(left: oracle, right: kernel) {
+    BitExact
+  } else {
+    Mismatch
+  }
+}
+
+fn witness_float_fma_refused_bit_exact_on_fixture() -> Bool {
+  match float_differential_harness_for_program(
+    program: relu_mul_add_pure_program,
+    fma_contraction_policy: FmaContractionRefused,
+    a: float_fma_discriminating_a(),
+    b: float_fma_discriminating_b(),
+    c: float_fma_discriminating_c()
+  ) {
+    BitExact => true
+    Mismatch => false
+  }
+}
+
+fn witness_float_fma_refused_recognition_is_lossless() -> Bool {
+  match recognize_accelerator_program_with_contract(
+    program: relu_mul_add_pure_program,
+    contract: float_contract_refused(),
+    insist_on_fma_fused_kernel: false
+  ) {
+    Recognized { plan: _, kernel_step: _, contract: _, fidelity: f, target_medium: _ } =>
+      match f {
+        Lossless => true
+        Lossy => false
+      }
+    Refused { reason: _ } => false
+  }
+}
+
+fn witness_float_fma_permitted_is_declared_lossy_not_bit_exact() -> Bool {
+  let oracle = eval_accelerator_program_float(
+    program: relu_mul_add_pure_program,
+    a: float_fma_discriminating_a(),
+    b: float_fma_discriminating_b(),
+    c: float_fma_discriminating_c()
+  )
+  let kernel = eval_float_program_via_kernel(
+    program: relu_mul_add_pure_program,
+    fma_contraction_policy: FmaContractionPermitted,
+    a: float_fma_discriminating_a(),
+    b: float_fma_discriminating_b(),
+    c: float_fma_discriminating_c()
+  )
+  match recognize_accelerator_program_with_contract(
+    program: relu_mul_add_pure_program,
+    contract: float_contract_permitted(),
+    insist_on_fma_fused_kernel: false
+  ) {
+    Recognized { plan: _, kernel_step: _, contract: _, fidelity: f, target_medium: _ } =>
+      match f {
+        Lossy => !float_list_eq(left: oracle, right: kernel)
+        Lossless => false
+      }
+    Refused { reason: _ } => false
+  }
+}
+
+fn witness_float_fma_fused_kernel_refused_when_contract_refuses() -> Bool {
+  match recognize_accelerator_program_with_contract(
+    program: relu_mul_add_pure_program,
+    contract: float_contract_refused(),
+    insist_on_fma_fused_kernel: true
+  ) {
+    Recognized { plan: _, kernel_step: _, contract: _, fidelity: _, target_medium: _ } => false
+    Refused { reason: r } => match r {
+      FmaContractionViolatesContract => true
+      NotElementwisePure => false
+      CarriesEffects => false
+      AcceleratorUnsupportedNumericalDomain => false
+    }
+  }
+}
+

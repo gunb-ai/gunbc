@@ -95,6 +95,7 @@ A flaky or green-but-broken floor means no gate protects anything — so CI is u
 
 - [ ] **the floor is a full recompute every run** — profiled: the one `gunbc ci` step = **26m**, of which **~518s resolves all 870 witnesses** cold, a **second** `run_discovery_corpus` pass ~275s, effect-bound shell gates ~360s, seed compile ~134s. On a one-file PR ~99% of that resolve recomputes witnesses whose inputs did **not** change — §2 redundant work, un-inhabited. **Target: <1min on a typical PR.**
 - [ ] **resolve is not affected-set-pruned** — discovery is deliberately tree-wide (fail-closed enrol), but EXECUTION still **resolves all 870** every run; #5427 selection shrinks compile/test, not the 518s resolve. The lever: extend the affected-set across discovery→resolve so unchanged witnesses skip (the floor-selection items below, applied to the resolve phase). [plan](docs/plans/ci-selection-vs-scheduling.md)
+- [ ] **affected-set de-fork: `v2.lens.affected_set` as single authority** — N=2 parallel reverse-reachability impls exist: `.dag` authority (`v2.lens.affected_set` + `affected_set_floor_runner`, INERT, `WallAfterGrounding`) and Rust parallel (`NodeFrontierSeeds` + `entry_touches_frontier_seeds`, LIVE). The `.dag` authority must become the single live implementation; the Rust path deleted. BOTH witness-selection (per-row skip) AND precompute-skip (`precompute_whole_tree_published_mock_keys` at `cli_run.rs:3509`, unconditional today) wire to the same one `.dag` query. Acceptance: (a) `.dag`-vs-Rust equivalence on real corpus diff, (b) Rust rep deleted (N→1), (c) real floor wall-clock+peak-RSS drop on scoped diff. [plan](docs/plans/affected-set-precompute-pruning.md)
 - [ ] **kill the within-run double-resolve** — the corpus resolves once for discovery and again for execution (~275s second pass); execution should piggyback the discovery resolve. Pure within-run win, no cross-run cache needed.
 - [ ] **profile the 518s resolve** — ~0.6s/witness average, but a known machine-independent resolver bug resolves `budget_roster` ~450x its structural twin; a few pathological witnesses likely dominate the 518s. Profile which, fix the resolver.
 - [ ] **fractal Gantt profiling receipt (#5757 baseline)** — per-claim timing tap (`GUNBC_FLOOR_GANTT=1`) + Batch 1/2/3 breakdown; hot spots: rust gate ~530s (host-effect, architectural sep), discovery eval ~229s (interpreter, `width=3`), cold resolve ~50s (resolve-cache lever). [plan](docs/plans/ci-floor-fractal-gantt.md) — ⏳ awaiting sign-off
@@ -259,6 +260,15 @@ Depends on §6 — react/html is a first-class medium (idea-machine.md §3/§4),
 
 - [ ] react/html rendering stands up (real page, not fixture) — **SERVE page green-by-execution via gunbc-run landed (#5662); real socket the remaining gap (Lane C)**
 - [ ] add to the demo alongside the TypeScript emit (website + language, dogfoodable)
+
+**Hosting / live dashboard lane** *(operator-directed)* — stand the roadmap dashboard up **live on the fleet** (srv1/srv2, `fleet_intent`), dogfooding §7's page rendering and §8's session-dashboard. Each node names the displaced cost: a roadmap you can *see and act on in a browser*, not only read as committed markdown. Binding strategy: **emit a TS/Node server** — the host bridge is an emitted artifact, the `.dag` stays the authority and Rust does not grow (§2 Realization handler; gives the modeled-but-dead `NodeHttpCreateServer*` types their consumer).
+
+**Hosting / live dashboard lane:**
+
+- [ ] **roadmap → HTML page** *(keystone)* (#6010) pure projection `roadmap_model` → `MarkupNode` (`gunbc.roadmap_page`), serialized through the same XSS-safe HTML boundary as gunbhub; per-node status (open/review/done) / sizing / owner / carrier links. No substrate change.
+  - [ ] **live service on srv1/srv2** emit a TS/Node HTTP server (realization handler for `NodeHttpCreateServerEmissionTarget`) that serves the rendered pages bound to a port on a fleet host; the missing port-binding piece — today serving is a pre-rendered static table + a pure request→response fn.
+    - [ ] **idea input → roadmap node** capture a free-form idea via the live service (dynamic POST handler) and admit it as a roadmap work node (input-envelope admission §5). Composes `7-live-serve` + `7-interactivity`.
+  - [ ] **interactive components** *(props / state / handlers)* `MarkupAttrValue = LiteralValue | ExprValue` coproduct + expression children; JSX emits `{…}`, HTML emit **fails closed** on expression nodes (the `DecodeFidelity` honesty boundary §5). Load-bearing `std/markup.dag` shape — sign off before authoring.
 
 ## 8. Session dashboard on `.dag` (SHELVED)
 
