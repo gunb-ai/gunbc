@@ -26,7 +26,14 @@ fn rel_path(path: &Path) -> String {
     path.to_string_lossy().replace('\\', "/")
 }
 
-pub fn parse_file(path: &Path) -> Option<(Rc<Vec<Rc<Node>>>, SourceIndices)> {
+/// Parse-only module items for one `.dag` file (no resolve). Shared substrate for
+/// `decl_facts(roots)` (#5966) and emit-only corpus audits.
+pub struct ParsedDagFile {
+    pub items: Rc<Vec<Rc<Node>>>,
+    pub source_indices: SourceIndices,
+}
+
+pub fn parse_dag_file(path: &Path) -> Option<ParsedDagFile> {
     let content = std::fs::read_to_string(path).ok()?;
     let filename = path.file_name().and_then(|s| s.to_str()).unwrap_or("?");
     let tokens = tokenize(content.clone(), filename.to_string());
@@ -39,7 +46,14 @@ pub fn parse_file(path: &Path) -> Option<(Rc<Vec<Rc<Node>>>, SourceIndices)> {
         return None;
     }
     let module = result.module.as_ref()?;
-    Some((module.children.clone(), source_indices))
+    Some(ParsedDagFile {
+        items: module.children.clone(),
+        source_indices,
+    })
+}
+
+pub fn parse_file(path: &Path) -> Option<(Rc<Vec<Rc<Node>>>, SourceIndices)> {
+    parse_dag_file(path).map(|parsed| (parsed.items, parsed.source_indices))
 }
 
 fn function_bodies(items: &Rc<Vec<Rc<Node>>>) -> Vec<Rc<Node>> {
