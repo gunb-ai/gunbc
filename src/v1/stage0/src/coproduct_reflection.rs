@@ -489,7 +489,9 @@ pub fn eval_qualified_name_from_dotted_string(
         args.first().map(|(_, v)| v),
         "qualified_name_from_dotted_string",
     )?;
-    Ok(crate::module_path_index::qualified_name_value_from_dotted_string(ctx, &dotted))
+    Ok(crate::cli_run::qualified_name_value_from_dotted_string(
+        ctx, &dotted,
+    ))
 }
 
 fn type_expr_head_name(
@@ -780,7 +782,7 @@ fn concept_decl_node_parse_only_from_source(
 /// `List<T>` never fail silently — the lens only needs exact `String`/`NonEmptyStr`
 /// matches on field heads.
 pub fn eval_concept_decl_facts(ctx: &InterpContext, pool_roots: &[String]) -> InterpResult<Value> {
-    let ws = crate::module_path_index::workspace_root();
+    let ws = crate::cli_run::workspace_root();
     let abs_pool_roots: Vec<String> = pool_roots
         .iter()
         .map(|r| ws.join(r).to_string_lossy().into_owned())
