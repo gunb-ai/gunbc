@@ -5579,7 +5579,10 @@ mod module_path_index_tests {
     }
 }
 
-// Host-fed fact extraction for v2.lens.extdeps_shape_transport_policy
+// SCAFFOLD — host-fed fact extraction for v2.lens.extdeps_shape_transport_policy (Concern A).
+// Dissolution: when the Node-tree argv projection supersedes text scan (dissolve-on marker in
+// extdeps_shape_transport_policy.dag construction_justification), replace this block with a
+// Node-tree builtin and delete these structs. gunbc#5364 successor, Concern A lane.
 
 pub struct ExtdepsArgvFactRaw {
     pub module_path: String,
