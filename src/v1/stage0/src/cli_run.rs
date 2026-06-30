@@ -5719,6 +5719,7 @@ pub fn doc_graph_dangling_link_count() -> i64 {
 
 pub fn doc_graph_doc_count() -> i64 {
     doc_graph_report().doc_count as i64
+}
 
 // Host-fed fact extraction for `v2.lens.host_language_transport_script` — the lens `.dag` table
 // owns verdict logic; this bridge only projects `shell.Exec.Run` script-arg shapes from parsed
@@ -5977,7 +5978,7 @@ pub fn transport_script_position_facts_for_path(
         ));
     }
     facts
-
+}
 
 #[cfg(test)]
 mod module_path_index_tests {
