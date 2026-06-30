@@ -26,7 +26,6 @@ data pinned_host_physics_stage0_files: List<String> = [
   "resolved_graph_cache.rs",
   "rest_transport_facts.rs",
   "wire_value_serialize.rs",
-  "cache_purity_oracle.rs",
 ]
 
 data v1_interpreter_hybrid_seed_file: String = "v1_interpreter.rs"
