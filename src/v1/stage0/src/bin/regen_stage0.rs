@@ -155,6 +155,129 @@ fn main() -> ExitCode {
     }
 }
 
+struct VerifyFinishInput<'a> {
+    receipt_path: &'a Path,
+    workspace: &'a Path,
+    manifest_dir: &'a Path,
+    stage0_src: &'a Path,
+    fresh_dir: &'a Path,
+    verify_only: bool,
+    generated_file_count: usize,
+    emitted_file_count: usize,
+    phases: &'a mut Vec<BootstrapTimingPhase>,
+    run_started: Instant,
+    preserve_fresh_dir: bool,
+}
+
+fn finish_verify_checks(input: VerifyFinishInput<'_>) -> Result<(), String> {
+    let VerifyFinishInput {
+        receipt_path,
+        workspace,
+        manifest_dir,
+        stage0_src,
+        fresh_dir,
+        verify_only,
+        generated_file_count,
+        emitted_file_count,
+        phases,
+        run_started,
+        preserve_fresh_dir,
+    } = input;
+    let fresh_src = fresh_dir.join("src");
+    let verify_result = time_phase(phases, "verify_stage0_matches", || {
+        verify_stage0_matches(stage0_src, &fresh_src)
+    });
+    if let Err(message) = verify_result {
+        let changed_generated_files = changed_registered_outputs(&fresh_src, stage0_src)?;
+        write_bootstrap_timing_receipt(BootstrapTimingReceiptInput {
+            path: receipt_path,
+            workspace,
+            manifest_dir,
+            verify_only,
+            status: "failed_stage0_stale",
+            generated_file_count,
+            emitted_file_count,
+            phases: phases.clone(),
+            elapsed_ms: elapsed_ms(run_started),
+            changed_generated_files,
+        })?;
+        if !preserve_fresh_dir {
+            let _ = fs::remove_dir_all(fresh_dir);
+        }
+        return Err(message);
+    }
+    if let Err(message) =
+        time_phase(phases, "verify_stage0_split_crate_boundaries", || {
+            verify_stage0_split_crate_boundaries(workspace)
+        })
+    {
+        write_bootstrap_timing_receipt(BootstrapTimingReceiptInput {
+            path: receipt_path,
+            workspace,
+            manifest_dir,
+            verify_only,
+            status: "failed_stage0_split_crate_stale",
+            generated_file_count,
+            emitted_file_count,
+            phases: phases.clone(),
+            elapsed_ms: elapsed_ms(run_started),
+            changed_generated_files: Vec::new(),
+        })?;
+        if !preserve_fresh_dir {
+            let _ = fs::remove_dir_all(fresh_dir);
+        }
+        return Err(message);
+    }
+    if let Err(message) = time_phase(phases, "verify_workspace_members", || {
+        verify_workspace_members(workspace)
+    }) {
+        write_bootstrap_timing_receipt(BootstrapTimingReceiptInput {
+            path: receipt_path,
+            workspace,
+            manifest_dir,
+            verify_only,
+            status: "failed_workspace_members_stale",
+            generated_file_count,
+            emitted_file_count,
+            phases: phases.clone(),
+            elapsed_ms: elapsed_ms(run_started),
+            changed_generated_files: Vec::new(),
+        })?;
+        if !preserve_fresh_dir {
+            let _ = fs::remove_dir_all(fresh_dir);
+        }
+        return Err(message);
+    }
+    write_bootstrap_timing_receipt(BootstrapTimingReceiptInput {
+        path: receipt_path,
+        workspace,
+        manifest_dir,
+        verify_only,
+        status: if preserve_fresh_dir {
+            "completed_emit_fresh_verify"
+        } else {
+            "completed"
+        },
+        generated_file_count,
+        emitted_file_count,
+        phases: phases.clone(),
+        elapsed_ms: elapsed_ms(run_started),
+        changed_generated_files: Vec::new(),
+    })?;
+    if !preserve_fresh_dir {
+        let _ = fs::remove_dir_all(fresh_dir);
+    }
+    if preserve_fresh_dir {
+        println!(
+            "regen_stage0 --emit-fresh --verify: committed stage0 matches fresh self-compile; artifacts at {}",
+            fresh_dir.display()
+        );
+    } else {
+        println!("regen_stage0 --verify: committed stage0 matches fresh self-compile.");
+    }
+    Ok(())
+}
+
 fn run() -> Result<(), String> {
     let run_started = Instant::now();
     let args: Vec<String> = env::args().skip(1).collect();
@@ -242,7 +365,33 @@ fn run() -> Result<(), String> {
     })?;
 
     if emit_fresh.is_some() {
-        // Non-destructive: leave the assembled crate in place for cargo build.
+        if let Some(manifest_path) = &write_manifest {
+            let content = GENERATED_STAGE0_FILES.join("\n");
+            fs::write(manifest_path, content)
+                .map_err(|e| format!("write roster manifest {}: {e}", manifest_path.display()))?;
+            println!(
+                "regen_stage0 --write-manifest: wrote {} file entries to {}",
+                GENERATED_STAGE0_FILES.len(),
+                manifest_path.display()
+            );
+        }
+        if verify_only {
+            return finish_verify_checks(
+                VerifyFinishInput {
+                    receipt_path: &receipt_path,
+                    workspace: &workspace,
+                    manifest_dir: &manifest_dir,
+                    stage0_src: &stage0_src,
+                    fresh_dir: &fresh_dir,
+                    verify_only,
+                    generated_file_count: GENERATED_STAGE0_FILES.len(),
+                    emitted_file_count: emitted.len(),
+                    phases: &mut phases,
+                    run_started,
+                    preserve_fresh_dir: true,
+                },
+            );
+        }
         write_bootstrap_timing_receipt(BootstrapTimingReceiptInput {
             path: &receipt_path,
             workspace: &workspace,
@@ -255,16 +404,6 @@ fn run() -> Result<(), String> {
             elapsed_ms: elapsed_ms(run_started),
             changed_generated_files: Vec::new(),
         })?;
-        if let Some(manifest_path) = &write_manifest {
-            let content = GENERATED_STAGE0_FILES.join("\n");
-            fs::write(manifest_path, content)
-                .map_err(|e| format!("write roster manifest {}: {e}", manifest_path.display()))?;
-            println!(
-                "regen_stage0 --write-manifest: wrote {} file entries to {}",
-                GENERATED_STAGE0_FILES.len(),
-                manifest_path.display()
-            );
-        }
         println!(
             "regen_stage0 --emit-fresh: assembled faithful emitted crate at {}",
             fresh_dir.display()
@@ -273,80 +412,19 @@ fn run() -> Result<(), String> {
     }
 
     if verify_only {
-        let verify_result = time_phase(&mut phases, "verify_stage0_matches", || {
-            verify_stage0_matches(&stage0_src, &fresh_dir.join("src"))
-        });
-        if let Err(message) = verify_result {
-            let changed_generated_files =
-                changed_registered_outputs(&fresh_dir.join("src"), &stage0_src)?;
-            write_bootstrap_timing_receipt(BootstrapTimingReceiptInput {
-                path: &receipt_path,
-                workspace: &workspace,
-                manifest_dir: &manifest_dir,
-                verify_only,
-                status: "failed_stage0_stale",
-                generated_file_count: GENERATED_STAGE0_FILES.len(),
-                emitted_file_count: emitted.len(),
-                phases,
-                elapsed_ms: elapsed_ms(run_started),
-                changed_generated_files,
-            })?;
-            let _ = fs::remove_dir_all(&fresh_dir);
-            return Err(message);
-        }
-        if let Err(message) =
-            time_phase(&mut phases, "verify_stage0_split_crate_boundaries", || {
-                verify_stage0_split_crate_boundaries(&workspace)
-            })
-        {
-            write_bootstrap_timing_receipt(BootstrapTimingReceiptInput {
-                path: &receipt_path,
-                workspace: &workspace,
-                manifest_dir: &manifest_dir,
-                verify_only,
-                status: "failed_stage0_split_crate_stale",
-                generated_file_count: GENERATED_STAGE0_FILES.len(),
-                emitted_file_count: emitted.len(),
-                phases,
-                elapsed_ms: elapsed_ms(run_started),
-                changed_generated_files: Vec::new(),
-            })?;
-            let _ = fs::remove_dir_all(&fresh_dir);
-            return Err(message);
-        }
-        if let Err(message) = time_phase(&mut phases, "verify_workspace_members", || {
-            verify_workspace_members(&workspace)
-        }) {
-            write_bootstrap_timing_receipt(BootstrapTimingReceiptInput {
-                path: &receipt_path,
-                workspace: &workspace,
-                manifest_dir: &manifest_dir,
-                verify_only,
-                status: "failed_workspace_members_stale",
-                generated_file_count: GENERATED_STAGE0_FILES.len(),
-                emitted_file_count: emitted.len(),
-                phases,
-                elapsed_ms: elapsed_ms(run_started),
-                changed_generated_files: Vec::new(),
-            })?;
-            let _ = fs::remove_dir_all(&fresh_dir);
-            return Err(message);
-        }
-        write_bootstrap_timing_receipt(BootstrapTimingReceiptInput {
-            path: &receipt_path,
+        return finish_verify_checks(VerifyFinishInput {
+            receipt_path: &receipt_path,
             workspace: &workspace,
             manifest_dir: &manifest_dir,
+            stage0_src: &stage0_src,
+            fresh_dir: &fresh_dir,
             verify_only,
-            status: "completed",
             generated_file_count: GENERATED_STAGE0_FILES.len(),
             emitted_file_count: emitted.len(),
-            phases,
-            elapsed_ms: elapsed_ms(run_started),
-            changed_generated_files: Vec::new(),
-        })?;
-        let _ = fs::remove_dir_all(&fresh_dir);
-        println!("regen_stage0 --verify: committed stage0 matches fresh self-compile.");
-        return Ok(());
+            phases: &mut phases,
+            run_started,
+            preserve_fresh_dir: false,
+        });
     }
 
     let changed_generated_files = changed_registered_outputs(&fresh_dir.join("src"), &stage0_src)?;
