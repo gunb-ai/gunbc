@@ -3,10 +3,11 @@ module test.claim.ci_budget_tree_witness
 import std.logic { Bool }
 import std.measure { byte_size, byte_size_count }
 import product.budget_tree { node_conserves, budget_child_named, BudgetChildFound, BudgetChildMissing }
-import gunbc.ci_fleet { srv1_offer, srv2_offer }
+import gunbc.ci_fleet { srv1_offer, srv2_offer, srv3_offer }
 import gunbc.ci_budget_tree {
   srv1_budget_tree,
   srv2_budget_tree,
+  srv3_budget_tree,
   srv1_host_ram,
   srv1_fixed_overhead_bytes,
   srv1_gha_runner_pool_budget,
@@ -35,7 +36,9 @@ fn oversized_slice() -> Int {
 }
 
 fn witness_live_trees_conserve() -> Bool {
-  node_conserves(node: srv1_budget_tree) && node_conserves(node: srv2_budget_tree)
+  node_conserves(node: srv1_budget_tree)
+    && node_conserves(node: srv2_budget_tree)
+    && node_conserves(node: srv3_budget_tree)
 }
 
 fn witness_live_is_fail_closed() -> Bool {
@@ -122,6 +125,20 @@ fn witness_floor_budget_equals_runner_cgroup_cap_holds() -> Bool {
   witness_floor_budget_equals_runner_cgroup_cap()
 }
 
+fn witness_srv3_symmetric_to_srv1() -> Bool {
+  let s1 = host_budget_tree_at(name: "srv1", offer: srv1_offer, session_slice: byte_size(fitting_slice()))
+  let s3 = host_budget_tree_at(name: "srv3", offer: srv3_offer, session_slice: byte_size(fitting_slice()))
+  let p1 = match budget_tree_gha_runner_pool_node(tree: s1) {
+    BudgetChildFound { node: n } => byte_size_count(b: n.appropriation.ceiling)
+    BudgetChildMissing => 0
+  }
+  let p3 = match budget_tree_gha_runner_pool_node(tree: s3) {
+    BudgetChildFound { node: n } => byte_size_count(b: n.appropriation.ceiling)
+    BudgetChildMissing => 0
+  }
+  p1 == p3 && p3 > 0
+}
+
 test fn ci_budget_tree_holds() -> Bool {
   witness_live_trees_conserve()
     && witness_live_is_fail_closed()
@@ -129,6 +146,7 @@ test fn ci_budget_tree_holds() -> Bool {
     && witness_overcommit_fails_conservation()
     && witness_three_way_conservation_live()
     && witness_srv2_symmetric_to_srv1()
+    && witness_srv3_symmetric_to_srv1()
     && witness_two_pools_present()
     && witness_unknown_child_is_absent()
     && witness_spawn_width_budget_is_per_runner_cap()

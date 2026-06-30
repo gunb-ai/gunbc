@@ -10,7 +10,7 @@ import product.budget_tree {
   BudgetChild,
   budget_child_named
 }
-import gunbc.ci_fleet { ComputeOffer, srv1_offer, srv2_offer }
+import gunbc.ci_fleet { ComputeOffer, srv1_offer, srv2_offer, srv3_offer }
 import gunbc.fleet_intent { compute_host_ram_bytes_total }
 import gunbc.ci_floor_measurement {
   HostFixedOverhead, HostFixedOverheadMeasured, HostFixedOverheadUnmeasured,
@@ -100,8 +100,9 @@ fn runner_pool_bytes(offer: ComputeOffer) -> ByteSize {
 
 data srv1_budget_tree: BudgetNode = host_budget_tree(name: "srv1", offer: srv1_offer)
 data srv2_budget_tree: BudgetNode = host_budget_tree(name: "srv2", offer: srv2_offer)
+data srv3_budget_tree: BudgetNode = host_budget_tree(name: "srv3", offer: srv3_offer)
 
-data fleet_budget_trees: List<BudgetNode> = [srv1_budget_tree, srv2_budget_tree]
+data fleet_budget_trees: List<BudgetNode> = [srv1_budget_tree, srv2_budget_tree, srv3_budget_tree]
 
 fn budget_tree_gha_runner_pool_node(tree: BudgetNode) -> BudgetChild {
   budget_child_named(node: tree, name: "gha_runner_pool")
