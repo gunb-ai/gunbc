@@ -1,9 +1,18 @@
-// Emit-only whole-corpus audit for the complexity/linearity lens family (SYNTACTIC half).
+// SCAFFOLD — Emit-only whole-corpus audit for the complexity/linearity lens family (SYNTACTIC half).
+// Lane 7 — DESIGN.md §6, ROADMAP.md §3 "complexity budget gates the whole codebase"
+// (row `3-gates-whole`, gated on fn-body reflection / `decl_facts(roots)` host builtin #5966).
 //
-// Substrate: `decl_facts_project::decl_facts_parse_only(roots)` — locked carrier shape
-// `{qualified_name, name, kind, node}` stubbed with parse-only walk until the additive
-// host builtin merges (#5966 follow-up). DISSOLUTION: swap stub for real `decl_facts(roots)`;
-// keep pure Node projections unchanged.
+// AUDIT-FIRST BRIDGE: parse-only walk over `witness_layer_roots` until whole-corpus fn-body
+// reflection grounds. Substrate: `decl_facts_project::decl_facts_parse_only(roots)` — locked carrier
+// shape `{qualified_name, name, kind, node}` stubbed with parse-only walk until the additive
+// host builtin merges (#5966 follow-up).
+//
+// DISSOLUTION TRIGGER (named, checkable):
+//   1. Swap `decl_facts_parse_only` body for real `decl_facts(roots)` when #5966 lands.
+//   2. Move `triage_wildcard` kernel-permanent / migration-debt tags on-carrier alongside decl_facts.
+//   3. Fold SYNTACTIC projections into a pure `.dag` Node-tree reader when compile-graph access
+//      lands (gunbc#5364) — same additive builtin seam as non_fold_residue_* / inert_carrier_*.
+//   4. Flip floor enrollment once whole-corpus reflection grounds (ROADMAP §3 `3-gates-whole`).
 //
 // RESOLVED-half findings (closed-coproduct-param non_fold, inert-carrier consumers)
 // remain #5364-gated — reported via existing roster builtins, not whole-corpus here.

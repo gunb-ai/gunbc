@@ -1,12 +1,16 @@
 #![allow(clippy::disallowed_macros)]
 
-//! Emit-only whole-corpus audit for the complexity/linearity lens family (SYNTACTIC half).
+//! SCAFFOLD — emit-only whole-corpus audit for the complexity/linearity lens family (SYNTACTIC half).
 //!
-//! Parse-only walk over `witness_layer_roots` using `decl_facts_parse_only` stub — swaps to
-//! `decl_facts(roots)` host builtin when the additive follow-up merges (#5966).
+//! ROADMAP §3 `3-gates-whole` ("complexity budget gates the whole codebase"); audit-first bridge
+//! until `decl_facts(roots)` host builtin (#5966) grounds fn-body reflection. Parse-only walk over
+//! `witness_layer_roots` using `decl_facts_parse_only` stub.
 //!
-//! Prints `site`, `lens`, `rule`, `triage` (TSV). Exit 0 always unless `--fail-on-findings`
-//! (for discriminating tests). NOT floor-enrolled.
+//! NOT floor-enrolled. Prints `site`, `lens`, `rule`, `triage` (TSV). Exit 0 unless
+//! `--fail-on-findings` (for discriminating tests).
+//!
+//! DISSOLUTION: swap stub for `decl_facts(roots)`, move triage roster on-carrier, fold SYNTACTIC
+//! projections into a pure `.dag` reader (gunbc#5364), then enroll floor gate.
 
 use std::process::ExitCode;
 

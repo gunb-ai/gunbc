@@ -1,9 +1,12 @@
-// Locked carrier shape for whole-tree declaration facts (neat-fox-279 / #5966 follow-up).
+// SCAFFOLD — locked carrier shape for whole-tree declaration facts (neat-fox-279 / #5966 follow-up).
 //
 // `decl_facts(roots) -> List<DeclFact>` where each row is `{qualified_name, name, kind, node}`.
+// ROADMAP §3 `3-gates-whole` ("complexity budget gates the whole codebase") — fn-body reflection
+// substrate this audit-first bridge stands on until the additive host builtin merges.
+//
 // STUB: parse-only walk via `parse_dag_file` — same substrate the additive host builtin will use.
-// DISSOLUTION: swap `decl_facts_parse_only` body for the real host builtin when the additive
-// follow-up merges; projection logic over `DeclFact` rows stays unchanged.
+// DISSOLUTION: swap `decl_facts_parse_only` body for the real host builtin when #5966 lands;
+// projection logic over `DeclFact` rows stays unchanged.
 
 use std::path::PathBuf;
 use std::rc::Rc;
