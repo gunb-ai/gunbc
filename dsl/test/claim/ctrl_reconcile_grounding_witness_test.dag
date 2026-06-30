@@ -1,0 +1,158 @@
+module test.claim.ctrl_reconcile_grounding_witness
+
+import std.types { Bool, NonEmptyStr }
+import std.measure { ByteSize, byte_size, byte_size_count }
+import std.realization_reconcile {
+  ShowEffectiveRead,
+  ReadObserved,
+  Grounds,
+  DoesNotGround,
+}
+import gunbc.ci_floor_measurement {
+  gunbc_ci_runner_cgroup_memory_cap,
+  RunnerSliceCapEffectiveness,
+  CapEffective,
+  CapUnbounded,
+}
+import gunbc.fleet_host_budget { gunbc_per_runner_memory_cap }
+import gunbc.ctrl_reconcile {
+  ctrl_reconcile_desired_cap,
+  ctrl_reconcile_parse_memory_max_show,
+  ctrl_reconcile_recorded_show_bytes,
+  ctrl_reconcile_recorded_fixture_read,
+  ctrl_reconcile_fixture_staleness_gate_holds,
+  ctrl_reconcile_grounding_from_read,
+  ctrl_reconcile_converges_for,
+  ctrl_reconcile_apply_script,
+  ctrl_reconcile_read_script,
+  ctrl_reconcile_default_slice_unit,
+}
+import gunbc.runner_slot_enforcement {
+  RunnerSlotEnforcement,
+  RunnerSlotEnforced,
+  RunnerSlotUnenforced,
+}
+
+fn is_enforced(e: RunnerSlotEnforcement) -> Bool {
+  match e {
+    RunnerSlotEnforced => true
+    RunnerSlotUnenforced { reason: _ } => false
+  }
+}
+
+fn matching_read() -> ShowEffectiveRead<RunnerSliceCapEffectiveness> {
+  ReadObserved {
+    value: ctrl_reconcile_parse_memory_max_show(
+      raw: ctrl_reconcile_recorded_show_bytes
+    )
+  }
+}
+
+fn unbounded_read() -> ShowEffectiveRead<RunnerSliceCapEffectiveness> {
+  ReadObserved { value: CapUnbounded }
+}
+
+fn drift_read() -> ShowEffectiveRead<RunnerSliceCapEffectiveness> {
+  ReadObserved {
+    value: CapEffective { bytes: byte_size(70391285350) }
+  }
+}
+
+fn evidence_for(read: ShowEffectiveRead<RunnerSliceCapEffectiveness>) -> RunnerSlotEnforcement {
+  match ctrl_reconcile_grounding_from_read(read: read) {
+    Grounds { evidence: e } => e
+    DoesNotGround { reason: why } => RunnerSlotUnenforced { reason: why }
+  }
+}
+
+fn witness_desired_cap_from_budget_tree() -> Bool {
+  byte_size_count(b: ctrl_reconcile_desired_cap())
+    == byte_size_count(b: gunbc_per_runner_memory_cap)
+    && byte_size_count(b: ctrl_reconcile_desired_cap())
+      == byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap)
+}
+
+fn witness_recorded_fixture_parse_grounds_enforced() -> Bool {
+  is_enforced(e: evidence_for(read: ctrl_reconcile_recorded_fixture_read()))
+}
+
+fn witness_recorded_fixture_converges() -> Bool {
+  ctrl_reconcile_converges_for(read: ctrl_reconcile_recorded_fixture_read())
+}
+
+fn witness_matching_read_grounds_enforced() -> Bool {
+  is_enforced(e: evidence_for(read: matching_read()))
+}
+
+fn witness_matching_read_converges() -> Bool {
+  ctrl_reconcile_converges_for(read: matching_read())
+}
+
+fn witness_unbounded_read_stays_unenforced() -> Bool {
+  !is_enforced(e: evidence_for(read: unbounded_read()))
+}
+
+fn witness_unbounded_read_does_not_converge() -> Bool {
+  !ctrl_reconcile_converges_for(read: unbounded_read())
+}
+
+fn witness_drift_read_stays_unenforced() -> Bool {
+  !is_enforced(e: evidence_for(read: drift_read()))
+}
+
+fn witness_drift_read_does_not_converge() -> Bool {
+  !ctrl_reconcile_converges_for(read: drift_read())
+}
+
+fn witness_apply_script_targets_desired_cap() -> Bool {
+  let script = ctrl_reconcile_apply_script(
+    slice_unit: ctrl_reconcile_default_slice_unit(),
+    cap: ctrl_reconcile_desired_cap()
+  )
+  script == concat(
+    "systemctl set-property ",
+    concat(
+      ctrl_reconcile_default_slice_unit(),
+      concat(" MemoryMax=", to_string(byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap)))
+    )
+  )
+}
+
+fn witness_read_script_targets_slice() -> Bool {
+  let script = ctrl_reconcile_read_script(slice_unit: ctrl_reconcile_default_slice_unit())
+  script == concat(
+    "systemctl show ",
+    concat(
+      ctrl_reconcile_default_slice_unit(),
+      " --property=MemoryMax --value"
+    )
+  )
+}
+
+fn witness_staleness_gate_holds() -> Bool {
+  ctrl_reconcile_fixture_staleness_gate_holds()
+}
+
+fn witness_staleness_gate_discriminates_drift() -> Bool {
+  !ctrl_reconcile_converges_for(
+    read: ReadObserved {
+      value: ctrl_reconcile_parse_memory_max_show(raw: "infinity")
+    }
+  )
+}
+
+test fn ctrl_reconcile_grounding_holds() -> Bool {
+  witness_desired_cap_from_budget_tree()
+    && witness_recorded_fixture_parse_grounds_enforced()
+    && witness_recorded_fixture_converges()
+    && witness_matching_read_grounds_enforced()
+    && witness_matching_read_converges()
+    && witness_unbounded_read_stays_unenforced()
+    && witness_unbounded_read_does_not_converge()
+    && witness_drift_read_stays_unenforced()
+    && witness_drift_read_does_not_converge()
+    && witness_apply_script_targets_desired_cap()
+    && witness_read_script_targets_slice()
+    && witness_staleness_gate_holds()
+    && witness_staleness_gate_discriminates_drift()
+}

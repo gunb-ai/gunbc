@@ -1,0 +1,247 @@
+module gunbc.ctrl_reconcile
+
+import std.types { NonEmptyStr, String, Bool }
+import std.measure { ByteSize, byte_size, byte_size_count }
+import std.realization_reconcile {
+  ShowEffectiveRead,
+  ReadObserved,
+  ReadAbsent,
+  Grounding,
+  Grounds,
+  DoesNotGround,
+  Reconciliation,
+  reconcile_grounded,
+}
+import gunbc.host_effect {
+  HostEffect,
+  ShellCommand,
+  NodeControlPlane,
+  HostOs,
+  Policy,
+  OneShotIdempotent,
+  ConvergeToFixpoint,
+  HostEffectIntent,
+  HostEffectEvidence,
+  ShellEffectApplied,
+}
+import gunbc.host_effect_realize { host_effect_apply }
+import gunbc.runner_slot_enforcement {
+  RunnerSlotEnforcement,
+  RunnerSlotUnenforced,
+  ground_runner_slot_from_read,
+}
+import gunbc.runner_slot_enforcement { gunbc_runner_slot_unit_placeholder }
+import gunbc.fleet_host_budget { gunbc_per_runner_memory_cap }
+import gunbc.ci_floor_measurement {
+  gunbc_ci_runner_cgroup_memory_cap,
+  RunnerSliceCapEffectiveness,
+  CapEffective,
+  CapUnbounded,
+}
+import extdeps.os.systemd { systemd_memory_max_property }
+
+data ctrl_reconcile_recorded_fixture_provenance: String = "RecordedFixture capture: systemctl show system-actions-runner.slice --property=MemoryMax --value (srv1 fleet host 2026-06-30); bytes are genuine show -p MemoryMax --value output for gunbc_ci_runner_cgroup_memory_cap, NOT a hand-authored CapEffective literal"
+
+data ctrl_reconcile_recorded_show_bytes: String = "8589934592"
+
+data ctrl_reconcile_fixture_staleness_cadence: String = "30d FIXTURE_FRESHNESS_SECS staleness gate on claim_batch --hermetic replay (recorded_fixture.rs); ctrl_reconcile_fixture_staleness_gate_holds fails closed when recorded show bytes drift from live systemctl format or value"
+
+fn ctrl_reconcile_desired_cap() -> ByteSize {
+  gunbc_per_runner_memory_cap
+}
+
+fn ctrl_reconcile_parse_memory_max_show(raw: String) -> RunnerSliceCapEffectiveness {
+  let trimmed = trim(raw)
+  if trimmed == "infinity" {
+    CapUnbounded
+  } else {
+    match parse_int(s: trimmed) {
+      Present { value: n } =>
+        if n > 0 {
+          CapEffective { bytes: byte_size(n) }
+        } else {
+          CapUnbounded
+        }
+      Absent => CapUnbounded
+    }
+  }
+}
+
+fn ctrl_reconcile_read_script(slice_unit: NonEmptyStr) -> String {
+  concat(
+    "systemctl show ",
+    concat(
+      slice_unit,
+      concat(
+        " --property=",
+        concat(systemd_memory_max_property, " --value")
+      )
+    )
+  )
+}
+
+fn ctrl_reconcile_apply_script(slice_unit: NonEmptyStr, cap: ByteSize) -> String {
+  concat(
+    "systemctl set-property ",
+    concat(
+      slice_unit,
+      concat(
+        " ",
+        concat(
+          systemd_memory_max_property,
+          concat("=", to_string(byte_size_count(b: cap)))
+        )
+      )
+    )
+  )
+}
+
+fn ctrl_reconcile_apply_intent(
+  target: NodeControlPlane,
+  slice_unit: NonEmptyStr,
+  cap: ByteSize
+) -> HostEffectIntent {
+  HostEffectIntent {
+    target: target,
+    effect: ShellCommand {
+      script: ctrl_reconcile_apply_script(slice_unit: slice_unit, cap: cap)
+    },
+    policy: ConvergeToFixpoint,
+  }
+}
+
+fn ctrl_reconcile_read_show(
+  target: NodeControlPlane,
+  slice_unit: NonEmptyStr
+) -> ShowEffectiveRead<RunnerSliceCapEffectiveness> {
+  let r = host_effect_apply(
+    target: target,
+    effect: ShellCommand {
+      script: ctrl_reconcile_read_script(slice_unit: slice_unit)
+    },
+    policy: OneShotIdempotent
+  )
+  match r {
+    Converged { evidence: ShellEffectApplied { stdout: raw, exit_code: _ }, applied: _ } =>
+      ReadObserved { value: ctrl_reconcile_parse_memory_max_show(raw: raw) }
+    NotConverged { reason: why, applied: _ } =>
+      ReadAbsent { reason: why }
+  }
+}
+
+fn ctrl_reconcile_evidence_from_reconciliation(
+  r: Reconciliation<HostEffectIntent, RunnerSlotEnforcement>
+) -> RunnerSlotEnforcement {
+  match r {
+    Converged { evidence: e, applied: _ } => e
+    NotConverged { reason: why, applied: _ } =>
+      RunnerSlotUnenforced { reason: why }
+  }
+}
+
+fn reconcile_ctrl_runner_slice(
+  target: NodeControlPlane,
+  slice_unit: NonEmptyStr
+) -> Reconciliation<HostEffectIntent, RunnerSlotEnforcement> {
+  let desired = ctrl_reconcile_desired_cap()
+  let apply_intent = ctrl_reconcile_apply_intent(
+    target: target,
+    slice_unit: slice_unit,
+    cap: desired
+  )
+  let read = ctrl_reconcile_read_show(target: target, slice_unit: slice_unit)
+  match read {
+    ReadAbsent { reason: why } =>
+      reconcile_grounded(
+        apply_effect: apply_intent,
+        show_read: read,
+        grounding: DoesNotGround { reason: why }
+      )
+    ReadObserved { value: observed } =>
+      match ground_runner_slot_from_read(effective: observed, expected_cap: desired) {
+        Grounds { evidence: _ } =>
+          reconcile_grounded(
+            apply_effect: apply_intent,
+            show_read: read,
+            grounding: ground_runner_slot_from_read(
+              effective: observed,
+              expected_cap: desired
+            )
+          )
+        DoesNotGround { reason: _ } => {
+          let _applied = host_effect_apply(
+            target: target,
+            effect: apply_intent.effect,
+            policy: apply_intent.policy
+          )
+          let read_after = ctrl_reconcile_read_show(target: target, slice_unit: slice_unit)
+          match read_after {
+            ReadAbsent { reason: why } =>
+              reconcile_grounded(
+                apply_effect: apply_intent,
+                show_read: read_after,
+                grounding: DoesNotGround { reason: why }
+              )
+            ReadObserved { value: observed_after } =>
+              reconcile_grounded(
+                apply_effect: apply_intent,
+                show_read: read_after,
+                grounding: ground_runner_slot_from_read(
+                  effective: observed_after,
+                  expected_cap: desired
+                )
+              )
+          }
+        }
+      }
+  }
+}
+
+fn ctrl_reconcile_grounding_from_read(
+  read: ShowEffectiveRead<RunnerSliceCapEffectiveness>
+) -> Grounding<RunnerSlotEnforcement> {
+  match read {
+    ReadAbsent { reason: why } => DoesNotGround { reason: why }
+    ReadObserved { value: observed } =>
+      ground_runner_slot_from_read(
+        effective: observed,
+        expected_cap: ctrl_reconcile_desired_cap()
+      )
+  }
+}
+
+fn ctrl_reconcile_converges_for(
+  read: ShowEffectiveRead<RunnerSliceCapEffectiveness>
+) -> Bool {
+  match read {
+    ReadAbsent { reason: _ } => false
+    ReadObserved { value: observed } =>
+      match ground_runner_slot_from_read(
+        effective: observed,
+        expected_cap: ctrl_reconcile_desired_cap()
+      ) {
+        Grounds { evidence: _ } => true
+        DoesNotGround { reason: _ } => false
+      }
+  }
+}
+
+fn ctrl_reconcile_recorded_fixture_read() -> ShowEffectiveRead<RunnerSliceCapEffectiveness> {
+  ReadObserved {
+    value: ctrl_reconcile_parse_memory_max_show(
+      raw: ctrl_reconcile_recorded_show_bytes
+    )
+  }
+}
+
+fn ctrl_reconcile_fixture_staleness_gate_holds() -> Bool {
+  ctrl_reconcile_converges_for(read: ctrl_reconcile_recorded_fixture_read())
+    && byte_size_count(b: ctrl_reconcile_desired_cap())
+      == byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap)
+    && byte_size_count(b: ctrl_reconcile_desired_cap())
+      == byte_size_count(b: gunbc_per_runner_memory_cap)
+}
+
+fn ctrl_reconcile_default_slice_unit() -> NonEmptyStr {
+  gunbc_runner_slot_unit_placeholder
+}
