@@ -234,7 +234,11 @@ fn serialize_ts_stmt_body(s: TsStmt) -> String {
   match s {
     Block { stmts: ss } => concat("{ ", concat(serialize_ts_stmts_indented(stmts: ss, indent: "  "), " }"))
     ExprStmt { expr: e } => serialize_ts_expr(e: e)
-    _ => serialize_ts_stmt(s: s)
+    Const { name: _, value: _ } => serialize_ts_stmt(s: s)
+    Let { name: _, value: _ } => serialize_ts_stmt(s: s)
+    If { cond: _, then: _, else_stmt: _ } => serialize_ts_stmt(s: s)
+    ForOf { var_name: _, iterable: _, body: _ } => serialize_ts_stmt(s: s)
+    Return { expr: _ } => serialize_ts_stmt(s: s)
   }
 }
 
