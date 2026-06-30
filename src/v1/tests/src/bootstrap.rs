@@ -86,7 +86,7 @@ fn copy_stage0_support_modules(stage1_dir: &std::path::Path, ws: &std::path::Pat
         "coproduct_reflection.rs",
         "resolved_graph_cache.rs",
         "recorded_fixture.rs",
-        "extdeps_shape_transport_policy_project.rs",
+        "external_authority_project.rs",
         "fact_cardinality_census.rs",
         "languages_consumer_census.rs",
         "transport_script_position_project.rs",
@@ -149,7 +149,7 @@ fn diff_excluding_hand_maintained(
         .arg("--exclude=coproduct_reflection.rs")
         .arg("--exclude=resolved_graph_cache.rs")
         .arg("--exclude=recorded_fixture.rs")
-        .arg("--exclude=extdeps_shape_transport_policy_project.rs")
+        .arg("--exclude=external_authority_project.rs")
         .arg("--exclude=fact_cardinality_census.rs")
         .arg("--exclude=languages_consumer_census.rs")
         .arg("--exclude=transport_script_position_project.rs")

@@ -117,7 +117,7 @@ const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
     "doc_reachability_project.rs",
     "inert_carrier_project.rs",
     "medium_structure_project.rs",
-    "extdeps_shape_transport_policy_project.rs",
+    "external_authority_project.rs",
     "fact_cardinality_census.rs",
     "languages_consumer_census.rs",
     "non_fold_residue_project.rs",
