@@ -2,8 +2,8 @@
 
 //! Emit-only whole-corpus audit for the complexity/linearity lens family (SYNTACTIC half).
 //!
-//! Parse-only walk over `witness_layer_roots` using `parse_dag_file` — swaps to
-//! `decl_facts(roots)` when the standalone base PR merges (#5966).
+//! Parse-only walk over `witness_layer_roots` using `decl_facts_parse_only` stub — swaps to
+//! `decl_facts(roots)` host builtin when the additive follow-up merges (#5966).
 //!
 //! Prints `site`, `lens`, `rule`, `triage` (TSV). Exit 0 always unless `--fail-on-findings`
 //! (for discriminating tests). NOT floor-enrolled.
@@ -15,7 +15,8 @@ use v1_compiler::complexity_linearity_audit_project::{
 };
 use v1_compiler::inert_carrier_project::{inert_carrier_count, inert_carrier_unrostered_count};
 use v1_compiler::non_fold_residue_project::{
-    non_fold_residue_count, non_fold_residue_unrostered_count,
+    non_fold_residue_count, non_fold_residue_irreducible_roster_slots,
+    non_fold_residue_migration_debt_roster_slots, non_fold_residue_unrostered_count,
 };
 
 fn require_value(args: &[String], idx: usize, flag: &str) -> Result<String, ExitCode> {
@@ -77,23 +78,37 @@ fn print_summary(
     );
     let fiction = roster_fiction_report(summary);
     eprintln!(
-        "complexity_linearity_audit: ROSTER-FICTION — floor GREEN today only because \
-         {}/{} closed-coproduct residue site(s) are on the exception roster; \
-         drop roster → floor RED on {} site(s) (unrostered today: {})",
-        fiction.resolved_residue_sites - fiction.resolved_unrostered_sites,
-        fiction.resolved_residue_sites,
-        fiction.floor_red_if_roster_dropped,
+        "complexity_linearity_audit: ROSTER-FICTION — (a) MIGRATION-DEBT: {}/{} live on roster \
+         (floor RED on {} if migration roster fiction dropped); \
+         (b) IRREDUCIBLE: {}/{} honest permanent residue (operator-signed); \
+         unrostered today: {}",
+        fiction.migration_debt_live,
+        non_fold_residue_migration_debt_roster_slots(),
+        fiction.floor_red_if_migration_roster_fiction_dropped,
+        fiction.irreducible_live,
+        non_fold_residue_irreducible_roster_slots(),
         fiction.resolved_unrostered_sites
     );
     eprintln!(
         "complexity_linearity_audit: syntactic wildcard arms — total={} on_roster={} off_roster={} \
-         | triage: eval-interpreter-debt={} grammar-ladder-debt={} kernel-permanent={}",
+         | triage: eval-interpreter-debt={} grammar-ladder-debt={} kernel-permanent={} migration-debt={}",
         fiction.syntactic_wildcard_total,
         fiction.syntactic_wildcard_on_roster,
         fiction.syntactic_wildcard_off_roster,
         fiction.eval_interpreter_debt,
         fiction.grammar_ladder_debt,
-        fiction.kernel_permanent
+        fiction.kernel_permanent,
+        fiction.migration_debt_live
+    );
+    let cost_findings = summary
+        .findings
+        .iter()
+        .filter(|f| f.lens == "cost")
+        .count();
+    eprintln!(
+        "complexity_linearity_audit: cost syntactic proxy (Node.body walk) — \
+         syntactic_high_match_fanout={} site(s) (full cost_lens on DeclFact.node.body pending #5364)",
+        cost_findings
     );
     eprintln!("site\tlens\trule\ttriage");
     for f in &summary.findings {

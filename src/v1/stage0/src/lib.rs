@@ -15,6 +15,7 @@
 
 pub mod cli_run;
 pub mod complexity_linearity_audit_project;
+pub mod decl_facts_project;
 pub mod coproduct_reflection;
 pub mod doc_reachability_project;
 pub mod extdeps_cargo;
