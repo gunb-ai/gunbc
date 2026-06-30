@@ -8,7 +8,7 @@ import gunbc.roadmap_model {
   NodeSizing, Unsized, Sized,
   SectionElement, Group, SectionGroup,
 }
-import gunbc.roadmap_status { DerivableLine, AuthoredLine }
+import gunbc.roadmap_status { DerivableLine, AuthoredLine, Signoff, Unsigned }
 import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
 import gunbc.roadmap_spawner { next_spawnable, roadmap_spawn_request_json }
 
@@ -20,6 +20,8 @@ fn sized_derivable(id: String, prs: List<Int>, title: String) -> RoadmapNode {
     line: DerivableLine { prs: prs, title: title, description: "" },
     carriers: [],
     sizing: Sized { intricacy: IntricacyHigh, volume: VolumeMedium, repo: "gunbc", acceptance: PrsMerged },
+    owner: "",
+    signoff: Unsigned,
   }
 }
 
@@ -29,6 +31,8 @@ fn unsized_derivable(id: String, prs: List<Int>, title: String) -> RoadmapNode {
     line: DerivableLine { prs: prs, title: title, description: "" },
     carriers: [],
     sizing: Unsized,
+    owner: "",
+    signoff: Unsigned,
   }
 }
 

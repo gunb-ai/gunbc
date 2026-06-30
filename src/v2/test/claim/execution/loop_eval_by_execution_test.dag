@@ -1,4 +1,4 @@
-module v2.test.manual.loop_eval_by_execution
+module v2.test.execution.loop_eval_by_execution
 
 import v2.compiler.body_producer {
   produce_mvp1_loop_arrow_with_body,
