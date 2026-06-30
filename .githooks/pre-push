@@ -59,6 +59,7 @@ fresh_artifact_path() {
     docs/plans/fold-ergonomics.md*) return 0 ;;
     docs/plans/m4-universal-hermetic-corpus.md*) return 0 ;;
     docs/plans/wiring-liveness-preflight.md*) return 0 ;;
+    docs/plans/interpreter-kernel-d.md*) return 0 ;;
     docs/plans/inert-layer-lens.md*) return 0 ;;
     docs/plans/compile-clean-forcecheck.md*) return 0 ;;
     docs/plans/expressibility-frontier.md*) return 0 ;;

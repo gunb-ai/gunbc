@@ -766,9 +766,12 @@ fn eval_plan(
 }
 
 fn spawn_width_function_name(plan_function: &str) -> Option<String> {
-    plan_function
-        .strip_suffix("_batches")
-        .map(|prefix| format!("{prefix}_spawn_width"))
+    match plan_function {
+        "gunbc_ci_floor_batches" => Some("gunbc_ci_plan_spawn_width".to_string()),
+        other => other
+            .strip_suffix("_batches")
+            .map(|prefix| format!("{prefix}_plan_spawn_width")),
+    }
 }
 
 fn hardware_thread_count_from_value(value: &Value, ctx: &InterpContext) -> Result<usize, String> {
