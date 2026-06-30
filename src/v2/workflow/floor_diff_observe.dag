@@ -28,7 +28,7 @@ import std.types { String }
 import std.logic { Bool }
 import extdeps.languages.bash.program {
   ShellProgram, ShellStmt, ShellWord,
-  Command, If, AndOr, Exit, Raw, RawLine, Negation, Subshell,
+  Command, If, AndOr, Exit, Concat, Negation, Subshell,
   OrElse,
   lit, var_ref, command, assign, serialize_bash
 }
@@ -59,9 +59,13 @@ fn floor_test_n(name: String) -> ShellStmt {
 }
 
 fn floor_test_string_eq(name: String, value: String) -> ShellStmt {
-  RawLine {
-    text: concat("[ \"$", concat(name, concat("\" = \"", concat(value, "\" ]"))))
-  }
+  command(words: [
+    lit(text: "["),
+    Concat { parts: [lit(text: "\""), var_ref(name: name), lit(text: "\"")] },
+    lit(text: "="),
+    lit(text: concat("\"", concat(value, "\""))),
+    lit(text: "]")
+  ])
 }
 
 fn floor_assign_from_env_or_default(env: String, default: String, target: String) -> List<ShellStmt> {
@@ -108,7 +112,7 @@ fn floor_git_diff_merge_base_stmt() -> ShellStmt {
     lit(text: "git"),
     lit(text: "diff"),
     lit(text: "-U0"),
-    Raw { text: "$BASE...$HEAD" }
+    Concat { parts: [var_ref(name: "BASE"), lit(text: "..."), var_ref(name: "HEAD")] }
   ])
 }
 
