@@ -1,0 +1,126 @@
+module v2.lens.grounding_ledger
+
+import std.decl_ref { DeclarationRef }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.std.collection { List }
+import v2.std.algebra { list_snoc_item }
+import v2.lens.common.construction_justification { ConstructionJustification, RatchetForever }
+
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: RatchetForever
+}
+
+type GroundingWorklistEntry {
+  enclosing: String
+  field: String
+  declared_type: String
+  coincides_with: String
+  target_kind: String
+  target_structure: String
+  qualified_name: String
+  layer_excluded: Bool
+  sibling_variant_names: String
+  has_unrecognized_sibling: Bool
+  sibling_decode_optional: Bool
+}
+
+type ResidueReason
+  = DecodeReturnedNone
+  | UnrecognizedSiblingArm
+
+type GroundingVerdict
+  = Reference { authority: DeclarationRef }
+  | ReferenceUri
+  | ReferencePath
+  | Role
+  | StayString { reason: ResidueReason }
+  | GenuineProse
+  | PendingJudge
+
+type DecidedBy
+  = StructuralRule
+  | Judge { rationale: String }
+  | OperatorReview { note: String }
+
+type LedgerEntry {
+  site_qn: String
+  field: String
+  coincides_with: String
+  verdict: GroundingVerdict
+  decided_by: DecidedBy
+}
+
+fn residue_forced_verdict(entry: GroundingWorklistEntry) -> GroundingVerdict {
+  if entry.sibling_decode_optional {
+    StayString { reason: DecodeReturnedNone }
+  } else if entry.has_unrecognized_sibling {
+    StayString { reason: UnrecognizedSiblingArm }
+  } else {
+    PendingJudge
+  }
+}
+
+fn structural_ledger_entry(entry: GroundingWorklistEntry) -> LedgerEntry {
+  LedgerEntry {
+    site_qn: entry.qualified_name,
+    field: entry.field,
+    coincides_with: entry.coincides_with,
+    verdict: residue_forced_verdict(entry: entry),
+    decided_by: StructuralRule
+  }
+}
+
+fn structural_ledger_from_worklist(rows: List<GroundingWorklistEntry>) -> List<LedgerEntry> {
+  fold(rows, init: [], f: fn(acc, entry) {
+    list_snoc_item(xs: acc, item: structural_ledger_entry(entry: entry))
+  })
+}
+
+fn stub_worklist() -> List<GroundingWorklistEntry> {
+  [
+    GroundingWorklistEntry {
+      enclosing: "Widget",
+      field: "owner",
+      declared_type: "String",
+      coincides_with: "v2.model.Owner",
+      target_kind: "Structured",
+      target_structure: "",
+      qualified_name: "v2.model.Widget",
+      layer_excluded: false,
+      sibling_variant_names: "",
+      has_unrecognized_sibling: false,
+      sibling_decode_optional: true
+    },
+    GroundingWorklistEntry {
+      enclosing: "Node",
+      field: "kind_name",
+      declared_type: "String",
+      coincides_with: "v2.model.KindName",
+      target_kind: "Structured",
+      target_structure: "",
+      qualified_name: "v2.model.Node",
+      layer_excluded: false,
+      sibling_variant_names: "Unrecognized",
+      has_unrecognized_sibling: true,
+      sibling_decode_optional: false
+    },
+    GroundingWorklistEntry {
+      enclosing: "Link",
+      field: "href",
+      declared_type: "String",
+      coincides_with: "extdeps.uri.Uri",
+      target_kind: "Structured",
+      target_structure: "",
+      qualified_name: "v2.model.Link",
+      layer_excluded: false,
+      sibling_variant_names: "",
+      has_unrecognized_sibling: false,
+      sibling_decode_optional: false
+    }
+  ]
+}
+
+fn structural_ledger() -> List<LedgerEntry> {
+  structural_ledger_from_worklist(rows: stub_worklist())
+}

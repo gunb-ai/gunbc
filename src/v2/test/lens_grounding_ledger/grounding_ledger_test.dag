@@ -1,0 +1,116 @@
+module v2.test.lens_grounding_ledger.grounding_ledger_test
+
+import v2.lens.grounding_ledger {
+  GroundingWorklistEntry,
+  GroundingVerdict, Reference, ReferenceUri, ReferencePath, Role, StayString, GenuineProse, PendingJudge,
+  ResidueReason, DecodeReturnedNone, UnrecognizedSiblingArm,
+  residue_forced_verdict
+}
+import v2.std.logic { Bool }
+
+data entry_decode_optional: GroundingWorklistEntry = GroundingWorklistEntry {
+  enclosing: "Widget",
+  field: "owner",
+  declared_type: "String",
+  coincides_with: "v2.model.Owner",
+  target_kind: "Structured",
+  target_structure: "",
+  qualified_name: "v2.model.Widget",
+  layer_excluded: false,
+  sibling_variant_names: "",
+  has_unrecognized_sibling: false,
+  sibling_decode_optional: true
+}
+
+data entry_unrecognized_sibling: GroundingWorklistEntry = GroundingWorklistEntry {
+  enclosing: "Node",
+  field: "kind_name",
+  declared_type: "String",
+  coincides_with: "v2.model.KindName",
+  target_kind: "Structured",
+  target_structure: "",
+  qualified_name: "v2.model.Node",
+  layer_excluded: false,
+  sibling_variant_names: "Unrecognized",
+  has_unrecognized_sibling: true,
+  sibling_decode_optional: false
+}
+
+data entry_clean_candidate: GroundingWorklistEntry = GroundingWorklistEntry {
+  enclosing: "Link",
+  field: "href",
+  declared_type: "String",
+  coincides_with: "extdeps.uri.Uri",
+  target_kind: "Structured",
+  target_structure: "",
+  qualified_name: "v2.model.Link",
+  layer_excluded: false,
+  sibling_variant_names: "",
+  has_unrecognized_sibling: false,
+  sibling_decode_optional: false
+}
+
+fn verdict_is_stay_string_decode_none(v: GroundingVerdict) -> Bool {
+  match v {
+    StayString { reason } => match reason { DecodeReturnedNone => true  UnrecognizedSiblingArm => false }
+    Reference { authority: _ } => false
+    ReferenceUri => false
+    ReferencePath => false
+    Role => false
+    GenuineProse => false
+    PendingJudge => false
+  }
+}
+
+fn verdict_is_stay_string_unrecognized(v: GroundingVerdict) -> Bool {
+  match v {
+    StayString { reason } => match reason { DecodeReturnedNone => false  UnrecognizedSiblingArm => true }
+    Reference { authority: _ } => false
+    ReferenceUri => false
+    ReferencePath => false
+    Role => false
+    GenuineProse => false
+    PendingJudge => false
+  }
+}
+
+fn verdict_is_pending_judge(v: GroundingVerdict) -> Bool {
+  match v {
+    PendingJudge => true
+    StayString { reason: _ } => false
+    Reference { authority: _ } => false
+    ReferenceUri => false
+    ReferencePath => false
+    Role => false
+    GenuineProse => false
+  }
+}
+
+fn verdict_is_any_reference(v: GroundingVerdict) -> Bool {
+  match v {
+    Reference { authority: _ } => true
+    ReferenceUri => true
+    ReferencePath => true
+    StayString { reason: _ } => false
+    Role => false
+    GenuineProse => false
+    PendingJudge => false
+  }
+}
+
+test fn decode_optional_forces_stay_string() -> Bool {
+  verdict_is_stay_string_decode_none(v: residue_forced_verdict(entry: entry_decode_optional))
+}
+
+test fn unrecognized_sibling_forces_stay_string() -> Bool {
+  verdict_is_stay_string_unrecognized(v: residue_forced_verdict(entry: entry_unrecognized_sibling))
+}
+
+test fn clean_candidate_routes_to_pending_judge() -> Bool {
+  verdict_is_pending_judge(v: residue_forced_verdict(entry: entry_clean_candidate))
+}
+
+test fn residue_is_never_a_reference_verdict() -> Bool {
+  !verdict_is_any_reference(v: residue_forced_verdict(entry: entry_decode_optional))
+    && !verdict_is_any_reference(v: residue_forced_verdict(entry: entry_unrecognized_sibling))
+}
