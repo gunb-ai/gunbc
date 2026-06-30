@@ -1775,6 +1775,43 @@ fn eval_bind_node_eval(
   }
 }
 
+fn eval_bind_node_eval_stub_tree(node: Node) -> InferredTree {
+  InferredTree {
+    root: node,
+    facts: Map {
+      lookup: fn(n) {
+        Violates {
+          diagnostic: eval_diagnostic(reason: ^eval_rejected_type_node, node: n)
+        }
+      }
+    }
+  }
+}
+
+fn eval_bind_node_eval_value_interpreter_rejects_holds() -> Bool {
+  let node = Node {
+    kind: ComputationNode { behavior: Bind },
+    occurrence_id: SyntheticOccurrence,
+    children: []
+  }
+  match eval_bind_node_eval(
+    node: node,
+    tree: eval_bind_node_eval_stub_tree(node: node),
+    interpretation: eval_default_interpretation(),
+    interpreter: ValueRuntimeInterpreter {
+      interpreter: ValueInterpreter {
+        allocate_literal: v2_eval_wave1_allocate_literal
+      }
+    },
+    environment: empty_evaluation_environment(),
+    runtime: eval_runtime(),
+    effect_io: EffectIoEvalAbsent
+  ) {
+    Rejected { diagnostics: d } => d.head.reason == ^eval_rejected_type_node
+    _ => false
+  }
+}
+
 fn eval_bind_node(
   node: Node,
   _args: List<RuntimeValue>,

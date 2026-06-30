@@ -1,0 +1,9 @@
+module v2.test.claim.execution.eval_bind_non_bind_interpreter_rejects
+
+import v2.compiler.eval {
+  eval_bind_node_eval_value_interpreter_rejects_holds
+}
+
+test fn eval_bind_node_eval_rejects_value_interpreter_holds() -> Bool {
+  return eval_bind_node_eval_value_interpreter_rejects_holds()
+}
