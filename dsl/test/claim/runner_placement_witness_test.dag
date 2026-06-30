@@ -244,6 +244,13 @@ fn witness_real_manifest_fields_drive_both_formats() -> Bool {
   }
 }
 
+fn witness_manifest_json_entry_point_produces_json_format() -> Bool {
+  let full = expected_runner_deploy_manifest_json()
+  string_contains(s: full, pattern: "runner-deploy {") &&
+    string_contains(s: full, pattern: "\"host\": \"") &&
+    string_contains(s: full, pattern: "\"cpu_weight\": \"")
+}
+
 test fn runner_placement_holds() -> Bool {
   witness_declared_runner_count_is_ten()
     && witness_live_plan_is_conservation_sound()
@@ -266,4 +273,5 @@ test fn runner_placement_holds() -> Bool {
     && witness_session_slice_line_emits_cpu_weight()
     && witness_session_reservation_line_has_no_cpu_weight()
     && witness_real_manifest_fields_drive_both_formats()
+    && witness_manifest_json_entry_point_produces_json_format()
 }
