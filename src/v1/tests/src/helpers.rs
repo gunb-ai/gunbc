@@ -336,6 +336,41 @@ pub fn emitted_file_paths(result: &PipelineResult) -> Vec<String> {
     result.files.iter().map(|f| f.path.clone()).collect()
 }
 
+/// Transient cargo/sccache failures seen under parallel nextest on self-hosted runners.
+pub fn cargo_infra_failure_transient(stderr: &str) -> bool {
+    stderr.contains("couldn't create a temp dir")
+        || stderr.contains("Resource temporarily unavailable")
+        || stderr.contains("failed to spawn")
+        || stderr.contains("sccache: encountered fatal error")
+}
+
+/// Run a cargo subprocess with the same cold-retry ladder as `.github/workflows/ci.yml`.
+pub fn run_cargo_with_infra_retry<F>(build: F) -> std::process::Output
+where
+    F: Fn() -> std::process::Command,
+{
+    let first = build().output().expect("failed to spawn cargo");
+    if first.status.success()
+        || !cargo_infra_failure_transient(&String::from_utf8_lossy(&first.stderr))
+    {
+        return first;
+    }
+
+    let mut retry = build();
+    retry.env("CARGO_BUILD_JOBS", "1");
+    let second = retry.output().expect("failed to spawn cargo retry");
+    if second.status.success()
+        || !cargo_infra_failure_transient(&String::from_utf8_lossy(&second.stderr))
+    {
+        return second;
+    }
+
+    let mut cold = build();
+    cold.env_remove("RUSTC_WRAPPER");
+    cold.env("CARGO_BUILD_JOBS", "1");
+    cold.output().expect("failed to spawn cargo cold retry")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -445,39 +480,4 @@ fn main() -> Int { generated_answer() }
         let _ = std::fs::remove_dir_all(entry_root);
         let _ = std::fs::remove_dir_all(generated_root);
     }
-}
-
-/// Transient cargo/sccache failures seen under parallel nextest on self-hosted runners.
-pub fn cargo_infra_failure_transient(stderr: &str) -> bool {
-    stderr.contains("couldn't create a temp dir")
-        || stderr.contains("Resource temporarily unavailable")
-        || stderr.contains("failed to spawn")
-        || stderr.contains("sccache: encountered fatal error")
-}
-
-/// Run a cargo subprocess with the same cold-retry ladder as `.github/workflows/ci.yml`.
-pub fn run_cargo_with_infra_retry<F>(build: F) -> std::process::Output
-where
-    F: Fn() -> std::process::Command,
-{
-    let first = build().output().expect("failed to spawn cargo");
-    if first.status.success()
-        || !cargo_infra_failure_transient(&String::from_utf8_lossy(&first.stderr))
-    {
-        return first;
-    }
-
-    let mut retry = build();
-    retry.env("CARGO_BUILD_JOBS", "1");
-    let second = retry.output().expect("failed to spawn cargo retry");
-    if second.status.success()
-        || !cargo_infra_failure_transient(&String::from_utf8_lossy(&second.stderr))
-    {
-        return second;
-    }
-
-    let mut cold = build();
-    cold.env_remove("RUSTC_WRAPPER");
-    cold.env("CARGO_BUILD_JOBS", "1");
-    cold.output().expect("failed to spawn cargo cold retry")
 }
