@@ -1,0 +1,32 @@
+module test.claim.js_site_emit_debug
+
+import examples.js_site { js_site_pages, JsSitePage }
+import examples.js_site_emit {
+  js_site_page_html,
+  js_site_page_tsx,
+  js_site_emit_html,
+  js_site_emit_tsx,
+}
+import extdeps.languages.html { EmitOk, EmitRejected }
+import extdeps.languages.react_jsx { JsxOk, JsxRejected }
+
+func debug_pages() -> Bool {
+  fold(
+    xs: js_site_pages(),
+    init: true,
+    f: (acc, page) =>
+      if !acc {
+        acc
+      } else {
+        let html_ok = match js_site_emit_html(page: page) {
+          EmitOk { html: h } => h != ""
+          EmitRejected { reason: r } => false
+        }
+        let tsx_ok = match js_site_emit_tsx(page: page) {
+          JsxOk { tsx: s } => s != ""
+          JsxRejected { reason: r } => false
+        }
+        html_ok && tsx_ok
+      }
+  )
+}

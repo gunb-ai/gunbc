@@ -1,0 +1,168 @@
+module examples.js_site
+
+import std.markup {
+  MarkupNode,
+  MarkupAttr,
+  ElementNode,
+  TextNode,
+}
+
+type JsSitePageId = Home | About | Docs
+
+type JsSitePage {
+  id: JsSitePageId
+  path: String
+  tsx_fn_name: String
+  node: MarkupNode
+}
+
+fn js_site_nav_link(href: String, label: String) -> MarkupNode {
+  ElementNode {
+    tag: "a",
+    attrs: [ MarkupAttr { name: "href", value: href } ],
+    children: [ TextNode { text: label } ],
+  }
+}
+
+fn js_site_header() -> MarkupNode {
+  ElementNode {
+    tag: "header",
+    attrs: [],
+    children: [
+      ElementNode {
+        tag: "h1",
+        attrs: [],
+        children: [ TextNode { text: "gunbc" } ],
+      },
+      ElementNode {
+        tag: "nav",
+        attrs: [],
+        children: [
+          js_site_nav_link(href: "/", label: "Home"),
+          js_site_nav_link(href: "/about", label: "About"),
+          js_site_nav_link(href: "/docs", label: "Docs"),
+        ],
+      },
+    ],
+  }
+}
+
+fn js_site_page_shell(title: String, main: MarkupNode) -> MarkupNode {
+  ElementNode {
+    tag: "html",
+    attrs: [],
+    children: [
+      ElementNode {
+        tag: "head",
+        attrs: [],
+        children: [
+          ElementNode {
+            tag: "title",
+            attrs: [],
+            children: [ TextNode { text: title } ],
+          },
+        ],
+      },
+      ElementNode {
+        tag: "body",
+        attrs: [],
+        children: [
+          js_site_header(),
+          ElementNode {
+            tag: "main",
+            attrs: [],
+            children: [ main ],
+          },
+        ],
+      },
+    ],
+  }
+}
+
+fn js_site_home_main() -> MarkupNode {
+  ElementNode {
+    tag: "p",
+    attrs: [],
+    children: [
+      TextNode {
+        text: "DAG-modeled compiler. One MarkupNode source, two realizations.",
+      },
+    ],
+  }
+}
+
+fn js_site_about_main() -> MarkupNode {
+  ElementNode {
+    tag: "p",
+    attrs: [],
+    children: [
+      TextNode {
+        text: "gunbc models programs as dependency graphs. Rust is bootstrap seed.",
+      },
+    ],
+  }
+}
+
+fn js_site_doc_link(name: String, path: String) -> MarkupNode {
+  ElementNode {
+    tag: "li",
+    attrs: [],
+    children: [
+      ElementNode {
+        tag: "a",
+        attrs: [ MarkupAttr { name: "href", value: path } ],
+        children: [ TextNode { text: name } ],
+      },
+    ],
+  }
+}
+
+fn js_site_docs_main() -> MarkupNode {
+  ElementNode {
+    tag: "ul",
+    attrs: [],
+    children: [
+      js_site_doc_link(name: "DESIGN.md", path: "/DESIGN.md"),
+      js_site_doc_link(name: "ROADMAP.md", path: "/ROADMAP.md"),
+    ],
+  }
+}
+
+fn js_site_home_page() -> MarkupNode {
+  js_site_page_shell(title: "gunbc — Home", main: js_site_home_main())
+}
+
+fn js_site_about_page() -> MarkupNode {
+  js_site_page_shell(title: "gunbc — About", main: js_site_about_main())
+}
+
+fn js_site_docs_page() -> MarkupNode {
+  js_site_page_shell(title: "gunbc — Docs", main: js_site_docs_main())
+}
+
+fn js_site_pages() -> List<JsSitePage> {
+  [
+    JsSitePage {
+      id: Home,
+      path: "/",
+      tsx_fn_name: "JsSiteHomePage",
+      node: js_site_home_page(),
+    },
+    JsSitePage {
+      id: About,
+      path: "/about",
+      tsx_fn_name: "JsSiteAboutPage",
+      node: js_site_about_page(),
+    },
+    JsSitePage {
+      id: Docs,
+      path: "/docs",
+      tsx_fn_name: "JsSiteDocsPage",
+      node: js_site_docs_page(),
+    },
+  ]
+}
+
+fn js_site_page_count() -> Int {
+  count(xs: js_site_pages())
+}
