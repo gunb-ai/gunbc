@@ -25,7 +25,7 @@ use crate::v1_std_core::{
     is_discovery_corpus_advisory_typecheck_diagnostic, is_discovery_corpus_blocking_diagnostic,
     is_error_diagnostic, is_interpreter_blocking_diagnostic, let_binding_name_at, let_value,
     method_arg_nodes, method_receiver, CompilerDiagnostic, ErrorNode, ExprData, InferredNode,
-    InternTable, LiteralValue, NewlineIndex, Node,
+    InternTable, NewlineIndex, Node,
 };
 use serde::Serialize;
 
