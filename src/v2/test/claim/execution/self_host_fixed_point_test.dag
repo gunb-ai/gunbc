@@ -12,16 +12,13 @@ import v2.std.node {
 }
 import v2.compiler.self_host {
   fixed_point_scaffold,
-  self_host_equality_representation,
-  self_host_equality_representation_is_canonical_node_emission,
-  self_host_fixpoint_condition,
-  self_host_fixpoint_condition_holds,
+  self_host_equality_authority,
+  self_host_fixpoint_equal,
   self_host_fixpoint_witness,
   self_host_fixed_point_digests_match,
   self_host_fixed_point_validate,
   self_host_snake_closes,
-  self_host_stage1,
-  self_host_stage2,
+  self_host_stage_emission,
   stage_emission_equality,
   SourceModels
 }
@@ -76,33 +73,24 @@ test fn self_host_fixed_point_digests_match_on_equal() -> Bool {
   )
 }
 
-test fn self_host_equality_representation_is_canonical_node_emission_holds() -> Bool {
-  self_host_equality_representation_is_canonical_node_emission()
+test fn self_host_fixpoint_equal_carries_equality_authority() -> Bool {
+  self_host_fixpoint_equal(
+    stage1: self_host_stage_emission(node: stage_reference_emitted()),
+    stage2: self_host_stage_emission(node: stage_candidate_equal_emitted())
+  ).over == self_host_equality_authority
 }
 
-test fn self_host_stage1_is_first_self_compile() -> Bool {
-  self_host_stage1(node: stage_reference_emitted()).phase == ^self_host_first_self_compile_emission
-}
-
-test fn self_host_stage2_is_second_self_compile() -> Bool {
-  self_host_stage2(node: stage_candidate_equal_emitted()).phase == ^self_host_second_self_compile_emission
-}
-
-test fn self_host_fixpoint_condition_holds_on_equal() -> Bool {
-  self_host_fixpoint_condition_holds(
-    c: self_host_fixpoint_condition(
-      stage1: self_host_stage1(node: stage_reference_emitted()),
-      stage2: self_host_stage2(node: stage_candidate_equal_emitted())
-    )
+test fn self_host_snake_closes_on_equal_stages() -> Bool {
+  self_host_snake_closes(
+    stage1: self_host_stage_emission(node: stage_reference_emitted()),
+    stage2: self_host_stage_emission(node: stage_candidate_equal_emitted())
   )
 }
 
-test fn self_host_fixpoint_condition_fails_on_perturbed() -> Bool {
-  self_host_fixpoint_condition_holds(
-    c: self_host_fixpoint_condition(
-      stage1: self_host_stage1(node: stage_reference_emitted()),
-      stage2: self_host_stage2(node: stage_candidate_perturbed_emitted())
-    )
+test fn self_host_snake_closes_fails_on_perturbed_stages() -> Bool {
+  self_host_snake_closes(
+    stage1: self_host_stage_emission(node: stage_reference_emitted()),
+    stage2: self_host_stage_emission(node: stage_candidate_perturbed_emitted())
   ) == false
 }
 
@@ -126,24 +114,10 @@ test fn fixed_point_scaffold_violates_on_perturbed() -> Bool {
   }
 }
 
-test fn self_host_snake_closes_on_equal_stages() -> Bool {
-  self_host_snake_closes(
-    stage1: self_host_stage1(node: stage_reference_emitted()),
-    stage2: self_host_stage2(node: stage_candidate_equal_emitted())
-  )
-}
-
-test fn self_host_snake_closes_fails_on_perturbed_stages() -> Bool {
-  self_host_snake_closes(
-    stage1: self_host_stage1(node: stage_reference_emitted()),
-    stage2: self_host_stage2(node: stage_candidate_perturbed_emitted())
-  ) == false
-}
-
 test fn self_host_fixpoint_witness_holds_on_equal_stages() -> Bool {
   match self_host_fixpoint_witness(
-    stage1: self_host_stage1(node: stage_reference_emitted()),
-    stage2: self_host_stage2(node: stage_candidate_equal_emitted())
+    stage1: self_host_stage_emission(node: stage_reference_emitted()),
+    stage2: self_host_stage_emission(node: stage_candidate_equal_emitted())
   ) {
     Holds { value: _ } => true
     Violates { diagnostic: _ } => false
@@ -152,8 +126,8 @@ test fn self_host_fixpoint_witness_holds_on_equal_stages() -> Bool {
 
 test fn self_host_fixpoint_witness_violates_on_perturbed_stages() -> Bool {
   match self_host_fixpoint_witness(
-    stage1: self_host_stage1(node: stage_reference_emitted()),
-    stage2: self_host_stage2(node: stage_candidate_perturbed_emitted())
+    stage1: self_host_stage_emission(node: stage_reference_emitted()),
+    stage2: self_host_stage_emission(node: stage_candidate_perturbed_emitted())
   ) {
     Holds { value: _ } => false
     Violates { diagnostic: d } => d.reason == ^self_host_fixpoint_digest_mismatch
