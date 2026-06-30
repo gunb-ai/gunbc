@@ -1,14 +1,16 @@
 module gunbc.ctrl_reconcile_staleness_claims
 
 import std.logic { Bool }
+import std.realization_reconcile { reconciliation_converged }
 import gunbc.host_effect { HostOs, NodeControlPlane }
 import gunbc.fleet_intent { srv1_host }
 import gunbc.ctrl_reconcile {
   ctrl_reconcile_staleness_gate_holds,
   ctrl_reconcile_default_slice_unit,
+  reconcile_ctrl_runner_slice,
 }
 
-data ctrl_reconcile_staleness_claims_doc: String = "Live staleness claims for ctrl-reconcile. ctrl_reconcile_live_staleness_recapture_gate_holds invokes host_effect_apply(systemctl show -p MemoryMax) on srv1 BEFORE comparing to ctrl_reconcile_recorded_show_bytes — the #6009 ordering analog (fresh capture precedes compare). Honest boundary: hermetic floor witnesses prove binding discrimination; this claim is the off-floor live authenticity check."
+data ctrl_reconcile_staleness_claims_doc: String = "Live integration claims for ctrl-reconcile. ctrl_reconcile_live_staleness_recapture_gate_holds: host_effect_apply(systemctl show) BEFORE fixture compare (#6009 ordering). ctrl_reconcile_live_reconcile_gate_holds: green-by-execution consumer for headline reconcile_ctrl_runner_slice read→ground→apply→read-after loop on srv1. Honest boundary: hermetic floor witnesses prove binding discrimination; these claims are off-floor live authenticity + reconcile execution."
 
 fn ctrl_reconcile_live_target() -> NodeControlPlane {
   HostOs { node: srv1_host }
@@ -18,5 +20,14 @@ func ctrl_reconcile_live_staleness_recapture_gate_holds() -> Bool {
   ctrl_reconcile_staleness_gate_holds(
     target: ctrl_reconcile_live_target(),
     slice_unit: ctrl_reconcile_default_slice_unit()
+  )
+}
+
+func ctrl_reconcile_live_reconcile_gate_holds() -> Bool {
+  reconciliation_converged(
+    r: reconcile_ctrl_runner_slice(
+      target: ctrl_reconcile_live_target(),
+      slice_unit: ctrl_reconcile_default_slice_unit()
+    )
   )
 }

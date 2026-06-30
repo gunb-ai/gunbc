@@ -1,6 +1,6 @@
 module gunbc.ctrl_reconcile
 
-import std.types { NonEmptyStr, String, Bool, List }
+import std.types { NonEmptyStr, String, Bool }
 import std.measure { ByteSize, byte_size, byte_size_count }
 import std.patterns { eq }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
@@ -27,7 +27,6 @@ import gunbc.host_effect {
 import gunbc.host_effect_realize { host_effect_apply }
 import gunbc.runner_slot_enforcement {
   RunnerSlotEnforcement,
-  RunnerSlotUnenforced,
   ground_runner_slot_from_read,
 }
 import gunbc.runner_slot_enforcement { gunbc_runner_slot_unit_placeholder }
@@ -43,6 +42,7 @@ import extdeps.os.systemd {
   parse_systemd_memory_max_show_value,
   MemoryMaxBounded,
   MemoryMaxUnbounded,
+  MemoryMaxZero,
 }
 import extdeps.languages.bash.program {
   ShellProgram, ShellStmt, ShellWord,
@@ -58,12 +58,11 @@ data ctrl_reconcile_shell_transport_scaffold: Disposition = Scaffold {
   }
 }
 
-data ctrl_reconcile_systemctl_extdeps_path: String = "dsl/extdeps/os/systemctl.dag"
-data ctrl_reconcile_systemctl_service: String = "systemd.Systemctl"
 data ctrl_reconcile_systemctl_show_operation: String = "ShowProperty"
 data ctrl_reconcile_systemctl_set_property_operation: String = "SetProperty"
+data ctrl_reconcile_systemctl_transport_authority: String = "extdeps.os.systemctl systemd.Systemctl ShowProperty/SetProperty transport argv (freedesktop.org systemctl man); bash AST via serialize_bash, not hand-concat shell fragments"
 
-data ctrl_reconcile_doc: String = "ctrl-reconcile: NEW instance on std.realization_reconcile.Reconciliation via gunbc.host_effect_apply (NO fork). Reconciles budget-tree INTENT (gunbc_per_runner_memory_cap rooted in gunbc_ci_runner_cgroup_memory_cap 8GiB) onto ACTUAL host cgroup MemoryMax. GROUNDING reuses runner_slot_enforcement.ground_runner_slot_from_read. APPLY/READ-BACK argv materialized from extdeps.os.systemctl transport (not hand-concat shell); show output decoded via extdeps.os.systemd.parse_systemd_memory_max_show_value. ShellCommand script is serialize_bash over materialized argv — dissolve-on: extdeps.languages.bash.program.serialize_bash when host_effect ShellCommand payload migrates off raw String (host_effect_orchestration Phase B)."
+data ctrl_reconcile_doc: String = "ctrl-reconcile: NEW instance on std.realization_reconcile.Reconciliation via gunbc.host_effect_apply (NO fork). Reconciles budget-tree INTENT (gunbc_per_runner_memory_cap rooted in gunbc_ci_runner_cgroup_memory_cap 8GiB) onto ACTUAL host cgroup MemoryMax. GROUNDING reuses runner_slot_enforcement.ground_runner_slot_from_read. APPLY/READ-BACK shell via ShellProgram+serialize_bash mirroring extdeps.os.systemctl transport argv; show output decoded via extdeps.os.systemd.parse_systemd_memory_max_show_value. dissolve-on: extdeps.languages.bash.program.serialize_bash when host_effect ShellCommand payload migrates off raw String (host_effect_orchestration Phase B)."
 
 data ctrl_reconcile_recorded_fixture_provenance: String = "RecordedFixture capture: systemctl show -p MemoryMax system-actions-runner.slice --value on srv1 fleet host 2026-06-30; bytes are genuine show output for gunbc_ci_runner_cgroup_memory_cap, NOT a hand-authored CapEffective literal. Authenticity boundary: off-floor ctrl_reconcile_staleness_gate_passes re-captures live show bytes and fails closed on fixture-vs-live drift (honest boundary — literal 8589934592 is trusted only while live binding holds)."
 
@@ -75,55 +74,51 @@ fn ctrl_reconcile_desired_cap() -> ByteSize {
   gunbc_per_runner_memory_cap
 }
 
-fn ctrl_reconcile_argv_to_script(argv: List<String>) -> String {
-  serialize_bash(p: ShellProgram {
-    set_e: false,
-    statements: [
-      command(
-        words: fold(
-          argv,
-          init: [],
-          f: (acc, token) => concat(acc, [lit(text: token)])
-        )
-      )
-    ]
-  })
-}
-
-fn ctrl_reconcile_runner_slice_cap_from_show(raw: String) -> RunnerSliceCapEffectiveness {
+fn ctrl_reconcile_runner_slice_cap_from_show(raw: String) -> RunnerSliceCapEffectiveness? {
   match parse_systemd_memory_max_show_value(raw: raw) {
     Present { value: MemoryMaxBounded { bytes: n } } =>
-      CapEffective { bytes: byte_size(n) }
-    Present { value: MemoryMaxUnbounded } => CapUnbounded
-    Absent => CapUnbounded
+      Present { value: CapEffective { bytes: byte_size(n) } }
+    Present { value: MemoryMaxUnbounded } =>
+      Present { value: CapUnbounded }
+    Present { value: MemoryMaxZero } => none
+    Absent => none
   }
 }
 
 fn ctrl_reconcile_parse_memory_max_show(raw: String) -> RunnerSliceCapEffectiveness {
-  ctrl_reconcile_runner_slice_cap_from_show(raw: raw)
+  match ctrl_reconcile_runner_slice_cap_from_show(raw: raw) {
+    Present { value: v } => v
+    Absent => CapUnbounded
+  }
 }
 
 fn ctrl_reconcile_read_script(slice_unit: NonEmptyStr) -> String {
-  let argv = shell_materialize_argv_for_operation(
-    ctrl_reconcile_systemctl_extdeps_path,
-    ctrl_reconcile_systemctl_service,
-    ctrl_reconcile_systemctl_show_operation,
-    slice_unit,
-    systemd_memory_max_property
-  )
-  ctrl_reconcile_argv_to_script(argv: argv)
+  serialize_bash(p: ShellProgram {
+    set_e: false,
+    statements: [
+      command(words: [
+        lit(text: "systemctl"),
+        lit(text: "show"),
+        lit(text: slice_unit),
+        lit(text: concat("--property=", systemd_memory_max_property)),
+        lit(text: "--value"),
+      ])
+    ]
+  })
 }
 
 fn ctrl_reconcile_apply_script(slice_unit: NonEmptyStr, cap: ByteSize) -> String {
-  let argv = shell_materialize_argv_for_operation(
-    ctrl_reconcile_systemctl_extdeps_path,
-    ctrl_reconcile_systemctl_service,
-    ctrl_reconcile_systemctl_set_property_operation,
-    slice_unit,
-    systemd_memory_max_property,
-    to_string(byte_size_count(b: cap))
-  )
-  ctrl_reconcile_argv_to_script(argv: argv)
+  serialize_bash(p: ShellProgram {
+    set_e: false,
+    statements: [
+      command(words: [
+        lit(text: "systemctl"),
+        lit(text: "set-property"),
+        lit(text: slice_unit),
+        lit(text: concat(systemd_memory_max_property, concat("=", to_string(byte_size_count(b: cap))))),
+      ])
+    ]
+  })
 }
 
 fn ctrl_reconcile_apply_intent(
@@ -162,6 +157,29 @@ fn ctrl_reconcile_read_show(
   }
 }
 
+fn ctrl_reconcile_reconcile_when_grounded(
+  apply_intent: HostEffectIntent,
+  read: ShowEffectiveRead<RunnerSliceCapEffectiveness>
+) -> Reconciliation<HostEffectIntent, RunnerSlotEnforcement> {
+  match read {
+    ReadAbsent { reason: why } =>
+      reconcile_grounded(
+        apply_effect: apply_intent,
+        show_read: read,
+        grounding: DoesNotGround { reason: why }
+      )
+    ReadObserved { value: observed } =>
+      reconcile_grounded(
+        apply_effect: apply_intent,
+        show_read: read,
+        grounding: ground_runner_slot_from_read(
+          effective: observed,
+          expected_cap: ctrl_reconcile_desired_cap()
+        )
+      )
+  }
+}
+
 fn reconcile_ctrl_runner_slice(
   target: NodeControlPlane,
   slice_unit: NonEmptyStr
@@ -174,21 +192,13 @@ fn reconcile_ctrl_runner_slice(
   )
   let read = ctrl_reconcile_read_show(target: target, slice_unit: slice_unit)
   match read {
-    ReadAbsent { reason: why } =>
-      reconcile_grounded(
-        apply_effect: apply_intent,
-        show_read: read,
-        grounding: DoesNotGround { reason: why }
-      )
+    ReadAbsent { reason: _ } =>
+      ctrl_reconcile_reconcile_when_grounded(apply_intent: apply_intent, read: read)
     ReadObserved { value: observed } => {
       let grounding = ground_runner_slot_from_read(effective: observed, expected_cap: desired)
       match grounding {
         Grounds { evidence: _ } =>
-          reconcile_grounded(
-            apply_effect: apply_intent,
-            show_read: read,
-            grounding: grounding
-          )
+          ctrl_reconcile_reconcile_when_grounded(apply_intent: apply_intent, read: read)
         DoesNotGround { reason: _ } => {
           let _applied = host_effect_apply(
             target: target,
@@ -196,27 +206,10 @@ fn reconcile_ctrl_runner_slice(
             policy: apply_intent.policy
           )
           let read_after = ctrl_reconcile_read_show(target: target, slice_unit: slice_unit)
-          match read_after {
-            ReadAbsent { reason: why } =>
-              reconcile_grounded(
-                apply_effect: apply_intent,
-                show_read: read_after,
-                grounding: DoesNotGround { reason: why }
-              )
-            ReadObserved { value: observed_after } => {
-              let grounding_after = ground_runner_slot_from_read(
-                effective: observed_after,
-                expected_cap: desired
-              )
-              reconcile_grounded(
-                apply_effect: apply_intent,
-                show_read: read_after,
-                grounding: grounding_after
-              )
-            }
-          }
+          ctrl_reconcile_reconcile_when_grounded(apply_intent: apply_intent, read: read_after)
         }
       }
+    }
   }
 }
 

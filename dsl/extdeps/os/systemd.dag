@@ -35,6 +35,7 @@ data systemd_cpu_weight_property: NonEmptyStr = "CPUWeight"
 type SystemdMemoryMaxShowValue
   = MemoryMaxBounded { bytes: Int }
   | MemoryMaxUnbounded
+  | MemoryMaxZero
 
 fn parse_systemd_memory_max_show_value(raw: String) -> SystemdMemoryMaxShowValue? {
   let trimmed = trim(raw)
@@ -45,9 +46,11 @@ fn parse_systemd_memory_max_show_value(raw: String) -> SystemdMemoryMaxShowValue
       Present { value: n } =>
         if n > 0 {
           Present { value: MemoryMaxBounded { bytes: n } }
+        } else { if n == 0 {
+          Present { value: MemoryMaxZero }
         } else {
-          Present { value: MemoryMaxUnbounded }
-        }
+          none
+        } }
       Absent => none
     }
   }

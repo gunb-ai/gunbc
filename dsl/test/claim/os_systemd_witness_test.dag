@@ -11,6 +11,7 @@ import extdeps.os.systemd {
   parse_systemd_memory_max_show_value,
   MemoryMaxBounded,
   MemoryMaxUnbounded,
+  MemoryMaxZero,
 }
 import std.types { NonEmptyStr }
 
@@ -49,6 +50,13 @@ test fn witness_memory_max_show_bytes_decodes_bounded() -> Bool {
 test fn witness_memory_max_show_garbage_fails_closed() -> Bool {
   match parse_systemd_memory_max_show_value(raw: "not-a-number") {
     none => true
+    _ => false
+  }
+}
+
+test fn witness_memory_max_show_zero_decodes_distinct_from_unbounded() -> Bool {
+  match parse_systemd_memory_max_show_value(raw: "0") {
+    Present { value: MemoryMaxZero } => true
     _ => false
   }
 }
