@@ -1,0 +1,91 @@
+module test.claim.site_page_emit
+
+import std.site_page { SitePage }
+import gunbc.site_page_emit {
+  try_emit_site_page,
+  DualEmitOk,
+  DualEmitRejected,
+}
+import gunbc.gunbhub_serve { gunbhub_browse_page, gunbhub_hostile_page }
+
+fn browse_site_page() -> SitePage {
+  SitePage {
+    component_name: "GunbhubBrowsePage",
+    content: gunbhub_browse_page(),
+  }
+}
+
+fn hostile_site_page() -> SitePage {
+  SitePage {
+    component_name: "HostilePage",
+    content: gunbhub_hostile_page(),
+  }
+}
+
+fn witness_browse_html_bytes() -> Bool {
+  match try_emit_site_page(page: browse_site_page()) {
+    DualEmitOk { html: h, tsx: _ } =>
+      h ==
+        "<html><head><title>gunbc</title></head><body><header><h1>gunbc</h1><nav><a href=\"/\">Browse</a></nav></header><main><ul><li><a href=\"/dsl\">dsl</a></li><li><a href=\"/src\">src</a></li><li><a href=\"/ROADMAP.md\">ROADMAP.md</a></li></ul></main></body></html>"
+    DualEmitRejected { reason: _ } => false
+  }
+}
+
+fn witness_browse_tsx_bytes() -> Bool {
+  match try_emit_site_page(page: browse_site_page()) {
+    DualEmitOk { html: _, tsx: t } =>
+      t ==
+        "export function GunbhubBrowsePage(): JSX.Element { return <html><head><title>gunbc</title></head><body><header><h1>gunbc</h1><nav><a href=\"/\">Browse</a></nav></header><main><ul><li><a href=\"/dsl\">dsl</a></li><li><a href=\"/src\">src</a></li><li><a href=\"/ROADMAP.md\">ROADMAP.md</a></li></ul></main></body></html>; }"
+    DualEmitRejected { reason: _ } => false
+  }
+}
+
+fn witness_tsx_wraps_same_markup_body() -> Bool {
+  match try_emit_site_page(page: browse_site_page()) {
+    DualEmitOk { html: h, tsx: t } =>
+      starts_with(s: t, prefix: "export function GunbhubBrowsePage(): JSX.Element { return ")
+        && ends_with(s: t, suffix: "; }")
+        && string_contains(s: t, pattern: h)
+    DualEmitRejected { reason: _ } => false
+  }
+}
+
+fn witness_component_name_parameterizes_tsx() -> Bool {
+  let page_a = SitePage {
+    component_name: "PageA",
+    content: gunbhub_browse_page(),
+  }
+  let page_b = SitePage {
+    component_name: "PageB",
+    content: gunbhub_browse_page(),
+  }
+  match (
+    try_emit_site_page(page: page_a),
+    try_emit_site_page(page: page_b),
+  ) {
+    (
+      DualEmitOk { html: ha, tsx: ta },
+      DualEmitOk { html: hb, tsx: tb },
+    ) =>
+      (ha == hb)
+        && starts_with(s: ta, prefix: "export function PageA():")
+        && starts_with(s: tb, prefix: "export function PageB():")
+        && !(ta == tb)
+    _ => false
+  }
+}
+
+fn witness_hostile_page_rejected() -> Bool {
+  match try_emit_site_page(page: hostile_site_page()) {
+    DualEmitRejected { reason: _ } => true
+    DualEmitOk { html: _, tsx: _ } => false
+  }
+}
+
+test fn site_page_emit_keystone_holds() -> Bool {
+  witness_browse_html_bytes()
+    && witness_browse_tsx_bytes()
+    && witness_tsx_wraps_same_markup_body()
+    && witness_component_name_parameterizes_tsx()
+    && witness_hostile_page_rejected()
+}

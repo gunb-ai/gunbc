@@ -399,6 +399,13 @@ data corpus_ci_gate_row_react_jsx_emit_keystone: ClaimWitnessCorpusClaimRunRow =
   expected: ExpectPass
 }
 
+data corpus_ci_gate_row_site_page_emit_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "site page dual emit html + tsx keystone",
+  entry: "dsl/test/claim/site_page_emit_test.dag",
+  function: "site_page_emit_keystone_holds",
+  expected: ExpectPass
+}
+
 data corpus_ci_gate_row_measure_nat_magnitude_roundtrip: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "measure carrier M=Nat magnitude round-trip",
   entry: "dsl/test/claim/measure_magnitude_carrier.dag",
@@ -555,6 +562,7 @@ data claim_witness_corpus_shard_b_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_filesystem_write_keystone,
   corpus_ci_gate_row_gunbhub_react_browse_keystone,
   corpus_ci_gate_row_react_jsx_emit_keystone,
+  corpus_ci_gate_row_site_page_emit_keystone,
   corpus_ci_gate_row_gunbhub_serve_keystone,
   corpus_ci_gate_row_measure_nat_magnitude_roundtrip,
   corpus_ci_gate_row_measure_signed_magnitude_roundtrip,

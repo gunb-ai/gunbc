@@ -1,0 +1,9 @@
+module std.site_page
+
+import std.markup { MarkupNode }
+import std.string_type { String }
+
+type SitePage {
+  component_name: String
+  content: MarkupNode
+}

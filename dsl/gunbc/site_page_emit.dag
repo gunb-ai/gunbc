@@ -1,0 +1,28 @@
+module gunbc.site_page_emit
+
+import std.site_page { SitePage }
+import extdeps.languages.html {
+  try_serialize_html_source,
+  EmitOk,
+  EmitRejected,
+}
+import extdeps.languages.react_jsx {
+  try_serialize_jsx_component,
+  JsxOk,
+  JsxRejected,
+}
+
+type SitePageDualEmit
+  = DualEmitOk { html: String, tsx: String }
+  | DualEmitRejected { reason: String }
+
+fn try_emit_site_page(page: SitePage) -> SitePageDualEmit {
+  match try_serialize_html_source(node: page.content) {
+    EmitRejected { reason: r } => DualEmitRejected { reason: r }
+    EmitOk { html: h } =>
+      match try_serialize_jsx_component(fn_name: page.component_name, node: page.content) {
+        JsxRejected { reason: r2 } => DualEmitRejected { reason: r2 }
+        JsxOk { tsx: t } => DualEmitOk { html: h, tsx: t }
+      }
+  }
+}

@@ -1,0 +1,49 @@
+module examples.site_starter
+
+import std.site_page { SitePage }
+import gunbc.site_page_emit {
+  try_emit_site_page,
+  DualEmitOk,
+  DualEmitRejected,
+}
+import gunbc.gunbhub_serve { gunbhub_browse_page, gunbhub_hostile_page }
+import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_code_general_error }
+
+fn starter_browse_page() -> SitePage {
+  SitePage {
+    component_name: "BrowsePage",
+    content: gunbhub_browse_page(),
+  }
+}
+
+fn starter_hostile_page() -> SitePage {
+  SitePage {
+    component_name: "HostilePage",
+    content: gunbhub_hostile_page(),
+  }
+}
+
+fn witness_dual_emit_produces_both_media() -> Bool {
+  match try_emit_site_page(page: starter_browse_page()) {
+    DualEmitOk { html: h, tsx: t } => h != "" && t != "" && string_contains(s: t, pattern: h)
+    DualEmitRejected { reason: _ } => false
+  }
+}
+
+fn witness_hostile_page_fail_closed() -> Bool {
+  match try_emit_site_page(page: starter_hostile_page()) {
+    DualEmitRejected { reason: _ } => true
+    DualEmitOk { html: _, tsx: _ } => false
+  }
+}
+
+func main() -> ProcessExit {
+  if witness_dual_emit_produces_both_media() && witness_hostile_page_fail_closed() {
+    ExitSuccess
+  } else {
+    ExitFailure {
+      code: exit_code_general_error,
+      reason: "site_starter dual emit assertion failed",
+    }
+  }
+}
