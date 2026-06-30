@@ -48,7 +48,7 @@ import extdeps.languages.simd.kernel {
 
 data accelerator_demo_recognizer_dissolution_trigger: String = "dissolve-on: feature:dag-elementwise-recognizer-lens — AcceleratorDemoProgram struct is stepping stone; replace with read-only Node-tree lens inspecting real map(i => …) program values"
 
-data accelerator_demo_differential_harness_dissolution_trigger: String = "dissolve-on: feature:dag-differential-witness — oracle is eval_accelerator_program on shared program fixture; kernel is host contiguous_loop_elementwise_kernel lowering program_op_codes; float+FMA bars land after single-source loop"
+data accelerator_demo_differential_harness_dissolution_trigger: String = "dissolve-on: feature:dag-differential-witness — integer oracle is eval_accelerator_program; float oracle is eval_accelerator_program_float (separate mul/add roundings); kernels lower program_op_codes with fma policy; triptych render lands in accelerator_demo_render"
 
 type DifferentialVerdict
   = BitExact

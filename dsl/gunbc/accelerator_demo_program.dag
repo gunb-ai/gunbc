@@ -96,5 +96,6 @@ fn fma_contraction_permitted_policy_code() -> Int {
   1
 }
 
+fn pure_elementwise_ops_shape_recognizable(ops: List<ElementwiseArrayOp>) -> Bool {
   relu_mul_add_op_codes_match(codes: elementwise_op_codes(ops: ops))
 }

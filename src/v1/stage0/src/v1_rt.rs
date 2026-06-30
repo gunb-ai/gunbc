@@ -628,7 +628,11 @@ pub fn contiguous_loop_elementwise_float_kernel(
 }
 
 fn float_relu_f64(x: f64) -> f64 {
-    if x > 0.0 { x } else { 0.0 }
+    if x > 0.0 {
+        x
+    } else {
+        0.0
+    }
 }
 
 /// Host handler for `simd-contiguous-loop` integer path.
