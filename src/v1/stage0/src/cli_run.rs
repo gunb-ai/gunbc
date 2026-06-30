@@ -3053,8 +3053,8 @@ fn floor_git_diff_range() -> Result<String, String> {
             variant_name,
             fields,
             ..
-        } if ctx.sym_eq(*variant_name, "UnifiedDiffOk") => {
-            match ctx.field(fields, "text") {
+        } if ctx.sym_eq(variant_name, "UnifiedDiffOk") => {
+            match ctx.field(fields.as_ref(), "text") {
                 Some(Value::Str(s)) => Ok(s.clone()),
                 _ => Err("UnifiedDiffOk missing `text` field".to_string()),
             }
@@ -3063,8 +3063,8 @@ fn floor_git_diff_range() -> Result<String, String> {
             variant_name,
             fields,
             ..
-        } if ctx.sym_eq(*variant_name, "UnifiedDiffFail") => {
-            match ctx.field(fields, "reason") {
+        } if ctx.sym_eq(variant_name, "UnifiedDiffFail") => {
+            match ctx.field(fields.as_ref(), "reason") {
                 Some(Value::Str(r)) => Err(r.clone()),
                 _ => Err("git diff observation failed (no reason)".to_string()),
             }
