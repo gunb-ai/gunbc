@@ -220,9 +220,6 @@ fn closed_coproduct_names(files: &[(String, String)]) -> BTreeSet<String> {
                         continue;
                     }
                     if !(nt.starts_with('|') || nt.starts_with('=')) {
-                        if block.contains('|') || block.contains('=') {
-                            break;
-                        }
                         break;
                     }
                 }
