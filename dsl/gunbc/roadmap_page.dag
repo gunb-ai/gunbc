@@ -1,0 +1,182 @@
+module gunbc.roadmap_page
+
+import std.markup { MarkupNode, ElementNode, TextNode, MarkupAttr }
+import gunbc.roadmap_model {
+  RoadmapNode, RoadmapEdge, Pointer,
+  RoadmapParent, TopLevel, UnderParent, roadmap_parent, is_top_level,
+  SectionElement, Prose, Group, SectionGroup,
+  NodeSizing, Unsized, Sized,
+  Intricacy, IntricacyLow, IntricacyMedium, IntricacyHigh,
+  Volume, VolumeSmall, VolumeMedium, VolumeLarge,
+}
+import gunbc.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, PlainLine, item_is_done, signoff_accepts, signoff_by }
+import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
+import gunbc.roadmap_authority { roadmap_authority, authored_merged_prs }
+import ctrl.process_algebra { ProcessNodeId }
+
+fn roadmap_page_max_depth() -> Int { 8 }
+
+fn txt(s: String) -> MarkupNode { TextNode { text: s } }
+
+fn el(tag: String, children: List<MarkupNode>) -> MarkupNode {
+  ElementNode { tag: tag, attrs: [], children: children }
+}
+
+fn el_class(tag: String, cls: String, children: List<MarkupNode>) -> MarkupNode {
+  ElementNode { tag: tag, attrs: [ MarkupAttr { name: "class", value: cls } ], children: children }
+}
+
+fn node_status_symbol(rn: RoadmapNode, merged: List<Int>) -> String {
+  if signoff_accepts(s: rn.signoff) {
+    "done"
+  } else {
+    if item_is_done(item: rn.line, merged: merged) {
+      "review"
+    } else {
+      "open"
+    }
+  }
+}
+
+fn intricacy_label(i: Intricacy) -> String {
+  match i {
+    IntricacyLow => "i:low"
+    IntricacyMedium => "i:med"
+    IntricacyHigh => "i:high"
+  }
+}
+
+fn volume_label(v: Volume) -> String {
+  match v {
+    VolumeSmall => "v:small"
+    VolumeMedium => "v:med"
+    VolumeLarge => "v:large"
+  }
+}
+
+fn sizing_label(s: NodeSizing) -> String {
+  match s {
+    Unsized => ""
+    Sized { intricacy, volume, repo, acceptance } =>
+      join([intricacy_label(i: intricacy), " ", volume_label(v: volume), " ", repo], "")
+  }
+}
+
+fn line_title(line: RoadmapItem) -> String {
+  match line {
+    DerivableLine { prs, title, description } => title
+    AuthoredLine { done, content } => content
+    PlainLine { content } => content
+  }
+}
+
+fn pointer_link(p: Pointer) -> MarkupNode {
+  ElementNode {
+    tag: "a",
+    attrs: [ MarkupAttr { name: "href", value: p.path } ],
+    children: [ txt(p.label) ],
+  }
+}
+
+fn carrier_links(carriers: List<Pointer>) -> List<MarkupNode> {
+  map(carriers, p => pointer_link(p: p))
+}
+
+fn children_of(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, parent: ProcessNodeId) -> List<RoadmapNode> {
+  nodes |> filter(n => match roadmap_parent(edges: edges, node: n.node) {
+    UnderParent { parent: p } => p == parent
+    TopLevel => false
+  })
+}
+
+fn owner_badge(rn: RoadmapNode) -> List<MarkupNode> {
+  if rn.owner == "" {
+    []
+  } else {
+    [ el_class("span", "owner", [ txt(concat("@", rn.owner)) ]) ]
+  }
+}
+
+fn sizing_badge(rn: RoadmapNode) -> List<MarkupNode> {
+  let label = sizing_label(s: rn.sizing)
+  if label == "" {
+    []
+  } else {
+    [ el_class("span", "sizing", [ txt(label) ]) ]
+  }
+}
+
+fn node_li(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>, fuel: Int) -> MarkupNode {
+  let status = node_status_symbol(rn: rn, merged: merged)
+  let head = concat(
+    concat(
+      [
+        el_class("span", concat("status status-", status), [ txt(status) ]),
+        el_class("span", "title", [ txt(line_title(line: rn.line)) ]),
+      ],
+      owner_badge(rn: rn),
+    ),
+    concat(sizing_badge(rn: rn), carrier_links(carriers: rn.carriers)),
+  )
+  let kids = if fuel > 0 { children_of(nodes: nodes, edges: edges, parent: rn.node) } else { [] }
+  let child_block = if count(kids) > 0 {
+    [ nodes_ul(items: kids, nodes: nodes, edges: edges, merged: merged, fuel: fuel - 1) ]
+  } else {
+    []
+  }
+  ElementNode {
+    tag: "li",
+    attrs: [ MarkupAttr { name: "class", value: concat("node node-", status) } ],
+    children: concat(head, child_block),
+  }
+}
+
+fn nodes_ul(items: List<RoadmapNode>, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>, fuel: Int) -> MarkupNode {
+  el("ul", map(items, rn => node_li(rn: rn, nodes: nodes, edges: edges, merged: merged, fuel: fuel)))
+}
+
+fn group_markup(g: SectionGroup, merged: List<Int>) -> List<MarkupNode> {
+  let tops = g.nodes |> filter(n => is_top_level(edges: g.edges, node: n.node))
+  let ul = nodes_ul(items: tops, nodes: g.nodes, edges: g.edges, merged: merged, fuel: roadmap_page_max_depth())
+  if g.label == "" {
+    [ ul ]
+  } else {
+    [ el_class("h3", "group-label", [ txt(g.label) ]), ul ]
+  }
+}
+
+fn element_markup(e: SectionElement, merged: List<Int>) -> List<MarkupNode> {
+  match e {
+    Prose { prose } => [ el_class("p", "prose", [ txt(prose.content) ]) ]
+    Group { group } => group_markup(g: group, merged: merged)
+  }
+}
+
+fn section_markup(s: RoadmapSection, merged: List<Int>) -> MarkupNode {
+  let body = fold(s.elements, init: [], f: (acc, e) => concat(acc, element_markup(e: e, merged: merged)))
+  el_class("section", "roadmap-section", concat([ el("h2", [ txt(s.title) ]) ], body))
+}
+
+fn roadmap_page(doc: RoadmapDocument, merged: List<Int>) -> MarkupNode {
+  let lead = map(doc.lead_lanes, s => section_markup(s: s, merged: merged))
+  let secs = map(doc.sections, s => section_markup(s: s, merged: merged))
+  let main_children = concat(lead, secs)
+  ElementNode {
+    tag: "html",
+    attrs: [],
+    children: [
+      el("head", [
+        ElementNode { tag: "meta", attrs: [ MarkupAttr { name: "charset", value: "utf-8" } ], children: [] },
+        el("title", [ txt("gunbc — roadmap") ]),
+      ]),
+      el("body", [
+        el("header", [ el("h1", [ txt("gunbc — roadmap") ]) ]),
+        el_class("main", "roadmap", main_children),
+      ]),
+    ],
+  }
+}
+
+fn roadmap_page_for_authority() -> MarkupNode {
+  roadmap_page(doc: roadmap_authority(), merged: authored_merged_prs())
+}
