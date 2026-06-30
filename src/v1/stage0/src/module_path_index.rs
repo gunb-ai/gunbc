@@ -136,9 +136,7 @@ pub(crate) fn witness_layer_roots() -> Vec<String> {
 pub(crate) fn witness_discovery_scan_dirs() -> Vec<String> {
     static SCAN_DIRS: OnceLock<Vec<String>> = OnceLock::new();
     SCAN_DIRS
-        .get_or_init(|| {
-            witness_discovery_scan_dirs_from_source(ci_layer_roots_authority_content())
-        })
+        .get_or_init(|| witness_discovery_scan_dirs_from_source(ci_layer_roots_authority_content()))
         .clone()
 }
 
