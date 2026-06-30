@@ -4433,13 +4433,13 @@ mod node_frontier_plumbing_controls {
     }
 }
 
-// Witness (a) PARTIAL — disposition-model coverage only (#5994 Step 3 WIP).
+// Step-3 PREP — disposition-kernel alignment only (#5994). NOT witness (a) PROVE gate.
 // Compares floor_kernel_would_skip against Rust skip predicate when both sides share
 // Rust-computed touches_frontier/function_edited (disposition tautology, NOT impl-vs-impl).
 // PROVE gate still open: independent .dag affected_set_closure vs NodeFrontierSeeds on a
 // real origin/main...HEAD diff, superset assertion, full run/skip on both axes, RED control.
 #[cfg(test)]
-mod affected_set_full_predicate_equivalence {
+mod floor_disposition_kernel_alignment {
     use super::{
         build_multi_entry_index, collect_frontier_seeds_from_diff_line_ranges,
         diff_file_matches_entry, entry_touches_frontier_seeds, make_eval_context,
@@ -4551,7 +4551,7 @@ mod affected_set_full_predicate_equivalence {
         expect_function_edited_fires: bool,
     }
 
-    fn assert_full_predicate_equivalence_for_scenario(
+    fn assert_disposition_kernel_alignment_for_scenario(
         ws: &PathBuf,
         scenario: &Scenario,
         roster: &[DiscoveryRow],
@@ -4653,7 +4653,7 @@ mod affected_set_full_predicate_equivalence {
     }
 
     #[test]
-    fn full_predicate_equivalence_on_real_corpus_fixture() {
+    fn disposition_kernel_aligns_on_discriminator_fixture() {
         let ws = workspace_root();
         std::env::set_current_dir(&ws).expect("chdir workspace");
         let fixture_abs = ws.join(FIXTURE_REL).to_string_lossy().into_owned();
@@ -4675,7 +4675,7 @@ mod affected_set_full_predicate_equivalence {
             },
         ];
 
-        assert_full_predicate_equivalence_for_scenario(
+        assert_disposition_kernel_alignment_for_scenario(
             &ws,
             &Scenario {
                 label: "node-frontier (referenced data item C)",
@@ -4686,7 +4686,7 @@ mod affected_set_full_predicate_equivalence {
             &roster,
         );
 
-        assert_full_predicate_equivalence_for_scenario(
+        assert_disposition_kernel_alignment_for_scenario(
             &ws,
             &Scenario {
                 label: "function-edited (witness A declaration)",
@@ -4697,7 +4697,7 @@ mod affected_set_full_predicate_equivalence {
             &roster,
         );
 
-        assert_full_predicate_equivalence_for_scenario(
+        assert_disposition_kernel_alignment_for_scenario(
             &ws,
             &Scenario {
                 label: "orphan node (both axes false for transitive witness)",
@@ -4710,7 +4710,7 @@ mod affected_set_full_predicate_equivalence {
     }
 
     #[test]
-    fn full_predicate_closure_seeds_superset_on_referenced_node_diff() {
+    fn disposition_kernel_seeds_populated_on_referenced_node_diff() {
         let ws = workspace_root();
         std::env::set_current_dir(&ws).expect("chdir workspace");
         let roots = setup_roots(&ws);
