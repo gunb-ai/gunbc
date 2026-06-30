@@ -1,0 +1,27 @@
+module v2.test.claim.complexity_linearity.syntactic_audit_witness
+
+import v2.lens.complexity_linearity_audit {
+  complexity_linearity_syntactic_finding_count_live,
+  complexity_linearity_syntactic_wildcard_finding_count_live,
+  complexity_linearity_syntactic_site_fired_live
+}
+
+test fn syntactic_audit_runs_over_witness_roots() -> Bool {
+  return complexity_linearity_syntactic_finding_count_live() > 0
+}
+
+test fn syntactic_audit_finds_wildcard_match_arms() -> Bool {
+  return complexity_linearity_syntactic_wildcard_finding_count_live() > 0
+}
+
+test fn syntactic_audit_bites_translate_boundary_bounded() -> Bool {
+  return complexity_linearity_syntactic_site_fired_live(
+    site: "src/v2/compiler/06_translate.dag::serialize_type_expr_boundary_bounded"
+  )
+}
+
+test fn syntactic_audit_bites_tokenize_prefer_longer() -> Bool {
+  return complexity_linearity_syntactic_site_fired_live(
+    site: "src/v2/compiler/01_tokenize.dag::lex_try_rules_prefer_longer"
+  )
+}
