@@ -1,0 +1,31 @@
+module v1.compiler.stage0_emit_roster
+
+import gunbc.stage0_emit_model {
+  generated_stage0_files,
+  stage0_structural_generated_basenames,
+  stage0_module_emit_basename,
+  stage0_module_emit_filename,
+  is_generated_stage0_file,
+  is_stage0_structural_generated_file,
+  generated_stage0_file_count
+}
+
+fn emit_rust_module_filename(module_path: String) -> String {
+  stage0_module_emit_filename(module_path: module_path)
+}
+
+fn emit_rust_structural_generated_basenames() -> List<String> {
+  stage0_structural_generated_basenames
+}
+
+fn emit_rust_generated_stage0_roster() -> List<String> {
+  generated_stage0_files
+}
+
+fn emit_rust_generated_stage0_file_count() -> Int {
+  generated_stage0_file_count()
+}
+
+fn emit_rust_registry_contains_module_file(module_path: String) -> Bool {
+  is_generated_stage0_file(basename: stage0_module_emit_filename(module_path: module_path))
+}
