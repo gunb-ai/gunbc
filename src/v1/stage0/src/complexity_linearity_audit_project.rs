@@ -233,7 +233,8 @@ fn is_open_domain_site(site: &str, fn_name: &str) -> bool {
         || site.starts_with("dsl/gunbc/plans/")
         || site.starts_with("dsl/test/")
         || (fn_name.ends_with("_claim_holds") && site.contains("test/claim"))
-        || (fn_name.starts_with("witness_") && (site.starts_with("dsl/") || site.contains("extdeps/")))
+        || (fn_name.starts_with("witness_")
+            && (site.starts_with("dsl/") || site.contains("extdeps/")))
         || (fn_name.starts_with("parse_") && site.starts_with("dsl/extdeps/"))
 }
 

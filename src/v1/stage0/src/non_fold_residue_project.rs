@@ -688,7 +688,8 @@ mod tests {
             migration.difference(&roster).collect::<Vec<_>>()
         );
         assert_eq!(
-            NON_FOLD_MIGRATION_DEBT_ROSTER.len() + non_fold_residue_irreducible_roster_slots() as usize,
+            NON_FOLD_MIGRATION_DEBT_ROSTER.len()
+                + non_fold_residue_irreducible_roster_slots() as usize,
             NON_FOLD_RESIDUE_ROSTER.len(),
             "roster partition must cover every slot"
         );
