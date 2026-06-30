@@ -6,7 +6,7 @@ import gunbc.hand_lens_host_bridge_scaffold_watchdog {
   scaffold_dissolution_trigger_cites_5364,
   scaffold_dissolution_trigger_nonempty,
 }
-import v2.std.logic { Bool }
+import std.types { Bool }
 
 test fn hand_lens_host_bridge_scaffold_roster_tracks_5364_dissolution() -> Bool {
   hand_lens_host_bridge_scaffold_roster_tracked()
