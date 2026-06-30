@@ -1,6 +1,7 @@
 use std::rc::Rc;
 use v1_compiler::v1_compiler_dag_collect_support::{
     dag_node_bag_hash, dag_node_seq_hash, dag_node_surface_fingerprint,
+    dag_node_surface_leaf_mix,
 };
 use v1_compiler::v1_rt::atom_identity_hash;
 use v1_compiler::v1_std_core::{Cardinality, Connective, ExprData, Node, SourceSpan};
@@ -153,5 +154,32 @@ fn recursive_fingerprint_disj_child_order_insensitive() {
         dag_node_surface_fingerprint(left),
         dag_node_surface_fingerprint(right),
         "Disj siblings are commutative — reorder must not false-split"
+    );
+}
+
+// --- GUARD-2: contrastive control — leaf_mix collides where recursive fingerprint distinguishes ---
+//
+// Proves that the recursive model was NECESSARY: two 0..0-span nodes that are identical at the
+// leaf level (same name, connective, expr_data, inferred) but differ only in their children have
+// the same dag_node_surface_leaf_mix (a simple name-only fingerprint would assign them the same
+// dag_node_key → dag_node_key_collision_error), but dag_node_surface_fingerprint is different
+// (the recursive model distinguishes them → distinct keys, no collision).  This locks §5 against
+// any future simplify regression that would flatten the recursive fingerprint back to a leaf hash.
+
+#[test]
+fn recursive_fingerprint_necessary_leaf_mix_collides_recursive_distinguishes() {
+    let child_conj = shell_node("child", Connective::Conj, vec![], vec![]);
+    let child_disj = shell_node("child", Connective::Disj, vec![], vec![]);
+    let node_a = shell_node("root", Connective::NoConnective, vec![child_conj], vec![]);
+    let node_b = shell_node("root", Connective::NoConnective, vec![child_disj], vec![]);
+    assert_eq!(
+        dag_node_surface_leaf_mix(node_a.clone()),
+        dag_node_surface_leaf_mix(node_b.clone()),
+        "leaf_mix must be identical (same name/connective/expr_data) — a simple leaf fingerprint would collide"
+    );
+    assert_ne!(
+        dag_node_surface_fingerprint(node_a),
+        dag_node_surface_fingerprint(node_b),
+        "recursive fingerprint must distinguish the two nodes despite identical leaf_mix"
     );
 }
