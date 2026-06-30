@@ -9,17 +9,15 @@ import v2.std.cross_tree.import_model {
   V2Tree,
   cross_tree_layer_direction_holds
 }
-import v2.std.cross_tree.resolution {
+import v2.std.cross_tree.resolution { layer_prefix_from_dotted_qualified_name }
+import v2.std.integer { Int }
+import v2.std.layer {
   LayerPrefix,
   LayerPrefixCompiler,
-  LayerPrefixDottedKnown,
-  LayerPrefixDottedUnknown,
   LayerPrefixExtdeps,
   LayerPrefixStd,
-  LayerPrefixWorkflow,
-  resolve_layer_prefix_from_dotted_qualified_name
+  LayerPrefixWorkflow
 }
-import v2.std.integer { Int }
 import v2.std.logic { Bool }
 import v2.std.text { Char, String }
 import v2.std.concept_index {
@@ -109,24 +107,14 @@ fn is_meta_model_substrate_layer(layer: LayerPrefix) -> Bool {
 }
 
 fn grounding_layer_direction_holds(enclosing_qn: String, matched_qn: String) -> Bool {
-  let enc = resolve_layer_prefix_from_dotted_qualified_name(qn: enclosing_qn)
-  let mat = resolve_layer_prefix_from_dotted_qualified_name(qn: matched_qn)
-  match enc {
-    LayerPrefixDottedKnown { prefix: from_layer } =>
-      match mat {
-        LayerPrefixDottedKnown { prefix: to_layer } =>
-          cross_tree_layer_direction_holds(edge: CrossTreeImport {
-            from_tree: V2Tree,
-            from_layer: from_layer,
-            from_module: enclosing_qn,
-            to_tree: V2Tree,
-            to_layer: to_layer,
-            to_module: matched_qn
-          })
-        LayerPrefixDottedUnknown => false
-      }
-    LayerPrefixDottedUnknown => false
-  }
+  cross_tree_layer_direction_holds(edge: CrossTreeImport {
+    from_tree: V2Tree,
+    from_layer: layer_prefix_from_dotted_qualified_name(qn: enclosing_qn),
+    from_module: enclosing_qn,
+    to_tree: V2Tree,
+    to_layer: layer_prefix_from_dotted_qualified_name(qn: matched_qn),
+    to_module: matched_qn
+  })
 }
 
 fn is_meta_model_field_name(field: String) -> Bool {
@@ -139,13 +127,11 @@ fn is_meta_self_coincidence(
   matched_name: String,
   matched_qn: String
 ) -> Bool {
-  match resolve_layer_prefix_from_dotted_qualified_name(qn: matched_qn) {
-    LayerPrefixDottedKnown { prefix: layer } =>
-      is_meta_model_field_name(field: field)
-        && is_meta_model_substrate_layer(layer: layer)
-        && name_whole_coincides(field: field, concept_name: matched_name)
-    LayerPrefixDottedUnknown => false
-  }
+  is_meta_model_field_name(field: field)
+    && is_meta_model_substrate_layer(
+      layer: layer_prefix_from_dotted_qualified_name(qn: matched_qn)
+    )
+    && name_whole_coincides(field: field, concept_name: matched_name)
 }
 
 fn is_layer_inversion(enclosing_qn: String, matched_qn: String) -> Bool {

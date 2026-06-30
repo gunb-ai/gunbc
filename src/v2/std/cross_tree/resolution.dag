@@ -1,6 +1,6 @@
 module v2.std.cross_tree.resolution
 
-import v2.std.algebra { Cons, Empty, FreeMonoid, fold_list, is_prefix_of }
+import v2.std.algebra { Cons, Empty, FreeMonoid, fold_list }
 import v2.std.cross_tree.import_model {
   CoFundamental,
   CrossTreeAdmitted,
@@ -32,7 +32,7 @@ import v2.std.qualified_name {
   qualified_name_eq,
   qualified_name_from_dotted_string
 }
-import v2.std.text { Char, String }
+import v2.std.text { String }
 
 type SourceRootBinding {
   module: QualifiedName
@@ -99,41 +99,6 @@ fn tree_fundamentality_order(
         V2Tree => LessFundamental
         DslTree => CoFundamental
       }
-  }
-}
-
-fn dotted_qn_char_eq(a: Char, b: Char) -> Bool {
-  a == b
-}
-
-fn dotted_layer_prefix_namespace_recognized(qn: String) -> Bool {
-  is_prefix_of(prefix: "v2.std.", xs: qn, eq: dotted_qn_char_eq)
-    || is_prefix_of(prefix: "std.", xs: qn, eq: dotted_qn_char_eq)
-    || is_prefix_of(prefix: "v2.extdeps.", xs: qn, eq: dotted_qn_char_eq)
-    || is_prefix_of(prefix: "extdeps.", xs: qn, eq: dotted_qn_char_eq)
-    || is_prefix_of(prefix: "v2.compiler.", xs: qn, eq: dotted_qn_char_eq)
-    || is_prefix_of(prefix: "compiler.", xs: qn, eq: dotted_qn_char_eq)
-    || is_prefix_of(prefix: "v2.lens.", xs: qn, eq: dotted_qn_char_eq)
-    || is_prefix_of(prefix: "lens.", xs: qn, eq: dotted_qn_char_eq)
-    || is_prefix_of(prefix: "v2.test.", xs: qn, eq: dotted_qn_char_eq)
-    || is_prefix_of(prefix: "test.", xs: qn, eq: dotted_qn_char_eq)
-    || is_prefix_of(prefix: "v2.workflow.", xs: qn, eq: dotted_qn_char_eq)
-    || is_prefix_of(prefix: "workflow.", xs: qn, eq: dotted_qn_char_eq)
-    || is_prefix_of(prefix: "gunbc.", xs: qn, eq: dotted_qn_char_eq)
-    || is_prefix_of(prefix: "tools.", xs: qn, eq: dotted_qn_char_eq)
-}
-
-type LayerPrefixDottedResolve
-  = LayerPrefixDottedKnown { prefix: LayerPrefix }
-  | LayerPrefixDottedUnknown
-
-fn resolve_layer_prefix_from_dotted_qualified_name(qn: String) -> LayerPrefixDottedResolve {
-  if dotted_layer_prefix_namespace_recognized(qn: qn) {
-    LayerPrefixDottedKnown {
-      prefix: layer_prefix_from_dotted_qualified_name(qn: qn)
-    }
-  } else {
-    LayerPrefixDottedUnknown
   }
 }
 

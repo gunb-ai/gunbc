@@ -227,6 +227,36 @@ fn witness_stripped_qn_layer_inversion_predicate() -> Bool {
   is_layer_inversion(enclosing_qn: "std.Foo", matched_qn: "lens.grounding.Url")
 }
 
+fn product_namespace_fixture_decls() -> List<ConceptDecl> {
+  [
+    concept_decl(
+      qn: "product.compute_fabric.Endpoint",
+      nm: "Endpoint",
+      node: record_type(fields: [field_edge(field: ^base_url, type_sym: ^String)])
+    ),
+    concept_decl(
+      qn: "product.network_topology.Url",
+      nm: "Url",
+      node: record_type(fields: [field_edge(field: ^scheme, type_sym: ^UriScheme)])
+    )
+  ]
+}
+
+fn witness_product_namespace_not_layer_excluded() -> Bool {
+  has_candidate(
+    cands: candidates_over_decls(decls: product_namespace_fixture_decls()),
+    enclosing: "Endpoint",
+    field: "base_url"
+  )
+}
+
+fn witness_product_namespace_layer_direction_holds() -> Bool {
+  !is_layer_inversion(
+    enclosing_qn: "product.compute_fabric.Endpoint",
+    matched_qn: "product.network_topology.Url"
+  )
+}
+
 fn witness_enrich_target_structure() -> Bool {
   let s = candidate_structure(
     cands: candidates_over_decls(decls: fixture_decls()),
@@ -259,6 +289,8 @@ test fn grounding_lens_fixture_witnesses() -> Bool {
     && witness_layer_inversion_predicate()
     && witness_production_layer_excludes_inversion()
     && witness_stripped_qn_layer_inversion_predicate()
+    && witness_product_namespace_not_layer_excluded()
+    && witness_product_namespace_layer_direction_holds()
     && witness_enrich_target_structure()
     && witness_coincides_with_qualified_name()
 }
