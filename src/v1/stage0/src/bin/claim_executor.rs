@@ -309,8 +309,18 @@ fn group_batch_units(batch: &[Runnable]) -> Vec<BatchUnit> {
                 use_walk_memo,
             } => {
                 if let Some(&idx) = entry_to_unit.get(entry) {
-                    if let BatchUnit::SharedClaims { functions, .. } = &mut units[idx] {
+                    if let BatchUnit::SharedClaims {
+                        functions,
+                        use_walk_memo: existing_memo,
+                        ..
+                    } = &mut units[idx]
+                    {
                         functions.push(function.clone());
+                        // A ResolveScopeShared claim may merge into a group that
+                        // was created from a ResolveScopeIsolated claim first; OR
+                        // here so the group gets the memo path if any member
+                        // declared Shared.
+                        *existing_memo |= use_walk_memo;
                     }
                 } else {
                     entry_to_unit.insert(entry.clone(), units.len());
@@ -1300,9 +1310,13 @@ fn run_walk(source_roots: &[String], batches: &[Vec<Runnable>], spawn_width: usi
     let walk_start = Instant::now();
     let mut batch_records: Vec<BatchRecord> = Vec::new();
     // Cross-batch resolve memo: SharedClaims that declare ResolveScopeShared run on the main
-    // thread and share a single resolved InterpContext per (source_roots, entry) pair across all
-    // batches. Rc<ResolvedGraph> is !Send so these units cannot run on spawned threads; they
+    // thread and share a single resolved InterpContext per entry across all batches.
+    // Rc<ResolvedGraph> is !Send so these units cannot run on spawned threads; they
     // run sequentially here after the spawned (non-memo) threads in each batch are joined.
+    // Key invariant: source_roots is constant for the lifetime of a run_walk call, so
+    // keying the memo by entry alone is sufficient — a given entry always resolves against
+    // the same source_roots here. If this function ever accepts multiple source_root sets,
+    // the key must become (source_roots_hash, entry).
     let mut walk_memo: std::collections::HashMap<String, InterpContext> =
         std::collections::HashMap::new();
     for (bi, batch) in batches.iter().enumerate() {
