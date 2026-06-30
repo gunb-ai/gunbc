@@ -584,7 +584,11 @@ pub fn filesystem_read(path: String) -> FilesystemReadResult {
 }
 
 fn int_relu(x: i64) -> i64 {
-    if x > 0 { x } else { 0 }
+    if x > 0 {
+        x
+    } else {
+        0
+    }
 }
 
 pub fn simd_relu_mul_add_scalar(a: &[i64], b: &[i64], c: &[i64]) -> Vec<i64> {
