@@ -99,10 +99,10 @@ fn name_whole_coincides(field: String, concept_name: String) -> Bool {
   norm_whole(s: field) == norm_whole(s: concept_name)
 }
 
-fn is_substrate_layer_prefix(layer: LayerPrefix) -> Bool {
+fn is_meta_model_substrate_layer(layer: LayerPrefix) -> Bool {
   match layer {
     LayerPrefixStd => true
-    LayerPrefixCompiler => true
+    LayerPrefixCompiler => false
     LayerPrefixExtdeps => false
     LayerPrefixWorkflow => false
   }
@@ -142,7 +142,7 @@ fn is_meta_self_coincidence(
   match resolve_layer_prefix_from_dotted_qualified_name(qn: matched_qn) {
     LayerPrefixDottedKnown { prefix: layer } =>
       is_meta_model_field_name(field: field)
-        && is_substrate_layer_prefix(layer: layer)
+        && is_meta_model_substrate_layer(layer: layer)
         && name_whole_coincides(field: field, concept_name: matched_name)
     LayerPrefixDottedUnknown => false
   }
@@ -400,9 +400,12 @@ fn has_any_layer_included_candidate_from_decls(decls: List<ConceptDecl>) -> Bool
   })
 }
 
+data whole_tree_extract_smoke_min_decl_count: Int = 1000
+
 fn whole_tree_extract_smoke() -> Bool {
   let decls = concept_decl_facts(pool_roots: witness_layer_roots)
-  (length(xs: decls) > 1000) && has_any_layer_included_candidate_from_decls(decls: decls)
+  (length(xs: decls) > whole_tree_extract_smoke_min_decl_count)
+    && has_any_layer_included_candidate_from_decls(decls: decls)
 }
 
 fn candidates_in(pool_roots: List<String>) -> List<GroundingWorklistEntry> {
