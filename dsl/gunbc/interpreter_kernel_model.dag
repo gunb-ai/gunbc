@@ -1,0 +1,74 @@
+module gunbc.interpreter_kernel_model
+
+import std.logic { Bool }
+import std.algebra { length }
+import std.text { String }
+
+// HAND kernel D — partition `v1_interpreter.rs` dissolution into:
+//   pure-eval authority (v2.compiler.eval + emit_host, eventually emitted) and
+//   pinned host-physics (transports / fixtures / cache — terminal irreducible kernel).
+
+type InterpreterSeamClass
+  = PureEvalAuthority
+  | PinnedHostPhysics
+
+type V1InterpreterDissolutionPhase
+  = ModelAndWitnessOnly
+  | PureEvalEmitWired
+  | HostPhysicsPinnedTerminal
+
+data interpreter_kernel_d_current_phase: V1InterpreterDissolutionPhase = ModelAndWitnessOnly
+
+// Single-authority modules for the pure-eval seam (.dag is truth; v1_interpreter.rs is the tap).
+data pure_eval_authority_modules: List<String> = [
+  "src/v2/compiler/05_eval.dag",
+  "src/v2/compiler/emit_host.dag",
+  "src/v2/extdeps/runtimes/v2_evaluator.dag",
+  "src/v2/std/host_transport.dag",
+  "src/v2/std/host_run.dag",
+]
+
+// HAND_MAINTAINED stage0 host-physics carriers (seed-shrink-census chunk H + transport seam).
+data pinned_host_physics_stage0_files: List<String> = [
+  "recorded_fixture.rs",
+  "resolved_graph_cache.rs",
+  "rest_transport_facts.rs",
+  "wire_value_serialize.rs",
+  "cache_purity_oracle.rs",
+]
+
+// Hybrid seed file: eval core dissolves via 05_eval emit; host-effect dispatch stays pinned
+// until the Materialization kernel collapses fixture/cache backends (ROADMAP §4 infra).
+data v1_interpreter_hybrid_seed_file: String = "v1_interpreter.rs"
+
+fn list_contains_string(xs: List<String>, needle: String) -> Bool {
+  any(xs, x => x == needle)
+}
+
+fn is_pure_eval_authority_module(path: String) -> Bool {
+  list_contains_string(xs: pure_eval_authority_modules, needle: path)
+}
+
+fn is_pinned_host_physics_stage0_file(basename: String) -> Bool {
+  list_contains_string(xs: pinned_host_physics_stage0_files, needle: basename)
+}
+
+fn pinned_host_physics_file_count() -> Int {
+  length(xs: pinned_host_physics_stage0_files)
+}
+
+fn pure_eval_authority_module_count() -> Int {
+  length(xs: pure_eval_authority_modules)
+}
+
+fn interpreter_kernel_d_phase_is_model_only() -> Bool {
+  match interpreter_kernel_d_current_phase {
+    ModelAndWitnessOnly => true
+    PureEvalEmitWired => false
+    HostPhysicsPinnedTerminal => false
+  }
+}
+
+fn v1_interpreter_not_classified_as_pinned_host_physics() -> Bool {
+  !is_pinned_host_physics_stage0_file(basename: v1_interpreter_hybrid_seed_file)
+}
