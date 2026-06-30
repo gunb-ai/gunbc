@@ -5,7 +5,7 @@ import gunbc.ci_spec {
   gunbc_ci_spec, CiSpec,
   Gate, RustMonolithGate, EmitHostGate, LayeringImportsGate,
   ExtdepsExternalAuthorityGate, DslCompileCleanGate, GeneratedArtifactDriftGate,
-  SourceRootIngestGate, RegenVerifyGate, EmitDeterminismGate
+  SourceRootIngestGate, RegenVerifyGate, SelfHostRealizedComparisonGate, EmitDeterminismGate
 }
 import v2.std.algebra { length, list_snoc_item, skip, zip_map }
 import v2.std.collection { List }
@@ -68,6 +68,8 @@ data floor_gate_witness_entry: String = "dsl/tools/floor_effect_gate_witness.dag
 
 data floor_source_root_ingest_gate_entry: String = "src/v2/workflow/source_root_ingest_gate.dag"
 
+data floor_self_host_realized_comparison_gate_entry: String = "src/v2/workflow/self_host_realized_comparison_gate.dag"
+
 data floor_corpus_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^gunbc_floor_corpus } },
   children: []
@@ -83,6 +85,7 @@ fn gate_node(g: Gate) -> Node {
     GeneratedArtifactDriftGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_generated_artifact } }, children: [] }
     SourceRootIngestGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_sourceingest } }, children: [] }
     RegenVerifyGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_regen_verify } }, children: [] }
+    SelfHostRealizedComparisonGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_self_host_realized_comparison } }, children: [] }
     EmitDeterminismGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_emit_determinism } }, children: [] }
   }
 }
@@ -116,6 +119,12 @@ fn gate_runnable_profile(g: Gate) -> RunnableResourceProfile {
         heavy_whole_tree_resolve: true,
         spawns_host_compiler: true,
         memory: runnable_memory_substantial_sum(left: per_shard, right: host_compiler)
+      )
+    SelfHostRealizedComparisonGate =>
+      runnable_resource_profile(
+        heavy_whole_tree_resolve: false,
+        spawns_host_compiler: false,
+        memory: per_shard
       )
     EmitDeterminismGate =>
       runnable_resource_profile(
@@ -151,6 +160,11 @@ fn gate_runnable(g: Gate) -> Runnable {
       profile: profile
     }
     RegenVerifyGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "regen_verify_gate_passes", profile: profile }
+    SelfHostRealizedComparisonGate => RunnableSingleClaim {
+      entry: floor_self_host_realized_comparison_gate_entry,
+      function: "self_host_realized_comparison_gate_passes",
+      profile: profile
+    }
     EmitDeterminismGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "emit_determinism_gate_passes", profile: profile }
   }
 }
@@ -285,10 +299,32 @@ fn floor_data_dependencies(spec: CiSpec) -> List<DependencyView> {
   )
 }
 
+fn floor_regen_emit_artifact_resource_edges(spec: CiSpec) -> List<DependencyView> {
+  let has_self_host = fold(spec.gates, init: false, f: fn(acc, g) {
+    match g {
+      SelfHostRealizedComparisonGate => true
+      _ => acc
+    }
+  })
+  if has_self_host {
+    [
+      floor_resource_depends_on(
+        source: gate_node(g: RegenVerifyGate),
+        dependent: gate_node(g: SelfHostRealizedComparisonGate)
+      )
+    ]
+  } else {
+    []
+  }
+}
+
 fn floor_resource_dependencies(spec: CiSpec) -> List<DependencyView> {
   concat(
     floor_corpus_exclusion_resource_edges(spec: spec),
-    floor_heavy_resolve_chain_resource_edges(spec: spec)
+    concat(
+      floor_heavy_resolve_chain_resource_edges(spec: spec),
+      floor_regen_emit_artifact_resource_edges(spec: spec)
+    )
   )
 }
 
