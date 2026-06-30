@@ -7848,8 +7848,7 @@ mod module_path_index_tests {
 
     #[test]
     fn extract_top_level_decls_captures_split_brace_body() {
-        let source =
-            include_str!("../tests/fixtures/fact_cardinality_split_brace.dag");
+        let source = include_str!("../tests/fixtures/fact_cardinality_split_brace.dag");
         let decls = extract_top_level_decls(source);
         let sample = decls
             .iter()
