@@ -1,0 +1,8 @@
+module test.claim.kv_pair_fix_witness
+
+import std.render { kv_pair }
+import std.types { Bool, String }
+
+test fn kv_pair_interpolates() -> Bool {
+  kv_pair(key: "host", sep: "=", value: "srv1") == concat(concat("host", "="), "srv1")
+}

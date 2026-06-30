@@ -117,7 +117,7 @@ fn indent_text(level: Int, unit: String, text: String) -> String {
 }
 
 fn kv_pair(key: String, sep: String, value: String) -> String {
-  "\{key\}\{sep\}\{value\}"
+  "{key}{sep}{value}"
 }
 
 fn indented_kv(level: Int, unit: String, key: String, sep: String, value: String) -> String {
