@@ -1,6 +1,6 @@
 module v2.std.cross_tree.resolution
 
-import v2.std.algebra { Cons, Empty, FreeMonoid, fold_list }
+import v2.std.algebra { Cons, Empty, FreeMonoid, fold_list, is_prefix_of }
 import v2.std.cross_tree.import_model {
   CoFundamental,
   CrossTreeAdmitted,
@@ -25,8 +25,14 @@ import v2.std.layer {
   LayerPrefixWorkflow
 }
 import v2.std.logic { Bool }
-import v2.std.qualified_name { QualifiedName, QnCons, QnEmpty, qualified_name_eq }
-import v2.std.text { String }
+import v2.std.qualified_name {
+  QualifiedName,
+  QnCons,
+  QnEmpty,
+  qualified_name_eq,
+  qualified_name_from_dotted_string
+}
+import v2.std.text { Char, String }
 
 type SourceRootBinding {
   module: QualifiedName
@@ -96,6 +102,47 @@ fn tree_fundamentality_order(
   }
 }
 
+fn dotted_qn_char_eq(a: Char, b: Char) -> Bool {
+  a == b
+}
+
+fn dotted_layer_prefix_namespace_recognized(qn: String) -> Bool {
+  is_prefix_of(prefix: "v2.std.", xs: qn, eq: dotted_qn_char_eq)
+    || is_prefix_of(prefix: "std.", xs: qn, eq: dotted_qn_char_eq)
+    || is_prefix_of(prefix: "v2.extdeps.", xs: qn, eq: dotted_qn_char_eq)
+    || is_prefix_of(prefix: "extdeps.", xs: qn, eq: dotted_qn_char_eq)
+    || is_prefix_of(prefix: "v2.compiler.", xs: qn, eq: dotted_qn_char_eq)
+    || is_prefix_of(prefix: "compiler.", xs: qn, eq: dotted_qn_char_eq)
+    || is_prefix_of(prefix: "v2.lens.", xs: qn, eq: dotted_qn_char_eq)
+    || is_prefix_of(prefix: "lens.", xs: qn, eq: dotted_qn_char_eq)
+    || is_prefix_of(prefix: "v2.test.", xs: qn, eq: dotted_qn_char_eq)
+    || is_prefix_of(prefix: "test.", xs: qn, eq: dotted_qn_char_eq)
+    || is_prefix_of(prefix: "v2.workflow.", xs: qn, eq: dotted_qn_char_eq)
+    || is_prefix_of(prefix: "workflow.", xs: qn, eq: dotted_qn_char_eq)
+    || is_prefix_of(prefix: "gunbc.", xs: qn, eq: dotted_qn_char_eq)
+    || is_prefix_of(prefix: "tools.", xs: qn, eq: dotted_qn_char_eq)
+}
+
+type LayerPrefixDottedResolve
+  = LayerPrefixDottedKnown { prefix: LayerPrefix }
+  | LayerPrefixDottedUnknown
+
+fn resolve_layer_prefix_from_dotted_qualified_name(qn: String) -> LayerPrefixDottedResolve {
+  if dotted_layer_prefix_namespace_recognized(qn: qn) {
+    LayerPrefixDottedKnown {
+      prefix: layer_prefix_from_dotted_qualified_name(qn: qn)
+    }
+  } else {
+    LayerPrefixDottedUnknown
+  }
+}
+
+fn layer_prefix_from_dotted_qualified_name(qn: String) -> LayerPrefix {
+  layer_prefix_from_qualified_name(
+    qn: qualified_name_from_dotted_string(dotted: qn)
+  )
+}
+
 fn layer_prefix_from_qualified_name(qn: QualifiedName) -> LayerPrefix {
   match qn {
     QnEmpty => LayerPrefixStd
@@ -122,6 +169,16 @@ fn layer_prefix_from_qualified_name(qn: QualifiedName) -> LayerPrefix {
         }
       } else if h == ^extdeps {
         LayerPrefixExtdeps
+      } else if h == ^std {
+        LayerPrefixStd
+      } else if h == ^compiler {
+        LayerPrefixCompiler
+      } else if h == ^lens {
+        LayerPrefixCompiler
+      } else if h == ^test {
+        LayerPrefixCompiler
+      } else if h == ^workflow {
+        LayerPrefixWorkflow
       } else if h == ^gunbc {
         LayerPrefixWorkflow
       } else if h == ^tools {

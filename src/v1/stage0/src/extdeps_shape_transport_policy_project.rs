@@ -671,28 +671,7 @@ pub fn qualified_name_value_from_module_path(
     ctx: &crate::v1_interpreter::InterpContext,
     module_path: &str,
 ) -> crate::v1_interpreter::Value {
-    use crate::v1_interpreter::{sorted_fields, Value};
-    use std::rc::Rc;
-
-    let qn_variant = |variant: &str, fields: Vec<_>| Value::Variant {
-        type_name: ctx.sym("QualifiedName"),
-        variant_name: ctx.sym(variant),
-        fields: Rc::new(fields),
-    };
-    if module_path.is_empty() {
-        return qn_variant("QnEmpty", vec![]);
-    }
-    let mut qn = qn_variant("QnEmpty", vec![]);
-    for seg in module_path.split('.').rev() {
-        qn = qn_variant(
-            "QnCons",
-            sorted_fields(vec![
-                (ctx.sym("head"), Value::Str(seg.to_string())),
-                (ctx.sym("tail"), qn),
-            ]),
-        );
-    }
-    qn
+    crate::module_path_index::qualified_name_value_from_dotted_string(ctx, module_path)
 }
 
 pub fn derived_extdeps_modules_value(

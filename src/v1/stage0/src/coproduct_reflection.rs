@@ -498,12 +498,22 @@ pub fn eval_resolve_type_node(
 }
 
 fn logical_qualified_name(module_name: &str, name: &str) -> String {
-    let logical = module_name.strip_prefix("v2.").unwrap_or(module_name);
-    if logical.is_empty() {
+    if module_name.is_empty() {
         name.to_string()
     } else {
-        format!("{logical}.{name}")
+        format!("{module_name}.{name}")
     }
+}
+
+pub fn eval_qualified_name_from_dotted_string(
+    ctx: &InterpContext,
+    args: &[(Option<String>, Value)],
+) -> InterpResult<Value> {
+    let dotted = expect_string_lexeme(
+        args.first().map(|(_, v)| v),
+        "qualified_name_from_dotted_string",
+    )?;
+    Ok(crate::module_path_index::qualified_name_value_from_dotted_string(ctx, &dotted))
 }
 
 fn concept_decl_node(ctx: &InterpContext, item: &Rc<Node>) -> InterpResult<Value> {
@@ -576,12 +586,46 @@ fn marshal_type_expr_head_ref(
     ))
 }
 
+fn strip_outer_parens(s: &str) -> &str {
+    let s = s.trim();
+    if !s.starts_with('(') {
+        return s;
+    }
+    let mut depth = 0i32;
+    let mut i = 0usize;
+    while i < s.len() {
+        let ch = s[i..].chars().next().unwrap();
+        let len = ch.len_utf8();
+        match ch {
+            '(' => depth += 1,
+            ')' => {
+                depth -= 1;
+                if depth == 0 {
+                    let rest = s[i + len..].trim();
+                    if rest.is_empty() {
+                        return strip_outer_parens(&s[1..i]);
+                    }
+                    return s;
+                }
+            }
+            _ => {}
+        }
+        i += len;
+    }
+    s
+}
+
 fn type_expr_head_from_token(ty: &str) -> String {
-    let ty = ty.trim();
+    let ty = strip_outer_parens(ty.trim());
     if let Some(i) = ty.find('<') {
         ty[..i].trim().to_string()
     } else {
-        ty.to_string()
+        let parts = split_top_level_commas(ty);
+        if parts.len() > 1 {
+            type_expr_head_from_token(parts[0])
+        } else {
+            ty.to_string()
+        }
     }
 }
 
@@ -1651,5 +1695,13 @@ mod tests {
             err.contains("unexpected token"),
             "expected unexpected-token diagnostic, got: {err}"
         );
+    }
+
+    #[test]
+    fn type_expr_head_from_token_strips_tuple_parens_and_commas() {
+        assert_eq!(type_expr_head_from_token("(A, B)"), "A");
+        assert_eq!(type_expr_head_from_token("A, B"), "A");
+        assert_eq!(type_expr_head_from_token("((Foo))"), "Foo");
+        assert_eq!(type_expr_head_from_token("Optional<(A, B)>"), "Optional");
     }
 }

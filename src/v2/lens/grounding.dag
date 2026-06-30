@@ -9,13 +9,17 @@ import v2.std.cross_tree.import_model {
   V2Tree,
   cross_tree_layer_direction_holds
 }
-import v2.std.cross_tree.resolution { layer_prefix_from_dotted_qualified_name }
-import v2.std.integer { Int }
-import v2.std.layer {
+import v2.std.cross_tree.resolution {
   LayerPrefix,
   LayerPrefixCompiler,
-  LayerPrefixStd
+  LayerPrefixDottedKnown,
+  LayerPrefixDottedUnknown,
+  LayerPrefixExtdeps,
+  LayerPrefixStd,
+  LayerPrefixWorkflow,
+  resolve_layer_prefix_from_dotted_qualified_name
 }
+import v2.std.integer { Int }
 import v2.std.logic { Bool }
 import v2.std.text { Char, String }
 import v2.std.concept_index {
@@ -95,50 +99,34 @@ fn name_whole_coincides(field: String, concept_name: String) -> Bool {
   norm_whole(s: field) == norm_whole(s: concept_name)
 }
 
-fn layer_prefix_str_from_qualified_name(qn: String) -> String {
-  if is_prefix_of(prefix: "v2.std.", xs: qn, eq: char_eq) {
-    "LayerPrefixStd"
-  } else if is_prefix_of(prefix: "v2.extdeps.", xs: qn, eq: char_eq) {
-    "LayerPrefixExtdeps"
-  } else if is_prefix_of(prefix: "v2.compiler.", xs: qn, eq: char_eq) {
-    "LayerPrefixCompiler"
-  } else if is_prefix_of(prefix: "v2.lens.", xs: qn, eq: char_eq) {
-    "LayerPrefixCompiler"
-  } else if is_prefix_of(prefix: "v2.test.", xs: qn, eq: char_eq) {
-    "LayerPrefixCompiler"
-  } else if is_prefix_of(prefix: "v2.workflow.", xs: qn, eq: char_eq) {
-    "LayerPrefixWorkflow"
-  } else if is_prefix_of(prefix: "extdeps.", xs: qn, eq: char_eq) {
-    "LayerPrefixExtdeps"
-  } else if is_prefix_of(prefix: "gunbc.", xs: qn, eq: char_eq) {
-    "LayerPrefixWorkflow"
-  } else if is_prefix_of(prefix: "tools.", xs: qn, eq: char_eq) {
-    "LayerPrefixWorkflow"
-  } else {
-    "LayerPrefixStd"
+fn is_substrate_layer_prefix(layer: LayerPrefix) -> Bool {
+  match layer {
+    LayerPrefixStd => true
+    LayerPrefixCompiler => true
+    LayerPrefixExtdeps => false
+    LayerPrefixWorkflow => false
   }
 }
 
-fn layer_prefix_ordinal_str(layer: String) -> Int {
-  if layer == "LayerPrefixStd" {
-    0
-  } else if layer == "LayerPrefixExtdeps" {
-    1
-  } else if layer == "LayerPrefixCompiler" {
-    2
-  } else if layer == "LayerPrefixWorkflow" {
-    3
-  } else {
-    0
+fn grounding_layer_direction_holds(enclosing_qn: String, matched_qn: String) -> Bool {
+  let enc = resolve_layer_prefix_from_dotted_qualified_name(qn: enclosing_qn)
+  let mat = resolve_layer_prefix_from_dotted_qualified_name(qn: matched_qn)
+  match enc {
+    LayerPrefixDottedKnown { prefix: from_layer } =>
+      match mat {
+        LayerPrefixDottedKnown { prefix: to_layer } =>
+          cross_tree_layer_direction_holds(edge: CrossTreeImport {
+            from_tree: V2Tree,
+            from_layer: from_layer,
+            from_module: enclosing_qn,
+            to_tree: V2Tree,
+            to_layer: to_layer,
+            to_module: matched_qn
+          })
+        LayerPrefixDottedUnknown => false
+      }
+    LayerPrefixDottedUnknown => false
   }
-}
-
-fn layer_can_import(from_layer: String, to_layer: String) -> Bool {
-  layer_prefix_ordinal_str(layer: to_layer) <= layer_prefix_ordinal_str(layer: from_layer)
-}
-
-fn is_substrate_layer(layer: String) -> Bool {
-  (layer == "LayerPrefixStd") || (layer == "LayerPrefixCompiler")
 }
 
 fn is_meta_model_field_name(field: String) -> Bool {
@@ -151,16 +139,17 @@ fn is_meta_self_coincidence(
   matched_name: String,
   matched_qn: String
 ) -> Bool {
-  is_meta_model_field_name(field: field)
-    && is_substrate_layer(layer: layer_prefix_str_from_qualified_name(qn: matched_qn))
-    && name_whole_coincides(field: field, concept_name: matched_name)
+  match resolve_layer_prefix_from_dotted_qualified_name(qn: matched_qn) {
+    LayerPrefixDottedKnown { prefix: layer } =>
+      is_meta_model_field_name(field: field)
+        && is_substrate_layer_prefix(layer: layer)
+        && name_whole_coincides(field: field, concept_name: matched_name)
+    LayerPrefixDottedUnknown => false
+  }
 }
 
 fn is_layer_inversion(enclosing_qn: String, matched_qn: String) -> Bool {
-  !layer_can_import(
-    from_layer: layer_prefix_str_from_qualified_name(qn: enclosing_qn),
-    to_layer: layer_prefix_str_from_qualified_name(qn: matched_qn)
-  )
+  !grounding_layer_direction_holds(enclosing_qn: enclosing_qn, matched_qn: matched_qn)
 }
 
 fn compute_layer_excluded(
