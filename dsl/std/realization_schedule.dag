@@ -65,10 +65,15 @@ type RunnableMemoryClass
   = RunnableMemoryNegligible
   | RunnableMemorySubstantial { peak: RunnableMemoryPeak }
 
+type ResolveScope
+  = ResolveScopeIsolated
+  | ResolveScopeShared
+
 type RunnableResourceProfile {
   heavy_whole_tree_resolve: Bool
   spawns_host_compiler: Bool
   memory: RunnableMemoryClass
+  resolve_scope: ResolveScope
 }
 
 fn runnable_memory_negligible() -> RunnableMemoryClass {
