@@ -9,10 +9,12 @@ import gunbc.roadmap_model {
   Pointer,
   RoadmapNode, RoadmapEdge,
   RoadmapParent, TopLevel, UnderParent,
+  NodeSizing, Unsized,
   roadmap_parent, is_top_level,
   node_carrier_clean,
   node_status_drift,
 }
+import gunbc.roadmap_status { Signoff, Unsigned }
 
 data parent_node: ProcessNodeId = "invert-hand-maintained"
 data child_node: ProcessNodeId = "pr-checkbox-status"
@@ -54,6 +56,9 @@ fn node_with_carriers(cs: List<Pointer>) -> RoadmapNode {
     node: child_node,
     line: AuthoredLine { done: false, content: "PR→checkbox status" },
     carriers: cs,
+    sizing: Unsized,
+    owner: "",
+    signoff: Unsigned,
   }
 }
 
@@ -80,17 +85,27 @@ fn witness_node_status_drifts() -> Bool {
     node: child_node,
     line: DerivableLine { prs: [5491], title: "stale", description: "" },
     carriers: [],
+    sizing: Unsized,
+    owner: "",
+    signoff: Unsigned,
   }
-  verdict_is_drifted(v: node_status_drift(rn: rn, committed_box: false, merged: [5491]))
+  verdict_is_drifted(v: node_status_drift(rn: rn, committed_box: true, merged: [5491]))
 }
 
-fn witness_node_authored_underivable() -> Bool {
+fn witness_node_unsigned_box_clean() -> Bool {
   let rn = RoadmapNode {
     node: child_node,
     line: AuthoredLine { done: false, content: "partial evidence" },
     carriers: [],
+    sizing: Unsized,
+    owner: "",
+    signoff: Unsigned,
   }
-  verdict_is_underivable(v: node_status_drift(rn: rn, committed_box: false, merged: [5491]))
+  match node_status_drift(rn: rn, committed_box: false, merged: [5491]) {
+    Clean => true
+    Drifted => false
+    Underivable => false
+  }
 }
 
 test fn roadmap_model_witnesses() -> Bool {
@@ -101,5 +116,5 @@ test fn roadmap_model_witnesses() -> Bool {
     && witness_dangling_carrier_caught()
     && witness_no_carrier_clean()
     && witness_node_status_drifts()
-    && witness_node_authored_underivable()
+    && witness_node_unsigned_box_clean()
 }

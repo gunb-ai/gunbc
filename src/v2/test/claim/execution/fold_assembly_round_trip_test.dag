@@ -1,4 +1,4 @@
-module v2.test.fold_assembly.round_trip
+module v2.test.execution.fold_assembly_round_trip
 
 import v2.std.fold_assembly {
   apply_fills, assemble_fold, expand_fold,

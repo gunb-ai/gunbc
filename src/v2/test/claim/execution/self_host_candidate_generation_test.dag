@@ -1,4 +1,4 @@
-module v2.test.self_host.candidate_generation
+module v2.test.execution.self_host_candidate_generation
 
 import v2.compiler.self_host.candidate_generation {
   generate_translate_self_emit_candidate
@@ -18,7 +18,7 @@ import v2.extdeps.languages.dag {
   dag_mvp1_emitted_add_fn_node,
   dag_mvp1_target_model
 }
-import v2.test.manual.dag_add_emit_round_trip {
+import v2.test.execution.dag_add_emit_round_trip {
   dag_add_emitted_root,
   dag_add_target_model
 }

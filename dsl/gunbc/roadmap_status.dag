@@ -10,6 +10,31 @@ type RoadmapItem
 
   | PlainLine { content: String }
 
+type Signoff
+  = Unsigned
+  | SignedOff { by: String, works: Bool, scope_equivalent: Bool, as_expected: Bool }
+
+fn signoff_accepts(s: Signoff) -> Bool {
+  match s {
+    Unsigned => false
+    SignedOff { by: _, works, scope_equivalent, as_expected } => works && scope_equivalent && as_expected
+  }
+}
+
+fn signoff_is_present(s: Signoff) -> Bool {
+  match s {
+    Unsigned => false
+    SignedOff { by: _, works: _, scope_equivalent: _, as_expected: _ } => true
+  }
+}
+
+fn signoff_by(s: Signoff) -> String {
+  match s {
+    Unsigned => ""
+    SignedOff { by, works: _, scope_equivalent: _, as_expected: _ } => by
+  }
+}
+
 fn pr_merged(pr: PullRequest) -> Bool {
   match pr.merged_at {
     Present { value: _ } => true
@@ -34,6 +59,10 @@ fn item_is_done(item: RoadmapItem, merged: List<Int>) -> Bool {
 }
 
 type DriftVerdict = Drifted | Clean | Underivable
+
+fn signoff_drift(s: Signoff, committed_box: Bool) -> DriftVerdict {
+  if committed_box == signoff_accepts(s: s) { Clean } else { Drifted }
+}
 
 fn status_drift(item: RoadmapItem, committed_box: Bool, merged: List<Int>) -> DriftVerdict {
   match item {

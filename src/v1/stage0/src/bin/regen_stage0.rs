@@ -114,14 +114,12 @@ const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
     "cli_run.rs",
     "corpus_lex.rs",
     "coproduct_reflection.rs",
-    "corpus_lex.rs",
     "doc_reachability_project.rs",
     "inert_carrier_project.rs",
     "medium_structure_project.rs",
     "extdeps_shape_transport_policy_project.rs",
     "fact_cardinality_census.rs",
     "import_resolution_project.rs",
-    "inert_carrier_project.rs",
     "languages_consumer_census.rs",
     "layering_imports_project.rs",
     "module_path_index.rs",
@@ -260,9 +258,6 @@ fn run() -> Result<(), String> {
     })?;
     time_phase(&mut phases, "assert_bootstrap_emit_core_support", || {
         assert_bootstrap_emit_core_support(&fresh_dir.join("src"))
-    })?;
-    time_phase(&mut phases, "patch_cargo_toml_for_generated_crate", || {
-        patch_cargo_toml_for_generated_crate(&fresh_dir)
     })?;
     time_phase(&mut phases, "rustfmt_generated_crate", || {
         rustfmt_generated_crate(&fresh_dir)
@@ -997,37 +992,6 @@ fn strip_between(text: &str, start_marker: &str, end_marker: &str) -> Result<Str
         ));
     }
     Ok(format!("{}{}", &text[..start_idx], &text[end_idx..]))
-}
-
-fn patch_cargo_toml_for_generated_crate(dir: &Path) -> Result<(), String> {
-    let cargo_toml = dir.join("Cargo.toml");
-    if !cargo_toml.exists() {
-        return Ok(());
-    }
-    let mut contents = fs::read_to_string(&cargo_toml)
-        .map_err(|e| format!("read {}: {e}", cargo_toml.display()))?;
-    // Each dep is added independently and idempotently (presence-gated per dep) so a
-    // future emitted Cargo.toml that already carries one but not the other still gets
-    // the missing one. `ureq` and `im-rc` (the latter backs the hand-maintained
-    // periphery -- v1_interpreter persistent value carriers) are both omitted by the
-    // emitter; this mirrors the committed stage0 Cargo.toml deps.
-    for (crate_name, dep_line) in [
-        ("ureq", "ureq = { version = \"2\", features = [\"json\"] }"),
-        ("im-rc", "im-rc = \"15.1\""),
-        ("unicode-ident", "unicode-ident = \"1\""),
-        (
-            "unicode-properties",
-            "unicode-properties = { version = \"0.1\", features = [\"emoji\"] }",
-        ),
-    ] {
-        if !contents.contains(crate_name) {
-            contents = contents.replace(
-                "\n[dependencies]\n",
-                &format!("\n[dependencies]\n{dep_line}\n"),
-            );
-        }
-    }
-    fs::write(&cargo_toml, contents).map_err(|e| format!("write {}: {e}", cargo_toml.display()))
 }
 
 fn rustfmt_generated_crate(dir: &Path) -> Result<(), String> {
