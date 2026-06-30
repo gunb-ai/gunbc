@@ -4527,21 +4527,15 @@ mod floor_disposition_kernel_alignment {
         }
     }
 
-    fn rust_row_would_skip(
-        skip_enabled: bool,
-        entry_touches: bool,
-        function_edited: bool,
-    ) -> bool {
+    fn rust_row_would_skip(skip_enabled: bool, entry_touches: bool, function_edited: bool) -> bool {
         skip_enabled && !entry_touches && !function_edited
     }
 
-    fn function_edited_for_row(
-        seeds: &super::NodeFrontierSeeds,
-        row: &DiscoveryRow,
-    ) -> bool {
-        seeds.edited_test_fns.iter().any(|(file, func)| {
-            diff_file_matches_entry(file, &row.entry) && func == &row.function
-        })
+    fn function_edited_for_row(seeds: &super::NodeFrontierSeeds, row: &DiscoveryRow) -> bool {
+        seeds
+            .edited_test_fns
+            .iter()
+            .any(|(file, func)| diff_file_matches_entry(file, &row.entry) && func == &row.function)
     }
 
     struct Scenario {
@@ -4599,8 +4593,7 @@ mod floor_disposition_kernel_alignment {
 
         let (runner_graph, runner_indices) = resolve_entry_with_index(&index, FLOOR_RUNNER_TEST)
             .expect("floor runner test entry resolves");
-        let runner_ctx =
-            make_eval_context(&runner_graph, runner_indices, ExecutionMode::Wet);
+        let runner_ctx = make_eval_context(&runner_graph, runner_indices, ExecutionMode::Wet);
         let changed_paths = vec![FIXTURE_REL.to_string()];
 
         let mut saw_node_frontier_run = false;
