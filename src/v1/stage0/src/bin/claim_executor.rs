@@ -1332,14 +1332,17 @@ fn run_walk(source_roots: &[String], batches: &[Vec<Runnable>], spawn_width: usi
         );
         let batch_start = Instant::now();
         // Partition units: memo units stay on the main thread; others spawn.
+        // A unit goes to the memo path if (a) its profile declares heavy whole-tree
+        // resolve, or (b) its entry is already in walk_memo from a prior batch — in
+        // which case re-resolving would be redundant regardless of profile.
         let mut memo_units: Vec<BatchUnit> = Vec::new();
         let mut thread_units: Vec<BatchUnit> = Vec::new();
         for unit in units {
             match &unit {
-                BatchUnit::SharedClaims {
-                    use_walk_memo: true,
-                    ..
-                } => memo_units.push(unit),
+                BatchUnit::SharedClaims { use_walk_memo: true, .. } => memo_units.push(unit),
+                BatchUnit::SharedClaims { entry, .. } if walk_memo.contains_key(entry) => {
+                    memo_units.push(unit)
+                }
                 _ => thread_units.push(unit),
             }
         }
