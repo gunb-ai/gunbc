@@ -55,6 +55,8 @@ type ElementwiseFoldClass
   | EffectfulSubgraph
   | DataDependentGather
 
+data elementwise_fold_class_modeling_lane_scaffold_note: String = "modeling-lane scaffold: ElementwiseFoldClass tag dispatch tests outcome-mapping into RealizationPlan shape only; execution lane uses gunbc.accelerator_demo_program + recognize_accelerator_program for structural recognition"
+
 type AcceleratorRefusalReason
   = NotElementwisePure
   | CarriesEffects

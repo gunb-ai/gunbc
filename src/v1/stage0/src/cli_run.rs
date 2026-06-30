@@ -2724,12 +2724,19 @@ pub fn discover_floor_corpus_rows_scoped(
     )
 }
 
-fn discover_floor_corpus_rows_inner(
+struct FloorLensHygieneGraph {
+    rows: Vec<DiscoveryRow>,
+    path_imports: std::collections::HashMap<String, Vec<String>>,
+    module_to_path: std::collections::HashMap<String, String>,
+    lens_with_justification: std::collections::BTreeSet<String>,
+}
+
+fn build_floor_lens_hygiene_graph(
     source_roots: &[String],
     scan_dirs: &[String],
     exclude_substrings: &[String],
     discovery_scope_dirs: &[String],
-) -> Result<Vec<DiscoveryRow>, String> {
+) -> Result<FloorLensHygieneGraph, String> {
     let excludes: Vec<String> = exclude_substrings.to_vec();
     let mut rows: Vec<DiscoveryRow> = Vec::new();
     let mut seen: std::collections::BTreeSet<(String, String)> = std::collections::BTreeSet::new();
@@ -2843,6 +2850,72 @@ fn discover_floor_corpus_rows_inner(
             .cmp(&b.entry)
             .then_with(|| a.function.cmp(&b.function))
     });
+    Ok(FloorLensHygieneGraph {
+        rows,
+        path_imports,
+        module_to_path,
+        lens_with_justification,
+    })
+}
+
+fn default_floor_lens_hygiene_excludes() -> Vec<String> {
+    FLOOR_DISCOVERY_EXCLUDES
+        .iter()
+        .map(|s| s.to_string())
+        .collect()
+}
+
+/// Floor witness builtin (#5433 sibling to `doc_graph_orphan_count`): unreached top-level
+/// `v2.lens.*` module count. Returns `-1` when the corpus walk fails closed.
+pub fn inert_lens_unreached_module_count() -> i64 {
+    match build_floor_lens_hygiene_graph(
+        &crate::module_path_index::default_source_roots(),
+        &crate::module_path_index::witness_discovery_scan_dirs(),
+        &default_floor_lens_hygiene_excludes(),
+        &[],
+    ) {
+        Ok(graph) => {
+            inert_lens_modules(&graph.rows, &graph.path_imports, &graph.module_to_path).len() as i64
+        }
+        Err(_) => -1,
+    }
+}
+
+/// Floor witness builtin: declared top-level `v2.lens.*` module count (non-vacuity oracle).
+pub fn inert_lens_top_level_module_count() -> i64 {
+    match build_floor_lens_hygiene_graph(
+        &crate::module_path_index::default_source_roots(),
+        &crate::module_path_index::witness_discovery_scan_dirs(),
+        &default_floor_lens_hygiene_excludes(),
+        &[],
+    ) {
+        Ok(graph) => graph
+            .module_to_path
+            .keys()
+            .filter(|m| is_top_level_lens_module(m))
+            .count() as i64,
+        Err(_) => -1,
+    }
+}
+
+fn discover_floor_corpus_rows_inner(
+    source_roots: &[String],
+    scan_dirs: &[String],
+    exclude_substrings: &[String],
+    discovery_scope_dirs: &[String],
+) -> Result<Vec<DiscoveryRow>, String> {
+    let graph = build_floor_lens_hygiene_graph(
+        source_roots,
+        scan_dirs,
+        exclude_substrings,
+        discovery_scope_dirs,
+    )?;
+    let FloorLensHygieneGraph {
+        rows,
+        path_imports,
+        module_to_path,
+        lens_with_justification,
+    } = graph;
     let inert = inert_lens_modules(&rows, &path_imports, &module_to_path);
     if !inert.is_empty() {
         return Err(format!(
@@ -4628,17 +4701,26 @@ mod inert_lens_hygiene_tests {
     }
 
     #[test]
+    fn builtin_inert_lens_counts_are_green_on_live_corpus() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir to workspace root");
+        assert_eq!(
+            super::inert_lens_unreached_module_count(),
+            0,
+            "every v2.lens.* must be reached by a floor witness"
+        );
+        assert!(
+            super::inert_lens_top_level_module_count() > 0,
+            "lens universe must be non-empty (non-vacuity oracle)"
+        );
+    }
+
+    #[test]
     fn floor_corpus_has_no_inert_lenses() {
         let ws = workspace_root();
         std::env::set_current_dir(&ws).expect("chdir to workspace root");
-        let roots = vec![
-            ws.join("dsl").to_string_lossy().into_owned(),
-            ws.join("src/v2").to_string_lossy().into_owned(),
-        ];
-        let scan_dirs = vec![
-            "dsl/test/claim".to_string(),
-            "src/v2/test/claim/manual".to_string(),
-        ];
+        let roots = crate::module_path_index::default_source_roots();
+        let scan_dirs = crate::module_path_index::witness_discovery_scan_dirs();
         let excludes: Vec<String> = FLOOR_DISCOVERY_EXCLUDES
             .iter()
             .map(|s| s.to_string())
@@ -5010,4 +5092,128 @@ mod witness_timing_attribution_tests {
         assert_eq!(top[0].function, "slow");
         assert_eq!(top[1].function, "medium");
     }
+}
+
+pub struct LayerImportFactRaw {
+    pub layer: &'static str,
+    pub path: String,
+    pub import_module: String,
+}
+
+const LAYER_STD: &str = "LayerPrefixStd";
+const LAYER_EXTDEPS: &str = "LayerPrefixExtdeps";
+
+fn rel_path_for_layer_import(path: &Path) -> String {
+    path.to_string_lossy().replace('\\', "/")
+}
+
+fn project_layer_import_root(root: &str, layer: &'static str, out: &mut Vec<LayerImportFactRaw>) {
+    let root_path = Path::new(root);
+    if !root_path.is_dir() {
+        return;
+    }
+    let mut dag_files: Vec<PathBuf> = Vec::new();
+    collect_dag_files_tolerant(root_path, &mut dag_files);
+    dag_files.sort();
+    for file in dag_files {
+        let content = match std::fs::read_to_string(&file) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+        let rel = rel_path_for_layer_import(&file);
+        for import_module in extract_import_paths(&content) {
+            out.push(LayerImportFactRaw {
+                layer,
+                path: rel.clone(),
+                import_module,
+            });
+        }
+    }
+}
+
+pub fn layer_import_facts(
+    std_roots: &[String],
+    extdeps_roots: &[String],
+) -> Vec<LayerImportFactRaw> {
+    let mut out = Vec::new();
+    for root in std_roots {
+        project_layer_import_root(root, LAYER_STD, &mut out);
+    }
+    for root in extdeps_roots {
+        project_layer_import_root(root, LAYER_EXTDEPS, &mut out);
+    }
+    out
+}
+
+pub struct ImportResolutionFactRaw {
+    pub path: String,
+    pub import_module: String,
+    pub target_declared: bool,
+}
+
+pub struct ModuleDeclarationFactRaw {
+    pub module: String,
+    pub path: String,
+}
+
+fn is_excluded_import_path(rel: &str, exclude_substrings: &[String]) -> bool {
+    exclude_substrings.iter().any(|s| rel.contains(s.as_str()))
+}
+
+pub fn import_resolution_facts(
+    pool_roots: &[String],
+    importer_roots: &[String],
+    exclude_substrings: &[String],
+) -> Vec<ImportResolutionFactRaw> {
+    let ws = workspace_root();
+    let abs_pool_roots: Vec<String> = pool_roots
+        .iter()
+        .map(|r| ws.join(r).to_string_lossy().into_owned())
+        .collect();
+    let declared: HashSet<String> = build_module_path_index(&abs_pool_roots)
+        .into_keys()
+        .collect();
+    let mut out = Vec::new();
+    for root in importer_roots {
+        let root_path = Path::new(root);
+        if !root_path.is_dir() {
+            continue;
+        }
+        let mut dag_files: Vec<PathBuf> = Vec::new();
+        collect_dag_files_tolerant(root_path, &mut dag_files);
+        dag_files.sort();
+        for file in dag_files {
+            let rel = rel_path_for_layer_import(&file);
+            if is_excluded_import_path(&rel, exclude_substrings) {
+                continue;
+            }
+            let content = match std::fs::read_to_string(&file) {
+                Ok(c) => c,
+                Err(_) => continue,
+            };
+            for import_module in extract_import_paths(&content) {
+                let target_declared = declared.contains(&import_module);
+                out.push(ImportResolutionFactRaw {
+                    path: rel.clone(),
+                    import_module,
+                    target_declared,
+                });
+            }
+        }
+    }
+    out
+}
+
+pub fn module_declaration_facts(pool_roots: &[String]) -> Vec<ModuleDeclarationFactRaw> {
+    let ws = workspace_root();
+    let abs_pool_roots: Vec<String> = pool_roots
+        .iter()
+        .map(|r| ws.join(r).to_string_lossy().into_owned())
+        .collect();
+    let mut out: Vec<ModuleDeclarationFactRaw> = build_module_path_index(&abs_pool_roots)
+        .into_iter()
+        .map(|(module, path)| ModuleDeclarationFactRaw { module, path })
+        .collect();
+    out.sort_by(|a, b| a.module.cmp(&b.module));
+    out
 }

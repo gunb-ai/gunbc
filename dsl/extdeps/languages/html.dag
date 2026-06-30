@@ -6,6 +6,7 @@ import extdeps.communication.medium { Medium, Lossless }
 import std.markup {
   MarkupNode, MarkupAttr, ElementNode, TextNode,
   MarkupBracket, MarkupMedium, EscapeHtml,
+  VoidTagRendering, OmitClose,
   serialize_markup_node_with,
   unescape_text, unescape_attribute, unescape_url,
   attr_is_url_attr,
@@ -244,11 +245,18 @@ fn parse_children_with(s: String, sp: MarkupBracket) -> HtmlChildrenResult {
   }
 }
 
+data html5_void_tags: List<String> = [
+  "area", "base", "br", "col", "embed", "hr", "img",
+  "input", "link", "meta", "param", "source", "track", "wbr",
+]
+
 fn html_medium_with(sp: MarkupBracket) -> MarkupMedium {
   MarkupMedium {
     tag_overrides: [],
     bracket: sp,
     text_escape: EscapeHtml,
+    void_tags: html5_void_tags,
+    void_rendering: OmitClose,
   }
 }
 

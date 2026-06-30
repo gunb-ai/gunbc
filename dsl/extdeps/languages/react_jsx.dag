@@ -3,11 +3,13 @@ module extdeps.languages.react_jsx
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import std.markup {
-  MarkupNode,
+  MarkupNode, MarkupMedium, EscapeHtml, SelfClose,
   serialize_markup_node_with,
 }
 import extdeps.languages.html {
   html_markup_medium,
+  html5_void_tags,
+  canonical_html_spellings,
 }
 import extdeps.uri_validation {
   find_first_rejected_url,
@@ -24,8 +26,18 @@ fn jsx_component_prefix(fn_name: String) -> String {
   join(["export function ", fn_name, "(): JSX.Element { return "], "")
 }
 
+fn jsx_markup_medium() -> MarkupMedium {
+  MarkupMedium {
+    tag_overrides: [],
+    bracket: canonical_html_spellings,
+    text_escape: EscapeHtml,
+    void_tags: html5_void_tags,
+    void_rendering: SelfClose,
+  }
+}
+
 fn serialize_jsx_fragment(node: MarkupNode) -> String {
-  serialize_markup_node_with(node: node, medium: html_markup_medium())
+  serialize_markup_node_with(node: node, medium: jsx_markup_medium())
 }
 
 fn serialize_jsx_component(fn_name: String, node: MarkupNode) -> String {

@@ -11,6 +11,8 @@ import extdeps.uri_validation {
   validate_href, SafeHref, RejectedHref, RejectedUrlScheme,
 }
 import std.render_repeat_string_bootstrap { repeat_string }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.markup {
   Fragment,
   Element,
@@ -19,6 +21,7 @@ import std.markup {
   MarkupMedium,
   TagDelimiter,
   EscapeRaw,
+  OmitClose,
   serialize_fragment_with,
   MarkupSerializeResult,
   Serialized,
@@ -144,6 +147,8 @@ fn markdown_markup_medium(sp: MarkdownSpellings) -> MarkupMedium {
     ],
     bracket: canonical_html_spellings,
     text_escape: EscapeRaw,
+    void_tags: [],
+    void_rendering: OmitClose,
   }
 }
 
@@ -611,5 +616,122 @@ fn try_serialize_markdown_document(doc: MarkdownDocument) -> MarkupSerializeResu
       Rejected { reason: "URL scheme not allowlisted for markdown link/image" }
     Absent =>
       Serialized { html: serialize_markdown_document(doc: doc) }
+  }
+}
+
+type InlineSplit {
+  before: String
+  inner: String
+  after: String
+}
+
+type InlineSplitResult
+  = FoundSplit { parts: InlineSplit }
+  | NoSplit
+
+fn md_split_on_delim_pair(text: String, delim: String) -> InlineSplitResult {
+  let parts = split(s: text, delimiter: delim)
+  if parts.length() >= 3 {
+    let before = parts.first()
+    let tail = parts.skip(n: 1)
+    let inner = tail.first()
+    let after = join(tail.skip(n: 1), delim)
+    FoundSplit { parts: InlineSplit { before: before, inner: inner, after: after } }
+  } else {
+    NoSplit
+  }
+}
+
+fn md_text_inline_if_nonempty(s: String) -> List<MarkdownInline> {
+  if s == "" { [] } else { [ TextInline { text: s } ] }
+}
+
+fn md_parse_inline_rest(text: String, sp: MarkdownSpellings) -> List<MarkdownInline> {
+  if text == "" {
+    []
+  } else {
+    match md_split_on_delim_pair(text: text, delim: sp.strong_delim) {
+      FoundSplit { parts: p } =>
+        concat(
+          md_parse_inline_rest(text: p.before, sp: sp),
+          concat(
+            [ StrongInline { inlines: md_parse_inline_rest(text: p.inner, sp: sp) } ],
+            md_parse_inline_rest(text: p.after, sp: sp)
+          )
+        )
+      NoSplit =>
+        match md_split_on_delim_pair(text: text, delim: sp.code_span_delim) {
+          FoundSplit { parts: p } =>
+            concat(
+              md_parse_inline_rest(text: p.before, sp: sp),
+              concat(
+                [ CodeInline { text: p.inner } ],
+                md_parse_inline_rest(text: p.after, sp: sp)
+              )
+            )
+          NoSplit =>
+            match md_split_on_delim_pair(text: text, delim: sp.emphasis_delim) {
+              FoundSplit { parts: p } =>
+                concat(
+                  md_parse_inline_rest(text: p.before, sp: sp),
+                  concat(
+                    [ EmphasisInline { inlines: md_parse_inline_rest(text: p.inner, sp: sp) } ],
+                    md_parse_inline_rest(text: p.after, sp: sp)
+                  )
+                )
+              NoSplit =>
+                md_parse_inline_link(text: text, sp: sp)
+            }
+        }
+    }
+  }
+}
+
+fn md_parse_inline_link(text: String, sp: MarkdownSpellings) -> List<MarkdownInline> {
+  let open_parts = split(s: text, delimiter: sp.link_text_open)
+  if open_parts.length() < 2 {
+    [ TextInline { text: text } ]
+  } else {
+    let before_bracket = open_parts.first()
+    let after_bracket = join(open_parts.skip(n: 1), sp.link_text_open)
+    let close_open_pat = join([sp.link_text_close, sp.link_url_open], "")
+    let inner_parts = split(s: after_bracket, delimiter: close_open_pat)
+    if inner_parts.length() < 2 {
+      [ TextInline { text: text } ]
+    } else {
+      let label_text = inner_parts.first()
+      let url_and_rest = join(inner_parts.skip(n: 1), close_open_pat)
+      let url_parts = split(s: url_and_rest, delimiter: sp.link_url_close)
+      if url_parts.length() < 2 {
+        [ TextInline { text: text } ]
+      } else {
+        let url = url_parts.first()
+        let after_link = join(url_parts.skip(n: 1), sp.link_url_close)
+        concat(
+          md_text_inline_if_nonempty(s: before_bracket),
+          concat(
+            [ LinkInline {
+                inlines: md_parse_inline_rest(text: label_text, sp: sp),
+                url: url,
+              }
+            ],
+            md_parse_inline_rest(text: after_link, sp: sp)
+          )
+        )
+      }
+    }
+  }
+}
+
+fn parse_inline_markdown_minimal(text: String) -> List<MarkdownInline> {
+  md_parse_inline_rest(text: text, sp: commonmark_gfm_spellings)
+}
+
+data parse_inline_markdown_minimal_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "extdeps.languages.markdown",
+    decl_name: "parse_inline_markdown_minimal",
+    field: WholeDeclaration
   }
 }
