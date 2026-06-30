@@ -1,5 +1,6 @@
 module v2.workflow.self_host_realized_comparison_claims
 
+import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }
 import v2.std.node {
   Atom,
@@ -8,11 +9,10 @@ import v2.std.node {
   SyntheticOccurrence
 }
 import v2.compiler.self_host {
-  fixed_point_scaffold,
   fold_side_bytes,
+  self_host_fixed_point_validate,
   source_models_from_manifest_and_roots
 }
-import v2.std.witness { Holds, Violates }
 import tools.self_host_realized_comparison_transport {
   realized_comparison_committed_src_root,
   realized_comparison_emitted_src_root,
@@ -46,12 +46,12 @@ func self_host_realized_comparison_staleness_gate_holds() -> Bool {
     emitted_root: realized_comparison_emitted_src_root,
     manifest_path: realized_comparison_roster_manifest_path
   )
-  match fixed_point_scaffold(
-    stage1_node: realized_comparison_fixture_leaf(),
-    stage2_node: realized_comparison_fixture_leaf(),
-    source_models: models
+  match self_host_fixed_point_validate(
+    stage1_candidate: realized_comparison_fixture_leaf(),
+    source_models: models,
+    reference_stage1: realized_comparison_fixture_leaf()
   ) {
-    Holds { value: _ } => true
-    Violates { diagnostic: _ } => false
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
   }
 }
