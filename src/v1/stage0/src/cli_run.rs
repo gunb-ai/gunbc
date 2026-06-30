@@ -5869,8 +5869,8 @@ fn nfr_build_report() -> &'static NonFoldReport {
     })
 }
 
-pub fn non_fold_residue_closed_coproduct_type_names(
-) -> &'static std::collections::BTreeSet<String> {
+pub fn non_fold_residue_closed_coproduct_type_names() -> &'static std::collections::BTreeSet<String>
+{
     &nfr_build_report().closed_coproduct_names
 }
 

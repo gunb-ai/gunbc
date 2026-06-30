@@ -204,12 +204,9 @@ pub struct RosterFictionReport {
 
 pub fn roster_fiction_report(summary: &AuditSummary) -> RosterFictionReport {
     let resolved_residue_sites = crate::cli_run::non_fold_residue_count();
-    let resolved_unrostered_sites =
-        crate::cli_run::non_fold_residue_unrostered_count();
-    let migration_debt_live =
-        crate::cli_run::non_fold_residue_migration_debt_live_count();
-    let irreducible_live =
-        crate::cli_run::non_fold_residue_irreducible_live_count();
+    let resolved_unrostered_sites = crate::cli_run::non_fold_residue_unrostered_count();
+    let migration_debt_live = crate::cli_run::non_fold_residue_migration_debt_live_count();
+    let irreducible_live = crate::cli_run::non_fold_residue_irreducible_live_count();
     let mut report = RosterFictionReport {
         resolved_residue_sites,
         resolved_unrostered_sites,
