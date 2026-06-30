@@ -17,7 +17,6 @@ use std::process::ExitCode;
 use v1_compiler::complexity_linearity_audit_project::{
     audit_corpus_default_roots, audit_corpus_parse_only, roster_fiction_report,
 };
-use v1_compiler::inert_carrier_project::{inert_carrier_count, inert_carrier_unrostered_count};
 use v1_compiler::non_fold_residue_project::{
     non_fold_residue_count, non_fold_residue_irreducible_roster_slots,
     non_fold_residue_migration_debt_roster_slots, non_fold_residue_unrostered_count,
@@ -74,11 +73,10 @@ fn print_summary(
     );
     eprintln!(
         "complexity_linearity_audit: resolved-half roster proxies (not whole-corpus): \
-         non_fold_residue total={} unrostered={}, inert_carrier total={} unrostered={}",
+         non_fold_residue total={} unrostered={}, inert_carrier inert={}",
         non_fold_residue_count(),
         non_fold_residue_unrostered_count(),
-        inert_carrier_count(),
-        inert_carrier_unrostered_count()
+        v1_compiler::cli_run::inert_carrier_names_live().len()
     );
     let fiction = roster_fiction_report(summary);
     eprintln!(
