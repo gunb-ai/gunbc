@@ -1,12 +1,42 @@
 module v2.lens.grounding
 
 
-import v2.std.algebra { fold_list, is_empty, list_snoc_item }
+import gunbc.ci_layer_roots { witness_layer_roots }
+import v2.std.algebra { fold_list, is_empty, is_prefix_of, length, list_snoc_item }
 import v2.std.collection { List }
+import v2.std.cross_tree.import_model {
+  CrossTreeImport,
+  V2Tree,
+  cross_tree_layer_direction_holds
+}
+import v2.std.cross_tree.resolution { layer_prefix_from_dotted_qualified_name }
 import v2.std.integer { Int }
+import v2.std.layer {
+  LayerPrefix,
+  LayerPrefixCompiler,
+  LayerPrefixExtdeps,
+  LayerPrefixStd,
+  LayerPrefixWorkflow
+}
 import v2.std.logic { Bool }
-import v2.std.text { String }
-import v2.std.concept_index { ConceptStruct, FieldRef, QualifiedConcept, enumerate_concepts }
+import v2.std.text { Char, String }
+import v2.std.concept_index {
+  ConceptByName,
+  ConceptDecl,
+  ConceptStruct,
+  FieldRef,
+  QualifiedConcept,
+  build_concept_name_index,
+  concept_decl_facts,
+  concept_from_decl,
+  enumerate_concepts_from_decls
+}
+import v2.std.node { Node }
+import v2.std.node_query {
+  coproduct_arm_list_from_node,
+  coproduct_arm_payload_pair_from_arm,
+  node_is_coproduct
+}
 import v2.lens.common.construction_justification { ConstructionJustification, RatchetForever }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
@@ -35,15 +65,24 @@ fn norm_head(s: String) -> List<Int> {
   })
 }
 
+fn char_eq(a: Char, b: Char) -> Bool {
+  a == b
+}
 
 
-type GroundingCandidate {
+
+type GroundingWorklistEntry {
   enclosing: String
   field: String
   declared_type: String
   coincides_with: String
   target_kind: String
   target_structure: String
+  qualified_name: String
+  layer_excluded: Bool
+  sibling_variant_names: String
+  has_unrecognized_sibling: Bool
+  sibling_decode_optional: Bool
 }
 
 fn is_bare_string(type_name: String) -> Bool {
@@ -55,32 +94,104 @@ fn name_coincides(field: String, concept_name: String) -> Bool {
   (norm_whole(s: field) == cn) || (norm_head(s: field) == cn)
 }
 
-fn is_structural_name(field: String) -> Bool {
-  let f = norm_whole(s: field)
-  (f == norm_whole(s: "field"))
-    || (f == norm_whole(s: "name"))
-    || (f == norm_whole(s: "id"))
-    || (f == norm_whole(s: "value"))
-    || (f == norm_whole(s: "kind"))
-    || (f == norm_whole(s: "type"))
-    || (f == norm_whole(s: "key"))
-    || (f == norm_whole(s: "tag"))
-    || (f == norm_whole(s: "label"))
-    || (f == norm_whole(s: "index"))
+fn name_whole_coincides(field: String, concept_name: String) -> Bool {
+  norm_whole(s: field) == norm_whole(s: concept_name)
 }
 
-fn concept_names_of(idx: List<QualifiedConcept>) -> List<String> {
-  fold(idx, init: [], f: fn(acc, qc) { list_snoc_item(xs: acc, item: qc.concept.name) })
+fn is_meta_model_substrate_layer(layer: LayerPrefix) -> Bool {
+  match layer {
+    LayerPrefixStd => true
+    LayerPrefixCompiler => false
+    LayerPrefixExtdeps => false
+    LayerPrefixWorkflow => false
+  }
 }
 
-fn matched_concept(field: String, enclosing: String, names: List<String>) -> String {
-  fold(names, init: "", f: fn(acc, n) {
-    if (acc == "") && !(n == enclosing) && name_coincides(field: field, concept_name: n) {
-      n
-    } else {
-      acc
-    }
+fn grounding_layer_direction_holds(enclosing_qn: String, matched_qn: String) -> Bool {
+  cross_tree_layer_direction_holds(edge: CrossTreeImport {
+    from_tree: V2Tree,
+    from_layer: layer_prefix_from_dotted_qualified_name(qn: enclosing_qn),
+    from_module: enclosing_qn,
+    to_tree: V2Tree,
+    to_layer: layer_prefix_from_dotted_qualified_name(qn: matched_qn),
+    to_module: matched_qn
   })
+}
+
+fn is_meta_model_field_name(field: String) -> Bool {
+  let f = norm_whole(s: field)
+  (f == norm_whole(s: "field")) || (f == norm_whole(s: "name"))
+}
+
+fn is_meta_self_coincidence(
+  field: String,
+  matched_name: String,
+  matched_qn: String
+) -> Bool {
+  is_meta_model_field_name(field: field)
+    && is_meta_model_substrate_layer(
+      layer: layer_prefix_from_dotted_qualified_name(qn: matched_qn)
+    )
+    && name_whole_coincides(field: field, concept_name: matched_name)
+}
+
+fn is_layer_inversion(enclosing_qn: String, matched_qn: String) -> Bool {
+  !grounding_layer_direction_holds(enclosing_qn: enclosing_qn, matched_qn: matched_qn)
+}
+
+fn compute_layer_excluded(
+  field: String,
+  enclosing_qn: String,
+  matched: QualifiedConcept
+) -> Bool {
+  is_meta_self_coincidence(
+    field: field,
+    matched_name: matched.concept.name,
+    matched_qn: matched.qualified_name
+  ) || is_layer_inversion(enclosing_qn: enclosing_qn, matched_qn: matched.qualified_name)
+}
+
+fn str_starts_with(s: String, prefix: String) -> Bool {
+  is_prefix_of(prefix: prefix, xs: s, eq: char_eq)
+}
+
+fn name_has_unrecognized_prefix(name: String) -> Bool {
+  str_starts_with(s: name, prefix: "Unrecognized")
+    || str_starts_with(s: name, prefix: "NonExternal")
+}
+
+fn sibling_variant_names(node: Node) -> String {
+  if !node_is_coproduct(node: node) {
+    ""
+  } else {
+    fold(coproduct_arm_list_from_node(node: node), init: "", f: fn(acc, arm) {
+      let pair = coproduct_arm_payload_pair_from_arm(arm: arm)
+      let piece = "{pair.label}"
+      if acc == "" { piece } else { concat(acc, concat(", ", piece)) }
+    })
+  }
+}
+
+fn sibling_has_unrecognized_variant(node: Node) -> Bool {
+  if !node_is_coproduct(node: node) {
+    false
+  } else {
+    fold(coproduct_arm_list_from_node(node: node), init: false, f: fn(acc, arm) {
+      let pair = coproduct_arm_payload_pair_from_arm(arm: arm)
+      acc || name_has_unrecognized_prefix(name: "{pair.label}")
+    })
+  }
+}
+
+fn sibling_decode_optional_present(node: Node) -> Bool {
+  if !node_is_coproduct(node: node) {
+    false
+  } else {
+    fold(coproduct_arm_list_from_node(node: node), init: false, f: fn(acc, arm) {
+      let pair = coproduct_arm_payload_pair_from_arm(arm: arm)
+      acc || str_starts_with(s: "{pair.payload_type_name}", prefix: "Optional")
+    })
+  }
 }
 
 fn matched_fields(name: String, idx: List<QualifiedConcept>) -> List<FieldRef> {
@@ -103,22 +214,92 @@ fn target_kind_of(fields: List<FieldRef>) -> String {
   }
 }
 
-fn candidates_of_concept(qc: QualifiedConcept, names: List<String>, idx: List<QualifiedConcept>, acc0: List<GroundingCandidate>) -> List<GroundingCandidate> {
-  fold(qc.concept.fields, init: acc0, f: fn(acc, fr) {
-    if is_bare_string(type_name: fr.type_name) && !is_structural_name(field: fr.field) {
-      let m = matched_concept(field: fr.field, enclosing: qc.concept.name, names: names)
-      if m == "" {
+fn first_coincident_target(
+  field: String,
+  enclosing: String,
+  index: List<ConceptByName>
+) -> QualifiedConcept {
+  fold(index, init: QualifiedConcept {
+    qualified_name: "",
+    concept: ConceptStruct { name: "", fields: [] }
+  }, f: fn(acc, bucket) {
+    if acc.qualified_name != "" {
+      acc
+    } else if name_coincides(field: field, concept_name: bucket.name) {
+      fold(bucket.concepts, init: acc, f: fn(best, qc) {
+        if best.qualified_name != "" {
+          best
+        } else if qc.concept.name == enclosing {
+          best
+        } else {
+          qc
+        }
+      })
+    } else {
+      acc
+    }
+  })
+}
+
+fn entry_from_match(
+  enclosing_qc: QualifiedConcept,
+  decl_node: Node,
+  field: String,
+  declared_type: String,
+  matched: QualifiedConcept,
+  all_concepts: List<QualifiedConcept>,
+  excluded: Bool
+) -> GroundingWorklistEntry {
+  let mf = matched_fields(name: matched.concept.name, idx: all_concepts)
+  GroundingWorklistEntry {
+    enclosing: enclosing_qc.concept.name,
+    field: field,
+    declared_type: declared_type,
+    coincides_with: matched.qualified_name,
+    target_kind: target_kind_of(fields: mf),
+    target_structure: render_members(fields: mf),
+    qualified_name: enclosing_qc.qualified_name,
+    layer_excluded: excluded,
+    sibling_variant_names: sibling_variant_names(node: decl_node),
+    has_unrecognized_sibling: sibling_has_unrecognized_variant(node: decl_node),
+    sibling_decode_optional: sibling_decode_optional_present(node: decl_node)
+  }
+}
+
+fn candidates_of_decl(
+  decl: ConceptDecl,
+  index: List<ConceptByName>,
+  all_concepts: List<QualifiedConcept>,
+  acc0: List<GroundingWorklistEntry>
+) -> List<GroundingWorklistEntry> {
+  let enclosing_qc = concept_from_decl(decl: decl)
+  fold(enclosing_qc.concept.fields, init: acc0, f: fn(acc, fr) {
+    if is_bare_string(type_name: fr.type_name) {
+      let matched = first_coincident_target(
+        field: fr.field,
+        enclosing: enclosing_qc.concept.name,
+        index: index
+      )
+      if matched.qualified_name == "" {
         acc
       } else {
-        let mf = matched_fields(name: m, idx: idx)
-        list_snoc_item(xs: acc, item: GroundingCandidate {
-          enclosing: qc.concept.name,
+        let excluded = compute_layer_excluded(
           field: fr.field,
-          declared_type: fr.type_name,
-          coincides_with: m,
-          target_kind: target_kind_of(fields: mf),
-          target_structure: render_members(fields: mf)
-        })
+          enclosing_qn: enclosing_qc.qualified_name,
+          matched: matched
+        )
+        list_snoc_item(
+          xs: acc,
+          item: entry_from_match(
+            enclosing_qc: enclosing_qc,
+            decl_node: decl.node,
+            field: fr.field,
+            declared_type: fr.type_name,
+            matched: matched,
+            all_concepts: all_concepts,
+            excluded: excluded
+          )
+        )
       }
     } else {
       acc
@@ -126,11 +307,101 @@ fn candidates_of_concept(qc: QualifiedConcept, names: List<String>, idx: List<Qu
   })
 }
 
-fn candidates_in(idx: List<QualifiedConcept>) -> List<GroundingCandidate> {
-  let names = concept_names_of(idx: idx)
-  fold(idx, init: [], f: fn(acc, qc) { candidates_of_concept(qc: qc, names: names, idx: idx, acc0: acc) })
+fn candidates_from_decls(
+  decls: List<ConceptDecl>,
+  all_concepts: List<QualifiedConcept>
+) -> List<GroundingWorklistEntry> {
+  let index = build_concept_name_index(idx: all_concepts)
+  fold(decls, init: [], f: fn(acc, decl) {
+    candidates_of_decl(decl: decl, index: index, all_concepts: all_concepts, acc0: acc)
+  })
 }
 
-fn candidates() -> List<GroundingCandidate> {
-  candidates_in(idx: enumerate_concepts())
+fn candidates_over_decls(decls: List<ConceptDecl>) -> List<GroundingWorklistEntry> {
+  let all_concepts = enumerate_concepts_from_decls(decls: decls)
+  filter_layer_included(
+    rows: candidates_from_decls(decls: decls, all_concepts: all_concepts)
+  )
+}
+
+fn filter_layer_included(rows: List<GroundingWorklistEntry>) -> List<GroundingWorklistEntry> {
+  fold(rows, init: [], f: fn(acc, row) {
+    if row.layer_excluded {
+      acc
+    } else {
+      list_snoc_item(xs: acc, item: row)
+    }
+  })
+}
+
+fn decl_has_layer_included_candidate(
+  decl: ConceptDecl,
+  index: List<ConceptByName>,
+  all_concepts: List<QualifiedConcept>
+) -> Bool {
+  let enclosing_qc = concept_from_decl(decl: decl)
+  fold(enclosing_qc.concept.fields, init: false, f: fn(found, fr) {
+    if found {
+      true
+    } else if is_bare_string(type_name: fr.type_name) {
+      let matched = first_coincident_target(
+        field: fr.field,
+        enclosing: enclosing_qc.concept.name,
+        index: index
+      )
+      if matched.qualified_name == "" {
+        false
+      } else {
+        !compute_layer_excluded(
+          field: fr.field,
+          enclosing_qn: enclosing_qc.qualified_name,
+          matched: matched
+        )
+      }
+    } else {
+      false
+    }
+  })
+}
+
+fn has_any_layer_included_candidate_from_decls(decls: List<ConceptDecl>) -> Bool {
+  let all_concepts = enumerate_concepts_from_decls(decls: decls)
+  let index = build_concept_name_index(idx: all_concepts)
+  fold(decls, init: false, f: fn(found, decl) {
+    if found {
+      true
+    } else {
+      decl_has_layer_included_candidate(
+        decl: decl,
+        index: index,
+        all_concepts: all_concepts
+      )
+    }
+  })
+}
+
+data whole_tree_extract_smoke_min_decl_count: Int = 1000
+
+fn whole_tree_extract_smoke() -> Bool {
+  let decls = concept_decl_facts(pool_roots: witness_layer_roots)
+  (length(xs: decls) > whole_tree_extract_smoke_min_decl_count)
+    && has_any_layer_included_candidate_from_decls(decls: decls)
+}
+
+fn candidates_in(pool_roots: List<String>) -> List<GroundingWorklistEntry> {
+  let decls = concept_decl_facts(pool_roots: pool_roots)
+  let all_concepts = enumerate_concepts_from_decls(decls: decls)
+  filter_layer_included(
+    rows: candidates_from_decls(decls: decls, all_concepts: all_concepts)
+  )
+}
+
+fn candidates() -> List<GroundingWorklistEntry> {
+  candidates_in(pool_roots: witness_layer_roots)
+}
+
+fn worklist() -> List<GroundingWorklistEntry> {
+  let decls = concept_decl_facts(pool_roots: witness_layer_roots)
+  let all_concepts = enumerate_concepts_from_decls(decls: decls)
+  candidates_from_decls(decls: decls, all_concepts: all_concepts)
 }
