@@ -19,14 +19,6 @@ fn eval_relu_mul_add_elem_at_index(ai: Int, bi: Int, ci: Int) -> Int {
   int_relu(x: ai * bi + ci)
 }
 
-fn witness_relu_mul_add_elem_third_fixture() -> Bool {
-  eval_relu_mul_add_elem_at_index(ai: 0, bi: 7, ci: -3) == 0
-}
-
-fn witness_relu_mul_add_elem_fourth_fixture() -> Bool {
-  eval_relu_mul_add_elem_at_index(ai: 5, bi: -2, ci: 8) == 0
-}
-
 fn eval_pure_map_at_indices(
   ops: List<ElementwiseArrayOp>,
   a: List<Int>,

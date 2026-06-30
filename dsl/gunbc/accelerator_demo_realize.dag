@@ -43,6 +43,7 @@ import gunbc.accelerator_demo_plan {
 import extdeps.languages.simd.kernel {
   contiguous_loop_elementwise_kernel,
   contiguous_loop_elementwise_float_kernel,
+  relu_mul_add_wire_op_codes,
 }
 
 data accelerator_demo_recognizer_dissolution_trigger: String = "dissolve-on: feature:dag-elementwise-recognizer-lens — AcceleratorDemoProgram struct is stepping stone; replace with read-only Node-tree lens inspecting real map(i => …) program values"
@@ -167,49 +168,15 @@ fn witness_integer_differential_bit_exact_on_fixture() -> Bool {
 }
 
 fn witness_oracle_matches_expected_fixture() -> Bool {
-  let oracle = eval_accelerator_program(
-    program: relu_mul_add_pure_program,
-    a: demo_fixture_a(),
-    b: demo_fixture_b(),
-    c: demo_fixture_c()
+  int_list_eq(
+    left: eval_accelerator_program(
+      program: relu_mul_add_pure_program,
+      a: demo_fixture_a(),
+      b: demo_fixture_b(),
+      c: demo_fixture_c()
+    ),
+    right: demo_fixture_expected()
   )
-  int_list_eq(left: oracle, right: demo_fixture_expected())
-}
-
-fn witness_oracle_third_is_10() -> Bool {
-  match eval_accelerator_program(
-    program: relu_mul_add_pure_program,
-    a: demo_fixture_a(),
-    b: demo_fixture_b(),
-    c: demo_fixture_c()
-  ).skip(n: 2).first() {
-    Present { value: v } => v == 10
-    Absent => false
-  }
-}
-
-fn witness_oracle_third_is_7() -> Bool {
-  match eval_accelerator_program(
-    program: relu_mul_add_pure_program,
-    a: demo_fixture_a(),
-    b: demo_fixture_b(),
-    c: demo_fixture_c()
-  ).skip(n: 2).first() {
-    Present { value: v } => v == 7
-    Absent => false
-  }
-}
-
-fn witness_oracle_fixture_fourth_elem() -> Bool {
-  match eval_accelerator_program(
-    program: relu_mul_add_pure_program,
-    a: demo_fixture_a(),
-    b: demo_fixture_b(),
-    c: demo_fixture_c()
-  ).skip(n: 3).first() {
-    Present { value: v } => v == 0
-    Absent => false
-  }
 }
 
 fn witness_kernel_matches_expected_fixture() -> Bool {
@@ -250,6 +217,13 @@ fn witness_float_oracle_empty_on_noncanonical_ops_shape() -> Bool {
     b: [2.0],
     c: [3.0]
   ).length() == 0
+}
+
+fn witness_program_and_simd_wire_op_codes_single_authority() -> Bool {
+  int_list_eq(
+    left: program_op_codes(program: relu_mul_add_pure_program),
+    right: relu_mul_add_wire_op_codes
+  )
 }
 
 fn witness_pure_program_executes_bit_exact() -> Bool {

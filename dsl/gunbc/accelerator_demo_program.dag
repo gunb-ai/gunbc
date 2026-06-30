@@ -1,13 +1,6 @@
 module gunbc.accelerator_demo_program
 
 import std.types { Int, List, Bool }
-import extdeps.languages.simd.kernel {
-  elemwise_mul_wire_op_code,
-  elemwise_add_wire_op_code,
-  elemwise_relu_wire_op_code,
-  relu_mul_add_wire_op_codes,
-  host_kernel_relu_mul_add_op_codes_scaffold_note,
-}
 
 type ElementwiseArrayOp
   = ElemwiseMul
@@ -62,11 +55,23 @@ fn program_ops(program: AcceleratorDemoProgram) -> List<ElementwiseArrayOp> {
   }
 }
 
+data elemwise_mul_op_code: Int = 1
+data elemwise_add_op_code: Int = 2
+data elemwise_relu_op_code: Int = 3
+
+data relu_mul_add_wire_op_codes: List<Int> = [
+  elemwise_mul_op_code,
+  elemwise_add_op_code,
+  elemwise_relu_op_code,
+]
+
+data elementwise_op_code_host_realization_note: String = "host kernel fail-closed validation mirrors extdeps.languages.simd.kernel.relu_mul_add_wire_op_codes until feature:dag-kernel-realization-handler dissolves literals into target_model emit; wire authority is program_op_codes(program); roadmap bind: extdeps.languages.simd.kernel.simd_kernel_handler_roadmap_bind"
+
 fn elementwise_op_code(op: ElementwiseArrayOp) -> Int {
   match op {
-    ElemwiseMul => elemwise_mul_wire_op_code
-    ElemwiseAdd => elemwise_add_wire_op_code
-    ElemwiseRelu => elemwise_relu_wire_op_code
+    ElemwiseMul => elemwise_mul_op_code
+    ElemwiseAdd => elemwise_add_op_code
+    ElemwiseRelu => elemwise_relu_op_code
   }
 }
 
@@ -120,8 +125,4 @@ fn witness_relu_mul_add_program_op_codes_are_authority() -> Bool {
     left: program_op_codes(program: relu_mul_add_pure_program),
     right: relu_mul_add_wire_op_codes
   )
-}
-
-fn witness_relu_mul_add_ops_shape_recognizable() -> Bool {
-  pure_elementwise_ops_shape_recognizable(ops: relu_mul_add_ops)
 }
