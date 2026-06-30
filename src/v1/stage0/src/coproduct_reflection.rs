@@ -248,39 +248,6 @@ pub fn marshal_disj_type_item(ctx: &InterpContext, item: &Rc<Node>) -> InterpRes
     ))
 }
 
-fn source_text_from_ctx(ctx: &InterpContext, file: &str) -> InterpResult<String> {
-    let indices = ctx.source_indices();
-    let index = indices.get(file).ok_or_else(|| InterpError::TypeError {
-        msg: format!("syntactic coproduct arm keys: no in-memory source for `{file}`"),
-    })?;
-    let len = index.char_codes.len() as i64;
-    Ok(crate::v1_rt::chars_to_string(&index.char_codes, 0, len))
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CoproductArmSurface {
-    pub label: String,
-    pub payload_type_name: String,
-}
-
-pub fn syntactic_coproduct_arm_labels(
-    ctx: &InterpContext,
-    file: &str,
-    type_name: &str,
-) -> InterpResult<Vec<String>> {
-    let content = source_text_from_ctx(ctx, file)?;
-    extract_type_sum_arm_labels(&content, type_name).map_err(|msg| InterpError::TypeError { msg })
-}
-
-pub fn syntactic_coproduct_arm_pairs(
-    ctx: &InterpContext,
-    file: &str,
-    type_name: &str,
-) -> InterpResult<Vec<CoproductArmSurface>> {
-    let content = source_text_from_ctx(ctx, file)?;
-    extract_type_sum_arm_pairs(&content, type_name).map_err(|msg| InterpError::TypeError { msg })
-}
-
 fn same_line_leading_comment(s: &str) -> bool {
     match s.find('\n') {
         Some(0) => false,
@@ -407,10 +374,16 @@ fn find_type_decl_start(source: &str, type_name: &str) -> Option<usize> {
     None
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ParseOnlyDisjArm {
+    label: String,
+    payload_type_name: String,
+}
+
 fn extract_type_sum_arm_pairs(
     source: &str,
     type_name: &str,
-) -> Result<Vec<CoproductArmSurface>, String> {
+) -> Result<Vec<ParseOnlyDisjArm>, String> {
     let start = find_type_decl_start(source, type_name).ok_or_else(|| {
         format!("syntactic coproduct arm pairs: `{type_name}` not found in source")
     })?;
@@ -442,7 +415,7 @@ fn extract_type_sum_arm_pairs(
         }
         rest = rest.trim_start();
         let (payload_type_name, after_payload) = payload_type_name_from_rest(rest)?;
-        arms.push(CoproductArmSurface {
+        arms.push(ParseOnlyDisjArm {
             label: arm_name.0,
             payload_type_name,
         });
@@ -483,11 +456,6 @@ fn extract_type_sum_arm_pairs(
     Ok(arms)
 }
 
-fn extract_type_sum_arm_labels(source: &str, type_name: &str) -> Result<Vec<String>, String> {
-    extract_type_sum_arm_pairs(source, type_name)
-        .map(|pairs| pairs.into_iter().map(|p| p.label).collect())
-}
-
 pub fn eval_resolve_type_node(
     ctx: &InterpContext,
     args: &[(Option<String>, Value)],
@@ -505,6 +473,14 @@ fn logical_qualified_name(module_name: &str, name: &str) -> String {
     }
 }
 
+fn concept_decl_node(ctx: &InterpContext, item: &Rc<Node>) -> InterpResult<Value> {
+    match item.connective {
+        Connective::Disj => marshal_disj_type_item(ctx, item),
+        Connective::Conj => marshal_variant_arm_target(ctx, item),
+        _ => Ok(unit_type_node(ctx)),
+    }
+}
+
 pub fn eval_qualified_name_from_dotted_string(
     ctx: &InterpContext,
     args: &[(Option<String>, Value)],
@@ -514,14 +490,6 @@ pub fn eval_qualified_name_from_dotted_string(
         "qualified_name_from_dotted_string",
     )?;
     Ok(crate::module_path_index::qualified_name_value_from_dotted_string(ctx, &dotted))
-}
-
-fn concept_decl_node(ctx: &InterpContext, item: &Rc<Node>) -> InterpResult<Value> {
-    match item.connective {
-        Connective::Disj => marshal_disj_type_item(ctx, item),
-        Connective::Conj => marshal_variant_arm_target(ctx, item),
-        _ => Ok(unit_type_node(ctx)),
-    }
 }
 
 fn type_expr_head_name(
@@ -1228,293 +1196,6 @@ pub fn eval_fn_arrow_decl_facts_live(
     Ok(crate::v1_interpreter::list_value(rows))
 }
 
-pub fn eval_syntactic_coproduct_arm_keys(
-    ctx: &InterpContext,
-    args: &[(Option<String>, Value)],
-) -> InterpResult<Value> {
-    let type_name = expect_symbol(args.first().map(|(_, v)| v), "syntactic_coproduct_arm_keys")?;
-    let (_, file) = type_item_by_name(ctx, type_name)?;
-    let labels = syntactic_coproduct_arm_labels(ctx, &file, type_name)?;
-    let items: Vec<Value> = labels
-        .iter()
-        .map(|label| Value::Str(label.clone()))
-        .collect();
-    Ok(crate::v1_interpreter::list_value(items))
-}
-
-pub fn eval_syntactic_coproduct_arm_pairs(
-    ctx: &InterpContext,
-    args: &[(Option<String>, Value)],
-) -> InterpResult<Value> {
-    let type_name = expect_symbol(
-        args.first().map(|(_, v)| v),
-        "syntactic_coproduct_arm_pairs",
-    )?;
-    let (_, file) = type_item_by_name(ctx, type_name)?;
-    let pairs = syntactic_coproduct_arm_pairs(ctx, &file, type_name)?;
-    let items: Vec<Value> = pairs
-        .iter()
-        .map(|pair| Value::Record {
-            type_name: ctx.sym("CoproductArmPayloadPair"),
-            fields: Rc::new(sorted_fields(vec![
-                (ctx.sym("label"), Value::Str(pair.label.clone())),
-                (
-                    ctx.sym("payload_type_name"),
-                    Value::Str(pair.payload_type_name.clone()),
-                ),
-            ])),
-        })
-        .collect();
-    Ok(crate::v1_interpreter::list_value(items))
-}
-
-pub fn arm_payload_pairs_from_marshaled_node(
-    ctx: &InterpContext,
-    node: &Value,
-) -> InterpResult<Vec<CoproductArmSurface>> {
-    let Value::Record { fields, .. } = node else {
-        return Err(InterpError::TypeError {
-            msg: "expected Node record".to_string(),
-        });
-    };
-    let children =
-        fields_get(fields, ctx.sym("children")).ok_or_else(|| InterpError::TypeError {
-            msg: "Node missing children".to_string(),
-        })?;
-    let edges = crate::v1_interpreter::free_monoid_to_vec(children).ok_or_else(|| {
-        InterpError::TypeError {
-            msg: "children not a list".to_string(),
-        }
-    })?;
-    let mut pairs = Vec::with_capacity(edges.len());
-    for edge in edges {
-        let Value::Record { fields: ef, .. } = edge else {
-            return Err(InterpError::TypeError {
-                msg: "expected Edge record".to_string(),
-            });
-        };
-        let label_v = fields_get(&ef, ctx.sym("label")).ok_or_else(|| InterpError::TypeError {
-            msg: "Edge missing label".to_string(),
-        })?;
-        let target = fields_get(&ef, ctx.sym("target")).ok_or_else(|| InterpError::TypeError {
-            msg: "Edge missing target".to_string(),
-        })?;
-        let Value::Variant {
-            variant_name,
-            fields: lf,
-            ..
-        } = label_v
-        else {
-            continue;
-        };
-        if ctx.resolve(*variant_name) != "Named" {
-            continue;
-        }
-        let Some(Value::Str(label)) = fields_get(&lf, ctx.sym("name")) else {
-            continue;
-        };
-        let payload_type_name = payload_type_name_from_target_node(ctx, target)?;
-        pairs.push(CoproductArmSurface {
-            label: label.clone(),
-            payload_type_name,
-        });
-    }
-    Ok(pairs)
-}
-
-fn payload_type_name_from_target_node(ctx: &InterpContext, target: &Value) -> InterpResult<String> {
-    let Value::Record { fields, .. } = target else {
-        return Err(InterpError::TypeError {
-            msg: "expected Node target record".to_string(),
-        });
-    };
-    let kind = fields_get(fields, ctx.sym("kind")).ok_or_else(|| InterpError::TypeError {
-        msg: "target missing kind".to_string(),
-    })?;
-    let children =
-        fields_get(fields, ctx.sym("children")).ok_or_else(|| InterpError::TypeError {
-            msg: "target missing children".to_string(),
-        })?;
-    let Value::Variant {
-        variant_name: kind_variant,
-        fields: kf,
-        ..
-    } = kind
-    else {
-        return Err(InterpError::TypeError {
-            msg: "expected TypeNode kind".to_string(),
-        });
-    };
-    if ctx.resolve(*kind_variant) != "TypeNode" {
-        return Err(InterpError::TypeError {
-            msg: "expected TypeNode".to_string(),
-        });
-    }
-    let connective =
-        fields_get(&kf, ctx.sym("connective")).ok_or_else(|| InterpError::TypeError {
-            msg: "TypeNode missing connective".to_string(),
-        })?;
-    match connective {
-        Value::Variant {
-            variant_name: conn, ..
-        } if ctx.resolve(*conn) == "Conj" => {
-            let edge_items =
-                crate::v1_interpreter::free_monoid_to_vec(children).ok_or_else(|| {
-                    InterpError::TypeError {
-                        msg: "children not list".to_string(),
-                    }
-                })?;
-            if edge_items.is_empty() {
-                return Ok(NULLARY_PAYLOAD_TYPE_NAME.to_string());
-            }
-            let mut parts = Vec::new();
-            for edge in edge_items {
-                let Value::Record { fields: ef, .. } = edge else {
-                    continue;
-                };
-                let field_name = fields_get(&ef, ctx.sym("label"))
-                    .and_then(|label| {
-                        let Value::Variant { fields: lf, .. } = label else {
-                            return None;
-                        };
-                        fields_get(&lf, ctx.sym("name")).and_then(|v| match v {
-                            Value::Str(s) => Some(s.clone()),
-                            _ => None,
-                        })
-                    })
-                    .ok_or_else(|| InterpError::TypeError {
-                        msg: "named edge missing label".to_string(),
-                    })?;
-                let field_target =
-                    fields_get(&ef, ctx.sym("target")).ok_or_else(|| InterpError::TypeError {
-                        msg: "edge missing target".to_string(),
-                    })?;
-                let type_name = payload_type_name_from_target_node(ctx, field_target)?;
-                parts.push(format!("{field_name}: {type_name}"));
-            }
-            Ok(format!("{{ {} }}", parts.join(", ")))
-        }
-        Value::Variant {
-            variant_name: conn,
-            fields: cf,
-            ..
-        } if ctx.resolve(*conn) == "Atom" => {
-            let Some(Value::Str(name)) = fields_get(&cf, ctx.sym("identity")) else {
-                return Err(InterpError::TypeError {
-                    msg: "Atom missing identity".to_string(),
-                });
-            };
-            Ok(name.clone())
-        }
-        _ => Err(InterpError::TypeError {
-            msg: "unsupported payload target shape".to_string(),
-        }),
-    }
-}
-
-pub fn arm_labels_from_marshaled_node(
-    ctx: &InterpContext,
-    node: &Value,
-) -> InterpResult<Vec<String>> {
-    let Value::Record { fields, .. } = node else {
-        return Err(InterpError::TypeError {
-            msg: "expected Node record".to_string(),
-        });
-    };
-    let children =
-        fields_get(fields, ctx.sym("children")).ok_or_else(|| InterpError::TypeError {
-            msg: "Node missing children".to_string(),
-        })?;
-    let edges = crate::v1_interpreter::free_monoid_to_vec(children).ok_or_else(|| {
-        InterpError::TypeError {
-            msg: "children not a list".to_string(),
-        }
-    })?;
-    let mut labels = Vec::with_capacity(edges.len());
-    for edge in edges {
-        let Value::Record { fields: ef, .. } = edge else {
-            return Err(InterpError::TypeError {
-                msg: "expected Edge record".to_string(),
-            });
-        };
-        let label = fields_get(&ef, ctx.sym("label")).ok_or_else(|| InterpError::TypeError {
-            msg: "Edge missing label".to_string(),
-        })?;
-        let Value::Variant {
-            variant_name,
-            fields: lf,
-            ..
-        } = label
-        else {
-            continue;
-        };
-        if ctx.resolve(*variant_name) != "Named" {
-            continue;
-        }
-        let Some(Value::Str(name)) = fields_get(&lf, ctx.sym("name")) else {
-            continue;
-        };
-        labels.push(name.clone());
-    }
-    Ok(labels)
-}
-
-pub fn eval_resolve_type_node_with_dropped_last_arm(
-    ctx: &InterpContext,
-    type_name: &str,
-) -> InterpResult<Value> {
-    let (item, _) = type_item_by_name(ctx, type_name)?;
-    let node = marshal_disj_type_item(ctx, item)?;
-    let Value::Record { fields, .. } = node else {
-        return Err(InterpError::TypeError {
-            msg: "resolve_type_node: expected Node record".to_string(),
-        });
-    };
-    let children =
-        fields_get(&fields, ctx.sym("children")).ok_or_else(|| InterpError::TypeError {
-            msg: "resolve_type_node: Node missing children".to_string(),
-        })?;
-    let Some(items) = crate::v1_interpreter::free_monoid_to_vec(children) else {
-        return Err(InterpError::TypeError {
-            msg: "resolve_type_node: children not a list".to_string(),
-        });
-    };
-    if items.is_empty() {
-        return Err(InterpError::TypeError {
-            msg: "resolve_type_node: Disj has no arms".to_string(),
-        });
-    }
-    let mut trimmed = items[..items.len() - 1].to_vec();
-    if trimmed.is_empty() {
-        trimmed = vec![];
-    }
-    Ok(Value::Record {
-        type_name: ctx.sym("Node"),
-        fields: Rc::new(sorted_fields(vec![
-            (
-                ctx.sym("kind"),
-                fields_get(&fields, ctx.sym("kind"))
-                    .cloned()
-                    .ok_or_else(|| InterpError::TypeError {
-                        msg: "resolve_type_node: Node missing kind".to_string(),
-                    })?,
-            ),
-            (
-                ctx.sym("children"),
-                crate::v1_interpreter::list_value(trimmed),
-            ),
-            (
-                ctx.sym("occurrence_id"),
-                fields_get(&fields, ctx.sym("occurrence_id"))
-                    .cloned()
-                    .ok_or_else(|| InterpError::TypeError {
-                        msg: "resolve_type_node: Node missing occurrence_id".to_string(),
-                    })?,
-            ),
-        ])),
-    })
-}
-
 fn variant_is_nullary(variant: &Rc<Node>) -> bool {
     variant.children.is_empty()
 }
@@ -1606,107 +1287,8 @@ fn outcome_rejected_value(ctx: &InterpContext, reason: &str) -> Value {
 }
 
 #[cfg(test)]
-mod tests {
+mod parse_only_concept_decl_tests {
     use super::*;
-
-    #[test]
-    fn marshaled_connective_payload_pairs_match_syntactic() {
-        let path =
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../src/v2/std/node.dag");
-        let source = std::fs::read_to_string(&path).expect("read node.dag");
-        let syntactic = extract_type_sum_arm_pairs(&source, "Connective").expect("syntactic pairs");
-        assert_eq!(syntactic[0].payload_type_name, "{ identity: Symbol }");
-        assert_eq!(syntactic[1].payload_type_name, NULLARY_PAYLOAD_TYPE_NAME);
-    }
-
-    #[test]
-    fn syntactic_extractor_finds_connective_arms() {
-        let path =
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../src/v2/std/node.dag");
-        let source = std::fs::read_to_string(&path).expect("read node.dag");
-        let arms = extract_type_sum_arm_labels(&source, "Connective").expect("Connective arms");
-        assert_eq!(
-            arms,
-            vec![
-                "Atom",
-                "Conj",
-                "Disj",
-                "Arrow",
-                "Cardinality",
-                "Instantiation"
-            ]
-        );
-    }
-
-    #[test]
-    fn syntactic_extractor_finds_behavior_arms() {
-        let path =
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../src/v2/std/node.dag");
-        let source = std::fs::read_to_string(&path).expect("read node.dag");
-        let arms = extract_type_sum_arm_labels(&source, "Behavior").expect("Behavior arms");
-        assert_eq!(
-            arms,
-            vec!["Value", "Transform", "Branch", "Loop", "Bind", "Match"]
-        );
-    }
-
-    #[test]
-    fn syntactic_pair_extractor_nullary_and_typed_connective() {
-        let path =
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../src/v2/std/node.dag");
-        let source = std::fs::read_to_string(&path).expect("read node.dag");
-        let pairs = extract_type_sum_arm_pairs(&source, "Connective").expect("Connective pairs");
-        assert_eq!(pairs[0].label, "Atom");
-        assert_eq!(pairs[0].payload_type_name, "{ identity: Symbol }");
-        assert_eq!(pairs[1].label, "Conj");
-        assert_eq!(pairs[1].payload_type_name, NULLARY_PAYLOAD_TYPE_NAME);
-        assert_eq!(pairs[2].label, "Disj");
-        assert_eq!(pairs[2].payload_type_name, NULLARY_PAYLOAD_TYPE_NAME);
-    }
-
-    #[test]
-    fn syntactic_pair_extractor_all_nullary_behavior() {
-        let path =
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../src/v2/std/node.dag");
-        let source = std::fs::read_to_string(&path).expect("read node.dag");
-        let pairs = extract_type_sum_arm_pairs(&source, "Behavior").expect("Behavior pairs");
-        assert!(pairs
-            .iter()
-            .all(|p| p.payload_type_name == NULLARY_PAYLOAD_TYPE_NAME));
-    }
-
-    #[test]
-    fn syntactic_extractor_rejects_connective_prefix_of_longer_type_name() {
-        let source = "type ConnectiveCoproductVariant = Foo | Bar\ntype Connective = Atom | Conj\n";
-        assert_eq!(
-            extract_type_sum_arm_labels(source, "ConnectiveCoproductVariant").expect("variant"),
-            vec!["Foo", "Bar"]
-        );
-        assert_eq!(
-            extract_type_sum_arm_labels(source, "Connective").expect("Connective"),
-            vec!["Atom", "Conj"]
-        );
-    }
-
-    #[test]
-    fn syntactic_extractor_fails_loud_on_mid_decl_comment() {
-        let source = "type Connective = Atom | Conj // trailing\n";
-        let err = extract_type_sum_arm_labels(source, "Connective").unwrap_err();
-        assert!(
-            err.contains("//"),
-            "expected mid-decl comment diagnostic, got: {err}"
-        );
-    }
-
-    #[test]
-    fn syntactic_extractor_fails_loud_on_unexpected_token_mid_decl() {
-        let source = "type Connective = Atom , Conj\n";
-        let err = extract_type_sum_arm_labels(source, "Connective").unwrap_err();
-        assert!(
-            err.contains("unexpected token"),
-            "expected unexpected-token diagnostic, got: {err}"
-        );
-    }
 
     #[test]
     fn type_expr_head_from_token_strips_tuple_parens_and_commas() {

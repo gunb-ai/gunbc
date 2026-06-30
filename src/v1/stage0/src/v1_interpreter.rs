@@ -2127,11 +2127,7 @@ fn match_pattern(
     }
 }
 
-pub(crate) const STD_NODE_BRIDGE_FNS: &[&str] = &[
-    "resolve_type_node",
-    "syntactic_coproduct_arm_keys",
-    "syntactic_coproduct_arm_pairs",
-];
+pub(crate) const STD_NODE_BRIDGE_FNS: &[&str] = &["resolve_type_node"];
 
 pub(crate) const STD_LEXING_BRIDGE_FNS: &[&str] = &["symbol_intern_lexeme"];
 
@@ -2245,12 +2241,6 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
     if is_v4_std_node_bridge_call(ctx, &func_name) {
         return match func_name.as_str() {
             "resolve_type_node" => crate::coproduct_reflection::eval_resolve_type_node(ctx, &args),
-            "syntactic_coproduct_arm_keys" => {
-                crate::coproduct_reflection::eval_syntactic_coproduct_arm_keys(ctx, &args)
-            }
-            "syntactic_coproduct_arm_pairs" => {
-                crate::coproduct_reflection::eval_syntactic_coproduct_arm_pairs(ctx, &args)
-            }
             _ => unreachable!("bridge fn set mismatch"),
         };
     }

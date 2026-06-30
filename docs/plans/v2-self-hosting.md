@@ -78,9 +78,10 @@ So "delete stage0" decomposes — `src/v1` also provides the **CLI bins** (`clai
 ## 2. Prerequisites / dependencies
 
 1. **Seed-only parallel representations (bundle item 2)** — [seed-debt-bundle-item-2.md](seed-debt-bundle-item-2.md): **#5894** lands CLI dep-pool authority (`gunbc.compile_source_model` + floor witness); parse cursor deferred to parse.rs emit-migration PR (`regen_stage0 --verify` witness).
-2. **De-fork / cross-tree import** ([dsl-v2-defork-audit.md](dsl-v2-defork-audit.md) §1) — the compiler closure is only well-defined once v2 imports the single `dsl/std` authority, not its mirror copies. Cross-tree import is wired but fail-closed (`03_name_resolve.dag:644`).
-3. **Whole-tree resolve cost** — the 590s+ combined-tree resolve is the practical wall for a fresh whole-tree green receipt; relevant to both the CI gate and Stage C.
-4. **TS-target completeness** — only needed if the end goal is Track-(b) TypeScript runtime; the `add` slice is proven, the compiler uses far more of the language.
+2. **HAND kernel D — interpreter pure-eval / pinned host-physics** — [interpreter-kernel-d.md](interpreter-kernel-d.md): model-and-witness slice partitioning `v1_interpreter.rs` dissolution (mirrors #5894 sequencing).
+3. **De-fork / cross-tree import** ([dsl-v2-defork-audit.md](dsl-v2-defork-audit.md) §1) — the compiler closure is only well-defined once v2 imports the single `dsl/std` authority, not its mirror copies. Cross-tree import is wired but fail-closed (`03_name_resolve.dag:644`).
+4. **Whole-tree resolve cost** — the 590s+ combined-tree resolve is the practical wall for a fresh whole-tree green receipt; relevant to both the CI gate and Stage C.
+5. **TS-target completeness** — only needed if the end goal is Track-(b) TypeScript runtime; the `add` slice is proven, the compiler uses far more of the language.
 
 ## 3. Open questions (for the operator)
 
