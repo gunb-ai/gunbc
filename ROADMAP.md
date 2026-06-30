@@ -261,6 +261,15 @@ Depends on §6 — react/html is a first-class medium (idea-machine.md §3/§4),
 - [ ] react/html rendering stands up (real page, not fixture) — **SERVE page green-by-execution via gunbc-run landed (#5662); real socket the remaining gap (Lane C)**
 - [ ] add to the demo alongside the TypeScript emit (website + language, dogfoodable)
 
+**Hosting / live dashboard lane** *(operator-directed)* — stand the roadmap dashboard up **live on the fleet** (srv1/srv2, `fleet_intent`), dogfooding §7's page rendering and §8's session-dashboard. Each node names the displaced cost: a roadmap you can *see and act on in a browser*, not only read as committed markdown. Binding strategy: **emit a TS/Node server** — the host bridge is an emitted artifact, the `.dag` stays the authority and Rust does not grow (§2 Realization handler; gives the modeled-but-dead `NodeHttpCreateServer*` types their consumer).
+
+**Hosting / live dashboard lane:**
+
+- [ ] **roadmap → HTML page** *(keystone)* (#6010) pure projection `roadmap_model` → `MarkupNode` (`gunbc.roadmap_page`), serialized through the same XSS-safe HTML boundary as gunbhub; per-node status (open/review/done) / sizing / owner / carrier links. No substrate change.
+  - [ ] **live service on srv1/srv2** emit a TS/Node HTTP server (realization handler for `NodeHttpCreateServerEmissionTarget`) that serves the rendered pages bound to a port on a fleet host; the missing port-binding piece — today serving is a pre-rendered static table + a pure request→response fn.
+    - [ ] **idea input → roadmap node** capture a free-form idea via the live service (dynamic POST handler) and admit it as a roadmap work node (input-envelope admission §5). Composes `7-live-serve` + `7-interactivity`.
+  - [ ] **interactive components** *(props / state / handlers)* `MarkupAttrValue = LiteralValue | ExprValue` coproduct + expression children; JSX emits `{…}`, HTML emit **fails closed** on expression nodes (the `DecodeFidelity` honesty boundary §5). Load-bearing `std/markup.dag` shape — sign off before authoring.
+
 ## 8. Session dashboard on `.dag` (SHELVED)
 
 Product/infra tooling — shelved during the stability window (no `.dag`-correctness leverage right now). **One slice un-shelved (operator-directed): the roadmap-as-spawner MVP below** — it earns `.dag`-correctness leverage by making the roadmap the single authority for tracked work (§3) and is the first inhabitant of migrating ctrl onto the substrate (§7).
