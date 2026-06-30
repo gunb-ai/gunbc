@@ -68,6 +68,8 @@ import v1.compiler.languages {
 }
 import v1.compiler.runtime_rust { rust_runtime_source }
 import v1.compiler.compiler_tests_rust { compiler_tests_source }
+import v1.compiler.dag_collect_rust { dag_collect_source }
+import v1.compiler.dag_collect_support_rust { dag_collect_support_source }
 import v1.compiler.coercion { coerce_primitive_type, is_copy, lookup_checkpoint }
 
 import std.types { is_container_type, is_kernel_type }
@@ -1654,6 +1656,7 @@ fn emit_rust(typed: ResolvedGraph) -> EmitResult {
   let main_file = emit_main_rs(workflow_funcs: workflow_funcs, modules: typed.modules, has_services: has_services, crate_name: crate_name, svc_module_map: svc_module_map)
   let rt_file = emit_v2_rt_module()
   let compiler_tests_file = if has_pipeline { [emit_compiler_tests_module()] } else { [] }
+  let dag_collect_files = if has_pipeline { [emit_dag_collect_module(), emit_dag_collect_support_module()] } else { [] }
   let dry_run_file = if has_services {
     [emit_dry_run_module()]
   } else {
@@ -1662,7 +1665,7 @@ fn emit_rust(typed: ResolvedGraph) -> EmitResult {
 
   let all_mod_files = concat(module_files, [rt_file], dry_run_file)
   let lib_file = emit_lib_rs_from_files(all_module_files: all_mod_files, has_compiler_tests: has_pipeline)
-  let files = concat([cargo, lib_file, main_file], all_mod_files, compiler_tests_file, test_files)
+  let files = concat([cargo, lib_file, main_file], all_mod_files, compiler_tests_file, dag_collect_files, test_files)
   EmitResult { files: files, diagnostics: [] }
 }
 
@@ -1672,6 +1675,14 @@ fn emit_v2_rt_module() -> TextFile {
 
 fn emit_compiler_tests_module() -> TextFile {
   TextFile { path: concat(rust_source_root(), "compiler_tests", rust_source_ext()), content: compiler_tests_source() }
+}
+
+fn emit_dag_collect_module() -> TextFile {
+  TextFile { path: concat(rust_source_root(), "v1_compiler_dag_collect", rust_source_ext()), content: dag_collect_source() }
+}
+
+fn emit_dag_collect_support_module() -> TextFile {
+  TextFile { path: concat(rust_source_root(), "v1_compiler_dag_collect_support", rust_source_ext()), content: dag_collect_support_source() }
 }
 
 fn emit_lib_rs_from_files(all_module_files: List<TextFile>, has_compiler_tests: Bool) -> TextFile {
