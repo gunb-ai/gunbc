@@ -2,7 +2,7 @@
 
 **Lane:** nimble-ibex-655 (complexity/linearity audit-first)  
 **Roster authority:** `src/v1/stage0/src/non_fold_residue_project.rs` (`NON_FOLD_RESIDUE_ROSTER` ∖ `NON_FOLD_MIGRATION_DEBT_ROSTER`)  
-**As-of:** 2026-06-30, HEAD `884eae59` (Wave-0 grammar-ladder drain reverted; migration-debt **23/23** live)
+**As-of:** 2026-06-30, HEAD `1f5d517f7b` (grammar-ladder Wave 1 drained −5 migration slots; ManualAnchorKey +6 enrolled → **24/24** migration-debt live)
 
 This document is the **per-site catalogue** for operator permanent-residue sign-off on the **52 irreducible-kernel** roster slots. Each row is one `file::fn` site where a `match` on a **closed coproduct parameter** carries a top-level `_ =>` wildcard arm that is **correct semantics**, not unmigrated modeling debt.
 
@@ -14,9 +14,9 @@ This document is the **per-site catalogue** for operator permanent-residue sign-
 
 | Quantity | Count | Meaning |
 |----------|------:|---------|
-| Full exception roster slots | **75** | `NON_FOLD_RESIDUE_ROSTER.len()` |
-| Migration-debt roster slots | **23** | Must drain; floor RED on 23 if migration roster fiction dropped |
-| **Irreducible roster slots** | **52** | **75 − 23**; subject of this catalogue |
+| Full exception roster slots | **76** | `NON_FOLD_RESIDUE_ROSTER.len()` |
+| Migration-debt roster slots | **24** | Must drain; floor RED on 24 if migration roster fiction dropped |
+| **Irreducible roster slots** | **52** | **76 − 24**; subject of this catalogue |
 | Live irreducible on census | **52/52** | `non_fold_residue_irreducible_live_count()` |
 | Syntactic wildcard finding (all 52) | **52/52** | `complexity_linearity_audit` `syntactic_match_wildcard_arm` on every irreducible site |
 | Syntactic triage `kernel-permanent` tag (subset) | **27/52** | `triage_wildcard` substring table (`*_eq`, `*dominates*`, `*lattice_join*`, …) |
@@ -39,7 +39,7 @@ This document is the **per-site catalogue** for operator permanent-residue sign-
 | Resolved gate | `non_fold_residue_site_is_rostered(site)` must be true for every live closed-coproduct wildcard site | `live_tree_no_unrostered_non_fold_residue` goes RED |
 | Roster ratchet | Roster entry with no live residue is stale | `live_tree_residue_roster_has_no_stale_entries` goes RED |
 | Syntactic witness | `syntactic_match_wildcard_arm` finding on fn body | `syntactic_audit_witness_test.dag` count witnesses fire |
-| Triage tag (emit-only) | `triage_wildcard` substring table | Informational TSV column only — **not** a wall |
+| Triage tag (emit-only) | `triage_wildcard` closed-coproduct param resolution + roster bucket | Informational TSV column only — **not** a wall |
 
 ---
 

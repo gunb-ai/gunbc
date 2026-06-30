@@ -1,88 +1,77 @@
-# Syntactic `real-debt` sample audit — headline-number honesty (N≈318)
+# Syntactic audit triage — headline-number honesty
 
 **Lane:** nimble-ibex-655  
-**As-of:** 2026-06-30  
+**As-of:** 2026-06-30, HEAD `1f5d517f7b`  
 **Audience:** loyal-bee-794 / operator scope sign-off
 
-## Executive summary (honest)
+## Executive summary (current code)
 
-**`real-debt=294` is NOT closed-coproduct audited today.** It is a **path-prefix heuristic** (`is_real_debt_site` in `complexity_linearity_audit_project.rs`) applied after excluding kernel/migration/eval/grammar/open-domain tags. It does **not** inspect whether the wildcard `match` scrutinee is a parameter of a **closed coproduct type**.
+**The path-heuristic `real-debt` / `open-domain` site classifiers are retired.** `complexity_linearity_audit_project.rs` no longer uses `is_real_debt_site` or `is_open_domain_site`. Syntactic triage is grounded on **closed-coproduct param resolution** at the AST walk:
 
-The **authoritative closed-coproduct discriminator** is `non_fold_residue_project::residue_sites` (resolved-half):
+1. Any `match` with a top-level `_ =>` arm is a syntactic finding.
+2. `triage_wildcard(site, fn_name, has_closed_coproduct_wildcard)` gates on whether the scrutinee is a **bare fn param** whose declared type head is in the corpus closed-coproduct index (`fn_param_type_heads` + `non_fold_residue_closed_coproduct_type_names()`).
+3. If not closed-coproduct → **`open-domain`** (legitimate wildcards over open/primitive domains — permanently out of the elimination wave).
+4. If closed-coproduct + on migration roster → **`migration-debt`**; + on irreducible roster → **`kernel-permanent`**; + off roster → **`closed-coproduct-debt`** (must drain or enroll — §5 invariant).
 
-1. Scrutinee must be a **bare identifier** matching a **function parameter**.
-2. Parameter's declared type head must appear in the corpus `closed_coproduct_names` index (`type X = A | B | …` with `|`).
-3. The `match` body must have a **top-level** `_ =>` arm.
-
-That census finds **75 live sites** (all rostered; `unrostered=0`). Partition: **23 migration-debt** (drain) + **52 irreducible** (permanent sign-off catalogue).
-
-**Off-roster syntactic wildcards:** 322 total. Triage: `real-debt=294`, `open-domain=25`, plus 3 kernel/migration off-roster.
-
-**Cross-check:** `real_debt ∩ non_fold_roster = ∅` (zero overlap). Every closed-coproduct wildcard is roster-tagged kernel/migration/eval/grammar — none are `real-debt`.
-
-**Automated re-scan of 294 `real-debt` sites** (param-type head vs closed-coproduct index): **~6** closed-coproduct scrutinees, **~287** open/unknown (e.g. `Node`, `String`, field access, unbound scrutinee). **The 294 count is inflated for operator headline purposes.**
-
-### Recommended operator headline (honest)
+**Resolved-half authority** (floor gate): `non_fold_residue_project::residue_sites` — conservative bare-param + closed-coproduct-type + top-level `_ =>`.
 
 | Metric | Count | Authority |
 |--------|------:|-----------|
-| Closed-coproduct wildcard sites (resolved) | **75** | `non_fold_residue` census |
-| Migration-debt to eliminate | **23** | Roster partition |
-| Irreducible permanent (CONFIDENT) | **47** | Catalogue sign-off |
-| Syntactic wildcard (any `_ =>` in fn body) | **397** | Parse-only AST walk |
-| Path-heuristic `real-debt` (do **not** sign as fail-open scope) | **294** | Emit-only triage — **demote pending closed-coproduct filter** |
+| Full exception roster slots | **76** | `NON_FOLD_RESIDUE_ROSTER.len()` |
+| Migration-debt roster slots | **24** | `NON_FOLD_MIGRATION_DEBT_ROSTER.len()` |
+| Irreducible roster slots | **52** | **76 − 24** |
+| Live closed-coproduct sites (resolved) | **76/76** rostered | `non_fold_residue_unrostered_count() == 0` |
+| Syntactic wildcard findings (whole corpus) | **392** | Parse-only AST walk |
+| On-roster syntactic wildcards | **76** | Same set as resolved half |
+| Off-roster syntactic wildcards | **316** | All tagged **`open-domain`** |
+| **`closed-coproduct-debt` (unrostered)** | **0** | §5 invariant — nothing hidden from floor |
 
-**N=318** ≈ `real-debt (294) + open-domain (25)` off-roster syntactic wildcards. Acceptable **only after** closed-coproduct reclassification demotes mis-tagged sites.
-
----
-
-## Discriminator comparison
-
-### A) `open-domain` (25 sites) — path heuristic
-
-`is_open_domain_site`: `dsl/extdeps/**`, `dsl/ctrl/**`, `dsl/gunbc/plans/**`, `dsl/test/**`, witness/parse fn name patterns. **Legitimate** open integration surfaces.
-
-### B) `real-debt` (294 sites) — path heuristic (NOT type-grounded)
-
-`is_real_debt_site`: `src/v2/compiler/**`, `src/v2/std/**`, `src/v2/lens/**`, `dsl/std/**`, `dsl/gunbc/**` (non-plans), `dsl/tools/**`, etc.
-
-**Does not** require closed coproduct. A `match node { … _ => … }` on `Node` (open) lands here.
-
-### C) Closed coproduct (75 sites) — construction-grade
-
-`non_fold_residue_project::residue_sites` — see §Executive summary. This is the fail-open eliminator census aligned with §5/§6.
-
-### D) Gate-promotion requirement (not yet implemented for syntactic triage)
-
-`complexity_linearity_audit_project.rs` comment at `walk_expr` notes WallAfterGrounding dissolution: syntactic triage must eventually use the same closed-coproduct resolution as (C), not path prefixes.
+**Operator headline (locked):** **N=29** closed-coproduct fail-opens to drain (migration track); **316** open-domain stay permanently out. **N=318** (`real-debt=294` + path heuristics) is **retired** — it described pre-landing inflation.
 
 ---
 
-## Sample spot-check: 10 `real-debt` sites
+## Discriminator comparison (landed)
 
-| # | Site | Scrutinee | Declared type | Closed? | Variant set (if closed) | Verdict |
-|---|------|-----------|---------------|---------|-------------------------|---------|
-| 1 | `dsl/gunbc/commit_workflow.dag::project_local_tidy_fmt_rows` | `surface` | (unresolved param / record) | **No** | — | **DEMOTE → open-domain or triage-pending** |
-| 2 | `dsl/gunbc/compile_source_model.dag::dependency_pool_index_from_flag` | `flag` | `String` | **No** | — | **DEMOTE** — stringly match |
-| 3 | `dsl/std/effects.dag::check_modifier_vs_derivation` | (nested) | — | **No** | — | **DEMOTE** — not bare coproduct param |
-| 4 | `src/v2/std/compilers/target_model.dag::target_type_expr_emitted_validate_positional_wire` | `kind` | `TargetTypeExprKind` | **Yes** | Atom, Instantiation, Cardinality, Record, Sum, Arrow (6) | **GENUINE** — migrate to total match |
-| 5 | `src/v2/std/compilers/target_model.dag::target_type_expr_emitted_validate_labeled_wire` | `kind` | `TargetTypeExprKind` | **Yes** | (same 6) | **GENUINE** |
-| 6 | `src/v2/compiler/05_eval.dag::eval_node_is_effect_io_roundtrip` | `effect_io` | `EffectIoEvalContext` | **Yes** | Absent, Present (2) | **GENUINE** — not on migration roster today |
-| 7 | `src/v2/lens/testgen.dag::testgen_emit_language_behavior_equivalence_claim` | `anchor` | `ManualAnchorKey` | **Yes** | (closed enum) | **GENUINE** — lens testgen debt |
-| 8 | `dsl/std/cache_interface.dag::cache_layer_beats_recompute_path` | (call/field) | — | **No** | — | **DEMOTE** |
-| 9 | `dsl/gunbc/host_standup.dag::host_standup_step_is_effective_gap` | `w` | (record field) | **No** | — | **DEMOTE** |
-| 10 | `src/v2/program.dag::program_runtime_bool_true` | `value` | `RuntimeValue` | **Yes** | (large runtime coproduct) | **Already irreducible roster** — mis-tagged `real-debt` if off-roster path hits; on roster → kernel |
+### A) `open-domain` (316 sites) — closed-coproduct filter
 
-**Spot-check result:** majority of `real-debt=294` are **not** closed-coproduct fail-opens. Honest eliminator scope remains **migration-debt 23** (+ Wave drains), not 294.
+Wildcard `match` where scrutinee is **not** a closed-coproduct fn param (open `Node`/`String`, field access, nested match, extdeps witness parsers, etc.). **Not** elimination-wave scope.
+
+### B) Resolved-half roster (76 sites) — construction-grade
+
+`non_fold_residue` census: bare-param + declared closed-coproduct type + top-level `_ =>`. Partition: **24 migration-debt** (drain) + **52 irreducible** (permanent sign-off catalogue).
+
+### C) Syntactic triage tags (emit-only TSV)
+
+| Tag | Live count (2026-06-30) | Meaning |
+|-----|------------------------:|---------|
+| `open-domain` | 316 | Not closed-coproduct-param wildcards |
+| `migration-debt` | 24 | On `NON_FOLD_MIGRATION_DEBT_ROSTER` |
+| `kernel-permanent` | 52 | On irreducible roster |
+| `closed-coproduct-debt` | 0 | Unrostered closed-coproduct — must stay at 0 |
+| `eval-interpreter-debt` / `grammar-ladder-debt` | 0 | Substring backstops; roster partition is authoritative |
+
+### D) Superseded (do not cite)
+
+- `is_real_debt_site` / `is_open_domain_site` path-prefix heuristics — **removed**.
+- `real-debt=294` headline — **retired** (pre closed-coproduct filter).
+- “Pending closed-coproduct filter” — **landed** in `triage_wildcard` (`complexity_linearity_audit_project.rs:267-304`).
 
 ---
 
-## CANDIDATE demotions (parallel work)
+## Sample spot-check (closed-coproduct-grounded)
 
-Apply closed-coproduct filter to syntactic triage before operator signs N=318:
+| # | Site | Closed-coproduct? | Roster bucket | Syntactic tag |
+|---|------|-------------------|---------------|---------------|
+| 1 | `src/v2/lens/testgen.dag::testgen_emit_language_behavior_equivalence_claim` | Yes (`ManualAnchorKey`) | migration-debt | migration-debt |
+| 2 | `src/v2/compiler/01_tokenize.dag::lex_try_rules_prefer_longer` | Yes | migration-debt | migration-debt |
+| 3 | `dsl/extdeps/cron/schedule_model.dag::render_cron_field` | No | — | open-domain |
+| 4 | `src/v2/lens/cost.dag::asymptotic_class_dominates` | Yes | irreducible | kernel-permanent |
+| 5 | `dsl/tools/generated_artifact_gate.dag::exit_ok` | Yes | irreducible | kernel-permanent |
 
-1. Re-tag sites where scrutinee is not a closed-coproduct param → `open-domain` or `syntactic-wildcard-unclassified`.
-2. Re-tag rostered sites → existing kernel/migration/eval/grammar buckets (never `real-debt`).
-3. Re-count; expect `real-debt` to drop from **294** to **O(10–30)** genuinely unrostered closed-coproduct debt.
+Witness: `syntactic_audit_witness_test.dag` executes interpreter builtins over witness roots; site-pinned rows are intentional dissolution ratchets.
 
-Drain lane continues unaffected (grammar Wave 0, eval_bind PROPOSE).
+---
+
+## Drain lane (unchanged)
+
+Grammar-ladder Wave 1 (-5 roster, exhaustive `ConcreteSyntaxToken` arms) and eval_bind PROPOSE are separate escalate-review PRs. This doc tracks **census honesty** only; roster edits land in the same PR as the fold.
