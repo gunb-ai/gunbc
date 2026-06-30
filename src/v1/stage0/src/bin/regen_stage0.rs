@@ -41,6 +41,7 @@ const GENERATED_STAGE0_FILES: &[&str] = &[
     "extdeps_version.rs",
     "extdeps_version_semver.rs",
     "lib.rs",
+    "main.rs",
     "std_algebra.rs",
     "std_coercion.rs",
     "std_computation.rs",
@@ -134,10 +135,6 @@ const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
     // the TokenStream cursor into 02_parse.dag, then move this file back to
     // GENERATED_STAGE0_FILES.
     "v1_compiler_parse.rs",
-    // Dep-pool emit wiring landed in 05_emit_rust.dag; registry flip deferred until
-    // regen_stage0 --verify confirms byte-identical output vs this committed file.
-    // Dissolution: run regen_stage0 --verify; on green, move to GENERATED_STAGE0_FILES.
-    "main.rs",
     "v1_compiler_dag_collect.rs",
     "v1_compiler_dag_collect_support.rs",
     "v1_interpreter.rs",
