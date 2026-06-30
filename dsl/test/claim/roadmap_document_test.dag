@@ -2,8 +2,8 @@ module test.claim.roadmap_document
 
 import extdeps.languages.markdown { serialize_markdown_source }
 import gunbc.roadmap_document { RoadmapDocument, RoadmapSection, project_roadmap_to_markdown }
-import gunbc.roadmap_model { RoadmapNode, RoadmapEdge, Pointer, SectionElement, section_group }
-import gunbc.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine }
+import gunbc.roadmap_model { RoadmapNode, RoadmapEdge, Pointer, NodeSizing, Unsized, SectionElement, section_group }
+import gunbc.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, Signoff, Unsigned, SignedOff }
 import std.markdown { MarkdownBlock, HeadingBlock, ParagraphBlock, TextInline, H1 }
 import ctrl.process_algebra { ProcessNodeId }
 
@@ -16,6 +16,9 @@ fn audit_node() -> RoadmapNode {
     node: audit_id,
     line: AuthoredLine { done: true, content: "**fail-open audit**" },
     carriers: [Pointer { label: "plan", path: "docs/plans/fail-closed-lockdown.md" }],
+    sizing: Unsized,
+    owner: "",
+    signoff: Unsigned,
   }
 }
 
@@ -24,6 +27,9 @@ fn status_node() -> RoadmapNode {
     node: status_id,
     line: DerivableLine { prs: [5491], title: "**PR-checkbox status**", description: "" },
     carriers: [],
+    sizing: Unsized,
+    owner: "",
+    signoff: Unsigned,
   }
 }
 fn child_node() -> RoadmapNode {
@@ -31,6 +37,9 @@ fn child_node() -> RoadmapNode {
     node: child_id,
     line: AuthoredLine { done: false, content: "**host-fed status bridge**" },
     carriers: [],
+    sizing: Unsized,
+    owner: "",
+    signoff: Unsigned,
   }
 }
 
@@ -78,14 +87,18 @@ fn witness_both_sections() -> Bool {
     && string_contains(s: out, pattern: "## 6. Expansion")
 }
 
-fn witness_authored_box_and_link() -> Bool {
+fn witness_authored_evidence_awaiting_signoff() -> Bool {
   let out = emit(merged: [5491])
-  string_contains(s: out, pattern: "[x] **fail-open audit**")
+  string_contains(s: out, pattern: "[ ] **fail-open audit**")
     && string_contains(s: out, pattern: "[plan](docs/plans/fail-closed-lockdown.md)")
+    && string_contains(s: out, pattern: "⏳ awaiting sign-off")
 }
 
-fn witness_derived_checked_when_merged() -> Bool {
-  string_contains(s: emit(merged: [5491]), pattern: "[x] **PR-checkbox status**")
+fn witness_derived_merged_awaiting_signoff() -> Bool {
+  let out = emit(merged: [5491])
+  string_contains(s: out, pattern: "[ ] **PR-checkbox status**")
+    && string_contains(s: out, pattern: "⏳ awaiting sign-off")
+    && !string_contains(s: out, pattern: "[x] **PR-checkbox status**")
 }
 
 fn witness_derived_unchecked_when_unmerged() -> Bool {
@@ -102,11 +115,11 @@ fn expected_roadmap() -> String {
     "\n",
     "## 0. Fail-closed lock-down\n",
     "\n",
-    "- [x] **fail-open audit** [plan](docs/plans/fail-closed-lockdown.md)\n",
+    "- [ ] **fail-open audit** [plan](docs/plans/fail-closed-lockdown.md) — ⏳ awaiting sign-off\n",
     "\n",
     "## 6. Expansion\n",
     "\n",
-    "- [x] **PR-checkbox status** (#5491)\n",
+    "- [ ] **PR-checkbox status** (#5491) — ⏳ awaiting sign-off\n",
     "  - [ ] **host-fed status bridge**\n"
   ], "")
 }
@@ -123,8 +136,8 @@ fn witness_drift_receipt() -> Bool {
 test fn roadmap_document_witnesses() -> Bool {
   witness_preamble_first()
     && witness_both_sections()
-    && witness_authored_box_and_link()
-    && witness_derived_checked_when_merged()
+    && witness_authored_evidence_awaiting_signoff()
+    && witness_derived_merged_awaiting_signoff()
     && witness_derived_unchecked_when_unmerged()
     && witness_exact_bytes()
     && witness_drift_receipt()

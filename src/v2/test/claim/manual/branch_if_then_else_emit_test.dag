@@ -4,7 +4,7 @@ import v2.compiler.body_producer {
   produce_mvp1_pick_if_arrow_with_body,
   produce_mvp1_pick_if_arrow_with_body_swapped_arms
 }
-import v2.test.manual.branch_if_then_else_round_trip {
+import v2.test.execution.branch_if_then_else_round_trip {
   branch_if_then_else_inferred_facts_for,
   branch_if_then_else_inferred_tree
 }

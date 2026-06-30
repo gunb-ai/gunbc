@@ -98,7 +98,7 @@ fn witness_corpus_skip_node_frontier_enabled() -> Bool {
 fn witness_source_ingest_serialized_after_corpus() -> Bool {
   let batches = gunbc_ci_floor_batches()
   let corpus_layer = batches.skip(n: 1).first()
-  let ingest_layer = batches.skip(n: 2).first()
+  let ingest_layer = batches.skip(n: 3).first()
   list_contains_str(xs: batch_functions(b: corpus_layer), target: corpus_sentinel) &&
     !list_contains_str(xs: batch_functions(b: corpus_layer), target: "source_root_ingest_gate_passes") &&
     list_contains_str(xs: batch_functions(b: ingest_layer), target: "source_root_ingest_gate_passes")
