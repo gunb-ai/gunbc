@@ -1,7 +1,6 @@
 module gunbc.accelerator_demo_realize
 
 import std.types { Bool, Int, List }
-import std.realization_width { int_max }
 import gunbc.accelerator_demo_plan {
   AcceleratorRecognitionOutcome,
   AcceleratorRefusalReason,
@@ -30,10 +29,6 @@ type ExecutionOutcome
   = Executed { verdict: DifferentialVerdict }
   | ExecutionRefused { reason: AcceleratorRefusalReason }
 
-fn int_relu(x: Int) -> Int {
-  int_max(a: 0, b: x)
-}
-
 fn demo_fixture_a() -> List<Int> {
   [2, -1, 0, 5]
 }
@@ -56,14 +51,18 @@ fn int_list_eq(left: List<Int>, right: List<Int>) -> Bool {
   } else if left.length() == 0 {
     true
   } else {
-    match (left.first(), right.first()) {
-      (Present { value: l }, Present { value: r }) =>
-        if l != r {
-          false
-        } else {
-          int_list_eq(left: left.skip(n: 1), right: right.skip(n: 1))
+    match left.first() {
+      Present { value: l } =>
+        match right.first() {
+          Present { value: r } =>
+            if l != r {
+              false
+            } else {
+              int_list_eq(left: left.skip(n: 1), right: right.skip(n: 1))
+            }
+          Absent => false
         }
-      _ => false
+      Absent => false
     }
   }
 }

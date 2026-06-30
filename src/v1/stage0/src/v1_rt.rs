@@ -582,3 +582,31 @@ pub fn filesystem_read(path: String) -> FilesystemReadResult {
         std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("failed to read {}: {}", path, e));
     FilesystemReadResult { content }
 }
+
+fn int_relu(x: i64) -> i64 {
+    if x > 0 { x } else { 0 }
+}
+
+pub fn simd_relu_mul_add_scalar(a: &[i64], b: &[i64], c: &[i64]) -> Vec<i64> {
+    assert_eq!(a.len(), b.len());
+    assert_eq!(b.len(), c.len());
+    a.iter()
+        .zip(b.iter())
+        .zip(c.iter())
+        .map(|((ai, bi), ci)| {
+            let mul = ai * bi;
+            int_relu(mul + ci)
+        })
+        .collect()
+}
+
+pub fn simd_relu_mul_add_fused(a: &[i64], b: &[i64], c: &[i64]) -> Vec<i64> {
+    assert_eq!(a.len(), b.len());
+    assert_eq!(b.len(), c.len());
+    let mut out = Vec::with_capacity(a.len());
+    for i in 0..a.len() {
+        let fused = a[i] * b[i] + c[i];
+        out.push(int_relu(fused));
+    }
+    out
+}

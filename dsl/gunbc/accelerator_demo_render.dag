@@ -1,0 +1,197 @@
+module gunbc.accelerator_demo_render
+
+import std.types { String, Int, NonEmptyStr, List }
+import std.render { kv_pair, list_block }
+import std.realization {
+  Placement,
+  LocalAccelerator,
+  LocalInProcess,
+  LocalFilesystem,
+  RemoteNetwork,
+}
+import std.numerical_contract {
+  NumericalContract,
+  IntegerExact,
+  FloatApproximate,
+  FmaContractionPermitted,
+  FmaContractionRefused,
+}
+import extdeps.communication.medium { DecodeFidelity, Lossless, Lossy }
+import gunbc.accelerator_demo_plan {
+  AcceleratorRecognitionOutcome,
+  AcceleratorRefusalReason,
+  Recognized,
+  Refused,
+  NotElementwisePure,
+  CarriesEffects,
+  FmaContractionViolatesContract,
+  AcceleratorUnsupportedNumericalDomain,
+  demo_plan_fused_op_count,
+  demo_target_label,
+}
+import std.realization_schedule { RealizationPlan }
+import std.measure { Nano }
+
+type AcceleratorDemoPlanView {
+  target: String
+  fused_op_count: Int
+  placement_label: String
+  target_medium: String
+  contract_label: String
+  fidelity_label: String
+}
+
+type AcceleratorDemoOutcomeView
+  = DemoRecognized { plan: AcceleratorDemoPlanView }
+  | DemoRefused { reason_label: String }
+
+data accelerator_demo_render_expectation_receipts: List<String> = [
+  "render_outcome|DemoRefused(reason_label=CarriesEffects)|refused: CarriesEffects",
+  "render_outcome|DemoRecognized(plan.fused_op_count=3)|recognized: accelerator-demo-relu-mul-add-v1 fused_ops=3 placement=LocalAccelerator medium=simd-contiguous-loop contract=IntegerExact fidelity=Lossless",
+]
+
+fn render_placement(placement: Placement) -> String {
+  match placement {
+    LocalAccelerator => "LocalAccelerator"
+    LocalInProcess => "LocalInProcess"
+    LocalFilesystem => "LocalFilesystem"
+    RemoteNetwork => "RemoteNetwork"
+  }
+}
+
+fn render_numerical_contract(contract: NumericalContract) -> String {
+  match contract {
+    IntegerExact => "IntegerExact"
+    FloatApproximate { fma_contraction: fma, rounding: _ } => match fma {
+      FmaContractionPermitted => "FloatApproximate(FmaPermitted)"
+      FmaContractionRefused => "FloatApproximate(FmaRefused)"
+    }
+  }
+}
+
+fn render_decode_fidelity(fidelity: DecodeFidelity) -> String {
+  match fidelity {
+    Lossless => "Lossless"
+    Lossy => "Lossy"
+  }
+}
+
+fn render_refusal_reason(reason: AcceleratorRefusalReason) -> String {
+  match reason {
+    NotElementwisePure => "NotElementwisePure"
+    CarriesEffects => "CarriesEffects"
+    FmaContractionViolatesContract => "FmaContractionViolatesContract"
+    AcceleratorUnsupportedNumericalDomain => "AcceleratorUnsupportedNumericalDomain"
+  }
+}
+
+fn project_plan_view(
+  plan: RealizationPlan<Nano>,
+  kernel_placement: Placement,
+  contract: NumericalContract,
+  fidelity: DecodeFidelity,
+  target_medium: NonEmptyStr
+) -> AcceleratorDemoPlanView {
+  AcceleratorDemoPlanView {
+    target: demo_target_label
+    fused_op_count: demo_plan_fused_op_count(plan: plan)
+    placement_label: render_placement(placement: kernel_placement)
+    target_medium: target_medium
+    contract_label: render_numerical_contract(contract: contract)
+    fidelity_label: render_decode_fidelity(fidelity: fidelity)
+  }
+}
+
+fn project_outcome_view(outcome: AcceleratorRecognitionOutcome) -> AcceleratorDemoOutcomeView {
+  match outcome {
+    Recognized {
+      plan: plan,
+      kernel_step: step,
+      contract: contract,
+      fidelity: fidelity,
+      target_medium: medium,
+    } =>
+      DemoRecognized {
+        plan: project_plan_view(
+          plan: plan,
+          kernel_placement: step.placement,
+          contract: contract,
+          fidelity: fidelity,
+          target_medium: medium
+        )
+      }
+    Refused { reason: reason } =>
+      DemoRefused { reason_label: render_refusal_reason(reason: reason) }
+  }
+}
+
+fn render_plan_view(view: AcceleratorDemoPlanView) -> String {
+  concat(
+    "recognized: ",
+    concat(
+      view.target,
+      concat(
+        " fused_ops=",
+        concat(
+          to_string(view.fused_op_count),
+          concat(
+            " placement=",
+            concat(
+              view.placement_label,
+              concat(
+                " medium=",
+                concat(
+                  view.target_medium,
+                  concat(
+                    " contract=",
+                    concat(view.contract_label, concat(" fidelity=", view.fidelity_label))
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+}
+
+fn render_outcome_line(view: AcceleratorDemoOutcomeView) -> String {
+  match view {
+    DemoRecognized { plan: plan } => render_plan_view(view: plan)
+    DemoRefused { reason_label: reason } => concat("refused: ", reason)
+  }
+}
+
+fn render_plan_digest_block(view: AcceleratorDemoPlanView) -> String {
+  let entries = [
+    kv_pair(key: "Target", sep: ": ", value: view.target),
+    kv_pair(key: "Fused ops", sep: ": ", value: to_string(view.fused_op_count)),
+    kv_pair(key: "Placement", sep: ": ", value: view.placement_label),
+    kv_pair(key: "Medium", sep: ": ", value: view.target_medium),
+    kv_pair(key: "Contract", sep: ": ", value: view.contract_label),
+    kv_pair(key: "Fidelity", sep: ": ", value: view.fidelity_label),
+  ]
+  list_block(header: "Accelerator demo plan", level: 0, unit: "  ", prefix: "- ", items: entries)
+}
+
+fn witness_render_refused_carries_effects() -> Bool {
+  render_outcome_line(
+    view: DemoRefused { reason_label: "CarriesEffects" }
+  ) == "refused: CarriesEffects"
+}
+
+fn witness_render_recognized_integer_plan_line() -> Bool {
+  render_outcome_line(
+    view: DemoRecognized {
+      plan: AcceleratorDemoPlanView {
+        target: demo_target_label
+        fused_op_count: 3
+        placement_label: "LocalAccelerator"
+        target_medium: "simd-contiguous-loop"
+        contract_label: "IntegerExact"
+        fidelity_label: "Lossless"
+      }
+    }
+  ) == "recognized: accelerator-demo-relu-mul-add-v1 fused_ops=3 placement=LocalAccelerator medium=simd-contiguous-loop contract=IntegerExact fidelity=Lossless"
+}

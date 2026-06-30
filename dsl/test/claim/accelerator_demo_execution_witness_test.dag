@@ -1,0 +1,53 @@
+module test.claim.accelerator_demo_execution_witness
+
+import gunbc.accelerator_demo_realize {
+  witness_integer_differential_bit_exact_on_fixture,
+  witness_integer_fused_matches_expected_fixture,
+  witness_recognized_pure_chain_executes_bit_exact,
+  witness_effectful_subgraph_execution_refused,
+  witness_data_dependent_gather_execution_refused,
+}
+import gunbc.accelerator_demo_render {
+  witness_render_refused_carries_effects,
+  witness_render_recognized_integer_plan_line,
+  project_outcome_view,
+  DemoRecognized,
+  DemoRefused,
+}
+import gunbc.accelerator_demo_plan {
+  recognize_elementwise_fold,
+  PureElementwiseChain,
+  Recognized,
+  Refused,
+}
+
+fn witness_projected_integer_outcome_is_recognized_lossless() -> Bool {
+  match project_outcome_view(
+    outcome: recognize_elementwise_fold(class: PureElementwiseChain { op_count: 3 })
+  ) {
+    DemoRecognized { plan: view } =>
+      view.fused_op_count == 3
+        && view.placement_label == "LocalAccelerator"
+        && view.fidelity_label == "Lossless"
+    DemoRefused { reason_label: _ } => false
+  }
+}
+
+fn witness_pure_chain_recognition_still_recognized() -> Bool {
+  match recognize_elementwise_fold(class: PureElementwiseChain { op_count: 3 }) {
+    Recognized { plan: _, kernel_step: _, contract: _, fidelity: _, target_medium: _ } => true
+    Refused { reason: _ } => false
+  }
+}
+
+test fn accelerator_demo_execution_lane_witnesses() -> Bool {
+  witness_integer_differential_bit_exact_on_fixture()
+    && witness_integer_fused_matches_expected_fixture()
+    && witness_recognized_pure_chain_executes_bit_exact()
+    && witness_effectful_subgraph_execution_refused()
+    && witness_data_dependent_gather_execution_refused()
+    && witness_render_refused_carries_effects()
+    && witness_render_recognized_integer_plan_line()
+    && witness_projected_integer_outcome_is_recognized_lossless()
+    && witness_pure_chain_recognition_still_recognized()
+}

@@ -5259,6 +5259,30 @@ fn eval_builtin(
             Ok(Some(eval_filesystem_read_builtin(path, ctx)?))
         }
 
+        "simd_relu_mul_add_scalar" | "simd_relu_mul_add_fused" => {
+            let a = expect_int_list_flex(positional.first().copied(), name)?;
+            let b = expect_int_list_flex(positional.get(1).copied(), name)?;
+            let c = expect_int_list_flex(positional.get(2).copied(), name)?;
+            if a.len() != b.len() || b.len() != c.len() {
+                return Err(InterpError::TypeError {
+                    msg: format!(
+                        "{name} requires equal-length List<Int> arguments, got lengths {}, {}, {}",
+                        a.len(),
+                        b.len(),
+                        c.len()
+                    ),
+                });
+            }
+            let out = if name == "simd_relu_mul_add_scalar" {
+                v1_rt::simd_relu_mul_add_scalar(&a, &b, &c)
+            } else {
+                v1_rt::simd_relu_mul_add_fused(&a, &b, &c)
+            };
+            Ok(Some(list_value(
+                out.into_iter().map(Value::Int).collect::<Vec<_>>(),
+            )))
+        }
+
         "layer_import_facts" => {
             let std_roots = expect_str_list(positional.first().copied(), "layer_import_facts")?;
             let extdeps_roots = expect_str_list(positional.get(1).copied(), "layer_import_facts")?;
@@ -6326,6 +6350,39 @@ fn expect_str_list_flex(val: Option<&Value>, context: &str) -> InterpResult<Vec<
                 return Err(InterpError::TypeError {
                     msg: format!(
                         "{} expects a List<String>, got element {}",
+                        context,
+                        other.type_label()
+                    ),
+                })
+            }
+        }
+    }
+    Ok(out)
+}
+
+fn expect_int_list_flex(val: Option<&Value>, context: &str) -> InterpResult<Vec<i64>> {
+    let Some(v) = val else {
+        return Err(InterpError::TypeError {
+            msg: format!("{} requires a List<Int> argument", context),
+        });
+    };
+    let Some(items) = free_monoid_to_vec(v) else {
+        return Err(InterpError::TypeError {
+            msg: format!(
+                "{} expects a List<Int> argument, got {}",
+                context,
+                v.type_label()
+            ),
+        });
+    };
+    let mut out: Vec<i64> = Vec::new();
+    for item in items {
+        match item {
+            Value::Int(n) => out.push(n),
+            other => {
+                return Err(InterpError::TypeError {
+                    msg: format!(
+                        "{} expects a List<Int>, got element {}",
                         context,
                         other.type_label()
                     ),
