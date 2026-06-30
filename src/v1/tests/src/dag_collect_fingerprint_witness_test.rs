@@ -1,18 +1,26 @@
 use std::rc::Rc;
 use v1_compiler::v1_compiler_dag_collect_support::{
-    dag_node_bag_hash, dag_node_seq_hash, dag_node_surface_fingerprint,
-    dag_node_surface_leaf_mix,
+    dag_node_bag_hash, dag_node_seq_hash, dag_node_surface_fingerprint, dag_node_surface_leaf_mix,
 };
 use v1_compiler::v1_rt::atom_identity_hash;
-use v1_compiler::v1_std_core::{Cardinality, Connective, ExprData, Node, SourceSpan};
 use v1_compiler::v1_std_core::empty_node_list;
+use v1_compiler::v1_std_core::{Cardinality, Connective, ExprData, Node, SourceSpan};
 
 fn hashes(labels: Vec<&str>) -> Rc<Vec<String>> {
-    Rc::new(labels.into_iter().map(|s| atom_identity_hash(s.to_string())).collect())
+    Rc::new(
+        labels
+            .into_iter()
+            .map(|s| atom_identity_hash(s.to_string()))
+            .collect(),
+    )
 }
 
 fn synth_span() -> Rc<SourceSpan> {
-    Rc::new(SourceSpan { file: "witness.dag".to_string(), start: 0, end: 0 })
+    Rc::new(SourceSpan {
+        file: "witness.dag".to_string(),
+        start: 0,
+        end: 0,
+    })
 }
 
 fn shell_node(
@@ -109,7 +117,12 @@ fn recursive_fingerprint_distinguishes_same_named_child_subtrees() {
 fn recursive_fingerprint_distinguishes_param_order() {
     let p_x = shell_node("x", Connective::NoConnective, vec![], vec![]);
     let p_y = shell_node("y", Connective::NoConnective, vec![], vec![]);
-    let left = shell_node("fn", Connective::Arrow, vec![], vec![p_x.clone(), p_y.clone()]);
+    let left = shell_node(
+        "fn",
+        Connective::Arrow,
+        vec![],
+        vec![p_x.clone(), p_y.clone()],
+    );
     let right = shell_node("fn", Connective::Arrow, vec![], vec![p_y, p_x]);
     assert_ne!(
         dag_node_surface_fingerprint(left),
@@ -122,7 +135,12 @@ fn recursive_fingerprint_distinguishes_param_order() {
 fn recursive_fingerprint_distinguishes_arrow_child_order() {
     let c_x = shell_node("x", Connective::NoConnective, vec![], vec![]);
     let c_y = shell_node("y", Connective::NoConnective, vec![], vec![]);
-    let left = shell_node("arr", Connective::Arrow, vec![c_x.clone(), c_y.clone()], vec![]);
+    let left = shell_node(
+        "arr",
+        Connective::Arrow,
+        vec![c_x.clone(), c_y.clone()],
+        vec![],
+    );
     let right = shell_node("arr", Connective::Arrow, vec![c_y, c_x], vec![]);
     assert_ne!(
         dag_node_surface_fingerprint(left),
@@ -135,7 +153,12 @@ fn recursive_fingerprint_distinguishes_arrow_child_order() {
 fn recursive_fingerprint_conj_child_order_insensitive() {
     let c_a = shell_node("a", Connective::NoConnective, vec![], vec![]);
     let c_b = shell_node("b", Connective::NoConnective, vec![], vec![]);
-    let left = shell_node("bag", Connective::Conj, vec![c_a.clone(), c_b.clone()], vec![]);
+    let left = shell_node(
+        "bag",
+        Connective::Conj,
+        vec![c_a.clone(), c_b.clone()],
+        vec![],
+    );
     let right = shell_node("bag", Connective::Conj, vec![c_b, c_a], vec![]);
     assert_eq!(
         dag_node_surface_fingerprint(left),
@@ -148,7 +171,12 @@ fn recursive_fingerprint_conj_child_order_insensitive() {
 fn recursive_fingerprint_disj_child_order_insensitive() {
     let c_a = shell_node("a", Connective::NoConnective, vec![], vec![]);
     let c_b = shell_node("b", Connective::NoConnective, vec![], vec![]);
-    let left = shell_node("bag", Connective::Disj, vec![c_a.clone(), c_b.clone()], vec![]);
+    let left = shell_node(
+        "bag",
+        Connective::Disj,
+        vec![c_a.clone(), c_b.clone()],
+        vec![],
+    );
     let right = shell_node("bag", Connective::Disj, vec![c_b, c_a], vec![]);
     assert_eq!(
         dag_node_surface_fingerprint(left),
