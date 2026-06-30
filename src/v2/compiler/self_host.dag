@@ -1,17 +1,12 @@
 module v2.compiler.self_host
 
-import extdeps.communication.medium { Lossless, Medium }
-import v2.compiler.translate { target_serialize_source_from_model }
-import v2.extdeps.languages.rust { rust_mvp1_target_model }
-import v2.std.algebra { length }
+import extdeps.communication.medium { Medium }
 import v2.std.collection { List }
-import v2.std.compilers.target_model { TargetModel }
 import v2.std.logic { Bool }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
   ExternalContractUnknown,
-  bind_outcome,
   node_locus,
   Outcome,
   port_locus,
@@ -27,7 +22,7 @@ import v2.std.find_witness {
   find_witness,
 }
 import v2.std.node { atom_identity_hash, combine_hash, Hash, Node, Symbol }
-import v2.std.text { source_text_code_unit_digest }
+import v2.std.text { source_text_code_unit_digest, string_is_empty }
 import v2.std.witness {
   Holds,
   StructuralPropertyWitness,
@@ -38,12 +33,11 @@ import v2.std.witness {
 type CoreNode = Node
 
 type SourceModels {
-  model_corpus: List<CoreNode>
+  stage1_committed_seed_source: Medium<String>
+  stage2_regen_emitted_source: Medium<String>
 }
 
 data self_host_equality_authority: Symbol = ^canonical_emitted_bytes
-
-data self_host_default_target: TargetModel = rust_mvp1_target_model()
 
 type SelfHostStageEmission {
   node: CoreNode
@@ -115,20 +109,6 @@ fn self_host_stage_emission(
   }
 }
 
-fn self_host_stage_emission_serialized(
-  node: CoreNode,
-  target: TargetModel
-) -> Outcome<SelfHostStageEmission> {
-  bind_outcome(
-    o: target_serialize_source_from_model(target: target, emitted: node),
-    f: fn(source) {
-      outcome_accepted(
-        value: self_host_stage_emission(node: node, source: source)
-      )
-    }
-  )
-}
-
 fn self_host_fixpoint_equal(
   stage1: SelfHostStageEmission,
   stage2: SelfHostStageEmission
@@ -165,6 +145,11 @@ fn self_host_fixpoint_witness(
   }
 }
 
+fn source_models_regen_byte_pair_ready(models: SourceModels) -> Bool {
+  !string_is_empty(s: models.stage1_committed_seed_source.carried)
+    && !string_is_empty(s: models.stage2_regen_emitted_source.carried)
+}
+
 fn bootstrap_roundtrip_check(
   produced_stage: CoreNode,
   expected_stage: CoreNode
@@ -184,48 +169,27 @@ fn bootstrap_roundtrip_check(
   }
 }
 
-fn fixed_point_scaffold_with_sources(
-  emitted_stage: CoreNode,
-  reference_stage: CoreNode,
-  reference_source: Medium<String>,
-  emitted_source: Medium<String>
+fn fixed_point_scaffold(
+  stage1_node: CoreNode,
+  stage2_node: CoreNode,
+  source_models: SourceModels
 ) -> FixedPointCheck {
   self_host_fixpoint_witness(
-    stage1: self_host_stage_emission(node: reference_stage, source: reference_source),
-    stage2: self_host_stage_emission(node: emitted_stage, source: emitted_source)
-  )
-}
-
-fn fixed_point_scaffold_serialized(
-  emitted_stage: CoreNode,
-  reference_stage: CoreNode,
-  target: TargetModel
-) -> FixedPointCheck {
-  match self_host_stage_emission_serialized(node: reference_stage, target: target) {
-    Accepted { value: stage1, diagnostics: _ } =>
-      match self_host_stage_emission_serialized(node: emitted_stage, target: target) {
-        Accepted { value: stage2, diagnostics: _ } =>
-          self_host_fixpoint_witness(stage1: stage1, stage2: stage2)
-        Rejected { diagnostics: d } => Violates { diagnostic: d.head }
-      }
-    Rejected { diagnostics: d } => Violates { diagnostic: d.head }
-  }
-}
-
-fn fixed_point_scaffold(
-  emitted_stage: CoreNode,
-  reference_stage: CoreNode
-) -> FixedPointCheck {
-  fixed_point_scaffold_serialized(
-    emitted_stage: emitted_stage,
-    reference_stage: reference_stage,
-    target: self_host_default_target
+    stage1: self_host_stage_emission(
+      node: stage1_node,
+      source: source_models.stage1_committed_seed_source
+    ),
+    stage2: self_host_stage_emission(
+      node: stage2_node,
+      source: source_models.stage2_regen_emitted_source
+    )
   )
 }
 
 fn candidate_promotion_witness(
   stage1_candidate: CoreNode,
-  reference_stage1: CoreNode
+  reference_stage1: CoreNode,
+  source_models: SourceModels
 ) -> PromotionWitness {
   PromotionWitness {
     candidate_bootstrap_roundtrip_sub_check: bootstrap_roundtrip_check(
@@ -233,8 +197,9 @@ fn candidate_promotion_witness(
       expected_stage: reference_stage1
     ),
     candidate_fixed_point_sub_check: fixed_point_scaffold(
-      emitted_stage: stage1_candidate,
-      reference_stage: reference_stage1
+      stage1_node: reference_stage1,
+      stage2_node: stage1_candidate,
+      source_models: source_models
     )
   }
 }
@@ -247,14 +212,19 @@ fn stage_emission_closedness(reference_stage1: CoreNode) -> StructuralPropertyWi
 }
 
 fn self_host_fixed_point_digests_match(
-  emitted_stage1: CoreNode,
-  emitted_stage2: CoreNode,
-  source1: Medium<String>,
-  source2: Medium<String>
+  stage1_node: CoreNode,
+  stage2_node: CoreNode,
+  source_models: SourceModels
 ) -> Bool {
   self_host_snake_closes(
-    stage1: self_host_stage_emission(node: emitted_stage1, source: source1),
-    stage2: self_host_stage_emission(node: emitted_stage2, source: source2)
+    stage1: self_host_stage_emission(
+      node: stage1_node,
+      source: source_models.stage1_committed_seed_source
+    ),
+    stage2: self_host_stage_emission(
+      node: stage2_node,
+      source: source_models.stage2_regen_emitted_source
+    )
   )
 }
 
@@ -291,16 +261,26 @@ fn self_host_fixed_point_validate(
   source_models: SourceModels,
   reference_stage1: CoreNode
 ) -> Outcome<PromotionWitness> {
-  if length(xs: source_models.model_corpus) > 0 {
+  if !source_models_regen_byte_pair_ready(models: source_models) {
     Rejected {
       diagnostics: diagnostics_singleton(d: self_host_runner_not_realized_diagnostic())
     }
   } else {
-    outcome_accepted(
-      value: candidate_promotion_witness(
-        stage1_candidate: stage1_candidate,
-        reference_stage1: reference_stage1
-      )
-    )
+    match fixed_point_scaffold(
+      stage1_node: reference_stage1,
+      stage2_node: stage1_candidate,
+      source_models: source_models
+    ) {
+      Holds { value: _ } =>
+        outcome_accepted(
+          value: candidate_promotion_witness(
+            stage1_candidate: stage1_candidate,
+            reference_stage1: reference_stage1,
+            source_models: source_models
+          )
+        )
+      Violates { diagnostic: d } =>
+        Rejected { diagnostics: diagnostics_singleton(d: d) }
+    }
   }
 }
