@@ -168,6 +168,7 @@ fn run() -> Result<(), String> {
     // surface as cargo errors. Build it to measure them; the committed seed is
     // never touched.
     let mut emit_fresh: Option<PathBuf> = None;
+    let mut write_manifest: Option<PathBuf> = None;
     let verify_only = match args.as_slice() {
         [] => false,
         [flag] if flag == "--verify" => true,
@@ -175,12 +176,18 @@ fn run() -> Result<(), String> {
             emit_fresh = Some(PathBuf::from(dir));
             false
         }
+        [flag, dir, mflag, mpath] if flag == "--emit-fresh" && mflag == "--write-manifest" => {
+            emit_fresh = Some(PathBuf::from(dir));
+            write_manifest = Some(PathBuf::from(mpath));
+            false
+        }
         unexpected => {
             return Err(format!(
                 "regen_stage0: unexpected arguments: {unexpected:?}\n\
-                 Usage: regen_stage0 [--verify | --emit-fresh <dir>]\n\
+                 Usage: regen_stage0 [--verify | --emit-fresh <dir> [--write-manifest <path>]]\n\
                  Omit flags to write stage0; pass exactly `--verify` to check without writing;\n\
-                 pass `--emit-fresh <dir>` to assemble the faithful emitted crate into <dir> and stop."
+                 pass `--emit-fresh <dir>` to assemble the faithful emitted crate into <dir> and stop;\n\
+                 add `--write-manifest <path>` to also write the GENERATED_STAGE0_FILES roster there."
             ));
         }
     };
@@ -233,6 +240,16 @@ fn run() -> Result<(), String> {
             elapsed_ms: elapsed_ms(run_started),
             changed_generated_files: Vec::new(),
         })?;
+        if let Some(manifest_path) = &write_manifest {
+            let content = GENERATED_STAGE0_FILES.join("\n");
+            fs::write(manifest_path, content)
+                .map_err(|e| format!("write roster manifest {}: {e}", manifest_path.display()))?;
+            println!(
+                "regen_stage0 --write-manifest: wrote {} file entries to {}",
+                GENERATED_STAGE0_FILES.len(),
+                manifest_path.display()
+            );
+        }
         println!(
             "regen_stage0 --emit-fresh: assembled faithful emitted crate at {}",
             fresh_dir.display()

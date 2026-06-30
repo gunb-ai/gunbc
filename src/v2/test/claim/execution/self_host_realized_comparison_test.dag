@@ -1,0 +1,114 @@
+module v2.test.execution.self_host_realized_comparison
+
+import extdeps.communication.medium { Lossless, Medium }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.text { string_is_empty }
+import v2.std.node {
+  Atom,
+  Edge,
+  Node,
+  TypeNode,
+  SyntheticOccurrence
+}
+import v2.compiler.self_host {
+  boundary_tag_bytes,
+  canonical_emitted_bytes_digest,
+  fixed_point_scaffold,
+  fold_side_bytes,
+  read_roster_manifest,
+  self_host_snake_closes,
+  self_host_stage_emission,
+  source_models_from_manifest_and_roots,
+  source_models_from_roster_and_roots,
+  SourceModels
+}
+import v2.std.witness { Holds, Violates }
+import tools.self_host_realized_comparison_transport {
+  realized_comparison_committed_src_root,
+  realized_comparison_emitted_src_root,
+  realized_comparison_roster_manifest_path,
+  run_self_host_realized_comparison_emit
+}
+
+data realized_single_file_roster: List<String> = ["lib.rs"]
+
+fn realized_comparison_fixture_leaf() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^realized_comparison_fixture_leaf } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+test fn self_host_realized_comparison_reads_committed_bytes_holds() -> Bool {
+  let side = fold_side_bytes(
+    root: realized_comparison_committed_src_root,
+    roster: realized_single_file_roster
+  )
+  !string_is_empty(s: side)
+}
+
+test fn self_host_realized_comparison_boundary_tag_deterministic_holds() -> Bool {
+  let side1 = fold_side_bytes(
+    root: realized_comparison_committed_src_root,
+    roster: realized_single_file_roster
+  )
+  let side2 = fold_side_bytes(
+    root: realized_comparison_committed_src_root,
+    roster: realized_single_file_roster
+  )
+  side1 == side2
+}
+
+test fn self_host_realized_comparison_drifted_one_byte_fails_holds() -> Bool {
+  let side_lib = fold_side_bytes(
+    root: realized_comparison_committed_src_root,
+    roster: ["lib.rs"]
+  )
+  let side_vrt = fold_side_bytes(
+    root: realized_comparison_committed_src_root,
+    roster: ["v1_rt.rs"]
+  )
+  side_lib != side_vrt
+}
+
+test fn self_host_realized_comparison_discriminates_holds() -> Bool {
+  let models_identical = source_models_from_roster_and_roots(
+    committed_root: realized_comparison_committed_src_root,
+    emitted_root: realized_comparison_committed_src_root,
+    roster: realized_single_file_roster
+  )
+  let models_drifted = SourceModels {
+    stage1_committed_seed_source: Medium {
+      carried: fold_side_bytes(
+        root: realized_comparison_committed_src_root,
+        roster: ["lib.rs"]
+      ),
+      fidelity: Lossless
+    },
+    stage2_regen_emitted_source: Medium {
+      carried: fold_side_bytes(
+        root: realized_comparison_committed_src_root,
+        roster: ["v1_rt.rs"]
+      ),
+      fidelity: Lossless
+    }
+  }
+  match fixed_point_scaffold(
+    stage1_node: realized_comparison_fixture_leaf(),
+    stage2_node: realized_comparison_fixture_leaf(),
+    source_models: models_identical
+  ) {
+    Holds { value: _ } => true
+    Violates { diagnostic: _ } => false
+  }
+  && match fixed_point_scaffold(
+    stage1_node: realized_comparison_fixture_leaf(),
+    stage2_node: realized_comparison_fixture_leaf(),
+    source_models: models_drifted
+  ) {
+    Holds { value: _ } => false
+    Violates { diagnostic: d } => d.reason == ^self_host_fixpoint_digest_mismatch
+  }
+}
