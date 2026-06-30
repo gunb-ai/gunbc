@@ -42,7 +42,14 @@ fn js_regex_escape_literal(s: String) -> String {
   let s5 = join(split(s: s4, delimiter: "*"), "\\*")
   let s6 = join(split(s: s5, delimiter: "("), "\\(")
   let s7 = join(split(s: s6, delimiter: ")"), "\\)")
-  s7
+  let s8 = join(split(s: s7, delimiter: "^"), "\\^")
+  let s9 = join(split(s: s8, delimiter: "$"), "\\$")
+  let s10 = join(split(s: s9, delimiter: "["), "\\[")
+  let s11 = join(split(s: s10, delimiter: "]"), "\\]")
+  let s12 = join(split(s: s11, delimiter: "\{"), "\\\{")
+  let s13 = join(split(s: s12, delimiter: "\}"), "\\\}")
+  let s14 = join(split(s: s13, delimiter: "|"), "\\|")
+  s14
 }
 
 fn emit_path_template_re(template: PathTemplate) -> String {

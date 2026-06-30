@@ -79,6 +79,22 @@ type NodeHttpServerRouteBinding {
   listener: NodeHttpRequestListener
 }
 
+type NodeHttpCreateServerServe {
+  route_bindings: List<NodeHttpServerRouteBinding>
+}
+
+type NodeHttpCreateServerEffectChain {
+  serve: NodeHttpCreateServerServe
+  listen: HttpServerListenConfig
+}
+
+type NodeHttpCreateServerEmissionTarget {
+  service_name: String
+  effects: NodeHttpCreateServerEffectChain
+}
+
+data node_http_create_server_chain_dissolution_trigger: String = "dissolve-on: P3 dynamic-handler serving lane inhabits NodeHttpCreateServerEmissionTarget/EffectChain/Serve — these become live when a realization handler binds a handler_name dispatch to each NodeHttpServerRouteBinding"
+
 type ServedStaticRoute {
   method: HttpMethod
   path_pattern: PathTemplate
