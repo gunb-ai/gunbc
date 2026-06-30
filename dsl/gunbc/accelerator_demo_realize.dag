@@ -1,6 +1,15 @@
 module gunbc.accelerator_demo_realize
 
-import std.types { Bool, Int, List }
+import std.types { Bool, Int, List, Float }
+import std.numerical_contract {
+  NumericalContract,
+  FloatApproximate,
+  FmaContractionRefused,
+  FmaContractionPermitted,
+  float_contract,
+}
+import std.approximate_field { ToNearestEven }
+import extdeps.communication.medium { DecodeFidelity, Lossless, Lossy }
 import gunbc.accelerator_demo_program {
   AcceleratorDemoProgram,
   PureElementwiseMap,
@@ -10,14 +19,18 @@ import gunbc.accelerator_demo_program {
   relu_mul_add_effectful_program,
   relu_mul_add_gather_program,
   program_op_codes,
+  fma_contraction_refused_policy_code,
+  fma_contraction_permitted_policy_code,
 }
 import gunbc.accelerator_demo_recognizer {
   recognize_accelerator_program,
+  recognize_accelerator_program_with_contract,
   witness_pure_program_structurally_recognized,
   witness_effectful_program_structurally_refused,
   witness_gather_program_structurally_refused,
 }
 import gunbc.accelerator_demo_eval { eval_accelerator_program }
+import gunbc.accelerator_demo_float_eval { eval_accelerator_program_float }
 import gunbc.accelerator_demo_plan {
   AcceleratorRecognitionOutcome,
   AcceleratorRefusalReason,
@@ -28,7 +41,10 @@ import gunbc.accelerator_demo_plan {
   FmaContractionViolatesContract,
   AcceleratorUnsupportedNumericalDomain,
 }
-import extdeps.languages.simd.kernel { contiguous_loop_elementwise_kernel }
+import extdeps.languages.simd.kernel {
+  contiguous_loop_elementwise_kernel,
+  contiguous_loop_elementwise_float_kernel,
+}
 
 data accelerator_demo_recognizer_dissolution_trigger: String = "dissolve-on: feature:dag-elementwise-recognizer-lens — AcceleratorDemoProgram struct is stepping stone; replace with read-only Node-tree lens inspecting real map(i => …) program values"
 
@@ -238,3 +254,161 @@ fn witness_structural_recognition_refusal_arms() -> Bool {
   witness_effectful_program_structurally_refused()
     && witness_gather_program_structurally_refused()
 }
+
+fn float_fma_discriminating_a() -> List<Float> {
+  [1.0000000596046446]
+}
+
+fn float_fma_discriminating_b() -> List<Float> {
+  [1.0000000596046446]
+}
+
+fn float_fma_discriminating_c() -> List<Float> {
+  [-1.0]
+}
+
+fn float_contract_refused() -> NumericalContract {
+  float_contract(rounding: ToNearestEven, fma: FmaContractionRefused)
+}
+
+fn float_contract_permitted() -> NumericalContract {
+  float_contract(rounding: ToNearestEven, fma: FmaContractionPermitted)
+}
+
+fn float_list_eq(left: List<Float>, right: List<Float>) -> Bool {
+  if left.length() != right.length() {
+    false
+  } else if left.length() == 0 {
+    true
+  } else {
+    match left.first() {
+      Present { value: l } =>
+        match right.first() {
+          Present { value: r } =>
+            if l != r {
+              false
+            } else {
+              float_list_eq(left: left.skip(n: 1), right: right.skip(n: 1))
+            }
+          Absent => false
+        }
+      Absent => false
+    }
+  }
+}
+
+fn eval_float_program_via_kernel(
+  program: AcceleratorDemoProgram,
+  fma_contraction_policy: Int,
+  a: List<Float>,
+  b: List<Float>,
+  c: List<Float>
+) -> List<Float> {
+  match program {
+    PureElementwiseMap { ops: _ } =>
+      contiguous_loop_elementwise_float_kernel(
+        op_codes: program_op_codes(program: program),
+        fma_contraction_policy: fma_contraction_policy,
+        a: a,
+        b: b,
+        c: c
+      )
+    EffectfulElementwiseMap { ops: _ } => []
+    DataDependentGatherMap { ops: _ } => []
+  }
+}
+
+fn float_differential_harness_for_program(
+  program: AcceleratorDemoProgram,
+  fma_contraction_policy: Int,
+  a: List<Float>,
+  b: List<Float>,
+  c: List<Float>
+) -> DifferentialVerdict {
+  let oracle = eval_accelerator_program_float(program: program, a: a, b: b, c: c)
+  let kernel = eval_float_program_via_kernel(
+    program: program,
+    fma_contraction_policy: fma_contraction_policy,
+    a: a,
+    b: b,
+    c: c
+  )
+  if float_list_eq(left: oracle, right: kernel) {
+    BitExact
+  } else {
+    Mismatch
+  }
+}
+
+fn witness_float_fma_refused_bit_exact_on_fixture() -> Bool {
+  match float_differential_harness_for_program(
+    program: relu_mul_add_pure_program,
+    fma_contraction_policy: fma_contraction_refused_policy_code(),
+    a: float_fma_discriminating_a(),
+    b: float_fma_discriminating_b(),
+    c: float_fma_discriminating_c()
+  ) {
+    BitExact => true
+    Mismatch => false
+  }
+}
+
+fn witness_float_fma_refused_recognition_is_lossless() -> Bool {
+  match recognize_accelerator_program_with_contract(
+    program: relu_mul_add_pure_program,
+    contract: float_contract_refused(),
+    insist_on_fma_fused_kernel: false
+  ) {
+    Recognized { plan: _, kernel_step: _, contract: _, fidelity: f, target_medium: _ } =>
+      match f {
+        Lossless => true
+        Lossy => false
+      }
+    Refused { reason: _ } => false
+  }
+}
+
+fn witness_float_fma_permitted_is_declared_lossy_not_bit_exact() -> Bool {
+  let oracle = eval_accelerator_program_float(
+    program: relu_mul_add_pure_program,
+    a: float_fma_discriminating_a(),
+    b: float_fma_discriminating_b(),
+    c: float_fma_discriminating_c()
+  )
+  let kernel = eval_float_program_via_kernel(
+    program: relu_mul_add_pure_program,
+    fma_contraction_policy: fma_contraction_permitted_policy_code(),
+    a: float_fma_discriminating_a(),
+    b: float_fma_discriminating_b(),
+    c: float_fma_discriminating_c()
+  )
+  match recognize_accelerator_program_with_contract(
+    program: relu_mul_add_pure_program,
+    contract: float_contract_permitted(),
+    insist_on_fma_fused_kernel: false
+  ) {
+    Recognized { plan: _, kernel_step: _, contract: _, fidelity: f, target_medium: _ } =>
+      match f {
+        Lossy => !float_list_eq(left: oracle, right: kernel)
+        Lossless => false
+      }
+    Refused { reason: _ } => false
+  }
+}
+
+fn witness_float_fma_fused_kernel_refused_when_contract_refuses() -> Bool {
+  match recognize_accelerator_program_with_contract(
+    program: relu_mul_add_pure_program,
+    contract: float_contract_refused(),
+    insist_on_fma_fused_kernel: true
+  ) {
+    Recognized { plan: _, kernel_step: _, contract: _, fidelity: _, target_medium: _ } => false
+    Refused { reason: r } => match r {
+      FmaContractionViolatesContract => true
+      NotElementwisePure => false
+      CarriesEffects => false
+      AcceleratorUnsupportedNumericalDomain => false
+    }
+  }
+}
+

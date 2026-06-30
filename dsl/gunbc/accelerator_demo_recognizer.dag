@@ -20,15 +20,28 @@ import gunbc.accelerator_demo_plan {
   AcceleratorUnsupportedNumericalDomain,
   recognize_with_contract,
   integer_exact_contract,
+  NumericalContract,
 }
 
 fn recognize_accelerator_program(program: AcceleratorDemoProgram) -> AcceleratorRecognitionOutcome {
+  recognize_accelerator_program_with_contract(
+    program: program,
+    contract: integer_exact_contract(),
+    insist_on_fma_fused_kernel: false
+  )
+}
+
+fn recognize_accelerator_program_with_contract(
+  program: AcceleratorDemoProgram,
+  contract: NumericalContract,
+  insist_on_fma_fused_kernel: Bool
+) -> AcceleratorRecognitionOutcome {
   match program {
     PureElementwiseMap { ops: ops } =>
       if pure_elementwise_ops_shape_recognizable(ops: ops) {
         recognize_with_contract(
-          contract: integer_exact_contract(),
-          insist_on_fma_fused_kernel: false
+          contract: contract,
+          insist_on_fma_fused_kernel: insist_on_fma_fused_kernel
         )
       } else {
         Refused { reason: NotElementwisePure }

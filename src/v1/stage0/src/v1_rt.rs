@@ -591,9 +591,47 @@ fn int_relu(x: i64) -> i64 {
     }
 }
 
-/// Host handler for `simd-contiguous-loop` (dissolve-on: feature:dag-kernel-realization-handler).
-/// Lowers `program_op_codes` from `gunbc.accelerator_demo_program` — fail-closed on unknown sequences.
-/// Differential oracle: `gunbc.accelerator_demo_eval.eval_accelerator_program`.
+/// fma_contraction_policy: 0 = separate mul/add (FmaContractionRefused), 1 = fused FMA (Permitted).
+pub fn contiguous_loop_elementwise_float_kernel(
+    op_codes: &[i64],
+    fma_contraction_policy: i64,
+    a: &[f64],
+    b: &[f64],
+    c: &[f64],
+) -> Vec<f64> {
+    const ELEM_MUL: i64 = 1;
+    const ELEM_ADD: i64 = 2;
+    const ELEM_RELU: i64 = 3;
+    if op_codes != [ELEM_MUL, ELEM_ADD, ELEM_RELU] {
+        panic!(
+            "contiguous_loop_elementwise_float_kernel: unsupported op_codes (expected [1,2,3]), got {:?}",
+            op_codes
+        );
+    }
+    assert_eq!(a.len(), b.len());
+    assert_eq!(b.len(), c.len());
+    let mut out = Vec::with_capacity(a.len());
+    for i in 0..a.len() {
+        let elem = match fma_contraction_policy {
+            0 => {
+                let prod = a[i] * b[i];
+                prod + c[i]
+            }
+            1 => a[i].mul_add(b[i], c[i]),
+            other => panic!(
+                "contiguous_loop_elementwise_float_kernel: unknown fma_contraction_policy {other} (expected 0=refused, 1=permitted)"
+            ),
+        };
+        out.push(float_relu_f64(elem));
+    }
+    out
+}
+
+fn float_relu_f64(x: f64) -> f64 {
+    if x > 0.0 { x } else { 0.0 }
+}
+
+/// Host handler for `simd-contiguous-loop` integer path.
 pub fn contiguous_loop_elementwise_kernel(
     op_codes: &[i64],
     a: &[i64],

@@ -3,7 +3,7 @@ module extdeps.languages.simd.kernel
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.communication.medium { Medium, Lossless }
-import std.types { NonEmptyStr, Int, List }
+import std.types { NonEmptyStr, Int, List, Float }
 import std.bytes { pure_dag_seam_unreachable }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -57,11 +57,21 @@ fn contiguous_loop_elementwise_kernel(
   [pure_dag_seam_unreachable()]
 }
 
+fn contiguous_loop_elementwise_float_kernel(
+  op_codes: List<Int>,
+  fma_contraction_policy: Int,
+  a: List<Float>,
+  b: List<Float>,
+  c: List<Float>
+) -> List<Float> {
+  [pure_dag_seam_unreachable()]
+}
+
 data simd_kernel_execution_host_realization_marker: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
     module_path: "extdeps.languages.simd.kernel",
-    decl_name: "contiguous_loop_elementwise_kernel",
+    decl_name: "contiguous_loop_elementwise_float_kernel",
     field: WholeDeclaration
   }
 }

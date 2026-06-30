@@ -15,6 +15,7 @@ import std.numerical_contract {
   FloatApproximate,
   FmaContractionPermitted,
   FmaContractionRefused,
+  float_contract,
 }
 import extdeps.communication.medium { DecodeFidelity, Lossless, Lossy }
 import gunbc.accelerator_demo_plan {
@@ -28,7 +29,19 @@ import gunbc.accelerator_demo_plan {
   AcceleratorUnsupportedNumericalDomain,
   demo_plan_fused_op_count,
   demo_target_label,
+  integer_exact_contract,
 }
+import gunbc.accelerator_demo_program {
+  AcceleratorDemoProgram,
+  PureElementwiseMap,
+  EffectfulElementwiseMap,
+  DataDependentGatherMap,
+  relu_mul_add_pure_program,
+  relu_mul_add_effectful_program,
+  elementwise_op_count,
+}
+import gunbc.accelerator_demo_recognizer { recognize_accelerator_program_with_contract }
+import std.approximate_field { ToNearestEven }
 import std.realization_schedule { RealizationPlan }
 import std.measure { Nano }
 
@@ -194,4 +207,172 @@ fn witness_render_recognized_integer_plan_line() -> Bool {
       }
     }
   ) == "recognized: accelerator-demo-relu-mul-add-v1 fused_ops=3 placement=LocalAccelerator medium=simd-contiguous-loop contract=IntegerExact fidelity=Lossless"
+}
+
+type TriptychRightPanel
+  = TriptychPlan { plan: AcceleratorDemoPlanView }
+  | TriptychRefusal {
+      reason_label: String
+      located_program_constructor: String
+    }
+
+type AcceleratorDemoTriptychView {
+  left_program_sketch: String
+  middle_lifted_subgraph: String
+  right: TriptychRightPanel
+}
+
+fn render_program_constructor(program: AcceleratorDemoProgram) -> String {
+  match program {
+    PureElementwiseMap { ops: _ } => "PureElementwiseMap"
+    EffectfulElementwiseMap { ops: _ } => "EffectfulElementwiseMap"
+    DataDependentGatherMap { ops: _ } => "DataDependentGatherMap"
+  }
+}
+
+fn render_program_sketch(program: AcceleratorDemoProgram) -> String {
+  concat(
+    "map(i => relu(a[i]*b[i]+c[i]))  [",
+    concat(render_program_constructor(program: program), "]")
+  )
+}
+
+fn render_lifted_subgraph(program: AcceleratorDemoProgram) -> String {
+  concat(
+    "fused elementwise kernel: Mul -> Add -> Relu (op_count=",
+    concat(
+      to_string(elementwise_op_count(program: program)),
+      ")"
+    )
+  )
+}
+
+fn project_triptych_right_panel(
+  outcome: AcceleratorRecognitionOutcome,
+  program: AcceleratorDemoProgram
+) -> TriptychRightPanel {
+  match outcome {
+    Recognized {
+      plan: plan,
+      kernel_step: step,
+      contract: contract,
+      fidelity: fidelity,
+      target_medium: medium,
+    } =>
+      TriptychPlan {
+        plan: project_plan_view(
+          plan: plan,
+          kernel_placement: step.placement,
+          contract: contract,
+          fidelity: fidelity,
+          target_medium: medium
+        )
+      }
+    Refused { reason: reason } =>
+      TriptychRefusal {
+        reason_label: render_refusal_reason(reason: reason)
+        located_program_constructor: render_program_constructor(program: program)
+      }
+  }
+}
+
+fn project_triptych_view(
+  program: AcceleratorDemoProgram,
+  contract: NumericalContract
+) -> AcceleratorDemoTriptychView {
+  let outcome = recognize_accelerator_program_with_contract(
+    program: program,
+    contract: contract,
+    insist_on_fma_fused_kernel: false
+  )
+  AcceleratorDemoTriptychView {
+    left_program_sketch: render_program_sketch(program: program)
+    middle_lifted_subgraph: render_lifted_subgraph(program: program)
+    right: project_triptych_right_panel(outcome: outcome, program: program)
+  }
+}
+
+fn render_triptych_right_panel(panel: TriptychRightPanel) -> String {
+  match panel {
+    TriptychPlan { plan: plan } => render_plan_view(view: plan)
+    TriptychRefusal { reason_label: reason, located_program_constructor: located } =>
+      concat(
+        "refused at ",
+        concat(located, concat(": ", reason))
+      )
+  }
+}
+
+fn render_triptych_text(view: AcceleratorDemoTriptychView) -> String {
+  concat(
+    "[LEFT: Program]\n",
+    concat(
+      view.left_program_sketch,
+      concat(
+        "\n[MIDDLE: Lifted subgraph]\n",
+        concat(
+          view.middle_lifted_subgraph,
+          concat("\n[RIGHT: Plan + fidelity]\n", render_triptych_right_panel(panel: view.right))
+        )
+      )
+    )
+  )
+}
+
+fn witness_triptych_pure_program_projects_recognized_plan() -> Bool {
+  let view = project_triptych_view(
+    program: relu_mul_add_pure_program,
+    contract: integer_exact_contract()
+  )
+  match view.right {
+    TriptychPlan { plan: plan } =>
+      plan.fused_op_count == 3 && plan.fidelity_label == "Lossless"
+    TriptychRefusal { reason_label: _, located_program_constructor: _ } => false
+  }
+}
+
+fn witness_triptych_effectful_program_projects_located_refusal() -> Bool {
+  let view = project_triptych_view(
+    program: relu_mul_add_effectful_program,
+    contract: integer_exact_contract()
+  )
+  match view.right {
+    TriptychPlan { plan: _ } => false
+    TriptychRefusal { reason_label: reason, located_program_constructor: located } =>
+      reason == "CarriesEffects" && located == "EffectfulElementwiseMap"
+  }
+}
+
+fn witness_triptych_float_permitted_projects_lossy_plan() -> Bool {
+  let view = project_triptych_view(
+    program: relu_mul_add_pure_program,
+    contract: float_contract(rounding: ToNearestEven, fma: FmaContractionPermitted)
+  )
+  match view.right {
+    TriptychPlan { plan: plan } =>
+      plan.contract_label == "FloatApproximate(FmaPermitted)" && plan.fidelity_label == "Lossy"
+    TriptychRefusal { reason_label: _, located_program_constructor: _ } => false
+  }
+}
+
+fn witness_triptych_render_contains_three_panels() -> Bool {
+  let text = render_triptych_text(
+    view: project_triptych_view(
+      program: relu_mul_add_pure_program,
+      contract: integer_exact_contract()
+    )
+  )
+  string_contains(s: text, pattern: "[LEFT: Program]")
+    && string_contains(s: text, pattern: "[MIDDLE: Lifted subgraph]")
+    && string_contains(s: text, pattern: "[RIGHT: Plan + fidelity]")
+}
+
+fn witness_triptych_effectful_render_shows_refusal_panel() -> Bool {
+  let text = render_triptych_text(
+    view: project_triptych_view(
+      program: relu_mul_add_effectful_program,
+      contract: integer_exact_contract()
+    )
+  )
+  string_contains(s: text, pattern: "refused at EffectfulElementwiseMap: CarriesEffects")
 }

@@ -5280,6 +5280,34 @@ fn eval_builtin(
             )))
         }
 
+        "contiguous_loop_elementwise_float_kernel" => {
+            let op_codes = expect_int_list_flex(positional.first().copied(), name)?;
+            let fma_policy = expect_int(positional.get(1).copied(), name)?;
+            let a = expect_float_list_flex(positional.get(2).copied(), name)?;
+            let b = expect_float_list_flex(positional.get(3).copied(), name)?;
+            let c = expect_float_list_flex(positional.get(4).copied(), name)?;
+            if a.len() != b.len() || b.len() != c.len() {
+                return Err(InterpError::TypeError {
+                    msg: format!(
+                        "{name} requires equal-length List<Float> buffer arguments, got lengths {}, {}, {}",
+                        a.len(),
+                        b.len(),
+                        c.len()
+                    ),
+                });
+            }
+            let out = v1_rt::contiguous_loop_elementwise_float_kernel(
+                &op_codes,
+                fma_policy,
+                &a,
+                &b,
+                &c,
+            );
+            Ok(Some(list_value(
+                out.into_iter().map(Value::Float).collect::<Vec<_>>(),
+            )))
+        }
+
         "layer_import_facts" => {
             let std_roots = expect_str_list(positional.first().copied(), "layer_import_facts")?;
             let extdeps_roots = expect_str_list(positional.get(1).copied(), "layer_import_facts")?;
@@ -6380,6 +6408,39 @@ fn expect_int_list_flex(val: Option<&Value>, context: &str) -> InterpResult<Vec<
                 return Err(InterpError::TypeError {
                     msg: format!(
                         "{} expects a List<Int>, got element {}",
+                        context,
+                        other.type_label()
+                    ),
+                })
+            }
+        }
+    }
+    Ok(out)
+}
+
+fn expect_float_list_flex(val: Option<&Value>, context: &str) -> InterpResult<Vec<f64>> {
+    let Some(v) = val else {
+        return Err(InterpError::TypeError {
+            msg: format!("{} requires a List<Float> argument", context),
+        });
+    };
+    let Some(items) = free_monoid_to_vec(v) else {
+        return Err(InterpError::TypeError {
+            msg: format!(
+                "{} expects a List<Float> argument, got {}",
+                context,
+                v.type_label()
+            ),
+        });
+    };
+    let mut out: Vec<f64> = Vec::new();
+    for item in items {
+        match item {
+            Value::Float(n) => out.push(n),
+            other => {
+                return Err(InterpError::TypeError {
+                    msg: format!(
+                        "{} expects a List<Float>, got element {}",
                         context,
                         other.type_label()
                     ),

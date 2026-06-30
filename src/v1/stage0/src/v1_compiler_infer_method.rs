@@ -193,6 +193,11 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
+            "contiguous_loop_elementwise_float_kernel".to_string(),
+            list_of_type_variable("collection_element".to_string()),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
             "extdeps_dead_param_count_for_operation".to_string(),
             int_type(),
         );

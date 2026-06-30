@@ -509,3 +509,11 @@ data contiguous_loop_elementwise_kernel_contract: PrimitiveContract = {
   certainty: Proven,
   carrier_cost: CarrierInsensitive
 }
+
+data contiguous_loop_elementwise_float_kernel_contract: PrimitiveContract = {
+  name: "contiguous_loop_elementwise_float_kernel",
+  work: "n",
+  output_size: "n",
+  certainty: Proven,
+  carrier_cost: CarrierInsensitive
+}
