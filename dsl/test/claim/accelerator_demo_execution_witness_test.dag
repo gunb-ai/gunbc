@@ -34,6 +34,9 @@ import gunbc.accelerator_demo_program {
   relu_mul_add_pure_program,
   witness_relu_mul_add_program_op_codes_are_authority,
 }
+import extdeps.languages.simd.kernel {
+  witness_relu_mul_add_wire_op_codes_are_locked_triplet,
+}
 import gunbc.accelerator_demo_plan { Recognized, Refused }
 
 fn witness_projected_integer_outcome_is_recognized_lossless() -> Bool {
@@ -81,4 +84,5 @@ test fn accelerator_demo_execution_lane_witnesses() -> Bool {
     && witness_projected_integer_outcome_is_recognized_lossless()
     && witness_pure_program_structurally_recognized()
     && witness_relu_mul_add_program_op_codes_are_authority()
+    && witness_relu_mul_add_wire_op_codes_are_locked_triplet()
 }
