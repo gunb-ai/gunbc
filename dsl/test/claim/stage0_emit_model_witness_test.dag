@@ -11,7 +11,7 @@ import gunbc.stage0_emit_model {
 }
 
 fn w_generated_roster_count() -> Bool {
-  generated_stage0_file_count() == 90
+  generated_stage0_file_count() == 89
 }
 
 fn w_structural_generated_files() -> Bool {
@@ -30,12 +30,11 @@ fn w_hand_maintained_not_classified_generated() -> Bool {
 
 fn w_emit_naming_rule() -> Bool {
   stage0_module_emit_basename(module_path: "v1.compiler.emit_rust") == "v1_compiler_emit_rust" &&
-  stage0_module_emit_filename(module_path: "v1.compiler.stage0_emit_roster") == "v1_compiler_stage0_emit_roster.rs" &&
-  is_generated_stage0_file(basename: stage0_module_emit_filename(module_path: "v1.compiler.stage0_emit_roster"))
+  stage0_module_emit_filename(module_path: "v1.compiler.stage0_emit_roster") == "v1_compiler_stage0_emit_roster.rs"
 }
 
-fn w_roster_module_self_included() -> Bool {
-  is_generated_stage0_file(basename: "v1_compiler_stage0_emit_roster.rs")
+fn w_roster_not_yet_committed_generated() -> Bool {
+  !is_generated_stage0_file(basename: "v1_compiler_stage0_emit_roster.rs")
 }
 
 fn w_phase_model_only() -> Bool {
@@ -47,6 +46,6 @@ test fn stage0_emit_model_witnesses() -> Bool {
   w_structural_generated_files() &&
   w_hand_maintained_not_classified_generated() &&
   w_emit_naming_rule() &&
-  w_roster_module_self_included() &&
+  w_roster_not_yet_committed_generated() &&
   w_phase_model_only()
 }
