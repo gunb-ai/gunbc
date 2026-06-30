@@ -388,8 +388,8 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
-            "transport_script_literal_violation_count_for_path".to_string(),
-            int_type(),
+            "transport_script_position_facts_for_path".to_string(),
+            list_of_type_variable("transport_script_position_fact_elem".to_string()),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),

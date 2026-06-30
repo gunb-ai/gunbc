@@ -4,7 +4,6 @@ pub mod inert_carrier_census;
 pub mod languages_consumer_census;
 pub mod medium_structure_census;
 pub mod non_fold_residue_census;
-pub mod transport_script_position_census;
 
 pub use extdeps_shape_transport_policy_census::{
     backfill_pending_entries_value, dead_param_count_for_module_path,
@@ -50,4 +49,3 @@ pub use non_fold_residue_census::{
     non_fold_residue_coproduct_universe_count, non_fold_residue_count,
     non_fold_residue_stale_roster_count, non_fold_residue_unrostered_count,
 };
-pub use transport_script_position_census::transport_script_literal_violation_count_for_path;
