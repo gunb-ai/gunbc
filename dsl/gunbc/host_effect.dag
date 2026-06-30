@@ -1,6 +1,6 @@
 module gunbc.host_effect
 
-import std.types { String, Int }
+import std.types { String, Int, NonEmptyStr }
 import extdeps.bmc.types { RedfishSystemAction }
 import gunbc.fleet_intent { ComputeHost }
 
@@ -14,10 +14,15 @@ type NodeControlPlane =
 
 type Policy = OneShotIdempotent | ConvergeToFixpoint
 
+type HostEffectTransport =
+    LocalShell
+  | SshShell { ssh_host: NonEmptyStr }
+
 type HostEffectIntent {
   target: NodeControlPlane
   effect: HostEffect
   policy: Policy
+  transport: HostEffectTransport
 }
 
 type HostEffectEvidence =

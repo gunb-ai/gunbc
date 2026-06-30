@@ -5914,8 +5914,28 @@ fn eval_builtin(
         "non_fold_residue_coproduct_universe_count" => Ok(Some(Value::Int(
             crate::non_fold_residue_project::non_fold_residue_coproduct_universe_count(),
         ))),
+
+        "complexity_linearity_syntactic_finding_count" => Ok(Some(Value::Int(
+            crate::complexity_linearity_audit_project::complexity_linearity_syntactic_finding_count(
+            ),
+        ))),
+        "complexity_linearity_syntactic_wildcard_finding_count" => Ok(Some(Value::Int(
+            crate::complexity_linearity_audit_project::complexity_linearity_syntactic_wildcard_finding_count(
+            ),
+        ))),
+        "complexity_linearity_syntactic_site_fired" => {
+            let site = expect_str(
+                positional.first().copied(),
+                "complexity_linearity_syntactic_site_fired",
+            )?;
+            Ok(Some(Value::Bool(
+                crate::complexity_linearity_audit_project::complexity_linearity_syntactic_site_fired(
+                    &site,
+                ),
+            )))
+        }
         "census_corpus_roots_follow_layer_authority" => Ok(Some(Value::Bool(
-            crate::module_path_index::census_corpus_roots_follow_layer_authority(),
+            crate::cli_run::census_corpus_roots_follow_layer_authority(),
         ))),
 
         _ => Ok(None),

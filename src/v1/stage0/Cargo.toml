@@ -96,6 +96,16 @@ path = "src/bin/v1_src_dag_parse.rs"
 name = "wiring_liveness_whole_tree"
 path = "src/bin/wiring_liveness_whole_tree.rs"
 
+# SCAFFOLD — emit-only whole-corpus audit for complexity/linearity lens family (SYNTACTIC half).
+# ROADMAP §3 `3-gates-whole` ("complexity budget gates the whole codebase"); audit-first bridge
+# until `decl_facts(roots)` host builtin (#5966) grounds fn-body reflection. Parse-only walk over
+# witness_layer_roots; NOT floor-enrolled — prints findings TSV, exit 0 unless --fail-on-findings.
+# DISSOLUTION: swap stub for decl_facts(roots), move triage roster on-carrier, fold into pure .dag
+# reader (gunbc#5364), then enroll floor gate.
+[[bin]]
+name = "complexity_linearity_audit"
+path = "src/bin/complexity_linearity_audit.rs"
+
 [[bin]]
 name = "measure_whole_tree_resolve"
 path = "src/bin/measure_whole_tree_resolve.rs"

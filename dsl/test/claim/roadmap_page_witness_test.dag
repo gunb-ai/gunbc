@@ -1,0 +1,86 @@
+module test.claim.roadmap_page_witness
+
+import gunbc.roadmap_page {
+  roadmap_page,
+  roadmap_page_for_authority,
+  nodes_ul,
+}
+import gunbc.roadmap_document { RoadmapDocument }
+import gunbc.roadmap_model { RoadmapNode, RoadmapEdge }
+import gunbc.roadmap_authority { authored_merged_prs, authored }
+import extdeps.languages.html { EmitOk, EmitRejected, try_serialize_html_source }
+
+fn authority_page_html() -> String {
+  match try_serialize_html_source(node: roadmap_page_for_authority()) {
+    EmitOk { html: h } => h
+    EmitRejected { reason: _ } => ""
+  }
+}
+
+fn witness_authority_serializes_with_structure() -> Bool {
+  let h = authority_page_html()
+  string_contains(s: h, pattern: "<header><h1>gunbc — roadmap</h1></header>")
+    && string_contains(s: h, pattern: "<main class=\"roadmap\">")
+    && string_contains(s: h, pattern: "class=\"roadmap-section\"")
+    && string_contains(s: h, pattern: "class=\"status status-")
+}
+
+fn empty_doc_html() -> String {
+  let empty = RoadmapDocument { preamble: [], lead_lanes: [], sections: [] }
+  match try_serialize_html_source(node: roadmap_page(doc: empty, merged: [])) {
+    EmitOk { html: h } => h
+    EmitRejected { reason: _ } => ""
+  }
+}
+
+fn witness_empty_doc_is_minimal_shell() -> Bool {
+  let h = empty_doc_html()
+  starts_with(s: h, prefix: "<html><head><meta charset=\"utf-8\"")
+    && string_contains(s: h, pattern: "<title>gunbc — roadmap</title></head>")
+    && string_contains(s: h, pattern: "<body><header><h1>gunbc — roadmap</h1></header><main class=\"roadmap\"></main></body></html>")
+}
+
+fn witness_authority_differs_from_empty() -> Bool {
+  !(authority_page_html() == empty_doc_html())
+}
+
+fn depth_chain_html(fuel: Int) -> String {
+  let parent = authored(id: "p", done: false, content: "parent-node")
+  let child = authored(id: "c", done: false, content: "child-node-title")
+  let edge = RoadmapEdge { child: child.node, parent: parent.node }
+  match try_serialize_html_source(node: nodes_ul(items: [parent], nodes: [parent, child], edges: [edge], merged: [], fuel: fuel)) {
+    EmitOk { html: h } => h
+    EmitRejected { reason: _ } => ""
+  }
+}
+
+fn bold_title_html() -> String {
+  let rn = authored(id: "bold1", done: false, content: "**bold** item")
+  match try_serialize_html_source(node: nodes_ul(items: [rn], nodes: [rn], edges: [], merged: [], fuel: 0)) {
+    EmitOk { html: h } => h
+    EmitRejected { reason: _ } => ""
+  }
+}
+
+fn witness_bold_title_renders_strong() -> Bool {
+  let h = bold_title_html()
+  string_contains(s: h, pattern: "<strong>bold</strong>")
+    && !string_contains(s: h, pattern: "**")
+}
+
+fn witness_depth_cap_fails_honest() -> Bool {
+  let truncated = depth_chain_html(fuel: 0)
+  let expanded = depth_chain_html(fuel: 1)
+  string_contains(s: truncated, pattern: "depth limit")
+    && !string_contains(s: truncated, pattern: "child-node-title")
+    && string_contains(s: expanded, pattern: "child-node-title")
+    && !string_contains(s: expanded, pattern: "depth limit")
+}
+
+test fn roadmap_page_keystone_holds() -> Bool {
+  witness_authority_serializes_with_structure()
+    && witness_empty_doc_is_minimal_shell()
+    && witness_authority_differs_from_empty()
+    && witness_depth_cap_fails_honest()
+    && witness_bold_title_renders_strong()
+}
