@@ -4,12 +4,9 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.communication.medium { Medium, Lossless }
 import std.types { NonEmptyStr, Int, List }
+import std.bytes { pure_dag_seam_unreachable }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-
-fn pure_dag_seam_unreachable() -> Int {
-  1 / 0
-}
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
