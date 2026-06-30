@@ -108,6 +108,12 @@ fn transport_script_live_literal_violation_count_for_path(path: String) -> Int {
   )
 }
 
+fn transport_script_position_facts_live(path: String) -> List<TransportScriptPositionFact> {
+  transport_script_position_facts_for_path(path: path)
+}
+
+data transport_script_position_host_bridge_dissolution_trigger: String = "dissolve-on: gunbc#5364 — host-fed transport_script_position_facts_for_path (cli_run.rs TransportScriptArgShape classify_*) folds into pure Node-tree reader; verdict authority is v2.lens.host_language_transport_script.dag"
+
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: RealizationDispatch }
 }

@@ -1,0 +1,39 @@
+module gunbc.hand_lens_host_bridge_scaffold_watchdog
+
+import std.types { List, String, Bool }
+import v2.std.logic { Bool }
+import v2.lens.host_language_transport_script {
+  transport_script_position_host_bridge_dissolution_trigger
+}
+
+type HostBridgeScaffoldRow {
+  lens_module: String
+  host_seam: String
+  dissolution_trigger: String
+}
+
+data transport_script_position_scaffold_row: HostBridgeScaffoldRow = HostBridgeScaffoldRow {
+  lens_module: "v2.lens.host_language_transport_script"
+  host_seam: "cli_run.rs::transport_script_position_facts_for_path"
+  dissolution_trigger: transport_script_position_host_bridge_dissolution_trigger
+}
+
+data hand_lens_host_bridge_scaffold_roster: List<HostBridgeScaffoldRow> = [
+  transport_script_position_scaffold_row
+]
+
+fn scaffold_dissolution_trigger_nonempty(row: HostBridgeScaffoldRow) -> Bool {
+  row.dissolution_trigger != ""
+}
+
+fn scaffold_dissolution_trigger_cites_5364(row: HostBridgeScaffoldRow) -> Bool {
+  string_contains(s: row.dissolution_trigger, pattern: "5364")
+}
+
+fn hand_lens_host_bridge_scaffold_roster_tracked() -> Bool {
+  all(
+    hand_lens_host_bridge_scaffold_roster,
+    row => scaffold_dissolution_trigger_nonempty(row: row)
+      && scaffold_dissolution_trigger_cites_5364(row: row)
+  )
+}

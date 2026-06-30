@@ -1,0 +1,15 @@
+module test.claim.hand_lens_host_bridge_scaffold_watchdog
+
+import gunbc.hand_lens_host_bridge_scaffold_watchdog {
+  hand_lens_host_bridge_scaffold_roster_tracked,
+  transport_script_position_scaffold_row,
+  scaffold_dissolution_trigger_cites_5364,
+  scaffold_dissolution_trigger_nonempty,
+}
+import v2.std.logic { Bool }
+
+test fn hand_lens_host_bridge_scaffold_roster_tracks_5364_dissolution() -> Bool {
+  hand_lens_host_bridge_scaffold_roster_tracked()
+    && scaffold_dissolution_trigger_nonempty(row: transport_script_position_scaffold_row)
+    && scaffold_dissolution_trigger_cites_5364(row: transport_script_position_scaffold_row)
+}
