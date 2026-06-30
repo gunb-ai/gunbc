@@ -4,6 +4,7 @@
 use self::CostBasis::*;
 use self::Runnable::*;
 use self::RunnableMemoryClass::*;
+use self::ResolveScope::*;
 use self::ScheduleLensViolation::*;
 use crate::std_lens_verdict::LensVerdict::{Holds, Violation};
 use crate::std_lens_verdict::LensVerdictLocus::ModuleWholeFile;
@@ -97,11 +98,21 @@ impl RunnableMemoryClass {
     }
 }
 
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum ResolveScope {
+    ResolveScopeIsolated,
+    ResolveScopeShared,
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RunnableResourceProfile {
     pub heavy_whole_tree_resolve: bool,
     pub spawns_host_compiler: bool,
     pub memory: Rc<RunnableMemoryClass>,
+    pub resolve_scope: ResolveScope,
 }
 
 pub fn runnable_memory_negligible() -> Rc<RunnableMemoryClass> {
@@ -156,13 +167,27 @@ pub fn runnable_memory_substantial_sum(
     }
 }
 
+pub fn resolve_scope_eq(left: ResolveScope, right: ResolveScope) -> bool {
+    match left {
+        ResolveScope::ResolveScopeIsolated => match right {
+            ResolveScope::ResolveScopeIsolated => true,
+            ResolveScope::ResolveScopeShared => false,
+        },
+        ResolveScope::ResolveScopeShared => match right {
+            ResolveScope::ResolveScopeIsolated => false,
+            ResolveScope::ResolveScopeShared => true,
+        },
+    }
+}
+
 pub fn runnable_resource_profile_eq(
     left: Rc<RunnableResourceProfile>,
     right: Rc<RunnableResourceProfile>,
 ) -> bool {
-    (((left.heavy_whole_tree_resolve.clone() == right.heavy_whole_tree_resolve.clone())
+    ((((left.heavy_whole_tree_resolve.clone() == right.heavy_whole_tree_resolve.clone())
         && (left.spawns_host_compiler.clone() == right.spawns_host_compiler.clone()))
         && runnable_memory_class_eq(left.memory.clone(), right.memory.clone()))
+        && resolve_scope_eq(left.resolve_scope.clone(), right.resolve_scope.clone()))
 }
 
 pub fn runnable_resource_profile_negligible() -> Rc<RunnableResourceProfile> {
@@ -170,6 +195,7 @@ pub fn runnable_resource_profile_negligible() -> Rc<RunnableResourceProfile> {
         heavy_whole_tree_resolve: false,
         spawns_host_compiler: false,
         memory: runnable_memory_negligible(),
+        resolve_scope: ResolveScope::ResolveScopeIsolated,
     })
 }
 
@@ -177,12 +203,25 @@ pub fn runnable_resource_profile(
     heavy_whole_tree_resolve: bool,
     spawns_host_compiler: bool,
     memory: Rc<RunnableMemoryClass>,
+    resolve_scope: ResolveScope,
 ) -> Rc<RunnableResourceProfile> {
     Rc::new(RunnableResourceProfile {
         heavy_whole_tree_resolve: heavy_whole_tree_resolve,
         spawns_host_compiler: spawns_host_compiler,
         memory: memory,
+        resolve_scope: resolve_scope,
     })
+}
+
+pub fn runnable_profile_resolve_scope_valid(profile: Rc<RunnableResourceProfile>) -> bool {
+    if profile.heavy_whole_tree_resolve.clone() {
+        match profile.resolve_scope.clone() {
+            ResolveScope::ResolveScopeShared => true,
+            ResolveScope::ResolveScopeIsolated => false,
+        }
+    } else {
+        true
+    }
 }
 
 pub fn runnable_excludes_corpus_co_residence(profile: Rc<RunnableResourceProfile>) -> bool {
@@ -225,6 +264,32 @@ pub fn runnable_forbids_corpus_co_residence(r: Rc<Runnable>) -> bool {
             fused_op_count: _, ..
         } => false,
     }
+}
+
+pub fn runnable_resolve_scope_valid(r: Rc<Runnable>) -> bool {
+    runnable_profile_resolve_scope_valid(runnable_profile(r))
+}
+
+pub fn batch_all_resolve_scope_valid(batch: Rc<Vec<Rc<Runnable>>>) -> bool {
+    if batch.is_empty() {
+        true
+    } else {
+        runnable_resolve_scope_valid(batch[0].clone())
+            && batch_all_resolve_scope_valid(Rc::new(batch[1..].to_vec()))
+    }
+}
+
+pub fn schedule_list_all_resolve_scope_valid(sched: Schedule) -> bool {
+    if sched.is_empty() {
+        true
+    } else {
+        batch_all_resolve_scope_valid(sched[0].clone())
+            && schedule_list_all_resolve_scope_valid(Rc::new(sched[1..].to_vec()))
+    }
+}
+
+pub fn schedule_all_runnables_valid_resolve_scope<S>(plan: Rc<RealizationPlan<S>>) -> bool {
+    schedule_list_all_resolve_scope_valid((*plan.schedule).clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

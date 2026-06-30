@@ -22,6 +22,7 @@ enum Runnable {
     SingleClaim {
         entry: String,
         function: String,
+        use_walk_memo: bool,
     },
     DiscoveryBatch {
         source_roots: Vec<String>,
@@ -119,16 +120,29 @@ fn runnable_from_value(value: &Value, ctx: &InterpContext) -> Result<Runnable, S
             Ok(Runnable::SingleClaim {
                 entry: str_field(fields, "entry", "ClaimRef", ctx)?,
                 function: str_field(fields, "function", "ClaimRef", ctx)?,
+                use_walk_memo: false,
             })
         }
         Value::Variant {
             variant_name,
             fields,
             ..
-        } if ctx.sym_eq(*variant_name, "RunnableSingleClaim") => Ok(Runnable::SingleClaim {
-            entry: str_field(fields, "entry", "RunnableSingleClaim", ctx)?,
-            function: str_field(fields, "function", "RunnableSingleClaim", ctx)?,
-        }),
+        } if ctx.sym_eq(*variant_name, "RunnableSingleClaim") => {
+            let entry = str_field(fields, "entry", "RunnableSingleClaim", ctx)?;
+            let function = str_field(fields, "function", "RunnableSingleClaim", ctx)?;
+            let use_walk_memo = match ctx.field(fields, "profile") {
+                Some(Value::Record { fields: pf, .. }) | Some(Value::Variant { fields: pf, .. }) => {
+                    match ctx.field(pf, "resolve_scope") {
+                        Some(Value::Variant { variant_name: vn, .. }) => {
+                            ctx.sym_eq(*vn, "ResolveScopeShared")
+                        }
+                        _ => false,
+                    }
+                }
+                _ => false,
+            };
+            Ok(Runnable::SingleClaim { entry, function, use_walk_memo })
+        }
         Value::Variant {
             variant_name,
             fields,
@@ -254,6 +268,7 @@ enum BatchUnit {
     SharedClaims {
         entry: String,
         functions: Vec<String>,
+        use_walk_memo: bool,
     },
     UnrunnableSentinel {
         function: String,
@@ -283,7 +298,7 @@ fn group_batch_units(batch: &[Runnable]) -> Vec<BatchUnit> {
                     function: function.clone(),
                 });
             }
-            Runnable::SingleClaim { entry, function } => {
+            Runnable::SingleClaim { entry, function, use_walk_memo } => {
                 if let Some(&idx) = entry_to_unit.get(entry) {
                     if let BatchUnit::SharedClaims { functions, .. } = &mut units[idx] {
                         functions.push(function.clone());
@@ -293,6 +308,7 @@ fn group_batch_units(batch: &[Runnable]) -> Vec<BatchUnit> {
                     units.push(BatchUnit::SharedClaims {
                         entry: entry.clone(),
                         functions: vec![function.clone()],
+                        use_walk_memo: *use_walk_memo,
                     });
                 }
             }
@@ -403,7 +419,7 @@ fn run_batch_unit(
             spawn_width,
             spawn_width_cap,
         )],
-        BatchUnit::SharedClaims { entry, functions } => {
+        BatchUnit::SharedClaims { entry, functions, .. } => {
             run_shared_entry_claims(&source_roots, &entry, &functions)
         }
     }
