@@ -113,6 +113,14 @@ fn ts_cond(test: TsExpr, consequent: TsExpr, alternate: TsExpr) -> TsExpr {
   Cond { test: test, consequent: consequent, alternate: alternate }
 }
 
+fn ts_prefix(op: String, expr: TsExpr) -> TsExpr {
+  Prefix { op: op, expr: expr }
+}
+
+fn ts_spread(expr: TsExpr) -> TsExpr {
+  Spread { expr: expr }
+}
+
 fn ts_block(stmts: List<TsStmt>) -> TsStmt {
   Block { stmts: stmts }
 }

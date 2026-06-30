@@ -35,6 +35,8 @@ import extdeps.languages.typescript.program {
   ts_for_of,
   ts_index,
   ts_cond,
+  ts_prefix,
+  ts_spread,
 }
 
 type NodeHttpStaticServerSpec {
@@ -212,20 +214,25 @@ fn node_http_request_handler_block() -> TsStmt {
           name: "allow",
           value: ts_call(
             callee: ts_member(
-              object: ts_call(
-                callee: ts_ident(name: "Set"),
-                args: [
-                  ts_call(
-                    callee: ts_member(object: ts_ident(name: "pathRoutes"), property: "map"),
+              object: ts_array(elements: [
+                ts_spread(expr: ts_prefix(
+                  op: "new ",
+                  expr: ts_call(
+                    callee: ts_ident(name: "Set"),
                     args: [
-                      ts_arrow(
-                        params: ["r"],
-                        body: ts_expr_stmt(expr: ts_member(object: ts_ident(name: "r"), property: "method"))
+                      ts_call(
+                        callee: ts_member(object: ts_ident(name: "pathRoutes"), property: "map"),
+                        args: [
+                          ts_arrow(
+                            params: ["r"],
+                            body: ts_expr_stmt(expr: ts_member(object: ts_ident(name: "r"), property: "method"))
+                          ),
+                        ]
                       ),
                     ]
-                  ),
-                ]
-              ),
+                  )
+                )),
+              ]),
               property: "join"
             ),
             args: [ts_lit_str(value: ", ")]
