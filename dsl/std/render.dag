@@ -1,7 +1,7 @@
 module std.render
 
 import std.symbols { SemanticColor, SymbolId, Tier }
-import std.languages { CommentSyntax, ConfigFormat, Language, RecordSyntax }
+import std.languages { CommentSyntax, ConfigFormat, Language }
 
 type SpanStyle {
   color: SemanticColor?
@@ -172,6 +172,4 @@ type GeneratorHeader {
   regen_command: String
 }
 
-fn serialize_config_record_entry(syntax: RecordSyntax, key: String, value: String) -> String {
-  concat(concat(concat(concat(key, syntax.kv_separator), syntax.value_prefix), value), syntax.value_suffix)
-}
+data output_format_dissolution_trigger: String = "dissolve-on: gitignore consumer in extdeps.git.gitignore migrates to std.serialize.SerializationKnobs + std.layout.LayoutProtocol + std.languages.ConfigFormat; OutputFormat.name -> ConfigFormat.name, OutputFormat.comment_prefix -> CommentSyntax.line_prefix, OutputFormat.indent_unit -> LayoutProtocol.indent_unit; residue = SerializationKnobs (kv_separator, list_prefix)"
