@@ -1,4 +1,4 @@
-module v2.test.manual.add_arrow_eval_by_execution
+module v2.test.execution.add_arrow_eval_by_execution
 
 import v2.compiler.body_producer { produce_mvp1_add_arrow_with_body }
 import v2.test.complexity_gate.source_bridged_add_subject_producer {
