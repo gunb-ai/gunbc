@@ -1,7 +1,7 @@
 module extdeps.github.checks
 
 import extdeps.github.github { default_api_base, default_per_page }
-import std.types { CommitSha, NonEmptyStr, Timestamp }
+import std.types { CommitSha, NonEmptyStr, Timestamp, Bool }
 import extdeps.github.errors { GitHubErrorShape }
 import std.credentials { EnvVar }
 import extdeps.external_authority { ExternalAuthority }
@@ -86,6 +86,19 @@ fn check_conclusion_wire_label(c: CheckConclusion) -> String {
     Stale => "stale"
     Success => "success"
     TimedOut => "timed_out"
+  }
+}
+
+fn check_conclusion_is_success(c: CheckConclusion) -> Bool {
+  match c {
+    Success => true
+    ActionRequired => false
+    Cancelled => false
+    Failure => false
+    Neutral => false
+    Skipped => false
+    Stale => false
+    TimedOut => false
   }
 }
 

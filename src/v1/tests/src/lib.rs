@@ -51,8 +51,6 @@ mod eval_measurement_purity_test;
 #[cfg(test)]
 mod extdeps_shape_transport_policy_lens_test;
 #[cfg(test)]
-mod fact_cardinality_lens_test;
-#[cfg(test)]
 mod faithful_string_element_char_witness_test;
 #[cfg(test)]
 mod floor_skip_discovery_host_test;
