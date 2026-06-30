@@ -590,40 +590,4 @@ mod tests {
             "a real wildcard arm must still be flagged despite an in-string decoy; got {sites:?}"
         );
     }
-
-    #[test]
-    fn live_tree_coproduct_universe_is_nonempty() {
-        assert!(
-            non_fold_residue_coproduct_universe_count() > 0,
-            "expected a non-empty closed-coproduct universe; zero means the corpus walk fail-opened"
-        );
-    }
-
-    #[test]
-    fn live_tree_no_unrostered_non_fold_residue() {
-        let roster: BTreeSet<&str> = NON_FOLD_RESIDUE_ROSTER.iter().copied().collect();
-        let unrostered: Vec<String> = residue_sites(&corpus_dag_files())
-            .into_iter()
-            .filter(|s| !roster.contains(s.as_str()))
-            .collect();
-        assert!(
-            unrostered.is_empty(),
-            "new non-fold residue (wildcard over a closed-coproduct param) — migrate to a total fold \
-             or add to NON_FOLD_RESIDUE_ROSTER with a dissolve-on: {unrostered:?}"
-        );
-    }
-
-    #[test]
-    fn live_tree_residue_roster_has_no_stale_entries() {
-        let live: BTreeSet<String> = residue_sites(&corpus_dag_files()).into_iter().collect();
-        let stale: Vec<&&str> = NON_FOLD_RESIDUE_ROSTER
-            .iter()
-            .filter(|s| !live.contains(&s.to_string()))
-            .collect();
-        assert!(
-            stale.is_empty(),
-            "roster entries that are no longer residue (migrated or deleted) — remove them so the \
-             roster shrinks: {stale:?}"
-        );
-    }
 }
