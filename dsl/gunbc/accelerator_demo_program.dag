@@ -1,0 +1,128 @@
+module gunbc.accelerator_demo_program
+
+import std.types { Int, List, Bool }
+
+type ElementwiseArrayOp
+  = ElemwiseMul
+  | ElemwiseAdd
+  | ElemwiseRelu
+
+type AcceleratorDemoProgram
+  = PureElementwiseMap { ops: List<ElementwiseArrayOp> }
+  | EffectfulElementwiseMap { ops: List<ElementwiseArrayOp> }
+  | DataDependentGatherMap { ops: List<ElementwiseArrayOp> }
+
+data relu_mul_add_ops: List<ElementwiseArrayOp> = [
+  ElemwiseMul,
+  ElemwiseAdd,
+  ElemwiseRelu,
+]
+
+data relu_mul_add_incomplete_ops: List<ElementwiseArrayOp> = [
+  ElemwiseMul,
+  ElemwiseAdd,
+]
+
+data relu_mul_add_incomplete_pure_program: AcceleratorDemoProgram = PureElementwiseMap {
+  ops: relu_mul_add_incomplete_ops
+}
+
+data relu_mul_add_pure_program: AcceleratorDemoProgram = PureElementwiseMap {
+  ops: relu_mul_add_ops
+}
+
+data relu_mul_add_effectful_program: AcceleratorDemoProgram = EffectfulElementwiseMap {
+  ops: relu_mul_add_ops
+}
+
+data relu_mul_add_gather_program: AcceleratorDemoProgram = DataDependentGatherMap {
+  ops: relu_mul_add_ops
+}
+
+fn elementwise_op_count(program: AcceleratorDemoProgram) -> Int {
+  match program {
+    PureElementwiseMap { ops: ops } => ops.length()
+    EffectfulElementwiseMap { ops: ops } => ops.length()
+    DataDependentGatherMap { ops: ops } => ops.length()
+  }
+}
+
+fn program_ops(program: AcceleratorDemoProgram) -> List<ElementwiseArrayOp> {
+  match program {
+    PureElementwiseMap { ops: ops } => ops
+    EffectfulElementwiseMap { ops: ops } => ops
+    DataDependentGatherMap { ops: ops } => ops
+  }
+}
+
+data elemwise_mul_op_code: Int = 1
+data elemwise_add_op_code: Int = 2
+data elemwise_relu_op_code: Int = 3
+
+data relu_mul_add_wire_op_codes: List<Int> = [
+  elemwise_mul_op_code,
+  elemwise_add_op_code,
+  elemwise_relu_op_code,
+]
+
+data elementwise_op_code_host_realization_note: String = "host kernel fail-closed validation mirrors extdeps.languages.simd.kernel.relu_mul_add_wire_op_codes until feature:dag-kernel-realization-handler dissolves literals into target_model emit; wire authority is program_op_codes(program); roadmap bind: extdeps.languages.simd.kernel.simd_kernel_handler_roadmap_bind"
+
+fn elementwise_op_code(op: ElementwiseArrayOp) -> Int {
+  match op {
+    ElemwiseMul => elemwise_mul_op_code
+    ElemwiseAdd => elemwise_add_op_code
+    ElemwiseRelu => elemwise_relu_op_code
+  }
+}
+
+fn elementwise_op_codes(ops: List<ElementwiseArrayOp>) -> List<Int> {
+  match ops.first() {
+    Absent => []
+    Present { value: head } =>
+      concat(
+        [elementwise_op_code(op: head)],
+        elementwise_op_codes(ops: ops.skip(n: 1))
+      )
+  }
+}
+
+fn program_op_codes(program: AcceleratorDemoProgram) -> List<Int> {
+  elementwise_op_codes(ops: program_ops(program: program))
+}
+
+fn int_list_eq(left: List<Int>, right: List<Int>) -> Bool {
+  if left.length() != right.length() {
+    false
+  } else if left.length() == 0 {
+    true
+  } else {
+    match left.first() {
+      Present { value: l } =>
+        match right.first() {
+          Present { value: r } =>
+            if l != r {
+              false
+            } else {
+              int_list_eq(left: left.skip(n: 1), right: right.skip(n: 1))
+            }
+          Absent => false
+        }
+      Absent => false
+    }
+  }
+}
+
+fn relu_mul_add_op_codes_match(codes: List<Int>) -> Bool {
+  int_list_eq(left: codes, right: relu_mul_add_wire_op_codes)
+}
+
+fn pure_elementwise_ops_shape_recognizable(ops: List<ElementwiseArrayOp>) -> Bool {
+  relu_mul_add_op_codes_match(codes: elementwise_op_codes(ops: ops))
+}
+
+fn witness_relu_mul_add_program_op_codes_are_authority() -> Bool {
+  int_list_eq(
+    left: program_op_codes(program: relu_mul_add_pure_program),
+    right: relu_mul_add_wire_op_codes
+  )
+}
