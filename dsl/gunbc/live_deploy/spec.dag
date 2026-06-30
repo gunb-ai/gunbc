@@ -11,6 +11,7 @@ import gunbc.fleet_intent { srv1_host, ComputeHost }
 import gunbc.fleet_intent_network {
   srv1_tailscale_endpoint,
   fleet_intent_network,
+  operator_host_srv1,
 }
 import gunbc.node_http_server_emit {
   gunbhub_node_http_static_server_spec,
@@ -103,7 +104,7 @@ fn deployment_owned_steps_retract_order() -> List<DeploymentOwnedStep> {
 fn deployment_srv1_target() -> DeploymentHostTarget {
   DeploymentHostTarget {
     host: srv1_host,
-    ssh_host: srv1_tailscale_endpoint.address,
+    ssh_host: operator_host_srv1 as NonEmptyStr,
     tailscale_endpoint: srv1_tailscale_endpoint,
     tailnet_domain: fleet_intent_network.tailnet_domain,
     os_package_manager: srv1_os_package_manager(),

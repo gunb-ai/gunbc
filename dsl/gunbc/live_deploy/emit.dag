@@ -59,13 +59,23 @@ fn deployment_ensured_steps_from_spec(spec: DeploymentSpec) -> List<DeploymentEn
   )
 }
 
+fn emit_sudo_wrapped_script_body(inner: Doc, marker: String) -> Doc {
+  doc_concat(parts: [
+    doc_line_of(text: concat("sudo bash -s <<'", marker, "'")),
+    inner,
+    doc_line_of(text: marker),
+  ])
+}
+
 fn emit_apply_script_body(spec: DeploymentSpec) -> Doc {
   let port = deployment_plan_listen_port(spec: spec)
   let dep_lines = map(
     deployment_ensured_steps_from_spec(spec: spec),
     d => doc_line_of(text: concat("ensure_apt_package ", sh_arg(s: d.package)))
   )
-  doc_concat(parts: concat(
+  emit_sudo_wrapped_script_body(
+    marker: "GUNBC_APPLY_EOF",
+    inner: doc_concat(parts: concat(
     [
       doc_line_of(text: "set -euo pipefail"),
       doc_line_of(text: concat("# GENERATED APPLY by dsl/gunbc/live_deploy/emit.dag host=", spec.target.host.identity)),
@@ -99,11 +109,13 @@ fn emit_apply_script_body(spec: DeploymentSpec) -> Doc {
       doc_line_of(text: "fi"),
       doc_line_of(text: concat("echo live-deploy-receipt host=", spec.target.host.identity, " fold=apply verdict=converged")),
     ]
-  ))
+  )))
 }
 
 fn emit_retract_script_body(spec: DeploymentSpec) -> Doc {
-  doc_concat(parts: [
+  emit_sudo_wrapped_script_body(
+    marker: "GUNBC_RETRACT_EOF",
+    inner: doc_concat(parts: [
     doc_line_of(text: "set -euo pipefail"),
     doc_line_of(text: concat("# GENERATED RETRACT by dsl/gunbc/live_deploy/emit.dag host=", spec.target.host.identity)),
     doc_line_of(text: "# owned-artifacts only — ensured deps (tailscale, nodejs) intentionally NOT purged"),
@@ -113,7 +125,7 @@ fn emit_retract_script_body(spec: DeploymentSpec) -> Doc {
     doc_line_of(text: "systemctl daemon-reload"),
     doc_line_of(text: concat("rm -f ", gunbc_roadmap_server_path)),
     doc_line_of(text: concat("echo live-deploy-receipt host=", spec.target.host.identity, " fold=retract verdict=converged")),
-  ])
+  ]))
 }
 
 fn live_deploy_apply_script_for(spec: DeploymentSpec) -> String {
