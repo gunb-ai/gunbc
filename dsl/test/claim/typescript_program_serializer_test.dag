@@ -1,0 +1,82 @@
+module test.claim.typescript_program_serializer
+
+import std.logic { Bool }
+import extdeps.languages.typescript.program {
+  TsProgram,
+  serialize_typescript_program,
+  ts_ident,
+  ts_lit_str,
+  ts_lit_num,
+  ts_lit_regex,
+  ts_member,
+  ts_call,
+  ts_binop,
+  ts_const,
+  ts_expr_stmt,
+  ts_block,
+  ts_arrow,
+}
+
+fn minimal_add_program() -> TsProgram {
+  TsProgram {
+    ts_nocheck: false,
+    header_lines: [],
+    statements: [
+      ts_const(
+        name: "x",
+        value: ts_binop(
+          left: ts_lit_num(text: "1"),
+          op: "+",
+          right: ts_lit_num(text: "2")
+        )
+      ),
+    ],
+  }
+}
+
+fn regex_literal_program() -> TsProgram {
+  TsProgram {
+    ts_nocheck: false,
+    header_lines: [],
+    statements: [
+      ts_const(name: "re", value: ts_lit_regex(source: "^\\/$")),
+    ],
+  }
+}
+
+test fn typescript_program_serialize_const_holds() -> Bool {
+  serialize_typescript_program(p: minimal_add_program()) == "const x = 1 + 2;"
+}
+
+test fn typescript_program_serialize_regex_holds() -> Bool {
+  serialize_typescript_program(p: regex_literal_program()) == "const re = /^\\/$/;"
+}
+
+test fn typescript_program_serialize_create_server_fragment_holds() -> Bool {
+  let src = serialize_typescript_program(p: TsProgram {
+    ts_nocheck: true,
+    header_lines: ["test"],
+    statements: [
+      ts_expr_stmt(expr: ts_call(
+        callee: ts_member(
+          object: ts_call(callee: ts_ident(name: "require"), args: [ts_lit_str(value: "http")]),
+          property: "createServer"
+        ),
+        args: [
+          ts_arrow(
+            params: ["req", "res"],
+            body: ts_block(stmts: [
+              ts_expr_stmt(expr: ts_call(
+                callee: ts_member(object: ts_ident(name: "res"), property: "end"),
+                args: [ts_lit_str(value: "ok")]
+              )),
+            ])
+          ),
+        ]
+      )),
+    ],
+  })
+  string_contains(s: src, pattern: "createServer")
+    && string_contains(s: src, pattern: "@ts-nocheck")
+    && string_contains(s: src, pattern: "require('http')")
+}
