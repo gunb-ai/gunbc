@@ -70,10 +70,22 @@ fn program_op_codes(program: AcceleratorDemoProgram) -> List<Int> {
 }
 
 fn relu_mul_add_op_codes_match(codes: List<Int>) -> Bool {
-  codes.length() == 3
-    && codes.first() == Present { value: 1 }
-    && codes.skip(n: 1).first() == Present { value: 2 }
-    && codes.skip(n: 2).first() == Present { value: 3 }
+  if codes.length() != 3 {
+    false
+  } else {
+    match codes.first() {
+      Present { value: c0 } =>
+        match codes.skip(n: 1).first() {
+          Present { value: c1 } =>
+            match codes.skip(n: 2).first() {
+              Present { value: c2 } => c0 == 1 && c1 == 2 && c2 == 3
+              Absent => false
+            }
+          Absent => false
+        }
+      Absent => false
+    }
+  }
 }
 
 fn pure_elementwise_ops_shape_recognizable(ops: List<ElementwiseArrayOp>) -> Bool {
