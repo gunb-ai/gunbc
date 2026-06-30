@@ -93,6 +93,8 @@ fn builtin_function_registry() -> Map<String, Node> {
   let m = map_insert(m, "atom_identity_hash", hash_type)
   let m = map_insert(m, "string_contains", bool_type)
   let m = map_insert(m, "filesystem_read", type_variable_node(id: "filesystem_read_result"))
+  let m = map_insert(m, "contiguous_loop_elementwise_kernel", list_of_type_variable(id: "collection_element"))
+  let m = map_insert(m, "contiguous_loop_elementwise_float_kernel", list_of_type_variable(id: "collection_element"))
   let m = map_insert(m, "extdeps_dead_param_count_for_operation", int_type)
   let m = map_insert(m, "shell_materialize_argv_for_operation", list_of_element(element: string_type))
   let m = map_insert(m, "extdeps_dead_param_count_for_path", int_type)
