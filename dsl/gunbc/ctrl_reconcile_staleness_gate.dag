@@ -1,0 +1,54 @@
+module gunbc.ctrl_reconcile_staleness_gate
+
+import extdeps.shell
+import gunbc.ci_layer_roots { witness_layer_roots }
+import std.logic { Bool }
+import extdeps.languages.bash.program {
+  ShellProgram, ShellStmt, ShellWord,
+  lit, var_ref, command, serialize_bash
+}
+import tools.host_prelude { ensure_gunbc_built }
+
+data ctrl_reconcile_staleness_gate_entry: String = "dsl/gunbc/ctrl_reconcile_staleness_claims.dag"
+data ctrl_reconcile_live_recapture_gate_witness: String = "ctrl_reconcile_live_staleness_recapture_gate_holds"
+
+data ctrl_reconcile_staleness_gate_doc: String = "Executable off-floor staleness gate for ctrl-reconcile (#6009 self_host_realized_comparison analog). Trigger: ctrl_reconcile_staleness_gate_passes runs gunbc --claim-run on ctrl_reconcile_live_staleness_recapture_gate_holds, which re-captures live systemctl show -p MemoryMax bytes via host_effect_apply BEFORE comparing to ctrl_reconcile_recorded_show_bytes. A drifted or forged fixture fails closed on the live host. Hermetic floor witnesses (ctrl_reconcile_grounding_witness_test.dag) prove binding discrimination without live I/O."
+
+fn ctrl_reconcile_staleness_gate_source_root_flags() -> List<ShellWord> {
+  fold(witness_layer_roots, init: [], f: (acc, r) => concat(acc, [lit(text: "--source-root"), lit(text: r)]))
+}
+
+fn ctrl_reconcile_staleness_gate_claim_run(function: String) -> ShellStmt {
+  command(words: concat(
+    concat([var_ref(name: "GUNBC"), lit(text: "run")], ctrl_reconcile_staleness_gate_source_root_flags()),
+    [
+      lit(text: "--entry"), lit(text: ctrl_reconcile_staleness_gate_entry),
+      lit(text: "--function"), lit(text: function),
+      lit(text: "--claim-run")
+    ]
+  ))
+}
+
+fn ctrl_reconcile_staleness_gate_program() -> ShellProgram {
+  ShellProgram {
+    set_e: true,
+    statements: concat(
+      ensure_gunbc_built(),
+      [
+        command(words: [lit(text: "cd"), var_ref(name: "ROOT")]),
+        ctrl_reconcile_staleness_gate_claim_run(
+          function: ctrl_reconcile_live_recapture_gate_witness
+        )
+      ]
+    )
+  }
+}
+
+func run_ctrl_reconcile_staleness_gate() -> Bool {
+  let result = shell.Exec.Run(script: serialize_bash(p: ctrl_reconcile_staleness_gate_program()))
+  result.success
+}
+
+func ctrl_reconcile_staleness_gate_passes() -> Bool {
+  run_ctrl_reconcile_staleness_gate()
+}
