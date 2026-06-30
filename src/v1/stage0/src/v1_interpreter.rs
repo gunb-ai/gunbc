@@ -5263,7 +5263,7 @@ fn eval_builtin(
             let std_roots = expect_str_list(positional.first().copied(), "layer_import_facts")?;
             let extdeps_roots = expect_str_list(positional.get(1).copied(), "layer_import_facts")?;
             let facts =
-                crate::layering_imports_project::layer_import_facts(&std_roots, &extdeps_roots);
+                crate::cli_run::layer_import_facts(&std_roots, &extdeps_roots);
             let mut items: Vec<Value> = Vec::new();
             for f in facts {
                 let layer = Value::Variant {
@@ -5290,7 +5290,7 @@ fn eval_builtin(
                 expect_str_list(positional.get(1).copied(), "import_resolution_facts")?;
             let exclude_substrings =
                 expect_str_list(positional.get(2).copied(), "import_resolution_facts")?;
-            let facts = crate::import_resolution_project::import_resolution_facts(
+            let facts = crate::cli_run::import_resolution_facts(
                 &pool_roots,
                 &importer_roots,
                 &exclude_substrings,
@@ -5312,7 +5312,7 @@ fn eval_builtin(
         "module_declaration_facts" => {
             let pool_roots =
                 expect_str_list(positional.first().copied(), "module_declaration_facts")?;
-            let facts = crate::import_resolution_project::module_declaration_facts(&pool_roots);
+            let facts = crate::cli_run::module_declaration_facts(&pool_roots);
             let mut items: Vec<Value> = Vec::new();
             for f in facts {
                 items.push(Value::Record {

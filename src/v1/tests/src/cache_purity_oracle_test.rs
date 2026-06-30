@@ -4,7 +4,7 @@ use std::rc::Rc;
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use v1_compiler::cache_purity_oracle::{
+use v1_compiler::resolved_graph_cache::{
     audit_warm_equals_cold, AuditedRealization, CachePurityViolation, HiddenInputProbe,
 };
 use v1_compiler::cli_run::{
