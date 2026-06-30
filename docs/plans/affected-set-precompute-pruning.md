@@ -36,7 +36,7 @@ let whole_tree_published_keys = match precompute_whole_tree_published_mock_keys(
 
 // Sketch (guarded) — uses PrecomputeOutcome tri-state (see §6):
 // SOUNDNESS CONSTRAINT (see §7): skip is only safe when zero witnesses will execute
-// (all_witnesses_skip) OR when the M1 cache (tidy-hawk-120 §10) can serve keys.
+// (all_witnesses_will_skip) AND the diff does not touch the mock closure.
 // The mock-closure check alone is insufficient — see §7 for why.
 let outcome: PrecomputeOutcome =
     if skip_enabled
@@ -70,6 +70,32 @@ This requires moving the diff-parsing block (currently lines 3520–3552) **befo
 4. Return `true` if any file in `diff_ranges` is in that closure; `false` otherwise.
 
 **Invariant:** over-inclusive is safe (false-positive → precompute runs → correct). False-negative is unsound (miss a declarer that changed → mock keys stale). The `.contains` prefilter is already proven over-inclusive (precompute comment, line 907).
+
+---
+
+## 4b. Existing predicate: `all_witnesses_will_skip`
+
+This is NOT a new function — it is a bulk pre-flight check using the existing per-row skip predicate already applied inside `run_discovery_rows` (cli_run.rs:3721–3731).
+
+**Signature:** `fn all_witnesses_will_skip(rows: &[DiscoveryRow], frontier_seeds: &NodeFrontierSeeds) -> bool`
+
+**Algorithm:** returns `true` iff every row in `rows` would be skipped by the inner loop's existing guard:
+
+```rust
+rows.iter().all(|row| {
+    // Mirrors the per-row predicate at cli_run.rs:3721-3731
+    !entry_touches_frontier_seeds_static(&row.entry, frontier_seeds)
+        && !frontier_seeds.edited_test_fns.iter().any(|(file, func)| {
+            diff_file_matches_entry(file, &row.entry) && func == &row.function
+        })
+})
+```
+
+**Tie to cli_run.rs:3721–3731:** the inner loop skips when `skip_enabled && !current_entry_touches && !function_edited`. `all_witnesses_will_skip` is the bulk pre-flight form of the same check — it must replicate the same two conditions (`entry_touches_frontier_seeds` + `edited_test_fns`) or over-approximate them (never under-approximate). If the inner loop's skip predicate gains a new conjunct in the future, `all_witnesses_will_skip` must match it or fall back to returning `false` (fail-closed: precompute runs).
+
+**Cost:** O(|rows| × |edited_test_fns|) — the per-entry touch check may require a lightweight file-path match against `frontier_seeds.frontier_files` (the set already built by `collect_frontier_seeds_from_diff_line_ranges`). No resolve, no eval.
+
+**Invariant:** over-inclusive is safe (returns `false` when unsure → precompute runs → correct). False-positive (returns `true` when a witness would have run) is unsound — it would skip the precompute while a witness observes missing keys via the per-entry fallback (v1_interpreter.rs:1114–1121).
 
 ---
 
