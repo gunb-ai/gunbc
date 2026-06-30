@@ -11,13 +11,29 @@ import gunbc.roadmap_model {
   SectionElement, Prose, Group, SectionProse, SectionGroup,
 }
 
-import gunbc.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, PlainLine, item_is_done }
+import gunbc.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, PlainLine, item_is_done, signoff_accepts, signoff_by }
 import ctrl.process_algebra { ProcessNodeId }
 
 fn roadmap_max_depth() -> Int { 8 }
 
 fn node_is_done(rn: RoadmapNode, merged: List<Int>) -> Bool {
+  signoff_accepts(s: rn.signoff)
+}
+
+fn node_evidence_present(rn: RoadmapNode, merged: List<Int>) -> Bool {
   item_is_done(item: rn.line, merged: merged)
+}
+
+fn signoff_suffix_inlines(rn: RoadmapNode, merged: List<Int>) -> List<MarkdownInline> {
+  if signoff_accepts(s: rn.signoff) {
+    [TextInline { text: concat(" — ✓ signed off: ", signoff_by(s: rn.signoff)) }]
+  } else {
+    if node_evidence_present(rn: rn, merged: merged) {
+      [TextInline { text: " — ⏳ awaiting sign-off" }]
+    } else {
+      []
+    }
+  }
 }
 
 fn pointer_inlines(p: Pointer) -> List<MarkdownInline> {
@@ -90,7 +106,7 @@ fn plain_item_for(rn: RoadmapNode) -> MarkdownListItem {
 }
 
 fn task_item_for(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>, fuel: Int) -> MarkdownTaskItem {
-  let para = ParagraphBlock { inlines: node_inlines(rn: rn) }
+  let para = ParagraphBlock { inlines: concat(node_inlines(rn: rn), signoff_suffix_inlines(rn: rn, merged: merged)) }
   let kids = if fuel > 0 { children_of(nodes: nodes, edges: edges, parent: rn.node) } else { [] }
   let blocks = if count(kids) > 0 {
     concat([para], nodes_to_blocks(items: kids, nodes: nodes, edges: edges, merged: merged, fuel: fuel - 1))

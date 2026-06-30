@@ -8295,11 +8295,15 @@ fn emit_cargo_toml(crate_name: String, has_services: Bool) -> TextFile {
   let header = concat(render_cargo_package_header_prefix(name: crate_name), "\nedition = \"2021\"\n")
   let workspace = "\n[workspace]\n"
   let base_deps = [
+    emit_cargo_dep(name: "im-rc", version: "15.1", features: []),
+    emit_cargo_dep(name: "unicode-ident", version: "1", features: []),
+    emit_cargo_dep(name: "unicode-properties", version: "0.1", features: ["emoji"]),
     emit_cargo_dep(name: "serde", version: "1", features: ["derive", "rc"]),
     emit_cargo_dep(name: "serde_json", version: "1", features: []),
     emit_cargo_dep(name: "stacker", version: "0.1", features: []),
     emit_cargo_dep(name: "clap", version: "4", features: ["derive"]),
-    emit_cargo_dep(name: "lazy_static", version: "1", features: [])
+    emit_cargo_dep(name: "lazy_static", version: "1", features: []),
+    emit_cargo_dep(name: "ureq", version: "2", features: ["json"])
   ]
   let async_deps = if has_services {
     [
