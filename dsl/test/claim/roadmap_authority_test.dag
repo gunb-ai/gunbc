@@ -41,19 +41,22 @@ fn witness_emit_refs_from_binding() -> Bool {
 
 fn witness_c1_measure_rows() -> Bool {
   string_contains(s: out(),
-    pattern: "- [x] **Section 1 spawn-width foundation — std.measure expressibility** (#5470/#5478)")
+    pattern: "- [ ] **Section 1 spawn-width foundation — std.measure expressibility** (#5470/#5478)")
+    && string_contains(s: out(), pattern: "⏳ awaiting sign-off")
 }
 
 fn witness_c2_roundtrip_law() -> Bool {
   let o = out()
-  string_contains(s: o, pattern: "- [x] **round-trip law (ingest∘emit = id, DecodeFidelity-bounded)** (#5525/#5527)")
-    && string_contains(s: o, pattern: "- [x] **medium axis** —")
+  string_contains(s: o, pattern: "- [ ] **round-trip law (ingest∘emit = id, DecodeFidelity-bounded)** (#5525/#5527)")
+    && string_contains(s: o, pattern: "- [ ] **medium axis** —")
     && string_contains(s: o, pattern: "per-medium round-trips are v1-seed interim")
+    && string_contains(s: o, pattern: "⏳ awaiting sign-off")
 }
 
 fn witness_c3_inversion_subrows() -> Bool {
   string_contains(s: out(),
-    pattern: "- [x] **PR→checkbox status + section-emit + projection layer** (#5491/#5508/#5520)")
+    pattern: "- [ ] **PR→checkbox status + section-emit + projection layer** (#5491/#5508/#5520)")
+    && string_contains(s: out(), pattern: "⏳ awaiting sign-off")
 }
 
 fn witness_c4_selfhost_no_overclaim() -> Bool {
@@ -65,7 +68,8 @@ fn witness_c4_selfhost_no_overclaim() -> Bool {
 
 fn witness_c4_cargo_green_landed() -> Bool {
   string_contains(s: out(),
-    pattern: "- [x] **emitted crate `cargo build`s green (Route-A last mile) ✓ LANDED (#5777/#5873)**")
+    pattern: "- [ ] **emitted crate `cargo build`s green (Route-A last mile) ✓ LANDED (#5777/#5873)**")
+    && string_contains(s: out(), pattern: "⏳ awaiting sign-off")
 }
 
 fn witness_c5_rust_gate_not_greenlit() -> Bool {
@@ -89,10 +93,13 @@ fn witness_b_order_discriminator() -> Bool {
   !string_contains(s: out(), pattern: "**Audits (done):**\n\nThis window = a few days of STABILITY")
 }
 
-fn witness_derivation_has_teeth() -> Bool {
+fn witness_merge_perturb_does_not_flip_boxes() -> Bool {
+  let full = out()
   let dropped = emit_with(m: [5445, 5453, 5433, 5476, 5473, 5456, 5421, 5425])
-  string_contains(s: dropped, pattern: "- [ ] **numeric-tower grounding** (#5428)")
-    && string_contains(s: dropped, pattern: "- [ ] **Section 1 spawn-width foundation — std.measure expressibility** (#5470/#5478)")
+  let pat = "- [ ] **numeric-tower grounding** (#5428)"
+  string_contains(s: full, pattern: pat)
+    && string_contains(s: dropped, pattern: pat)
+    && !string_contains(s: full, pattern: "- [x] **numeric-tower grounding** (#5428)")
     && !string_contains(s: dropped, pattern: "- [x] **numeric-tower grounding** (#5428)")
 }
 
@@ -109,5 +116,5 @@ test fn roadmap_authority_witnesses() -> Bool {
     && witness_a_prose_verbatim()
     && witness_b_ordered_interleaving()
     && witness_b_order_discriminator()
-    && witness_derivation_has_teeth()
+    && witness_merge_perturb_does_not_flip_boxes()
 }
