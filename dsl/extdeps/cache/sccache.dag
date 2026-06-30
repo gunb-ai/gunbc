@@ -41,6 +41,8 @@ data sccache_fatal_error_log_fragment: String = "sccache: encountered fatal erro
 
 data sccache_rustc_wrapper_exit_254_log_fragment: String = "(exit status: 254)"
 
+data sccache_failed_to_execute_compile_log_fragment: String = "sccache: error: failed to execute compile"
+
 data sccache_local_facts: CacheInterfaceCatalogFacts = {
   identity: sccache_local_id
   backing_surface: "sccache-local-disk"
