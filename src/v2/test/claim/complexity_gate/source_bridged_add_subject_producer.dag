@@ -16,7 +16,7 @@ import v2.extdeps.languages.dag {
 import v2.std.collection { List, Set }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome, port_locus }
 import v2.std.grammar { GrammarRoot, ParseTree }
-import v2.std.compilers.lexing { Token }
+import v2.std.compilers.lexing { Token, token_stream_remaining }
 import v2.std.node { Node, Symbol }
 
 fn source_bridged_add_parse_root() -> GrammarRoot {
@@ -54,7 +54,7 @@ fn source_bridged_resolved_add_arrow() -> Outcome<Node> {
     ),
     f: fn(tokens) {
       bind_outcome(
-        o: source_bridged_add_parse_tokens(tokens: tokens.tokens),
+        o: source_bridged_add_parse_tokens(tokens: token_stream_remaining(stream: tokens)),
         f: fn(parsed) {
           bind_outcome(
             o: normalize(parse_tree: parsed),

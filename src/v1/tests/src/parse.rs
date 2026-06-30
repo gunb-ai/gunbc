@@ -663,8 +663,11 @@ fn tokenizer_scanning_scales_linearly() {
     );
 }
 
+// Parse-C scaling oracle (acceptance: un-ignore when v1/02_parse.dag cursor migration +
+// v1_compiler_parse.rs regen lands GENERATED). Substrate witness:
+// v2/test/claim/parse/token_stream_cursor_test.dag
 #[test]
-#[ignore = "Stream D: parser uses List<Token> consumption (skip(1) on Rc<Vec<T>> is O(n)). Structural correctness is established; O(n²) runtime is a known cost of the list-based representation. Fix: runtime slice type or cursor (M4/single-emitter)."]
+#[ignore = "Parse-C: awaiting v1/02_parse.dag cursor migration + GENERATED regen (shape-sign). Substrate grounded in lexing.dag {all,pos}; oracle proves emitted O(1) advance post-regen."]
 fn parser_scales_linearly_with_token_count() {
     use std::time::Instant;
 

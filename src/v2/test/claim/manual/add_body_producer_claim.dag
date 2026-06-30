@@ -26,7 +26,7 @@ import v2.std.diagnostic {
   port_locus
 }
 import v2.std.grammar { GrammarRoot, ParseTree }
-import v2.std.compilers.lexing { Token }
+import v2.std.compilers.lexing { Token, token_stream_remaining }
 import v2.std.collection { List, Set }
 import v2.std.logic { Bool }
 import v2.std.node {
@@ -178,7 +178,7 @@ fn source_bridged_resolved_add_arrow() -> Outcome<Node> {
     o: tokenize(text: dag_mvp1_source_text, file: ^add_body_producer_source_file, rules: lm.lex),
     f: fn(tokens) {
       bind_outcome(
-        o: add_body_parse_add_fn_tokens(tokens: tokens.tokens),
+        o: add_body_parse_add_fn_tokens(tokens: token_stream_remaining(stream: tokens)),
         f: fn(parsed) {
           bind_outcome(
             o: normalize(parse_tree: parsed),
