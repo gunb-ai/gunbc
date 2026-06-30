@@ -54,7 +54,7 @@ data extdeps_fixture_file_anchor_module: QualifiedName = QnCons {
 }
 
 data extdeps_fixture_shadow_masked_module: QualifiedName = QnCons {
-  head: ^extdeps,
+  head: ^test,
   tail: QnCons {
     head: ^fixture,
     tail: QnCons { head: ^external_authority_shadow_masked, tail: QnEmpty }
