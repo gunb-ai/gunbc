@@ -35,8 +35,14 @@ They compose cleanly: a scoped diff that doesn't touch the mock closure → prec
 let whole_tree_published_keys = match precompute_whole_tree_published_mock_keys(source_roots) { … };
 
 // Sketch (guarded) — uses PrecomputeOutcome tri-state (see §6):
+// SOUNDNESS CONSTRAINT (see §7): skip is only safe when zero witnesses will execute
+// (all_witnesses_skip) OR when the M1 cache (tidy-hawk-120 §10) can serve keys.
+// The mock-closure check alone is insufficient — see §7 for why.
 let outcome: PrecomputeOutcome =
-    if skip_enabled && !diff_touches_published_mock_closure(source_roots, &line_ranges_by_file) {
+    if skip_enabled
+        && !diff_touches_published_mock_closure(source_roots, &line_ranges_by_file)
+        && all_witnesses_will_skip(&rows, &frontier_seeds)   // REQUIRED: see §7
+    {
         PrecomputeOutcome::Skipped
     } else {
         match precompute_whole_tree_published_mock_keys(source_roots) {
@@ -47,7 +53,7 @@ let outcome: PrecomputeOutcome =
     };
 ```
 
-This requires moving the diff-parsing block (currently lines 3520–3552) **before** line 3509 so `line_ranges_by_file` is available at the plug point.
+This requires moving the diff-parsing block (currently lines 3520–3552) **before** line 3509 so `line_ranges_by_file` and `frontier_seeds` are available at the plug point.
 
 ---
 
@@ -98,21 +104,25 @@ enum PrecomputeOutcome {
 1. Constructs a synthetic diff that modifies one file **outside** the PublishedMockCase transitive closure (e.g. a change to a test-only `.dag` file).
 2. Calls `run_discovery_corpus_with_options` with `skip_unaffected_node_frontier: true`.
 3. Asserts `outcome == PrecomputeOutcome::Skipped`. Unambiguous: `Skipped` cannot arise from a ran-empty path. Cannot flake.
-4. Fail-closed control (second assertion): a synthetic diff that modifies a file **inside** the PublishedMockCase closure → assert `outcome == PrecomputeOutcome::Keys(_)` (precompute ran and produced keys).
+4. Fail-closed control (second assertion): a synthetic diff that modifies a file **inside** the PublishedMockCase closure → assert `outcome != PrecomputeOutcome::Skipped` (i.e. `EmptyKeys | Keys(_)` — precompute ran). `Keys(_)` specifically is not required here: declarers could legitimately produce zero keys (`EmptyKeys`) while still proving the precompute was not skipped.
 
 **Measured evidence (logged, not the pass/fail gate):**
 
 5. Log wall-clock delta and peak-RSS delta (VmHWM before/after) for both branches. These are reported as `[measurement]` lines satisfying the operator success bar ("wall-clock must move on a scoped diff") without being threshold assertions that flake on noisy runners.
 
-The structural `PrecomputeOutcome::Skipped` / `Keys(_)` check is the executable green-by-execution proof. The measured delta is the evidence that the skip is economically meaningful. Both are required; only the structural assertion is the pass/fail gate.
+The structural `PrecomputeOutcome::Skipped` / `!= Skipped` check is the executable green-by-execution proof. The measured delta is the evidence that the skip is economically meaningful. Both are required; only the structural assertion is the pass/fail gate.
 
 ---
 
-## 7. Fail-safe
+## 7. Fail-safe and soundness constraint
 
-Over-declaration is always safe: if `diff_touches_published_mock_closure` returns `true` (or errors), `precompute_whole_tree_published_mock_keys` runs in full. Skipping is only sound when `false` — the predicate is monotonically safe to be conservative. If the intersection check itself fails, fall back to running the precompute (fail-closed, same pattern as `floor_git_diff_range` failure at line 3524).
+Over-declaration is always safe: if `diff_touches_published_mock_closure` returns `true` (or errors), `precompute_whole_tree_published_mock_keys` runs in full. If the intersection check itself fails, fall back to running the precompute (fail-closed, same pattern as `floor_git_diff_range` failure at line 3524).
 
-The `PrecomputeOutcome::Skipped` path produces no keys for `run_discovery_rows`. This is sound **only** when no affected witness in the pruned run actually uses the mock key set at eval time. The fail-closed control in §6 item 4 confirms this by asserting `Keys(_)` on an in-closure diff. If unsound in a given run, the fallback is trivially available: run the precompute.
+**Why the mock-closure check alone is insufficient:** a diff can miss the PublishedMockCase closure yet still leave witnesses to run (node-frontier / test-fn edits outside the closure). If any of those witnesses call into the mock key registry at eval time (v1_interpreter.rs:1114–1121), they fall back to per-entry `resolve_published_mock_keys` rather than the whole-tree seed, potentially under-populating `governed_services` for corpus-outside-closure mocks (M4.1). This is a fail-open path relative to the unconditional precompute.
+
+**Required tighter guard (see §3 sketch):** skip precompute only when `!diff_touches_published_mock_closure(...)` **AND** `all_witnesses_will_skip(...)` — i.e. the frontier check confirms zero witnesses will execute. When witnesses do run, either serve the precompute result (from M1 cache via tidy-hawk-120 #5959 §10, when available) or run the precompute in full. The conjunction makes skipping safe: `Skipped` means both "keys unused" and "no running witness can observe the omission."
+
+**Alternatively** (composition path): if tidy-hawk-120 M1 cache is available and warm, `Skipped` can safely be replaced by `CachedKeys(precomputed_from_cache)` — no witness starvation, no precompute cost. This is the §10 coordination point; the conjunction guard above is the conservative fallback when M1 is not yet wired.
 
 ---
 
