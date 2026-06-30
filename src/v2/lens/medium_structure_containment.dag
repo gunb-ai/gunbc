@@ -11,8 +11,16 @@ import v2.std.algebra {
   list_snoc_item
 }
 import v2.std.collection { List }
+import v2.std.diagnostic {
+  AmbiguousIntent,
+  Diagnostic,
+  Textual,
+  Unavailable,
+  WholeFile
+}
 import v2.std.logic { Bool }
 import v2.std.text { Char, String }
+import v2.std.witness { Holds, Violates, Witness }
 
 type MediumLeakFace
   = InlineSyntaxLiteral
@@ -270,6 +278,48 @@ fn medium_structure_containment_clean_live(
       emit_fns: emitted_medium_emit_fns,
       string_ops: emitted_medium_string_ops
     )
+  )
+}
+
+fn medium_structure_containment_witness_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: ^medium_structure_containment_leak_detected,
+    at: Textual { file: ^medium_structure_containment_lens_file, extent: WholeFile },
+    correction: Unavailable { reason: AmbiguousIntent }
+  }
+}
+
+fn medium_structure_containment_witness(
+  emit_roots: List<String>,
+  check_roots: List<String>
+) -> Witness<Bool> {
+  if medium_structure_containment_clean_live(
+    emit_roots: emit_roots,
+    check_roots: check_roots
+  ) {
+    Holds { value: true }
+  } else {
+    Violates { diagnostic: medium_structure_containment_witness_diagnostic() }
+  }
+}
+
+fn medium_structure_containment_canonical_witness() -> Witness<Bool> {
+  medium_structure_containment_witness(
+    emit_roots: medium_emit_side_scan_roots,
+    check_roots: medium_check_side_scan_roots
+  )
+}
+
+fn medium_structure_check_roots_with_perturb(perturb_roots: List<String>) -> List<String> {
+  list_append(left: medium_check_side_scan_roots, right: perturb_roots)
+}
+
+fn medium_structure_containment_canonical_with_check_perturb_witness(
+  perturb_roots: List<String>
+) -> Witness<Bool> {
+  medium_structure_containment_witness(
+    emit_roots: medium_emit_side_scan_roots,
+    check_roots: medium_structure_check_roots_with_perturb(perturb_roots: perturb_roots)
   )
 }
 
