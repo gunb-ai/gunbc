@@ -157,7 +157,6 @@ fn str_starts_with(s: String, prefix: String) -> Bool {
 fn name_has_unrecognized_prefix(name: String) -> Bool {
   str_starts_with(s: name, prefix: "Unrecognized")
     || str_starts_with(s: name, prefix: "NonExternal")
-    || str_starts_with(s: name, prefix: "Non")
 }
 
 fn sibling_variant_names(node: Node) -> String {
