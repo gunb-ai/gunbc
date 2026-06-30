@@ -9,7 +9,8 @@
 //
 // DISSOLUTION TRIGGER (named, checkable):
 //   1. Swap `decl_facts_parse_only` body for real `decl_facts(roots)` when #5966 lands.
-//   2. Move `triage_wildcard` kernel-permanent / migration-debt tags on-carrier alongside decl_facts.
+//   2. Move `triage_wildcard` / `triage_complexity` site-classification tables on-carrier
+//      alongside decl_facts — do not let hand-Rust substring heuristics survive the swap.
 //   3. Fold SYNTACTIC projections into a pure `.dag` Node-tree reader when compile-graph access
 //      lands (gunbc#5364) — same additive builtin seam as non_fold_residue_* / inert_carrier_*.
 //   4. Flip floor enrollment once whole-corpus reflection grounds (ROADMAP §3 `3-gates-whole`).
@@ -22,7 +23,10 @@ use std::rc::Rc;
 use std::sync::OnceLock;
 
 use crate::cli_run::{is_test_dag, repo_rel, witness_layer_roots};
-use crate::decl_facts_project::{decl_facts_is_fn_like, logical_qualified_name_from_module, DeclFact};
+use crate::decl_facts_project::{
+    decl_facts_is_fn_like, logical_qualified_name_from_module, DeclFact,
+};
+use crate::medium_structure_project::parse_dag_file;
 use crate::v1_compiler_infer_items::item_kind;
 use crate::v1_std_core::authored_name_at;
 use crate::v1_std_core::{
@@ -118,6 +122,10 @@ fn walk_expr(
         let has_wildcard = match_arm_nodes(node.clone())
             .iter()
             .any(|arm| is_wildcard_arm(arm));
+        // SYNTACTIC (audit-first): any `match` with a `_ =>` arm — signal mixed with kernel noise,
+        // filtered by `triage_wildcard` substring heuristics. GATE PROMOTION (WallAfterGrounding):
+        // must resolve scrutinee to a closed coproduct (see `non_fold_residue_project` conservative
+        // detection) — not path/name substring triage; otherwise §5 validation-not-construction.
         if has_wildcard {
             stats.wildcard_matches += 1;
             if !scrutinee_name.is_empty() {
