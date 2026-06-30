@@ -90,8 +90,6 @@ fn copy_stage0_support_modules(stage1_dir: &std::path::Path, ws: &std::path::Pat
         "fact_cardinality_census.rs",
         "languages_consumer_census.rs",
         "transport_script_position_project.rs",
-        "v1_compiler_dag_collect.rs",
-        "v1_compiler_dag_collect_support.rs",
     ] {
         let src = stage0_src.join(name);
         if src.exists() {
@@ -153,8 +151,6 @@ fn diff_excluding_hand_maintained(
         .arg("--exclude=fact_cardinality_census.rs")
         .arg("--exclude=languages_consumer_census.rs")
         .arg("--exclude=transport_script_position_project.rs")
-        .arg("--exclude=v1_compiler_dag_collect.rs")
-        .arg("--exclude=v1_compiler_dag_collect_support.rs")
         .arg(dir_a)
         .arg(dir_b)
         .output()
