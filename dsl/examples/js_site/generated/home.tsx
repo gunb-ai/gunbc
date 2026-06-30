@@ -1,0 +1,1 @@
+export function JsSiteHomePage(): JSX.Element { return <html><head><title>gunbc — Home</title></head><body><header><h1>gunbc</h1><nav><a href="/">Home</a><a href="/about">About</a><a href="/docs">Docs</a></nav></header><main><p>DAG-modeled compiler. One MarkupNode source, two realizations.</p></main></body></html>; }

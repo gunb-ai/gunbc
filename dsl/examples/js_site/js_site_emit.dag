@@ -27,7 +27,6 @@ import extdeps.languages.react_jsx {
   JsxEmitResult,
   JsxOk,
   JsxRejected,
-  serialize_jsx_component,
 }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
