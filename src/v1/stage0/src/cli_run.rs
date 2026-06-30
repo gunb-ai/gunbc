@@ -2724,12 +2724,19 @@ pub fn discover_floor_corpus_rows_scoped(
     )
 }
 
-fn discover_floor_corpus_rows_inner(
+struct FloorLensHygieneGraph {
+    rows: Vec<DiscoveryRow>,
+    path_imports: std::collections::HashMap<String, Vec<String>>,
+    module_to_path: std::collections::HashMap<String, String>,
+    lens_with_justification: std::collections::BTreeSet<String>,
+}
+
+fn build_floor_lens_hygiene_graph(
     source_roots: &[String],
     scan_dirs: &[String],
     exclude_substrings: &[String],
     discovery_scope_dirs: &[String],
-) -> Result<Vec<DiscoveryRow>, String> {
+) -> Result<FloorLensHygieneGraph, String> {
     let excludes: Vec<String> = exclude_substrings.to_vec();
     let mut rows: Vec<DiscoveryRow> = Vec::new();
     let mut seen: std::collections::BTreeSet<(String, String)> = std::collections::BTreeSet::new();
@@ -2843,6 +2850,87 @@ fn discover_floor_corpus_rows_inner(
             .cmp(&b.entry)
             .then_with(|| a.function.cmp(&b.function))
     });
+    Ok(FloorLensHygieneGraph {
+        rows,
+        path_imports,
+        module_to_path,
+        lens_with_justification,
+    })
+}
+
+fn default_floor_lens_hygiene_roots() -> Vec<String> {
+    let ws = workspace_root();
+    vec![
+        ws.join("dsl").to_string_lossy().into_owned(),
+        ws.join("src/v2").to_string_lossy().into_owned(),
+    ]
+}
+
+fn default_floor_lens_hygiene_scan_dirs() -> Vec<String> {
+    vec![
+        "dsl/test/claim".to_string(),
+        "src/v2/test/claim/manual".to_string(),
+    ]
+}
+
+fn default_floor_lens_hygiene_excludes() -> Vec<String> {
+    FLOOR_DISCOVERY_EXCLUDES
+        .iter()
+        .map(|s| s.to_string())
+        .collect()
+}
+
+/// Floor witness builtin (#5433 sibling to `doc_graph_orphan_count`): unreached top-level
+/// `v2.lens.*` module count. Returns `-1` when the corpus walk fails closed.
+pub fn inert_lens_unreached_module_count() -> i64 {
+    match build_floor_lens_hygiene_graph(
+        &default_floor_lens_hygiene_roots(),
+        &default_floor_lens_hygiene_scan_dirs(),
+        &default_floor_lens_hygiene_excludes(),
+        &[],
+    ) {
+        Ok(graph) => {
+            inert_lens_modules(&graph.rows, &graph.path_imports, &graph.module_to_path).len() as i64
+        }
+        Err(_) => -1,
+    }
+}
+
+/// Floor witness builtin: declared top-level `v2.lens.*` module count (non-vacuity oracle).
+pub fn inert_lens_top_level_module_count() -> i64 {
+    match build_floor_lens_hygiene_graph(
+        &default_floor_lens_hygiene_roots(),
+        &default_floor_lens_hygiene_scan_dirs(),
+        &default_floor_lens_hygiene_excludes(),
+        &[],
+    ) {
+        Ok(graph) => graph
+            .module_to_path
+            .keys()
+            .filter(|m| is_top_level_lens_module(m))
+            .count() as i64,
+        Err(_) => -1,
+    }
+}
+
+fn discover_floor_corpus_rows_inner(
+    source_roots: &[String],
+    scan_dirs: &[String],
+    exclude_substrings: &[String],
+    discovery_scope_dirs: &[String],
+) -> Result<Vec<DiscoveryRow>, String> {
+    let graph = build_floor_lens_hygiene_graph(
+        source_roots,
+        scan_dirs,
+        exclude_substrings,
+        discovery_scope_dirs,
+    )?;
+    let FloorLensHygieneGraph {
+        rows,
+        path_imports,
+        module_to_path,
+        lens_with_justification,
+    } = graph;
     let inert = inert_lens_modules(&rows, &path_imports, &module_to_path);
     if !inert.is_empty() {
         return Err(format!(
@@ -4428,6 +4516,21 @@ mod inert_lens_hygiene_tests {
         assert!(
             inert_lens_modules(&rows, &path_imports, &module_to_path).is_empty(),
             "a transitively-reached sibling lens must count as wired"
+        );
+    }
+
+    #[test]
+    fn builtin_inert_lens_counts_are_green_on_live_corpus() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir to workspace root");
+        assert_eq!(
+            super::inert_lens_unreached_module_count(),
+            0,
+            "every v2.lens.* must be reached by a floor witness"
+        );
+        assert!(
+            super::inert_lens_top_level_module_count() > 0,
+            "lens universe must be non-empty (non-vacuity oracle)"
         );
     }
 

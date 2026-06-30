@@ -5780,6 +5780,13 @@ fn eval_builtin(
             crate::inert_carrier_project::inert_carrier_declared_count(),
         ))),
 
+        "inert_lens_unreached_module_count" => Ok(Some(Value::Int(
+            crate::cli_run::inert_lens_unreached_module_count(),
+        ))),
+        "inert_lens_top_level_module_count" => Ok(Some(Value::Int(
+            crate::cli_run::inert_lens_top_level_module_count(),
+        ))),
+
         "non_fold_residue_count" => Ok(Some(Value::Int(
             crate::non_fold_residue_project::non_fold_residue_count(),
         ))),
