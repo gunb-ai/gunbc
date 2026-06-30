@@ -1,11 +1,11 @@
-module gunbc.live_deploy_apply
+module gunbc.live_deploy.apply
 
-import gunbc.live_deploy {
+import gunbc.live_deploy.spec {
   DeploymentSpec,
   DeploymentEnsuredStep,
   deployment_spec_srv1,
 }
-import gunbc.live_deploy_emit {
+import gunbc.live_deploy.emit {
   live_deploy_apply_script_for,
   live_deploy_retract_script_for,
   deployment_ensure_dependency_script,
