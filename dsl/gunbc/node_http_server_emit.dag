@@ -2,8 +2,6 @@ module gunbc.node_http_server_emit
 
 import std.types { HttpMethod, GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS }
 import std.http_path { PathTemplate, LiteralToken, ParamToken }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.http.server {
   HttpServerListenConfig,
   ServedStaticRoute,
