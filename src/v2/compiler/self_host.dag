@@ -22,7 +22,7 @@ import v2.std.find_witness {
   UniqueOnly,
   find_witness,
 }
-import v2.std.node { combine_hash, byte_limb_hash_peano_digest, Hash, Node, Symbol }
+import v2.std.node { combine_hash, byte_limb_hash_peano_digest, Hash, Node, Symbol, symbol_identity_digest }
 import v2.std.text { String, string_is_empty }
 import v2.std.witness {
   Holds,
@@ -95,7 +95,7 @@ fn self_host_fixpoint_digest_mismatch_diagnostic(
 fn source_text_code_unit_digest(text: String) -> Hash {
   fold_list(
     xs: text,
-    empty: atom_identity_hash(s: ^source_text_code_unit_digest_nil),
+    empty: symbol_identity_digest(sym: ^source_text_code_unit_digest_nil),
     cons: fn(acc, ch) {
       combine_hash(a: acc, b: byte_limb_hash_peano_digest(limb: ch))
     }
@@ -104,7 +104,7 @@ fn source_text_code_unit_digest(text: String) -> Hash {
 
 fn canonical_emitted_bytes_digest(source: Medium<String>) -> Hash {
   combine_hash(
-    a: atom_identity_hash(s: ^canonical_emitted_bytes),
+    a: symbol_identity_digest(sym: ^canonical_emitted_bytes),
     b: source_text_code_unit_digest(text: source.carried)
   )
 }

@@ -680,6 +680,10 @@ fn combine_hash(a: Hash, b: Hash) -> Hash {
   hash_combine(a: a, b: b)
 }
 
+fn symbol_identity_digest(sym: Symbol) -> Hash {
+  atom_identity_hash(s: sym)
+}
+
 data byte_offset_residual_quotient_magnitude_shift_limbs: Int = 4
 
 data byte_offset_residual_quotient_magnitude_max_shift: Int = 28
