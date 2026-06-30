@@ -58,13 +58,7 @@ fn floor_git_diff_unified_script(policy: DiffPolicy) -> String {
           "if [ \"$GUNBC_CI_DIFF_MERGE_BASE\" = \"0\" ] || [ \"$GUNBC_CI_DIFF_MERGE_BASE\" = \"false\" ]; then\n",
           concat(
             "  git diff -U0 \"$BASE\" \"$HEAD\"\n",
-            concat(
-              "elif [ -n \"$GUNBC_CI_DIFF_MERGE_BASE\" ]; then\n",
-              concat(
-                "  git diff -U0 \"$BASE\" \"$HEAD\"\n",
-                "else\n  git diff -U0 \"${BASE}...${HEAD}\"\nfi\n"
-              )
-            )
+            "else\n  git diff -U0 \"$BASE...$HEAD\"\nfi\n"
           )
         )
       )
@@ -77,8 +71,11 @@ fn floor_unified_diff_from_reconciliation(
   r: Reconciliation<HostEffectIntent, HostEffectEvidence>
 ) -> FloorUnifiedDiffResult {
   match r {
-    Converged { evidence: ShellEffectApplied { stdout: text, .. }, applied: _ } =>
-      UnifiedDiffOk { text: text }
+    Converged { evidence: e, applied: _ } =>
+      match e {
+        ShellEffectApplied { stdout: text, exit_code: _ } =>
+          UnifiedDiffOk { text: text }
+      }
     NotConverged { reason: why, applied: _ } =>
       UnifiedDiffFail { reason: why }
   }
