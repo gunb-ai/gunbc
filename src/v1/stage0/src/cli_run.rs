@@ -5871,7 +5871,10 @@ mod doc_reachability_tests {
         let dangling: Vec<&String> = targets
             .iter()
             .filter(|t| {
-                t.ends_with(".md") && !workspace_root().join(normalize_doc_path(Path::new(t))).is_file()
+                t.ends_with(".md")
+                    && !workspace_root()
+                        .join(normalize_doc_path(Path::new(t)))
+                        .is_file()
             })
             .collect();
         assert_eq!(
