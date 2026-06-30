@@ -1,0 +1,102 @@
+module test.claim.js_site_starter
+
+import gunbc.js_site_starter {
+  JsSiteFileResult,
+  JsPageDef,
+  SiteFile,
+  SiteFileRejected,
+  emit_page_tsx,
+  emit_page_html,
+  tsx_file_path,
+  html_file_path,
+  emit_gunbhub_site,
+  gunbhub_site_page_defs,
+}
+import gunbc.gunbhub_serve { gunbhub_hostile_page, gunbhub_browse_page }
+
+fn witness_tsx_path_has_tsx_extension() -> Bool {
+  ends_with(s: tsx_file_path(component_name: "MyPage"), suffix: ".tsx")
+}
+
+fn witness_tsx_path_exact() -> Bool {
+  tsx_file_path(component_name: "GunbhubBrowsePage") == "src/pages/GunbhubBrowsePage.tsx"
+}
+
+fn witness_html_root_maps_to_index() -> Bool {
+  html_file_path(route_path: "/") == "public/index.html"
+}
+
+fn witness_html_non_root_path() -> Bool {
+  html_file_path(route_path: "/readme") == "public/readme.html"
+}
+
+fn witness_browse_page_tsx_emits_component() -> Bool {
+  let def = JsPageDef {
+    route_path: "/",
+    component_name: "GunbhubBrowsePage",
+    node: gunbhub_browse_page(),
+  }
+  match emit_page_tsx(def: def) {
+    SiteFile { file: f } =>
+      starts_with(s: f.content, prefix: "export function GunbhubBrowsePage():")
+        && ends_with(s: f.path, suffix: ".tsx")
+    SiteFileRejected { path: _, reason: _ } => false
+  }
+}
+
+fn witness_browse_page_html_emits_at_index() -> Bool {
+  let def = JsPageDef {
+    route_path: "/",
+    component_name: "GunbhubBrowsePage",
+    node: gunbhub_browse_page(),
+  }
+  match emit_page_html(def: def) {
+    SiteFile { file: f } =>
+      f.path == "public/index.html"
+        && string_contains(f.content, "<html>")
+    SiteFileRejected { path: _, reason: _ } => false
+  }
+}
+
+fn witness_hostile_tsx_rejected() -> Bool {
+  let def = JsPageDef {
+    route_path: "/hostile",
+    component_name: "HostilePage",
+    node: gunbhub_hostile_page(),
+  }
+  match emit_page_tsx(def: def) {
+    SiteFileRejected { path: _, reason: _ } => true
+    SiteFile { file: _ } => false
+  }
+}
+
+fn witness_hostile_html_rejected() -> Bool {
+  let def = JsPageDef {
+    route_path: "/hostile",
+    component_name: "HostilePage",
+    node: gunbhub_hostile_page(),
+  }
+  match emit_page_html(def: def) {
+    SiteFileRejected { path: _, reason: _ } => true
+    SiteFile { file: _ } => false
+  }
+}
+
+fn witness_gunbhub_site_two_files_per_page() -> Bool {
+  let bundle = emit_gunbhub_site()
+  let page_count = count(xs: gunbhub_site_page_defs())
+  count(xs: bundle.files) == page_count * 2
+    && bundle.rejected_count == 0
+}
+
+test fn js_site_starter_keystone_holds() -> Bool {
+  witness_tsx_path_has_tsx_extension()
+    && witness_tsx_path_exact()
+    && witness_html_root_maps_to_index()
+    && witness_html_non_root_path()
+    && witness_browse_page_tsx_emits_component()
+    && witness_browse_page_html_emits_at_index()
+    && witness_hostile_tsx_rejected()
+    && witness_hostile_html_rejected()
+    && witness_gunbhub_site_two_files_per_page()
+}

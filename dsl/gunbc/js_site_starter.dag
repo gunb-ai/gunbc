@@ -1,0 +1,108 @@
+module gunbc.js_site_starter
+
+import std.markup { MarkupNode }
+import extdeps.languages.react_jsx {
+  try_serialize_jsx_component,
+  JsxOk,
+  JsxRejected,
+}
+import extdeps.languages.html {
+  try_serialize_html_source,
+  EmitOk,
+  EmitRejected,
+}
+import gunbc.gunbhub_serve {
+  gunbhub_browse_page,
+  gunbhub_readme_page,
+}
+
+type JsSiteFile {
+  path: String
+  content: String
+}
+
+type JsSiteFileResult
+  = SiteFile { file: JsSiteFile }
+  | SiteFileRejected { path: String, reason: String }
+
+type JsPageDef {
+  route_path: String
+  component_name: String
+  node: MarkupNode
+}
+
+type JsSiteBundle {
+  files: List<JsSiteFile>
+  rejected_count: Int
+}
+
+fn tsx_file_path(component_name: String) -> String {
+  join(["src/pages/", component_name, ".tsx"], "")
+}
+
+fn html_file_path(route_path: String) -> String {
+  if route_path == "/" {
+    "public/index.html"
+  } else {
+    join(["public", route_path, ".html"], "")
+  }
+}
+
+fn emit_page_tsx(def: JsPageDef) -> JsSiteFileResult {
+  let path = tsx_file_path(component_name: def.component_name)
+  match try_serialize_jsx_component(fn_name: def.component_name, node: def.node) {
+    JsxOk { tsx: content } =>
+      SiteFile { file: JsSiteFile { path: path, content: content } }
+    JsxRejected { reason: r } =>
+      SiteFileRejected { path: path, reason: r }
+  }
+}
+
+fn emit_page_html(def: JsPageDef) -> JsSiteFileResult {
+  let path = html_file_path(route_path: def.route_path)
+  match try_serialize_html_source(node: def.node) {
+    EmitOk { html: content } =>
+      SiteFile { file: JsSiteFile { path: path, content: content } }
+    EmitRejected { reason: r } =>
+      SiteFileRejected { path: path, reason: r }
+  }
+}
+
+fn bundle_fold_result(bundle: JsSiteBundle, result: JsSiteFileResult) -> JsSiteBundle {
+  match result {
+    SiteFile { file: f } =>
+      JsSiteBundle { files: concat(bundle.files, [f]), rejected_count: bundle.rejected_count }
+    SiteFileRejected { path: _, reason: _ } =>
+      JsSiteBundle { files: bundle.files, rejected_count: bundle.rejected_count + 1 }
+  }
+}
+
+fn emit_page_into_bundle(bundle: JsSiteBundle, def: JsPageDef) -> JsSiteBundle {
+  let tsx_result = emit_page_tsx(def: def)
+  let html_result = emit_page_html(def: def)
+  let after_tsx = bundle_fold_result(bundle: bundle, result: tsx_result)
+  bundle_fold_result(bundle: after_tsx, result: html_result)
+}
+
+fn gunbhub_site_page_defs() -> List<JsPageDef> {
+  [
+    JsPageDef {
+      route_path: "/",
+      component_name: "GunbhubBrowsePage",
+      node: gunbhub_browse_page(),
+    },
+    JsPageDef {
+      route_path: "/readme",
+      component_name: "GunbhubReadmePage",
+      node: gunbhub_readme_page(),
+    },
+  ]
+}
+
+fn emit_gunbhub_site() -> JsSiteBundle {
+  fold(
+    xs: gunbhub_site_page_defs(),
+    init: JsSiteBundle { files: [], rejected_count: 0 },
+    f: (acc, def) => emit_page_into_bundle(bundle: acc, def: def)
+  )
+}
