@@ -28,12 +28,14 @@ import gunbc.ctrl_reconcile {
   ctrl_reconcile_fixture_staleness_gate_holds,
   ctrl_reconcile_grounding_from_read,
   ctrl_reconcile_converges_for,
-  ctrl_reconcile_apply_script,
-  ctrl_reconcile_read_script,
   ctrl_reconcile_default_slice_unit,
   ctrl_reconcile_fixture_staleness_binding_holds,
   ctrl_reconcile_apply_intent,
   ctrl_reconcile_reconcile_when_grounded,
+}
+import tools.ctrl_reconcile_transport {
+  ctrl_reconcile_apply_script,
+  ctrl_reconcile_read_script,
 }
 import gunbc.ctrl_reconcile_staleness_claims { ctrl_reconcile_staleness_claims_doc }
 import extdeps.os.systemd { systemd_memory_max_property }

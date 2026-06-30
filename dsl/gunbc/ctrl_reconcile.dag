@@ -3,8 +3,6 @@ module gunbc.ctrl_reconcile
 import std.types { NonEmptyStr, String, Bool }
 import std.measure { ByteSize, byte_size, byte_size_count }
 import std.patterns { eq }
-import std.disposition { Disposition, Scaffold, RealizationDispatch }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.realization_reconcile {
   ShowEffectiveRead,
   ReadObserved,
@@ -38,31 +36,19 @@ import gunbc.ci_floor_measurement {
   CapUnbounded,
 }
 import extdeps.os.systemd {
-  systemd_memory_max_property,
   parse_systemd_memory_max_show_value,
   MemoryMaxBounded,
   MemoryMaxUnbounded,
   MemoryMaxZero,
 }
-import extdeps.languages.bash.program {
-  ShellProgram, ShellStmt, ShellWord,
-  lit, command, serialize_bash,
+import tools.ctrl_reconcile_transport {
+  ctrl_reconcile_read_script,
+  ctrl_reconcile_apply_script,
 }
 
-data ctrl_reconcile_shell_transport_scaffold: Disposition = Scaffold {
-  dissolves_to: RealizationDispatch,
-  bind: DeclarationRef {
-    module_path: "extdeps.languages.bash.program",
-    decl_name: "serialize_bash",
-    field: WholeDeclaration
-  }
-}
-
-data ctrl_reconcile_systemctl_show_operation: String = "ShowProperty"
 data ctrl_reconcile_systemctl_set_property_operation: String = "SetProperty"
-data ctrl_reconcile_systemctl_transport_authority: String = "extdeps.os.systemctl systemd.Systemctl ShowProperty/SetProperty transport argv (freedesktop.org systemctl man); bash AST via serialize_bash, not hand-concat shell fragments"
 
-data ctrl_reconcile_doc: String = "ctrl-reconcile: NEW instance on std.realization_reconcile.Reconciliation via gunbc.host_effect_apply (NO fork). Reconciles budget-tree INTENT (gunbc_per_runner_memory_cap rooted in gunbc_ci_runner_cgroup_memory_cap 8GiB) onto ACTUAL host cgroup MemoryMax. GROUNDING reuses runner_slot_enforcement.ground_runner_slot_from_read. APPLY/READ-BACK shell via ShellProgram+serialize_bash mirroring extdeps.os.systemctl transport argv; show output decoded via extdeps.os.systemd.parse_systemd_memory_max_show_value. dissolve-on: extdeps.languages.bash.program.serialize_bash when host_effect ShellCommand payload migrates off raw String (host_effect_orchestration Phase B)."
+data ctrl_reconcile_doc: String = "ctrl-reconcile: NEW instance on std.realization_reconcile.Reconciliation via gunbc.host_effect_apply (NO fork). Reconciles budget-tree INTENT (gunbc_per_runner_memory_cap rooted in gunbc_ci_runner_cgroup_memory_cap 8GiB) onto ACTUAL host cgroup MemoryMax. GROUNDING reuses runner_slot_enforcement.ground_runner_slot_from_read. APPLY/READ-BACK shell via tools.ctrl_reconcile_transport (bash AST at realization edge); show output decoded via extdeps.os.systemd.parse_systemd_memory_max_show_value. Honest boundary: hermetic floor witnesses prove binding discrimination; off-floor ctrl_reconcile_staleness_gate_passes re-captures live systemctl show before fixture compare; recorded fixture literal trusted only while live binding holds."
 
 data ctrl_reconcile_recorded_fixture_provenance: String = "RecordedFixture capture: systemctl show -p MemoryMax system-actions-runner.slice --value on srv1 fleet host 2026-06-30; bytes are genuine show output for gunbc_ci_runner_cgroup_memory_cap, NOT a hand-authored CapEffective literal. Authenticity boundary: off-floor ctrl_reconcile_staleness_gate_passes re-captures live show bytes and fails closed on fixture-vs-live drift (honest boundary — literal 8589934592 is trusted only while live binding holds)."
 
@@ -90,35 +76,6 @@ fn ctrl_reconcile_parse_memory_max_show(raw: String) -> RunnerSliceCapEffectiven
     Present { value: v } => v
     Absent => CapUnbounded
   }
-}
-
-fn ctrl_reconcile_read_script(slice_unit: NonEmptyStr) -> String {
-  serialize_bash(p: ShellProgram {
-    set_e: false,
-    statements: [
-      command(words: [
-        lit(text: "systemctl"),
-        lit(text: "show"),
-        lit(text: slice_unit),
-        lit(text: concat("--property=", systemd_memory_max_property)),
-        lit(text: "--value"),
-      ])
-    ]
-  })
-}
-
-fn ctrl_reconcile_apply_script(slice_unit: NonEmptyStr, cap: ByteSize) -> String {
-  serialize_bash(p: ShellProgram {
-    set_e: false,
-    statements: [
-      command(words: [
-        lit(text: "systemctl"),
-        lit(text: "set-property"),
-        lit(text: slice_unit),
-        lit(text: concat(systemd_memory_max_property, concat("=", to_string(byte_size_count(b: cap))))),
-      ])
-    ]
-  })
 }
 
 fn ctrl_reconcile_apply_intent(

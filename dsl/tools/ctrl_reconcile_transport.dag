@@ -1,0 +1,51 @@
+module tools.ctrl_reconcile_transport
+
+import std.types { NonEmptyStr, String }
+import std.measure { ByteSize, byte_size_count }
+import std.disposition { Disposition, Scaffold, RealizationDispatch }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.os.systemd { systemd_memory_max_property }
+import extdeps.languages.bash.program {
+  ShellProgram, ShellStmt, ShellWord,
+  lit, command, serialize_bash,
+}
+
+data ctrl_reconcile_shell_transport_scaffold: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "extdeps.languages.bash.program",
+    decl_name: "serialize_bash",
+    field: WholeDeclaration
+  }
+}
+
+data ctrl_reconcile_systemctl_transport_authority: String = "extdeps.os.systemctl systemd.Systemctl ShowProperty/SetProperty transport argv (freedesktop.org systemctl man); bash AST via serialize_bash at realization edge"
+
+fn ctrl_reconcile_read_script(slice_unit: NonEmptyStr) -> String {
+  serialize_bash(p: ShellProgram {
+    set_e: false,
+    statements: [
+      command(words: [
+        lit(text: "systemctl"),
+        lit(text: "show"),
+        lit(text: slice_unit),
+        lit(text: concat("--property=", systemd_memory_max_property)),
+        lit(text: "--value"),
+      ])
+    ]
+  })
+}
+
+fn ctrl_reconcile_apply_script(slice_unit: NonEmptyStr, cap: ByteSize) -> String {
+  serialize_bash(p: ShellProgram {
+    set_e: false,
+    statements: [
+      command(words: [
+        lit(text: "systemctl"),
+        lit(text: "set-property"),
+        lit(text: slice_unit),
+        lit(text: concat(systemd_memory_max_property, concat("=", to_string(byte_size_count(b: cap))))),
+      ])
+    ]
+  })
+}
