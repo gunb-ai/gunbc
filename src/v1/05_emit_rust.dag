@@ -129,6 +129,7 @@ import v1.compiler.emit {
   emit_typed_if_shared, emit_typed_let_shared,
   wrap_shared_type
 }
+import v1.compiler.stage0_emit_roster { stage0_module_emit_basename }
 import v1.compiler.emit_core_support {
   EmitResult, TestProjection,
   escape_json_string, module_to_filename, make_indent,
@@ -1800,7 +1801,8 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
     |> join(separator: "\n\n")
   let phantom_zst_markers = emit_module_phantom_zst_markers(items: typed_module.items, env: scope.type_env)
   let phantom_section = if phantom_zst_markers == "" { "" } else { concat("\n\n", phantom_zst_markers) }
-  let raw_filename = module_to_filename(name: authored_name(env: scope.type_env, node: m))
+  let module_path = authored_name(env: scope.type_env, node: m)
+  let raw_filename = stage0_module_emit_basename(module_path: module_path)
   let filename = if raw_filename == "main" { "main_mod" } else { raw_filename }
   let module_attrs = if authored_name(env: scope.type_env, node: m) == "std.error_primitives" {
     "#![allow(non_camel_case_types)]\n\n"

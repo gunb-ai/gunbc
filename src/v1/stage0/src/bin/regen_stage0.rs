@@ -17,6 +17,8 @@ const BOOTSTRAP_TIMING_RECEIPT_ENV: &str = "GUNBC_BOOTSTRAP_TIMING_RECEIPT";
 const DEFAULT_BOOTSTRAP_TIMING_RECEIPT: &str =
     "target/bootstrap_timing/v1_regen_stage0_receipt.json";
 
+// Registry authority: gunbc.stage0_emit_model / v1.compiler.stage0_emit_roster.
+// Dissolve-on: regen_stage0 reads emitted v1_compiler_stage0_emit_roster.rs roster.
 const GENERATED_STAGE0_FILES: &[&str] = &[
     "compiler_tests.rs",
     "extdeps_cargo.rs",
@@ -94,6 +96,7 @@ const GENERATED_STAGE0_FILES: &[&str] = &[
     "v1_compiler_normalize.rs",
     "v1_compiler_ownership.rs",
     "v1_compiler_resolve.rs",
+    "v1_compiler_stage0_emit_roster.rs",
     "v1_compiler_runtime_go.rs",
     "v1_compiler_runtime_rust.rs",
     "v1_compiler_stage0_crates.rs",

@@ -1,29 +1,127 @@
 module v1.compiler.stage0_emit_roster
 
-import gunbc.stage0_emit_model {
-  generated_stage0_files,
-  stage0_structural_generated_basenames,
-  stage0_module_emit_basename,
-  stage0_module_emit_filename,
-  is_generated_stage0_file,
-  is_stage0_structural_generated_file,
-  generated_stage0_file_count
+import std.types { List, String, Bool, Int }
+
+// Emitter-side authority for the stage0 generated-file roster.
+// Floor witness projection: gunbc.stage0_emit_model (kept in sync until regen_stage0
+// reads the emitted roster by execution).
+data generated_stage0_files: List<String> = [
+  "compiler_tests.rs",
+  "extdeps_cargo.rs",
+  "extdeps_cargo_version.rs",
+  "extdeps_external_authority.rs",
+  "extdeps_languages_dag_emit.rs",
+  "extdeps_languages_dag_syntax.rs",
+  "extdeps_languages_dag_types.rs",
+  "extdeps_languages_go_emit.rs",
+  "extdeps_languages_go_syntax.rs",
+  "extdeps_languages_go_types.rs",
+  "extdeps_languages_python_emit.rs",
+  "extdeps_languages_python_syntax.rs",
+  "extdeps_languages_python_types.rs",
+  "extdeps_languages_rust_emit.rs",
+  "extdeps_languages_rust_syntax.rs",
+  "extdeps_languages_rust_types.rs",
+  "extdeps_uri.rs",
+  "extdeps_uri_path.rs",
+  "extdeps_version.rs",
+  "extdeps_version_semver.rs",
+  "lib.rs",
+  "std_algebra.rs",
+  "std_coercion.rs",
+  "std_computation.rs",
+  "std_constructors.rs",
+  "std_decl_ref.rs",
+  "std_effects.rs",
+  "std_emit_model.rs",
+  "std_error_primitives.rs",
+  "std_graph.rs",
+  "std_http_path.rs",
+  "std_induction.rs",
+  "std_integer.rs",
+  "std_iteration.rs",
+  "std_lens_verdict.rs",
+  "std_list.rs",
+  "std_logic.rs",
+  "std_machine_constraints.rs",
+  "std_magnitude.rs",
+  "std_measure.rs",
+  "std_nat.rs",
+  "std_node.rs",
+  "std_pareto.rs",
+  "std_realization_schedule.rs",
+  "std_serialization.rs",
+  "std_syntax.rs",
+  "std_termination.rs",
+  "std_types.rs",
+  "v1_compiler_artifact.rs",
+  "v1_compiler_coercion.rs",
+  "v1_compiler_compile.rs",
+  "v1_compiler_compiler_tests_rust.rs",
+  "v1_compiler_complexity.rs",
+  "v1_compiler_effect_derivation.rs",
+  "v1_compiler_emit.rs",
+  "v1_compiler_emit_core_support.rs",
+  "v1_compiler_emit_go.rs",
+  "v1_compiler_emit_python.rs",
+  "v1_compiler_emit_rust.rs",
+  "v1_compiler_infer.rs",
+  "v1_compiler_infer_access.rs",
+  "v1_compiler_infer_cycle.rs",
+  "v1_compiler_infer_emit_info.rs",
+  "v1_compiler_infer_env.rs",
+  "v1_compiler_infer_items.rs",
+  "v1_compiler_infer_lookup.rs",
+  "v1_compiler_infer_method.rs",
+  "v1_compiler_infer_patterns.rs",
+  "v1_compiler_infer_resolve.rs",
+  "v1_compiler_infer_service.rs",
+  "v1_compiler_infer_sigs.rs",
+  "v1_compiler_infer_types.rs",
+  "v1_compiler_languages.rs",
+  "v1_compiler_normalize.rs",
+  "v1_compiler_ownership.rs",
+  "v1_compiler_resolve.rs",
+  "v1_compiler_stage0_emit_roster.rs",
+  "v1_compiler_runtime_go.rs",
+  "v1_compiler_runtime_rust.rs",
+  "v1_compiler_stage0_crates.rs",
+  "v1_compiler_tokenize.rs",
+  "v1_compiler_trace.rs",
+  "v1_compiler_workspace_members.rs",
+  "v1_probe_emit_interp.rs",
+  "v1_rt.rs",
+  "v1_std_core.rs",
+  "v1_test_non_ascii_perf_fixture.rs",
+  "wt_a.rs",
+  "wt_b.rs",
+  "wt_common.rs",
+]
+
+data stage0_structural_generated_basenames: List<String> = [
+  "lib.rs",
+  "v1_rt.rs",
+  "compiler_tests.rs",
+]
+
+fn list_contains_string(xs: List<String>, needle: String) -> Bool {
+  any(xs, x => x == needle)
 }
 
-fn emit_rust_module_filename(module_path: String) -> String {
-  stage0_module_emit_filename(module_path: module_path)
+fn stage0_module_emit_basename(module_path: String) -> String {
+  module_path |> split(delimiter: ".") |> join(separator: "_")
 }
 
-fn emit_rust_structural_generated_basenames() -> List<String> {
-  stage0_structural_generated_basenames
+fn stage0_module_emit_filename(module_path: String) -> String {
+  concat(stage0_module_emit_basename(module_path: module_path), ".rs")
 }
 
-fn emit_rust_generated_stage0_roster() -> List<String> {
-  generated_stage0_files
+fn is_generated_stage0_file(basename: String) -> Bool {
+  list_contains_string(xs: generated_stage0_files, needle: basename)
 }
 
-fn emit_rust_generated_stage0_file_count() -> Int {
-  generated_stage0_file_count()
+fn generated_stage0_file_count() -> Int {
+  generated_stage0_files.length()
 }
 
 fn emit_rust_registry_contains_module_file(module_path: String) -> Bool {

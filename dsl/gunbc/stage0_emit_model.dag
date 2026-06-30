@@ -9,9 +9,9 @@ type Stage0EmitRegistryPhase
 
 data stage0_emit_registry_current_phase: Stage0EmitRegistryPhase = ModelAndWitnessOnly
 
-// Authority for GENERATED_STAGE0_FILES (regen_stage0.rs today).
-// Dissolve-on: regen_stage0 reads emitted v1.compiler.stage0_emit_roster; this row
-// becomes a witness-layer projection only.
+// Witness-layer projection of v1.compiler.stage0_emit_roster.generated_stage0_files.
+// Kept byte-synced with the compiler authority until regen_stage0 reads the emitted
+// roster by execution (dissolve-on: delete this duplicate row).
 data generated_stage0_files: List<String> = [
   "compiler_tests.rs",
   "extdeps_cargo.rs",
@@ -89,6 +89,7 @@ data generated_stage0_files: List<String> = [
   "v1_compiler_normalize.rs",
   "v1_compiler_ownership.rs",
   "v1_compiler_resolve.rs",
+  "v1_compiler_stage0_emit_roster.rs",
   "v1_compiler_runtime_go.rs",
   "v1_compiler_runtime_rust.rs",
   "v1_compiler_stage0_crates.rs",
