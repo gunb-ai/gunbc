@@ -39,8 +39,6 @@ data sccache_local_id: CacheInterfaceId = "sccache_local"
 
 data sccache_fatal_error_log_fragment: String = "sccache: encountered fatal error"
 
-// rustc invoked via RUSTC_WRAPPER=sccache can fail without a diagnostic when the
-// wrapper dies (fleet pressure / server shutdown); cargo surfaces exit status 254.
 data sccache_rustc_wrapper_exit_254_log_fragment: String = "(exit status: 254)"
 
 data sccache_local_facts: CacheInterfaceCatalogFacts = {
