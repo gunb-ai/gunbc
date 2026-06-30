@@ -16,9 +16,9 @@ Execution-skip (#5971 Move A, 59/59 witnesses skipped on a disjoint diff) proves
 |------|-------|----------------|
 | **Execution skip** | this lane (#5971, done) | guards `entry_touches_frontier_seeds` (cli_run.rs:3713); 59/59 witnesses skipped on disjoint diff | 
 | **Precompute skip** | this lane (this sketch) | guards `precompute_whole_tree_published_mock_keys` call at cli_run.rs:3509 |
-| **Precompute cache** | tidy-hawk-120 (#5959 M1) | within-walk resolve memo; avoids re-paying the precompute cost across corpus shards / compile subprocess invocations **when the precompute does run** |
+| **Resolve memo** | tidy-hawk-120 (#5959 M1) | within-walk `resolve_entry_graph` memo across `claim_executor` batches (~105s Axis B); cuts resolve cost when the corpus runs — orthogonal to precompute skip (does NOT cache `precompute_whole_tree_published_mock_keys`) |
 
-They compose cleanly: a scoped diff that doesn't touch the mock closure → precompute skipped (this sketch) AND affected witnesses skipped (#5971) → both wall-clock and peak-memory drop. tidy-hawk-120's cache applies only when the precompute IS needed; this sketch decides whether it is needed at all.
+They compose additively and independently: a scoped diff that doesn't touch the mock closure → precompute skipped (this sketch) AND affected witnesses skipped (#5971) → both wall-clock and peak-memory drop. tidy-hawk-120 M1 reduces resolve cost when the corpus runs; this sketch decides whether the precompute runs at all. The two lanes do not share a cache contract.
 
 ---
 
