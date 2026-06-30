@@ -590,7 +590,8 @@ fn int_relu(x: i64) -> i64 {
     }
 }
 
-/// Opcode wire authority: `gunbc.accelerator_demo_program.elemwise_*_op_code` rows.
+/// Opcode wire authority: `extdeps.languages.simd.kernel.relu_mul_add_wire_op_codes`.
+/// Scaffold regen-sync: see `host_kernel_relu_mul_add_op_codes_scaffold_note` until feature:dag-kernel-realization-handler.
 const RELU_MUL_ADD_OP_CODES: [i64; 3] = [1, 2, 3];
 
 fn assert_relu_mul_add_op_codes(op_codes: &[i64], _handler: &str) {
