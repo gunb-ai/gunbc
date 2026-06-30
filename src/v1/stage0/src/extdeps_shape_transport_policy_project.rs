@@ -1,3 +1,17 @@
+// Two distinct concerns hosted here (DESIGN §3 — distinct authorities, split migration track):
+//
+// CONCERN A — shape/transport/policy scan (dead_param, policy_leak, transport_fusion, argv
+// projection): authority = `src/v2/lens/extdeps_shape_transport_policy.dag`; floor coverage =
+// `src/v2/test/claim/extdeps_shape_transport_policy/**` (extensive, on auto-discovery floor).
+// DISSOLUTION (same Chunk-D class as inert_carrier / non_fold_residue): when the interpreter
+// consumes .dag lens tables directly instead of calling host-fed text scans — gunbc#5364. Until
+// then the host functions below are the only callers of the .dag lens builtin seam.
+//
+// CONCERN B — external_authority anchor checking (anchor_kind/scheme/locator, clean_tree_holds,
+// roster counts, shadow-mask): authority = `dsl/extdeps/external_authority` + transport gate.
+// DISSOLUTION: separate migration to the external_authority host surface (not cli_run.rs). The
+// two concerns migrate on DIFFERENT schedules; track them independently.
+
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -545,6 +559,8 @@ pub fn gist_create_files_keyed_by_filename_placeholder_for_qualified_name(
     let module_path = crate::module_path_index::qualified_name_value_to_module_path(qn);
     gist_create_files_keyed_by_filename_placeholder(module_path)
 }
+
+// --- CONCERN B: external_authority anchor checking (see file header) ---
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum ExternalAuthorityAnchorProjection {
