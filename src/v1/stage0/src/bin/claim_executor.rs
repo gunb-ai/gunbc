@@ -7,11 +7,13 @@ use std::rc::Rc;
 use std::thread;
 use std::time::Instant;
 
+#[cfg(test)]
+use v1_compiler::cli_run::workspace_root;
 use v1_compiler::cli_run::{
     compute_histogram_data, compute_witness_timing_rows, make_eval_context, resolve_entry_graph,
-    run_claim, run_discovery_corpus_with_options, run_value, top_n_slowest_witnesses,
-    workspace_root, ClaimOutcome, DiscoveryCorpusOptions, DiscoverySummary, HistogramData,
-    TimingPercentiles, WitnessTimingRow, DEFAULT_SLOWEST_WITNESS_ATTRIBUTION_N,
+    run_claim, run_discovery_corpus_with_options, run_value, top_n_slowest_witnesses, ClaimOutcome,
+    DiscoveryCorpusOptions, DiscoverySummary, HistogramData, TimingPercentiles, WitnessTimingRow,
+    DEFAULT_SLOWEST_WITNESS_ATTRIBUTION_N,
 };
 use v1_compiler::v1_interpreter::{
     color_enabled, paint, run_in_context_with_args, sgr, ExecutionMode, InterpContext, Value,
