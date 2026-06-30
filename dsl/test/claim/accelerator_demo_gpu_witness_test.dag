@@ -1,7 +1,7 @@
 module test.claim.accelerator_demo_gpu_witness
 
 import gunbc.accelerator_demo_gpu {
-  witness_wgpu_integer_differential_would_red_on_wrong_golden,
+  witness_oracle_integer_differential_would_red_on_wrong_golden,
   witness_gpu_float_device_precision_named,
   witness_gpu_float_fidelity_declaration_is_lossy_for_device_precision,
   witness_gpu_target_medium_is_wgsl_row,
@@ -28,6 +28,6 @@ test fn accelerator_demo_gpu_epilogue_witnesses() -> Bool {
     && witness_gpu_float_device_precision_named()
     && witness_gpu_float_fidelity_declaration_is_lossy_for_device_precision()
     && witness_gpu_epilogue_scaffold_documented()
-    && witness_wgpu_integer_differential_would_red_on_wrong_golden()
+    && witness_oracle_integer_differential_would_red_on_wrong_golden()
     && witness_operator_receipt_is_honestly_dormant()
 }

@@ -209,7 +209,7 @@ fn witness_wgpu_kernel_matches_expected_fixture() -> Bool {
   )
 }
 
-fn witness_wgpu_integer_differential_would_red_on_wrong_golden() -> Bool {
+fn witness_oracle_integer_differential_would_red_on_wrong_golden() -> Bool {
   !int_list_eq(
     left: eval_accelerator_program(
       program: relu_mul_add_pure_program,

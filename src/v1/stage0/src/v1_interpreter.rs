@@ -13,6 +13,7 @@ use crate::std_syntax::LiteralValue;
 use crate::v1_compiler_emit::{extract_string_interp_parts, has_mock_prefix};
 use crate::v1_compiler_infer_items::{item_kind, ItemInfo, ItemKind, ResolvedGraph, TypedModule};
 use crate::v1_rt;
+#[cfg(feature = "wgpu_support")]
 #[path = "v1_rt_gpu.rs"]
 pub mod v1_rt_gpu;
 use crate::v1_rt::{
@@ -5334,6 +5335,7 @@ fn eval_builtin(
             )))
         }
 
+        #[cfg(feature = "wgpu_support")]
         "wgpu_elementwise_kernel" => {
             let op_codes = expect_int_list_flex(positional.first().copied(), name)?;
             let a = expect_int_list_flex(positional.get(1).copied(), name)?;
@@ -5355,6 +5357,7 @@ fn eval_builtin(
             )))
         }
 
+        #[cfg(feature = "wgpu_support")]
         "wgpu_elementwise_float_kernel" => {
             let op_codes = expect_int_list_flex(positional.first().copied(), name)?;
             let a = expect_float_list_flex(positional.get(1).copied(), name)?;

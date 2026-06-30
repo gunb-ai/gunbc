@@ -6,6 +6,11 @@ edition = "2021"
 [features]
 default = []
 text_lookup_work_counter = []
+# wgpu_support: opt-in GPU realization (wgpu + pollster + bytemuck).
+# Not included in CI builds — the host realization is dormant until the
+# operator runs on real silicon (Apple M5 / RTX 5090).
+# dissolve-on: feature:dag-gpu-realization-handler
+wgpu_support = ["dep:wgpu", "dep:pollster", "dep:bytemuck"]
 
 [dependencies]
 # Persistent value carriers (ctrl#1533 phase 2). im-rc is the Rc-backed
@@ -25,9 +30,9 @@ serde = { version = "1", features = ["derive", "rc"] }
 serde_json = "1"
 serde_yaml = { workspace = true }
 ureq = { version = "2", features = ["json"] }
-wgpu = "24"
-pollster = "0.4"
-bytemuck = { version = "1", features = ["derive"] }
+wgpu = { version = "24", optional = true }
+pollster = { version = "0.4", optional = true }
+bytemuck = { version = "1", features = ["derive"], optional = true }
 
 [[bin]]
 name = "gunbc"
@@ -117,3 +122,4 @@ path = "src/bin/capture_func_env_semantic_oracle.rs"
 [[bin]]
 name = "accelerator_demo_silicon"
 path = "src/bin/accelerator_demo_silicon.rs"
+required-features = ["wgpu_support"]
