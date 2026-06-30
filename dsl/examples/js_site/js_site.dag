@@ -7,7 +7,7 @@ import std.markup {
   TextNode,
 }
 
-type JsSitePageId = Home | About | Docs
+type JsSitePageId = Home | Browse | About
 
 type JsSitePage {
   id: JsSitePageId
@@ -40,7 +40,7 @@ fn js_site_header() -> MarkupNode {
         children: [
           js_site_nav_link(href: "/", label: "Home"),
           js_site_nav_link(href: "/about", label: "About"),
-          js_site_nav_link(href: "/docs", label: "Docs"),
+          js_site_nav_link(href: "/browse", label: "Browse"),
         ],
       },
     ],
@@ -117,11 +117,13 @@ fn js_site_doc_link(name: String, path: String) -> MarkupNode {
   }
 }
 
-fn js_site_docs_main() -> MarkupNode {
+fn js_site_browse_main() -> MarkupNode {
   ElementNode {
     tag: "ul",
     attrs: [],
     children: [
+      js_site_doc_link(name: "dsl", path: "/dsl"),
+      js_site_doc_link(name: "src", path: "/src"),
       js_site_doc_link(name: "DESIGN.md", path: "/DESIGN.md"),
       js_site_doc_link(name: "ROADMAP.md", path: "/ROADMAP.md"),
     ],
@@ -136,8 +138,8 @@ fn js_site_about_page() -> MarkupNode {
   js_site_page_shell(title: "gunbc — About", main: js_site_about_main())
 }
 
-fn js_site_docs_page() -> MarkupNode {
-  js_site_page_shell(title: "gunbc — Docs", main: js_site_docs_main())
+fn js_site_browse_page() -> MarkupNode {
+  js_site_page_shell(title: "gunbc — Browse", main: js_site_browse_main())
 }
 
 fn js_site_pages() -> List<JsSitePage> {
@@ -149,16 +151,16 @@ fn js_site_pages() -> List<JsSitePage> {
       node: js_site_home_page(),
     },
     JsSitePage {
+      id: Browse,
+      path: "/browse",
+      tsx_fn_name: "JsSiteBrowsePage",
+      node: js_site_browse_page(),
+    },
+    JsSitePage {
       id: About,
       path: "/about",
       tsx_fn_name: "JsSiteAboutPage",
       node: js_site_about_page(),
-    },
-    JsSitePage {
-      id: Docs,
-      path: "/docs",
-      tsx_fn_name: "JsSiteDocsPage",
-      node: js_site_docs_page(),
     },
   ]
 }

@@ -5,11 +5,13 @@ import examples.js_site {
   JsSitePageId,
   Home,
   About,
-  Docs,
+  Browse,
   js_site_pages,
 }
 import std.markup_jsx_boundary {
   markup_jsx_vocabulary_boundary,
+  markup_jsx_static_only_honesty,
+  markup_jsx_interactivity_exhaustion,
   MarkupRealizationLayer,
   MarkupTreeLayer,
   HtmlBracketLayer,
@@ -39,7 +41,7 @@ fn js_site_page_basename(id: JsSitePageId) -> String {
   match id {
     Home => "home"
     About => "about"
-    Docs => "docs"
+    Browse => "browse"
   }
 }
 
@@ -84,6 +86,8 @@ fn js_site_boundary_names_three_layers() -> Bool {
     && layer_authority(layer: HtmlBracketLayer) == "extdeps.languages.html"
     && layer_authority(layer: JsxEnvelopeLayer) == "extdeps.languages.react_jsx"
     && markup_jsx_vocabulary_boundary != ""
+    && markup_jsx_static_only_honesty != ""
+    && markup_jsx_interactivity_exhaustion != ""
 }
 
 fn js_site_write_artifact(path: String, content: String) -> Bool {
