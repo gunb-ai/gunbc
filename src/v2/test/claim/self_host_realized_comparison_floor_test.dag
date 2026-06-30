@@ -1,11 +1,29 @@
 module v2.test.self_host_realized_comparison_floor
 
+import extdeps.communication.medium { Lossless, Medium }
 import v2.compiler.self_host {
-  fold_side_bytes
+  fixed_point_scaffold,
+  fold_side_bytes,
+  SourceModels
 }
 import v2.std.logic { Bool }
+import v2.std.node {
+  Atom,
+  Node,
+  TypeNode,
+  SyntheticOccurrence
+}
+import v2.std.witness { Holds, Violates }
 
 data floor_committed_root: String = "src/v1/stage0/src"
+
+fn floor_seed_leaf() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^floor_seed_leaf } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
 
 test fn self_host_realized_comparison_committed_bytes_stage1_known_fragment_holds() -> Bool {
   let folded = fold_side_bytes(root: floor_committed_root, roster: ["lib.rs"])
@@ -29,4 +47,34 @@ test fn self_host_realized_comparison_hand_maintained_excluded_by_roster_holds()
   string_contains(fold_generated, "lib.rs\n")
   && string_contains(fold_hand_maintained, "cli_run.rs\n")
   && !string_contains(fold_generated, "cli_run.rs\n")
+}
+
+test fn self_host_realized_comparison_drift_goes_violates_holds() -> Bool {
+  let drifted = SourceModels {
+    stage1_committed_seed_source: Medium { carried: "self_host_fixture_seed_v1", fidelity: Lossless },
+    stage2_regen_emitted_source: Medium { carried: "self_host_fixture_seed_v1_DRIFTED", fidelity: Lossless }
+  }
+  match fixed_point_scaffold(
+    stage1_node: floor_seed_leaf(),
+    stage2_node: floor_seed_leaf(),
+    source_models: drifted
+  ) {
+    Holds { value: _ } => false
+    Violates { diagnostic: _ } => true
+  }
+}
+
+test fn self_host_realized_comparison_equal_pair_closes_holds() -> Bool {
+  let equal = SourceModels {
+    stage1_committed_seed_source: Medium { carried: "self_host_fixture_seed_v1", fidelity: Lossless },
+    stage2_regen_emitted_source: Medium { carried: "self_host_fixture_seed_v1", fidelity: Lossless }
+  }
+  match fixed_point_scaffold(
+    stage1_node: floor_seed_leaf(),
+    stage2_node: floor_seed_leaf(),
+    source_models: equal
+  ) {
+    Holds { value: _ } => true
+    Violates { diagnostic: _ } => false
+  }
 }
