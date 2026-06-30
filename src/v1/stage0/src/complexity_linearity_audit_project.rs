@@ -280,17 +280,6 @@ fn is_kernel_permanent_fn(fn_name: &str) -> bool {
         || fn_name == "is_strict_style_structural"
 }
 
-fn is_open_domain_site(site: &str, fn_name: &str) -> bool {
-    site.starts_with("dsl/extdeps/")
-        || site.starts_with("dsl/ctrl/")
-        || site.starts_with("dsl/gunbc/plans/")
-        || site.starts_with("dsl/test/")
-        || (fn_name.ends_with("_claim_holds") && site.contains("test/claim"))
-        || (fn_name.starts_with("witness_")
-            && (site.starts_with("dsl/") || site.contains("extdeps/")))
-        || (fn_name.starts_with("parse_") && site.starts_with("dsl/extdeps/"))
-}
-
 fn triage_wildcard(site: &str, fn_name: &str, has_closed_coproduct_wildcard: bool) -> &'static str {
     if !has_closed_coproduct_wildcard {
         return "open-domain";
