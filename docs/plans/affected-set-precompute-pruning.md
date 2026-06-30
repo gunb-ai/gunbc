@@ -77,23 +77,28 @@ This requires moving the diff-parsing block (currently lines 3520–3552) **befo
 
 This is NOT a new function — it is a bulk pre-flight check using the existing per-row skip predicate already applied inside `run_discovery_rows` (cli_run.rs:3721–3731).
 
-**Signature:** `fn all_witnesses_will_skip(rows: &[DiscoveryRow], frontier_seeds: &NodeFrontierSeeds) -> bool`
+**Signature:** `fn all_witnesses_will_skip(frontier_seeds: &NodeFrontierSeeds) -> bool`
 
-**Algorithm:** returns `true` iff every row in `rows` would be skipped by the inner loop's existing guard:
+**`NodeFrontierSeeds` fields** (cli_run.rs:3275–3278): `overlapping_data_items: HashSet<(String, String)>`, `edited_test_fns: HashSet<(String, String)>`, `force_run_all: bool`. There is no `frontier_files` field.
+
+**Algorithm:** The per-row inner loop (cli_run.rs:3721–3731) skips a witness when `!current_entry_touches && !function_edited`. `current_entry_touches` is computed by `entry_touches_frontier_seeds` — which requires a full resolved `InterpContext` and cannot be called at the precompute plug point. The safe pre-flight check avoids resolve by checking the frontier seed cardinality directly:
 
 ```rust
-rows.iter().all(|row| {
-    // Mirrors the per-row predicate at cli_run.rs:3721-3731
-    !entry_touches_frontier_seeds_static(&row.entry, frontier_seeds)
-        && !frontier_seeds.edited_test_fns.iter().any(|(file, func)| {
-            diff_file_matches_entry(file, &row.entry) && func == &row.function
-        })
-})
+fn all_witnesses_will_skip(frontier_seeds: &NodeFrontierSeeds) -> bool {
+    // Conservative: if any frontier seeds exist, we cannot guarantee all witnesses
+    // skip without resolving each entry. The inner loop's entry_touches_frontier_seeds
+    // call (cli_run.rs:3714) builds a per-entry frontier from overlapping_data_items;
+    // if that set is empty, entry_frontier_nodes_from_seeds returns empty for every
+    // entry and entry_touches_frontier_seeds returns false — all witnesses skip.
+    !frontier_seeds.force_run_all
+        && frontier_seeds.overlapping_data_items.is_empty()
+        && frontier_seeds.edited_test_fns.is_empty()
+}
 ```
 
-**Tie to cli_run.rs:3721–3731:** the inner loop skips when `skip_enabled && !current_entry_touches && !function_edited`. `all_witnesses_will_skip` is the bulk pre-flight form of the same check — it must replicate the same two conditions (`entry_touches_frontier_seeds` + `edited_test_fns`) or over-approximate them (never under-approximate). If the inner loop's skip predicate gains a new conjunct in the future, `all_witnesses_will_skip` must match it or fall back to returning `false` (fail-closed: precompute runs).
+This is O(1). It is conservative (over-inclusive towards running precompute): a diff that populates `overlapping_data_items` but whose changed items are NOT imported by any witness would still return `false` here, causing the precompute to run unnecessarily. That is safe — the precompute is always correct; skipping it is the optimization.
 
-**Cost:** O(|rows| × |edited_test_fns|) — the per-entry touch check may require a lightweight file-path match against `frontier_seeds.frontier_files` (the set already built by `collect_frontier_seeds_from_diff_line_ranges`). No resolve, no eval.
+**Tie to cli_run.rs:3721–3731:** the inner loop's `!current_entry_touches` reduces to `false` (do not skip) whenever `overlapping_data_items` is non-empty, because `entry_frontier_nodes_from_seeds` builds a frontier from those items for each entry. The `!function_edited` check reduces to `false` whenever `edited_test_fns` is non-empty and matches the row. This pre-flight returns `false` conservatively when either set is non-empty. If the inner loop's skip predicate gains a new field in the future, `all_witnesses_will_skip` must check it or fall back to returning `false` (fail-closed).
 
 **Invariant:** over-inclusive is safe (returns `false` when unsure → precompute runs → correct). False-positive (returns `true` when a witness would have run) is unsound — it would skip the precompute while a witness observes missing keys via the per-entry fallback (v1_interpreter.rs:1114–1121).
 
@@ -174,7 +179,7 @@ Verified against `precompute_whole_tree_published_mock_keys` (cli_run.rs:890–9
 
 **Demonstration must be on the REAL gunbc test floor** (live glob-discovery CI floor on the actual corpus — not a synthetic fixture). Three parts, all required:
 
-- **(a) Structural:** `gunbc test` on a scoped 1-file diff that is disjoint from the PublishedMockCase closure logs `outcome == PrecomputeOutcome::Skipped` (precompute not called). This is the `PrecomputeOutcome` tri-state from §6, not `whole_tree_published_keys == None` (which is ambiguous — see §6 implementation prerequisite).
+- **(a) Structural:** `gunbc test` on a scoped 1-file diff that is disjoint from **both** the PublishedMockCase closure **and** every witness's node frontier (i.e. produces empty `NodeFrontierSeeds`: `overlapping_data_items` empty, `edited_test_fns` empty, `force_run_all` false) logs `outcome == PrecomputeOutcome::Skipped` (precompute not called). A diff outside the closure but inside a witness frontier would correctly run precompute (`outcome != Skipped`) and fail this criterion — the diff must satisfy both conjuncts of the §3 guard. This is the `PrecomputeOutcome` tri-state from §6, not `whole_tree_published_keys == None` (which is ambiguous — see §6 implementation prerequisite).
 - **(b) Measured:** wall-clock AND peak-RSS on that real floor run drop materially vs a full-corpus baseline run. Logged as `[measurement]` output, not a threshold assertion.
 - **(c) Control:** a hub / in-closure 1-file diff (a file inside the PublishedMockCase transitive import closure) logs `outcome != PrecomputeOutcome::Skipped` (i.e. `EmptyKeys | Keys(_)` — precompute ran) and runs the affected witness slice — proves the skip is conditional, not always-on. `Keys(_)` is not required here: the structural guarantee is that the precompute was not skipped, not that it yielded non-empty results (consistent with §6 item 4).
 
