@@ -177,7 +177,12 @@ fn diff_excluding_hand_maintained(
 
 #[test]
 fn stage0_cargo_check() {
+    // Nested `cargo check` inherits RUSTC_WRAPPER=sccache from CI. Under the
+    // full nextest parallel load, sccache can fail with exit 254 without a
+    // rustc diagnostic — mirror the CI release-build retry discipline.
     let output = std::process::Command::new("cargo")
+        .env_remove("RUSTC_WRAPPER")
+        .env("CARGO_BUILD_JOBS", "1")
         .arg("check")
         .arg("-p")
         .arg("v1-compiler")
