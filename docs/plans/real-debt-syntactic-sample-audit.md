@@ -26,7 +26,7 @@
 | Off-roster syntactic wildcards | **316** | All tagged **`open-domain`** |
 | **`closed-coproduct-debt` (unrostered)** | **0** | §5 invariant — nothing hidden from floor |
 
-**Operator headline (locked):** **N=29** closed-coproduct fail-opens to drain (migration track); **316** open-domain stay permanently out. **N=318** (`real-debt=294` + path heuristics) is **retired** — it described pre-landing inflation.
+**Operator headline (locked):** **N=24** migration-debt roster slots to drain (closed-coproduct fail-opens on `NON_FOLD_MIGRATION_DEBT_ROSTER`); **316** open-domain stay permanently out. Prior **N=29** count superseded after grammar-ladder Wave 1 (−5 roster) and roster reconciliation on HEAD. **N=318** (`real-debt=294` + path heuristics) is **retired**.
 
 ---
 
