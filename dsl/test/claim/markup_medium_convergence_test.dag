@@ -3,6 +3,7 @@ module test.claim.markup_medium_convergence
 import std.markup {
   MarkupNode, MarkupAttr, ElementNode, TextNode,
   MarkupMedium, MarkupBracket, TagDelimiter, EscapeHtml, EscapeRaw,
+  OmitClose,
   serialize_markup_node_with,
 }
 import extdeps.languages.markdown {
@@ -46,6 +47,8 @@ fn md_medium_underscore() -> MarkupMedium {
     tag_overrides: [ TagDelimiter { tag: "em", open: "_", close: "_" } ],
     bracket: canonical_html_spellings,
     text_escape: EscapeRaw,
+    void_tags: [],
+    void_rendering: OmitClose,
   }
 }
 
@@ -75,6 +78,8 @@ fn single_quote_medium() -> MarkupMedium {
       attr_quote: "'",
     },
     text_escape: EscapeHtml,
+    void_tags: [],
+    void_rendering: OmitClose,
   }
 }
 

@@ -1,0 +1,83 @@
+module test.claim.markdown_inline_render
+
+import extdeps.languages.markdown {
+  parse_inline_markdown_minimal,
+}
+import std.markdown_markup {
+  markdown_inline_to_markup_nodes,
+  markdown_inlines_to_markup_nodes,
+}
+import std.markdown { ImageInline }
+import std.markup { ElementNode, TextNode, MarkupAttr, MarkupNode }
+
+fn parse_and_render(text: String) -> List<MarkupNode> {
+  markdown_inlines_to_markup_nodes(
+    inlines: parse_inline_markdown_minimal(text: text)
+  )
+}
+
+fn witness_bold_renders_to_strong_node() -> Bool {
+  parse_and_render(text: "**bold text**") ==
+    [ ElementNode { tag: "strong", attrs: [], children: [ TextNode { text: "bold text" } ] } ]
+}
+
+fn witness_code_renders_to_code_node() -> Bool {
+  parse_and_render(text: "`inline code`") ==
+    [ ElementNode { tag: "code", attrs: [], children: [ TextNode { text: "inline code" } ] } ]
+}
+
+fn witness_link_renders_to_anchor_node() -> Bool {
+  parse_and_render(text: "[label](/docs/plan.md)") ==
+    [ ElementNode {
+        tag: "a",
+        attrs: [ MarkupAttr { name: "href", value: "/docs/plan.md" } ],
+        children: [ TextNode { text: "label" } ],
+      }
+    ]
+}
+
+fn witness_em_renders_to_em_node() -> Bool {
+  parse_and_render(text: "*emphasis*") ==
+    [ ElementNode { tag: "em", attrs: [], children: [ TextNode { text: "emphasis" } ] } ]
+}
+
+fn witness_mixed_inline_renders_to_nodes() -> Bool {
+  parse_and_render(text: "**bold** and `code`") ==
+    [
+      ElementNode { tag: "strong", attrs: [], children: [ TextNode { text: "bold" } ] },
+      TextNode { text: " and " },
+      ElementNode { tag: "code", attrs: [], children: [ TextNode { text: "code" } ] },
+    ]
+}
+
+fn witness_plain_text_stays_text_node() -> Bool {
+  parse_and_render(text: "plain text no markup") == [ TextNode { text: "plain text no markup" } ]
+}
+
+fn witness_markup_bold_differs_from_plain() -> Bool {
+  !(parse_and_render(text: "**bold**") == parse_and_render(text: "bold"))
+}
+
+fn witness_image_inline_renders_to_img_node() -> Bool {
+  markdown_inline_to_markup_nodes(inline: ImageInline { alt: "description", url: "/img.png" }) ==
+    [ ElementNode {
+        tag: "img",
+        attrs: [
+          MarkupAttr { name: "src", value: "/img.png" },
+          MarkupAttr { name: "alt", value: "description" },
+        ],
+        children: [],
+      }
+    ]
+}
+
+test fn markdown_inline_render_keystone_holds() -> Bool {
+  witness_bold_renders_to_strong_node()
+    && witness_code_renders_to_code_node()
+    && witness_link_renders_to_anchor_node()
+    && witness_em_renders_to_em_node()
+    && witness_mixed_inline_renders_to_nodes()
+    && witness_plain_text_stays_text_node()
+    && witness_markup_bold_differs_from_plain()
+    && witness_image_inline_renders_to_img_node()
+}
