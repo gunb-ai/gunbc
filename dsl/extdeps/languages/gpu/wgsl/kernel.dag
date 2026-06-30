@@ -3,7 +3,7 @@ module extdeps.languages.gpu.wgsl.kernel
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.communication.medium { Medium, Lossless, Lossy, DecodeFidelity }
-import std.types { NonEmptyStr, Int, List, Bool, String }
+import std.types { NonEmptyStr, Int, List, Bool, String, Float }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.bytes { pure_dag_seam_unreachable }

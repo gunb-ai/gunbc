@@ -1,12 +1,9 @@
 module extdeps.gpu.devices
 
-import std.types { NonEmptyStr, List }
-import extdeps.gpu.types { AcceleratorFacts, GpuRuntime, GpuFacts, GpuComputeCapability }
-import extdeps.vendor { Vendor }
-import extdeps.hardware { Hardware }
+import std.types { NonEmptyStr }
+import extdeps.gpu.types { AcceleratorFacts }
 import extdeps.vendor.apple { apple }
 import extdeps.vendor.nvidia { nvidia }
-import extdeps.memory.types { MemoryFacts }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -26,16 +23,6 @@ data apple_silicon_m5_gpu: AcceleratorFacts = AcceleratorFacts {
 data nvidia_rtx_5090: AcceleratorFacts = AcceleratorFacts {
   vendor: nvidia
   model: "GeForce RTX 5090"
-}
-
-data nvidia_rtx_5090_gpu_facts: GpuFacts = GpuFacts {
-  vendor: nvidia
-  model: "GeForce RTX 5090"
-  compute_capability: Present {
-    value: GpuComputeCapability { vendor: nvidia, major: 12, minor: 0 }
-  }
-  memory: MemoryFacts { capacity_bytes: 34359738368, speed_mts: 28000 }
-  supported_runtimes: [Cuda, Metal, OpenCl]
 }
 
 data wgpu_dispatch_device_label_apple_m5: NonEmptyStr = "apple-m5-metal"

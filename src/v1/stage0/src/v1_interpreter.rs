@@ -13,6 +13,7 @@ use crate::std_syntax::LiteralValue;
 use crate::v1_compiler_emit::{extract_string_interp_parts, has_mock_prefix};
 use crate::v1_compiler_infer_items::{item_kind, ItemInfo, ItemKind, ResolvedGraph, TypedModule};
 use crate::v1_rt;
+pub mod v1_rt_gpu;
 use crate::v1_rt::{
     rc_empty_set as empty_set, rc_set_insert as set_insert, rc_set_union as set_union, set_contains,
 };
@@ -5327,6 +5328,48 @@ fn eval_builtin(
                 &b,
                 &c,
             );
+            Ok(Some(list_value(
+                out.into_iter().map(Value::Float).collect::<Vec<_>>(),
+            )))
+        }
+
+        "wgpu_elementwise_kernel" => {
+            let op_codes = expect_int_list_flex(positional.first().copied(), name)?;
+            let a = expect_int_list_flex(positional.get(1).copied(), name)?;
+            let b = expect_int_list_flex(positional.get(2).copied(), name)?;
+            let c = expect_int_list_flex(positional.get(3).copied(), name)?;
+            if a.len() != b.len() || b.len() != c.len() {
+                return Err(InterpError::TypeError {
+                    msg: format!(
+                        "{name} requires equal-length List<Int> buffer arguments, got lengths {}, {}, {}",
+                        a.len(),
+                        b.len(),
+                        c.len()
+                    ),
+                });
+            }
+            let out = v1_rt_gpu::wgpu_elementwise_kernel(&op_codes, &a, &b, &c);
+            Ok(Some(list_value(
+                out.into_iter().map(Value::Int).collect::<Vec<_>>(),
+            )))
+        }
+
+        "wgpu_elementwise_float_kernel" => {
+            let op_codes = expect_int_list_flex(positional.first().copied(), name)?;
+            let a = expect_float_list_flex(positional.get(1).copied(), name)?;
+            let b = expect_float_list_flex(positional.get(2).copied(), name)?;
+            let c = expect_float_list_flex(positional.get(3).copied(), name)?;
+            if a.len() != b.len() || b.len() != c.len() {
+                return Err(InterpError::TypeError {
+                    msg: format!(
+                        "{name} requires equal-length List<Float> buffer arguments, got lengths {}, {}, {}",
+                        a.len(),
+                        b.len(),
+                        c.len()
+                    ),
+                });
+            }
+            let out = v1_rt_gpu::wgpu_elementwise_float_kernel(&op_codes, &a, &b, &c);
             Ok(Some(list_value(
                 out.into_iter().map(Value::Float).collect::<Vec<_>>(),
             )))

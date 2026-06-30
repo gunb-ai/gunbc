@@ -127,6 +127,7 @@ const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
     "rest_transport_facts.rs",
     "transport_script_position_project.rs",
     "wire_value_serialize.rs",
+    "v1_rt_gpu.rs",
     // Un-dissolved bootstrap parser seed: #5864's O(N) cursor optimization lives in
     // this hand-maintained file, NOT in src/v1/02_parse.dag (which still models the
     // O(N^2) baseline). A faithful regen from 02_parse.dag would revert #5864, so

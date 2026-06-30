@@ -25,6 +25,9 @@ serde = { version = "1", features = ["derive", "rc"] }
 serde_json = "1"
 serde_yaml = { workspace = true }
 ureq = { version = "2", features = ["json"] }
+wgpu = "24"
+pollster = "0.4"
+bytemuck = { version = "1", features = ["derive"] }
 
 [[bin]]
 name = "gunbc"
@@ -100,3 +103,7 @@ path = "src/bin/measure_whole_tree_resolve.rs"
 [[bin]]
 name = "capture_func_env_semantic_oracle"
 path = "src/bin/capture_func_env_semantic_oracle.rs"
+
+[[bin]]
+name = "accelerator_demo_silicon"
+path = "src/bin/accelerator_demo_silicon.rs"
