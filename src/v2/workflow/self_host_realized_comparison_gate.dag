@@ -1,0 +1,67 @@
+module v2.workflow.self_host_realized_comparison_gate
+
+import extdeps.shell
+import gunbc.ci_layer_roots { witness_layer_roots }
+import std.logic { Bool }
+import extdeps.languages.bash.program {
+  ShellProgram, ShellStmt, ShellWord,
+  lit, var_ref, command, serialize_bash
+}
+import std.disposition { Disposition, Scaffold, RealizationDispatch, Terminal }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import tools.host_prelude { ensure_gunbc_built }
+
+data srfc_gate_test_entry: String = "src/v2/workflow/self_host_realized_comparison_claims.dag"
+data srfc_staleness_gate_witness: String = "self_host_realized_comparison_staleness_gate_holds"
+data srfc_provenance_witness: String = "self_host_realized_comparison_reads_real_bytes_both_sides_holds"
+
+data self_host_realized_comparison_gate_interim: Disposition = Terminal {
+  reason: "INTERIM gate: subset-roster fold (lib.rs,v1_rt.rs) dodges Peano digest wall; emit is full 89-file via RegenVerifyGate shared --emit-fresh. Dissolves when source_text_code_unit_digest is host-grounded and fold widens to full GENERATED_STAGE0_FILES roster."
+}
+
+data self_host_realized_comparison_gate_disposition: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "extdeps.languages.bash.program",
+    decl_name: "serialize_bash",
+    field: WholeDeclaration
+  }
+}
+
+fn srfc_source_root_flags() -> List<ShellWord> {
+  fold(witness_layer_roots, init: [], f: (acc, r) => concat(acc, [lit(text: "--source-root"), lit(text: r)]))
+}
+
+fn srfc_gunbc_claim_run(function: String) -> ShellStmt {
+  command(words: concat(
+    concat([var_ref(name: "GUNBC"), lit(text: "run")], srfc_source_root_flags()),
+    [
+      lit(text: "--entry"), lit(text: srfc_gate_test_entry),
+      lit(text: "--function"), lit(text: function),
+      lit(text: "--claim-run")
+    ]
+  ))
+}
+
+fn realized_comparison_gate_program() -> ShellProgram {
+  ShellProgram {
+    set_e: true,
+    statements: concat(
+      ensure_gunbc_built(),
+      [
+        command(words: [lit(text: "cd"), var_ref(name: "ROOT")]),
+        srfc_gunbc_claim_run(function: srfc_provenance_witness),
+        srfc_gunbc_claim_run(function: srfc_staleness_gate_witness)
+      ]
+    )
+  }
+}
+
+func run_self_host_realized_comparison_gate() -> Bool {
+  let result = shell.Exec.Run(script: serialize_bash(p: realized_comparison_gate_program()))
+  result.success
+}
+
+func self_host_realized_comparison_gate_passes() -> Bool {
+  run_self_host_realized_comparison_gate()
+}

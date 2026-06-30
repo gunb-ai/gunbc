@@ -15,7 +15,7 @@ import gunbc.ci_gate {
   Gate,
   RustMonolithGate, EmitHostGate, LayeringImportsGate,
   ExtdepsExternalAuthorityGate, DslCompileCleanGate, GeneratedArtifactDriftGate,
-  SourceRootIngestGate, RegenVerifyGate, EmitDeterminismGate,
+  SourceRootIngestGate, RegenVerifyGate, SelfHostRealizedComparisonGate, EmitDeterminismGate,
 }
 import std.content_hash { content_hash_atom, content_hash_combine, content_hash_tagged }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
@@ -74,6 +74,7 @@ fn gate_content_hash(g: Gate) -> ContentHash {
     GeneratedArtifactDriftGate => content_hash_atom(value: "GeneratedArtifactDriftGate")
     SourceRootIngestGate => content_hash_atom(value: "SourceRootIngestGate")
     RegenVerifyGate => content_hash_atom(value: "RegenVerifyGate")
+    SelfHostRealizedComparisonGate => content_hash_atom(value: "SelfHostRealizedComparisonGate")
     EmitDeterminismGate => content_hash_atom(value: "EmitDeterminismGate")
   }
 }

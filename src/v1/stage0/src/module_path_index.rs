@@ -17,15 +17,33 @@ pub fn workspace_root() -> std::path::PathBuf {
 // authority, the same direction gunbc#5364 takes the residue scan.)
 const CI_LAYER_ROOTS_AUTHORITY_REL: &str = "dsl/gunbc/ci_layer_roots.dag";
 const WITNESS_LAYER_ROOTS_DATA_NAME: &str = "witness_layer_roots";
+const WITNESS_DISCOVERY_SCAN_DIRS_DATA_NAME: &str = "witness_discovery_scan_dirs";
 
-/// Project the `witness_layer_roots` `List<String>` literal out of the ci_layer_roots authority's
-/// SOURCE TEXT via the real front-end (`tokenize` + `parse`) — no second hand-rolled scanner. Pure
-/// (text in, roots out) so a synthetic authority carrying non-default roots can drive it: a reader
-/// that ignored its input and returned a hardcoded `["dsl", "src/v2"]` (the reverted shape) fails that
-/// control — the by-construction discrimination (DESIGN §5). Fail-closed: a parse error, a missing data
-/// def, a non-string-list body, or an empty list is a loud panic, never a silent fallback that would
-/// re-open the drift.
-pub(crate) fn witness_layer_roots_from_source(content: &str) -> Vec<String> {
+fn ci_layer_roots_authority_content() -> &'static str {
+    static CONTENT: OnceLock<String> = OnceLock::new();
+    CONTENT
+        .get_or_init(|| {
+            let path = workspace_root().join(CI_LAYER_ROOTS_AUTHORITY_REL);
+            std::fs::read_to_string(&path).unwrap_or_else(|e| {
+                panic!(
+                    "ci_layer_roots authority: failed to read {}: {e}",
+                    path.display()
+                )
+            })
+        })
+        .as_str()
+}
+
+/// Project a `List<String>` data literal out of the ci_layer_roots authority's SOURCE TEXT via the
+/// real front-end (`tokenize` + `parse`) — no second hand-rolled scanner. Pure (text in, list out) so
+/// a synthetic authority carrying non-default values can drive it: a reader that ignored its input
+/// and returned a hardcoded copy fails that control — the by-construction discrimination (DESIGN §5).
+/// Fail-closed: a parse error, a missing data def, a non-string-list body, or an empty list is a loud
+/// panic, never a silent fallback that would re-open the drift.
+pub(crate) fn string_list_data_from_ci_layer_roots_source(
+    content: &str,
+    data_name: &str,
+) -> Vec<String> {
     use crate::v1_std_core::{ExprData, LiteralValue};
 
     let filename = CI_LAYER_ROOTS_AUTHORITY_REL.to_string();
@@ -45,52 +63,63 @@ pub(crate) fn witness_layer_roots_from_source(content: &str) -> Vec<String> {
         panic!("ci_layer_roots authority: {CI_LAYER_ROOTS_AUTHORITY_REL} parsed to no module")
     });
     for item in module.children.iter() {
-        if item.name != WITNESS_LAYER_ROOTS_DATA_NAME
+        if item.name != data_name
             || !crate::v1_compiler_emit_core_support::is_data_def_item(item.clone())
         {
             continue;
         }
         let body = item.body.as_ref().unwrap_or_else(|| {
             panic!(
-                "ci_layer_roots authority: `data {WITNESS_LAYER_ROOTS_DATA_NAME}` in \
+                "ci_layer_roots authority: `data {data_name}` in \
                  {CI_LAYER_ROOTS_AUTHORITY_REL} has no value body"
             )
         });
         if !matches!(body.expr_data.as_ref(), ExprData::ExprListLit) {
             panic!(
-                "ci_layer_roots authority: `data {WITNESS_LAYER_ROOTS_DATA_NAME}` in \
+                "ci_layer_roots authority: `data {data_name}` in \
                  {CI_LAYER_ROOTS_AUTHORITY_REL} is not a `List<String>` literal"
             );
         }
-        let mut roots = Vec::new();
+        let mut values = Vec::new();
         for el in body.children.iter() {
             match el.expr_data.as_ref() {
                 ExprData::ExprLiteral { value } => match value.as_ref() {
-                    LiteralValue::LitStr { value } => roots.push(value.clone()),
+                    LiteralValue::LitStr { value } => values.push(value.clone()),
                     _ => panic!(
-                        "ci_layer_roots authority: an element of `{WITNESS_LAYER_ROOTS_DATA_NAME}` in \
+                        "ci_layer_roots authority: an element of `{data_name}` in \
                          {CI_LAYER_ROOTS_AUTHORITY_REL} is not a string literal"
                     ),
                 },
                 _ => panic!(
-                    "ci_layer_roots authority: an element of `{WITNESS_LAYER_ROOTS_DATA_NAME}` in \
+                    "ci_layer_roots authority: an element of `{data_name}` in \
                      {CI_LAYER_ROOTS_AUTHORITY_REL} is not a literal"
                 ),
             }
         }
-        if roots.is_empty() {
+        if values.is_empty() {
             panic!(
-                "ci_layer_roots authority: `{WITNESS_LAYER_ROOTS_DATA_NAME}` in \
+                "ci_layer_roots authority: `{data_name}` in \
                  {CI_LAYER_ROOTS_AUTHORITY_REL} is empty (fail-closed: an empty witness corpus would \
                  vacuously pass every census wall)"
             );
         }
-        return roots;
+        return values;
     }
     panic!(
-        "ci_layer_roots authority: no `data {WITNESS_LAYER_ROOTS_DATA_NAME}` def in \
+        "ci_layer_roots authority: no `data {data_name}` def in \
          {CI_LAYER_ROOTS_AUTHORITY_REL}"
     )
+}
+
+/// Project the `witness_layer_roots` `List<String>` literal out of the ci_layer_roots authority.
+pub(crate) fn witness_layer_roots_from_source(content: &str) -> Vec<String> {
+    string_list_data_from_ci_layer_roots_source(content, WITNESS_LAYER_ROOTS_DATA_NAME)
+}
+
+/// Project the `witness_discovery_scan_dirs` `List<String>` literal out of the ci_layer_roots
+/// authority.
+pub(crate) fn witness_discovery_scan_dirs_from_source(content: &str) -> Vec<String> {
+    string_list_data_from_ci_layer_roots_source(content, WITNESS_DISCOVERY_SCAN_DIRS_DATA_NAME)
 }
 
 /// The witness layer roots, read live from the single .dag authority and memoized (the authority is
@@ -99,16 +128,15 @@ pub(crate) fn witness_layer_roots_from_source(content: &str) -> Vec<String> {
 pub(crate) fn witness_layer_roots() -> Vec<String> {
     static ROOTS: OnceLock<Vec<String>> = OnceLock::new();
     ROOTS
-        .get_or_init(|| {
-            let path = workspace_root().join(CI_LAYER_ROOTS_AUTHORITY_REL);
-            let content = std::fs::read_to_string(&path).unwrap_or_else(|e| {
-                panic!(
-                    "ci_layer_roots authority: failed to read {}: {e}",
-                    path.display()
-                )
-            });
-            witness_layer_roots_from_source(&content)
-        })
+        .get_or_init(|| witness_layer_roots_from_source(ci_layer_roots_authority_content()))
+        .clone()
+}
+
+/// Witness discovery scan dirs, read live from `gunbc.ci_layer_roots.witness_discovery_scan_dirs`.
+pub(crate) fn witness_discovery_scan_dirs() -> Vec<String> {
+    static SCAN_DIRS: OnceLock<Vec<String>> = OnceLock::new();
+    SCAN_DIRS
+        .get_or_init(|| witness_discovery_scan_dirs_from_source(ci_layer_roots_authority_content()))
         .clone()
 }
 
@@ -148,6 +176,150 @@ pub fn source_path_for_module_path(module_path: String) -> String {
 
 pub fn qualified_name_value_to_module_path(value: &crate::v1_interpreter::Value) -> String {
     crate::v1_interpreter::qualified_name_value_to_module_path(value)
+}
+
+pub fn qualified_name_value_from_dotted_string(
+    ctx: &crate::v1_interpreter::InterpContext,
+    dotted: &str,
+) -> crate::v1_interpreter::Value {
+    use crate::v1_interpreter::{sorted_fields, Value};
+    use std::rc::Rc;
+
+    let qn_variant = |variant: &str, fields: Vec<_>| Value::Variant {
+        type_name: ctx.sym("QualifiedName"),
+        variant_name: ctx.sym(variant),
+        fields: Rc::new(fields),
+    };
+    if dotted.is_empty() {
+        return qn_variant("QnEmpty", vec![]);
+    }
+    let mut qn = qn_variant("QnEmpty", vec![]);
+    for seg in dotted.split('.').rev() {
+        qn = qn_variant(
+            "QnCons",
+            sorted_fields(vec![
+                (ctx.sym("head"), Value::Str(seg.to_string())),
+                (ctx.sym("tail"), qn),
+            ]),
+        );
+    }
+    qn
+}
+
+pub(crate) fn repo_rel(path: &std::path::Path) -> String {
+    let ws = workspace_root();
+    let s = path.to_string_lossy().replace('\\', "/");
+    let prefix = format!("{}/", ws.to_string_lossy().replace('\\', "/"));
+    s.strip_prefix(&prefix)
+        .map(|p| p.to_string())
+        .unwrap_or(s)
+        .trim_start_matches("./")
+        .to_string()
+}
+
+pub(crate) fn is_test_dag(path: &str) -> bool {
+    path.ends_with("_test.dag")
+}
+
+pub(crate) fn collect_dag_files(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+    let entries = match std::fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(_) => return,
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            collect_dag_files(&path, out);
+        } else if path.extension().and_then(|e| e.to_str()) == Some("dag") {
+            out.push(path);
+        }
+    }
+}
+
+pub(crate) fn corpus_dag_files() -> Vec<(String, String)> {
+    let mut paths = Vec::new();
+    for root in witness_layer_roots() {
+        collect_dag_files(&workspace_root().join(&root), &mut paths);
+    }
+    let mut out = Vec::new();
+    for p in paths {
+        let rel = repo_rel(&p);
+        if let Ok(content) = std::fs::read_to_string(&p) {
+            out.push((rel, content));
+        }
+    }
+    out.sort();
+    out.dedup();
+    out
+}
+
+pub(crate) fn strip_line_comment(line: &str) -> String {
+    let bytes = line.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut in_string = false;
+    let mut escaped = false;
+    let mut i = 0;
+    while i < bytes.len() {
+        let b = bytes[i];
+        if in_string {
+            if escaped {
+                out.push(b' ');
+                escaped = false;
+            } else if b == b'\\' {
+                out.push(b' ');
+                escaped = true;
+            } else if b == b'"' {
+                out.push(b'"');
+                in_string = false;
+            } else {
+                out.push(b' ');
+            }
+        } else if b == b'"' {
+            in_string = true;
+            out.push(b'"');
+        } else if b == b'/' && i + 1 < bytes.len() && bytes[i + 1] == b'/' {
+            break;
+        } else {
+            out.push(b);
+        }
+        i += 1;
+    }
+    String::from_utf8(out).expect("strip_line_comment output is valid UTF-8")
+}
+
+pub(crate) fn brace_delta(line: &str) -> i32 {
+    let c = strip_line_comment(line);
+    c.matches('{').count() as i32 - c.matches('}').count() as i32
+}
+
+#[cfg(test)]
+mod corpus_lex_tests {
+    use super::*;
+
+    #[test]
+    fn strip_blanks_string_interior_and_drops_comment() {
+        let got = strip_line_comment("data u = \"https://x // y\" // real comment");
+        assert!(got.starts_with("data u = \""));
+        assert!(
+            !got.contains("real comment"),
+            "trailing // comment dropped: {got:?}"
+        );
+        assert!(!got.contains("https"), "string interior blanked: {got:?}");
+        assert!(got.len() <= "data u = \"https://x // y\" // real comment".len());
+    }
+
+    #[test]
+    fn brace_delta_ignores_braces_in_strings() {
+        assert_eq!(brace_delta("fn f() {"), 1);
+        assert_eq!(brace_delta("let s = \"{ { {\""), 0);
+        assert_eq!(brace_delta("} // }"), -1);
+    }
+
+    #[test]
+    fn is_test_dag_matches_suffix() {
+        assert!(is_test_dag("src/v2/lens/x_test.dag"));
+        assert!(!is_test_dag("src/v2/lens/x.dag"));
+    }
 }
 
 #[cfg(test)]
@@ -215,6 +387,29 @@ mod tests {
                 ws.join("dsl").to_string_lossy().into_owned(),
                 ws.join("src/v2").to_string_lossy().into_owned(),
             ]
+        );
+    }
+
+    #[test]
+    fn reader_follows_synthetic_authority_scan_dirs() {
+        let synthetic = "module gunbc.ci_layer_roots\n\n\
+             data witness_discovery_scan_dirs: List<String> = [\"scan/a\", \"scan/b\"]\n";
+        assert_eq!(
+            witness_discovery_scan_dirs_from_source(synthetic),
+            vec!["scan/a".to_string(), "scan/b".to_string()],
+            "the scan-dir reader must FOLLOW the authority, not a hardcoded copy"
+        );
+    }
+
+    #[test]
+    fn witness_discovery_scan_dirs_projects_live_authority_value() {
+        assert_eq!(
+            witness_discovery_scan_dirs(),
+            vec![
+                "dsl/test/claim".to_string(),
+                "src/v2/test/claim/manual".to_string(),
+            ],
+            "live authority scan-dir value drifted"
         );
     }
 }

@@ -26,7 +26,7 @@ fn rel_path(path: &Path) -> String {
     path.to_string_lossy().replace('\\', "/")
 }
 
-fn parse_file(path: &Path) -> Option<(Rc<Vec<Rc<Node>>>, SourceIndices)> {
+pub fn parse_file(path: &Path) -> Option<(Rc<Vec<Rc<Node>>>, SourceIndices)> {
     let content = std::fs::read_to_string(path).ok()?;
     let filename = path.file_name().and_then(|s| s.to_str()).unwrap_or("?");
     let tokens = tokenize(content.clone(), filename.to_string());

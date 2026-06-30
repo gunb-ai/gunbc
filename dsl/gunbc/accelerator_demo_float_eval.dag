@@ -1,0 +1,72 @@
+module gunbc.accelerator_demo_float_eval
+
+import std.types { Float, List }
+import gunbc.accelerator_demo_program {
+  AcceleratorDemoProgram,
+  PureElementwiseMap,
+  EffectfulElementwiseMap,
+  DataDependentGatherMap,
+  ElementwiseArrayOp,
+  pure_elementwise_ops_shape_recognizable,
+}
+
+fn float_relu(x: Float) -> Float {
+  if x > 0.0 {
+    x
+  } else {
+    0.0
+  }
+}
+
+fn eval_relu_mul_add_elem_at_index(ai: Float, bi: Float, ci: Float) -> Float {
+  float_relu(x: ai * bi + ci)
+}
+
+fn eval_float_pure_map_at_indices(
+  ops: List<ElementwiseArrayOp>,
+  a: List<Float>,
+  b: List<Float>,
+  c: List<Float>,
+  acc: List<Float>
+) -> List<Float> {
+  if !pure_elementwise_ops_shape_recognizable(ops: ops) {
+    []
+  } else {
+    match a.first() {
+      Absent => acc
+      Present { value: ai } =>
+        match b.first() {
+          Absent => acc
+          Present { value: bi } =>
+            match c.first() {
+              Absent => acc
+              Present { value: ci } =>
+                eval_float_pure_map_at_indices(
+                  ops: ops,
+                  a: a.skip(n: 1),
+                  b: b.skip(n: 1),
+                  c: c.skip(n: 1),
+                  acc: concat(
+                    acc,
+                    [eval_relu_mul_add_elem_at_index(ai: ai, bi: bi, ci: ci)]
+                  )
+                )
+            }
+        }
+    }
+  }
+}
+
+fn eval_accelerator_program_float(
+  program: AcceleratorDemoProgram,
+  a: List<Float>,
+  b: List<Float>,
+  c: List<Float>
+) -> List<Float> {
+  match program {
+    PureElementwiseMap { ops: ops } =>
+      eval_float_pure_map_at_indices(ops: ops, a: a, b: b, c: c, acc: [])
+    EffectfulElementwiseMap { ops: _ } => []
+    DataDependentGatherMap { ops: _ } => []
+  }
+}
