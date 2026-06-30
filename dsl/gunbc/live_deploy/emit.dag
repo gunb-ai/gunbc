@@ -166,4 +166,6 @@ fn deployment_ensure_dependency_script(dep: DeploymentEnsuredStep) -> String {
   )
 }
 
-data live_deploy_emit_shell_dissolution_trigger: String = "dissolve-on: host_effect modeled shell steps — replace bash concat emit with HostEffect intent rows realized per transport handler; medium_structure_exception_roster entry retires when live_deploy folds emit through host_effect_apply without string shell"
+data emit_sudo_wrapped_script_body_dissolution_trigger: String = "🟡 dissolve-on: emit_sudo_wrapped_script_body — sudo heredoc framing built with doc_concat/string shell (extends pre-existing bash-emit concat in this file); DISSOLVES WHEN live_deploy_emit_shell_dissolution_trigger lands — HostEffect intent rows per owned/ensured step realized through host_effect_apply transport handlers, retiring bash script emit and medium_structure_exception_roster entry for dsl/gunbc/live_deploy/emit.dag"
+
+data live_deploy_emit_shell_dissolution_trigger: String = "🟡 dissolve-on: host_effect modeled shell steps — replace bash concat emit with HostEffect intent rows realized per transport handler; medium_structure_exception_roster entry retires when live_deploy folds emit through host_effect_apply without string shell"
