@@ -135,4 +135,3 @@ fn coproduct_reflection_connective_behavior_arm_sets_are_distinct() {
         other => panic!("expected distinct arm sets, got {other:?}"),
     }
 }
-
