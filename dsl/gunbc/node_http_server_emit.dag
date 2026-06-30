@@ -42,7 +42,7 @@ fn emit_path_template_re(template: PathTemplate) -> String {
     }
   )
   if count(xs: segs) == 0 {
-    "/^\\/$/g"
+    "/^\\/$/"
   } else {
     join(["/^\\/", join(segs, "\\/"), "$/"], "")
   }
