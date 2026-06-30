@@ -1,6 +1,6 @@
 module gunbc.hand_lens_host_bridge_scaffold_watchdog
 
-import std.types { List, String, Bool }
+import std.types { List, String }
 import v2.std.logic { Bool }
 import v2.lens.host_language_transport_script {
   transport_script_position_host_bridge_dissolution_trigger
