@@ -3679,13 +3679,14 @@ fn dag_grammar_terminal_for_mvp1_loop_token(token: ConcreteSyntaxToken) -> Gramm
     dag_grammar_terminal(token_class: ^dag_token_kw_loop)
   } else {
     match token {
+      FixedToken { token_class: _ } =>
+        dag_grammar_terminal_from_concrete_token(token: token)
       BoundToken { token_class: c, binding: b } =>
         if (c == ^dag_token_ident) && dag_grammar_loop_body_literal_binding(binding: b) {
           dag_grammar_pick_arm_literal_terminal()
         } else {
           dag_grammar_terminal_from_concrete_token(token: token)
         }
-      _ => dag_grammar_terminal_from_concrete_token(token: token)
     }
   }
 }
@@ -3773,13 +3774,14 @@ fn dag_grammar_terminal_for_mvp1_pick_token(token: ConcreteSyntaxToken) -> Gramm
     dag_grammar_pick_condition_terminal()
   } else {
     match token {
+      FixedToken { token_class: _ } =>
+        dag_grammar_terminal_from_concrete_token(token: token)
       BoundToken { token_class: c, binding: b } =>
         if (c == ^dag_token_ident) && dag_grammar_pick_arm_literal_binding(binding: b) {
           dag_grammar_pick_arm_literal_terminal()
         } else {
           dag_grammar_terminal_from_concrete_token(token: token)
         }
-      _ => dag_grammar_terminal_from_concrete_token(token: token)
     }
   }
 }
@@ -3820,13 +3822,14 @@ fn dag_grammar_terminal_for_mvp1_match_token(token: ConcreteSyntaxToken) -> Gram
     dag_grammar_pick_condition_terminal()
   } else {
     match token {
+      FixedToken { token_class: _ } =>
+        dag_grammar_terminal(token_class: cls)
       BoundToken { token_class: c, binding: b } =>
         if (c == ^dag_token_ident) && dag_grammar_match_arm_literal_binding(binding: b) {
           dag_grammar_pick_arm_literal_terminal()
         } else {
           dag_grammar_terminal(token_class: cls)
         }
-      _ => dag_grammar_terminal(token_class: cls)
     }
   }
 }
@@ -3864,13 +3867,14 @@ fn dag_grammar_rec_field_literal_binding(binding: Symbol) -> Bool {
 fn dag_grammar_terminal_for_mvp1_rec_token(token: ConcreteSyntaxToken) -> GrammarExpr {
   let cls = concrete_syntax_token_class(token: token)
   match token {
+    FixedToken { token_class: _ } =>
+      dag_grammar_terminal(token_class: cls)
     BoundToken { token_class: c, binding: b } =>
       if (c == ^dag_token_ident) && dag_grammar_rec_field_literal_binding(binding: b) {
         dag_grammar_pick_arm_literal_terminal()
       } else {
         dag_grammar_terminal(token_class: cls)
       }
-    _ => dag_grammar_terminal(token_class: cls)
   }
 }
 
@@ -4900,13 +4904,14 @@ fn dag_grammar_terminal_for_mvp1_bind_token(token: ConcreteSyntaxToken) -> Gramm
     dag_grammar_terminal(token_class: ^dag_token_kw_in)
   } else {
     match token {
+      FixedToken { token_class: _ } =>
+        dag_grammar_terminal_from_concrete_token(token: token)
       BoundToken { token_class: c, binding: b } =>
         if (c == ^dag_token_ident) && dag_grammar_bind_value_literal_binding(binding: b) {
           dag_grammar_pick_arm_literal_terminal()
         } else {
           dag_grammar_terminal_from_concrete_token(token: token)
         }
-      _ => dag_grammar_terminal_from_concrete_token(token: token)
     }
   }
 }

@@ -6,7 +6,7 @@ const PLAN_DOC_ROOTS: &[&str] = &["ROADMAP.md", "DESIGN.md"];
 const RUNBOOK_ROOT: &str = "docs/runbooks/README.md";
 
 fn workspace_root() -> PathBuf {
-    crate::module_path_index::workspace_root()
+    crate::cli_run::workspace_root()
 }
 
 fn repo_rel(path: &Path) -> String {
@@ -92,7 +92,7 @@ fn normalize(path: &Path) -> String {
 
 fn dag_comment_bind_doc_refs() -> BTreeSet<String> {
     let mut out = BTreeSet::new();
-    for root in crate::module_path_index::witness_layer_roots() {
+    for root in crate::cli_run::witness_layer_roots() {
         let mut dag_files = Vec::new();
         collect_dag_files(&workspace_root().join(&root), &mut dag_files);
         for path in dag_files {
