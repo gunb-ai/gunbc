@@ -16,8 +16,11 @@
 pub mod cli_run;
 pub mod complexity_linearity_audit_project;
 pub mod coproduct_reflection;
+<<<<<<< HEAD
 pub mod decl_facts_project;
 pub mod doc_reachability_project;
+=======
+>>>>>>> 70d473cdb8 (WIP: HAND lens E: retire doc_reachability_project.rs — lens .dag owns verdict)
 pub mod extdeps_cargo;
 pub mod extdeps_cargo_version;
 pub mod extdeps_external_authority;
