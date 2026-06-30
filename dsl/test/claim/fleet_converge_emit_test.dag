@@ -110,6 +110,9 @@ fn witness_live_converge_is_conservation_sound() -> Bool {
     && has(s: sh, p: "converge_per_slot_cap \"srv1\" \"runner\" \"per_slot_memory_max_bytes\" \"/etc/systemd/system/actions-runner@.service.d/20-fleet-width.conf\" \"actions-runner@srv1-*.service\" \"MemoryMax\" \"8589934592\"")
     && has(s: sh, p: "converge_per_slot_cap \"srv1\" \"runner\" \"per_slot_memory_swap_max_bytes\" \"/etc/systemd/system/actions-runner@.service.d/30-fleet-swap.conf\" \"actions-runner@srv1-*.service\" \"MemorySwapMax\" \"0\"")
     && has(s: sh, p: "converge_runner_width \"srv1\" \"runner\" \"runner_count\" \"actions-runner@srv1-*.service\" \"10\"")
+    && has(s: sh, p: "host_begin \"srv3\"")
+    && has(s: sh, p: "converge_gunbc_pinned_tree \"srv3\" \"gunbc\" \"pinned_tree_sha\" \"fresh_standup\"")
+    && has(s: sh, p: "converge_runner_width \"srv3\" \"runner\" \"runner_count\" \"actions-runner@srv3-*.service\" \"10\"")
 }
 
 fn witness_drift_red_receipt() -> Bool {

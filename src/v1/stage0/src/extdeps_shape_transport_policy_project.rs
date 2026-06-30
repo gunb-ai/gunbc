@@ -849,11 +849,26 @@ fn anchor_present_in_any_source_root(module_path: &str) -> bool {
     false
 }
 
+/// Cross-tree shadow plants live under `test.fixture.*` in `src/v2/` while the paired
+/// anchor-bearing copy stays at `extdeps.fixture.*` in `dsl/`. Distinct module paths
+/// avoid two-root compile panics; pairing restores shadow-mask detection.
+fn shadow_plant_paired_extdeps_module_path(module_path: &str) -> Option<String> {
+    module_path
+        .strip_prefix("test.fixture.")
+        .map(|leaf| format!("extdeps.fixture.{leaf}"))
+}
+
 pub fn external_authority_anchor_shadow_masked_for_module_path(module_path: String) -> bool {
     match project_external_authority_anchor(&module_path) {
         ExternalAuthorityAnchorProjection::Present { .. } => false,
         ExternalAuthorityAnchorProjection::Absent => {
-            anchor_present_in_any_source_root(&module_path)
+            if anchor_present_in_any_source_root(&module_path) {
+                return true;
+            }
+            if let Some(extdeps_path) = shadow_plant_paired_extdeps_module_path(&module_path) {
+                return anchor_present_in_any_source_root(&extdeps_path);
+            }
+            false
         }
     }
 }
@@ -1057,10 +1072,10 @@ service github.Gist {
     fn external_authority_shadow_mask_detector_has_teeth() {
         assert!(
             external_authority_anchor_shadow_masked_for_module_path(
-                "extdeps.fixture.external_authority_shadow_masked".to_string()
+                "test.fixture.external_authority_shadow_masked".to_string()
             ),
-            "the two-tree shadow fixture (anchor in dsl copy, none in index-resolved src/v2 copy) \
-             must read as masked -- proves the detector is not inert"
+            "the two-tree shadow plant (anchor in dsl extdeps.fixture copy, none in index-resolved \
+             src/v2 test.fixture copy) must read as masked -- proves the detector is not inert"
         );
         assert!(
             external_authority_live_shadow_mask_holds(),
