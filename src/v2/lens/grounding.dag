@@ -2,7 +2,7 @@ module v2.lens.grounding
 
 
 import gunbc.ci_layer_roots { witness_layer_roots }
-import v2.std.algebra { fold_list, is_empty, is_prefix_of, list_snoc_item }
+import v2.std.algebra { fold_list, is_empty, is_prefix_of, length, list_snoc_item }
 import v2.std.collection { List }
 import v2.std.integer { Int }
 import v2.std.logic { Bool }
@@ -417,6 +417,57 @@ fn enumerate_concepts_from_decls(decls: List<ConceptDecl>) -> List<QualifiedConc
   fold(decls, init: [], f: fn(acc, decl) {
     list_snoc_item(xs: acc, item: concept_from_decl(decl: decl))
   })
+}
+
+fn decl_has_layer_included_candidate(
+  decl: ConceptDecl,
+  index: List<ConceptByName>,
+  all_concepts: List<QualifiedConcept>
+) -> Bool {
+  let enclosing_qc = concept_from_decl(decl: decl)
+  fold(enclosing_qc.concept.fields, init: false, f: fn(found, fr) {
+    if found {
+      true
+    } else if is_bare_string(type_name: fr.type_name) {
+      let matched = first_coincident_target(
+        field: fr.field,
+        enclosing: enclosing_qc.concept.name,
+        index: index
+      )
+      if matched.qualified_name == "" {
+        false
+      } else {
+        !compute_layer_excluded(
+          field: fr.field,
+          enclosing_qn: enclosing_qc.qualified_name,
+          matched: matched
+        )
+      }
+    } else {
+      false
+    }
+  })
+}
+
+fn has_any_layer_included_candidate_from_decls(decls: List<ConceptDecl>) -> Bool {
+  let all_concepts = enumerate_concepts_from_decls(decls: decls)
+  let index = build_concept_name_index(idx: all_concepts)
+  fold(decls, init: false, f: fn(found, decl) {
+    if found {
+      true
+    } else {
+      decl_has_layer_included_candidate(
+        decl: decl,
+        index: index,
+        all_concepts: all_concepts
+      )
+    }
+  })
+}
+
+fn whole_tree_extract_smoke() -> Bool {
+  let decls = concept_decl_facts(pool_roots: witness_layer_roots)
+  (length(xs: decls) > 1000) && has_any_layer_included_candidate_from_decls(decls: decls)
 }
 
 fn candidates_in(pool_roots: List<String>) -> List<GroundingWorklistEntry> {

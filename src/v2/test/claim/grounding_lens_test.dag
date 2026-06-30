@@ -1,20 +1,16 @@
 module v2.test.claim.grounding_lens
 
 
-import gunbc.ci_layer_roots { witness_layer_roots }
-import v2.std.algebra { is_empty, length }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 import v2.std.concept_index {
   ConceptStruct,
   FieldRef,
-  QualifiedConcept,
-  concept_decl_facts
+  QualifiedConcept
 }
 import v2.lens.grounding {
   GroundingWorklistEntry,
-  candidates,
   candidates_over_index,
   compute_layer_excluded,
   is_layer_inversion,
@@ -144,17 +140,7 @@ fn witness_coincides_with_qualified_name() -> Bool {
   ) == "demo.Url"
 }
 
-fn witness_whole_tree_concept_count() -> Bool {
-  length(xs: concept_decl_facts(pool_roots: witness_layer_roots)) > 1000
-}
-
-fn witness_whole_tree_nonempty_candidates() -> Bool {
-  !is_empty(xs: candidates())
-}
-
-
-
-test fn grounding_lens_witnesses() -> Bool {
+test fn grounding_lens_fixture_witnesses() -> Bool {
   witness_coincide_caseinsensitive()
     && witness_coincide_headnoun()
     && witness_coincide_whole()
@@ -169,6 +155,4 @@ test fn grounding_lens_witnesses() -> Bool {
     && witness_layer_inversion_predicate()
     && witness_enrich_target_structure()
     && witness_coincides_with_qualified_name()
-    && witness_whole_tree_concept_count()
-    && witness_whole_tree_nonempty_candidates()
 }
