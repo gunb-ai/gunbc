@@ -17,64 +17,72 @@ import extdeps.github.actions {
   default_job_timeout_minutes
 }
 
-fn ci_prelude_steps() -> List<Step> {
-  [
-    RunStep {
-      name: Present { value: "Isolate toolchain dirs" },
-      id: none,
-      run: concat(
+fn ci_checkout_step() -> Step {
+  UsesStep {
+    name: Present { value: "Checkout" },
+    id: none,
+    uses: checkout_action,
+    with: Present {
+      value: [kv(key: "fetch-depth", value: yaml_int(n: 0))]
+    },
+    env: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+fn ci_isolate_toolchain_step() -> Step {
+  RunStep {
+    name: Present { value: "Isolate toolchain dirs" },
+    id: none,
+    run: concat(
+      concat(
         concat(
           concat(
-            concat(
-              "rm -rf \"$RUNNER_TEMP/rustup\" \"$RUNNER_TEMP/cargo\"\n",
-              "echo \"HOME=$RUNNER_TEMP\" >> \"$GITHUB_ENV\"\n"
-            ),
-            concat(
-              "echo \"CARGO_HOME=$RUNNER_TEMP/cargo\" >> \"$GITHUB_ENV\"\n",
-              "echo \"RUSTUP_HOME=$RUNNER_TEMP/rustup\" >> \"$GITHUB_ENV\"\n"
-            )
+            "rm -rf \"$RUNNER_TEMP/rustup\" \"$RUNNER_TEMP/cargo\"\n",
+            "echo \"HOME=$RUNNER_TEMP\" >> \"$GITHUB_ENV\"\n"
           ),
-          "if sccache --show-stats >/dev/null 2>&1; then\n"
-        ),
-        concat(
           concat(
-            "  echo \"RUSTC_WRAPPER=sccache\" >> \"$GITHUB_ENV\"\n",
+            "echo \"CARGO_HOME=$RUNNER_TEMP/cargo\" >> \"$GITHUB_ENV\"\n",
+            "echo \"RUSTUP_HOME=$RUNNER_TEMP/rustup\" >> \"$GITHUB_ENV\"\n"
+          )
+        ),
+        "if sccache --show-stats >/dev/null 2>&1; then\n"
+      ),
+      concat(
+        concat(
+          "  echo \"RUSTC_WRAPPER=sccache\" >> \"$GITHUB_ENV\"\n",
+          concat(
+            "  echo \"CARGO_INCREMENTAL=0\" >> \"$GITHUB_ENV\"\n",
             concat(
-              "  echo \"CARGO_INCREMENTAL=0\" >> \"$GITHUB_ENV\"\n",
+              "  echo \"CARGO_BUILD_JOBS=1\" >> \"$GITHUB_ENV\"\n",
               concat(
-                "  echo \"CARGO_BUILD_JOBS=1\" >> \"$GITHUB_ENV\"\n",
+                "else\n",
                 concat(
-                  "else\n",
-                  concat(
-                    "  echo \"CARGO_BUILD_JOBS=2\" >> \"$GITHUB_ENV\"\n",
-                    "fi"
-                  )
+                  "  echo \"CARGO_BUILD_JOBS=2\" >> \"$GITHUB_ENV\"\n",
+                  "fi"
                 )
               )
             )
-          ),
-          ""
-        )
-      ),
-      shell: none,
-      env: none,
-      working_directory: none,
-      if_condition: none,
-      continue_on_error: none,
-      timeout_minutes: none
-    },
-    UsesStep {
-      name: Present { value: "Checkout" },
-      id: none,
-      uses: checkout_action,
-      with: Present {
-        value: [kv(key: "fetch-depth", value: yaml_int(n: 0))]
-      },
-      env: none,
-      if_condition: none,
-      continue_on_error: none,
-      timeout_minutes: none
-    },
+          )
+        ),
+        ""
+      )
+    ),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+fn ci_prelude_steps() -> List<Step> {
+  [
+    ci_checkout_step(),
+    ci_isolate_toolchain_step(),
     UsesStep {
       name: Present { value: "Setup Rust" },
       id: none,
