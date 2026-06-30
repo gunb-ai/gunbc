@@ -1,4 +1,4 @@
-module v2.test.manual.bind_eval_by_execution
+module v2.test.execution.bind_eval_by_execution
 
 import v2.compiler.body_producer {
   produce_mvp1_bind_arrow_with_body,

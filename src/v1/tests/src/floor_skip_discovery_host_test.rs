@@ -38,6 +38,7 @@ fn discovery_options(skip: bool) -> DiscoveryCorpusOptions {
     DiscoveryCorpusOptions {
         skip_unaffected_node_frontier: skip,
         explicit_roster_only: true,
+        ..Default::default()
     }
 }
 

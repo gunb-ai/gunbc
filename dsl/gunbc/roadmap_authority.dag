@@ -9,7 +9,7 @@ import gunbc.roadmap_model {
   NodeSizing, Unsized, Sized,
   SectionElement, section_prose, section_group,
 }
-import gunbc.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, PlainLine }
+import gunbc.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, PlainLine, Signoff, Unsigned, SignedOff }
 import ctrl.process_algebra { ProcessNodeId }
 import std.markdown { MarkdownBlock, HeadingBlock, ParagraphBlock, TextInline, H1 }
 import extdeps.languages.markdown { serialize_markdown_source }
@@ -19,30 +19,36 @@ fn nid(s: String) -> ProcessNodeId { s }
 fn ptr(label: String, path: String) -> Pointer { Pointer { label: label, path: path } }
 fn plan_ptr(path: String) -> List<Pointer> { [Pointer { label: "plan", path: path }] }
 
+fn unsigned() -> Signoff { Unsigned }
+
+fn signed(by: String, works: Bool, scope_equivalent: Bool, as_expected: Bool) -> Signoff {
+  SignedOff { by: by, works: works, scope_equivalent: scope_equivalent, as_expected: as_expected }
+}
+
 fn authored(id: String, done: Bool, content: String) -> RoadmapNode {
-  RoadmapNode { node: nid(s: id), line: AuthoredLine { done: done, content: content }, carriers: [], sizing: Unsized }
+  RoadmapNode { node: nid(s: id), line: AuthoredLine { done: done, content: content }, carriers: [], sizing: Unsized, owner: "", signoff: Unsigned }
 }
 
 fn authored_doc(id: String, done: Bool, content: String, path: String) -> RoadmapNode {
-  RoadmapNode { node: nid(s: id), line: AuthoredLine { done: done, content: content }, carriers: plan_ptr(path: path), sizing: Unsized }
+  RoadmapNode { node: nid(s: id), line: AuthoredLine { done: done, content: content }, carriers: plan_ptr(path: path), sizing: Unsized, owner: "", signoff: Unsigned }
 }
 
 fn authored_pp(id: String, done: Bool, content: String, carriers: List<Pointer>) -> RoadmapNode {
-  RoadmapNode { node: nid(s: id), line: AuthoredLine { done: done, content: content }, carriers: carriers, sizing: Unsized }
+  RoadmapNode { node: nid(s: id), line: AuthoredLine { done: done, content: content }, carriers: carriers, sizing: Unsized, owner: "", signoff: Unsigned }
 }
 
 fn plain(id: String, content: String) -> RoadmapNode {
-  RoadmapNode { node: nid(s: id), line: PlainLine { content: content }, carriers: [], sizing: Unsized }
+  RoadmapNode { node: nid(s: id), line: PlainLine { content: content }, carriers: [], sizing: Unsized, owner: "", signoff: Unsigned }
 }
 
 fn derivable(id: String, prs: List<Int>, title: String, description: String) -> RoadmapNode {
-  RoadmapNode { node: nid(s: id), line: DerivableLine { prs: prs, title: title, description: description }, carriers: [], sizing: Unsized }
+  RoadmapNode { node: nid(s: id), line: DerivableLine { prs: prs, title: title, description: description }, carriers: [], sizing: Unsized, owner: "", signoff: Unsigned }
 }
 fn derivable_doc(id: String, prs: List<Int>, title: String, description: String, path: String) -> RoadmapNode {
-  RoadmapNode { node: nid(s: id), line: DerivableLine { prs: prs, title: title, description: description }, carriers: plan_ptr(path: path), sizing: Unsized }
+  RoadmapNode { node: nid(s: id), line: DerivableLine { prs: prs, title: title, description: description }, carriers: plan_ptr(path: path), sizing: Unsized, owner: "", signoff: Unsigned }
 }
 fn derivable_pp(id: String, prs: List<Int>, title: String, description: String, carriers: List<Pointer>) -> RoadmapNode {
-  RoadmapNode { node: nid(s: id), line: DerivableLine { prs: prs, title: title, description: description }, carriers: carriers, sizing: Unsized }
+  RoadmapNode { node: nid(s: id), line: DerivableLine { prs: prs, title: title, description: description }, carriers: carriers, sizing: Unsized, owner: "", signoff: Unsigned }
 }
 
 fn derivable_wi(id: String, prs: List<Int>, title: String, description: String, intricacy: Intricacy, volume: Volume, repo: String) -> RoadmapNode {
@@ -51,6 +57,8 @@ fn derivable_wi(id: String, prs: List<Int>, title: String, description: String, 
     line: DerivableLine { prs: prs, title: title, description: description },
     carriers: [],
     sizing: Sized { intricacy: intricacy, volume: volume, repo: repo, acceptance: PrsMerged },
+    owner: "",
+    signoff: Unsigned,
   }
 }
 
@@ -60,7 +68,17 @@ fn authored_wi(id: String, done: Bool, content: String, intricacy: Intricacy, vo
     line: AuthoredLine { done: done, content: content },
     carriers: [],
     sizing: Sized { intricacy: intricacy, volume: volume, repo: repo, acceptance: ManualAcceptance },
+    owner: "",
+    signoff: Unsigned,
   }
+}
+
+fn owned(rn: RoadmapNode, owner: String) -> RoadmapNode {
+  RoadmapNode { node: rn.node, line: rn.line, carriers: rn.carriers, sizing: rn.sizing, owner: owner, signoff: rn.signoff }
+}
+
+fn sign(rn: RoadmapNode, s: Signoff) -> RoadmapNode {
+  RoadmapNode { node: rn.node, line: rn.line, carriers: rn.carriers, sizing: rn.sizing, owner: rn.owner, signoff: s }
 }
 
 fn preamble() -> List<MarkdownBlock> {
