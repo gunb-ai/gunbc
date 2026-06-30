@@ -2858,21 +2858,6 @@ fn build_floor_lens_hygiene_graph(
     })
 }
 
-fn default_floor_lens_hygiene_roots() -> Vec<String> {
-    let ws = workspace_root();
-    vec![
-        ws.join("dsl").to_string_lossy().into_owned(),
-        ws.join("src/v2").to_string_lossy().into_owned(),
-    ]
-}
-
-fn default_floor_lens_hygiene_scan_dirs() -> Vec<String> {
-    vec![
-        "dsl/test/claim".to_string(),
-        "src/v2/test/claim/manual".to_string(),
-    ]
-}
-
 fn default_floor_lens_hygiene_excludes() -> Vec<String> {
     FLOOR_DISCOVERY_EXCLUDES
         .iter()
@@ -2884,8 +2869,8 @@ fn default_floor_lens_hygiene_excludes() -> Vec<String> {
 /// `v2.lens.*` module count. Returns `-1` when the corpus walk fails closed.
 pub fn inert_lens_unreached_module_count() -> i64 {
     match build_floor_lens_hygiene_graph(
-        &default_floor_lens_hygiene_roots(),
-        &default_floor_lens_hygiene_scan_dirs(),
+        &crate::module_path_index::default_source_roots(),
+        &crate::module_path_index::witness_discovery_scan_dirs(),
         &default_floor_lens_hygiene_excludes(),
         &[],
     ) {
@@ -2899,8 +2884,8 @@ pub fn inert_lens_unreached_module_count() -> i64 {
 /// Floor witness builtin: declared top-level `v2.lens.*` module count (non-vacuity oracle).
 pub fn inert_lens_top_level_module_count() -> i64 {
     match build_floor_lens_hygiene_graph(
-        &default_floor_lens_hygiene_roots(),
-        &default_floor_lens_hygiene_scan_dirs(),
+        &crate::module_path_index::default_source_roots(),
+        &crate::module_path_index::witness_discovery_scan_dirs(),
         &default_floor_lens_hygiene_excludes(),
         &[],
     ) {
@@ -4538,14 +4523,8 @@ mod inert_lens_hygiene_tests {
     fn floor_corpus_has_no_inert_lenses() {
         let ws = workspace_root();
         std::env::set_current_dir(&ws).expect("chdir to workspace root");
-        let roots = vec![
-            ws.join("dsl").to_string_lossy().into_owned(),
-            ws.join("src/v2").to_string_lossy().into_owned(),
-        ];
-        let scan_dirs = vec![
-            "dsl/test/claim".to_string(),
-            "src/v2/test/claim/manual".to_string(),
-        ];
+        let roots = crate::module_path_index::default_source_roots();
+        let scan_dirs = crate::module_path_index::witness_discovery_scan_dirs();
         let excludes: Vec<String> = FLOOR_DISCOVERY_EXCLUDES
             .iter()
             .map(|s| s.to_string())
