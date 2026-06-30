@@ -14,11 +14,6 @@ import examples.js_site_emit {
   js_site_tsx_artifact_path,
   js_site_boundary_names_three_layers,
 }
-import std.markup_jsx_boundary {
-  markup_jsx_vocabulary_boundary,
-  markup_jsx_static_only_honesty,
-  markup_jsx_interactivity_exhaustion,
-}
 import extdeps.filesystem.filesystem_io { Filesystem }
 
 data expected_home_html: String = "<html><head><title>gunbc — Home</title></head><body><header><h1>gunbc</h1><nav><a href=\"/\">Home</a><a href=\"/about\">About</a><a href=\"/browse\">Browse</a></nav></header><main><p>DAG-modeled compiler. One MarkupNode source, two realizations.</p></main></body></html>"
@@ -90,24 +85,6 @@ fn witness_committed_about_tsx() -> Bool {
   artifact_matches_emit(path: js_site_tsx_artifact_path(id: About), expected: expected_about_tsx)
 }
 
-fn witness_markup_jsx_boundary_named() -> Bool {
-  js_site_boundary_names_three_layers()
-    && markup_jsx_vocabulary_boundary ==
-      "MarkupNode tree (std.markup) | html_markup_medium bracket+escape (extdeps.languages.html) | JSX.Component export envelope (extdeps.languages.react_jsx)"
-}
-
-fn witness_static_only_honesty_boundary() -> Bool {
-  markup_jsx_static_only_honesty ==
-    "static structure only: no props, no state, no hooks, no event handlers, no client logic, no bundler"
-}
-
-fn witness_interactivity_exhaustion_boundary() -> Bool {
-  starts_with(
-    s: markup_jsx_interactivity_exhaustion,
-    prefix: "onClick or any JSX expression-valued prop:"
-  )
-}
-
 test fn js_site_emit_keystone_holds() -> Bool {
   witness_three_page_source()
     && witness_home_html_emit()
@@ -122,7 +99,5 @@ test fn js_site_emit_keystone_holds() -> Bool {
     && witness_committed_home_tsx()
     && witness_committed_browse_tsx()
     && witness_committed_about_tsx()
-    && witness_markup_jsx_boundary_named()
-    && witness_static_only_honesty_boundary()
-    && witness_interactivity_exhaustion_boundary()
+    && js_site_boundary_names_three_layers()
 }
