@@ -4,7 +4,18 @@ module v2.lens.grounding
 import gunbc.ci_layer_roots { witness_layer_roots }
 import v2.std.algebra { fold_list, is_empty, is_prefix_of, length, list_snoc_item }
 import v2.std.collection { List }
+import v2.std.cross_tree.import_model {
+  CrossTreeImport,
+  V2Tree,
+  cross_tree_layer_direction_holds
+}
+import v2.std.cross_tree.resolution { layer_prefix_from_dotted_qualified_name }
 import v2.std.integer { Int }
+import v2.std.layer {
+  LayerPrefix,
+  LayerPrefixCompiler,
+  LayerPrefixStd
+}
 import v2.std.logic { Bool }
 import v2.std.text { Char, String }
 import v2.std.concept_index {

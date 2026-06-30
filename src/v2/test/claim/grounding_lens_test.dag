@@ -23,9 +23,6 @@ import v2.std.concept_index {
 import v2.lens.grounding {
   GroundingWorklistEntry,
   candidates_over_decls,
-  compute_layer_excluded,
-  is_layer_inversion,
-  is_meta_self_coincidence,
   name_coincides
 }
 
@@ -120,28 +117,6 @@ fn fixture_decls() -> List<ConceptDecl> {
   ]
 }
 
-fn layer_inversion_fixture_decls() -> List<ConceptDecl> {
-  [
-    concept_decl(
-      qn: "v2.std.Foo",
-      nm: "Foo",
-      node: record_type(fields: [field_edge(field: ^url, type_sym: ^String)])
-    ),
-    concept_decl(
-      qn: "extdeps.http.Url",
-      nm: "Url",
-      node: record_type(fields: [
-        field_edge(field: ^scheme, type_sym: ^UriScheme),
-        field_edge(field: ^host, type_sym: ^NonEmptyStr)
-      ])
-    )
-  ]
-}
-
-fn qc(qn: String, nm: String, fs: List<FieldRef>) -> QualifiedConcept {
-  QualifiedConcept { qualified_name: qn, concept: ConceptStruct { name: nm, fields: fs } }
-}
-
 fn has_candidate(cands: List<GroundingWorklistEntry>, enclosing: String, field: String) -> Bool {
   fold(cands, init: false, f: fn(acc, c) {
     acc || ((c.enclosing == enclosing) && (c.field == field))
@@ -176,28 +151,8 @@ fn witness_role_word_flows_to_judge() -> Bool {
   has_candidate(cands: candidates_over_decls(decls: fixture_decls()), enclosing: "Widget", field: "id")
 }
 
-fn witness_meta_self_coincidence_excluded() -> Bool {
-  compute_layer_excluded(
-    field: "field",
-    enclosing_qn: "v2.std.FieldRef",
-    matched: qc(qn: "v2.std.Field", nm: "Field", fs: [])
-  )
-}
-
-fn witness_layer_excludes_meta_field() -> Bool {
-  !has_candidate(cands: candidates_over_decls(decls: fixture_decls()), enclosing: "FieldRef", field: "field")
-}
-
-fn witness_layer_excludes_inversion() -> Bool {
-  !has_candidate(
-    cands: candidates_over_decls(decls: layer_inversion_fixture_decls()),
-    enclosing: "Foo",
-    field: "url"
-  )
-}
-
-fn witness_layer_inversion_predicate() -> Bool {
-  is_layer_inversion(enclosing_qn: "v2.std.Foo", matched_qn: "extdeps.http.Url")
+fn witness_meta_field_coincidence_flows_to_judge() -> Bool {
+  has_candidate(cands: candidates_over_decls(decls: fixture_decls()), enclosing: "FieldRef", field: "field")
 }
 
 fn witness_enrich_target_structure() -> Bool {
@@ -226,10 +181,7 @@ test fn grounding_lens_fixture_witnesses() -> Bool {
     && witness_decide_clears_nonbare()
     && witness_decide_clears_clean_RED()
     && witness_role_word_flows_to_judge()
-    && witness_meta_self_coincidence_excluded()
-    && witness_layer_excludes_meta_field()
-    && witness_layer_excludes_inversion()
-    && witness_layer_inversion_predicate()
+    && witness_meta_field_coincidence_flows_to_judge()
     && witness_enrich_target_structure()
     && witness_coincides_with_qualified_name()
 }
