@@ -38,9 +38,9 @@ type TsStmt
   = Const { name: String, value: TsExpr }
   | Let { name: String, value: TsExpr }
   | ExprStmt { expr: TsExpr }
-  | If { cond: TsExpr, then: TsStmt, else_stmt: Optional<TsStmt> }
+  | If { cond: TsExpr, then: TsStmt, else_stmt: TsStmt? }
   | ForOf { var_name: String, iterable: TsExpr, body: TsStmt }
-  | Return { expr: Optional<TsExpr> }
+  | Return { expr: TsExpr? }
   | Block { stmts: List<TsStmt> }
 
 type TsProgram {
@@ -129,11 +129,11 @@ fn ts_expr_stmt(expr: TsExpr) -> TsStmt {
   ExprStmt { expr: expr }
 }
 
-fn ts_return(expr: Optional<TsExpr>) -> TsStmt {
+fn ts_return(expr: TsExpr?) -> TsStmt {
   Return { expr: expr }
 }
 
-fn ts_if(cond: TsExpr, then: TsStmt, else_stmt: Optional<TsStmt>) -> TsStmt {
+fn ts_if(cond: TsExpr, then: TsStmt, else_stmt: TsStmt?) -> TsStmt {
   If { cond: cond, then: then, else_stmt: else_stmt }
 }
 
@@ -142,13 +142,13 @@ fn ts_for_of(var_name: String, iterable: TsExpr, body: TsStmt) -> TsStmt {
 }
 
 fn escape_single_quoted(s: String) -> String {
-  join(split(s: s, delimiter: "\\"), "\\\\")
-    |> (s1 => join(split(s: s1, delimiter: "'"), "\\'"))
+  let s1 = join(split(s: s, delimiter: "\\"), "\\\\")
+  join(split(s: s1, delimiter: "'"), "\\'")
 }
 
 fn escape_double_quoted(s: String) -> String {
-  join(split(s: s, delimiter: "\\"), "\\\\")
-    |> (s1 => join(split(s: s1, delimiter: "\""), "\\\""))
+  let s1 = join(split(s: s, delimiter: "\\"), "\\\\")
+  join(split(s: s1, delimiter: "\""), "\\\"")
 }
 
 fn escape_backtick(s: String) -> String {

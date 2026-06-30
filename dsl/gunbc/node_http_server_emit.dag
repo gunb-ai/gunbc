@@ -135,7 +135,7 @@ fn node_http_match_handler_body() -> TsStmt {
       ]
     )),
     ts_expr_stmt(expr: ts_call(callee: res_member(name: "end"), args: [route_member(name: "body")])),
-    ts_return(expr: Absent),
+    ts_return(expr: none),
   ])
 }
 
@@ -180,7 +180,7 @@ fn node_http_request_handler_block() -> TsStmt {
           )
         ),
         then: node_http_match_handler_body(),
-        else_stmt: Absent
+        else_stmt: none
       )
     ),
     ts_const(
@@ -242,9 +242,9 @@ fn node_http_request_handler_block() -> TsStmt {
           callee: res_member(name: "end"),
           args: [ts_lit_str(value: "Method Not Allowed")]
         )),
-        ts_return(expr: Absent),
+        ts_return(expr: none),
       ]),
-      else_stmt: Absent
+      else_stmt: none
     ),
     ts_expr_stmt(expr: ts_call(callee: res_member(name: "writeHead"), args: [ts_lit_num(text: "404")])),
     ts_expr_stmt(expr: ts_call(callee: res_member(name: "end"), args: [ts_lit_str(value: "Not Found")])),
