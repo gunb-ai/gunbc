@@ -1198,3 +1198,5 @@ data json_record_knobs: SerializationKnobs = {
   quote_keys: true,
   value_quote: "\""
 }
+
+data value_quote_escape_dissolution_trigger: String = "dissolve-on: SerializationKnobs.value_quote is a wrap-char (concat(q,t,q)), NOT RFC-8259 JSON string escaping or TOML string escaping — a value containing a double-quote or newline produces silently invalid output; current consumers (manifest host IDs, integer strings, comma-joined runner labels) never contain these characters, so no live bug; dissolution = replace value_quote with a real string-escape authority citing RFC 8259 §7 (JSON) and TOML v1.0 §String (TOML) in std.serialize"

@@ -48,11 +48,15 @@ import gunbc.ci_floor_measurement {
 import gunbc.ci_fleet { fleet_intent_offers }
 import gunbc.runner_deploy_emit {
   expected_runner_deploy_manifest,
+  expected_runner_deploy_manifest_json,
   runner_deploy_drifted,
   manifest_host_doc,
+  manifest_host_fields,
   session_host_doc,
   runner_deploy_protocol,
 }
+import std.languages { json_record_knobs }
+import std.serialize { serialize_record_doc }
 import std.layout { render }
 import std.measure { byte_size, byte_size_count, hardware_thread_count_value }
 import std.types { Bool, Int, List, String }
@@ -111,7 +115,7 @@ fn witness_sound_manifest_line_is_populated() -> Bool {
       hosts.length() > 0
         && all(hosts, h => {
             let rendered = render(doc: manifest_host_doc(h: h), proto: runner_deploy_protocol)
-            string_contains(s: rendered, pattern: concat(concat("host=", h.identity), " runner_count="))
+            starts_with(s: rendered, prefix: concat(concat("host=", h.identity), " runner_count="))
           })
     PlanUnsound { reason: _ } => false
   }
@@ -225,6 +229,21 @@ fn witness_session_reservation_line_has_no_cpu_weight() -> Bool {
   !(string_contains(s: render(doc: session_host_doc(h: fixture), proto: runner_deploy_protocol), pattern: "cpu_weight"))
 }
 
+fn witness_real_manifest_fields_drive_both_formats() -> Bool {
+  match runner_deployment_plan() {
+    PlanUnsound { reason: _ } => false
+    PlanDerived { hosts: hosts, fleet_concurrent_runs: _ } =>
+      hosts.length() > 0 &&
+      all(hosts, h => {
+        let text_out = render(doc: manifest_host_doc(h: h), proto: runner_deploy_protocol)
+        let json_out = render(doc: serialize_record_doc(knobs: json_record_knobs, fields: manifest_host_fields(h: h)), proto: runner_deploy_protocol)
+        text_out != json_out &&
+          string_contains(s: text_out, pattern: concat("host=", h.identity)) &&
+          string_contains(s: json_out, pattern: concat("\"host\": \"", h.identity))
+      })
+  }
+}
+
 test fn runner_placement_holds() -> Bool {
   witness_declared_runner_count_is_ten()
     && witness_live_plan_is_conservation_sound()
@@ -246,4 +265,5 @@ test fn runner_placement_holds() -> Bool {
     && witness_runner_and_session_cpu_weights_are_distinct()
     && witness_session_slice_line_emits_cpu_weight()
     && witness_session_reservation_line_has_no_cpu_weight()
+    && witness_real_manifest_fields_drive_both_formats()
 }

@@ -38,7 +38,7 @@ import std.layout {
   doc_text, doc_concat, doc_line_of,
   render
 }
-import std.languages { SerializationKnobs, SerialField, SerialValue, ScalarValue }
+import std.languages { SerializationKnobs, SerialField, SerialValue, ScalarValue, json_record_knobs }
 import std.serialize { serial_scalar, serial_field, serialize_fields_doc, serialize_record_doc }
 
 data runner_deploy_protocol: LayoutProtocol = LayoutProtocol { indent_unit: "" }
@@ -192,4 +192,22 @@ fn expected_runner_deploy_manifest() -> String {
 
 fn runner_deploy_drifted(committed: String) -> Bool {
   !(committed == expected_runner_deploy_manifest())
+}
+
+fn expected_runner_deploy_manifest_json() -> String {
+  match runner_deployment_plan() {
+    PlanUnsound { reason: reason } =>
+      render(doc: doc_line_of(text: concat("runner-deploy UNSOUND: ", reason)), proto: runner_deploy_protocol)
+    PlanDerived { hosts: hosts, fleet_concurrent_runs: _ } =>
+      render(
+        doc: doc_concat(parts: map(hosts, h =>
+          doc_concat(parts: [
+            doc_text(text: "runner-deploy "),
+            serialize_record_doc(knobs: json_record_knobs, fields: manifest_host_fields(h: h)),
+            DocLine
+          ])
+        )),
+        proto: runner_deploy_protocol
+      )
+  }
 }
