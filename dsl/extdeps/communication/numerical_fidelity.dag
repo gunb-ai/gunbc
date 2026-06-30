@@ -10,7 +10,6 @@ import std.numerical_contract {
   FmaContractionPermitted,
   FmaContractionRefused,
 }
-import std.types { Bool }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -34,17 +33,6 @@ fn decode_fidelity_for_contract(contract: NumericalContract) -> DecodeFidelity {
       match fma {
         FmaContractionRefused => Lossless
         FmaContractionPermitted => Lossy
-      }
-  }
-}
-
-fn contract_refuses_fma_contraction(contract: NumericalContract) -> Bool {
-  match contract {
-    IntegerExact => false
-    FloatApproximate { fma_contraction: fma, rounding: _ } =>
-      match fma {
-        FmaContractionRefused => true
-        FmaContractionPermitted => false
       }
   }
 }

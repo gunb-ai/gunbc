@@ -34,8 +34,10 @@ import extdeps.communication.medium { DecodeFidelity, Lossless, Lossy }
 import extdeps.communication.numerical_fidelity {
   LoweringAccepted,
   LoweringRefused,
+  LoweringRefusalReason,
+  FmaContractionRefusedByContract,
+  UnsupportedNumericalDomain,
   lowering_fidelity_verdict_for_contract,
-  contract_refuses_fma_contraction,
 }
 import extdeps.gpu.types { AcceleratorFacts }
 import extdeps.vendor.nvidia { nvidia }
@@ -55,6 +57,7 @@ type AcceleratorRefusalReason
   = NotElementwisePure
   | CarriesEffects
   | FmaContractionViolatesContract
+  | UnsupportedNumericalDomain
 
 type AcceleratorRecognitionOutcome
   = Recognized {
@@ -107,25 +110,46 @@ fn build_realization_plan(schedule: Schedule) -> RealizationPlan<Nano> {
   }
 }
 
+fn accelerator_refusal_from_lowering(reason: LoweringRefusalReason) -> AcceleratorRefusalReason {
+  match reason {
+    FmaContractionRefusedByContract => FmaContractionViolatesContract
+    UnsupportedNumericalDomain => UnsupportedNumericalDomain
+  }
+}
+
+fn recognized_outcome(
+  contract: NumericalContract,
+  fidelity: DecodeFidelity
+) -> AcceleratorRecognitionOutcome {
+  Recognized {
+    plan: build_realization_plan(schedule: relu_mul_add_schedule())
+    kernel_step: demo_kernel_step(placement: demo_accelerator_placement())
+    contract: contract
+    fidelity: fidelity
+    target_medium: simd_kernel_target_medium_name
+  }
+}
+
 fn recognize_with_contract(
   contract: NumericalContract,
   insist_on_fma_fused_kernel: Bool
 ) -> AcceleratorRecognitionOutcome {
-  if insist_on_fma_fused_kernel && contract_refuses_fma_contraction(contract: contract) {
-    Refused { reason: FmaContractionViolatesContract }
-  } else {
-    match lowering_fidelity_verdict_for_contract(contract: contract) {
-      LoweringAccepted { fidelity: fidelity } =>
-        Recognized {
-          plan: build_realization_plan(schedule: relu_mul_add_schedule())
-          kernel_step: demo_kernel_step(placement: demo_accelerator_placement())
-          contract: contract
-          fidelity: fidelity
-          target_medium: simd_kernel_target_medium_name
-        }
-      LoweringRefused { reason: _ } =>
-        Refused { reason: FmaContractionViolatesContract }
-    }
+  match lowering_fidelity_verdict_for_contract(contract: contract) {
+    LoweringRefused { reason: reason } =>
+      Refused { reason: accelerator_refusal_from_lowering(reason: reason) }
+    LoweringAccepted { fidelity: fidelity } =>
+      match contract {
+        FloatApproximate { fma_contraction: FmaContractionRefused, rounding: _ } =>
+          if insist_on_fma_fused_kernel {
+            Refused { reason: FmaContractionViolatesContract }
+          } else {
+            recognized_outcome(contract: contract, fidelity: fidelity)
+          }
+        IntegerExact =>
+          recognized_outcome(contract: contract, fidelity: fidelity)
+        FloatApproximate { fma_contraction: FmaContractionPermitted, rounding: _ } =>
+          recognized_outcome(contract: contract, fidelity: fidelity)
+      }
   }
 }
 
@@ -208,6 +232,7 @@ fn witness_effectful_subgraph_refused() -> Bool {
       CarriesEffects => true
       NotElementwisePure => false
       FmaContractionViolatesContract => false
+      UnsupportedNumericalDomain => false
     }
   }
 }
@@ -219,6 +244,7 @@ fn witness_data_dependent_gather_refused() -> Bool {
       NotElementwisePure => true
       CarriesEffects => false
       FmaContractionViolatesContract => false
+      UnsupportedNumericalDomain => false
     }
   }
 }
@@ -241,6 +267,7 @@ fn witness_float_fma_fused_kernel_refused_when_contraction_refused() -> Bool {
       FmaContractionViolatesContract => true
       NotElementwisePure => false
       CarriesEffects => false
+      UnsupportedNumericalDomain => false
     }
   }
 }
