@@ -1,8 +1,8 @@
-module test.claim.live_deploy_emit
+module test.claim.live_deploy.emit
 
 import std.types { Bool, String }
 import std.os.types { Apt }
-import gunbc.live_deploy {
+import gunbc.live_deploy.spec {
   DeploymentSpec,
   DeploymentEnsuredStep,
   TailscalePackage,
@@ -15,7 +15,7 @@ import gunbc.live_deploy {
   gunbc_roadmap_unit_name,
   gunbc_roadmap_server_path,
 }
-import gunbc.live_deploy_emit {
+import gunbc.live_deploy.emit {
   expected_live_deploy_apply_script,
   expected_live_deploy_retract_script,
   live_deploy_apply_script_drifted,
