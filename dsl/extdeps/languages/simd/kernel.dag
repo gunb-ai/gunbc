@@ -1,0 +1,46 @@
+module extdeps.languages.simd.kernel
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.communication.medium { Medium, Lossless }
+import std.types { NonEmptyStr, Int }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "gcc.gnu.org/onlinedocs/gcc/Vector-Extensions.html"
+  }
+}
+
+data simd_kernel_target_medium_name: NonEmptyStr = "simd-contiguous-loop"
+
+type SimdKernelBufferLayout
+  = ContiguousSoa
+  | ArrayOfStructures
+
+type SimdKernelEmitSurface {
+  fused_op_count: Int
+  buffer_layout: SimdKernelBufferLayout
+}
+
+fn simd_kernel_medium(surface: SimdKernelEmitSurface) -> Medium<SimdKernelEmitSurface> {
+  Medium {
+    carried: surface
+    fidelity: Lossless
+  }
+}
+
+fn simd_relu_mul_add_kernel_surface() -> SimdKernelEmitSurface {
+  SimdKernelEmitSurface {
+    fused_op_count: 3
+    buffer_layout: ContiguousSoa
+  }
+}
+
+fn witness_relu_mul_add_kernel_surface_shape() -> Bool {
+  let surface = simd_relu_mul_add_kernel_surface()
+  match surface.buffer_layout {
+    ContiguousSoa => surface.fused_op_count == 3
+    ArrayOfStructures => false
+  }
+}
