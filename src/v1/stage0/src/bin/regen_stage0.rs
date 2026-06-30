@@ -113,6 +113,8 @@ const GENERATED_STAGE0_FILES: &[&str] = &[
 
 const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
     "cli_run.rs",
+    "complexity_linearity_audit_project.rs",
+    "decl_facts_project.rs",
     "coproduct_reflection.rs",
     "doc_reachability_project.rs",
     "medium_structure_project.rs",
@@ -347,6 +349,9 @@ fn run() -> Result<(), String> {
     })?;
     time_phase(&mut phases, "patch_languages_consumer_census_mod", || {
         patch_languages_consumer_census_mod(&fresh_dir.join("src"))
+    })?;
+    time_phase(&mut phases, "patch_complexity_linearity_audit_mod", || {
+        patch_complexity_linearity_audit_mod(&fresh_dir.join("src"))
     })?;
     time_phase(&mut phases, "assert_bootstrap_emit_core_support", || {
         assert_bootstrap_emit_core_support(&fresh_dir.join("src"))
@@ -831,6 +836,26 @@ fn patch_languages_consumer_census_mod(src_dir: &Path) -> Result<(), String> {
         lib_text = lib_text.replace(
             "pub mod fact_cardinality_census;\n",
             "pub mod fact_cardinality_census;\npub mod languages_consumer_census;\n",
+        );
+    }
+    fs::write(&lib_path, lib_text).map_err(|e| format!("write {}: {e}", lib_path.display()))?;
+    Ok(())
+}
+
+fn patch_complexity_linearity_audit_mod(src_dir: &Path) -> Result<(), String> {
+    let lib_path = src_dir.join("lib.rs");
+    let mut lib_text =
+        fs::read_to_string(&lib_path).map_err(|e| format!("read {}: {e}", lib_path.display()))?;
+    if !lib_text.contains("pub mod complexity_linearity_audit_project;") {
+        lib_text = lib_text.replace(
+            "pub mod cli_run;\n",
+            "pub mod cli_run;\npub mod complexity_linearity_audit_project;\n",
+        );
+    }
+    if !lib_text.contains("pub mod decl_facts_project;") {
+        lib_text = lib_text.replace(
+            "pub mod complexity_linearity_audit_project;\n",
+            "pub mod complexity_linearity_audit_project;\npub mod decl_facts_project;\n",
         );
     }
     fs::write(&lib_path, lib_text).map_err(|e| format!("write {}: {e}", lib_path.display()))?;
