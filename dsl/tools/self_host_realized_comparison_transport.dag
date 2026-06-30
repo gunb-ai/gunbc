@@ -14,6 +14,8 @@ data realized_comparison_emitted_src_root: String = "target/v2-emit-fresh-realiz
 data realized_comparison_committed_src_root: String = "src/v1/stage0/src"
 data realized_comparison_roster_manifest_path: String = "target/v2-emit-fresh-realize/roster_manifest.txt"
 
+data realized_comparison_ci_subset_roster: List<String> = ["lib.rs", "v1_rt.rs"]
+
 fn realized_comparison_program() -> ShellProgram {
   let regen = var_ref(name: "REGEN_STAGE0")
   ShellProgram {
