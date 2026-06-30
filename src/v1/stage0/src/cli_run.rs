@@ -4163,6 +4163,302 @@ mod node_frontier_plumbing_controls {
     }
 }
 
+// Witness (a) — `.dag` floor disposition vs Rust `NodeFrontierSeeds` full-predicate equivalence
+// on the real node_precise_discriminator corpus fixture (#5994 acceptance).
+#[cfg(test)]
+mod affected_set_full_predicate_equivalence {
+    use super::{
+        build_multi_entry_index, collect_frontier_seeds_from_diff_line_ranges,
+        diff_file_matches_entry, entry_touches_frontier_seeds, make_eval_context,
+        parse_unified_diff_line_ranges, resolve_entry_with_index, DiscoveryRow,
+    };
+    use crate::v1_interpreter::{self, ExecutionMode, Value};
+    use std::path::PathBuf;
+
+    const FIXTURE_REL: &str = "src/v2/test/fixture/floor_skip/node_precise_discriminator_test.dag";
+    const FLOOR_RUNNER_TEST: &str = "src/v2/workflow/affected_set_floor_runner_test.dag";
+
+    fn workspace_root() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("workspace root")
+            .to_path_buf()
+    }
+
+    fn setup_roots(ws: &PathBuf) -> Vec<String> {
+        vec![
+            ws.join("src/v2").to_string_lossy().into_owned(),
+            ws.join("dsl").to_string_lossy().into_owned(),
+        ]
+    }
+
+    fn fixture_line(text: &str, needle: &str) -> i64 {
+        text.lines()
+            .position(|l| l.contains(needle))
+            .map(|i| (i + 1) as i64)
+            .unwrap_or_else(|| panic!("fixture missing line containing `{needle}`"))
+    }
+
+    fn unified_diff_for_line(rel_path: &str, line: i64) -> String {
+        format!(
+            "diff --git a/{rel_path} b/{rel_path}\n--- a/{rel_path}\n+++ b/{rel_path}\n@@ -{line},0 +{line},1 @@\n+// witness-a touch\n"
+        )
+    }
+
+    fn list_value_from_strings(items: &[String]) -> Value {
+        v1_interpreter::list_value(
+            items
+                .iter()
+                .map(|s| Value::Str(s.clone()))
+                .collect::<Vec<_>>(),
+        )
+    }
+
+    fn call_floor_kernel_would_skip(
+        ctx: &v1_interpreter::InterpContext,
+        changed_paths: &[String],
+        frontier_nodes: &[Value],
+        touches_frontier: bool,
+        function_edited: bool,
+    ) -> Result<bool, String> {
+        if !ctx.item_registry.contains_key("floor_kernel_would_skip") {
+            return Err("floor_kernel_would_skip not in context".to_string());
+        }
+        let args = [
+            (
+                Some("changed_paths".to_string()),
+                list_value_from_strings(changed_paths),
+            ),
+            (
+                Some("frontier_nodes".to_string()),
+                v1_interpreter::list_value(frontier_nodes.to_vec()),
+            ),
+            (
+                Some("touches_frontier".to_string()),
+                Value::Bool(touches_frontier),
+            ),
+            (
+                Some("function_edited".to_string()),
+                Value::Bool(function_edited),
+            ),
+        ];
+        match v1_interpreter::run_in_context_with_args(ctx, "floor_kernel_would_skip", &args, true)
+        {
+            Ok(Value::Bool(b)) => Ok(b),
+            Ok(other) => Err(format!(
+                "floor_kernel_would_skip returned `{}`, expected Bool",
+                ctx.format_value(&other)
+            )),
+            Err(e) => Err(format!("floor_kernel_would_skip: {e}")),
+        }
+    }
+
+    fn rust_row_would_skip(
+        skip_enabled: bool,
+        entry_touches: bool,
+        function_edited: bool,
+    ) -> bool {
+        skip_enabled && !entry_touches && !function_edited
+    }
+
+    fn function_edited_for_row(
+        seeds: &super::NodeFrontierSeeds,
+        row: &DiscoveryRow,
+    ) -> bool {
+        seeds.edited_test_fns.iter().any(|(file, func)| {
+            diff_file_matches_entry(file, &row.entry) && func == &row.function
+        })
+    }
+
+    struct Scenario {
+        label: &'static str,
+        diff_line_needle: &'static str,
+        expect_node_frontier_fires: bool,
+        expect_function_edited_fires: bool,
+    }
+
+    fn assert_full_predicate_equivalence_for_scenario(
+        ws: &PathBuf,
+        scenario: &Scenario,
+        roster: &[DiscoveryRow],
+    ) {
+        let roots = setup_roots(ws);
+        let index = build_multi_entry_index(&roots);
+        let fixture_abs = ws.join(FIXTURE_REL).to_string_lossy().into_owned();
+        let text = std::fs::read_to_string(ws.join(FIXTURE_REL))
+            .expect("node_precise_discriminator fixture readable");
+        let line = fixture_line(&text, scenario.diff_line_needle);
+        let diff = unified_diff_for_line(FIXTURE_REL, line);
+        let ranges = parse_unified_diff_line_ranges(&diff);
+        let seeds = collect_frontier_seeds_from_diff_line_ranges(&index, &ranges)
+            .unwrap_or_else(|e| panic!("{}: seeds collection failed: {e}", scenario.label));
+        assert!(
+            !seeds.force_run_all,
+            "{}: diff must be node-precise (not force_run_all)",
+            scenario.label
+        );
+
+        let (graph, source_indices) =
+            resolve_entry_with_index(&index, &fixture_abs).expect("fixture resolves");
+        let entry_ctx = make_eval_context(&graph, source_indices, ExecutionMode::Wet);
+        let entry_touches = entry_touches_frontier_seeds(&entry_ctx, &fixture_abs, &seeds)
+            .unwrap_or_else(|e| panic!("{}: entry touch check failed: {e}", scenario.label));
+
+        if scenario.expect_node_frontier_fires {
+            assert!(
+                entry_touches,
+                "{}: node-frontier axis must fire for this diff",
+                scenario.label
+            );
+        }
+        if scenario.expect_function_edited_fires {
+            assert!(
+                seeds
+                    .edited_test_fns
+                    .iter()
+                    .any(|(_, name)| name == "floor_disc_witness_a_only_holds"),
+                "{}: function-edited axis must populate edited_test_fns (got {:?})",
+                scenario.label,
+                seeds.edited_test_fns
+            );
+        }
+
+        let (runner_graph, runner_indices) = resolve_entry_with_index(&index, FLOOR_RUNNER_TEST)
+            .expect("floor runner test entry resolves");
+        let runner_ctx =
+            make_eval_context(&runner_graph, runner_indices, ExecutionMode::Wet);
+        let changed_paths = vec![FIXTURE_REL.to_string()];
+
+        let mut saw_node_frontier_run = false;
+        let mut saw_function_edited_run = false;
+
+        for row in roster {
+            let function_edited = function_edited_for_row(&seeds, row);
+            let rust_skip = rust_row_would_skip(true, entry_touches, function_edited);
+            let dag_skip = call_floor_kernel_would_skip(
+                &runner_ctx,
+                &changed_paths,
+                &[],
+                entry_touches,
+                function_edited,
+            )
+            .unwrap_or_else(|e| {
+                panic!(
+                    "{}: dag floor_kernel_would_skip failed for {} ({}): {e}",
+                    scenario.label, row.function, row.entry
+                )
+            });
+            assert_eq!(
+                rust_skip, dag_skip,
+                "{}: run/skip mismatch for {} ({}): rust_skip={rust_skip} dag_skip={dag_skip} \
+                 entry_touches={entry_touches} function_edited={function_edited}",
+                scenario.label, row.function, row.entry
+            );
+            if !rust_skip && entry_touches {
+                saw_node_frontier_run = true;
+            }
+            if !rust_skip && function_edited {
+                saw_function_edited_run = true;
+            }
+        }
+
+        if scenario.expect_node_frontier_fires {
+            assert!(
+                saw_node_frontier_run,
+                "{}: expected at least one witness to RUN via node-frontier axis",
+                scenario.label
+            );
+        }
+        if scenario.expect_function_edited_fires {
+            assert!(
+                saw_function_edited_run,
+                "{}: expected at least one witness to RUN via function-edited axis",
+                scenario.label
+            );
+        }
+    }
+
+    #[test]
+    fn full_predicate_equivalence_on_real_corpus_fixture() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let fixture_abs = ws.join(FIXTURE_REL).to_string_lossy().into_owned();
+        let roster = vec![
+            DiscoveryRow {
+                label: "floor_disc_witness_a_only".into(),
+                entry: fixture_abs.clone(),
+                function: "floor_disc_witness_a_only_holds".into(),
+            },
+            DiscoveryRow {
+                label: "floor_disc_witness_b_only".into(),
+                entry: fixture_abs.clone(),
+                function: "floor_disc_witness_b_only_holds".into(),
+            },
+            DiscoveryRow {
+                label: "floor_disc_witness_transitive".into(),
+                entry: fixture_abs.clone(),
+                function: "floor_disc_witness_transitive_holds".into(),
+            },
+        ];
+
+        assert_full_predicate_equivalence_for_scenario(
+            &ws,
+            &Scenario {
+                label: "node-frontier (referenced data item C)",
+                diff_line_needle: "^floor_disc_node_c_symbol",
+                expect_node_frontier_fires: true,
+                expect_function_edited_fires: false,
+            },
+            &roster,
+        );
+
+        assert_full_predicate_equivalence_for_scenario(
+            &ws,
+            &Scenario {
+                label: "function-edited (witness A declaration)",
+                diff_line_needle: "test fn floor_disc_witness_a_only_holds",
+                expect_node_frontier_fires: false,
+                expect_function_edited_fires: true,
+            },
+            &roster,
+        );
+
+        assert_full_predicate_equivalence_for_scenario(
+            &ws,
+            &Scenario {
+                label: "orphan node (both axes false for transitive witness)",
+                diff_line_needle: "^floor_disc_orphan_symbol",
+                expect_node_frontier_fires: false,
+                expect_function_edited_fires: false,
+            },
+            &roster,
+        );
+    }
+
+    #[test]
+    fn full_predicate_closure_seeds_superset_on_referenced_node_diff() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let roots = setup_roots(&ws);
+        let index = build_multi_entry_index(&roots);
+        let text = std::fs::read_to_string(ws.join(FIXTURE_REL)).expect("fixture readable");
+        let line = fixture_line(&text, "^floor_disc_node_c_symbol");
+        let diff = unified_diff_for_line(FIXTURE_REL, line);
+        let ranges = parse_unified_diff_line_ranges(&diff);
+        let seeds = collect_frontier_seeds_from_diff_line_ranges(&index, &ranges)
+            .expect("seeds from referenced-node diff");
+        assert!(
+            !seeds.overlapping_data_items.is_empty(),
+            "referenced-node diff must populate overlapping_data_items"
+        );
+        assert!(
+            seeds.edited_test_fns.is_empty(),
+            "data-item diff must not populate edited_test_fns"
+        );
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct SourceRootReadRecord {
     pub file_path: String,
