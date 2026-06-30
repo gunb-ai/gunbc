@@ -162,16 +162,6 @@ fn ctrl_reconcile_read_show(
   }
 }
 
-fn ctrl_reconcile_evidence_from_reconciliation(
-  r: Reconciliation<HostEffectIntent, RunnerSlotEnforcement>
-) -> RunnerSlotEnforcement {
-  match r {
-    Converged { evidence: e, applied: _ } => e
-    NotConverged { reason: why, applied: _ } =>
-      RunnerSlotUnenforced { reason: why }
-  }
-}
-
 fn reconcile_ctrl_runner_slice(
   target: NodeControlPlane,
   slice_unit: NonEmptyStr
@@ -213,15 +203,17 @@ fn reconcile_ctrl_runner_slice(
                 show_read: read_after,
                 grounding: DoesNotGround { reason: why }
               )
-            ReadObserved { value: observed_after } =>
+            ReadObserved { value: observed_after } => {
+              let grounding_after = ground_runner_slot_from_read(
+                effective: observed_after,
+                expected_cap: desired
+              )
               reconcile_grounded(
                 apply_effect: apply_intent,
                 show_read: read_after,
-                grounding: ground_runner_slot_from_read(
-                  effective: observed_after,
-                  expected_cap: desired
-                )
+                grounding: grounding_after
               )
+            }
           }
         }
       }
