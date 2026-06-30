@@ -2,7 +2,9 @@ module test.claim.accelerator_demo_execution_witness
 
 import gunbc.accelerator_demo_realize {
   witness_integer_differential_bit_exact_on_fixture,
-  witness_integer_fused_matches_expected_fixture,
+  witness_scalar_oracle_matches_expected_fixture,
+  witness_kernel_matches_expected_fixture,
+  witness_differential_would_red_on_wrong_golden,
   witness_recognized_pure_chain_executes_bit_exact,
   witness_effectful_subgraph_execution_refused,
   witness_data_dependent_gather_execution_refused,
@@ -42,7 +44,9 @@ fn witness_pure_chain_recognition_still_recognized() -> Bool {
 
 test fn accelerator_demo_execution_lane_witnesses() -> Bool {
   witness_integer_differential_bit_exact_on_fixture()
-    && witness_integer_fused_matches_expected_fixture()
+    && witness_scalar_oracle_matches_expected_fixture()
+    && witness_kernel_matches_expected_fixture()
+    && witness_differential_would_red_on_wrong_golden()
     && witness_recognized_pure_chain_executes_bit_exact()
     && witness_effectful_subgraph_execution_refused()
     && witness_data_dependent_gather_execution_refused()

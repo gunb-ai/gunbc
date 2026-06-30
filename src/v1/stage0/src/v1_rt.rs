@@ -591,26 +591,15 @@ fn int_relu(x: i64) -> i64 {
     }
 }
 
-pub fn simd_relu_mul_add_scalar(a: &[i64], b: &[i64], c: &[i64]) -> Vec<i64> {
-    assert_eq!(a.len(), b.len());
-    assert_eq!(b.len(), c.len());
-    a.iter()
-        .zip(b.iter())
-        .zip(c.iter())
-        .map(|((ai, bi), ci)| {
-            let mul = ai * bi;
-            int_relu(mul + ci)
-        })
-        .collect()
-}
-
-pub fn simd_relu_mul_add_fused(a: &[i64], b: &[i64], c: &[i64]) -> Vec<i64> {
+/// Host handler for `simd-contiguous-loop`: one fused pass over contiguous SoA buffers
+/// (mul → add → relu per element). The differential oracle lives in `.dag` (`gunbc.accelerator_demo_realize`).
+pub fn contiguous_loop_relu_mul_add_kernel(a: &[i64], b: &[i64], c: &[i64]) -> Vec<i64> {
     assert_eq!(a.len(), b.len());
     assert_eq!(b.len(), c.len());
     let mut out = Vec::with_capacity(a.len());
     for i in 0..a.len() {
-        let fused = a[i] * b[i] + c[i];
-        out.push(int_relu(fused));
+        let tmp = a[i].wrapping_mul(b[i]).wrapping_add(c[i]);
+        out.push(int_relu(tmp));
     }
     out
 }

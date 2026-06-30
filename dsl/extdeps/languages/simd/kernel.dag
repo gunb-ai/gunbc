@@ -51,11 +51,7 @@ fn witness_relu_mul_add_kernel_surface_shape() -> Bool {
   }
 }
 
-fn simd_relu_mul_add_scalar(a: List<Int>, b: List<Int>, c: List<Int>) -> List<Int> {
-  [pure_dag_seam_unreachable()]
-}
-
-fn simd_relu_mul_add_fused(a: List<Int>, b: List<Int>, c: List<Int>) -> List<Int> {
+fn contiguous_loop_relu_mul_add_kernel(a: List<Int>, b: List<Int>, c: List<Int>) -> List<Int> {
   [pure_dag_seam_unreachable()]
 }
 
@@ -63,7 +59,7 @@ data simd_kernel_execution_host_realization_marker: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
     module_path: "extdeps.languages.simd.kernel",
-    decl_name: "builtin_function_registry",
+    decl_name: "contiguous_loop_relu_mul_add_kernel",
     field: WholeDeclaration
   }
 }

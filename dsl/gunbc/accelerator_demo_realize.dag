@@ -1,6 +1,7 @@
 module gunbc.accelerator_demo_realize
 
 import std.types { Bool, Int, List }
+import std.realization_width { int_max }
 import gunbc.accelerator_demo_plan {
   AcceleratorRecognitionOutcome,
   AcceleratorRefusalReason,
@@ -17,8 +18,7 @@ import gunbc.accelerator_demo_plan {
   AcceleratorUnsupportedNumericalDomain,
 }
 import extdeps.languages.simd.kernel {
-  simd_relu_mul_add_scalar,
-  simd_relu_mul_add_fused,
+  contiguous_loop_relu_mul_add_kernel,
 }
 
 type DifferentialVerdict
@@ -28,6 +28,50 @@ type DifferentialVerdict
 type ExecutionOutcome
   = Executed { verdict: DifferentialVerdict }
   | ExecutionRefused { reason: AcceleratorRefusalReason }
+
+fn int_relu(x: Int) -> Int {
+  int_max(a: 0, b: x)
+}
+
+fn decomposed_scalar_mul_add_relu_elem(ai: Int, bi: Int, ci: Int) -> Int {
+  let prod = ai * bi
+  let sum = prod + ci
+  int_relu(x: sum)
+}
+
+fn decomposed_scalar_relu_mul_add_chain(
+  a: List<Int>,
+  b: List<Int>,
+  c: List<Int>,
+  acc: List<Int>
+) -> List<Int> {
+  match a.first() {
+    Absent => acc
+    Present { value: ai } =>
+      match b.first() {
+        Absent => acc
+        Present { value: bi } =>
+          match c.first() {
+            Absent => acc
+            Present { value: ci } =>
+              decomposed_scalar_relu_mul_add_chain(
+                a: a.skip(n: 1),
+                b: b.skip(n: 1),
+                c: c.skip(n: 1),
+                acc: concat(acc, [decomposed_scalar_mul_add_relu_elem(ai: ai, bi: bi, ci: ci)])
+              )
+          }
+      }
+  }
+}
+
+fn decomposed_scalar_relu_mul_add_oracle(
+  a: List<Int>,
+  b: List<Int>,
+  c: List<Int>
+) -> List<Int> {
+  decomposed_scalar_relu_mul_add_chain(a: a, b: b, c: c, acc: [])
+}
 
 fn demo_fixture_a() -> List<Int> {
   [2, -1, 0, 5]
@@ -43,6 +87,10 @@ fn demo_fixture_c() -> List<Int> {
 
 fn demo_fixture_expected() -> List<Int> {
   [7, 6, 0, 0]
+}
+
+fn demo_fixture_wrong_golden() -> List<Int> {
+  [0, 0, 0, 0]
 }
 
 fn int_list_eq(left: List<Int>, right: List<Int>) -> Bool {
@@ -72,9 +120,9 @@ fn differential_harness(
   b: List<Int>,
   c: List<Int>
 ) -> DifferentialVerdict {
-  let scalar = simd_relu_mul_add_scalar(a: a, b: b, c: c)
-  let fused = simd_relu_mul_add_fused(a: a, b: b, c: c)
-  if int_list_eq(left: scalar, right: fused) {
+  let oracle = decomposed_scalar_relu_mul_add_oracle(a: a, b: b, c: c)
+  let kernel = contiguous_loop_relu_mul_add_kernel(a: a, b: b, c: c)
+  if int_list_eq(left: oracle, right: kernel) {
     BitExact
   } else {
     Mismatch
@@ -106,13 +154,35 @@ fn witness_integer_differential_bit_exact_on_fixture() -> Bool {
   }
 }
 
-fn witness_integer_fused_matches_expected_fixture() -> Bool {
-  let fused = simd_relu_mul_add_fused(
+fn witness_scalar_oracle_matches_expected_fixture() -> Bool {
+  int_list_eq(
+    left: decomposed_scalar_relu_mul_add_oracle(
+      a: demo_fixture_a(),
+      b: demo_fixture_b(),
+      c: demo_fixture_c()
+    ),
+    right: demo_fixture_expected()
+  )
+}
+
+fn witness_kernel_matches_expected_fixture() -> Bool {
+  let kernel = contiguous_loop_relu_mul_add_kernel(
     a: demo_fixture_a(),
     b: demo_fixture_b(),
     c: demo_fixture_c()
   )
-  int_list_eq(left: fused, right: demo_fixture_expected())
+  int_list_eq(left: kernel, right: demo_fixture_expected())
+}
+
+fn witness_differential_would_red_on_wrong_golden() -> Bool {
+  !int_list_eq(
+    left: decomposed_scalar_relu_mul_add_oracle(
+      a: demo_fixture_a(),
+      b: demo_fixture_b(),
+      c: demo_fixture_c()
+    ),
+    right: demo_fixture_wrong_golden()
+  )
 }
 
 fn witness_recognized_pure_chain_executes_bit_exact() -> Bool {

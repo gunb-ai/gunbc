@@ -186,16 +186,10 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
             "filesystem_read".to_string(),
             type_variable_node("filesystem_read_result".to_string()),
         );
-        let simd_list_ty = list_of_type_variable("collection_element".to_string());
         let m = v1_rt::rc_map_insert(
             m.clone(),
-            "simd_relu_mul_add_scalar".to_string(),
-            simd_list_ty.clone(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "simd_relu_mul_add_fused".to_string(),
-            simd_list_ty,
+            "contiguous_loop_relu_mul_add_kernel".to_string(),
+            list_of_type_variable("collection_element".to_string()),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),

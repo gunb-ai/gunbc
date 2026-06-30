@@ -5259,7 +5259,7 @@ fn eval_builtin(
             Ok(Some(eval_filesystem_read_builtin(path, ctx)?))
         }
 
-        "simd_relu_mul_add_scalar" | "simd_relu_mul_add_fused" => {
+        "contiguous_loop_relu_mul_add_kernel" => {
             let a = expect_int_list_flex(positional.first().copied(), name)?;
             let b = expect_int_list_flex(positional.get(1).copied(), name)?;
             let c = expect_int_list_flex(positional.get(2).copied(), name)?;
@@ -5273,11 +5273,7 @@ fn eval_builtin(
                     ),
                 });
             }
-            let out = if name == "simd_relu_mul_add_scalar" {
-                v1_rt::simd_relu_mul_add_scalar(&a, &b, &c)
-            } else {
-                v1_rt::simd_relu_mul_add_fused(&a, &b, &c)
-            };
+            let out = v1_rt::contiguous_loop_relu_mul_add_kernel(&a, &b, &c);
             Ok(Some(list_value(
                 out.into_iter().map(Value::Int).collect::<Vec<_>>(),
             )))
