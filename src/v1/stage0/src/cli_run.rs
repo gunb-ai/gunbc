@@ -3276,7 +3276,7 @@ pub fn construction_authority_unresolved(
         .iter()
         .filter(|(_, module_path, decl_name)| {
             !module_to_content.get(module_path).is_some_and(|content| {
-                crate::module_path_index::fact_cardinality_census::extract_top_level_decls(content)
+                extract_top_level_decls(content)
                     .iter()
                     .any(|(name, _)| name == decl_name)
             })
@@ -6782,6 +6782,171 @@ pub fn layer_import_facts(
     out
 }
 
+// Host-fed fact extraction for `v2.lens.fact_cardinality` — the lens `.dag` table owns
+// verdict logic; this bridge only projects top-level decl keys + content hashes from the
+// witness-layer trees. DISSOLUTION: node-tree reader at gunbc#5364; until then one shared
+// host seam (Chunk D).
+const FACT_CARDINALITY_ITEM_KEYWORDS: [&str; 8] = [
+    "data ",
+    "fn ",
+    "func ",
+    "type ",
+    "service ",
+    "const ",
+    "pattern ",
+    "resource ",
+];
+
+pub struct FactCardinalityDeclFactRaw {
+    pub rel_path_decl_key: String,
+    pub tree: String,
+    pub content_hash: String,
+}
+
+fn normalize_decl_body(source: &str) -> String {
+    source
+        .lines()
+        .map(|line| line.split("//").next().unwrap_or(line).trim())
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn decl_body_hash(body: &str) -> String {
+    crate::v1_rt::atom_identity_hash(normalize_decl_body(body))
+}
+
+/// Kind-agnostic top-level decl extraction (name, content-hash) for cross-tree cardinality.
+pub fn extract_top_level_decls(content: &str) -> Vec<(String, String)> {
+    let lines: Vec<&str> = content.lines().collect();
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < lines.len() {
+        let line = lines[i];
+        if line.starts_with("test ") {
+            i += 1;
+            continue;
+        }
+        let Some(kw) = FACT_CARDINALITY_ITEM_KEYWORDS
+            .iter()
+            .find(|kw| line.starts_with(*kw))
+        else {
+            i += 1;
+            continue;
+        };
+        let rest = &line[kw.len()..];
+        let name: String = rest
+            .chars()
+            .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+            .collect();
+        if name.is_empty() {
+            i += 1;
+            continue;
+        }
+        let mut body = String::new();
+        body.push_str(line);
+        body.push('\n');
+        i += 1;
+        let mut depth = brace_delta(line);
+        while i < lines.len() {
+            let next = lines[i];
+            if depth <= 0
+                && FACT_CARDINALITY_ITEM_KEYWORDS
+                    .iter()
+                    .any(|kw| next.starts_with(kw))
+                && !next.starts_with("test ")
+            {
+                break;
+            }
+            body.push_str(next);
+            body.push('\n');
+            depth += brace_delta(next);
+            i += 1;
+        }
+        out.push((name, decl_body_hash(&body)));
+    }
+    out
+}
+
+fn rel_path_within_tree(top_root: &Path, path: &Path) -> String {
+    path.strip_prefix(top_root)
+        .unwrap_or_else(|_| {
+            panic!(
+                "fact_cardinality_decl_facts: path {} is not under tree root {}",
+                path.display(),
+                top_root.display()
+            )
+        })
+        .to_string_lossy()
+        .replace('\\', "/")
+}
+
+fn walk_fact_cardinality_tree_dir(
+    top_root: &Path,
+    dir: &Path,
+    tree: &str,
+    records: &mut Vec<FactCardinalityDeclFactRaw>,
+) {
+    let entries = std::fs::read_dir(dir).unwrap_or_else(|e| {
+        panic!(
+            "fact_cardinality_decl_facts: failed to read dir {}: {e}",
+            dir.display()
+        )
+    });
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            walk_fact_cardinality_tree_dir(top_root, &path, tree, records);
+            continue;
+        }
+        if path.extension().and_then(|e| e.to_str()) != Some("dag") {
+            continue;
+        }
+        let rel = rel_path_within_tree(top_root, &path);
+        let content = std::fs::read_to_string(&path).unwrap_or_else(|e| {
+            panic!(
+                "fact_cardinality_decl_facts: failed to read {}: {e}",
+                path.display()
+            )
+        });
+        for (name, hash) in extract_top_level_decls(&content) {
+            records.push(FactCardinalityDeclFactRaw {
+                rel_path_decl_key: format!("{rel}:{name}"),
+                tree: tree.to_string(),
+                content_hash: hash,
+            });
+        }
+    }
+}
+
+fn walk_fact_cardinality_tree(
+    top_root: &Path,
+    tree: &str,
+    records: &mut Vec<FactCardinalityDeclFactRaw>,
+) {
+    if !top_root.is_dir() {
+        panic!(
+            "fact_cardinality_decl_facts: tree root {} does not exist",
+            top_root.display()
+        );
+    }
+    walk_fact_cardinality_tree_dir(top_root, top_root, tree, records);
+}
+
+pub fn fact_cardinality_decl_facts() -> Vec<FactCardinalityDeclFactRaw> {
+    let ws = workspace_root();
+    let mut records = Vec::new();
+    for root in witness_layer_roots() {
+        let tree = Path::new(&root)
+            .file_name()
+            .expect("ci_layer_roots: each root must have a file_name component")
+            .to_string_lossy()
+            .into_owned();
+        walk_fact_cardinality_tree(&ws.join(&root), &tree, &mut records);
+    }
+    records
+}
+
 pub struct ImportResolutionFactRaw {
     pub path: String,
     pub import_module: String,
@@ -7679,6 +7844,24 @@ mod module_path_index_tests {
     fn is_test_dag_matches_suffix() {
         assert!(is_test_dag("src/v2/lens/x_test.dag"));
         assert!(!is_test_dag("src/v2/lens/x.dag"));
+    }
+
+    #[test]
+    fn extract_top_level_decls_captures_split_brace_body() {
+        let source =
+            include_str!("../tests/fixtures/fact_cardinality_split_brace.dag");
+        let decls = extract_top_level_decls(source);
+        let sample = decls
+            .iter()
+            .find(|(name, _)| name == "split_brace_sample")
+            .expect("split-brace decl must be captured");
+        let expected = decl_body_hash(
+            "data split_brace_sample: SplitBraceSample =\nSplitBraceSample {\n  field: \"x\"\n}\n",
+        );
+        assert_eq!(
+            sample.1, expected,
+            "split-brace body hash must include lines after the opener"
+        );
     }
 }
 
