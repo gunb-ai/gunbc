@@ -5468,6 +5468,159 @@ pub fn module_declaration_facts(pool_roots: &[String]) -> Vec<ModuleDeclarationF
     out
 }
 
+// --- Inert carrier census (folded from inert_carrier_project.rs) ---
+//
+// A type carrier is "inert" iff (a) declared in a non-test file, (b) its name appears in at least
+// one *_test.dag file (self-tested), and (c) its name appears in NO non-test .dag file outside its
+// own declaration block (zero real consumer). This is DESIGN §5 coverage-by-illusion.
+// DISSOLUTION TRIGGER: when .dag gains compile-graph / reference-edge access (gunbc#5364), the
+// token scan folds into a pure .dag reader over BindsTo edges and this Rust census deletes.
+
+fn inert_carrier_identifier_tokens(line: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut cur = String::new();
+    for ch in line.chars() {
+        if ch.is_ascii_alphanumeric() || ch == '_' {
+            cur.push(ch);
+        } else if !cur.is_empty() {
+            out.push(std::mem::take(&mut cur));
+        }
+    }
+    if !cur.is_empty() {
+        out.push(cur);
+    }
+    out
+}
+
+fn inert_carrier_count_token(text: &str, name: &str) -> i64 {
+    let mut n = 0i64;
+    for raw in text.lines() {
+        for tok in inert_carrier_identifier_tokens(&strip_line_comment(raw)) {
+            if tok == name {
+                n += 1;
+            }
+        }
+    }
+    n
+}
+
+fn inert_carrier_type_carrier_blocks(content: &str) -> Vec<(String, String)> {
+    let lines: Vec<&str> = content.lines().collect();
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < lines.len() {
+        let trimmed = lines[i].trim_start();
+        let Some(rest) = trimmed.strip_prefix("type ") else {
+            i += 1;
+            continue;
+        };
+        let name: String = rest
+            .chars()
+            .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+            .collect();
+        if name.is_empty() {
+            i += 1;
+            continue;
+        }
+        let mut block = String::new();
+        block.push_str(lines[i]);
+        block.push('\n');
+        let mut depth = brace_delta(lines[i]);
+        i += 1;
+        while i < lines.len() {
+            let nt = lines[i].trim_start();
+            if depth <= 0 {
+                if !(nt.starts_with('|') || nt.starts_with('=')) {
+                    break;
+                }
+            }
+            block.push_str(lines[i]);
+            block.push('\n');
+            depth += brace_delta(lines[i]);
+            i += 1;
+        }
+        out.push((name, block));
+    }
+    out
+}
+
+struct InertCarrierData {
+    declared_count: usize,
+    inert_names: Vec<String>,
+}
+
+fn compute_inert_carrier_data(files: &[(String, String)]) -> InertCarrierData {
+    let mut declared: BTreeMap<String, String> = BTreeMap::new();
+    let mut decl_count: BTreeMap<String, usize> = BTreeMap::new();
+    let mut self_block_refs: BTreeMap<String, i64> = BTreeMap::new();
+    for (rel, content) in files {
+        if is_test_dag(rel) {
+            continue;
+        }
+        for (name, block) in inert_carrier_type_carrier_blocks(content) {
+            declared.entry(name.clone()).or_insert_with(|| rel.clone());
+            *decl_count.entry(name.clone()).or_insert(0) += 1;
+            *self_block_refs.entry(name.clone()).or_insert(0) +=
+                inert_carrier_count_token(&block, &name);
+        }
+    }
+    let names: BTreeSet<String> = declared.keys().cloned().collect();
+    let mut nontest_occ: BTreeMap<String, i64> = BTreeMap::new();
+    let mut self_tested: BTreeSet<String> = BTreeSet::new();
+    for (rel, content) in files {
+        let mut local: BTreeMap<String, i64> = BTreeMap::new();
+        for raw in content.lines() {
+            for tok in inert_carrier_identifier_tokens(&strip_line_comment(raw)) {
+                if names.contains(&tok) {
+                    *local.entry(tok).or_insert(0) += 1;
+                }
+            }
+        }
+        if is_test_dag(rel) {
+            for (k, _) in local {
+                self_tested.insert(k);
+            }
+        } else {
+            for (k, v) in local {
+                *nontest_occ.entry(k).or_insert(0) += v;
+            }
+        }
+    }
+    let mut inert_names: Vec<String> = Vec::new();
+    for name in declared.keys() {
+        if decl_count.get(name).copied().unwrap_or(0) != 1 {
+            continue;
+        }
+        if !self_tested.contains(name) {
+            continue;
+        }
+        let total = nontest_occ.get(name).copied().unwrap_or(0);
+        let own = self_block_refs.get(name).copied().unwrap_or(0);
+        if total - own <= 0 {
+            inert_names.push(name.clone());
+        }
+    }
+    inert_names.sort();
+    inert_names.dedup();
+    InertCarrierData {
+        declared_count: declared.len(),
+        inert_names,
+    }
+}
+
+fn build_inert_carrier_data() -> &'static InertCarrierData {
+    static CACHE: OnceLock<InertCarrierData> = OnceLock::new();
+    CACHE.get_or_init(|| compute_inert_carrier_data(&corpus_dag_files()))
+}
+
+pub fn inert_carrier_names_live() -> Vec<String> {
+    build_inert_carrier_data().inert_names.clone()
+}
+
+pub fn inert_carrier_declared_count_live() -> i64 {
+    build_inert_carrier_data().declared_count as i64
+}
+
 #[cfg(test)]
 mod module_path_index_tests {
     use super::*;

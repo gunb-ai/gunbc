@@ -37,7 +37,6 @@ pub mod extdeps_uri_path;
 pub mod extdeps_version;
 pub mod extdeps_version_semver;
 pub mod fact_cardinality_census;
-pub mod inert_carrier_project;
 pub mod languages_consumer_census;
 pub mod medium_structure_project;
 pub mod non_fold_residue_project;

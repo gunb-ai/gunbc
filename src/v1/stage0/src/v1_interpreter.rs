@@ -5838,17 +5838,13 @@ fn eval_builtin(
             crate::doc_reachability_project::doc_graph_doc_count(),
         ))),
 
-        "inert_carrier_count" => Ok(Some(Value::Int(
-            crate::inert_carrier_project::inert_carrier_count(),
-        ))),
-        "inert_carrier_unrostered_count" => Ok(Some(Value::Int(
-            crate::inert_carrier_project::inert_carrier_unrostered_count(),
-        ))),
-        "inert_carrier_stale_roster_count" => Ok(Some(Value::Int(
-            crate::inert_carrier_project::inert_carrier_stale_roster_count(),
-        ))),
+        "inert_carrier_names_live" => {
+            let names = crate::cli_run::inert_carrier_names_live();
+            let items: Vec<Value> = names.into_iter().map(Value::Str).collect();
+            Ok(Some(list_value(items)))
+        }
         "inert_carrier_declared_count" => Ok(Some(Value::Int(
-            crate::inert_carrier_project::inert_carrier_declared_count(),
+            crate::cli_run::inert_carrier_declared_count_live(),
         ))),
 
         "inert_lens_unreached_module_count" => Ok(Some(Value::Int(
