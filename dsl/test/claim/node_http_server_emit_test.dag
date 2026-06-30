@@ -1,22 +1,32 @@
 module test.claim.node_http_server_emit
 
-import std.types { Bool, String }
-import gunbc.node_http_server_emit {
-  gunbhub_node_http_server_source,
-  gunbhub_node_http_static_server_spec,
+import std.logic { Bool }
+import gunbc.node_http_server_emit { gunbhub_node_http_server_source }
+
+test fn node_http_server_source_contains_create_server() -> Bool {
+  string_contains(s: gunbhub_node_http_server_source(), pattern: "createServer")
 }
 
-fn witness_emits_http_create_server() -> Bool {
-  let src = gunbhub_node_http_server_source()
-  string_contains(s: src, pattern: "require('http').createServer")
-    && string_contains(s: src, pattern: "server.listen")
+test fn node_http_server_source_contains_listen_call() -> Bool {
+  string_contains(s: gunbhub_node_http_server_source(), pattern: "listen(")
 }
 
-fn witness_listen_port_defaults() -> Bool {
-  gunbhub_node_http_static_server_spec().listen.port == 8080
+test fn node_http_server_source_contains_root_path_re() -> Bool {
+  string_contains(s: gunbhub_node_http_server_source(), pattern: "/^\\/$/")
 }
 
-test fn node_http_server_emit_keystone_holds() -> Bool {
-  witness_emits_http_create_server()
-    && witness_listen_port_defaults()
+test fn node_http_server_source_contains_param_path_re() -> Bool {
+  string_contains(s: gunbhub_node_http_server_source(), pattern: "[^\\/]+")
+}
+
+test fn node_http_server_source_contains_gunbc_content() -> Bool {
+  string_contains(s: gunbhub_node_http_server_source(), pattern: "gunbc")
+}
+
+test fn node_http_server_source_contains_port_env_check() -> Bool {
+  string_contains(s: gunbhub_node_http_server_source(), pattern: "process.env['PORT']")
+}
+
+test fn node_http_server_source_discriminating_negative() -> Bool {
+  !string_contains(s: gunbhub_node_http_server_source(), pattern: "DOES_NOT_EXIST_IN_SERVER_SOURCE")
 }

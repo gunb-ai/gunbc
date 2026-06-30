@@ -115,4 +115,3 @@ fn gunbhub_node_http_server_source() -> String {
 data node_http_server_emit_medium_dissolution_trigger: String = "dissolve-on: Lane-C typescript emit — replace string-concat JS emission with Node server modeled as a TS program tree emitted through grammar rows in extdeps.languages.typescript; medium_structure_exception_roster entry retires at that point"
 
 data gunbhub_node_http_listen_defaults_dissolution_trigger: String = "dissolve-on: fleet_intent host binding — host 0.0.0.0 / port 8080 are provisioning defaults; fleet_intent should supply the listen address and port as deployment facts, not compile-time constants"
-
