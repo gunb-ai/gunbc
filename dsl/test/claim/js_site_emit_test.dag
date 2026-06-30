@@ -1,6 +1,7 @@
 module test.claim.js_site_emit
 
 import examples.js_site {
+  JsSitePage,
   js_site_pages,
   js_site_page_count,
   Home,
@@ -8,12 +9,40 @@ import examples.js_site {
   Browse,
 }
 import examples.js_site_emit {
+  js_site_emit_html,
+  js_site_emit_tsx,
   js_site_page_html,
   js_site_page_tsx,
   js_site_html_artifact_path,
   js_site_tsx_artifact_path,
 }
+import gunbc.gunbhub_serve { gunbhub_hostile_page }
+import extdeps.languages.html { EmitOk, EmitRejected }
+import extdeps.languages.react_jsx { JsxOk, JsxRejected }
 import extdeps.filesystem.filesystem_io { Filesystem }
+
+fn js_site_hostile_page() -> JsSitePage {
+  JsSitePage {
+    id: Home,
+    path: "/hostile",
+    tsx_fn_name: "JsSiteHostilePage",
+    node: gunbhub_hostile_page(),
+  }
+}
+
+fn witness_hostile_html_rejected() -> Bool {
+  match js_site_emit_html(page: js_site_hostile_page()) {
+    EmitRejected { reason: _ } => true
+    EmitOk { html: _ } => false
+  }
+}
+
+fn witness_hostile_tsx_rejected() -> Bool {
+  match js_site_emit_tsx(page: js_site_hostile_page()) {
+    JsxRejected { reason: _ } => true
+    JsxOk { tsx: _ } => false
+  }
+}
 
 data expected_home_html: String = "<html><head><title>gunbc — Home</title></head><body><header><h1>gunbc</h1><nav><a href=\"/\">Home</a><a href=\"/about\">About</a><a href=\"/browse\">Browse</a></nav></header><main><p>DAG-modeled compiler. One MarkupNode source, two realizations.</p></main></body></html>"
 
@@ -98,4 +127,6 @@ test fn js_site_emit_keystone_holds() -> Bool {
     && witness_committed_home_tsx()
     && witness_committed_browse_tsx()
     && witness_committed_about_tsx()
+    && witness_hostile_html_rejected()
+    && witness_hostile_tsx_rejected()
 }
