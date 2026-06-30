@@ -1,24 +1,14 @@
 module test.claim.stage0_emit_model_witness
 
 import gunbc.stage0_emit_model {
-  stage0_structural_generated_basenames,
   stage0_module_emit_basename,
   stage0_module_emit_filename,
   is_generated_stage0_file,
-  is_stage0_structural_generated_file,
-  generated_stage0_file_count,
-  stage0_emit_registry_phase_is_model_only
+  generated_stage0_file_count
 }
 
 fn w_generated_roster_count() -> Bool {
   generated_stage0_file_count() == 89
-}
-
-fn w_structural_generated_files() -> Bool {
-  is_stage0_structural_generated_file(basename: "lib.rs") &&
-  is_stage0_structural_generated_file(basename: "v1_rt.rs") &&
-  is_stage0_structural_generated_file(basename: "compiler_tests.rs") &&
-  stage0_structural_generated_basenames.length() == 3
 }
 
 fn w_hand_maintained_not_classified_generated() -> Bool {
@@ -33,19 +23,13 @@ fn w_emit_naming_rule() -> Bool {
   stage0_module_emit_filename(module_path: "v1.compiler.stage0_emit_roster") == "v1_compiler_stage0_emit_roster.rs"
 }
 
-fn w_roster_not_yet_committed_generated() -> Bool {
+fn w_roster_module_not_yet_in_generated_set() -> Bool {
   !is_generated_stage0_file(basename: "v1_compiler_stage0_emit_roster.rs")
-}
-
-fn w_phase_model_only() -> Bool {
-  stage0_emit_registry_phase_is_model_only()
 }
 
 test fn stage0_emit_model_witnesses() -> Bool {
   w_generated_roster_count() &&
-  w_structural_generated_files() &&
   w_hand_maintained_not_classified_generated() &&
   w_emit_naming_rule() &&
-  w_roster_not_yet_committed_generated() &&
-  w_phase_model_only()
+  w_roster_module_not_yet_in_generated_set()
 }

@@ -2,13 +2,6 @@ module gunbc.stage0_emit_model
 
 import std.types { List, String, Bool, Int }
 
-type Stage0EmitRegistryPhase
-  = ModelAndWitnessOnly
-  | RegenReadsEmittedRoster
-  | EmitterDerivesRoster
-
-data stage0_emit_registry_current_phase: Stage0EmitRegistryPhase = ModelAndWitnessOnly
-
 data generated_stage0_files: List<String> = [
   "compiler_tests.rs",
   "extdeps_cargo.rs",
@@ -101,12 +94,6 @@ data generated_stage0_files: List<String> = [
   "wt_common.rs",
 ]
 
-data stage0_structural_generated_basenames: List<String> = [
-  "lib.rs",
-  "v1_rt.rs",
-  "compiler_tests.rs",
-]
-
 fn list_contains_string(xs: List<String>, needle: String) -> Bool {
   any(xs, x => x == needle)
 }
@@ -123,18 +110,6 @@ fn is_generated_stage0_file(basename: String) -> Bool {
   list_contains_string(xs: generated_stage0_files, needle: basename)
 }
 
-fn is_stage0_structural_generated_file(basename: String) -> Bool {
-  list_contains_string(xs: stage0_structural_generated_basenames, needle: basename)
-}
-
 fn generated_stage0_file_count() -> Int {
   generated_stage0_files.length()
-}
-
-fn stage0_emit_registry_phase_is_model_only() -> Bool {
-  match stage0_emit_registry_current_phase {
-    ModelAndWitnessOnly => true
-    RegenReadsEmittedRoster => false
-    EmitterDerivesRoster => false
-  }
 }
