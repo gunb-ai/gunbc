@@ -113,8 +113,11 @@ pub fn decl_facts_parse_only(roots: &[String]) -> Vec<DeclFact> {
         }
     }
     out.sort_by(|a, b| {
-        (&a.rel_path, &a.name, format!("{:?}", a.kind))
-            .cmp(&(&b.rel_path, &b.name, format!("{:?}", b.kind)))
+        (&a.rel_path, &a.name, format!("{:?}", a.kind)).cmp(&(
+            &b.rel_path,
+            &b.name,
+            format!("{:?}", b.kind),
+        ))
     });
     out
 }
@@ -146,7 +149,11 @@ mod tests {
     #[test]
     fn decl_facts_stub_nonempty_over_witness_roots() {
         let facts = decl_facts_parse_only(&witness_layer_roots());
-        assert!(facts.len() > 500, "expected whole-tree decl rows; got {}", facts.len());
+        assert!(
+            facts.len() > 500,
+            "expected whole-tree decl rows; got {}",
+            facts.len()
+        );
         assert!(
             decl_facts_fn_items(&facts).count() > 100,
             "expected fn/func decl rows"

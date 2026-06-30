@@ -104,11 +104,7 @@ fn print_summary(
         fiction.kernel_permanent,
         fiction.migration_debt_live
     );
-    let cost_findings = summary
-        .findings
-        .iter()
-        .filter(|f| f.lens == "cost")
-        .count();
+    let cost_findings = summary.findings.iter().filter(|f| f.lens == "cost").count();
     eprintln!(
         "complexity_linearity_audit: cost syntactic proxy (Node.body walk) — \
          syntactic_high_match_fanout={} site(s) (full cost_lens on DeclFact.node.body pending #5364)",

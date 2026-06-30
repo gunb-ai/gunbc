@@ -16,6 +16,9 @@ fn complexity_linearity_syntactic_site_fired_live(site: String) -> Bool {
   complexity_linearity_syntactic_site_fired(site: site)
 }
 
+// Audit-first syntactic lens; `WallAfterGrounding` dissolves when `decl_facts` + closed-coproduct
+// scrutinee resolution land (#5966 / #5364). Gate promotion must predicate on scrutinee type, not
+// substring triage — see `non_fold_residue_project` conservative detection.
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: SubstrateMandatoryTag }
 }
