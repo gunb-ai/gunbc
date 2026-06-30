@@ -19,6 +19,7 @@ import std.markup {
   MarkupMedium,
   TagDelimiter,
   EscapeRaw,
+  OmitClose,
   serialize_fragment_with,
   MarkupSerializeResult,
   Serialized,
@@ -144,6 +145,8 @@ fn markdown_markup_medium(sp: MarkdownSpellings) -> MarkupMedium {
     ],
     bracket: canonical_html_spellings,
     text_escape: EscapeRaw,
+    void_tags: [],
+    void_rendering: OmitClose,
   }
 }
 
