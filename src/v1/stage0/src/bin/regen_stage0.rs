@@ -197,7 +197,7 @@ fn finish_verify_checks(input: VerifyFinishInput<'_>) -> Result<(), String> {
             status: "failed_stage0_stale",
             generated_file_count,
             emitted_file_count,
-            phases: phases.clone(),
+            phases: std::mem::take(phases),
             elapsed_ms: elapsed_ms(run_started),
             changed_generated_files,
         })?;
@@ -219,7 +219,7 @@ fn finish_verify_checks(input: VerifyFinishInput<'_>) -> Result<(), String> {
             status: "failed_stage0_split_crate_stale",
             generated_file_count,
             emitted_file_count,
-            phases: phases.clone(),
+            phases: std::mem::take(phases),
             elapsed_ms: elapsed_ms(run_started),
             changed_generated_files: Vec::new(),
         })?;
@@ -239,7 +239,7 @@ fn finish_verify_checks(input: VerifyFinishInput<'_>) -> Result<(), String> {
             status: "failed_workspace_members_stale",
             generated_file_count,
             emitted_file_count,
-            phases: phases.clone(),
+            phases: std::mem::take(phases),
             elapsed_ms: elapsed_ms(run_started),
             changed_generated_files: Vec::new(),
         })?;
@@ -260,7 +260,7 @@ fn finish_verify_checks(input: VerifyFinishInput<'_>) -> Result<(), String> {
         },
         generated_file_count,
         emitted_file_count,
-        phases: phases.clone(),
+        phases: std::mem::take(phases),
         elapsed_ms: elapsed_ms(run_started),
         changed_generated_files: Vec::new(),
     })?;
