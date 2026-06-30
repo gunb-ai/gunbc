@@ -38,36 +38,29 @@ import std.layout {
   doc_concat, doc_line_of,
   render
 }
+import std.render { kv_pair }
 
 data runner_deploy_protocol: LayoutProtocol = LayoutProtocol { indent_unit: "" }
 
 
 fn runner_labels_text(spec: RunnerSpec) -> String {
   match spec {
-    SelfHosted { labels: labels } =>
-      fold(labels, init: "", f: (acc, l) => if acc == "" { l } else { concat(concat(acc, ","), l) })
+    SelfHosted { labels: labels } => join(labels, ",")
     HostedRunner { label: _ } => "hosted"
     RunsOnExpression { expression: e } => e
   }
 }
 
 fn manifest_host_text(h: RunnerHostDeployment) -> String {
-  concat(
-    concat(
-      concat(
-        concat(
-          concat(
-            concat(concat("host=", h.identity), concat(" runner_count=", to_string(h.runner_count))),
-            concat(" runner_slice_cap_bytes=", to_string(byte_size_count(b: h.runner_slice_cap)))
-          ),
-          concat(" per_slot_memory_max_bytes=", to_string(byte_size_count(b: h.per_runner_memory_cap)))
-        ),
-        concat(" build_tokens=", to_string(hardware_thread_count_value(t: h.build_tokens)))
-      ),
-      concat(" labels=", runner_labels_text(spec: h.runner))
-    ),
-    concat(" cpu_weight=", to_string(workload_class_cpu_weight(wc: h.workload_class)))
-  )
+  join([
+    kv_pair(key: "host", sep: "=", value: h.identity),
+    kv_pair(key: "runner_count", sep: "=", value: to_string(h.runner_count)),
+    kv_pair(key: "runner_slice_cap_bytes", sep: "=", value: to_string(byte_size_count(b: h.runner_slice_cap))),
+    kv_pair(key: "per_slot_memory_max_bytes", sep: "=", value: to_string(byte_size_count(b: h.per_runner_memory_cap))),
+    kv_pair(key: "build_tokens", sep: "=", value: to_string(hardware_thread_count_value(t: h.build_tokens))),
+    kv_pair(key: "labels", sep: "=", value: runner_labels_text(spec: h.runner)),
+    kv_pair(key: "cpu_weight", sep: "=", value: to_string(workload_class_cpu_weight(wc: h.workload_class)))
+  ], " ")
 }
 
 fn runner_plan_doc() -> Doc {
@@ -83,10 +76,11 @@ fn runner_plan_doc() -> Doc {
 }
 
 fn session_host_text(h: SessionHostReservation) -> String {
-  concat(
-    concat(concat("host=", h.identity), concat(" sessions=", to_string(h.session_count))),
-    concat(" per_session_cap_bytes=", to_string(byte_size_count(b: h.per_session_reservation)))
-  )
+  join([
+    kv_pair(key: "host", sep: "=", value: h.identity),
+    kv_pair(key: "sessions", sep: "=", value: to_string(h.session_count)),
+    kv_pair(key: "per_session_cap_bytes", sep: "=", value: to_string(byte_size_count(b: h.per_session_reservation)))
+  ], " ")
 }
 
 fn session_plan_doc() -> Doc {
@@ -111,16 +105,12 @@ fn session_plan_doc() -> Doc {
 }
 
 fn operating_row_text(r: OperatingPointRow) -> String {
-  concat(
-    concat(
-      concat("  per_session_cap_bytes=", to_string(byte_size_count(b: r.per_session_cap))),
-      concat(" concurrency=", to_string(r.session_concurrency))
-    ),
-    concat(
-      concat(" sessions_slice_bytes=", to_string(byte_size_count(b: r.sessions_slice))),
-      concat(" peak_coverage=", concat(to_string(r.coverage_count), concat("/", to_string(r.sample_count))))
-    )
-  )
+  concat("  ", join([
+    kv_pair(key: "per_session_cap_bytes", sep: "=", value: to_string(byte_size_count(b: r.per_session_cap))),
+    kv_pair(key: "concurrency", sep: "=", value: to_string(r.session_concurrency)),
+    kv_pair(key: "sessions_slice_bytes", sep: "=", value: to_string(byte_size_count(b: r.sessions_slice))),
+    kv_pair(key: "peak_coverage", sep: "=", value: concat(to_string(r.coverage_count), concat("/", to_string(r.sample_count))))
+  ], " "))
 }
 
 fn operating_curve_doc() -> Doc {
@@ -143,19 +133,14 @@ fn session_slice_doc() -> Doc {
         SessionAggregateMeasured { bytes: agg_bytes } =>
           doc_concat(parts: map(fleet_intent_offers, o => doc_line_of(text: concat(
             "session-slice ",
-            concat(
-              concat(
-                concat(
-                  concat(
-                    concat(concat("host=", o.supply.physical.identity), concat(" slice_max_bytes=", to_string(byte_size_count(b: agg_bytes)))),
-                    concat(" per_session_max_bytes=", to_string(byte_size_count(b: ceiling)))
-                  ),
-                  " oom_pressure_kill=true"
-                ),
-                concat(" oom_pressure_limit_pct=", to_string(percent_count(p: gunbc_oomd_sessions_policy.managed_oom_memory_pressure_limit)))
-              ),
-              concat(" cpu_weight=", to_string(workload_class_cpu_weight(wc: InteractiveLatencySensitive)))
-            )
+            join([
+              kv_pair(key: "host", sep: "=", value: o.supply.physical.identity),
+              kv_pair(key: "slice_max_bytes", sep: "=", value: to_string(byte_size_count(b: agg_bytes))),
+              kv_pair(key: "per_session_max_bytes", sep: "=", value: to_string(byte_size_count(b: ceiling))),
+              kv_pair(key: "oom_pressure_kill", sep: "=", value: "true"),
+              kv_pair(key: "oom_pressure_limit_pct", sep: "=", value: to_string(percent_count(p: gunbc_oomd_sessions_policy.managed_oom_memory_pressure_limit))),
+              kv_pair(key: "cpu_weight", sep: "=", value: to_string(workload_class_cpu_weight(wc: InteractiveLatencySensitive)))
+            ], " ")
           ))))
       }
   }
