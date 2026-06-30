@@ -1,6 +1,7 @@
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::rc::Rc;
 
 use crate::std_node::compiler_recursive_types;
@@ -3094,6 +3095,9 @@ impl Default for DiscoveryCorpusOptions {
     }
 }
 
+const FLOOR_CI_DIFF_POLICY_BASE: &str = "origin/main";
+const FLOOR_CI_DIFF_POLICY_HEAD: &str = "HEAD";
+
 enum FloorGitDiffOutcome {
     ObservationFailClosed { reason: String },
     UnifiedProduced(String),
@@ -3106,40 +3110,32 @@ struct FileLineRange {
 }
 
 fn floor_git_diff_range() -> Result<String, String> {
-    use v1_interpreter::Value;
-    let roots = crate::module_path_index::witness_layer_roots();
-    let entry = "src/v2/workflow/floor_diff_observe.dag";
-    let (graph, indices) =
-        resolve_entry_graph(&roots, entry).map_err(|e| format!("floor_diff_observe resolve: {e}"))?;
-    let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
-    let result = v1_interpreter::run_in_context(&ctx, "floor_observe_git_diff_unified_for_ci", false)
-        .map_err(|e| format!("floor_observe_git_diff_unified_for_ci: {e}"))?;
-    match result {
-        Value::Variant {
-            variant_name,
-            fields,
-            ..
-        } if ctx.sym_eq(variant_name, "UnifiedDiffOk") => {
-            match ctx.field(fields.as_ref(), "text") {
-                Some(Value::Str(s)) => Ok(s.clone()),
-                _ => Err("UnifiedDiffOk missing `text` field".to_string()),
-            }
-        }
-        Value::Variant {
-            variant_name,
-            fields,
-            ..
-        } if ctx.sym_eq(variant_name, "UnifiedDiffFail") => {
-            match ctx.field(fields.as_ref(), "reason") {
-                Some(Value::Str(r)) => Err(r.clone()),
-                _ => Err("git diff observation failed (no reason)".to_string()),
-            }
-        }
-        other => Err(format!(
-            "floor_observe_git_diff_unified_for_ci returned `{}`, expected FloorUnifiedDiffResult",
-            ctx.format_value(&other)
-        )),
+    if let Ok(injected) = std::env::var("GUNBC_CI_DIFF_UNIFIED") {
+        return Ok(injected);
     }
+    let base = std::env::var("GUNBC_CI_DIFF_BASE")
+        .unwrap_or_else(|_| FLOOR_CI_DIFF_POLICY_BASE.to_string());
+    let head = std::env::var("GUNBC_CI_DIFF_HEAD")
+        .unwrap_or_else(|_| FLOOR_CI_DIFF_POLICY_HEAD.to_string());
+    let merge_base = std::env::var("GUNBC_CI_DIFF_MERGE_BASE")
+        .map(|v| v != "0" && v != "false")
+        .unwrap_or(true);
+    let range = if merge_base {
+        format!("{base}...{head}")
+    } else {
+        format!("{base} {head}")
+    };
+    let output = Command::new("git")
+        .args(["diff", "-U0", &range])
+        .output()
+        .map_err(|e| format!("git diff spawn failed: {e}"))?;
+    if !output.status.success() {
+        return Err(format!(
+            "git diff -U0 {} failed (status {})",
+            range, output.status
+        ));
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
 }
 
 fn normalize_repo_path(path: &str) -> String {
