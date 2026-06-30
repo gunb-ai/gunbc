@@ -72,6 +72,8 @@ const GENERATED_STAGE0_FILES: &[&str] = &[
     "v1_compiler_coercion.rs",
     "v1_compiler_compile.rs",
     "v1_compiler_compiler_tests_rust.rs",
+    "v1_compiler_dag_collect_rust.rs",
+    "v1_compiler_dag_collect_support_rust.rs",
     "v1_compiler_complexity.rs",
     "v1_compiler_effect_derivation.rs",
     "v1_compiler_emit.rs",
@@ -137,6 +139,10 @@ const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
     // regen_stage0 --verify confirms byte-identical output vs this committed file.
     // Dissolution: run regen_stage0 --verify; on green, move to GENERATED_STAGE0_FILES.
     "main.rs",
+    // dag_collect emit wiring landed in 05_emit_rust.dag (dag_collect_rust.dag +
+    // dag_collect_support_rust.dag); registry flip HELD until regen_stage0 --verify
+    // confirms byte-identical output vs these committed files.
+    // Dissolution: run regen_stage0 --verify; on green, move to GENERATED_STAGE0_FILES.
     "v1_compiler_dag_collect.rs",
     "v1_compiler_dag_collect_support.rs",
     "v1_interpreter.rs",
