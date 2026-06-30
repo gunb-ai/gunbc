@@ -1,6 +1,6 @@
 module extdeps.tailscale.serve
 
-import std.types { NonEmptyStr, Int, Bool, String }
+import std.types { NonEmptyStr, Port, Bool, String }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -14,7 +14,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 service tailscale.Serve {
   operation EnableBackground {
-    input { local_port: Int }
+    input { local_port: Port }
     output {
       success: Bool from "exit_success"
       stdout: String from "stdout"
