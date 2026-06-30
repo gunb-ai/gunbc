@@ -206,11 +206,9 @@ fn finish_verify_checks(input: VerifyFinishInput<'_>) -> Result<(), String> {
         }
         return Err(message);
     }
-    if let Err(message) =
-        time_phase(phases, "verify_stage0_split_crate_boundaries", || {
-            verify_stage0_split_crate_boundaries(workspace)
-        })
-    {
+    if let Err(message) = time_phase(phases, "verify_stage0_split_crate_boundaries", || {
+        verify_stage0_split_crate_boundaries(workspace)
+    }) {
         write_bootstrap_timing_receipt(BootstrapTimingReceiptInput {
             path: receipt_path,
             workspace,
@@ -308,9 +306,9 @@ fn run() -> Result<(), String> {
                 index += 2;
             }
             "--write-manifest" => {
-                let path = args.get(index + 1).ok_or_else(|| {
-                    "regen_stage0: --write-manifest requires <path>".to_string()
-                })?;
+                let path = args
+                    .get(index + 1)
+                    .ok_or_else(|| "regen_stage0: --write-manifest requires <path>".to_string())?;
                 write_manifest = Some(PathBuf::from(path));
                 index += 2;
             }
@@ -376,21 +374,19 @@ fn run() -> Result<(), String> {
             );
         }
         if verify_only {
-            return finish_verify_checks(
-                VerifyFinishInput {
-                    receipt_path: &receipt_path,
-                    workspace: &workspace,
-                    manifest_dir: &manifest_dir,
-                    stage0_src: &stage0_src,
-                    fresh_dir: &fresh_dir,
-                    verify_only,
-                    generated_file_count: GENERATED_STAGE0_FILES.len(),
-                    emitted_file_count: emitted.len(),
-                    phases: &mut phases,
-                    run_started,
-                    preserve_fresh_dir: true,
-                },
-            );
+            return finish_verify_checks(VerifyFinishInput {
+                receipt_path: &receipt_path,
+                workspace: &workspace,
+                manifest_dir: &manifest_dir,
+                stage0_src: &stage0_src,
+                fresh_dir: &fresh_dir,
+                verify_only,
+                generated_file_count: GENERATED_STAGE0_FILES.len(),
+                emitted_file_count: emitted.len(),
+                phases: &mut phases,
+                run_started,
+                preserve_fresh_dir: true,
+            });
         }
         write_bootstrap_timing_receipt(BootstrapTimingReceiptInput {
             path: &receipt_path,
