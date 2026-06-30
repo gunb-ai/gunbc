@@ -17,6 +17,8 @@ const BOOTSTRAP_TIMING_RECEIPT_ENV: &str = "GUNBC_BOOTSTRAP_TIMING_RECEIPT";
 const DEFAULT_BOOTSTRAP_TIMING_RECEIPT: &str =
     "target/bootstrap_timing/v1_regen_stage0_receipt.json";
 
+// Registry authority: gunbc.stage0_emit_model.generated_stage0_files.
+// Dissolve-on: regen_stage0 reads emitted gunbc_stage0_emit_model.rs roster.
 const GENERATED_STAGE0_FILES: &[&str] = &[
     "compiler_tests.rs",
     "extdeps_cargo.rs",
@@ -110,19 +112,14 @@ const GENERATED_STAGE0_FILES: &[&str] = &[
 ];
 
 const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
-    "cache_purity_oracle.rs",
     "cli_run.rs",
-    "corpus_lex.rs",
     "coproduct_reflection.rs",
     "doc_reachability_project.rs",
     "inert_carrier_project.rs",
     "medium_structure_project.rs",
     "extdeps_shape_transport_policy_project.rs",
     "fact_cardinality_census.rs",
-    "import_resolution_project.rs",
     "languages_consumer_census.rs",
-    "layering_imports_project.rs",
-    "module_path_index.rs",
     "non_fold_residue_project.rs",
     "recorded_fixture.rs",
     "resolved_graph_cache.rs",
@@ -833,8 +830,8 @@ fn patch_languages_consumer_census_mod(src_dir: &Path) -> Result<(), String> {
         fs::read_to_string(&lib_path).map_err(|e| format!("read {}: {e}", lib_path.display()))?;
     if !lib_text.contains("pub mod languages_consumer_census;") {
         lib_text = lib_text.replace(
-            "pub mod import_resolution_project;\n",
-            "pub mod import_resolution_project;\npub mod languages_consumer_census;\n",
+            "pub mod fact_cardinality_census;\n",
+            "pub mod fact_cardinality_census;\npub mod languages_consumer_census;\n",
         );
     }
     fs::write(&lib_path, lib_text).map_err(|e| format!("write {}: {e}", lib_path.display()))?;

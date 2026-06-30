@@ -5283,11 +5283,60 @@ fn eval_builtin(
             Ok(Some(eval_filesystem_read_builtin(path, ctx)?))
         }
 
+        "contiguous_loop_elementwise_kernel" => {
+            let op_codes = expect_int_list_flex(positional.first().copied(), name)?;
+            let a = expect_int_list_flex(positional.get(1).copied(), name)?;
+            let b = expect_int_list_flex(positional.get(2).copied(), name)?;
+            let c = expect_int_list_flex(positional.get(3).copied(), name)?;
+            if a.len() != b.len() || b.len() != c.len() {
+                return Err(InterpError::TypeError {
+                    msg: format!(
+                        "{name} requires equal-length List<Int> buffer arguments, got lengths {}, {}, {}",
+                        a.len(),
+                        b.len(),
+                        c.len()
+                    ),
+                });
+            }
+            let out = v1_rt::contiguous_loop_elementwise_kernel(&op_codes, &a, &b, &c);
+            Ok(Some(list_value(
+                out.into_iter().map(Value::Int).collect::<Vec<_>>(),
+            )))
+        }
+
+        "contiguous_loop_elementwise_float_kernel" => {
+            let op_codes = expect_int_list_flex(positional.first().copied(), name)?;
+            let fma_policy = expect_fma_contraction_policy_wire(positional.get(1).copied(), name)?;
+            let a = expect_float_list_flex(positional.get(2).copied(), name)?;
+            let b = expect_float_list_flex(positional.get(3).copied(), name)?;
+            let c = expect_float_list_flex(positional.get(4).copied(), name)?;
+            if a.len() != b.len() || b.len() != c.len() {
+                return Err(InterpError::TypeError {
+                    msg: format!(
+                        "{name} requires equal-length List<Float> buffer arguments, got lengths {}, {}, {}",
+                        a.len(),
+                        b.len(),
+                        c.len()
+                    ),
+                });
+            }
+            let out = v1_rt::contiguous_loop_elementwise_float_kernel(
+                &op_codes,
+                fma_policy,
+                &a,
+                &b,
+                &c,
+            );
+            Ok(Some(list_value(
+                out.into_iter().map(Value::Float).collect::<Vec<_>>(),
+            )))
+        }
+
         "layer_import_facts" => {
             let std_roots = expect_str_list(positional.first().copied(), "layer_import_facts")?;
             let extdeps_roots = expect_str_list(positional.get(1).copied(), "layer_import_facts")?;
             let facts =
-                crate::layering_imports_project::layer_import_facts(&std_roots, &extdeps_roots);
+                crate::cli_run::layer_import_facts(&std_roots, &extdeps_roots);
             let mut items: Vec<Value> = Vec::new();
             for f in facts {
                 let layer = Value::Variant {
@@ -5314,7 +5363,7 @@ fn eval_builtin(
                 expect_str_list(positional.get(1).copied(), "import_resolution_facts")?;
             let exclude_substrings =
                 expect_str_list(positional.get(2).copied(), "import_resolution_facts")?;
-            let facts = crate::import_resolution_project::import_resolution_facts(
+            let facts = crate::cli_run::import_resolution_facts(
                 &pool_roots,
                 &importer_roots,
                 &exclude_substrings,
@@ -5344,7 +5393,7 @@ fn eval_builtin(
         "module_declaration_facts" => {
             let pool_roots =
                 expect_str_list(positional.first().copied(), "module_declaration_facts")?;
-            let facts = crate::import_resolution_project::module_declaration_facts(&pool_roots);
+            let facts = crate::cli_run::module_declaration_facts(&pool_roots);
             let mut items: Vec<Value> = Vec::new();
             for f in facts {
                 items.push(Value::Record {
@@ -5802,6 +5851,13 @@ fn eval_builtin(
             crate::inert_carrier_project::inert_carrier_declared_count(),
         ))),
 
+        "inert_lens_unreached_module_count" => Ok(Some(Value::Int(
+            crate::cli_run::inert_lens_unreached_module_count(),
+        ))),
+        "inert_lens_top_level_module_count" => Ok(Some(Value::Int(
+            crate::cli_run::inert_lens_top_level_module_count(),
+        ))),
+
         "non_fold_residue_count" => Ok(Some(Value::Int(
             crate::non_fold_residue_project::non_fold_residue_count(),
         ))),
@@ -5815,7 +5871,7 @@ fn eval_builtin(
             crate::non_fold_residue_project::non_fold_residue_coproduct_universe_count(),
         ))),
         "census_corpus_roots_follow_layer_authority" => Ok(Some(Value::Bool(
-            crate::module_path_index::census_corpus_roots_follow_layer_authority(),
+            crate::cli_run::census_corpus_roots_follow_layer_authority(),
         ))),
 
         _ => Ok(None),
@@ -6366,6 +6422,102 @@ fn expect_str_list_flex(val: Option<&Value>, context: &str) -> InterpResult<Vec<
         }
     }
     Ok(out)
+}
+
+fn expect_int_list_flex(val: Option<&Value>, context: &str) -> InterpResult<Vec<i64>> {
+    let Some(v) = val else {
+        return Err(InterpError::TypeError {
+            msg: format!("{} requires a List<Int> argument", context),
+        });
+    };
+    let Some(items) = free_monoid_to_vec(v) else {
+        return Err(InterpError::TypeError {
+            msg: format!(
+                "{} expects a List<Int> argument, got {}",
+                context,
+                v.type_label()
+            ),
+        });
+    };
+    let mut out: Vec<i64> = Vec::new();
+    for item in items {
+        match item {
+            Value::Int(n) => out.push(n),
+            other => {
+                return Err(InterpError::TypeError {
+                    msg: format!(
+                        "{} expects a List<Int>, got element {}",
+                        context,
+                        other.type_label()
+                    ),
+                })
+            }
+        }
+    }
+    Ok(out)
+}
+
+fn expect_float_list_flex(val: Option<&Value>, context: &str) -> InterpResult<Vec<f64>> {
+    let Some(v) = val else {
+        return Err(InterpError::TypeError {
+            msg: format!("{} requires a List<Float> argument", context),
+        });
+    };
+    let Some(items) = free_monoid_to_vec(v) else {
+        return Err(InterpError::TypeError {
+            msg: format!(
+                "{} expects a List<Float> argument, got {}",
+                context,
+                v.type_label()
+            ),
+        });
+    };
+    let mut out: Vec<f64> = Vec::new();
+    for item in items {
+        match item {
+            Value::Float(n) => out.push(n),
+            other => {
+                return Err(InterpError::TypeError {
+                    msg: format!(
+                        "{} expects a List<Float>, got element {}",
+                        context,
+                        other.type_label()
+                    ),
+                })
+            }
+        }
+    }
+    Ok(out)
+}
+
+fn expect_fma_contraction_policy_wire(val: Option<&Value>, context: &str) -> InterpResult<i64> {
+    let Some(v) = val else {
+        return Err(InterpError::TypeError {
+            msg: format!("{context} requires FmaContractionRefused | FmaContractionPermitted"),
+        });
+    };
+    match v {
+        Value::Variant { variant_name, .. } => {
+            let name = resolve_sym(*variant_name);
+            if name == "FmaContractionRefused" {
+                Ok(0)
+            } else if name == "FmaContractionPermitted" {
+                Ok(1)
+            } else {
+                Err(InterpError::TypeError {
+                    msg: format!(
+                        "{context} requires FmaContractionRefused | FmaContractionPermitted, got `{name}`"
+                    ),
+                })
+            }
+        }
+        other => Err(InterpError::TypeError {
+            msg: format!(
+                "{context} requires FmaContractionRefused | FmaContractionPermitted, got {}",
+                other.type_label()
+            ),
+        }),
+    }
 }
 
 fn expect_int(val: Option<&Value>, context: &str) -> InterpResult<i64> {
