@@ -501,3 +501,19 @@ data atom_identity_hash_contract: PrimitiveContract = {
   certainty: Proven,
   carrier_cost: CarrierInsensitive
 }
+
+data simd_relu_mul_add_scalar_contract: PrimitiveContract = {
+  name: "simd_relu_mul_add_scalar",
+  work: "n",
+  output_size: "n",
+  certainty: Proven,
+  carrier_cost: CarrierInsensitive
+}
+
+data simd_relu_mul_add_fused_contract: PrimitiveContract = {
+  name: "simd_relu_mul_add_fused",
+  work: "n",
+  output_size: "n",
+  certainty: Proven,
+  carrier_cost: CarrierInsensitive
+}

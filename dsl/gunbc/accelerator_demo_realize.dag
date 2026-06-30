@@ -1,0 +1,166 @@
+module gunbc.accelerator_demo_realize
+
+import std.types { Bool, Int, List }
+import std.realization_width { int_max }
+import gunbc.accelerator_demo_plan {
+  AcceleratorRecognitionOutcome,
+  AcceleratorRefusalReason,
+  ElementwiseFoldClass,
+  PureElementwiseChain,
+  EffectfulSubgraph,
+  DataDependentGather,
+  recognize_elementwise_fold,
+  Recognized,
+  Refused,
+  NotElementwisePure,
+  CarriesEffects,
+  FmaContractionViolatesContract,
+  AcceleratorUnsupportedNumericalDomain,
+}
+import extdeps.languages.simd.kernel {
+  simd_relu_mul_add_scalar,
+  simd_relu_mul_add_fused,
+}
+
+type DifferentialVerdict
+  = BitExact
+  | Mismatch
+
+type ExecutionOutcome
+  = Executed { verdict: DifferentialVerdict }
+  | ExecutionRefused { reason: AcceleratorRefusalReason }
+
+fn int_relu(x: Int) -> Int {
+  int_max(a: 0, b: x)
+}
+
+fn demo_fixture_a() -> List<Int> {
+  [2, -1, 0, 5]
+}
+
+fn demo_fixture_b() -> List<Int> {
+  [3, 4, 7, -2]
+}
+
+fn demo_fixture_c() -> List<Int> {
+  [1, 10, -3, 8]
+}
+
+fn demo_fixture_expected() -> List<Int> {
+  [7, 6, 0, 0]
+}
+
+fn int_list_eq(left: List<Int>, right: List<Int>) -> Bool {
+  if left.length() != right.length() {
+    false
+  } else if left.length() == 0 {
+    true
+  } else {
+    match (left.first(), right.first()) {
+      (Present { value: l }, Present { value: r }) =>
+        if l != r {
+          false
+        } else {
+          int_list_eq(left: left.skip(n: 1), right: right.skip(n: 1))
+        }
+      _ => false
+    }
+  }
+}
+
+fn differential_harness(
+  a: List<Int>,
+  b: List<Int>,
+  c: List<Int>
+) -> DifferentialVerdict {
+  let scalar = simd_relu_mul_add_scalar(a: a, b: b, c: c)
+  let fused = simd_relu_mul_add_fused(a: a, b: b, c: c)
+  if int_list_eq(left: scalar, right: fused) {
+    BitExact
+  } else {
+    Mismatch
+  }
+}
+
+fn execute_recognized_elementwise(
+  class: ElementwiseFoldClass,
+  a: List<Int>,
+  b: List<Int>,
+  c: List<Int>
+) -> ExecutionOutcome {
+  match recognize_elementwise_fold(class: class) {
+    Recognized { plan: _, kernel_step: _, contract: _, fidelity: _, target_medium: _ } =>
+      Executed { verdict: differential_harness(a: a, b: b, c: c) }
+    Refused { reason: reason } =>
+      ExecutionRefused { reason: reason }
+  }
+}
+
+fn witness_integer_differential_bit_exact_on_fixture() -> Bool {
+  match differential_harness(
+    a: demo_fixture_a(),
+    b: demo_fixture_b(),
+    c: demo_fixture_c()
+  ) {
+    BitExact => true
+    Mismatch => false
+  }
+}
+
+fn witness_integer_fused_matches_expected_fixture() -> Bool {
+  let fused = simd_relu_mul_add_fused(
+    a: demo_fixture_a(),
+    b: demo_fixture_b(),
+    c: demo_fixture_c()
+  )
+  int_list_eq(left: fused, right: demo_fixture_expected())
+}
+
+fn witness_recognized_pure_chain_executes_bit_exact() -> Bool {
+  match execute_recognized_elementwise(
+    class: PureElementwiseChain { op_count: 3 },
+    a: demo_fixture_a(),
+    b: demo_fixture_b(),
+    c: demo_fixture_c()
+  ) {
+    Executed { verdict: v } => match v {
+      BitExact => true
+      Mismatch => false
+    }
+    ExecutionRefused { reason: _ } => false
+  }
+}
+
+fn witness_effectful_subgraph_execution_refused() -> Bool {
+  match execute_recognized_elementwise(
+    class: EffectfulSubgraph,
+    a: demo_fixture_a(),
+    b: demo_fixture_b(),
+    c: demo_fixture_c()
+  ) {
+    Executed { verdict: _ } => false
+    ExecutionRefused { reason: r } => match r {
+      CarriesEffects => true
+      NotElementwisePure => false
+      FmaContractionViolatesContract => false
+      AcceleratorUnsupportedNumericalDomain => false
+    }
+  }
+}
+
+fn witness_data_dependent_gather_execution_refused() -> Bool {
+  match execute_recognized_elementwise(
+    class: DataDependentGather,
+    a: demo_fixture_a(),
+    b: demo_fixture_b(),
+    c: demo_fixture_c()
+  ) {
+    Executed { verdict: _ } => false
+    ExecutionRefused { reason: r } => match r {
+      NotElementwisePure => true
+      CarriesEffects => false
+      FmaContractionViolatesContract => false
+      AcceleratorUnsupportedNumericalDomain => false
+    }
+  }
+}
