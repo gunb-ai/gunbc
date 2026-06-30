@@ -5859,16 +5859,16 @@ fn eval_builtin(
         ))),
 
         "non_fold_residue_count" => Ok(Some(Value::Int(
-            crate::non_fold_residue_project::non_fold_residue_count(),
+            crate::cli_run::non_fold_residue_count(),
         ))),
         "non_fold_residue_unrostered_count" => Ok(Some(Value::Int(
-            crate::non_fold_residue_project::non_fold_residue_unrostered_count(),
+            crate::cli_run::non_fold_residue_unrostered_count(),
         ))),
         "non_fold_residue_stale_roster_count" => Ok(Some(Value::Int(
-            crate::non_fold_residue_project::non_fold_residue_stale_roster_count(),
+            crate::cli_run::non_fold_residue_stale_roster_count(),
         ))),
         "non_fold_residue_coproduct_universe_count" => Ok(Some(Value::Int(
-            crate::non_fold_residue_project::non_fold_residue_coproduct_universe_count(),
+            crate::cli_run::non_fold_residue_coproduct_universe_count(),
         ))),
         "census_corpus_roots_follow_layer_authority" => Ok(Some(Value::Bool(
             crate::cli_run::census_corpus_roots_follow_layer_authority(),

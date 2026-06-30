@@ -40,7 +40,6 @@ pub mod fact_cardinality_census;
 pub mod inert_carrier_project;
 pub mod languages_consumer_census;
 pub mod medium_structure_project;
-pub mod non_fold_residue_project;
 pub mod recorded_fixture;
 pub mod resolved_graph_cache;
 pub mod rest_transport_facts;
