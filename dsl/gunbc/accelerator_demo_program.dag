@@ -46,11 +46,17 @@ fn program_ops(program: AcceleratorDemoProgram) -> List<ElementwiseArrayOp> {
   }
 }
 
+data elemwise_mul_op_code: Int = 1
+data elemwise_add_op_code: Int = 2
+data elemwise_relu_op_code: Int = 3
+
+data elementwise_op_code_host_realization_note: String = "host kernel fail-closed validation mirrors these rows until feature:dag-kernel-realization-handler dissolves literals into target_model emit; wire authority is program_op_codes(program)"
+
 fn elementwise_op_code(op: ElementwiseArrayOp) -> Int {
   match op {
-    ElemwiseMul => 1
-    ElemwiseAdd => 2
-    ElemwiseRelu => 3
+    ElemwiseMul => elemwise_mul_op_code
+    ElemwiseAdd => elemwise_add_op_code
+    ElemwiseRelu => elemwise_relu_op_code
   }
 }
 
@@ -78,7 +84,10 @@ fn relu_mul_add_op_codes_match(codes: List<Int>) -> Bool {
         match codes.skip(n: 1).first() {
           Present { value: c1 } =>
             match codes.skip(n: 2).first() {
-              Present { value: c2 } => c0 == 1 && c1 == 2 && c2 == 3
+              Present { value: c2 } =>
+                c0 == elemwise_mul_op_code
+                  && c1 == elemwise_add_op_code
+                  && c2 == elemwise_relu_op_code
               Absent => false
             }
           Absent => false
@@ -98,4 +107,8 @@ fn fma_contraction_permitted_policy_code() -> Int {
 
 fn pure_elementwise_ops_shape_recognizable(ops: List<ElementwiseArrayOp>) -> Bool {
   relu_mul_add_op_codes_match(codes: elementwise_op_codes(ops: ops))
+}
+
+fn witness_relu_mul_add_program_op_codes_are_authority() -> Bool {
+  relu_mul_add_op_codes_match(codes: program_op_codes(program: relu_mul_add_pure_program))
 }

@@ -76,4 +76,4 @@ data simd_kernel_execution_host_realization_marker: Disposition = Scaffold {
   }
 }
 
-data simd_kernel_handler_dissolution_trigger: String = "dissolve-on: feature:dag-kernel-realization-handler — v1_interpreter builtin dispatches contiguous SoA fused pass; dissolve into target_model row emit when self-host lands"
+data simd_kernel_handler_dissolution_trigger: String = "dissolve-on: feature:dag-kernel-realization-handler — v1_interpreter builtin dispatches contiguous SoA fused pass; dissolve into target_model row emit when self-host lands; retire host opcode literals (currently mirror gunbc.accelerator_demo_program.elemwise_*_op_code rows)"

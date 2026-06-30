@@ -591,6 +591,18 @@ fn int_relu(x: i64) -> i64 {
     }
 }
 
+/// Expected opcode wire shape from `gunbc.accelerator_demo_program` (`elemwise_mul/add/relu_op_code` rows).
+/// Host validation is fail-closed on mismatch; literals dissolve with `feature:dag-kernel-realization-handler`.
+const RELU_MUL_ADD_OP_CODES: [i64; 3] = [1, 2, 3];
+
+fn assert_relu_mul_add_op_codes(op_codes: &[i64], handler: &str) {
+    if op_codes != RELU_MUL_ADD_OP_CODES {
+        panic!(
+            "{handler}: unsupported op_codes (expected {RELU_MUL_ADD_OP_CODES:?} from gunbc.accelerator_demo_program), got {op_codes:?}"
+        );
+    }
+}
+
 /// fma_contraction_policy: 0 = separate mul/add (FmaContractionRefused), 1 = fused FMA (Permitted).
 pub fn contiguous_loop_elementwise_float_kernel(
     op_codes: &[i64],
@@ -599,15 +611,7 @@ pub fn contiguous_loop_elementwise_float_kernel(
     b: &[f64],
     c: &[f64],
 ) -> Vec<f64> {
-    const ELEM_MUL: i64 = 1;
-    const ELEM_ADD: i64 = 2;
-    const ELEM_RELU: i64 = 3;
-    if op_codes != [ELEM_MUL, ELEM_ADD, ELEM_RELU] {
-        panic!(
-            "contiguous_loop_elementwise_float_kernel: unsupported op_codes (expected [1,2,3]), got {:?}",
-            op_codes
-        );
-    }
+    assert_relu_mul_add_op_codes(op_codes, "contiguous_loop_elementwise_float_kernel");
     assert_eq!(a.len(), b.len());
     assert_eq!(b.len(), c.len());
     let mut out = Vec::with_capacity(a.len());
@@ -642,15 +646,7 @@ pub fn contiguous_loop_elementwise_kernel(
     b: &[i64],
     c: &[i64],
 ) -> Vec<i64> {
-    const ELEM_MUL: i64 = 1;
-    const ELEM_ADD: i64 = 2;
-    const ELEM_RELU: i64 = 3;
-    if op_codes != [ELEM_MUL, ELEM_ADD, ELEM_RELU] {
-        panic!(
-            "contiguous_loop_elementwise_kernel: unsupported op_codes (expected [1,2,3]), got {:?}",
-            op_codes
-        );
-    }
+    assert_relu_mul_add_op_codes(op_codes, "contiguous_loop_elementwise_kernel");
     assert_eq!(a.len(), b.len());
     assert_eq!(b.len(), c.len());
     let mut out = Vec::with_capacity(a.len());
