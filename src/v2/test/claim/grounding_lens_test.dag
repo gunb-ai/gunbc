@@ -3,15 +3,26 @@ module v2.test.claim.grounding_lens
 
 import v2.std.collection { List }
 import v2.std.logic { Bool }
+import v2.std.node {
+  Atom,
+  Conj,
+  Edge,
+  Named,
+  Node,
+  Symbol,
+  TypeNode,
+  SyntheticOccurrence
+}
 import v2.std.text { String }
 import v2.std.concept_index {
+  ConceptDecl,
   ConceptStruct,
   FieldRef,
   QualifiedConcept
 }
 import v2.lens.grounding {
   GroundingWorklistEntry,
-  candidates_over_index,
+  candidates_over_decls,
   compute_layer_excluded,
   is_layer_inversion,
   is_meta_self_coincidence,
@@ -36,37 +47,99 @@ fn witness_coincide_negative() -> Bool {
   !name_coincides(field: "note", concept_name: "Url")
 }
 
+fn type_atom(sym: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: sym } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
 
+fn field_edge(field: Symbol, type_sym: Symbol) -> Edge {
+  Edge {
+    label: Named { name: field },
+    target: type_atom(sym: type_sym)
+  }
+}
 
-fn fr(f: String, t: String) -> FieldRef {
-  FieldRef { field: f, type_name: t }
+fn record_type(fields: List<Edge>) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: fields,
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn concept_decl(qn: String, nm: String, node: Node) -> ConceptDecl {
+  ConceptDecl { qualified_name: qn, name: nm, node: node }
+}
+
+fn fixture_decls() -> List<ConceptDecl> {
+  [
+    concept_decl(
+      qn: "demo.Url",
+      nm: "Url",
+      node: record_type(fields: [
+        field_edge(field: ^scheme, type_sym: ^UriScheme),
+        field_edge(field: ^host, type_sym: ^NonEmptyStr)
+      ])
+    ),
+    concept_decl(
+      qn: "demo.Id",
+      nm: "Id",
+      node: record_type(fields: [field_edge(field: ^raw, type_sym: ^String)])
+    ),
+    concept_decl(
+      qn: "demo.Endpoint",
+      nm: "Endpoint",
+      node: record_type(fields: [
+        field_edge(field: ^base_url, type_sym: ^String),
+        field_edge(field: ^timeout, type_sym: ^Int)
+      ])
+    ),
+    concept_decl(
+      qn: "demo.Widget",
+      nm: "Widget",
+      node: record_type(fields: [field_edge(field: ^id, type_sym: ^String)])
+    ),
+    concept_decl(
+      qn: "demo.Note",
+      nm: "Note",
+      node: record_type(fields: [field_edge(field: ^body, type_sym: ^String)])
+    ),
+    concept_decl(
+      qn: "v2.std.FieldRef",
+      nm: "FieldRef",
+      node: record_type(fields: [field_edge(field: ^field, type_sym: ^String)])
+    ),
+    concept_decl(
+      qn: "v2.std.Field",
+      nm: "Field",
+      node: record_type(fields: [field_edge(field: ^name, type_sym: ^String)])
+    )
+  ]
+}
+
+fn layer_inversion_fixture_decls() -> List<ConceptDecl> {
+  [
+    concept_decl(
+      qn: "v2.std.Foo",
+      nm: "Foo",
+      node: record_type(fields: [field_edge(field: ^url, type_sym: ^String)])
+    ),
+    concept_decl(
+      qn: "extdeps.http.Url",
+      nm: "Url",
+      node: record_type(fields: [
+        field_edge(field: ^scheme, type_sym: ^UriScheme),
+        field_edge(field: ^host, type_sym: ^NonEmptyStr)
+      ])
+    )
+  ]
 }
 
 fn qc(qn: String, nm: String, fs: List<FieldRef>) -> QualifiedConcept {
   QualifiedConcept { qualified_name: qn, concept: ConceptStruct { name: nm, fields: fs } }
-}
-
-fn fixture_idx() -> List<QualifiedConcept> {
-  [
-    qc(qn: "demo.Url", nm: "Url", fs: [fr(f: "scheme", t: "UriScheme"), fr(f: "host", t: "NonEmptyStr")]),
-    qc(qn: "demo.Id", nm: "Id", fs: [fr(f: "raw", t: "String")]),
-    qc(qn: "demo.Endpoint", nm: "Endpoint", fs: [fr(f: "base_url", t: "String"), fr(f: "timeout", t: "Int")]),
-    qc(qn: "demo.Widget", nm: "Widget", fs: [fr(f: "id", t: "String")]),
-    qc(qn: "demo.Note", nm: "Note", fs: [fr(f: "body", t: "String")]),
-    qc(qn: "v2.std.FieldRef", nm: "FieldRef", fs: [fr(f: "field", t: "String")]),
-    qc(qn: "v2.std.Field", nm: "Field", fs: [fr(f: "name", t: "String")])
-  ]
-}
-
-fn layer_inversion_fixture() -> List<QualifiedConcept> {
-  [
-    qc(qn: "v2.std.Foo", nm: "Foo", fs: [fr(f: "url", t: "String")]),
-    qc(
-      qn: "extdeps.http.Url",
-      nm: "Url",
-      fs: [fr(f: "scheme", t: "UriScheme"), fr(f: "host", t: "NonEmptyStr")]
-    )
-  ]
 }
 
 fn has_candidate(cands: List<GroundingWorklistEntry>, enclosing: String, field: String) -> Bool {
@@ -88,19 +161,19 @@ fn candidate_coincides_with(cands: List<GroundingWorklistEntry>, enclosing: Stri
 }
 
 fn witness_decide_flags_nickname() -> Bool {
-  has_candidate(cands: candidates_over_index(idx: fixture_idx()), enclosing: "Endpoint", field: "base_url")
+  has_candidate(cands: candidates_over_decls(decls: fixture_decls()), enclosing: "Endpoint", field: "base_url")
 }
 
 fn witness_decide_clears_nonbare() -> Bool {
-  !has_candidate(cands: candidates_over_index(idx: fixture_idx()), enclosing: "Endpoint", field: "timeout")
+  !has_candidate(cands: candidates_over_decls(decls: fixture_decls()), enclosing: "Endpoint", field: "timeout")
 }
 
 fn witness_decide_clears_clean_RED() -> Bool {
-  !has_candidate(cands: candidates_over_index(idx: fixture_idx()), enclosing: "Note", field: "body")
+  !has_candidate(cands: candidates_over_decls(decls: fixture_decls()), enclosing: "Note", field: "body")
 }
 
 fn witness_role_word_flows_to_judge() -> Bool {
-  has_candidate(cands: candidates_over_index(idx: fixture_idx()), enclosing: "Widget", field: "id")
+  has_candidate(cands: candidates_over_decls(decls: fixture_decls()), enclosing: "Widget", field: "id")
 }
 
 fn witness_meta_self_coincidence_excluded() -> Bool {
@@ -112,11 +185,15 @@ fn witness_meta_self_coincidence_excluded() -> Bool {
 }
 
 fn witness_layer_excludes_meta_field() -> Bool {
-  !has_candidate(cands: candidates_over_index(idx: fixture_idx()), enclosing: "FieldRef", field: "field")
+  !has_candidate(cands: candidates_over_decls(decls: fixture_decls()), enclosing: "FieldRef", field: "field")
 }
 
 fn witness_layer_excludes_inversion() -> Bool {
-  !has_candidate(cands: candidates_over_index(idx: layer_inversion_fixture()), enclosing: "Foo", field: "url")
+  !has_candidate(
+    cands: candidates_over_decls(decls: layer_inversion_fixture_decls()),
+    enclosing: "Foo",
+    field: "url"
+  )
 }
 
 fn witness_layer_inversion_predicate() -> Bool {
@@ -125,7 +202,7 @@ fn witness_layer_inversion_predicate() -> Bool {
 
 fn witness_enrich_target_structure() -> Bool {
   let s = candidate_structure(
-    cands: candidates_over_index(idx: fixture_idx()),
+    cands: candidates_over_decls(decls: fixture_decls()),
     enclosing: "Endpoint",
     field: "base_url"
   )
@@ -134,7 +211,7 @@ fn witness_enrich_target_structure() -> Bool {
 
 fn witness_coincides_with_qualified_name() -> Bool {
   candidate_coincides_with(
-    cands: candidates_over_index(idx: fixture_idx()),
+    cands: candidates_over_decls(decls: fixture_decls()),
     enclosing: "Endpoint",
     field: "base_url"
   ) == "demo.Url"

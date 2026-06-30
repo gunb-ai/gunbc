@@ -331,75 +331,10 @@ fn candidates_from_decls(
   })
 }
 
-fn entry_from_match_simple(
-  enclosing_qc: QualifiedConcept,
-  field: String,
-  declared_type: String,
-  matched: QualifiedConcept,
-  all_concepts: List<QualifiedConcept>,
-  excluded: Bool
-) -> GroundingWorklistEntry {
-  let mf = matched_fields(name: matched.concept.name, idx: all_concepts)
-  GroundingWorklistEntry {
-    enclosing: enclosing_qc.concept.name,
-    field: field,
-    declared_type: declared_type,
-    coincides_with: matched.qualified_name,
-    target_kind: target_kind_of(fields: mf),
-    target_structure: render_members(fields: mf),
-    qualified_name: enclosing_qc.qualified_name,
-    layer_excluded: excluded,
-    sibling_variant_names: "",
-    has_unrecognized_sibling: false,
-    sibling_decode_optional: false
-  }
-}
-
-fn candidates_of_qc(
-  qc: QualifiedConcept,
-  index: List<ConceptByName>,
-  all_concepts: List<QualifiedConcept>,
-  acc0: List<GroundingWorklistEntry>
-) -> List<GroundingWorklistEntry> {
-  fold(qc.concept.fields, init: acc0, f: fn(acc, fr) {
-    if is_bare_string(type_name: fr.type_name) {
-      let matched = first_coincident_target(
-        field: fr.field,
-        enclosing: qc.concept.name,
-        index: index
-      )
-      if matched.qualified_name == "" {
-        acc
-      } else {
-        let excluded = compute_layer_excluded(
-          field: fr.field,
-          enclosing_qn: qc.qualified_name,
-          matched: matched
-        )
-        list_snoc_item(
-          xs: acc,
-          item: entry_from_match_simple(
-            enclosing_qc: qc,
-            field: fr.field,
-            declared_type: fr.type_name,
-            matched: matched,
-            all_concepts: all_concepts,
-            excluded: excluded
-          )
-        )
-      }
-    } else {
-      acc
-    }
-  })
-}
-
-fn candidates_over_index(idx: List<QualifiedConcept>) -> List<GroundingWorklistEntry> {
-  let index = build_concept_name_index(idx: idx)
+fn candidates_over_decls(decls: List<ConceptDecl>) -> List<GroundingWorklistEntry> {
+  let all_concepts = enumerate_concepts_from_decls(decls: decls)
   filter_layer_included(
-    rows: fold(idx, init: [], f: fn(acc, qc) {
-      candidates_of_qc(qc: qc, index: index, all_concepts: idx, acc0: acc)
-    })
+    rows: candidates_from_decls(decls: decls, all_concepts: all_concepts)
   )
 }
 
