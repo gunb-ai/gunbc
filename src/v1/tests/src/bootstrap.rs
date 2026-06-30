@@ -89,7 +89,6 @@ fn copy_stage0_support_modules(stage1_dir: &std::path::Path, ws: &std::path::Pat
         "extdeps_shape_transport_policy_project.rs",
         "fact_cardinality_census.rs",
         "languages_consumer_census.rs",
-        "module_path_index.rs",
         "transport_script_position_project.rs",
         "v1_compiler_dag_collect.rs",
         "v1_compiler_dag_collect_support.rs",
@@ -153,7 +152,6 @@ fn diff_excluding_hand_maintained(
         .arg("--exclude=extdeps_shape_transport_policy_project.rs")
         .arg("--exclude=fact_cardinality_census.rs")
         .arg("--exclude=languages_consumer_census.rs")
-        .arg("--exclude=module_path_index.rs")
         .arg("--exclude=transport_script_position_project.rs")
         .arg("--exclude=v1_compiler_dag_collect.rs")
         .arg("--exclude=v1_compiler_dag_collect_support.rs")
