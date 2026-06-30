@@ -23603,6 +23603,17 @@ pub fn emit_cargo_toml(crate_name: String, has_services: bool) -> Rc<TextFile> {
         );
         let workspace = "\n[workspace]\n".to_string();
         let base_deps = Rc::new(vec![
+            emit_cargo_dep("im-rc".to_string(), "15.1".to_string(), Rc::new(vec![])),
+            emit_cargo_dep(
+                "unicode-ident".to_string(),
+                "1".to_string(),
+                Rc::new(vec![]),
+            ),
+            emit_cargo_dep(
+                "unicode-properties".to_string(),
+                "0.1".to_string(),
+                Rc::new(vec!["emoji".to_string()]),
+            ),
             emit_cargo_dep(
                 "serde".to_string(),
                 "1".to_string(),
@@ -23616,6 +23627,11 @@ pub fn emit_cargo_toml(crate_name: String, has_services: bool) -> Rc<TextFile> {
                 Rc::new(vec!["derive".to_string()]),
             ),
             emit_cargo_dep("lazy_static".to_string(), "1".to_string(), Rc::new(vec![])),
+            emit_cargo_dep(
+                "ureq".to_string(),
+                "2".to_string(),
+                Rc::new(vec!["json".to_string()]),
+            ),
         ]);
         let async_deps = if has_services {
             Rc::new(vec![
