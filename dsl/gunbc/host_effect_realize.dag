@@ -13,7 +13,7 @@ import std.realization_reconcile {
   reconcile_grounded
 }
 import extdeps.shell
-import extdeps.diagnostic.ssh
+import extdeps.diagnostic.ssh { ssh_session_exec }
 import extdeps.bmc.types { RedfishSystemAction }
 import gunbc.fleet_intent { ComputeHost }
 import std.types { String, NonEmptyStr }
@@ -57,10 +57,7 @@ fn run_shell_transport(script: String, transport: HostEffectTransport) -> ShellE
       }
     }
     SshShell { ssh_host: h } => {
-      let result = diagnostic.ssh.Session.Exec(
-        host: h,
-        command: script as NonEmptyStr
-      )
+      let result = ssh_session_exec(host: h, command: script as NonEmptyStr)
       ShellExecObserved {
         exit_code: result.exit_code,
         success: result.success,

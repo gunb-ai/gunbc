@@ -1,0 +1,22 @@
+module test.claim.node_http_server_emit
+
+import std.types { Bool, String }
+import gunbc.node_http_server_emit {
+  gunbhub_node_http_server_source,
+  gunbhub_node_http_static_server_spec,
+}
+
+fn witness_emits_http_create_server() -> Bool {
+  let src = gunbhub_node_http_server_source()
+  string_contains(s: src, pattern: "require('http').createServer")
+    && string_contains(s: src, pattern: "server.listen")
+}
+
+fn witness_listen_port_defaults() -> Bool {
+  gunbhub_node_http_static_server_spec().listen.port == 8080
+}
+
+test fn node_http_server_emit_keystone_holds() -> Bool {
+  witness_emits_http_create_server()
+    && witness_listen_port_defaults()
+}

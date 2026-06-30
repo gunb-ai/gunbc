@@ -1,12 +1,15 @@
 module gunbc.live_deploy_apply
 
 import gunbc.live_deploy {
-  LiveDeployPlan,
-  LiveDeployPackageDependency,
-  live_deploy_plan_srv1,
-  live_deploy_dependency_ensure_script,
+  DeploymentSpec,
+  DeploymentEnsuredStep,
+  deployment_spec_srv1,
+  deployment_ensure_dependency_script,
 }
-import gunbc.live_deploy_emit { live_deploy_remote_script_for }
+import gunbc.live_deploy_emit {
+  live_deploy_apply_script_for,
+  live_deploy_retract_script_for,
+}
 import gunbc.host_effect {
   ShellCommand,
   HostOs,
@@ -19,35 +22,52 @@ import gunbc.host_effect {
 import gunbc.host_effect_realize { host_effect_apply }
 import std.realization_reconcile { Reconciliation }
 
-fn live_deploy_dependency_ensure_via_ssh(
-  plan: LiveDeployPlan,
-  dep: LiveDeployPackageDependency
+fn live_deploy_ensure_dependency_via_ssh(
+  spec: DeploymentSpec,
+  dep: DeploymentEnsuredStep
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   host_effect_apply(
-    target: HostOs { node: plan.target.host },
-    effect: ShellCommand { script: live_deploy_dependency_ensure_script(dep: dep) },
+    target: HostOs { node: spec.target.host },
+    effect: ShellCommand { script: deployment_ensure_dependency_script(dep: dep) },
     policy: OneShotIdempotent,
-    transport: SshShell { ssh_host: plan.target.ssh_host }
+    transport: SshShell { ssh_host: spec.target.ssh_host }
   )
 }
 
-fn live_deploy_orchestrate_via_local_ssh(plan: LiveDeployPlan) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  let remote = live_deploy_remote_script_for(plan: plan)
+fn live_deploy_fold_via_local_ssh(spec: DeploymentSpec, script: String) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   let wrapped = concat(
     concat(
-      concat(concat("ssh ", plan.target.ssh_host), " bash -s <<'GUNBC_LIVE_DEPLOY_EOF'\n"),
-      remote
+      concat(concat("ssh ", spec.target.ssh_host), " bash -s <<'GUNBC_LIVE_DEPLOY_EOF'\n"),
+      script
     ),
     "\nGUNBC_LIVE_DEPLOY_EOF"
   )
   host_effect_apply(
-    target: HostOs { node: plan.target.host },
+    target: HostOs { node: spec.target.host },
     effect: ShellCommand { script: wrapped },
     policy: OneShotIdempotent,
     transport: LocalShell
   )
 }
 
-fn live_deploy_orchestrate_srv1() -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  live_deploy_orchestrate_via_local_ssh(plan: live_deploy_plan_srv1())
+fn live_deploy_apply_via_local_ssh(spec: DeploymentSpec) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  live_deploy_fold_via_local_ssh(
+    spec: spec,
+    script: live_deploy_apply_script_for(spec: spec)
+  )
+}
+
+fn live_deploy_retract_via_local_ssh(spec: DeploymentSpec) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  live_deploy_fold_via_local_ssh(
+    spec: spec,
+    script: live_deploy_retract_script_for(spec: spec)
+  )
+}
+
+fn live_deploy_apply_srv1() -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  live_deploy_apply_via_local_ssh(spec: deployment_spec_srv1())
+}
+
+fn live_deploy_retract_srv1() -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  live_deploy_retract_via_local_ssh(spec: deployment_spec_srv1())
 }

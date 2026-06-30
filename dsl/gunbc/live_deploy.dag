@@ -1,7 +1,7 @@
 module gunbc.live_deploy
 
 import std.types { String, NonEmptyStr, List, Int, Bool }
-import std.os.types { Apt, UbuntuOs, NobleNumbat2404Lts, OsPackageManager }
+import std.os.types { Apt, NobleNumbat2404Lts, OsPackageManager }
 import extdeps.os.ubuntu { ubuntu_distribution_catalog_row }
 import extdeps.apt {
   package_tailscale,
@@ -10,6 +10,7 @@ import extdeps.apt {
 import gunbc.fleet_intent { srv1_host, ComputeHost }
 import gunbc.fleet_intent_network {
   srv1_tailscale_endpoint,
+  fleet_intent_network,
 }
 import gunbc.node_http_server_emit {
   gunbhub_node_http_static_server_spec,
@@ -17,97 +18,172 @@ import gunbc.node_http_server_emit {
 import extdeps.http.server { HttpServerListenConfig }
 import product.network_topology { NetworkEndpoint }
 
-type LiveDeployPackageDependency {
+type DeploymentResourceKind =
+    OwnedArtifact
+  | EnsuredDependency
+
+type OwnedArtifactKind =
+    ServerScript
+  | SystemdUnit
+  | TailscaleServeMapping
+
+type EnsuredDependencyKind =
+    TailscalePackage
+  | NodeJsPackage
+
+type DeploymentOwnedStep {
+  kind: OwnedArtifactKind
+  path: NonEmptyStr
+}
+
+type DeploymentEnsuredStep {
+  kind: EnsuredDependencyKind
   package: NonEmptyStr
 }
 
-type LiveDeployHostTarget {
+type DeploymentStep
+  = Owned { step: DeploymentOwnedStep }
+  | Ensured { step: DeploymentEnsuredStep }
+
+type DeploymentHostTarget {
   host: ComputeHost
   ssh_host: NonEmptyStr
   tailscale_endpoint: NetworkEndpoint
+  tailnet_domain: String
   os_package_manager: OsPackageManager
 }
 
-type LiveDeployServiceConfig {
+type DeploymentServiceConfig {
   unit_name: NonEmptyStr
-  install_dir: NonEmptyStr
-  server_entry: NonEmptyStr
+  server_path: NonEmptyStr
   listen: HttpServerListenConfig
 }
 
-type LiveDeployPlan {
-  target: LiveDeployHostTarget
-  dependencies: List<LiveDeployPackageDependency>
-  service: LiveDeployServiceConfig
+type DeploymentSpec {
+  target: DeploymentHostTarget
+  steps: List<DeploymentStep>
+  service: DeploymentServiceConfig
 }
 
-data gunbc_live_deploy_unit_name: NonEmptyStr = "gunbc-serve.service"
-data gunbc_live_deploy_install_dir: NonEmptyStr = "/opt/gunbc/serve"
-data gunbc_live_deploy_server_entry: NonEmptyStr = "server.js"
+data gunbc_roadmap_unit_name: NonEmptyStr = "gunbc-roadmap.service"
+data gunbc_roadmap_server_path: NonEmptyStr = "/opt/gunbc/server.js"
+data gunbc_roadmap_systemd_unit_path: NonEmptyStr = "/etc/systemd/system/gunbc-roadmap.service"
 
 fn srv1_os_package_manager() -> OsPackageManager {
   ubuntu_distribution_catalog_row(distro: NobleNumbat2404Lts).package_manager
 }
 
-fn live_deploy_dependencies_for_ubuntu() -> List<LiveDeployPackageDependency> {
+fn deployment_owned_steps() -> List<DeploymentOwnedStep> {
   [
-    LiveDeployPackageDependency { package: package_tailscale },
-    LiveDeployPackageDependency { package: package_nodejs },
+    DeploymentOwnedStep { kind: ServerScript, path: gunbc_roadmap_server_path },
+    DeploymentOwnedStep { kind: SystemdUnit, path: gunbc_roadmap_systemd_unit_path },
+    DeploymentOwnedStep { kind: TailscaleServeMapping, path: "tailscale-serve" as NonEmptyStr },
   ]
 }
 
-fn live_deploy_srv1_target() -> LiveDeployHostTarget {
-  LiveDeployHostTarget {
+fn deployment_ensured_steps() -> List<DeploymentEnsuredStep> {
+  [
+    DeploymentEnsuredStep { kind: TailscalePackage, package: package_tailscale },
+    DeploymentEnsuredStep { kind: NodeJsPackage, package: package_nodejs },
+  ]
+}
+
+fn deployment_steps_apply_order() -> List<DeploymentStep> {
+  concat(
+    map(deployment_ensured_steps(), s => Ensured { step: s }),
+    map(deployment_owned_steps(), s => Owned { step: s })
+  )
+}
+
+fn deployment_owned_steps_retract_order() -> List<DeploymentOwnedStep> {
+  [
+    DeploymentOwnedStep { kind: TailscaleServeMapping, path: "tailscale-serve" as NonEmptyStr },
+    DeploymentOwnedStep { kind: SystemdUnit, path: gunbc_roadmap_systemd_unit_path },
+    DeploymentOwnedStep { kind: ServerScript, path: gunbc_roadmap_server_path },
+  ]
+}
+
+fn deployment_srv1_target() -> DeploymentHostTarget {
+  DeploymentHostTarget {
     host: srv1_host,
     ssh_host: srv1_tailscale_endpoint.address as NonEmptyStr,
     tailscale_endpoint: srv1_tailscale_endpoint,
+    tailnet_domain: match fleet_intent_network.tailnet_domain {
+      Present { value: d } => d
+      Absent => ""
+    },
     os_package_manager: srv1_os_package_manager(),
   }
 }
 
-fn live_deploy_service_config() -> LiveDeployServiceConfig {
+fn deployment_service_config() -> DeploymentServiceConfig {
   let spec = gunbhub_node_http_static_server_spec()
-  LiveDeployServiceConfig {
-    unit_name: gunbc_live_deploy_unit_name,
-    install_dir: gunbc_live_deploy_install_dir,
-    server_entry: gunbc_live_deploy_server_entry,
+  DeploymentServiceConfig {
+    unit_name: gunbc_roadmap_unit_name,
+    server_path: gunbc_roadmap_server_path,
     listen: spec.listen,
   }
 }
 
-fn live_deploy_plan_srv1() -> LiveDeployPlan {
-  LiveDeployPlan {
-    target: live_deploy_srv1_target(),
-    dependencies: live_deploy_dependencies_for_ubuntu(),
-    service: live_deploy_service_config(),
+fn deployment_spec_srv1() -> DeploymentSpec {
+  DeploymentSpec {
+    target: deployment_srv1_target(),
+    steps: deployment_steps_apply_order(),
+    service: deployment_service_config(),
   }
 }
 
-fn live_deploy_plan_package_manager_is_apt(plan: LiveDeployPlan) -> Bool {
-  match plan.target.os_package_manager {
+fn deployment_step_is_owned(step: DeploymentStep) -> Bool {
+  match step {
+    Owned { step: _ } => true
+    Ensured { step: _ } => false
+  }
+}
+
+fn deployment_step_is_ensured(step: DeploymentStep) -> Bool {
+  !deployment_step_is_owned(step: step)
+}
+
+fn deployment_retract_includes_ensured(step: DeploymentOwnedStep) -> Bool {
+  match step.kind {
+    ServerScript => false
+    SystemdUnit => false
+    TailscaleServeMapping => false
+  }
+}
+
+fn deployment_plan_host_identity(spec: DeploymentSpec) -> String {
+  spec.target.host.identity
+}
+
+fn deployment_plan_ssh_host(spec: DeploymentSpec) -> NonEmptyStr {
+  spec.target.ssh_host
+}
+
+fn deployment_plan_listen_port(spec: DeploymentSpec) -> Int {
+  spec.service.listen.port
+}
+
+fn deployment_package_manager_is_apt(spec: DeploymentSpec) -> Bool {
+  match spec.target.os_package_manager {
     Apt => true
     _ => false
   }
 }
 
-fn live_deploy_plan_host_identity(plan: LiveDeployPlan) -> String {
-  plan.target.host.identity
-}
-
-fn live_deploy_plan_ssh_host(plan: LiveDeployPlan) -> NonEmptyStr {
-  plan.target.ssh_host
-}
-
-fn live_deploy_plan_listen_port(plan: LiveDeployPlan) -> Int {
-  plan.service.listen.port
-}
-
-fn live_deploy_dependency_ensure_script(dep: LiveDeployPackageDependency) -> String {
+fn deployment_ensure_dependency_script(dep: DeploymentEnsuredStep) -> String {
   concat(
     concat(
       concat("if ! dpkg -s ", dep.package),
       concat(" >/dev/null 2>&1; then apt-get install -y ", dep.package)
     ),
     "; fi"
+  )
+}
+
+fn deployment_tailnet_url(spec: DeploymentSpec) -> String {
+  concat(
+    concat("https://", spec.target.host.identity),
+    concat(".", spec.target.tailnet_domain)
   )
 }
