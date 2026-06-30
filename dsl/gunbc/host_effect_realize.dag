@@ -4,7 +4,8 @@ import gunbc.host_effect {
   HostEffect, ShellCommand, RedfishAction,
   NodeControlPlane, HostOs, BmcController,
   Policy, OneShotIdempotent, ConvergeToFixpoint,
-  HostEffectIntent, HostEffectEvidence, ShellEffectApplied
+  HostEffectIntent, HostEffectEvidence, ShellEffectApplied,
+  HostEffectTransport, LocalShell, SshShell,
 }
 import std.realization_reconcile {
   Reconciliation, Converged, NotConverged,
@@ -12,9 +13,10 @@ import std.realization_reconcile {
   reconcile_grounded
 }
 import extdeps.shell
+import extdeps.diagnostic.ssh { ssh_session_exec }
 import extdeps.bmc.types { RedfishSystemAction }
 import gunbc.fleet_intent { ComputeHost }
-import std.types { String }
+import std.types { String, NonEmptyStr }
 
 type ResolvedHostEffectCell =
     ShellOnHost { node: ComputeHost, script: String }
@@ -38,8 +40,43 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
   }
 }
 
-fn realize_shell_on_host(script: String, intent: HostEffectIntent) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  let result = shell.Exec.Run(script: script)
+type ShellExecObserved {
+  exit_code: Int
+  success: Bool
+  stdout: String
+}
+
+fn run_shell_transport(script: String, transport: HostEffectTransport) -> ShellExecObserved {
+  match transport {
+    LocalShell => {
+      let result = shell.Exec.Run(script: script)
+      ShellExecObserved {
+        exit_code: result.exit_code,
+        success: result.success,
+        stdout: result.stdout,
+      }
+    }
+    SshShell { ssh_host: h } => {
+      if script == "" {
+        ShellExecObserved {
+          exit_code: 1,
+          success: false,
+          stdout: "host_effect_apply: empty shell script over SshShell; fail-closed",
+        }
+      } else {
+        let result = ssh_session_exec(host: h, command: script as NonEmptyStr)
+        ShellExecObserved {
+          exit_code: result.exit_code,
+          success: result.success,
+          stdout: result.stdout,
+        }
+      }
+    }
+  }
+}
+
+fn realize_shell_on_host(script: String, transport: HostEffectTransport, intent: HostEffectIntent) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  let result = run_shell_transport(script: script, transport: transport)
   let grounding = if result.success {
       Grounds { evidence: ShellEffectApplied { exit_code: result.exit_code, stdout: result.stdout } }
     } else {
@@ -52,10 +89,10 @@ fn realize_shell_on_host(script: String, intent: HostEffectIntent) -> Reconcilia
   )
 }
 
-fn host_effect_apply(target: NodeControlPlane, effect: HostEffect, policy: Policy) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  let intent = HostEffectIntent { target: target, effect: effect, policy: policy }
+fn host_effect_apply(target: NodeControlPlane, effect: HostEffect, policy: Policy, transport: HostEffectTransport) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  let intent = HostEffectIntent { target: target, effect: effect, policy: policy, transport: transport }
   match resolve_host_effect_cell(target: target, effect: effect) {
-    ShellOnHost { node: _, script: s } => realize_shell_on_host(script: s, intent: intent)
+    ShellOnHost { node: _, script: s } => realize_shell_on_host(script: s, transport: transport, intent: intent)
     RedfishOnBmc { node: _, action: _ } =>
       NotConverged { reason: "host_effect_apply: RedfishAction realization is a fail-closed Unimplemented stub in Phase A; neat-boar-71 realizes it over RedfishRest in Phase C. No plausible no-op for a power/boot action (DESIGN section 5).", applied: intent }
     IncompatibleCell { reason: why } => NotConverged { reason: why, applied: intent }

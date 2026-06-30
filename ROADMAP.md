@@ -266,7 +266,8 @@ Depends on §6 — react/html is a first-class medium (idea-machine.md §3/§4),
 **Hosting / live dashboard lane:**
 
 - [ ] **roadmap → HTML page** *(keystone)* (#6010) pure projection `roadmap_model` → `MarkupNode` (`gunbc.roadmap_page`), serialized through the same XSS-safe HTML boundary as gunbhub; per-node status (open/review/done) / sizing / owner / carrier links. No substrate change.
-  - [ ] **live service on srv1/srv2** emit a TS/Node HTTP server (realization handler for `NodeHttpCreateServerEmissionTarget`) that serves the rendered pages bound to a port on a fleet host; the missing port-binding piece — today serving is a pre-rendered static table + a pure request→response fn.
+  - [ ] **live service on srv1/srv2** (#6010) emit a TS/Node HTTP server (realization handler for `NodeHttpCreateServerEmissionTarget`) that serves the rendered pages bound to a port on a fleet host; the missing port-binding piece — today serving is a pre-rendered static table + a pure request→response fn.
+    - [ ] **live deploy on srv1 over tailnet** (#6030) .dag-orchestrated deployment onto srv1: `DeploymentSpec` with typed owned-vs-ensured steps, apply+retract folds from one spec, `host_effect_realize` SshShell arm (`ssh.Session.Exec` via `ssh_session_exec`), idempotent apt ensure for tailscale+nodejs, emit systemd unit + `tailscale serve`.
     - [ ] **idea input → roadmap node** capture a free-form idea via the live service (dynamic POST handler) and admit it as a roadmap work node (input-envelope admission §5). Composes `7-live-serve` + `7-interactivity`.
   - [ ] **interactive components** *(props / state / handlers)* `MarkupAttrValue = LiteralValue | ExprValue` coproduct + expression children; JSX emits `{…}`, HTML emit **fails closed** on expression nodes (the `DecodeFidelity` honesty boundary §5). Load-bearing `std/markup.dag` shape — sign off before authoring.
 
