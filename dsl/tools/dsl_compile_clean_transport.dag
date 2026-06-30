@@ -34,7 +34,7 @@ fn clean_tree_compile_program() -> ShellProgram {
         [gunbc, lit(text: "compile")],
         concat(dcc_source_root_flags(), concat(dcc_pool_index_flags(), [
           lit(text: "--output-dir"), out,
-          lit(text: "--target"), lit(text: "rust")
+          lit(text: "--target"), lit(text: "dag")
         ]))
       )),
       command(words: [lit(text: "rm"), lit(text: "-rf"), out])
@@ -73,7 +73,7 @@ fn compile_clean_perturb_program() -> ShellProgram {
             [gunbc, lit(text: "compile"), lit(text: "--source-root"), tmp],
             concat(dcc_source_root_flags(), concat(dcc_pool_index_flags(), [
               lit(text: "--output-dir"), Concat { parts: [tmp, lit(text: "/out")] },
-              lit(text: "--target"), lit(text: "rust")
+              lit(text: "--target"), lit(text: "dag")
             ]))
           )),
           redir: StdoutAndStderrToNull
@@ -116,7 +116,7 @@ fn compile_clean_unresolved_import_perturb_program() -> ShellProgram {
             [gunbc, lit(text: "compile"), lit(text: "--source-root"), tmp],
             concat(dcc_source_root_flags(), concat(dcc_pool_index_flags(), [
               lit(text: "--output-dir"), Concat { parts: [tmp, lit(text: "/out")] },
-              lit(text: "--target"), lit(text: "rust")
+              lit(text: "--target"), lit(text: "dag")
             ]))
           )),
           redir: StdoutAndStderrToNull
@@ -157,7 +157,7 @@ fn compile_cross_tree_green_program() -> ShellProgram {
         [gunbc, lit(text: "compile"), lit(text: "--source-root"), tmp],
         concat(dcc_source_root_flags(), concat(dcc_pool_index_flags(), [
           lit(text: "--output-dir"), out,
-          lit(text: "--target"), lit(text: "rust")
+          lit(text: "--target"), lit(text: "dag")
         ]))
       )),
       command(words: [lit(text: "rm"), lit(text: "-rf"), out]),
@@ -191,7 +191,7 @@ fn compile_dsl_shell_primary_precedence_program() -> ShellProgram {
         [gunbc, lit(text: "compile"), lit(text: "--source-root"), tmp],
         concat(dcc_source_root_flags(), concat(dcc_pool_index_flags(), [
           lit(text: "--output-dir"), out,
-          lit(text: "--target"), lit(text: "rust")
+          lit(text: "--target"), lit(text: "dag")
         ]))
       )),
       command(words: [lit(text: "rm"), lit(text: "-rf"), out]),
@@ -216,7 +216,7 @@ data dcc_transport_invocation_substring_witness_disposition: Disposition = Scaff
 
 data dcc_gunbc_var_marker: String = "\"$GUNBC\""
 data dcc_compile_marker: String = "'compile'"
-data dcc_target_rust_marker: String = "'--target' 'rust'"
+data dcc_target_dag_marker: String = "'--target' 'dag'"
 data dcc_source_root_marker: String = "'--source-root'"
 data dcc_witness_root_dsl_marker: String = "'dsl'"
 data dcc_witness_root_v2_marker: String = "'src/v2'"
@@ -233,7 +233,7 @@ fn shell_serializes_dcc_common_compile_invocation(script: String) -> Bool {
   script != ""
     && string_contains(s: script, pattern: dcc_gunbc_var_marker)
     && string_contains(s: script, pattern: dcc_compile_marker)
-    && string_contains(s: script, pattern: dcc_target_rust_marker)
+    && string_contains(s: script, pattern: dcc_target_dag_marker)
     && string_contains(s: script, pattern: dcc_source_root_marker)
     && string_contains(s: script, pattern: dcc_witness_root_dsl_marker)
     && string_contains(s: script, pattern: dcc_witness_root_v2_marker)

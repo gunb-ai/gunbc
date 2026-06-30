@@ -179,12 +179,16 @@ type DagCollectPending {
 
 fn dag_node_key(node: Node) -> String {
   let anchor = dag_node_collection_anchor(node: node)
-  concat(
-    anchor.span.file, ":", to_string(i: anchor.span.start), "..", to_string(i: anchor.span.end),
-    match anchor.ident {
-      Present { value: id } => concat(":", to_string(i: id))
-      Absent => ""
-    })
+  if anchor.span.start == 0 && anchor.span.end == 0 {
+    concat(":0..0:", dag_node_surface_fingerprint(node: anchor))
+  } else {
+    concat(
+      anchor.span.file, ":", to_string(i: anchor.span.start), "..", to_string(i: anchor.span.end),
+      match anchor.ident {
+        Present { value: id } => concat(":", to_string(i: id))
+        Absent => ""
+      })
+  }
 }
 
 fn dag_node_is_resolved_identity_shell(node: Node) -> Bool {
@@ -398,7 +402,6 @@ fn dag_collect_insert(node: Node, acc: DagCollectAcc) -> DagCollectAcc {
           collision_errors: list_push(acc.collision_errors, dag_node_key_collision_error(key: key, span: anchor.span))
         }
       } else {
-
         acc
       }
     Absent => {

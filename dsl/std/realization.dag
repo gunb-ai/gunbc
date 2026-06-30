@@ -94,7 +94,13 @@ fn independence_from_effect_shapes(left: EffectShape, right: EffectShape) -> Ind
   }
 }
 
-type Placement = LocalInProcess | LocalFilesystem | RemoteNetwork
+type Placement
+  = LocalInProcess
+  | LocalFilesystem
+  | RemoteNetwork
+  | LocalAccelerator
+
+data local_accelerator_placement_dissolution_trigger: String = "dissolve-on: execution lane wires device identity from extdeps.gpu.AcceleratorFacts at the product/demo placement site; std keeps LocalAccelerator as placement-kind only (no device_model nickname on substrate — DESIGN §3)."
 
 type Materialization = Recompute | Memoize | Share
 
