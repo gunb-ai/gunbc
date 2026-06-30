@@ -1,8 +1,6 @@
 module test.claim.interpreter_kernel_model_witness
 
 import gunbc.interpreter_kernel_model {
-  pure_eval_authority_modules,
-  pinned_host_physics_stage0_files,
   v1_interpreter_hybrid_seed_file,
   is_pure_eval_authority_module,
   is_pinned_host_physics_stage0_file,

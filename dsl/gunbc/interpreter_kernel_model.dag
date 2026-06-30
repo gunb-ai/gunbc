@@ -1,12 +1,6 @@
 module gunbc.interpreter_kernel_model
 
-import std.logic { Bool }
-import std.algebra { length }
-import std.text { String }
-
-// HAND kernel D — partition `v1_interpreter.rs` dissolution into:
-//   pure-eval authority (v2.compiler.eval + emit_host, eventually emitted) and
-//   pinned host-physics (transports / fixtures / cache — terminal irreducible kernel).
+import std.types { List, String, Bool, Int }
 
 type InterpreterSeamClass
   = PureEvalAuthority
@@ -19,7 +13,6 @@ type V1InterpreterDissolutionPhase
 
 data interpreter_kernel_d_current_phase: V1InterpreterDissolutionPhase = ModelAndWitnessOnly
 
-// Single-authority modules for the pure-eval seam (.dag is truth; v1_interpreter.rs is the tap).
 data pure_eval_authority_modules: List<String> = [
   "src/v2/compiler/05_eval.dag",
   "src/v2/compiler/emit_host.dag",
@@ -28,7 +21,6 @@ data pure_eval_authority_modules: List<String> = [
   "src/v2/std/host_run.dag",
 ]
 
-// HAND_MAINTAINED stage0 host-physics carriers (seed-shrink-census chunk H + transport seam).
 data pinned_host_physics_stage0_files: List<String> = [
   "recorded_fixture.rs",
   "resolved_graph_cache.rs",
@@ -37,8 +29,6 @@ data pinned_host_physics_stage0_files: List<String> = [
   "cache_purity_oracle.rs",
 ]
 
-// Hybrid seed file: eval core dissolves via 05_eval emit; host-effect dispatch stays pinned
-// until the Materialization kernel collapses fixture/cache backends (ROADMAP §4 infra).
 data v1_interpreter_hybrid_seed_file: String = "v1_interpreter.rs"
 
 fn list_contains_string(xs: List<String>, needle: String) -> Bool {
@@ -54,11 +44,11 @@ fn is_pinned_host_physics_stage0_file(basename: String) -> Bool {
 }
 
 fn pinned_host_physics_file_count() -> Int {
-  length(xs: pinned_host_physics_stage0_files)
+  pinned_host_physics_stage0_files.length()
 }
 
 fn pure_eval_authority_module_count() -> Int {
-  length(xs: pure_eval_authority_modules)
+  pure_eval_authority_modules.length()
 }
 
 fn interpreter_kernel_d_phase_is_model_only() -> Bool {
