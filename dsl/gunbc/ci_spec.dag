@@ -4,7 +4,7 @@ import gunbc.ci_gate {
   Gate,
   RustMonolithGate, EmitHostGate, LayeringImportsGate,
   ExtdepsExternalAuthorityGate, DslCompileCleanGate, GeneratedArtifactDriftGate,
-  SourceRootIngestGate, RegenVerifyGate, EmitDeterminismGate
+  SourceRootIngestGate, RegenVerifyGate, SelfHostRealizedComparisonGate, EmitDeterminismGate
 }
 import gunbc.ci_layer_roots {
   witness_layer_roots,

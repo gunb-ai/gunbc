@@ -4,7 +4,7 @@ import gunbc.ci_gate {
   Gate,
   RustMonolithGate, EmitHostGate, LayeringImportsGate,
   ExtdepsExternalAuthorityGate, DslCompileCleanGate, GeneratedArtifactDriftGate,
-  SourceRootIngestGate, RegenVerifyGate, EmitDeterminismGate
+  SourceRootIngestGate, RegenVerifyGate, SelfHostRealizedComparisonGate, EmitDeterminismGate
 }
 import gunbc.generated_artifact {
   GeneratedArtifact, CiYamlArtifact, GithooksPrePushArtifact, artifact_path
@@ -70,6 +70,10 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitSpecGate { gate: RegenVerifyGate },
+    surfaces: [GithubActionsCiJob]
+  },
+  CommitCheckEnrollment {
+    check: CommitSpecGate { gate: SelfHostRealizedComparisonGate },
     surfaces: [GithubActionsCiJob]
   },
   CommitCheckEnrollment {
@@ -140,6 +144,7 @@ fn gate_eq(a: Gate, b: Gate) -> Bool {
     GeneratedArtifactDriftGate => match b { GeneratedArtifactDriftGate => true  _ => false }
     SourceRootIngestGate => match b { SourceRootIngestGate => true  _ => false }
     RegenVerifyGate => match b { RegenVerifyGate => true  _ => false }
+    SelfHostRealizedComparisonGate => match b { SelfHostRealizedComparisonGate => true  _ => false }
     EmitDeterminismGate => match b { EmitDeterminismGate => true  _ => false }
   }
 }
