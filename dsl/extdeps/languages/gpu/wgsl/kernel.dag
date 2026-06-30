@@ -2,16 +2,12 @@ module extdeps.languages.gpu.wgsl.kernel
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import extdeps.communication.medium { Medium, Lossless, Lossy, DecodeFidelity }
+import extdeps.communication.medium { Medium, Lossless }
 import std.types { NonEmptyStr, Int, List, Bool, String, Float }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.bytes { pure_dag_seam_unreachable }
 import extdeps.languages.simd.kernel {
-  relu_mul_add_wire_op_codes,
-  elemwise_mul_wire_op_code,
-  elemwise_add_wire_op_code,
-  elemwise_relu_wire_op_code,
   witness_relu_mul_add_wire_op_codes_are_locked_triplet,
 }
 

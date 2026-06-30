@@ -13,6 +13,7 @@ use crate::std_syntax::LiteralValue;
 use crate::v1_compiler_emit::{extract_string_interp_parts, has_mock_prefix};
 use crate::v1_compiler_infer_items::{item_kind, ItemInfo, ItemKind, ResolvedGraph, TypedModule};
 use crate::v1_rt;
+#[path = "v1_rt_gpu.rs"]
 pub mod v1_rt_gpu;
 use crate::v1_rt::{
     rc_empty_set as empty_set, rc_set_insert as set_insert, rc_set_union as set_union, set_contains,
