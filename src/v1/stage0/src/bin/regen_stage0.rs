@@ -1275,5 +1275,4 @@ mod tests {
             .as_nanos();
         env::temp_dir().join(format!("regen-stage0-test-{label}-{unique}"))
     }
-
 }
