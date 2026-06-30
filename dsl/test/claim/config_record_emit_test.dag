@@ -1,0 +1,64 @@
+module test.claim.config_record_emit_witness
+
+import std.languages { yaml_format, toml_format, makefile_format, gitignore_format }
+import std.render { serialize_config_record_entry }
+
+fn witness_yaml_entry_uses_colon_separator() -> Bool {
+  match yaml_format.record {
+    null => false
+    syntax => serialize_config_record_entry(syntax: syntax, key: "name", value: "gunbc") == "name: gunbc"
+  }
+}
+
+fn witness_toml_entry_uses_equals_and_double_quotes() -> Bool {
+  match toml_format.record {
+    null => false
+    syntax => serialize_config_record_entry(syntax: syntax, key: "name", value: "gunbc") == "name = \"gunbc\""
+  }
+}
+
+fn witness_makefile_entry_uses_equals_no_quotes() -> Bool {
+  match makefile_format.record {
+    null => false
+    syntax => serialize_config_record_entry(syntax: syntax, key: "CC", value: "gcc") == "CC = gcc"
+  }
+}
+
+fn witness_gitignore_has_no_record_syntax() -> Bool {
+  match gitignore_format.record {
+    null => true
+    _ => false
+  }
+}
+
+fn witness_yaml_toml_entries_differ() -> Bool {
+  match yaml_format.record {
+    null => false
+    yaml_syntax => match toml_format.record {
+      null => false
+      toml_syntax =>
+        serialize_config_record_entry(syntax: yaml_syntax, key: "k", value: "v") !=
+          serialize_config_record_entry(syntax: toml_syntax, key: "k", value: "v")
+    }
+  }
+}
+
+fn witness_yaml_two_entries_newline_joined() -> Bool {
+  match yaml_format.record {
+    null => false
+    syntax => {
+      let e1 = serialize_config_record_entry(syntax: syntax, key: "host", value: "localhost")
+      let e2 = serialize_config_record_entry(syntax: syntax, key: "port", value: "8080")
+      concat(concat(e1, "\n"), e2) == "host: localhost\nport: 8080"
+    }
+  }
+}
+
+test fn config_record_emit_keystone_holds() -> Bool {
+  witness_yaml_entry_uses_colon_separator() &&
+    witness_toml_entry_uses_equals_and_double_quotes() &&
+    witness_makefile_entry_uses_equals_no_quotes() &&
+    witness_gitignore_has_no_record_syntax() &&
+    witness_yaml_toml_entries_differ() &&
+    witness_yaml_two_entries_newline_joined()
+}

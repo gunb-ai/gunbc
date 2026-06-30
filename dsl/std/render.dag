@@ -1,7 +1,7 @@
 module std.render
 
 import std.symbols { SemanticColor, SymbolId, Tier }
-import std.languages { CommentSyntax, ConfigFormat, Language }
+import std.languages { CommentSyntax, ConfigFormat, Language, RecordSyntax }
 
 type SpanStyle {
   color: SemanticColor?
@@ -170,4 +170,8 @@ type OutputFormat {
 type GeneratorHeader {
   generator: String
   regen_command: String
+}
+
+fn serialize_config_record_entry(syntax: RecordSyntax, key: String, value: String) -> String {
+  concat(concat(concat(concat(key, syntax.kv_separator), syntax.value_prefix), value), syntax.value_suffix)
 }

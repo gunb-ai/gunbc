@@ -17,6 +17,12 @@ type CommentSyntax {
   doc_prefix: String?
 }
 
+type RecordSyntax {
+  kv_separator: String
+  value_prefix: String
+  value_suffix: String
+}
+
 type NamingConvention {
   type_case: NamingCase
   function_case: NamingCase
@@ -348,6 +354,7 @@ type ConfigFormat {
   name: String
   extensions: List<String>
   comment: CommentSyntax
+  record: RecordSyntax?
 }
 
 data rust_language: Language = {
@@ -1122,7 +1129,8 @@ data yaml_format: ConfigFormat = {
     block_start: null,
     block_end: null,
     doc_prefix: null
-  }
+  },
+  record: { kv_separator: ": ", value_prefix: "", value_suffix: "" }
 }
 
 data toml_format: ConfigFormat = {
@@ -1134,7 +1142,8 @@ data toml_format: ConfigFormat = {
     block_start: null,
     block_end: null,
     doc_prefix: null
-  }
+  },
+  record: { kv_separator: " = ", value_prefix: "\"", value_suffix: "\"" }
 }
 
 data makefile_format: ConfigFormat = {
@@ -1146,7 +1155,8 @@ data makefile_format: ConfigFormat = {
     block_start: null,
     block_end: null,
     doc_prefix: null
-  }
+  },
+  record: { kv_separator: " = ", value_prefix: "", value_suffix: "" }
 }
 
 data gitignore_format: ConfigFormat = {
@@ -1158,7 +1168,8 @@ data gitignore_format: ConfigFormat = {
     block_start: null,
     block_end: null,
     doc_prefix: null
-  }
+  },
+  record: null
 }
 
 data css_format: ConfigFormat = {
@@ -1170,5 +1181,6 @@ data css_format: ConfigFormat = {
     block_start: "/*",
     block_end: "*/",
     doc_prefix: null
-  }
+  },
+  record: null
 }
