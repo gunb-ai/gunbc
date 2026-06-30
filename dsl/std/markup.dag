@@ -72,10 +72,18 @@ type TagDelimiter {
   close: String
 }
 
+type VoidTagRendering = OmitClose | SelfClose
+
 type MarkupMedium {
   tag_overrides: List<TagDelimiter>
   bracket: MarkupBracket
   text_escape: EscapeMode
+  void_tags: List<String>
+  void_rendering: VoidTagRendering
+}
+
+fn is_void_tag(tag: String, void_tags: List<String>) -> Bool {
+  fold(void_tags, init: false, f: (acc, t) => acc || t == tag)
 }
 
 fn escape_text_for(mode: EscapeMode, s: String) -> String {
