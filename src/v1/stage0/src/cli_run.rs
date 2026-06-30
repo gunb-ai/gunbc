@@ -5642,9 +5642,8 @@ pub fn parse_extdeps_module_items(
         }
     };
     let path_str = resolved.to_string_lossy();
-    let content = std::fs::read_to_string(&resolved).unwrap_or_else(|e| {
-        panic!("parse_extdeps_module_items: failed to read {path_str}: {e}")
-    });
+    let content = std::fs::read_to_string(&resolved)
+        .unwrap_or_else(|e| panic!("parse_extdeps_module_items: failed to read {path_str}: {e}"));
     let filename = resolved
         .file_name()
         .and_then(|s| s.to_str())
@@ -5882,7 +5881,9 @@ pub fn extdeps_shape_transport_policy_module_facts(
 ) -> ExtdepsShapeTransportPolicyModuleFacts {
     use crate::v1_compiler_emit::effective_operation_transport;
     use crate::v1_compiler_emit_core_support::is_data_def_item;
-    use crate::v1_std_core::{field_init_node_name_at, field_init_node_value, param_node_name_at, ExprData};
+    use crate::v1_std_core::{
+        field_init_node_name_at, field_init_node_value, param_node_name_at, ExprData,
+    };
 
     let path = source_path_for_module_path(module_path.to_string());
     let (items, source_indices) = parse_extdeps_module_items(&path);

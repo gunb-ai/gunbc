@@ -3721,9 +3721,7 @@ pub fn materialize_shell_argv_for_operation(
     param_bindings: HashMap<String, Value>,
 ) -> Result<Vec<String>, String> {
     let (argv_nodes, source_indices) =
-        crate::cli_run::shell_argv_nodes_for_operation(
-            path, service, operation,
-        );
+        crate::cli_run::shell_argv_nodes_for_operation(path, service, operation);
     let mut argv: Vec<String> = Vec::new();
     for node in argv_nodes.iter() {
         let val = materialize_argv_expr_for_bindings(node, &param_bindings, &source_indices)?;
@@ -4901,9 +4899,12 @@ fn eval_builtin(
         }
 
         "octets_bytes" => {
-            let arg = positional.first().copied().ok_or_else(|| InterpError::TypeError {
-                msg: "octets_bytes requires a List<UInt8> argument".to_string(),
-            })?;
+            let arg = positional
+                .first()
+                .copied()
+                .ok_or_else(|| InterpError::TypeError {
+                    msg: "octets_bytes requires a List<UInt8> argument".to_string(),
+                })?;
             let items = free_monoid_to_vec(arg).ok_or_else(|| InterpError::TypeError {
                 msg: "octets_bytes expects a List<UInt8>".to_string(),
             })?;
@@ -5320,13 +5321,8 @@ fn eval_builtin(
                     ),
                 });
             }
-            let out = v1_rt::contiguous_loop_elementwise_float_kernel(
-                &op_codes,
-                fma_policy,
-                &a,
-                &b,
-                &c,
-            );
+            let out =
+                v1_rt::contiguous_loop_elementwise_float_kernel(&op_codes, fma_policy, &a, &b, &c);
             Ok(Some(list_value(
                 out.into_iter().map(Value::Float).collect::<Vec<_>>(),
             )))
@@ -5335,8 +5331,7 @@ fn eval_builtin(
         "layer_import_facts" => {
             let std_roots = expect_str_list(positional.first().copied(), "layer_import_facts")?;
             let extdeps_roots = expect_str_list(positional.get(1).copied(), "layer_import_facts")?;
-            let facts =
-                crate::cli_run::layer_import_facts(&std_roots, &extdeps_roots);
+            let facts = crate::cli_run::layer_import_facts(&std_roots, &extdeps_roots);
             let mut items: Vec<Value> = Vec::new();
             for f in facts {
                 let layer = Value::Variant {
@@ -5601,11 +5596,14 @@ fn eval_builtin(
                         (ctx.sym("module"), (*qn).clone()),
                         (ctx.sym("operation"), Value::Str(f.operation.clone())),
                         (ctx.sym("service"), Value::Str(f.service.clone())),
-                        (ctx.sym("transport_kind"), Value::Variant {
-                            type_name: ctx.sym("ExtdepsTransportKind"),
-                            variant_name: ctx.sym(f.transport_kind),
-                            fields: Rc::new(vec![]),
-                        }),
+                        (
+                            ctx.sym("transport_kind"),
+                            Value::Variant {
+                                type_name: ctx.sym("ExtdepsTransportKind"),
+                                variant_name: ctx.sym(f.transport_kind),
+                                fields: Rc::new(vec![]),
+                            },
+                        ),
                     ])),
                 })
                 .collect();
@@ -5643,7 +5641,10 @@ fn eval_builtin(
                     fields: Rc::new(sorted_fields(vec![
                         (ctx.sym("data_name"), Value::Str(f.data_name.clone())),
                         (ctx.sym("field_name"), Value::Str(f.field_name.clone())),
-                        (ctx.sym("literal_value"), Value::Str(f.literal_value.clone())),
+                        (
+                            ctx.sym("literal_value"),
+                            Value::Str(f.literal_value.clone()),
+                        ),
                         (ctx.sym("module"), (*qn).clone()),
                     ])),
                 })
@@ -5654,10 +5655,19 @@ fn eval_builtin(
                     (ctx.sym("argv_facts"), list_value(argv_items)),
                     (ctx.sym("embedded_facts"), list_value(embedded_items)),
                     (ctx.sym("fusion_facts"), list_value(fusion_items)),
-                    (ctx.sym("gist_create_declares_filename_input"), Value::Bool(facts.gist_create_declares_filename_input)),
-                    (ctx.sym("gist_create_files_keyed_by_filename"), Value::Bool(facts.gist_create_files_keyed_by_filename)),
+                    (
+                        ctx.sym("gist_create_declares_filename_input"),
+                        Value::Bool(facts.gist_create_declares_filename_input),
+                    ),
+                    (
+                        ctx.sym("gist_create_files_keyed_by_filename"),
+                        Value::Bool(facts.gist_create_files_keyed_by_filename),
+                    ),
                     (ctx.sym("input_facts"), list_value(input_items)),
-                    (ctx.sym("source_nickname_literal_count"), Value::Int(facts.source_nickname_literal_count)),
+                    (
+                        ctx.sym("source_nickname_literal_count"),
+                        Value::Int(facts.source_nickname_literal_count),
+                    ),
                 ])),
             };
             Ok(Some(result))
@@ -5726,9 +5736,7 @@ fn eval_builtin(
                     .to_string(),
             })?;
             Ok(Some(Value::Bool(
-                crate::external_authority_project::is_backfill_pending_for_qualified_name(
-                    module,
-                ),
+                crate::external_authority_project::is_backfill_pending_for_qualified_name(module),
             )))
         }
         "extdeps_external_authority_is_machinery_exempt_for_qualified_name" => {
@@ -5737,9 +5745,7 @@ fn eval_builtin(
                     .to_string(),
             })?;
             Ok(Some(Value::Bool(
-                crate::external_authority_project::is_machinery_exempt_for_qualified_name(
-                    module,
-                ),
+                crate::external_authority_project::is_machinery_exempt_for_qualified_name(module),
             )))
         }
         "extdeps_external_authority_is_clean_tree_roster_excluded_for_qualified_name" => {
