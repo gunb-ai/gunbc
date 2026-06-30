@@ -168,22 +168,44 @@ fn run() -> Result<(), String> {
     // surface as cargo errors. Build it to measure them; the committed seed is
     // never touched.
     let mut emit_fresh: Option<PathBuf> = None;
-    let verify_only = match args.as_slice() {
-        [] => false,
-        [flag] if flag == "--verify" => true,
-        [flag, dir] if flag == "--emit-fresh" => {
-            emit_fresh = Some(PathBuf::from(dir));
-            false
+    let mut write_manifest: Option<PathBuf> = None;
+    let mut verify_only = false;
+    let mut index = 0usize;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--verify" => {
+                verify_only = true;
+                index += 1;
+            }
+            "--emit-fresh" => {
+                let dir = args
+                    .get(index + 1)
+                    .ok_or_else(|| "regen_stage0: --emit-fresh requires <dir>".to_string())?;
+                emit_fresh = Some(PathBuf::from(dir));
+                index += 2;
+            }
+            "--write-manifest" => {
+                let path = args.get(index + 1).ok_or_else(|| {
+                    "regen_stage0: --write-manifest requires <path>".to_string()
+                })?;
+                write_manifest = Some(PathBuf::from(path));
+                index += 2;
+            }
+            unexpected => {
+                return Err(format!(
+                    "regen_stage0: unexpected argument: {unexpected:?}\n\
+                     Usage: regen_stage0 [--verify | --emit-fresh <dir> [--write-manifest <path>] [--verify]]\n\
+                     Omit flags to write stage0; pass `--verify` to check without writing;\n\
+                     pass `--emit-fresh <dir>` to assemble the faithful emitted crate into <dir> and stop;\n\
+                     add `--write-manifest <path>` to also write the GENERATED_STAGE0_FILES roster there;\n\
+                     combine `--emit-fresh` with `--verify` to leave the assembled crate in place after checking."
+                ));
+            }
         }
-        unexpected => {
-            return Err(format!(
-                "regen_stage0: unexpected arguments: {unexpected:?}\n\
-                 Usage: regen_stage0 [--verify | --emit-fresh <dir>]\n\
-                 Omit flags to write stage0; pass exactly `--verify` to check without writing;\n\
-                 pass `--emit-fresh <dir>` to assemble the faithful emitted crate into <dir> and stop."
-            ));
-        }
-    };
+    }
+    if write_manifest.is_some() && emit_fresh.is_none() {
+        return Err("regen_stage0: --write-manifest requires --emit-fresh".to_string());
+    }
 
     assert_registry_is_partitioned()?;
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -233,6 +255,16 @@ fn run() -> Result<(), String> {
             elapsed_ms: elapsed_ms(run_started),
             changed_generated_files: Vec::new(),
         })?;
+        if let Some(manifest_path) = &write_manifest {
+            let content = GENERATED_STAGE0_FILES.join("\n");
+            fs::write(manifest_path, content)
+                .map_err(|e| format!("write roster manifest {}: {e}", manifest_path.display()))?;
+            println!(
+                "regen_stage0 --write-manifest: wrote {} file entries to {}",
+                GENERATED_STAGE0_FILES.len(),
+                manifest_path.display()
+            );
+        }
         println!(
             "regen_stage0 --emit-fresh: assembled faithful emitted crate at {}",
             fresh_dir.display()
