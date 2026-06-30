@@ -96,7 +96,7 @@ fn print_summary(
     eprintln!(
         "complexity_linearity_audit: syntactic wildcard arms — total={} on_roster={} off_roster={} \
          | triage: eval-interpreter-debt={} grammar-ladder-debt={} kernel-permanent={} \
-         migration-debt={} real-debt={} open-domain={} triage-pending={}",
+         migration-debt={} closed-coproduct-debt={} open-domain={} triage-pending={}",
         fiction.syntactic_wildcard_total,
         fiction.syntactic_wildcard_on_roster,
         fiction.syntactic_wildcard_off_roster,
@@ -104,7 +104,7 @@ fn print_summary(
         fiction.grammar_ladder_debt,
         fiction.kernel_permanent,
         fiction.migration_debt_tagged,
-        fiction.real_debt,
+        fiction.closed_coproduct_debt,
         fiction.open_domain,
         fiction.triage_pending
     );

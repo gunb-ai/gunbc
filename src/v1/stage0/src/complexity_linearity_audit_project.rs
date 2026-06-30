@@ -18,7 +18,7 @@
 // RESOLVED-half findings (closed-coproduct-param non_fold, inert-carrier consumers)
 // remain #5364-gated — reported via existing roster builtins, not whole-corpus here.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::rc::Rc;
 use std::sync::OnceLock;
 
@@ -29,9 +29,9 @@ use crate::decl_facts_project::{
 use crate::medium_structure_project::parse_dag_file;
 use crate::module_path_index::witness_layer_roots;
 use crate::v1_compiler_infer_items::item_kind;
-use crate::v1_std_core::authored_name_at;
 use crate::v1_std_core::{
-    arm_pattern, expr_var_name_at, match_arm_nodes, match_scrutinee, ExprData, MatchPattern, Node,
+    arm_pattern, authored_name_at, expr_var_name_at, match_arm_nodes, match_scrutinee,
+    param_node_name_at, param_node_type_expr, ExprData, MatchPattern, Node,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -54,6 +54,44 @@ fn is_wildcard_arm(arm: &Rc<Node>) -> bool {
     matches!(arm_pattern(arm.clone()).as_ref(), MatchPattern::Wildcard)
 }
 
+fn type_expr_head(
+    ty: Rc<Node>,
+    si: &Rc<std::collections::HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+) -> String {
+    let name = authored_name_at(si.clone(), ty);
+    name.chars()
+        .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+        .collect()
+}
+
+fn fn_param_type_heads(
+    item: &Rc<Node>,
+    si: &Rc<std::collections::HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+) -> BTreeMap<String, String> {
+    let mut out = BTreeMap::new();
+    for param in item.params.iter() {
+        let pname = param_node_name_at(param.clone(), si.clone());
+        if pname.is_empty() {
+            continue;
+        }
+        let head = type_expr_head(param_node_type_expr(param.clone()), si);
+        if !head.is_empty() {
+            out.insert(pname, head);
+        }
+    }
+    out
+}
+
+fn is_closed_coproduct_param_scrutinee(
+    scrutinee_name: &str,
+    param_types: &BTreeMap<String, String>,
+    closed: &BTreeSet<String>,
+) -> bool {
+    param_types
+        .get(scrutinee_name)
+        .is_some_and(|ty| closed.contains(ty))
+}
+
 fn audit_decl_fact(
     fact: &DeclFact,
     si: &Rc<std::collections::HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
@@ -61,7 +99,8 @@ fn audit_decl_fact(
     let Some(body) = fact.node.body.as_ref() else {
         return Vec::new();
     };
-    audit_function_body(&fact.rel_path, &fact.name, body, si)
+    let param_types = fn_param_type_heads(&fact.node, si);
+    audit_function_body(&fact.rel_path, &fact.name, body, si, &param_types)
 }
 
 fn audit_function_body(
@@ -69,9 +108,11 @@ fn audit_function_body(
     fn_name: &str,
     body: &Rc<Node>,
     si: &Rc<std::collections::HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+    param_types: &BTreeMap<String, String>,
 ) -> Vec<AuditFinding> {
+    let closed = crate::non_fold_residue_project::non_fold_residue_closed_coproduct_type_names();
     let mut stats = FnBodyStats::default();
-    walk_expr(body, si, &mut stats);
+    walk_expr(body, si, param_types, closed, &mut stats);
     let site = format!("{rel}::{fn_name}");
     let mut out = Vec::new();
     if stats.wildcard_matches > 0 {
@@ -79,7 +120,7 @@ fn audit_function_body(
             site: site.clone(),
             lens: "non_fold_residue",
             rule: "syntactic_match_wildcard_arm",
-            triage: triage_wildcard(&site, fn_name),
+            triage: triage_wildcard(&site, fn_name, stats.closed_coproduct_wildcard_matches > 0),
         });
     }
     if stats.match_count >= 8 || (stats.node_count >= 200 && stats.match_count >= 4) {
@@ -96,6 +137,8 @@ fn audit_function_body(
 fn walk_expr(
     node: &Rc<Node>,
     si: &Rc<std::collections::HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+    param_types: &BTreeMap<String, String>,
+    closed_coproducts: &BTreeSet<String>,
     stats: &mut FnBodyStats,
 ) {
     stats.node_count += 1;
@@ -107,18 +150,27 @@ fn walk_expr(
             .iter()
             .any(|arm| is_wildcard_arm(arm));
         // SYNTACTIC (audit-first): any `match` with a `_ =>` arm — signal mixed with kernel noise,
-        // filtered by `triage_wildcard` substring heuristics. GATE PROMOTION (WallAfterGrounding):
+        // filtered by closed-coproduct param resolution below. GATE PROMOTION (WallAfterGrounding):
         // must resolve scrutinee to a closed coproduct (see `non_fold_residue_project` conservative
         // detection) — not path/name substring triage; otherwise §5 validation-not-construction.
         if has_wildcard {
             stats.wildcard_matches += 1;
             if !scrutinee_name.is_empty() {
-                stats.wildcard_scrutinee_names.insert(scrutinee_name);
+                stats
+                    .wildcard_scrutinee_names
+                    .insert(scrutinee_name.clone());
+                if is_closed_coproduct_param_scrutinee(
+                    &scrutinee_name,
+                    param_types,
+                    closed_coproducts,
+                ) {
+                    stats.closed_coproduct_wildcard_matches += 1;
+                }
             }
         }
     }
     for child in node.children.iter() {
-        walk_expr(child, si, stats);
+        walk_expr(child, si, param_types, closed_coproducts, stats);
     }
 }
 
@@ -127,6 +179,7 @@ struct FnBodyStats {
     node_count: usize,
     match_count: usize,
     wildcard_matches: usize,
+    closed_coproduct_wildcard_matches: usize,
     wildcard_scrutinee_names: BTreeSet<String>,
 }
 
@@ -145,7 +198,7 @@ pub struct RosterFictionReport {
     pub grammar_ladder_debt: i64,
     pub kernel_permanent: i64,
     pub migration_debt_tagged: i64,
-    pub real_debt: i64,
+    pub closed_coproduct_debt: i64,
     pub open_domain: i64,
     pub triage_pending: i64,
 }
@@ -182,7 +235,7 @@ pub fn roster_fiction_report(summary: &AuditSummary) -> RosterFictionReport {
             "grammar-ladder-debt" => report.grammar_ladder_debt += 1,
             "kernel-permanent" => report.kernel_permanent += 1,
             "migration-debt" => report.migration_debt_tagged += 1,
-            "real-debt" => report.real_debt += 1,
+            "closed-coproduct-debt" => report.closed_coproduct_debt += 1,
             "open-domain" => report.open_domain += 1,
             "triage-pending" => report.triage_pending += 1,
             _ => {}
@@ -222,27 +275,15 @@ fn is_open_domain_site(site: &str, fn_name: &str) -> bool {
         || (fn_name.starts_with("parse_") && site.starts_with("dsl/extdeps/"))
 }
 
-fn is_real_debt_site(site: &str, fn_name: &str) -> bool {
-    site.starts_with("src/v2/compiler/")
-        || site.starts_with("src/v2/std/compilers/")
-        || site.starts_with("src/v2/std/grammar.dag")
-        || site.starts_with("src/v2/lens/")
-        || site.starts_with("src/v2/std/")
-        || site.starts_with("src/v2/program.dag")
-        || site.starts_with("src/v2/workflow/")
-        || site.starts_with("src/v2/extdeps/")
-        || site.starts_with("dsl/std/")
-        || (site.starts_with("dsl/gunbc/") && !site.starts_with("dsl/gunbc/plans/"))
-        || site.starts_with("dsl/tools/")
-        || (site.starts_with("src/v2/test/claim/") && !fn_name.ends_with("_claim_holds"))
-}
-
-// TRIAGE (meaning layer): emit-only heuristics until a `.dag` triage carrier lands with
-// `decl_facts(roots)` (#5966 follow-up). DISSOLUTION: move kernel-permanent / migration-debt
-// tags on-carrier alongside decl_facts — do not let hand-Rust substring tables survive the swap.
-fn triage_wildcard(site: &str, fn_name: &str) -> &'static str {
-    if is_kernel_permanent_fn(fn_name) {
-        return "kernel-permanent";
+fn triage_wildcard(site: &str, fn_name: &str, has_closed_coproduct_wildcard: bool) -> &'static str {
+    if !has_closed_coproduct_wildcard {
+        return "open-domain";
+    }
+    if matches!(
+        crate::non_fold_residue_project::non_fold_residue_roster_bucket(site),
+        Some(crate::non_fold_residue_project::NonFoldRosterBucket::MigrationDebt)
+    ) {
+        return "migration-debt";
     }
     if matches!(
         crate::non_fold_residue_project::non_fold_residue_roster_bucket(site),
@@ -268,19 +309,10 @@ fn triage_wildcard(site: &str, fn_name: &str) -> &'static str {
     if fn_name.contains("infer_match") && site.contains("04_infer.dag") {
         return "migration-debt";
     }
-    if matches!(
-        crate::non_fold_residue_project::non_fold_residue_roster_bucket(site),
-        Some(crate::non_fold_residue_project::NonFoldRosterBucket::MigrationDebt)
-    ) {
-        return "migration-debt";
+    if is_kernel_permanent_fn(fn_name) {
+        return "kernel-permanent";
     }
-    if is_open_domain_site(site, fn_name) {
-        return "open-domain";
-    }
-    if is_real_debt_site(site, fn_name) {
-        return "real-debt";
-    }
-    "triage-pending"
+    "closed-coproduct-debt"
 }
 
 fn triage_complexity(site: &str) -> &'static str {
@@ -288,23 +320,16 @@ fn triage_complexity(site: &str) -> &'static str {
     if is_kernel_permanent_fn(fn_name) {
         return "kernel-permanent";
     }
-    if site.contains("src/v2/compiler/") || site.contains("src/v2/std/compilers/") {
-        "real-debt"
-    } else if site.starts_with("dsl/extdeps/")
+    if site.starts_with("dsl/extdeps/")
         || site.starts_with("dsl/ctrl/")
         || site.starts_with("dsl/gunbc/plans/")
         || site.starts_with("dsl/test/")
     {
         "open-domain"
-    } else if site.starts_with("src/v2/lens/")
-        || site.starts_with("src/v2/std/")
-        || site.starts_with("src/v2/extdeps/languages/")
-    {
-        "real-debt"
     } else if site.starts_with("dsl/std/") || site.starts_with("dsl/gunbc/") {
         "kernel-permanent"
     } else {
-        "triage-pending"
+        "open-domain"
     }
 }
 
@@ -456,10 +481,27 @@ mod tests {
             assert!(finding.is_some(), "expected syntactic finding for {site}");
             assert_eq!(
                 finding.unwrap().triage,
-                "eval-interpreter-debt",
-                "expected eval-interpreter-debt triage for {site}"
+                "migration-debt",
+                "expected migration-debt triage for {site} (roster bucket precedes eval-interpreter tag)"
             );
         }
+    }
+
+    #[test]
+    fn closed_coproduct_wildcard_tags_testgen_anchor_match() {
+        let summary = audit_corpus_default_roots();
+        let finding = summary.findings.iter().find(|f| {
+            f.site == "src/v2/lens/testgen.dag::testgen_emit_language_behavior_equivalence_claim"
+        });
+        assert!(
+            finding.is_some(),
+            "expected syntactic finding for testgen anchor match"
+        );
+        assert_eq!(
+            finding.unwrap().triage,
+            "migration-debt",
+            "enrolled ManualAnchorKey wildcard sites are migration-debt"
+        );
     }
 
     #[test]
