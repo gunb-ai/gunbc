@@ -49,23 +49,6 @@ pub struct AuditSummary {
     pub findings: Vec<AuditFinding>,
 }
 
-fn rel_path(path: &Path) -> String {
-    repo_rel(path)
-}
-
-fn corpus_dag_files(roots: &[String]) -> Vec<PathBuf> {
-    let ws = workspace_root();
-    let mut files = Vec::new();
-    for root in roots {
-        let root_path = ws.join(root);
-        if root_path.is_dir() {
-            collect_dag_files_tolerant(&root_path, &mut files);
-        }
-    }
-    files.sort();
-    files
-}
-
 fn is_wildcard_arm(arm: &Rc<Node>) -> bool {
     matches!(arm_pattern(arm.clone()).as_ref(), MatchPattern::Wildcard)
 }
