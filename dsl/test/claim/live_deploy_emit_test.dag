@@ -11,6 +11,7 @@ import gunbc.live_deploy {
   deployment_plan_host_identity,
   deployment_plan_listen_port,
   deployment_owned_steps_retract_order,
+  deployment_tailnet_url,
   gunbc_roadmap_unit_name,
   gunbc_roadmap_server_path,
 }
@@ -58,6 +59,20 @@ fn witness_owned_vs_ensured_typed() -> Bool {
 
 fn witness_retract_owned_only() -> Bool {
   count(deployment_owned_steps_retract_order()) == 3
+}
+
+fn witness_tailnet_domain_propagates_optional() -> Bool {
+  match deployment_spec_srv1().target.tailnet_domain {
+    Present { value: d } => d == "tailecbe08.ts.net"
+    Absent => false
+  }
+}
+
+fn witness_tailnet_url_absent_not_fabricated() -> Bool {
+  match deployment_tailnet_url(spec: deployment_spec_srv1()) {
+    Present { value: url } => string_contains(s: url, pattern: "https://srv1.tailecbe08.ts.net")
+    Absent => false
+  }
 }
 
 fn witness_dependency_ensure_is_idempotent() -> Bool {
@@ -118,6 +133,8 @@ test fn live_deploy_emit_holds() -> Bool {
     && witness_spec_listen_port_is_8080()
     && witness_owned_vs_ensured_typed()
     && witness_retract_owned_only()
+    && witness_tailnet_domain_propagates_optional()
+    && witness_tailnet_url_absent_not_fabricated()
     && witness_dependency_ensure_is_idempotent()
     && witness_apply_script_contains_systemd_and_tailscale()
     && witness_retract_script_owned_only()

@@ -57,11 +57,19 @@ fn run_shell_transport(script: String, transport: HostEffectTransport) -> ShellE
       }
     }
     SshShell { ssh_host: h } => {
-      let result = ssh_session_exec(host: h, command: script as NonEmptyStr)
-      ShellExecObserved {
-        exit_code: result.exit_code,
-        success: result.success,
-        stdout: result.stdout,
+      if script == "" {
+        ShellExecObserved {
+          exit_code: 1,
+          success: false,
+          stdout: "host_effect_apply: empty shell script over SshShell; fail-closed",
+        }
+      } else {
+        let result = ssh_session_exec(host: h, command: script as NonEmptyStr)
+        ShellExecObserved {
+          exit_code: result.exit_code,
+          success: result.success,
+          stdout: result.stdout,
+        }
       }
     }
   }

@@ -138,10 +138,20 @@ fn witness_ssh_shell_unreachable_fails_closed() -> Bool {
   ))
 }
 
+fn witness_ssh_empty_script_fails_closed() -> Bool {
+  !reconciliation_converged(r: host_effect_apply(
+    target: host_os_target(),
+    effect: ShellCommand { script: "" },
+    policy: OneShotIdempotent,
+    transport: SshShell { ssh_host: "203.0.113.1" as NonEmptyStr }
+  ))
+}
+
 test fn host_effect_apply_holds() -> Bool {
   witness_shell_on_host_success_converges()
     && witness_shell_on_host_failure_fails_closed()
     && witness_ssh_shell_unreachable_fails_closed()
+    && witness_ssh_empty_script_fails_closed()
     && witness_redfish_on_bmc_unimplemented_fails_closed()
     && witness_redfish_on_hostos_typed_mismatch()
     && witness_shell_on_bmc_typed_mismatch()
