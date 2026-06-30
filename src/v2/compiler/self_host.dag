@@ -1,6 +1,7 @@
 module v2.compiler.self_host
 
 import extdeps.communication.medium { Medium }
+import v2.std.algebra { fold_list, length }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.diagnostic {
@@ -21,8 +22,8 @@ import v2.std.find_witness {
   UniqueOnly,
   find_witness,
 }
-import v2.std.node { atom_identity_hash, combine_hash, Hash, Node, Symbol }
-import v2.std.text { source_text_code_unit_digest, string_is_empty }
+import v2.std.node { combine_hash, byte_limb_hash_peano_digest, Hash, Node, Symbol }
+import v2.std.text { String, string_is_empty }
 import v2.std.witness {
   Holds,
   StructuralPropertyWitness,
@@ -89,6 +90,16 @@ fn self_host_fixpoint_digest_mismatch_diagnostic(
     at: node_locus(node: stage2.node),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
+}
+
+fn source_text_code_unit_digest(text: String) -> Hash {
+  fold_list(
+    xs: text,
+    empty: atom_identity_hash(s: ^source_text_code_unit_digest_nil),
+    cons: fn(acc, ch) {
+      combine_hash(a: acc, b: byte_limb_hash_peano_digest(limb: ch))
+    }
+  )
 }
 
 fn canonical_emitted_bytes_digest(source: Medium<String>) -> Hash {
