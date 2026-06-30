@@ -1,0 +1,65 @@
+module v2.lens.grounding_ledger
+
+import std.decl_ref { DeclarationRef }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.lens.common.construction_justification { ConstructionJustification, RatchetForever }
+
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: RatchetForever
+}
+
+type ResidueReason
+  = DecodeReturnedNone
+  | UnrecognizedSiblingArm
+
+type GroundingVerdict
+  = Reference { authority: DeclarationRef }
+  | ReferenceUri
+  | ReferencePath
+  | Role
+  | StayString { reason: ResidueReason }
+  | GenuineProse
+  | PendingJudge
+
+type DecidedBy
+  = StructuralRule
+  | Judge { rationale: String }
+  | OperatorReview { note: String }
+
+type LedgerEntry {
+  site_qn: String
+  field: String
+  coincides_with: String
+  verdict: GroundingVerdict
+  decided_by: DecidedBy
+}
+
+fn residue_forced_verdict(sibling_decode_optional: Bool, has_unrecognized_sibling: Bool) -> GroundingVerdict {
+  if sibling_decode_optional {
+    StayString { reason: DecodeReturnedNone }
+  } else if has_unrecognized_sibling {
+    StayString { reason: UnrecognizedSiblingArm }
+  } else {
+    PendingJudge
+  }
+}
+
+fn structural_ledger_entry(
+  site_qn: String,
+  field: String,
+  coincides_with: String,
+  sibling_decode_optional: Bool,
+  has_unrecognized_sibling: Bool
+) -> LedgerEntry {
+  LedgerEntry {
+    site_qn: site_qn,
+    field: field,
+    coincides_with: coincides_with,
+    verdict: residue_forced_verdict(
+      sibling_decode_optional: sibling_decode_optional,
+      has_unrecognized_sibling: has_unrecognized_sibling
+    ),
+    decided_by: StructuralRule
+  }
+}
