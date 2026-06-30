@@ -318,10 +318,9 @@ fn group_batch_units(batch: &[Runnable]) -> Vec<BatchUnit> {
                     } = &mut units[idx]
                     {
                         functions.push(function.clone());
-                        // A ResolveScopeShared claim may merge into a group that
-                        // was created from a ResolveScopeIsolated claim first; OR
-                        // here so the group gets the memo path if any member
-                        // declared Shared.
+                        // A memo claim (heavy whole-tree resolve) may merge into a
+                        // group created from a non-memo claim first; OR here so the
+                        // group gets the memo path if any member is heavy.
                         *existing_memo |= use_walk_memo;
                     }
                 } else {
@@ -1311,8 +1310,8 @@ fn run_walk(source_roots: &[String], batches: &[Vec<Runnable>], spawn_width: usi
     let mut batches_run = 0usize;
     let walk_start = Instant::now();
     let mut batch_records: Vec<BatchRecord> = Vec::new();
-    // Cross-batch resolve memo: SharedClaims that declare ResolveScopeShared run on the main
-    // thread and share a single resolved InterpContext per entry across all batches.
+    // Cross-batch resolve memo: SharedClaims whose runnable does a heavy whole-tree resolve
+    // run on the main thread and share a single resolved InterpContext per entry across all batches.
     // Rc<ResolvedGraph> is !Send so these units cannot run on spawned threads; they
     // run sequentially here after the spawned (non-memo) threads in each batch are joined.
     // Key invariant: source_roots is constant for the lifetime of a run_walk call, so
