@@ -3,6 +3,12 @@ module v2.std.text
 import v2.std.algebra { FreeMonoid, ListTailResult, TailAbsent, TailFound, fold_list, fold_list_right, is_empty, list_tail }
 import v2.std.logic { Bool }
 import v2.std.nat { Nat }
+import v2.std.node {
+  Hash,
+  atom_identity_hash,
+  byte_limb_hash_peano_digest,
+  combine_hash
+}
 type Char = Nat
 type String = FreeMonoid<Char>
 
@@ -53,6 +59,16 @@ fn fold_source<R>(src: String, algebra: SourceFold<R>) -> R {
         true => acc
         false => algebra.step(acc)
       }
+    }
+  )
+}
+
+fn source_text_code_unit_digest(text: String) -> Hash {
+  fold_list(
+    xs: text,
+    empty: atom_identity_hash(s: ^source_text_code_unit_digest_nil),
+    cons: fn(acc, ch) {
+      combine_hash(a: acc, b: byte_limb_hash_peano_digest(limb: ch))
     }
   )
 }
