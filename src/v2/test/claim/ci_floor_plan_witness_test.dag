@@ -33,7 +33,8 @@ data corpus_sentinel: String = "__corpus__"
 fn runnable_function(r: Runnable) -> String {
   match r {
     RunnableSingleClaim { entry: _, function: f, profile: _ } => f
-    RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, skip_unaffected_node_frontier: _, profile: _ } => corpus_sentinel
+    RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, skip_unaffected_node_frontier: _, exclude_substrings: _, discovery_scope_dirs: _, spawn_width_cap: _, profile: _ } => corpus_sentinel
+    RunnableKernelWorkload { fused_op_count: _ } => "__kernel_workload__"
   }
 }
 
@@ -62,7 +63,7 @@ fn witness_independent_jobs_parallelize() -> Bool {
 
 fn witness_discovery_scan_dirs_in_plan() -> Bool {
   match corpus_runnable() {
-    RunnableDiscoveryBatch { source_roots: _, scan_dirs: dirs, explicit_entries: _, skip_unaffected_node_frontier: _, profile: _ } =>
+    RunnableDiscoveryBatch { source_roots: _, scan_dirs: dirs, explicit_entries: _, skip_unaffected_node_frontier: _, exclude_substrings: _, discovery_scope_dirs: _, spawn_width_cap: _, profile: _ } =>
       list_contains_str(xs: dirs, target: "dsl/test/claim")
     _ => false
   }
@@ -70,7 +71,7 @@ fn witness_discovery_scan_dirs_in_plan() -> Bool {
 
 fn witness_scan_dirs_match_layer_authority() -> Bool {
   match corpus_runnable() {
-    RunnableDiscoveryBatch { source_roots: _, scan_dirs: dirs, explicit_entries: _, skip_unaffected_node_frontier: _, profile: _ } =>
+    RunnableDiscoveryBatch { source_roots: _, scan_dirs: dirs, explicit_entries: _, skip_unaffected_node_frontier: _, exclude_substrings: _, discovery_scope_dirs: _, spawn_width_cap: _, profile: _ } =>
       list_contains_str(xs: dirs, target: witness_discovery_scan_dirs.first())
     _ => false
   }
@@ -78,7 +79,7 @@ fn witness_scan_dirs_match_layer_authority() -> Bool {
 
 fn witness_corpus_has_no_explicit_entries() -> Bool {
   match corpus_runnable() {
-    RunnableDiscoveryBatch { source_roots: roots, scan_dirs: _, explicit_entries: entries, skip_unaffected_node_frontier: _, profile: _ } =>
+    RunnableDiscoveryBatch { source_roots: roots, scan_dirs: _, explicit_entries: entries, skip_unaffected_node_frontier: _, exclude_substrings: _, discovery_scope_dirs: _, spawn_width_cap: _, profile: _ } =>
       (length(xs: entries) == 0) &&
         list_contains_str(xs: roots, target: "src/v2") &&
         list_contains_str(xs: roots, target: "dsl") &&
@@ -89,7 +90,7 @@ fn witness_corpus_has_no_explicit_entries() -> Bool {
 
 fn witness_corpus_skip_node_frontier_enabled() -> Bool {
   match corpus_runnable() {
-    RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, skip_unaffected_node_frontier: enabled, profile: _ } =>
+    RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, skip_unaffected_node_frontier: enabled, exclude_substrings: _, discovery_scope_dirs: _, spawn_width_cap: _, profile: _ } =>
       enabled
     _ => false
   }

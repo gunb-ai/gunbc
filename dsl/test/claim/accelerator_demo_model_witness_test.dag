@@ -1,0 +1,65 @@
+module test.claim.accelerator_demo_model_witness
+
+import gunbc.accelerator_demo_plan {
+  witness_integer_demo_emits_realization_plan_value,
+  witness_integer_demo_plan_has_local_accelerator_placement,
+  witness_demo_device_identity_grounds_on_accelerator_facts,
+  witness_effectful_subgraph_refused,
+  witness_data_dependent_gather_refused,
+  witness_float_no_contraction_contract_accepted_lossless,
+  witness_float_fma_fused_kernel_refused_when_contraction_refused,
+  witness_simd_target_medium_is_inspectable,
+}
+import extdeps.communication.numerical_fidelity {
+  lowering_fidelity_verdict_for_contract,
+  decode_fidelity_for_contract,
+  LoweringAccepted,
+}
+import std.numerical_contract {
+  integer_exact_contract,
+  float_contract,
+  FmaContractionRefused,
+  FmaContractionPermitted,
+}
+import std.approximate_field { ToNearestEven }
+import extdeps.communication.medium { Lossless, Lossy }
+
+fn witness_integer_contract_maps_to_lossless_fidelity() -> Bool {
+  match lowering_fidelity_verdict_for_contract(contract: integer_exact_contract()) {
+    LoweringAccepted { fidelity: f } => match f {
+      Lossless => true
+      Lossy => false
+    }
+    LoweringRefused { reason: _ } => false
+  }
+}
+
+fn witness_float_no_contraction_maps_to_lossless_fidelity() -> Bool {
+  let contract = float_contract(rounding: ToNearestEven, fma: FmaContractionRefused)
+  match decode_fidelity_for_contract(contract: contract) {
+    Lossless => true
+    Lossy => false
+  }
+}
+
+fn witness_float_contraction_permitted_maps_to_lossy_fidelity() -> Bool {
+  let contract = float_contract(rounding: ToNearestEven, fma: FmaContractionPermitted)
+  match decode_fidelity_for_contract(contract: contract) {
+    Lossy => true
+    Lossless => false
+  }
+}
+
+test fn accelerator_demo_modeling_lane_witnesses() -> Bool {
+  witness_integer_demo_emits_realization_plan_value()
+    && witness_integer_demo_plan_has_local_accelerator_placement()
+    && witness_demo_device_identity_grounds_on_accelerator_facts()
+    && witness_effectful_subgraph_refused()
+    && witness_data_dependent_gather_refused()
+    && witness_float_no_contraction_contract_accepted_lossless()
+    && witness_float_fma_fused_kernel_refused_when_contraction_refused()
+    && witness_simd_target_medium_is_inspectable()
+    && witness_integer_contract_maps_to_lossless_fidelity()
+    && witness_float_no_contraction_maps_to_lossless_fidelity()
+    && witness_float_contraction_permitted_maps_to_lossy_fidelity()
+}
