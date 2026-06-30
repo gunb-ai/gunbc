@@ -2044,7 +2044,7 @@ mod tests {
             .join("dsl/test/claim/runnable_resource_profile_witness_test.dag")
             .to_string_lossy()
             .into_owned();
-        let functions = vec![
+        let functions: &[String] = &[
             "witness_negligible_profile_is_not_heavy".to_string(),
             "witness_substantial_memory_forbids_corpus_co_residence".to_string(),
         ];
