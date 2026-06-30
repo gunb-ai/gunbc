@@ -1,7 +1,8 @@
 module v2.compiler.self_host
 
-import extdeps.communication.medium { Medium }
-import v2.std.algebra { fold_list }
+import extdeps.communication.medium { Lossless, Medium }
+import extdeps.filesystem.filesystem_io
+import v2.std.algebra { filter, fold_list }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.diagnostic {
@@ -265,6 +266,56 @@ fn stage_emission_equality(
     Rejected { diagnostics: d } =>
       Violates { diagnostic: d.head }
   }
+}
+
+fn boundary_tag_bytes(filename: String, content: String) -> String {
+  concat(filename, concat("\n", content))
+}
+
+fn read_roster_manifest(manifest_path: String) -> List<String> {
+  let raw = filesystem_read(path: manifest_path).content
+  filter(xs: raw.split("\n"), predicate: fn(s) { !string_is_empty(s: s) })
+}
+
+fn fold_side_bytes(root: String, roster: List<String>) -> String {
+  fold_list(
+    xs: roster,
+    empty: "",
+    cons: fn(acc, filename) {
+      let path = concat(root, concat("/", filename))
+      let content = filesystem_read(path: path).content
+      concat(acc, boundary_tag_bytes(filename: filename, content: content))
+    }
+  )
+}
+
+fn source_models_from_roster_and_roots(
+  committed_root: String,
+  emitted_root: String,
+  roster: List<String>
+) -> SourceModels {
+  SourceModels {
+    stage1_committed_seed_source: Medium {
+      carried: fold_side_bytes(root: committed_root, roster: roster),
+      fidelity: Lossless
+    },
+    stage2_regen_emitted_source: Medium {
+      carried: fold_side_bytes(root: emitted_root, roster: roster),
+      fidelity: Lossless
+    }
+  }
+}
+
+fn source_models_from_manifest_and_roots(
+  committed_root: String,
+  emitted_root: String,
+  manifest_path: String
+) -> SourceModels {
+  source_models_from_roster_and_roots(
+    committed_root: committed_root,
+    emitted_root: emitted_root,
+    roster: read_roster_manifest(manifest_path: manifest_path)
+  )
 }
 
 fn self_host_fixed_point_validate(

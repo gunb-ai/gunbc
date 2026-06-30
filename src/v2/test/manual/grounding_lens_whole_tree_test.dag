@@ -1,0 +1,7 @@
+module v2.test.manual.grounding_lens_whole_tree
+
+import v2.lens.grounding { whole_tree_extract_smoke }
+
+test fn grounding_lens_whole_tree_witnesses() -> Bool {
+  whole_tree_extract_smoke()
+}
