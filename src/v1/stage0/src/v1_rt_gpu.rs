@@ -43,7 +43,12 @@ fn wgpu_backends_from_env() -> wgpu::Backends {
         Ok("dx12") => wgpu::Backends::DX12,
         Ok("vulkan") => wgpu::Backends::VULKAN,
         Ok("gl") => wgpu::Backends::GL,
-        _ => wgpu::Backends::VULKAN | wgpu::Backends::GL | wgpu::Backends::METAL | wgpu::Backends::DX12,
+        _ => {
+            wgpu::Backends::VULKAN
+                | wgpu::Backends::GL
+                | wgpu::Backends::METAL
+                | wgpu::Backends::DX12
+        }
     }
 }
 
@@ -90,15 +95,24 @@ impl GpuDispatchContext {
         })
     }
 
-    fn dispatch_bytes(&self, shader: &str, a: &[u8], b: &[u8], c: &[u8], elem_size: usize) -> Vec<u8> {
+    fn dispatch_bytes(
+        &self,
+        shader: &str,
+        a: &[u8],
+        b: &[u8],
+        c: &[u8],
+        elem_size: usize,
+    ) -> Vec<u8> {
         let len = a.len() / elem_size;
         assert_eq!(a.len(), b.len());
         assert_eq!(b.len(), c.len());
         pollster::block_on(async {
-            let module = self.device.create_shader_module(wgpu::ShaderModuleDescriptor {
-                label: Some("relu_mul_add"),
-                source: wgpu::ShaderSource::Wgsl(shader.into()),
-            });
+            let module = self
+                .device
+                .create_shader_module(wgpu::ShaderModuleDescriptor {
+                    label: Some("relu_mul_add"),
+                    source: wgpu::ShaderSource::Wgsl(shader.into()),
+                });
             let a_buf = self.make_storage_buffer("a", a);
             let b_buf = self.make_storage_buffer("b", b);
             let c_buf = self.make_storage_buffer("c", c);
@@ -110,12 +124,12 @@ impl GpuDispatchContext {
                 storage_entry(2, false),
                 storage_entry(3, true),
             ];
-            let bind_group_layout = self.device.create_bind_group_layout(
-                &wgpu::BindGroupLayoutDescriptor {
-                    label: Some("layout"),
-                    entries: &entries,
-                },
-            );
+            let bind_group_layout =
+                self.device
+                    .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                        label: Some("layout"),
+                        entries: &entries,
+                    });
             let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: Some("bind"),
                 layout: &bind_group_layout,
@@ -126,24 +140,28 @@ impl GpuDispatchContext {
                     bind_entry(3, &out_buf),
                 ],
             });
-            let pipeline_layout = self.device.create_pipeline_layout(
-                &wgpu::PipelineLayoutDescriptor {
-                    label: Some("pipeline_layout"),
-                    bind_group_layouts: &[&bind_group_layout],
-                    push_constant_ranges: &[],
-                },
-            );
-            let pipeline = self.device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-                label: Some("pipeline"),
-                layout: Some(&pipeline_layout),
-                module: &module,
-                entry_point: Some("main"),
-                compilation_options: Default::default(),
-                cache: None,
-            });
-            let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("encoder"),
-            });
+            let pipeline_layout =
+                self.device
+                    .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                        label: Some("pipeline_layout"),
+                        bind_group_layouts: &[&bind_group_layout],
+                        push_constant_ranges: &[],
+                    });
+            let pipeline = self
+                .device
+                .create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                    label: Some("pipeline"),
+                    layout: Some(&pipeline_layout),
+                    module: &module,
+                    entry_point: Some("main"),
+                    compilation_options: Default::default(),
+                    cache: None,
+                });
+            let mut encoder = self
+                .device
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("encoder"),
+                });
             {
                 let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                     label: Some("pass"),
@@ -173,7 +191,9 @@ impl GpuDispatchContext {
         self.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some(label),
             size,
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC | wgpu::BufferUsages::COPY_DST,
+            usage: wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::COPY_SRC
+                | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         })
     }
@@ -185,9 +205,11 @@ impl GpuDispatchContext {
             usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-        let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("readback"),
-        });
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("readback"),
+            });
         encoder.copy_buffer_to_buffer(src, 0, &staging, 0, bytes);
         self.queue.submit(std::iter::once(encoder.finish()));
         let slice = staging.slice(..);
@@ -299,14 +321,28 @@ pub fn wgpu_elementwise_float_kernel(
 mod tests {
     use super::*;
 
+    fn wgpu_test_enabled() -> bool {
+        std::env::var("GUNBC_WGPU_TEST")
+            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+            .unwrap_or(false)
+    }
+
     #[test]
+    #[ignore = "requires wgpu adapter (software Vulkan or hardware); run with GUNBC_WGPU_TEST=1"]
     fn wgpu_adapter_initializes_with_fallback() {
+        if !wgpu_test_enabled() {
+            return;
+        }
         let info = wgpu_probe_adapter().expect("wgpu adapter must initialize");
         assert!(!info.is_empty());
     }
 
     #[test]
+    #[ignore = "requires wgpu adapter (software Vulkan or hardware); run with GUNBC_WGPU_TEST=1"]
     fn wgpu_integer_relu_mul_add_matches_fixture() {
+        if !wgpu_test_enabled() {
+            return;
+        }
         let a = [2_i64, -1, 0, 5];
         let b = [3_i64, 4, 7, -2];
         let c = [1_i64, 10, -3, 8];

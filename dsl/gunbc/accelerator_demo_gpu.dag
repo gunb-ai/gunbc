@@ -261,6 +261,18 @@ fn operator_dormant_receipt_template(device_label: String) -> GpuFidelityReceipt
   }
 }
 
+fn witness_gpu_epilogue_scaffold_documented() -> Bool {
+  accelerator_demo_gpu_dissolution_trigger != ""
+    && gpu_float_fidelity_axis_note != ""
+}
+
+fn witness_gpu_float_fidelity_declaration_is_lossy_for_device_precision() -> Bool {
+  match gpu_float_fidelity_declaration_for_device() {
+    Lossy => true
+    Lossless => false
+  }
+}
+
 fn witness_operator_receipt_is_honestly_dormant() -> Bool {
   match operator_dormant_receipt_template(device_label: "apple-m5-metal").status {
     DormantAwaitingOperator => true

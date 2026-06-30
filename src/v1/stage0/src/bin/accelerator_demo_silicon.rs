@@ -67,5 +67,8 @@ fn main() {
         oracle_float_storage: "Float64",
         status: "executed",
     };
-    println!("{}", serde_json::to_string_pretty(&receipt).expect("receipt json"));
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&receipt).expect("receipt json")
+    );
 }

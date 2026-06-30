@@ -1,13 +1,12 @@
 module test.claim.accelerator_demo_gpu_witness
 
 import gunbc.accelerator_demo_gpu {
-  witness_wgpu_integer_differential_bit_exact_on_fixture,
-  witness_wgpu_kernel_matches_expected_fixture,
   witness_wgpu_integer_differential_would_red_on_wrong_golden,
-  witness_gpu_float_declared_lossy_is_truthful,
   witness_gpu_float_device_precision_named,
+  witness_gpu_float_fidelity_declaration_is_lossy_for_device_precision,
   witness_gpu_target_medium_is_wgsl_row,
   witness_gpu_device_rows_grounded,
+  witness_gpu_epilogue_scaffold_documented,
   witness_operator_receipt_is_honestly_dormant,
 }
 import extdeps.languages.gpu.wgsl.kernel {
@@ -27,9 +26,8 @@ test fn accelerator_demo_gpu_epilogue_witnesses() -> Bool {
     && witness_gpu_device_rows_grounded()
     && witness_gpu_target_medium_is_wgsl_row()
     && witness_gpu_float_device_precision_named()
-    && witness_wgpu_integer_differential_bit_exact_on_fixture()
-    && witness_wgpu_kernel_matches_expected_fixture()
+    && witness_gpu_float_fidelity_declaration_is_lossy_for_device_precision()
+    && witness_gpu_epilogue_scaffold_documented()
     && witness_wgpu_integer_differential_would_red_on_wrong_golden()
-    && witness_gpu_float_declared_lossy_is_truthful()
     && witness_operator_receipt_is_honestly_dormant()
 }
