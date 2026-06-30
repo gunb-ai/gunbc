@@ -22,49 +22,152 @@ import std.realization_reconcile {
   Converged,
   NotConverged
 }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.types { String }
+import std.logic { Bool }
+import extdeps.languages.bash.program {
+  ShellProgram, ShellStmt, ShellWord,
+  Command, If, AndOr, Exit, Raw, RawLine, Negation, Subshell,
+  OrElse,
+  lit, var_ref, command, assign, serialize_bash
+}
 
 type FloorUnifiedDiffResult
   = UnifiedDiffOk { text: String }
   | UnifiedDiffFail { reason: String }
 
+data floor_diff_observe_cli_run_bridge_disposition: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "v2.workflow.floor_diff_observe",
+    decl_name: "floor_observe_git_diff_unified_for_ci",
+    field: WholeDeclaration
+  }
+}
+
 fn floor_ci_host_os() -> NodeControlPlane {
   HostOs { node: gunbc_ci_host }
 }
 
-fn floor_git_diff_env_preamble(policy: DiffPolicy) -> String {
-  concat(
-    concat(
+fn floor_test_z(name: String) -> ShellStmt {
+  command(words: [lit(text: "["), lit(text: "-z"), var_ref(name: name), lit(text: "]")])
+}
+
+fn floor_test_n(name: String) -> ShellStmt {
+  command(words: [lit(text: "["), lit(text: "-n"), var_ref(name: name), lit(text: "]")])
+}
+
+fn floor_test_string_eq(name: String, value: String) -> ShellStmt {
+  RawLine {
+    text: concat("[ \"$", concat(name, concat("\" = \"", concat(value, "\" ]"))))
+  }
+}
+
+fn floor_assign_from_env_or_default(env: String, default: String, target: String) -> List<ShellStmt> {
+  [
+    If {
+      cond: floor_test_z(name: env),
+      then: [assign(name: target, value: lit(text: default))]
+    },
+    If {
+      cond: floor_test_n(name: env),
+      then: [assign(name: target, value: var_ref(name: env))]
+    }
+  ]
+}
+
+fn floor_unified_diff_injection_stmts() -> List<ShellStmt> {
+  [
+    If {
+      cond: floor_test_n(name: "GUNBC_CI_DIFF_UNIFIED"),
+      then: [
+        command(words: [
+          lit(text: "printf"),
+          lit(text: "%s"),
+          var_ref(name: "GUNBC_CI_DIFF_UNIFIED")
+        ]),
+        Exit { code: 0 }
+      ]
+    }
+  ]
+}
+
+fn floor_git_diff_two_dot_stmt() -> ShellStmt {
+  command(words: [
+    lit(text: "git"),
+    lit(text: "diff"),
+    lit(text: "-U0"),
+    var_ref(name: "BASE"),
+    var_ref(name: "HEAD")
+  ])
+}
+
+fn floor_git_diff_merge_base_stmt() -> ShellStmt {
+  command(words: [
+    lit(text: "git"),
+    lit(text: "diff"),
+    lit(text: "-U0"),
+    Raw { text: "$BASE...$HEAD" }
+  ])
+}
+
+fn floor_merge_base_uses_two_dot_range() -> ShellStmt {
+  AndOr {
+    left: floor_test_string_eq(name: "GUNBC_CI_DIFF_MERGE_BASE", value: "0"),
+    op: OrElse,
+    right: floor_test_string_eq(name: "GUNBC_CI_DIFF_MERGE_BASE", value: "false")
+  }
+}
+
+fn floor_git_diff_merge_base_mode_stmts() -> List<ShellStmt> {
+  [
+    If {
+      cond: floor_merge_base_uses_two_dot_range(),
+      then: [floor_git_diff_two_dot_stmt()]
+    },
+    If {
+      cond: Negation {
+        stmt: Subshell { body: [floor_merge_base_uses_two_dot_range()] }
+      },
+      then: [floor_git_diff_merge_base_stmt()]
+    }
+  ]
+}
+
+fn floor_git_diff_tail_stmts(policy: DiffPolicy) -> List<ShellStmt> {
+  match policy.mode {
+    DiffMergeBase => floor_git_diff_merge_base_mode_stmts()
+    DiffTwoDot => [floor_git_diff_two_dot_stmt()]
+  }
+}
+
+fn floor_git_diff_unified_program(policy: DiffPolicy) -> ShellProgram {
+  ShellProgram {
+    set_e: true,
+    statements: concat(
+      floor_unified_diff_injection_stmts(),
       concat(
-        "if [ -n \"$GUNBC_CI_DIFF_UNIFIED\" ]; then printf '%s' \"$GUNBC_CI_DIFF_UNIFIED\"; exit 0; fi\n",
-        "if [ -z \"$GUNBC_CI_DIFF_BASE\" ]; then BASE=\""
-      ),
-      concat(policy.base, "\"; else BASE=\"$GUNBC_CI_DIFF_BASE\"; fi\n")
-    ),
-    concat(
-      concat("if [ -z \"$GUNBC_CI_DIFF_HEAD\" ]; then HEAD=\"", policy.head),
-      "\"; else HEAD=\"$GUNBC_CI_DIFF_HEAD\"; fi\n"
+        floor_assign_from_env_or_default(
+          env: "GUNBC_CI_DIFF_BASE",
+          default: policy.base,
+          target: "BASE"
+        ),
+        concat(
+          floor_assign_from_env_or_default(
+            env: "GUNBC_CI_DIFF_HEAD",
+            default: policy.head,
+            target: "HEAD"
+          ),
+          floor_git_diff_tail_stmts(policy: policy)
+        )
+      )
     )
-  )
+  }
 }
 
 fn floor_git_diff_unified_script(policy: DiffPolicy) -> String {
-  let preamble = floor_git_diff_env_preamble(policy: policy)
-  match policy.mode {
-    DiffMergeBase =>
-      concat(
-        preamble,
-        concat(
-          "if [ \"$GUNBC_CI_DIFF_MERGE_BASE\" = \"0\" ] || [ \"$GUNBC_CI_DIFF_MERGE_BASE\" = \"false\" ]; then\n",
-          concat(
-            "  git diff -U0 \"$BASE\" \"$HEAD\"\n",
-            "else\n  git diff -U0 \"$BASE...$HEAD\"\nfi\n"
-          )
-        )
-      )
-    DiffTwoDot =>
-      concat(preamble, "git diff -U0 \"$BASE\" \"$HEAD\"\n")
-  }
+  serialize_bash(p: floor_git_diff_unified_program(policy: policy))
 }
 
 fn floor_unified_diff_from_reconciliation(
@@ -93,4 +196,11 @@ fn floor_observe_git_diff_unified(policy: DiffPolicy) -> FloorUnifiedDiffResult 
 
 fn floor_observe_git_diff_unified_for_ci() -> FloorUnifiedDiffResult {
   floor_observe_git_diff_unified(policy: gunbc_ci_spec.diff_policy)
+}
+
+fn floor_diff_script_serializes_git_diff_unified() -> Bool {
+  let script = floor_git_diff_unified_script(policy: gunbc_ci_spec.diff_policy)
+  string_contains(s: script, pattern: "'git'")
+    && string_contains(s: script, pattern: "'diff'")
+    && string_contains(s: script, pattern: "GUNBC_CI_DIFF_UNIFIED")
 }
