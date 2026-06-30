@@ -2,6 +2,7 @@ module test.claim.ctrl_reconcile_grounding_witness
 
 import std.types { Bool, NonEmptyStr }
 import std.measure { ByteSize, byte_size, byte_size_count }
+import std.patterns { eq }
 import std.realization_reconcile {
   ShowEffectiveRead,
   ReadObserved,
@@ -26,6 +27,7 @@ import gunbc.ctrl_reconcile {
   ctrl_reconcile_apply_script,
   ctrl_reconcile_read_script,
   ctrl_reconcile_default_slice_unit,
+  ctrl_reconcile_fixture_staleness_binding_holds,
 }
 import gunbc.runner_slot_enforcement {
   RunnerSlotEnforcement,
@@ -66,10 +68,8 @@ fn evidence_for(read: ShowEffectiveRead<RunnerSliceCapEffectiveness>) -> RunnerS
 }
 
 fn witness_desired_cap_from_budget_tree() -> Bool {
-  byte_size_count(b: ctrl_reconcile_desired_cap())
-    == byte_size_count(b: gunbc_per_runner_memory_cap)
-    && byte_size_count(b: ctrl_reconcile_desired_cap())
-      == byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap)
+  byte_size_count(b: ctrl_reconcile_desired_cap()) == byte_size_count(b: gunbc_per_runner_memory_cap)
+    && byte_size_count(b: ctrl_reconcile_desired_cap()) == byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap)
 }
 
 fn witness_recorded_fixture_parse_grounds_enforced() -> Bool {
@@ -109,24 +109,26 @@ fn witness_apply_script_targets_desired_cap() -> Bool {
     slice_unit: ctrl_reconcile_default_slice_unit(),
     cap: ctrl_reconcile_desired_cap()
   )
-  script == concat(
+  let expected = concat(
     "systemctl set-property ",
     concat(
       ctrl_reconcile_default_slice_unit(),
       concat(" MemoryMax=", to_string(byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap)))
     )
   )
+  eq(a: script, b: expected)
 }
 
 fn witness_read_script_targets_slice() -> Bool {
   let script = ctrl_reconcile_read_script(slice_unit: ctrl_reconcile_default_slice_unit())
-  script == concat(
-    "systemctl show ",
+  let expected = concat(
+    "systemctl show -p ",
     concat(
-      ctrl_reconcile_default_slice_unit(),
-      " --property=MemoryMax --value"
+      "MemoryMax",
+      concat(" ", concat(ctrl_reconcile_default_slice_unit(), " --value"))
     )
   )
+  eq(a: script, b: expected)
 }
 
 fn witness_staleness_gate_holds() -> Bool {
@@ -139,6 +141,24 @@ fn witness_staleness_gate_discriminates_drift() -> Bool {
       value: ctrl_reconcile_parse_memory_max_show(raw: "infinity")
     }
   )
+}
+
+fn witness_staleness_binding_matching_live_passes() -> Bool {
+  ctrl_reconcile_fixture_staleness_binding_holds(
+    live_raw: ctrl_reconcile_recorded_show_bytes
+  )
+}
+
+fn witness_staleness_binding_drifted_live_fails() -> Bool {
+  !ctrl_reconcile_fixture_staleness_binding_holds(live_raw: "infinity")
+}
+
+fn witness_staleness_binding_forged_bytes_fails() -> Bool {
+  !ctrl_reconcile_fixture_staleness_binding_holds(live_raw: "70391285350")
+}
+
+fn witness_staleness_binding_wrong_format_fails() -> Bool {
+  !ctrl_reconcile_fixture_staleness_binding_holds(live_raw: "8589934592\n8589934592")
 }
 
 test fn ctrl_reconcile_grounding_holds() -> Bool {
@@ -155,4 +175,8 @@ test fn ctrl_reconcile_grounding_holds() -> Bool {
     && witness_read_script_targets_slice()
     && witness_staleness_gate_holds()
     && witness_staleness_gate_discriminates_drift()
+    && witness_staleness_binding_matching_live_passes()
+    && witness_staleness_binding_drifted_live_fails()
+    && witness_staleness_binding_forged_bytes_fails()
+    && witness_staleness_binding_wrong_format_fails()
 }
