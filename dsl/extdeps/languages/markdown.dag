@@ -11,6 +11,8 @@ import extdeps.uri_validation {
   validate_href, SafeHref, RejectedHref, RejectedUrlScheme,
 }
 import std.render_repeat_string_bootstrap { repeat_string }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.markup {
   Fragment,
   Element,
@@ -718,6 +720,15 @@ fn md_parse_inline_link(text: String, sp: MarkdownSpellings) -> List<MarkdownInl
   }
 }
 
-fn parse_inline_markdown(text: String) -> List<MarkdownInline> {
+fn parse_inline_markdown_minimal(text: String) -> List<MarkdownInline> {
   md_parse_inline_rest(text: text, sp: commonmark_gfm_spellings)
+}
+
+data parse_inline_markdown_minimal_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "extdeps.languages.markdown",
+    decl_name: "parse_inline_markdown_minimal",
+    field: WholeDeclaration
+  }
 }
