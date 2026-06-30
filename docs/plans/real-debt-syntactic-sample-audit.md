@@ -6,7 +6,9 @@
 
 ## Executive summary (current code)
 
-**The path-heuristic `real-debt` / `open-domain` site classifiers are retired.** `complexity_linearity_audit_project.rs` no longer uses `is_real_debt_site` or `is_open_domain_site`. Syntactic triage is grounded on **closed-coproduct param resolution** at the AST walk:
+**The path-heuristic `real-debt` / `open-domain` site classifiers are retired from `triage_wildcard`.** `complexity_linearity_audit_project.rs` no longer uses `is_real_debt_site` or `is_open_domain_site`. Syntactic triage is grounded on **closed-coproduct param resolution** at the AST walk:
+
+**Residual emit-only path buckets:** `triage_complexity` (used only by `syntactic_high_match_fanout` cost findings, not floor gates) still partitions by `starts_with("dsl/extdeps/")` / `dsl/std/` etc. — scaffold residue named in dissolution trigger #2; delete on `#5966` on-carrier swap.
 
 1. Any `match` with a top-level `_ =>` arm is a syntactic finding.
 2. `triage_wildcard(site, fn_name, has_closed_coproduct_wildcard)` gates on whether the scrutinee is a **bare fn param** whose declared type head is in the corpus closed-coproduct index (`fn_param_type_heads` + `non_fold_residue_closed_coproduct_type_names()`).
@@ -48,7 +50,7 @@ Wildcard `match` where scrutinee is **not** a closed-coproduct fn param (open `N
 | `migration-debt` | 24 | On `NON_FOLD_MIGRATION_DEBT_ROSTER` |
 | `kernel-permanent` | 52 | On irreducible roster |
 | `closed-coproduct-debt` | 0 | Unrostered closed-coproduct — must stay at 0 |
-| `eval-interpreter-debt` / `grammar-ladder-debt` | 0 | Substring backstops; roster partition is authoritative |
+| `eval-interpreter-debt` / `grammar-ladder-debt` | 0 | **Removed** — were dead substring backstops after roster partition; roster bucket is authoritative |
 
 ### D) Superseded (do not cite)
 

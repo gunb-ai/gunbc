@@ -296,21 +296,6 @@ fn triage_wildcard(site: &str, fn_name: &str, has_closed_coproduct_wildcard: boo
     ) {
         return "kernel-permanent";
     }
-    if matches!(
-        fn_name,
-        "eval_bind_node_eval"
-            | "eval_branch_node_eval"
-            | "eval_loop_node"
-            | "eval_match_node_eval"
-            | "eval_transform_node"
-            | "eval_value_node"
-    ) && site.contains("src/v2/compiler/05_eval.dag")
-    {
-        return "eval-interpreter-debt";
-    }
-    if site.contains("dag.dag::dag_grammar_terminal_for_mvp1_") {
-        return "grammar-ladder-debt";
-    }
     if fn_name.contains("infer_match") && site.contains("04_infer.dag") {
         return "migration-debt";
     }
@@ -320,6 +305,8 @@ fn triage_wildcard(site: &str, fn_name: &str, has_closed_coproduct_wildcard: boo
     "closed-coproduct-debt"
 }
 
+// Emit-only path buckets for `syntactic_high_match_fanout` (cost lens) — not used by floor gates.
+// Dissolution trigger #2: delete when triage moves on-carrier with decl_facts (#5966).
 fn triage_complexity(site: &str) -> &'static str {
     let fn_name = site.rsplit("::").next().unwrap_or("");
     if is_kernel_permanent_fn(fn_name) {
