@@ -81,5 +81,3 @@ Fixture: a pure elementwise chain — `y = relu(a*b + c)` (mul → add → max).
 - Exact spelling of the accelerator `Placement` variant (device-parameterized `LocalAccelerator<Device>` vs flat) — DFS the concept DAG before minting; a device is plausibly a `Vendor<Hardware>`-adjacent entity (DESIGN §3), not a fresh enum.
 - Whether the numerical contract is a new std type or a refinement of an existing `float.dag` / `approximate_field.dag` carrier (reuse-first).
 - Does the recognizer belong as a lens (read-only over the `Node` tree) or a translate-stage pass? (Lens-first per §6, unless it must produce the plan as part of lowering.)
-</content>
-</invoke>
