@@ -72,10 +72,18 @@ type TagDelimiter {
   close: String
 }
 
+type VoidTagRendering = OmitClose | SelfClose
+
 type MarkupMedium {
   tag_overrides: List<TagDelimiter>
   bracket: MarkupBracket
   text_escape: EscapeMode
+  void_tags: List<String>
+  void_rendering: VoidTagRendering
+}
+
+fn is_void_tag(tag: String, void_tags: List<String>) -> Bool {
+  fold(void_tags, init: false, f: (acc, t) => acc || t == tag)
 }
 
 fn escape_text_for(mode: EscapeMode, s: String) -> String {
@@ -111,21 +119,31 @@ fn serialize_fragment_with(frag: Fragment, medium: MarkupMedium) -> String {
     TextNode { content: c } => escape_text_for(mode: medium.text_escape, s: c)
     RawNode { content: c } => c
     Element { tag: t, attributes: attrs, children: kids } => {
-      let inner = fold(kids, init: "", f: (acc, k) => concat(acc, serialize_fragment_with(frag: k, medium: medium)))
-      match lookup_tag_delimiter(overrides: medium.tag_overrides, tag: t) {
-        FoundTag { delim: d } =>
-          join([d.open, inner, d.close], "")
-        NoTag =>
-          join([
-            medium.bracket.tag_open,
-            t,
-            serialize_attributes_with(attrs: attrs, bracket: medium.bracket),
-            medium.bracket.tag_close,
-            inner,
-            medium.bracket.end_tag_open,
-            t,
-            medium.bracket.tag_close
-          ], "")
+      let attrs_str = serialize_attributes_with(attrs: attrs, bracket: medium.bracket)
+      if is_void_tag(tag: t, void_tags: medium.void_tags) {
+        match medium.void_rendering {
+          OmitClose =>
+            join([medium.bracket.tag_open, t, attrs_str, medium.bracket.tag_close], "")
+          SelfClose =>
+            join([medium.bracket.tag_open, t, attrs_str, " /", medium.bracket.tag_close], "")
+        }
+      } else {
+        let inner = fold(kids, init: "", f: (acc, k) => concat(acc, serialize_fragment_with(frag: k, medium: medium)))
+        match lookup_tag_delimiter(overrides: medium.tag_overrides, tag: t) {
+          FoundTag { delim: d } =>
+            join([d.open, inner, d.close], "")
+          NoTag =>
+            join([
+              medium.bracket.tag_open,
+              t,
+              attrs_str,
+              medium.bracket.tag_close,
+              inner,
+              medium.bracket.end_tag_open,
+              t,
+              medium.bracket.tag_close
+            ], "")
+        }
       }
     }
   }

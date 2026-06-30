@@ -30,7 +30,7 @@ fn resolve_extdeps_path(path: &str) -> PathBuf {
     if candidate.is_file() {
         return candidate.to_path_buf();
     }
-    let rooted = crate::module_path_index::workspace_root().join(path);
+    let rooted = crate::cli_run::workspace_root().join(path);
     if rooted.is_file() {
         return rooted;
     }
@@ -292,9 +292,9 @@ pub fn embedded_policy_literal_count_for_path(path: String) -> i64 {
 }
 
 pub fn qualified_name_resolves_in_derived_module_set(qn: &crate::v1_interpreter::Value) -> bool {
-    let module_path = crate::module_path_index::qualified_name_value_to_module_path(qn);
+    let module_path = crate::cli_run::qualified_name_value_to_module_path(qn);
     !module_path.is_empty()
-        && crate::module_path_index::build_module_path_index().contains_key(&module_path)
+        && crate::cli_run::build_module_path_index_from_witness_roots().contains_key(&module_path)
 }
 
 pub fn dead_param_count_for_qualified_name(
@@ -302,12 +302,12 @@ pub fn dead_param_count_for_qualified_name(
     service: String,
     operation: String,
 ) -> i64 {
-    let module_path = crate::module_path_index::qualified_name_value_to_module_path(qn);
+    let module_path = crate::cli_run::qualified_name_value_to_module_path(qn);
     dead_param_count_for_module_path(module_path, service, operation)
 }
 
 pub fn embedded_policy_literal_count_for_qualified_name(qn: &crate::v1_interpreter::Value) -> i64 {
-    let module_path = crate::module_path_index::qualified_name_value_to_module_path(qn);
+    let module_path = crate::cli_run::qualified_name_value_to_module_path(qn);
     embedded_policy_literal_count_for_module_path(module_path)
 }
 
@@ -339,9 +339,9 @@ fn module_source_nickname_literal_count_in_node(
 pub fn module_source_nickname_literal_count_for_qualified_name(
     qn: &crate::v1_interpreter::Value,
 ) -> i64 {
-    let module_path = crate::module_path_index::qualified_name_value_to_module_path(qn);
+    let module_path = crate::cli_run::qualified_name_value_to_module_path(qn);
     let path = source_path_for_module_path(&module_path);
-    let index = crate::module_path_index::build_module_path_index();
+    let index = crate::cli_run::build_module_path_index_from_witness_roots();
     let real_paths: HashSet<String> = index.into_values().collect();
     let (items, _) = parse_module_items(&path);
     let mut total = 0i64;
@@ -352,24 +352,24 @@ pub fn module_source_nickname_literal_count_for_qualified_name(
 }
 
 pub fn policy_leak_count_for_qualified_name(qn: &crate::v1_interpreter::Value) -> i64 {
-    let module_path = crate::module_path_index::qualified_name_value_to_module_path(qn);
+    let module_path = crate::cli_run::qualified_name_value_to_module_path(qn);
     policy_leak_count_for_module_path(module_path)
 }
 
 pub fn transport_fusion_fork_count_for_qualified_name(qn: &crate::v1_interpreter::Value) -> i64 {
-    let module_path = crate::module_path_index::qualified_name_value_to_module_path(qn);
+    let module_path = crate::cli_run::qualified_name_value_to_module_path(qn);
     transport_fusion_fork_count_for_module_path(module_path)
 }
 
 pub fn gist_create_declares_filename_input_for_qualified_name(
     qn: &crate::v1_interpreter::Value,
 ) -> bool {
-    let module_path = crate::module_path_index::qualified_name_value_to_module_path(qn);
+    let module_path = crate::cli_run::qualified_name_value_to_module_path(qn);
     gist_create_declares_filename_input(module_path)
 }
 
 fn source_path_for_module_path(module_path: &str) -> String {
-    crate::module_path_index::source_path_for_module_path(module_path.to_string())
+    crate::cli_run::source_path_for_module_path(module_path.to_string())
 }
 
 pub fn dead_param_count_for_module_path(
@@ -556,7 +556,7 @@ fn gist_create_files_keyed_by_filename_placeholder_for_parsed_module(
 pub fn gist_create_files_keyed_by_filename_placeholder_for_qualified_name(
     qn: &crate::v1_interpreter::Value,
 ) -> bool {
-    let module_path = crate::module_path_index::qualified_name_value_to_module_path(qn);
+    let module_path = crate::cli_run::qualified_name_value_to_module_path(qn);
     gist_create_files_keyed_by_filename_placeholder(module_path)
 }
 
@@ -649,14 +649,14 @@ pub fn external_authority_scheme_identity_for_module_path(module_path: String) -
 pub fn external_authority_anchor_kind_for_qualified_name(
     qn: &crate::v1_interpreter::Value,
 ) -> String {
-    let module_path = crate::module_path_index::qualified_name_value_to_module_path(qn);
+    let module_path = crate::cli_run::qualified_name_value_to_module_path(qn);
     external_authority_anchor_kind_for_module_path(module_path)
 }
 
 pub fn external_authority_scheme_identity_for_qualified_name(
     qn: &crate::v1_interpreter::Value,
 ) -> String {
-    let module_path = crate::module_path_index::qualified_name_value_to_module_path(qn);
+    let module_path = crate::cli_run::qualified_name_value_to_module_path(qn);
     external_authority_scheme_identity_for_module_path(module_path)
 }
 
@@ -668,12 +668,12 @@ pub fn external_authority_locator_for_module_path(module_path: String) -> String
 }
 
 pub fn external_authority_locator_for_qualified_name(qn: &crate::v1_interpreter::Value) -> String {
-    let module_path = crate::module_path_index::qualified_name_value_to_module_path(qn);
+    let module_path = crate::cli_run::qualified_name_value_to_module_path(qn);
     external_authority_locator_for_module_path(module_path)
 }
 
 pub fn derived_extdeps_module_paths() -> Vec<String> {
-    let index = crate::module_path_index::build_module_path_index();
+    let index = crate::cli_run::build_module_path_index_from_witness_roots();
     let mut paths: Vec<String> = index
         .keys()
         .filter(|k| k.starts_with("extdeps."))
@@ -687,7 +687,7 @@ pub fn qualified_name_value_from_module_path(
     ctx: &crate::v1_interpreter::InterpContext,
     module_path: &str,
 ) -> crate::v1_interpreter::Value {
-    crate::module_path_index::qualified_name_value_from_dotted_string(ctx, module_path)
+    crate::cli_run::qualified_name_value_from_dotted_string(ctx, module_path)
 }
 
 pub fn derived_extdeps_modules_value(
@@ -719,7 +719,7 @@ fn backfill_pending_module_paths() -> &'static std::collections::HashSet<String>
     use std::sync::OnceLock;
     static PATHS: OnceLock<HashSet<String>> = OnceLock::new();
     PATHS.get_or_init(|| {
-        let ws = crate::module_path_index::workspace_root();
+        let ws = crate::cli_run::workspace_root();
         let path = ws.join("dsl/extdeps/external_authority_backfill_pending.txt");
         let content = std::fs::read_to_string(&path)
             .unwrap_or_else(|e| panic!("read backfill_pending snapshot {:?}: {e}", path));
@@ -737,7 +737,7 @@ pub fn is_backfill_pending_for_module_path(module_path: &str) -> bool {
 }
 
 pub fn is_backfill_pending_for_qualified_name(qn: &crate::v1_interpreter::Value) -> bool {
-    let module_path = crate::module_path_index::qualified_name_value_to_module_path(qn);
+    let module_path = crate::cli_run::qualified_name_value_to_module_path(qn);
     is_backfill_pending_for_module_path(&module_path)
 }
 
@@ -759,7 +759,7 @@ pub fn is_machinery_exempt_for_module_path(module_path: &str) -> bool {
 }
 
 pub fn is_machinery_exempt_for_qualified_name(qn: &crate::v1_interpreter::Value) -> bool {
-    let module_path = crate::module_path_index::qualified_name_value_to_module_path(qn);
+    let module_path = crate::cli_run::qualified_name_value_to_module_path(qn);
     is_machinery_exempt_for_module_path(&module_path)
 }
 
@@ -774,7 +774,7 @@ pub fn is_clean_tree_roster_excluded_for_module_path(module_path: &str) -> bool 
 }
 
 pub fn is_clean_tree_roster_excluded_for_qualified_name(qn: &crate::v1_interpreter::Value) -> bool {
-    let module_path = crate::module_path_index::qualified_name_value_to_module_path(qn);
+    let module_path = crate::cli_run::qualified_name_value_to_module_path(qn);
     is_clean_tree_roster_excluded_for_module_path(&module_path)
 }
 
@@ -813,8 +813,8 @@ pub fn external_authority_live_roster_module_count() -> i64 {
 }
 
 fn anchor_present_in_any_source_root(module_path: &str) -> bool {
-    let ws = crate::module_path_index::workspace_root();
-    for root in crate::module_path_index::default_source_roots() {
+    let ws = crate::cli_run::workspace_root();
+    for root in crate::cli_run::default_source_roots() {
         let root_path = std::path::PathBuf::from(&root);
         if !root_path.is_dir() {
             continue;
@@ -876,7 +876,7 @@ pub fn external_authority_anchor_shadow_masked_for_module_path(module_path: Stri
 pub fn external_authority_anchor_shadow_masked_for_qualified_name(
     qn: &crate::v1_interpreter::Value,
 ) -> bool {
-    let module_path = crate::module_path_index::qualified_name_value_to_module_path(qn);
+    let module_path = crate::cli_run::qualified_name_value_to_module_path(qn);
     external_authority_anchor_shadow_masked_for_module_path(module_path)
 }
 
@@ -900,10 +900,10 @@ mod tests {
 
     #[test]
     fn coverage_domain_module_source_nickname_literal_count_is_zero_after_qn_migration() {
-        let path = crate::module_path_index::source_path_for_module_path(
+        let path = crate::cli_run::source_path_for_module_path(
             "v2.test.extdeps_shape_transport_policy.coverage_domain_equivalence".to_string(),
         );
-        let index = crate::module_path_index::build_module_path_index();
+        let index = crate::cli_run::build_module_path_index_from_witness_roots();
         let real_paths: HashSet<String> = index.into_values().collect();
         let (items, _) = parse_module_items(&path);
         let mut total = 0i64;
@@ -918,11 +918,11 @@ mod tests {
 
     #[test]
     fn local_red_module_source_nickname_literal_count_is_positive() {
-        let path = crate::module_path_index::source_path_for_module_path(
+        let path = crate::cli_run::source_path_for_module_path(
             "v2.test.extdeps_shape_transport_policy.lens_unit.module_source_nickname_literal_local_red"
                 .to_string(),
         );
-        let index = crate::module_path_index::build_module_path_index();
+        let index = crate::cli_run::build_module_path_index_from_witness_roots();
         let real_paths: HashSet<String> = index.into_values().collect();
         let (items, _) = parse_module_items(&path);
         let mut total = 0i64;
@@ -937,7 +937,7 @@ mod tests {
 
     #[test]
     fn gist_create_hardcoded_snapshot_md_red_under_perturbation() {
-        let ws = crate::module_path_index::workspace_root();
+        let ws = crate::cli_run::workspace_root();
         let path = ws.join("target/test_gist_perturb_snapshot_md.dag");
         let content = r#"module extdeps.github.gists
 
@@ -1010,7 +1010,7 @@ service github.Gist {
 
     #[test]
     fn external_authority_bogus_scheme_fixture_projects_present_gopher() {
-        let path = crate::module_path_index::source_path_for_module_path(
+        let path = crate::cli_run::source_path_for_module_path(
             "extdeps.fixture.external_authority_bogus_scheme".to_string(),
         );
         let (items, source_indices) = parse_module_items(&path);

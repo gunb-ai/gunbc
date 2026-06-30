@@ -30,7 +30,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
 
-use crate::module_path_index::{brace_delta, corpus_dag_files, is_test_dag, strip_line_comment};
+use crate::cli_run::{brace_delta, corpus_dag_files, is_test_dag, strip_line_comment};
 
 // The NAMED exception roster: `file::fn` sites carrying a wildcard over a closed-coproduct param.
 // Per DESIGN §6 each is EITHER (a) un-migrated modeling awaiting its fold OR (b) a named irreducible
@@ -134,7 +134,7 @@ const NON_FOLD_RESIDUE_ROSTER: &[&str] = &[
 ];
 
 // Corpus walk + lexical normalization (`corpus_dag_files`, `strip_line_comment`, `brace_delta`,
-// `is_test_dag`) live in `crate::module_path_index`, shared with the inert-carrier census — DESIGN §2/§3:
+// `is_test_dag`) live in `crate::cli_run`, shared with the inert-carrier census — DESIGN §2/§3:
 // one authority for "what is code text", not a copy per census module.
 
 /// Source with every line's `//` comment removed and string-literal interiors blanked (positions
