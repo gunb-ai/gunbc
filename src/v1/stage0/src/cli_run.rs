@@ -3436,7 +3436,7 @@ fn floor_git_diff_range() -> Result<String, String> {
     let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
     let result = v1_interpreter::run_in_context(&ctx, "floor_observe_git_diff_unified_for_ci", false)
         .map_err(|e| format!("floor_observe_git_diff_unified_for_ci: {e}"))?;
-    match result {
+    match &result {
         Value::Variant {
             variant_name,
             fields,
@@ -3459,7 +3459,7 @@ fn floor_git_diff_range() -> Result<String, String> {
         }
         other => Err(format!(
             "floor_observe_git_diff_unified_for_ci returned `{}`, expected FloorUnifiedDiffResult",
-            ctx.format_value(&other)
+            ctx.format_value(other)
         )),
     }
 }
