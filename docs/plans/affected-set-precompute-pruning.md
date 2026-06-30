@@ -101,7 +101,7 @@ enum PrecomputeOutcome {
 
 **Structural assertions (the wall — non-flaky, §5 correct):**
 
-1. Constructs a synthetic diff that modifies one file **outside** the PublishedMockCase transitive closure (e.g. a change to a test-only `.dag` file).
+1. Constructs a synthetic diff that modifies one file that is outside **both** the PublishedMockCase transitive closure **and** every witness's node frontier (i.e. not transitively imported by any test witness in the corpus). A test-only `.dag` edit outside the mock closure is insufficient if it is imported by a witness — such a diff would fire the node frontier and leave witnesses to run, preventing `Skipped` from being asserted (the conjunction guard requires `all_witnesses_will_skip`).
 2. Calls `run_discovery_corpus_with_options` with `skip_unaffected_node_frontier: true`.
 3. Asserts `outcome == PrecomputeOutcome::Skipped`. Unambiguous: `Skipped` cannot arise from a ran-empty path. Cannot flake.
 4. Fail-closed control (second assertion): a synthetic diff that modifies a file **inside** the PublishedMockCase closure → assert `outcome != PrecomputeOutcome::Skipped` (i.e. `EmptyKeys | Keys(_)` — precompute ran). `Keys(_)` specifically is not required here: declarers could legitimately produce zero keys (`EmptyKeys`) while still proving the precompute was not skipped.
@@ -120,9 +120,7 @@ Over-declaration is always safe: if `diff_touches_published_mock_closure` return
 
 **Why the mock-closure check alone is insufficient:** a diff can miss the PublishedMockCase closure yet still leave witnesses to run (node-frontier / test-fn edits outside the closure). If any of those witnesses call into the mock key registry at eval time (v1_interpreter.rs:1114–1121), they fall back to per-entry `resolve_published_mock_keys` rather than the whole-tree seed, potentially under-populating `governed_services` for corpus-outside-closure mocks (M4.1). This is a fail-open path relative to the unconditional precompute.
 
-**Required tighter guard (see §3 sketch):** skip precompute only when `!diff_touches_published_mock_closure(...)` **AND** `all_witnesses_will_skip(...)` — i.e. the frontier check confirms zero witnesses will execute. When witnesses do run, either serve the precompute result (from M1 cache via tidy-hawk-120 #5959 §10, when available) or run the precompute in full. The conjunction makes skipping safe: `Skipped` means both "keys unused" and "no running witness can observe the omission."
-
-**Alternatively** (composition path): if tidy-hawk-120 M1 cache is available and warm, `Skipped` can safely be replaced by `CachedKeys(precomputed_from_cache)` — no witness starvation, no precompute cost. This is the §10 coordination point; the conjunction guard above is the conservative fallback when M1 is not yet wired.
+**Required tighter guard (see §3 sketch):** skip precompute only when `!diff_touches_published_mock_closure(...)` **AND** `all_witnesses_will_skip(...)` — i.e. the frontier check confirms zero witnesses will execute. When witnesses do run, run the precompute in full (fail-closed). The conjunction makes skipping safe: `Skipped` means both "keys unused" and "no running witness can observe the omission." (Note: M1 from tidy-hawk-120 #5959 is a resolve memo, not a precompute cache — it cannot substitute for the precompute result; see §10.)
 
 ---
 
@@ -152,7 +150,7 @@ Verified against `precompute_whole_tree_published_mock_keys` (cli_run.rs:890–9
 
 - **(a) Structural:** `gunbc test` on a scoped 1-file diff that is disjoint from the PublishedMockCase closure logs `outcome == PrecomputeOutcome::Skipped` (precompute not called). This is the `PrecomputeOutcome` tri-state from §6, not `whole_tree_published_keys == None` (which is ambiguous — see §6 implementation prerequisite).
 - **(b) Measured:** wall-clock AND peak-RSS on that real floor run drop materially vs a full-corpus baseline run. Logged as `[measurement]` output, not a threshold assertion.
-- **(c) Control:** a hub / in-closure 1-file diff (a file inside the PublishedMockCase transitive import closure) logs `outcome == PrecomputeOutcome::Keys(_)` (precompute ran and produced keys) and runs the affected witness slice — proves the skip is conditional, not always-on.
+- **(c) Control:** a hub / in-closure 1-file diff (a file inside the PublishedMockCase transitive import closure) logs `outcome != PrecomputeOutcome::Skipped` (i.e. `EmptyKeys | Keys(_)` — precompute ran) and runs the affected witness slice — proves the skip is conditional, not always-on. `Keys(_)` is not required here: the structural guarantee is that the precompute was not skipped, not that it yielded non-empty results (consistent with §6 item 4).
 
 Synthetic corpus numbers (e.g., a test-file-only mini-corpus) do NOT satisfy this bar. The acceptance receipt must be a real `gunbc test` invocation against the live floor showing parts (a)–(c).
 
@@ -162,6 +160,6 @@ Sign-off on this sketch = commitment to deliver that green-by-execution receipt 
 
 ## 10. Scope boundary with tidy-hawk-120
 
-tidy-hawk-120 (#5959) owns M1 (within-walk resolve memo) and M2 (`RunnableCompile` content-addressed plan node). Neither addresses the **skip-the-precompute-entirely** case — they optimize the precompute when it runs. This sketch owns the **decision not to run it**. The two lanes can land independently and compose additively.
+tidy-hawk-120 (#5959) owns M1 (within-walk `resolve_entry_graph` memo across `claim_executor` batches, ~105s Axis B) and M2 (`RunnableCompile` content-addressed plan node). M1 memos resolve, not `precompute_whole_tree_published_mock_keys` — it does **not** cache or serve the precompute result. This sketch owns the **decision not to run the precompute at all**. The two lanes are orthogonal and can land independently.
 
-Coordinate with tidy-hawk-120 before implementation: confirm their M1 memo does not assume `precompute_whole_tree_published_mock_keys` always runs (i.e., the `PrecomputeOutcome::Skipped` early-exit path in §3 must not break M1's cache contract).
+Coordinate with tidy-hawk-120 before implementation on one structural point: confirm M1's contract does not assume `precompute_whole_tree_published_mock_keys` always runs (the `PrecomputeOutcome::Skipped` early-exit in §3 must not violate M1's assumptions about resolve inputs, if any).
