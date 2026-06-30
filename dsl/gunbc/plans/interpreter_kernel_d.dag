@@ -38,7 +38,7 @@ fn interpreter_kernel_d_body() -> List<MarkdownBlock> {
     h2(text: "4. Discriminating witness (follow-on PRs)"),
     ul(items: [
       li(text: "**Pure-eval emit:** `run_test_claim_emit_vs_eval` GREEN on a rust `EqualsClaim` row without `Deferred` transport diagnostic."),
-      li(text: "**Pin receipt:** pinned roster matches `regen_stage0.rs` HAND list for the five files — drift-gated when invert-hand-maintained derives the registry."),
+      li(text: "**Pin receipt:** pinned roster matches `regen_stage0.rs` HAND list for the four pinned host-physics files — drift-gated when invert-hand-maintained derives the registry."),
     ]),
   ]
 }
