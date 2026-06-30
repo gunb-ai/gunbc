@@ -14,7 +14,6 @@ import gunbc.host_effect {
   ShellCommand,
   HostOs,
   OneShotIdempotent,
-  LocalShell,
   SshShell,
   HostEffectIntent,
   HostEffectEvidence,
@@ -34,40 +33,33 @@ fn live_deploy_ensure_dependency_via_ssh(
   )
 }
 
-fn live_deploy_fold_via_local_ssh(spec: DeploymentSpec, script: String) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  let wrapped = concat(
-    concat(
-      concat(concat("ssh ", spec.target.ssh_host), " bash -s <<'GUNBC_LIVE_DEPLOY_EOF'\n"),
-      script
-    ),
-    "\nGUNBC_LIVE_DEPLOY_EOF"
-  )
+fn live_deploy_fold_via_ssh(spec: DeploymentSpec, script: String) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   host_effect_apply(
     target: HostOs { node: spec.target.host },
-    effect: ShellCommand { script: wrapped },
+    effect: ShellCommand { script: script },
     policy: OneShotIdempotent,
-    transport: LocalShell
+    transport: SshShell { ssh_host: spec.target.ssh_host }
   )
 }
 
-fn live_deploy_apply_via_local_ssh(spec: DeploymentSpec) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  live_deploy_fold_via_local_ssh(
+fn live_deploy_apply_via_ssh(spec: DeploymentSpec) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  live_deploy_fold_via_ssh(
     spec: spec,
     script: live_deploy_apply_script_for(spec: spec)
   )
 }
 
-fn live_deploy_retract_via_local_ssh(spec: DeploymentSpec) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  live_deploy_fold_via_local_ssh(
+fn live_deploy_retract_via_ssh(spec: DeploymentSpec) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  live_deploy_fold_via_ssh(
     spec: spec,
     script: live_deploy_retract_script_for(spec: spec)
   )
 }
 
 fn live_deploy_apply_srv1() -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  live_deploy_apply_via_local_ssh(spec: deployment_spec_srv1())
+  live_deploy_apply_via_ssh(spec: deployment_spec_srv1())
 }
 
 fn live_deploy_retract_srv1() -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  live_deploy_retract_via_local_ssh(spec: deployment_spec_srv1())
+  live_deploy_retract_via_ssh(spec: deployment_spec_srv1())
 }

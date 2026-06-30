@@ -1,6 +1,7 @@
 module test.claim.host_effect_apply_witness
 
 import std.logic { Bool }
+import std.types { NonEmptyStr }
 import gunbc.host_effect {
   HostEffect, ShellCommand, RedfishAction,
   NodeControlPlane, HostOs, BmcController,
