@@ -10,6 +10,7 @@ import gunbc.fleet_intent {
   fleet_intent_execution_surface,
   srv1_host,
   srv2_host,
+  srv3_host,
 }
 import gunbc.fleet_intent { IsolationBoundary, PerJobFilesystem }
 import extdeps.cpu.ampere { altra_q6430_catalog }
@@ -84,7 +85,19 @@ data srv2_offer: ComputeOffer = ComputeOffer {
   cost_quote: none,
 }
 
-data fleet_intent_offers: List<ComputeOffer> = [srv1_offer, srv2_offer]
+data srv3_offer: ComputeOffer = ComputeOffer {
+  provider: "gunbc-operator-srv3",
+  supply: ComputeSupplyFacts {
+    physical: srv3_host,
+    execution: fleet_intent_execution_surface(),
+    cost: Present { value: operator_owned_cost() },
+    observed_performance: [],
+  },
+  available_window: AvailabilityWindow { open: "always-open", close: none },
+  cost_quote: none,
+}
+
+data fleet_intent_offers: List<ComputeOffer> = [srv1_offer, srv2_offer, srv3_offer]
 
 data gunbc_ci_host_identity: HostIdentity = "gunbc-ci-fleet"
 

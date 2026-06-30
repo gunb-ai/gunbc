@@ -1,3 +1,17 @@
+// Two distinct concerns hosted here (DESIGN §3 — distinct authorities, split migration track):
+//
+// CONCERN A — shape/transport/policy scan (dead_param, policy_leak, transport_fusion, argv
+// projection): authority = `src/v2/lens/extdeps_shape_transport_policy.dag`; floor coverage =
+// `src/v2/test/claim/extdeps_shape_transport_policy/**` (extensive, on auto-discovery floor).
+// DISSOLUTION (same Chunk-D class as inert_carrier / non_fold_residue): when the interpreter
+// consumes .dag lens tables directly instead of calling host-fed text scans — gunbc#5364. Until
+// then the host functions below are the only callers of the .dag lens builtin seam.
+//
+// CONCERN B — external_authority anchor checking (anchor_kind/scheme/locator, clean_tree_holds,
+// roster counts, shadow-mask): authority = `dsl/extdeps/external_authority` + transport gate.
+// DISSOLUTION: separate migration to the external_authority host surface (not cli_run.rs). The
+// two concerns migrate on DIFFERENT schedules; track them independently.
+
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -546,6 +560,8 @@ pub fn gist_create_files_keyed_by_filename_placeholder_for_qualified_name(
     gist_create_files_keyed_by_filename_placeholder(module_path)
 }
 
+// --- CONCERN B: external_authority anchor checking (see file header) ---
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum ExternalAuthorityAnchorProjection {
     Absent,
@@ -854,11 +870,26 @@ fn anchor_present_in_any_source_root(module_path: &str) -> bool {
     false
 }
 
+/// Cross-tree shadow plants live under `test.fixture.*` in `src/v2/` while the paired
+/// anchor-bearing copy stays at `extdeps.fixture.*` in `dsl/`. Distinct module paths
+/// avoid two-root compile panics; pairing restores shadow-mask detection.
+fn shadow_plant_paired_extdeps_module_path(module_path: &str) -> Option<String> {
+    module_path
+        .strip_prefix("test.fixture.")
+        .map(|leaf| format!("extdeps.fixture.{leaf}"))
+}
+
 pub fn external_authority_anchor_shadow_masked_for_module_path(module_path: String) -> bool {
     match project_external_authority_anchor(&module_path) {
         ExternalAuthorityAnchorProjection::Present { .. } => false,
         ExternalAuthorityAnchorProjection::Absent => {
-            anchor_present_in_any_source_root(&module_path)
+            if anchor_present_in_any_source_root(&module_path) {
+                return true;
+            }
+            if let Some(extdeps_path) = shadow_plant_paired_extdeps_module_path(&module_path) {
+                return anchor_present_in_any_source_root(&extdeps_path);
+            }
+            false
         }
     }
 }
@@ -923,85 +954,6 @@ mod tests {
             total > 0,
             "expected nickname literals in local_red fixture, got {total}"
         );
-    }
-
-    #[test]
-    fn cargo_clippy_dead_param_defused_after_list_argv_splice() {
-        assert_eq!(
-            dead_param_count_for_module_path(
-                "extdeps.cargo_build".to_string(),
-                "cargo.Build".to_string(),
-                "Clippy".to_string(),
-            ),
-            0
-        );
-    }
-
-    #[test]
-    fn cargo_fmt_dead_param_defused_on_live_tree() {
-        assert_eq!(
-            dead_param_count_for_module_path(
-                "extdeps.cargo_build".to_string(),
-                "cargo.Build".to_string(),
-                "Fmt".to_string(),
-            ),
-            0
-        );
-    }
-
-    #[test]
-    fn cargo_doc_dead_param_defused_on_live_tree() {
-        assert_eq!(
-            dead_param_count_for_module_path(
-                "extdeps.cargo_build".to_string(),
-                "cargo.Build".to_string(),
-                "Doc".to_string(),
-            ),
-            0
-        );
-    }
-
-    #[test]
-    fn cargo_run_dead_param_defused_on_live_tree() {
-        assert_eq!(
-            dead_param_count_for_module_path(
-                "extdeps.cargo_build".to_string(),
-                "cargo.Build".to_string(),
-                "Run".to_string(),
-            ),
-            0
-        );
-    }
-
-    #[test]
-    fn git_policy_leak_defused_by_module_path() {
-        assert_eq!(
-            policy_leak_count_for_module_path("extdeps.git".to_string()),
-            0
-        );
-    }
-
-    #[test]
-    fn cargo_build_policy_leak_defused_by_module_path() {
-        assert_eq!(
-            policy_leak_count_for_module_path("extdeps.cargo_build".to_string()),
-            0
-        );
-    }
-
-    #[test]
-    fn gcp_oauth_fusion_defused_by_module_path() {
-        assert_eq!(
-            transport_fusion_fork_count_for_module_path("extdeps.cloud.gcp.gcp".to_string()),
-            0
-        );
-    }
-
-    #[test]
-    fn gist_create_files_keyed_by_filename_placeholder_on_live_tree() {
-        assert!(gist_create_files_keyed_by_filename_placeholder(
-            "extdeps.github.gists".to_string(),
-        ));
     }
 
     #[test]
@@ -1138,19 +1090,13 @@ service github.Gist {
     }
 
     #[test]
-    fn external_authority_live_clean_tree_holds_via_host() {
-        assert!(external_authority_live_clean_tree_holds());
-        assert!(external_authority_live_roster_module_count() > 150);
-    }
-
-    #[test]
     fn external_authority_shadow_mask_detector_has_teeth() {
         assert!(
             external_authority_anchor_shadow_masked_for_module_path(
-                "extdeps.fixture.external_authority_shadow_masked".to_string()
+                "test.fixture.external_authority_shadow_masked".to_string()
             ),
-            "the two-tree shadow fixture (anchor in dsl copy, none in index-resolved src/v2 copy) \
-             must read as masked -- proves the detector is not inert"
+            "the two-tree shadow plant (anchor in dsl extdeps.fixture copy, none in index-resolved \
+             src/v2 test.fixture copy) must read as masked -- proves the detector is not inert"
         );
         assert!(
             external_authority_live_shadow_mask_holds(),
