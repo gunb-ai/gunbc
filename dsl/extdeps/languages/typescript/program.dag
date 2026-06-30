@@ -276,3 +276,5 @@ fn serialize_typescript_program(p: TsProgram) -> String {
     concat(nocheck, concat(header, concat("\n", body)))
   }
 }
+
+data typescript_program_serialize_dissolution_trigger: String = "🟡 dissolve-on: serialize_typescript_program concat serializer — TsExpr/TsStmt/TsProgram AST + hand emission standing in for grammar-row-driven TypeScript program emit/ingest (DESIGN §4 one grammar read both directions). gunbc/node_http_server_emit no longer assembles JS syntax (medium_structure_exception_roster exit is honest). DISSOLVES WHEN TypeScript program surface emits through extdeps.languages.typescript grammar rows with ingest ∘ emit = id over shared productions (parallel to bash_fold); retire this serializer oracle."
