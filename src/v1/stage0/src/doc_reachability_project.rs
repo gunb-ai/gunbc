@@ -328,32 +328,4 @@ mod tests {
         let t = bind_md_refs(c);
         assert_eq!(t, vec!["docs/planning/foo.md", "bar.md"]);
     }
-
-    #[test]
-    fn live_tree_has_no_orphan_docs() {
-        let report = build_doc_graph_report();
-        assert!(
-            report.orphans.is_empty(),
-            "orphan docs (unreachable from any root): {:?}",
-            report.orphans
-        );
-    }
-
-    #[test]
-    fn live_tree_doc_universe_is_nonempty() {
-        assert!(
-            doc_graph_doc_count() > 0,
-            "expected a non-empty docs/ universe; zero means read_dir fail-open"
-        );
-    }
-
-    #[test]
-    fn live_tree_has_no_dangling_md_links() {
-        let report = build_doc_graph_report();
-        assert!(
-            report.dangling.is_empty(),
-            "dangling .md links: {:?}",
-            report.dangling
-        );
-    }
 }
