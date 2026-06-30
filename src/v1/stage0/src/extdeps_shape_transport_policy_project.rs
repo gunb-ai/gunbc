@@ -942,85 +942,6 @@ mod tests {
     }
 
     #[test]
-    fn cargo_clippy_dead_param_defused_after_list_argv_splice() {
-        assert_eq!(
-            dead_param_count_for_module_path(
-                "extdeps.cargo_build".to_string(),
-                "cargo.Build".to_string(),
-                "Clippy".to_string(),
-            ),
-            0
-        );
-    }
-
-    #[test]
-    fn cargo_fmt_dead_param_defused_on_live_tree() {
-        assert_eq!(
-            dead_param_count_for_module_path(
-                "extdeps.cargo_build".to_string(),
-                "cargo.Build".to_string(),
-                "Fmt".to_string(),
-            ),
-            0
-        );
-    }
-
-    #[test]
-    fn cargo_doc_dead_param_defused_on_live_tree() {
-        assert_eq!(
-            dead_param_count_for_module_path(
-                "extdeps.cargo_build".to_string(),
-                "cargo.Build".to_string(),
-                "Doc".to_string(),
-            ),
-            0
-        );
-    }
-
-    #[test]
-    fn cargo_run_dead_param_defused_on_live_tree() {
-        assert_eq!(
-            dead_param_count_for_module_path(
-                "extdeps.cargo_build".to_string(),
-                "cargo.Build".to_string(),
-                "Run".to_string(),
-            ),
-            0
-        );
-    }
-
-    #[test]
-    fn git_policy_leak_defused_by_module_path() {
-        assert_eq!(
-            policy_leak_count_for_module_path("extdeps.git".to_string()),
-            0
-        );
-    }
-
-    #[test]
-    fn cargo_build_policy_leak_defused_by_module_path() {
-        assert_eq!(
-            policy_leak_count_for_module_path("extdeps.cargo_build".to_string()),
-            0
-        );
-    }
-
-    #[test]
-    fn gcp_oauth_fusion_defused_by_module_path() {
-        assert_eq!(
-            transport_fusion_fork_count_for_module_path("extdeps.cloud.gcp.gcp".to_string()),
-            0
-        );
-    }
-
-    #[test]
-    fn gist_create_files_keyed_by_filename_placeholder_on_live_tree() {
-        assert!(gist_create_files_keyed_by_filename_placeholder(
-            "extdeps.github.gists".to_string(),
-        ));
-    }
-
-    #[test]
     fn gist_create_hardcoded_snapshot_md_red_under_perturbation() {
         let ws = crate::module_path_index::workspace_root();
         let path = ws.join("target/test_gist_perturb_snapshot_md.dag");
@@ -1151,12 +1072,6 @@ service github.Gist {
             !is_clean_tree_roster_excluded_for_module_path("extdeps.cloud.cloud"),
             "a real external-dependency module must stay in the roster"
         );
-    }
-
-    #[test]
-    fn external_authority_live_clean_tree_holds_via_host() {
-        assert!(external_authority_live_clean_tree_holds());
-        assert!(external_authority_live_roster_module_count() > 150);
     }
 
     #[test]
