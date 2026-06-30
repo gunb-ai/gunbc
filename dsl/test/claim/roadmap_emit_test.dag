@@ -2,8 +2,8 @@ module test.claim.roadmap_emit
 
 import extdeps.languages.markdown { serialize_markdown_source }
 import gunbc.roadmap_emit { project_roadmap_section }
-import gunbc.roadmap_model { RoadmapNode, RoadmapEdge, Pointer, SectionElement, section_group }
-import gunbc.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine }
+import gunbc.roadmap_model { RoadmapNode, RoadmapEdge, Pointer, NodeSizing, Unsized, SectionElement, section_group }
+import gunbc.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, Signoff, Unsigned, SignedOff }
 import ctrl.process_algebra { ProcessNodeId }
 
 data parent_id: ProcessNodeId = "invert-hand-maintained"
@@ -14,6 +14,9 @@ fn parent_node() -> RoadmapNode {
     node: parent_id,
     line: AuthoredLine { done: false, content: "**invert hand-maintained**" },
     carriers: [Pointer { label: "plan", path: "docs/plans/invert-hand-maintained.md" }],
+    sizing: Unsized,
+    owner: "",
+    signoff: Unsigned,
   }
 }
 
@@ -22,6 +25,20 @@ fn child_node() -> RoadmapNode {
     node: child_id,
     line: DerivableLine { prs: [5491], title: "**PR-checkbox status**", description: "" },
     carriers: [],
+    sizing: Unsized,
+    owner: "",
+    signoff: Unsigned,
+  }
+}
+
+fn signed_child_node() -> RoadmapNode {
+  RoadmapNode {
+    node: child_id,
+    line: DerivableLine { prs: [5491], title: "**PR-checkbox status**", description: "" },
+    carriers: [],
+    sizing: Unsized,
+    owner: "",
+    signoff: SignedOff { by: "operator", works: true, scope_equivalent: true, as_expected: true },
   }
 }
 
@@ -30,10 +47,14 @@ fn edges() -> List<RoadmapEdge> { [RoadmapEdge { child: child_id, parent: parent
 
 fn elements() -> List<SectionElement> { [section_group(label: "", nodes: nodes(), edges: edges())] }
 
-fn emit(merged: List<Int>) -> String {
+fn emit_nodes(nodes: List<RoadmapNode>, merged: List<Int>) -> String {
   serialize_markdown_source(doc: project_roadmap_section(
-    title: "6. Expansion", elements: elements(), merged: merged,
+    title: "6. Expansion", elements: [section_group(label: "", nodes: nodes, edges: edges())], merged: merged,
   ))
+}
+
+fn emit(merged: List<Int>) -> String {
+  emit_nodes(nodes: nodes(), merged: merged)
 }
 
 fn witness_heading() -> Bool {
@@ -46,19 +67,30 @@ fn witness_parent_authored_box_and_link() -> Bool {
     && string_contains(s: out, pattern: "[plan](docs/plans/invert-hand-maintained.md)")
 }
 
-fn witness_child_derived_checked_when_merged() -> Bool {
-  string_contains(s: emit(merged: [5491]), pattern: "[x] **PR-checkbox status**")
+fn witness_child_merged_unsigned_awaiting_signoff() -> Bool {
+  let out = emit(merged: [5491])
+  string_contains(s: out, pattern: "[ ] **PR-checkbox status**")
+    && string_contains(s: out, pattern: "⏳ awaiting sign-off")
+    && !string_contains(s: out, pattern: "[x] **PR-checkbox status**")
+}
+
+fn witness_child_signed_checked() -> Bool {
+  let out = emit_nodes(nodes: [parent_node(), signed_child_node()], merged: [])
+  string_contains(s: out, pattern: "[x] **PR-checkbox status**")
+    && string_contains(s: out, pattern: "✓ signed off: operator")
 }
 
 fn witness_child_derived_unchecked_when_unmerged() -> Bool {
   let out = emit(merged: [])
   string_contains(s: out, pattern: "[ ] **PR-checkbox status**")
     && !string_contains(s: out, pattern: "[x] **PR-checkbox status**")
+    && !string_contains(s: out, pattern: "⏳ awaiting sign-off")
 }
 
 test fn roadmap_emit_witnesses() -> Bool {
   witness_heading()
     && witness_parent_authored_box_and_link()
-    && witness_child_derived_checked_when_merged()
+    && witness_child_merged_unsigned_awaiting_signoff()
+    && witness_child_signed_checked()
     && witness_child_derived_unchecked_when_unmerged()
 }

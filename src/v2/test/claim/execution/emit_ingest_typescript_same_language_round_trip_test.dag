@@ -1,4 +1,4 @@
-module v2.test.manual.emit_ingest_typescript_same_language_round_trip
+module v2.test.execution.emit_ingest_typescript_same_language_round_trip
 
 import v2.compiler.ingest {
   cross_language_compile,
@@ -252,7 +252,7 @@ fn emit_ingest_typescript_same_language_round_trip_holds() -> Bool {
 data claim_emit_ingest_typescript_same_language_round_trip: UnifiedTestClaim = BoolWitnessClaim {
   label: "S4: TypeScript same-language emit↔ingest round-trip (selector bijectivity + parse bridge + source round-trip)",
   witness: BoolWitness {
-    entry: "src/v2/test/claim/manual/emit_ingest_typescript_same_language_round_trip_test.dag"
+    entry: "src/v2/test/claim/execution/emit_ingest_typescript_same_language_round_trip_test.dag"
     function: emit_ingest_typescript_same_language_round_trip_holds
   }
 }

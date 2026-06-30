@@ -4,7 +4,7 @@ import v2.compiler.body_producer {
   produce_mvp1_match_arrow_with_body,
   produce_mvp1_match_arrow_with_body_swapped_arms
 }
-import v2.test.manual.match_bool_round_trip {
+import v2.test.execution.match_bool_round_trip {
   match_bool_inferred_facts_for,
   match_bool_inferred_tree
 }

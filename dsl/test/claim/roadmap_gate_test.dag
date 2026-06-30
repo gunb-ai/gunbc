@@ -1,41 +1,71 @@
 module test.claim.roadmap_gate
 
 import extdeps.languages.markdown { serialize_markdown_source }
-import gunbc.roadmap_document { project_roadmap_to_markdown }
+import gunbc.roadmap_document { RoadmapDocument, RoadmapSection, project_roadmap_to_markdown }
+import gunbc.roadmap_model { RoadmapNode, SectionElement, section_group }
 import gunbc.roadmap_authority {
-  roadmap_authority, authored_merged_prs, expected_roadmap_md, roadmap_drifted,
+  expected_roadmap_md, roadmap_drifted,
+  derivable, sign, signed,
 }
 
-fn emit_dropping_measure() -> String {
-  let perturbed = [5428, 5445, 5453, 5433, 5476, 5473, 5456, 5421, 5425, 5236,
-    5437, 5434, 5441, 5449, 5471, 5430, 5481, 5491, 5508, 5520, 5525, 5527, 5444]
-  serialize_markdown_source(doc: project_roadmap_to_markdown(doc: roadmap_authority(), merged: perturbed))
+fn mini_doc(node: RoadmapNode) -> RoadmapDocument {
+  RoadmapDocument {
+    preamble: [],
+    lead_lanes: [],
+    sections: [RoadmapSection {
+      title: "Sign-off gate",
+      elements: [section_group(label: "", nodes: [node], edges: [])],
+    }],
+  }
+}
+
+fn emit_node(node: RoadmapNode, merged: List<Int>) -> String {
+  serialize_markdown_source(doc: project_roadmap_to_markdown(doc: mini_doc(node: node), merged: merged))
 }
 
 fn witness_clean_not_drift() -> Bool {
   !roadmap_drifted(committed: expected_roadmap_md())
 }
 
-fn witness_set_perturbation_drifts() -> Bool {
-  let dropped = emit_dropping_measure()
-  roadmap_drifted(committed: dropped)
-    && string_contains(s: dropped, pattern: "- [ ] **Section 1 spawn-width foundation — std.measure expressibility** (#5470/#5478)")
-    && !string_contains(s: dropped, pattern: "- [x] **Section 1 spawn-width foundation — std.measure expressibility** (#5470/#5478)")
-    && string_contains(s: expected_roadmap_md(), pattern: "- [x] **Section 1 spawn-width foundation — std.measure expressibility** (#5470/#5478)")
-}
-
 fn witness_hand_edit_drifts() -> Bool {
   roadmap_drifted(committed: concat(expected_roadmap_md(), "\n- [x] **a hand-added line**"))
 }
 
-fn witness_authored_set_nonvacuous() -> Bool {
-  count(authored_merged_prs()) > 0
-    && string_contains(s: expected_roadmap_md(), pattern: "- [x] **numeric-tower grounding** (#5428)")
+fn witness_signed_emits_checked() -> Bool {
+  let node = sign(
+    rn: derivable(id: "signoff-witness", prs: [5491], title: "**signoff witness**", description: ""),
+    s: signed(by: "operator", works: true, scope_equivalent: true, as_expected: true),
+  )
+  let out = emit_node(node: node, merged: [])
+  string_contains(s: out, pattern: "[x] **signoff witness**")
+    && string_contains(s: out, pattern: "✓ signed off: operator")
+}
+
+fn witness_unsigned_with_evidence_awaiting() -> Bool {
+  let node = derivable(id: "signoff-witness", prs: [5491], title: "**signoff witness**", description: "")
+  let out = emit_node(node: node, merged: [5491])
+  string_contains(s: out, pattern: "[ ] **signoff witness**")
+    && string_contains(s: out, pattern: "⏳ awaiting sign-off")
+    && !string_contains(s: out, pattern: "[x] **signoff witness**")
+}
+
+fn witness_merge_perturb_does_not_flip_box() -> Bool {
+  let signed_node = sign(
+    rn: derivable(id: "signoff-witness", prs: [5491], title: "**signoff witness**", description: ""),
+    s: signed(by: "operator", works: true, scope_equivalent: true, as_expected: true),
+  )
+  let unsigned_node = derivable(id: "signoff-witness", prs: [5491], title: "**signoff witness**", description: "")
+  let signed_stays_checked = string_contains(s: emit_node(node: signed_node, merged: []), pattern: "[x] **signoff witness**")
+    && string_contains(s: emit_node(node: signed_node, merged: [5491]), pattern: "[x] **signoff witness**")
+  let unsigned_stays_unchecked = string_contains(s: emit_node(node: unsigned_node, merged: []), pattern: "[ ] **signoff witness**")
+    && string_contains(s: emit_node(node: unsigned_node, merged: [5491]), pattern: "[ ] **signoff witness**")
+  signed_stays_checked && unsigned_stays_unchecked
 }
 
 test fn roadmap_gate_witnesses() -> Bool {
   witness_clean_not_drift()
-    && witness_set_perturbation_drifts()
     && witness_hand_edit_drifts()
-    && witness_authored_set_nonvacuous()
+    && witness_signed_emits_checked()
+    && witness_unsigned_with_evidence_awaiting()
+    && witness_merge_perturb_does_not_flip_box()
 }

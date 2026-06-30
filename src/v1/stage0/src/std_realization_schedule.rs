@@ -234,6 +234,9 @@ pub enum Runnable {
         scan_dirs: Rc<Vec<String>>,
         explicit_entries: Rc<Vec<Rc<ScheduleWitnessEntry>>>,
         skip_unaffected_node_frontier: bool,
+        exclude_substrings: Rc<Vec<String>>,
+        discovery_scope_dirs: Rc<Vec<String>>,
+        spawn_width_cap: i64,
         profile: Rc<RunnableResourceProfile>,
     },
 }
@@ -483,6 +486,9 @@ pub fn runnable_eq(left: Rc<Runnable>, right: Rc<Runnable>) -> bool {
             scan_dirs: lsd,
             explicit_entries: lex,
             skip_unaffected_node_frontier: lskip,
+            exclude_substrings: lex2,
+            discovery_scope_dirs: lsc,
+            spawn_width_cap: lwc,
             profile: lp,
             ..
         } => match (*right).clone() {
@@ -492,13 +498,19 @@ pub fn runnable_eq(left: Rc<Runnable>, right: Rc<Runnable>) -> bool {
                 scan_dirs: rsd,
                 explicit_entries: rex,
                 skip_unaffected_node_frontier: rskip,
+                exclude_substrings: rex2,
+                discovery_scope_dirs: rsc,
+                spawn_width_cap: rwc,
                 profile: rp,
                 ..
             } => {
-                ((((string_list_eq(lsr.clone(), rsr.clone())
+                (((((((string_list_eq(lsr.clone(), rsr.clone())
                     && string_list_eq(lsd.clone(), rsd.clone()))
                     && schedule_witness_entry_list_eq(lex.clone(), rex.clone()))
                     && (lskip.clone() == rskip.clone()))
+                    && string_list_eq(lex2.clone(), rex2.clone()))
+                    && string_list_eq(lsc.clone(), rsc.clone()))
+                    && (lwc.clone() == rwc.clone()))
                     && runnable_resource_profile_eq(lp.clone(), rp.clone()))
             }
         },
