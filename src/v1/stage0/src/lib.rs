@@ -82,8 +82,6 @@ pub mod v1_compiler_coercion;
 pub mod v1_compiler_compile;
 pub mod v1_compiler_compiler_tests_rust;
 pub mod v1_compiler_complexity;
-pub mod v1_compiler_dag_collect;
-pub mod v1_compiler_dag_collect_support;
 pub mod v1_compiler_effect_derivation;
 pub mod v1_compiler_emit;
 pub mod v1_compiler_emit_core_support;
