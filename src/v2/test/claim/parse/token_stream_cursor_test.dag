@@ -14,9 +14,9 @@ import v2.std.compilers.lexing {
   token_stream_remaining,
   token_stream_remaining_count
 }
+import v2.std.logic { Bool }
 import v2.std.text { String }
 import v2.std.node { Symbol }
-import v2.std.verification { BoolWitness, BoolWitnessClaim, UnifiedTestClaim }
 
 fn tsc_token(class: Symbol, lexeme: String) -> Token {
   Token { class: class, lexeme: lexeme, file: ^tsc_file, start: 0, end: 1 }
@@ -86,51 +86,7 @@ test fn token_stream_cursor_empty_first_absent_holds() -> Bool {
 
 test fn token_stream_cursor_remaining_matches_skip_holds() -> Bool {
   let stream = token_stream_advance(stream: token_stream_new(all: tsc_three_tokens), n: 1)
-  length(xs: token_stream_remaining(stream: stream))
-    == length(xs: skip(xs: tsc_three_tokens, n: 1))
+  let remaining_len = length(xs: token_stream_remaining(stream: stream))
+  let skip_len = length(xs: skip(xs: tsc_three_tokens, n: 1))
+  remaining_len == skip_len
 }
-
-data token_stream_cursor_unit: List<UnifiedTestClaim> = [
-  UnifiedTestClaim {
-    label: "parse/token_stream_cursor: new starts at pos 0 with full remaining count",
-    witness: BoolWitnessClaim {
-      claim: token_stream_cursor_new_at_zero_holds,
-      expected: true
-    }
-  },
-  UnifiedTestClaim {
-    label: "parse/token_stream_cursor: advance(n) bumps pos without shrinking all",
-    witness: BoolWitnessClaim {
-      claim: token_stream_cursor_advance_bumps_pos_holds,
-      expected: true
-    }
-  },
-  UnifiedTestClaim {
-    label: "parse/token_stream_cursor: first after advance matches skip-first baseline",
-    witness: BoolWitnessClaim {
-      claim: token_stream_cursor_first_after_advance_holds,
-      expected: true
-    }
-  },
-  UnifiedTestClaim {
-    label: "parse/token_stream_cursor: get(offset) reads from pos+offset",
-    witness: BoolWitnessClaim {
-      claim: token_stream_cursor_get_offset_holds,
-      expected: true
-    }
-  },
-  UnifiedTestClaim {
-    label: "parse/token_stream_cursor: empty stream first is absent",
-    witness: BoolWitnessClaim {
-      claim: token_stream_cursor_empty_first_absent_holds,
-      expected: true
-    }
-  },
-  UnifiedTestClaim {
-    label: "parse/token_stream_cursor: remaining list view matches skip(all,pos)",
-    witness: BoolWitnessClaim {
-      claim: token_stream_cursor_remaining_matches_skip_holds,
-      expected: true
-    }
-  }
-]

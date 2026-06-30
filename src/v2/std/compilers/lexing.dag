@@ -99,8 +99,6 @@ type Token {
   end: Int
 }
 
-// O(1) cursor over a shared token list. advance(n) bumps pos only; all is never
-// re-materialized (parse-C substrate — dissolves List<Token>+skip(1) O(N^2) idiom).
 type TokenStream {
   all: List<Token>
   pos: Int
@@ -126,8 +124,6 @@ fn token_stream_remaining_count(stream: TokenStream) -> Int {
   length(xs: stream.all) - stream.pos
 }
 
-// Transitional list view of the unconsumed tail. Hot parse paths migrate to
-// token_stream_first / token_stream_advance (v1/02_parse.dag lands on shape-sign).
 fn token_stream_remaining(stream: TokenStream) -> List<Token> {
   skip(xs: stream.all, n: stream.pos)
 }
