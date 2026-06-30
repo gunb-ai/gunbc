@@ -7,26 +7,28 @@ import extdeps.languages.bash.program {
   ShellProgram, ShellStmt, ShellWord,
   lit, var_ref, command, serialize_bash
 }
-import tools.host_prelude { ensure_regen_stage0_built, ensure_gunbc_built }
+import std.disposition { Disposition, Scaffold, RealizationDispatch }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import tools.host_prelude { ensure_gunbc_built }
 import tools.self_host_realized_comparison_transport {
-  realized_comparison_stable_dir,
-  realized_comparison_roster_manifest_path
+  realized_comparison_program
 }
 
 data srfc_gate_test_entry: String = "src/v2/workflow/self_host_realized_comparison_claims.dag"
 data srfc_staleness_gate_witness: String = "self_host_realized_comparison_staleness_gate_holds"
 data srfc_provenance_witness: String = "self_host_realized_comparison_reads_real_bytes_both_sides_holds"
 
-fn srfc_source_root_flags() -> List<ShellWord> {
-  fold(witness_layer_roots, init: [], f: (acc, r) => concat(acc, [lit(text: "--source-root"), lit(text: r)]))
+data self_host_realized_comparison_gate_disposition: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "extdeps.languages.bash.program",
+    decl_name: "serialize_bash",
+    field: WholeDeclaration
+  }
 }
 
-fn srfc_emit_stmt() -> ShellStmt {
-  command(words: [
-    var_ref(name: "REGEN_STAGE0"),
-    lit(text: "--emit-fresh"), lit(text: realized_comparison_stable_dir),
-    lit(text: "--write-manifest"), lit(text: realized_comparison_roster_manifest_path)
-  ])
+fn srfc_source_root_flags() -> List<ShellWord> {
+  fold(witness_layer_roots, init: [], f: (acc, r) => concat(acc, [lit(text: "--source-root"), lit(text: r)]))
 }
 
 fn srfc_gunbc_claim_run(function: String) -> ShellStmt {
@@ -44,10 +46,8 @@ fn realized_comparison_gate_program() -> ShellProgram {
   ShellProgram {
     set_e: true,
     statements: concat(
-      concat(ensure_regen_stage0_built(), ensure_gunbc_built()),
+      concat(realized_comparison_program().statements, ensure_gunbc_built()),
       [
-        command(words: [lit(text: "cd"), var_ref(name: "ROOT")]),
-        srfc_emit_stmt(),
         srfc_gunbc_claim_run(function: srfc_provenance_witness),
         srfc_gunbc_claim_run(function: srfc_staleness_gate_witness)
       ]
