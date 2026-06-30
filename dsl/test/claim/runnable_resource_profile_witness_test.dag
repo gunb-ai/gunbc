@@ -4,6 +4,7 @@ import std.realization_schedule {
   Runnable,
   RunnableSingleClaim,
   RunnableDiscoveryBatch,
+  ResolveScopeIsolated,
   runnable_resource_profile,
   runnable_resource_profile_negligible,
   runnable_memory_substantial,
@@ -25,7 +26,8 @@ fn witness_substantial_memory_forbids_corpus_co_residence() -> Bool {
     profile: runnable_resource_profile(
       heavy_whole_tree_resolve: false,
       spawns_host_compiler: false,
-      memory: runnable_memory_substantial(predicted_peak: byte_size(count: 1))
+      memory: runnable_memory_substantial(predicted_peak: byte_size(count: 1)),
+      resolve_scope: ResolveScopeIsolated
     )
   }
   runnable_forbids_corpus_co_residence(r: heavy)
@@ -40,7 +42,8 @@ fn witness_corpus_never_forbids_co_residence() -> Bool {
     profile: runnable_resource_profile(
       heavy_whole_tree_resolve: true,
       spawns_host_compiler: false,
-      memory: runnable_memory_substantial(predicted_peak: byte_size(count: 3226056704))
+      memory: runnable_memory_substantial(predicted_peak: byte_size(count: 3226056704)),
+      resolve_scope: ResolveScopeIsolated
     )
   }
   !runnable_forbids_corpus_co_residence(r: corpus)
@@ -53,7 +56,8 @@ fn witness_memory_sum_matches_byte_totals() -> Bool {
   byte_size_count(b: runnable_predicted_space(profile: runnable_resource_profile(
     heavy_whole_tree_resolve: false,
     spawns_host_compiler: false,
-    memory: sum
+    memory: sum,
+    resolve_scope: ResolveScopeIsolated
   ))) == 300
 }
 

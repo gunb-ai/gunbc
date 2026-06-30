@@ -40,6 +40,9 @@ import std.realization_schedule {
   RunnableSingleClaim,
   RunnableDiscoveryBatch,
   RunnableResourceProfile,
+  ResolveScope,
+  ResolveScopeShared,
+  ResolveScopeIsolated,
   runnable_resource_profile,
   runnable_resource_profile_negligible,
   runnable_memory_negligible,
@@ -103,31 +106,36 @@ fn gate_runnable_profile(g: Gate) -> RunnableResourceProfile {
       runnable_resource_profile(
         heavy_whole_tree_resolve: true,
         spawns_host_compiler: false,
-        memory: per_shard
+        memory: per_shard,
+        resolve_scope: ResolveScopeShared
       )
     SourceRootIngestGate =>
       runnable_resource_profile(
         heavy_whole_tree_resolve: true,
         spawns_host_compiler: false,
-        memory: per_shard
+        memory: per_shard,
+        resolve_scope: ResolveScopeShared
       )
     RegenVerifyGate =>
       runnable_resource_profile(
         heavy_whole_tree_resolve: true,
         spawns_host_compiler: true,
-        memory: runnable_memory_substantial_sum(left: per_shard, right: host_compiler)
+        memory: runnable_memory_substantial_sum(left: per_shard, right: host_compiler),
+        resolve_scope: ResolveScopeShared
       )
     EmitDeterminismGate =>
       runnable_resource_profile(
         heavy_whole_tree_resolve: true,
         spawns_host_compiler: true,
-        memory: runnable_memory_substantial_sum(left: per_shard, right: host_compiler)
+        memory: runnable_memory_substantial_sum(left: per_shard, right: host_compiler),
+        resolve_scope: ResolveScopeShared
       )
     EmitHostGate =>
       runnable_resource_profile(
         heavy_whole_tree_resolve: false,
         spawns_host_compiler: true,
-        memory: host_compiler
+        memory: host_compiler,
+        resolve_scope: ResolveScopeIsolated
       )
     RustMonolithGate => runnable_resource_profile_negligible()
     LayeringImportsGate => runnable_resource_profile_negligible()
@@ -171,7 +179,8 @@ fn corpus_runnable() -> Runnable {
     profile: runnable_resource_profile(
       heavy_whole_tree_resolve: true,
       spawns_host_compiler: false,
-      memory: runnable_memory_substantial(predicted_peak: gunbc_ci_floor_per_shard_peak_rss_bytes())
+      memory: runnable_memory_substantial(predicted_peak: gunbc_ci_floor_per_shard_peak_rss_bytes()),
+      resolve_scope: ResolveScopeShared
     )
   }
 }
@@ -197,7 +206,8 @@ fn execution_corpus_runnable() -> Runnable {
     profile: runnable_resource_profile(
       heavy_whole_tree_resolve: true,
       spawns_host_compiler: false,
-      memory: runnable_memory_substantial(predicted_peak: gunbc_ci_floor_execution_corpus_per_witness_rss)
+      memory: runnable_memory_substantial(predicted_peak: gunbc_ci_floor_execution_corpus_per_witness_rss),
+      resolve_scope: ResolveScopeShared
     )
   }
 }
