@@ -5843,8 +5843,11 @@ pub fn non_fold_residue_unrostered_count() -> i64 {
 }
 
 pub fn non_fold_residue_stale_roster_count() -> i64 {
-    let live: std::collections::BTreeSet<&str> =
-        nfr_build_report().sites.iter().map(|s| s.as_str()).collect();
+    let live: std::collections::BTreeSet<&str> = nfr_build_report()
+        .sites
+        .iter()
+        .map(|s| s.as_str())
+        .collect();
     NON_FOLD_RESIDUE_ROSTER
         .iter()
         .filter(|s| !live.contains(*s))
