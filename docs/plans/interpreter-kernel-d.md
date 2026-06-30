@@ -9,7 +9,7 @@
 | class | authority / carrier | this slice | follow-up |
 | --- | --- | --- | --- |
 | pure-eval | `05_eval.dag` · `emit_host.dag` · `v2_evaluator.dag` · `host_transport.dag` · `host_run.dag` | `gunbc.interpreter_kernel_model` + `interpreter_kernel_model_witnesses` | wire `05_emit_rust` pure-eval emit → shrink `v1_interpreter.rs` eval core |
-| pinned host-physics | `recorded_fixture.rs` · `resolved_graph_cache.rs` · `rest_transport_facts.rs` · `wire_value_serialize.rs` · `cache_purity_oracle.rs` | roster + dissolution triggers in model | collapse onto Materialization kernel (`realize(subject)`); stays HAND until then |
+| pinned host-physics | `recorded_fixture.rs` · `resolved_graph_cache.rs` · `rest_transport_facts.rs` · `wire_value_serialize.rs` | roster + dissolution triggers in model | collapse onto Materialization kernel (`realize(subject)`); stays HAND until then |
 | hybrid remainder | `v1_interpreter.rs` host-effect + CLI render dispatch | explicitly NOT pinned as a whole file | split: eval → GENERATED; host dispatch → pinned submodule or `.dag` transport handlers |
 
 ## 1. Pure-eval emit seam (`emit_host`)
@@ -20,12 +20,11 @@
 
 ## 2. Pinned host-physics (transports / fixtures / cache)
 
-**Verdict:** these five `HAND_MAINTAINED` stage0 files are honestly **physics-bound** — OS/shell/network/fixture-store/cache I/O. They are pinned in the model until the §4 Materialization kernel (`realization_measurement_loop` Phase 2/3) provides one `CacheLookupResult` fold consumed by both v1 handlers and v2 `05_eval`.
+**Verdict:** these four `HAND_MAINTAINED` stage0 files are honestly **physics-bound** — OS/shell/network/fixture-store/cache I/O. They are pinned in the model until the §4 Materialization kernel (`realization_measurement_loop` Phase 2/3) provides one `CacheLookupResult` fold consumed by both v1 handlers and v2 `05_eval`.
 
 - `recorded_fixture.rs` — hermetic service replay store (M4/M5 consolidation target).
-- `resolved_graph_cache.rs` — cross-run resolve memo (content-hash keyed).
+- `resolved_graph_cache.rs` — cross-run resolve memo (content-hash keyed) + warm==cold cache-purity oracle (`audit_warm_equals_cold`).
 - `rest_transport_facts.rs` + `wire_value_serialize.rs` — REST + wire JSON host seam.
-- `cache_purity_oracle.rs` — warm==cold perturbation oracle (wiring-liveness dual reading).
 
 ## 3. Explicit non-goals (this slice)
 
@@ -37,7 +36,7 @@
 ## 4. Discriminating witness (follow-on PRs)
 
 - **Pure-eval emit:** `run_test_claim_emit_vs_eval` GREEN on a rust `EqualsClaim` row without `Deferred` transport diagnostic.
-- **Pin receipt:** pinned roster matches `regen_stage0.rs` HAND list for the five files — drift-gated when invert-hand-maintained derives the registry.
+- **Pin receipt:** pinned roster matches `regen_stage0.rs` HAND list for the four pinned host-physics files — drift-gated when invert-hand-maintained derives the registry.
 
 ## Dissolution trigger (DESIGN §6)
 

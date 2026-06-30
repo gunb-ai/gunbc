@@ -147,7 +147,9 @@ data medium_structure_exception_roster: List<String> = [
   "dsl/gunbc/ctrl_reconcile_staleness_gate.dag",
 
   "dsl/test/claim/srv3_os_install_emit_test.dag",
-  "dsl/test/claim/srv3_install_server_emit_test.dag"
+  "dsl/test/claim/srv3_install_server_emit_test.dag",
+
+  "dsl/gunbc/node_http_server_emit.dag"
 ]
 
 fn char_eq(a: Char, b: Char) -> Bool {

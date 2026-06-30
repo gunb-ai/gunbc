@@ -1,0 +1,69 @@
+module gunbc.accelerator_demo_eval
+
+import std.types { Int, List }
+import std.realization_width { int_max }
+import gunbc.accelerator_demo_program {
+  AcceleratorDemoProgram,
+  PureElementwiseMap,
+  EffectfulElementwiseMap,
+  DataDependentGatherMap,
+  ElementwiseArrayOp,
+  pure_elementwise_ops_shape_recognizable,
+}
+
+fn int_relu(x: Int) -> Int {
+  int_max(a: 0, b: x)
+}
+
+fn eval_relu_mul_add_elem_at_index(ai: Int, bi: Int, ci: Int) -> Int {
+  int_relu(x: ai * bi + ci)
+}
+
+fn eval_pure_map_at_indices(
+  ops: List<ElementwiseArrayOp>,
+  a: List<Int>,
+  b: List<Int>,
+  c: List<Int>,
+  acc: List<Int>
+) -> List<Int> {
+  if !pure_elementwise_ops_shape_recognizable(ops: ops) {
+    []
+  } else {
+    match a.first() {
+      Absent => acc
+      Present { value: ai } =>
+        match b.first() {
+          Absent => acc
+          Present { value: bi } =>
+            match c.first() {
+              Absent => acc
+              Present { value: ci } =>
+                eval_pure_map_at_indices(
+                  ops: ops,
+                  a: a.skip(n: 1),
+                  b: b.skip(n: 1),
+                  c: c.skip(n: 1),
+                  acc: concat(
+                    acc,
+                    [eval_relu_mul_add_elem_at_index(ai: ai, bi: bi, ci: ci)]
+                  )
+                )
+            }
+        }
+    }
+  }
+}
+
+fn eval_accelerator_program(
+  program: AcceleratorDemoProgram,
+  a: List<Int>,
+  b: List<Int>,
+  c: List<Int>
+) -> List<Int> {
+  match program {
+    PureElementwiseMap { ops: ops } =>
+      eval_pure_map_at_indices(ops: ops, a: a, b: b, c: c, acc: [])
+    EffectfulElementwiseMap { ops: _ } => []
+    DataDependentGatherMap { ops: _ } => []
+  }
+}

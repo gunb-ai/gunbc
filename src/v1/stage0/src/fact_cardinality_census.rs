@@ -157,7 +157,7 @@ fn walk_tree(top_root: &Path, tree: &str, records: &mut Vec<FactCardinalityDeclR
 pub fn cross_tree_decl_records() -> Vec<FactCardinalityDeclRecord> {
     let ws = workspace_root();
     let mut records = Vec::new();
-    for root in crate::module_path_index::witness_layer_roots() {
+    for root in crate::cli_run::witness_layer_roots() {
         let tree = std::path::Path::new(&root)
             .file_name()
             .expect("ci_layer_roots: each root must have a file_name component")

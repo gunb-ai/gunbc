@@ -88,10 +88,7 @@ fn copy_stage0_support_modules(stage1_dir: &std::path::Path, ws: &std::path::Pat
         "recorded_fixture.rs",
         "extdeps_shape_transport_policy_project.rs",
         "fact_cardinality_census.rs",
-        "import_resolution_project.rs",
         "languages_consumer_census.rs",
-        "layering_imports_project.rs",
-        "module_path_index.rs",
         "transport_script_position_project.rs",
         "v1_compiler_dag_collect.rs",
         "v1_compiler_dag_collect_support.rs",
@@ -154,10 +151,7 @@ fn diff_excluding_hand_maintained(
         .arg("--exclude=recorded_fixture.rs")
         .arg("--exclude=extdeps_shape_transport_policy_project.rs")
         .arg("--exclude=fact_cardinality_census.rs")
-        .arg("--exclude=import_resolution_project.rs")
         .arg("--exclude=languages_consumer_census.rs")
-        .arg("--exclude=layering_imports_project.rs")
-        .arg("--exclude=module_path_index.rs")
         .arg("--exclude=transport_script_position_project.rs")
         .arg("--exclude=v1_compiler_dag_collect.rs")
         .arg("--exclude=v1_compiler_dag_collect_support.rs")
@@ -181,7 +175,12 @@ fn diff_excluding_hand_maintained(
 
 #[test]
 fn stage0_cargo_check() {
+    // Nested `cargo check` inherits RUSTC_WRAPPER=sccache from CI. Under the
+    // full nextest parallel load, sccache can fail with exit 254 without a
+    // rustc diagnostic — mirror the CI release-build retry discipline.
     let output = std::process::Command::new("cargo")
+        .env_remove("RUSTC_WRAPPER")
+        .env("CARGO_BUILD_JOBS", "1")
         .arg("check")
         .arg("-p")
         .arg("v1-compiler")
