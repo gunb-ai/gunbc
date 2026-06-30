@@ -133,7 +133,7 @@ fn operating_row_fields(r: OperatingPointRow) -> List<SerialField> {
 
 fn operating_row_doc(r: OperatingPointRow) -> Doc {
   doc_concat(parts: [
-    DocText { text: "  " },
+    doc_text(text: "  "),
     serialize_fields_doc(knobs: manifest_record_knobs, fields: operating_row_fields(r: r)),
     DocLine
   ])
