@@ -1,0 +1,81 @@
+module gunbc.accelerator_demo_program
+
+import std.types { Int, List, Bool }
+
+type ElementwiseArrayOp
+  = ElemwiseMul
+  | ElemwiseAdd
+  | ElemwiseRelu
+
+type AcceleratorDemoProgram
+  = PureElementwiseMap { ops: List<ElementwiseArrayOp> }
+  | EffectfulElementwiseMap { ops: List<ElementwiseArrayOp> }
+  | DataDependentGatherMap { ops: List<ElementwiseArrayOp> }
+
+data relu_mul_add_ops: List<ElementwiseArrayOp> = [
+  ElemwiseMul,
+  ElemwiseAdd,
+  ElemwiseRelu,
+]
+
+data relu_mul_add_pure_program: AcceleratorDemoProgram = PureElementwiseMap {
+  ops: relu_mul_add_ops
+}
+
+data relu_mul_add_effectful_program: AcceleratorDemoProgram = EffectfulElementwiseMap {
+  ops: relu_mul_add_ops
+}
+
+data relu_mul_add_gather_program: AcceleratorDemoProgram = DataDependentGatherMap {
+  ops: relu_mul_add_ops
+}
+
+fn elementwise_op_count(program: AcceleratorDemoProgram) -> Int {
+  match program {
+    PureElementwiseMap { ops: ops } => ops.length()
+    EffectfulElementwiseMap { ops: ops } => ops.length()
+    DataDependentGatherMap { ops: ops } => ops.length()
+  }
+}
+
+fn program_ops(program: AcceleratorDemoProgram) -> List<ElementwiseArrayOp> {
+  match program {
+    PureElementwiseMap { ops: ops } => ops
+    EffectfulElementwiseMap { ops: ops } => ops
+    DataDependentGatherMap { ops: ops } => ops
+  }
+}
+
+fn elementwise_op_code(op: ElementwiseArrayOp) -> Int {
+  match op {
+    ElemwiseMul => 1
+    ElemwiseAdd => 2
+    ElemwiseRelu => 3
+  }
+}
+
+fn elementwise_op_codes(ops: List<ElementwiseArrayOp>) -> List<Int> {
+  match ops.first() {
+    Absent => []
+    Present { value: head } =>
+      concat(
+        [elementwise_op_code(op: head)],
+        elementwise_op_codes(ops: ops.skip(n: 1))
+      )
+  }
+}
+
+fn program_op_codes(program: AcceleratorDemoProgram) -> List<Int> {
+  elementwise_op_codes(ops: program_ops(program: program))
+}
+
+fn relu_mul_add_op_codes_match(codes: List<Int>) -> Bool {
+  codes.length() == 3
+    && codes.first() == Present { value: 1 }
+    && codes.skip(n: 1).first() == Present { value: 2 }
+    && codes.skip(n: 2).first() == Present { value: 3 }
+}
+
+fn pure_elementwise_ops_shape_recognizable(ops: List<ElementwiseArrayOp>) -> Bool {
+  relu_mul_add_op_codes_match(codes: elementwise_op_codes(ops: ops))
+}

@@ -5259,21 +5259,22 @@ fn eval_builtin(
             Ok(Some(eval_filesystem_read_builtin(path, ctx)?))
         }
 
-        "contiguous_loop_relu_mul_add_kernel" => {
-            let a = expect_int_list_flex(positional.first().copied(), name)?;
-            let b = expect_int_list_flex(positional.get(1).copied(), name)?;
-            let c = expect_int_list_flex(positional.get(2).copied(), name)?;
+        "contiguous_loop_elementwise_kernel" => {
+            let op_codes = expect_int_list_flex(positional.first().copied(), name)?;
+            let a = expect_int_list_flex(positional.get(1).copied(), name)?;
+            let b = expect_int_list_flex(positional.get(2).copied(), name)?;
+            let c = expect_int_list_flex(positional.get(3).copied(), name)?;
             if a.len() != b.len() || b.len() != c.len() {
                 return Err(InterpError::TypeError {
                     msg: format!(
-                        "{name} requires equal-length List<Int> arguments, got lengths {}, {}, {}",
+                        "{name} requires equal-length List<Int> buffer arguments, got lengths {}, {}, {}",
                         a.len(),
                         b.len(),
                         c.len()
                     ),
                 });
             }
-            let out = v1_rt::contiguous_loop_relu_mul_add_kernel(&a, &b, &c);
+            let out = v1_rt::contiguous_loop_elementwise_kernel(&op_codes, &a, &b, &c);
             Ok(Some(list_value(
                 out.into_iter().map(Value::Int).collect::<Vec<_>>(),
             )))

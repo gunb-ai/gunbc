@@ -1,0 +1,72 @@
+module gunbc.accelerator_demo_recognizer
+
+import gunbc.accelerator_demo_program {
+  AcceleratorDemoProgram,
+  PureElementwiseMap,
+  EffectfulElementwiseMap,
+  DataDependentGatherMap,
+  pure_elementwise_ops_shape_recognizable,
+  relu_mul_add_pure_program,
+  relu_mul_add_effectful_program,
+  relu_mul_add_gather_program,
+}
+import gunbc.accelerator_demo_plan {
+  AcceleratorRecognitionOutcome,
+  Recognized,
+  Refused,
+  NotElementwisePure,
+  CarriesEffects,
+  FmaContractionViolatesContract,
+  AcceleratorUnsupportedNumericalDomain,
+  recognize_with_contract,
+  integer_exact_contract,
+}
+
+fn recognize_accelerator_program(program: AcceleratorDemoProgram) -> AcceleratorRecognitionOutcome {
+  match program {
+    PureElementwiseMap { ops: ops } =>
+      if pure_elementwise_ops_shape_recognizable(ops: ops) {
+        recognize_with_contract(
+          contract: integer_exact_contract(),
+          insist_on_fma_fused_kernel: false
+        )
+      } else {
+        Refused { reason: NotElementwisePure }
+      }
+    EffectfulElementwiseMap { ops: _ } =>
+      Refused { reason: CarriesEffects }
+    DataDependentGatherMap { ops: _ } =>
+      Refused { reason: NotElementwisePure }
+  }
+}
+
+fn witness_pure_program_structurally_recognized() -> Bool {
+  match recognize_accelerator_program(program: relu_mul_add_pure_program) {
+    Recognized { plan: _, kernel_step: _, contract: _, fidelity: _, target_medium: _ } => true
+    Refused { reason: _ } => false
+  }
+}
+
+fn witness_effectful_program_structurally_refused() -> Bool {
+  match recognize_accelerator_program(program: relu_mul_add_effectful_program) {
+    Recognized { plan: _, kernel_step: _, contract: _, fidelity: _, target_medium: _ } => false
+    Refused { reason: r } => match r {
+      CarriesEffects => true
+      NotElementwisePure => false
+      FmaContractionViolatesContract => false
+      AcceleratorUnsupportedNumericalDomain => false
+    }
+  }
+}
+
+fn witness_gather_program_structurally_refused() -> Bool {
+  match recognize_accelerator_program(program: relu_mul_add_gather_program) {
+    Recognized { plan: _, kernel_step: _, contract: _, fidelity: _, target_medium: _ } => false
+    Refused { reason: r } => match r {
+      NotElementwisePure => true
+      CarriesEffects => false
+      FmaContractionViolatesContract => false
+      AcceleratorUnsupportedNumericalDomain => false
+    }
+  }
+}

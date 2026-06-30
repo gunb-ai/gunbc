@@ -1,13 +1,15 @@
 module test.claim.accelerator_demo_execution_witness
 
 import gunbc.accelerator_demo_realize {
+  witness_single_source_program_fixture_authority,
   witness_integer_differential_bit_exact_on_fixture,
-  witness_scalar_oracle_matches_expected_fixture,
+  witness_oracle_matches_expected_fixture,
   witness_kernel_matches_expected_fixture,
   witness_differential_would_red_on_wrong_golden,
-  witness_recognized_pure_chain_executes_bit_exact,
-  witness_effectful_subgraph_execution_refused,
-  witness_data_dependent_gather_execution_refused,
+  witness_pure_program_executes_bit_exact,
+  witness_effectful_program_execution_refused,
+  witness_gather_program_execution_refused,
+  witness_structural_recognition_refusal_arms,
 }
 import gunbc.accelerator_demo_render {
   witness_render_refused_carries_effects,
@@ -16,16 +18,13 @@ import gunbc.accelerator_demo_render {
   DemoRecognized,
   DemoRefused,
 }
-import gunbc.accelerator_demo_plan {
-  recognize_elementwise_fold,
-  PureElementwiseChain,
-  Recognized,
-  Refused,
-}
+import gunbc.accelerator_demo_recognizer { recognize_accelerator_program }
+import gunbc.accelerator_demo_program { relu_mul_add_pure_program }
+import gunbc.accelerator_demo_plan { Recognized, Refused }
 
 fn witness_projected_integer_outcome_is_recognized_lossless() -> Bool {
   match project_outcome_view(
-    outcome: recognize_elementwise_fold(class: PureElementwiseChain { op_count: 3 })
+    outcome: recognize_accelerator_program(program: relu_mul_add_pure_program)
   ) {
     DemoRecognized { plan: view } =>
       view.fused_op_count == 3
@@ -35,23 +34,25 @@ fn witness_projected_integer_outcome_is_recognized_lossless() -> Bool {
   }
 }
 
-fn witness_pure_chain_recognition_still_recognized() -> Bool {
-  match recognize_elementwise_fold(class: PureElementwiseChain { op_count: 3 }) {
+fn witness_pure_program_structurally_recognized() -> Bool {
+  match recognize_accelerator_program(program: relu_mul_add_pure_program) {
     Recognized { plan: _, kernel_step: _, contract: _, fidelity: _, target_medium: _ } => true
     Refused { reason: _ } => false
   }
 }
 
 test fn accelerator_demo_execution_lane_witnesses() -> Bool {
-  witness_integer_differential_bit_exact_on_fixture()
-    && witness_scalar_oracle_matches_expected_fixture()
+  witness_single_source_program_fixture_authority()
+    && witness_integer_differential_bit_exact_on_fixture()
+    && witness_oracle_matches_expected_fixture()
     && witness_kernel_matches_expected_fixture()
     && witness_differential_would_red_on_wrong_golden()
-    && witness_recognized_pure_chain_executes_bit_exact()
-    && witness_effectful_subgraph_execution_refused()
-    && witness_data_dependent_gather_execution_refused()
+    && witness_pure_program_executes_bit_exact()
+    && witness_effectful_program_execution_refused()
+    && witness_gather_program_execution_refused()
+    && witness_structural_recognition_refusal_arms()
     && witness_render_refused_carries_effects()
     && witness_render_recognized_integer_plan_line()
     && witness_projected_integer_outcome_is_recognized_lossless()
-    && witness_pure_chain_recognition_still_recognized()
+    && witness_pure_program_structurally_recognized()
 }

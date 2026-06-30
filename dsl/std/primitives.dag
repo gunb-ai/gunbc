@@ -502,8 +502,8 @@ data atom_identity_hash_contract: PrimitiveContract = {
   carrier_cost: CarrierInsensitive
 }
 
-data contiguous_loop_relu_mul_add_kernel_contract: PrimitiveContract = {
-  name: "contiguous_loop_relu_mul_add_kernel",
+data contiguous_loop_elementwise_kernel_contract: PrimitiveContract = {
+  name: "contiguous_loop_elementwise_kernel",
   work: "n",
   output_size: "n",
   certainty: Proven,

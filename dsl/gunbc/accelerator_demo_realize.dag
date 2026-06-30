@@ -1,15 +1,26 @@
 module gunbc.accelerator_demo_realize
 
 import std.types { Bool, Int, List }
-import std.realization_width { int_max }
+import gunbc.accelerator_demo_program {
+  AcceleratorDemoProgram,
+  PureElementwiseMap,
+  EffectfulElementwiseMap,
+  DataDependentGatherMap,
+  relu_mul_add_pure_program,
+  relu_mul_add_effectful_program,
+  relu_mul_add_gather_program,
+  program_op_codes,
+}
+import gunbc.accelerator_demo_recognizer {
+  recognize_accelerator_program,
+  witness_pure_program_structurally_recognized,
+  witness_effectful_program_structurally_refused,
+  witness_gather_program_structurally_refused,
+}
+import gunbc.accelerator_demo_eval { eval_accelerator_program }
 import gunbc.accelerator_demo_plan {
   AcceleratorRecognitionOutcome,
   AcceleratorRefusalReason,
-  ElementwiseFoldClass,
-  PureElementwiseChain,
-  EffectfulSubgraph,
-  DataDependentGather,
-  recognize_elementwise_fold,
   Recognized,
   Refused,
   NotElementwisePure,
@@ -17,13 +28,11 @@ import gunbc.accelerator_demo_plan {
   FmaContractionViolatesContract,
   AcceleratorUnsupportedNumericalDomain,
 }
-import extdeps.languages.simd.kernel {
-  contiguous_loop_relu_mul_add_kernel,
-}
+import extdeps.languages.simd.kernel { contiguous_loop_elementwise_kernel }
 
-data accelerator_demo_recognizer_dissolution_trigger: String = "dissolve-on: feature:dag-elementwise-recognizer-lens — ElementwiseFoldClass stand-in produces RealizationPlan shape; replace with read-only Node-tree lens before self-host"
+data accelerator_demo_recognizer_dissolution_trigger: String = "dissolve-on: feature:dag-elementwise-recognizer-lens — AcceleratorDemoProgram struct is stepping stone; replace with read-only Node-tree lens inspecting real map(i => …) program values"
 
-data accelerator_demo_differential_harness_dissolution_trigger: String = "dissolve-on: feature:dag-differential-witness — oracle is pure .dag decomposed mul/add/relu chain; kernel is host contiguous_loop_relu_mul_add_kernel; float+FMA bars land in follow-on slice"
+data accelerator_demo_differential_harness_dissolution_trigger: String = "dissolve-on: feature:dag-differential-witness — oracle is eval_accelerator_program on shared program fixture; kernel is host contiguous_loop_elementwise_kernel lowering program_op_codes; float+FMA bars land after single-source loop"
 
 type DifferentialVerdict
   = BitExact
@@ -32,50 +41,6 @@ type DifferentialVerdict
 type ExecutionOutcome
   = Executed { verdict: DifferentialVerdict }
   | ExecutionRefused { reason: AcceleratorRefusalReason }
-
-fn int_relu(x: Int) -> Int {
-  int_max(a: 0, b: x)
-}
-
-fn decomposed_scalar_mul_add_relu_elem(ai: Int, bi: Int, ci: Int) -> Int {
-  let prod = ai * bi
-  let sum = prod + ci
-  int_relu(x: sum)
-}
-
-fn decomposed_scalar_relu_mul_add_chain(
-  a: List<Int>,
-  b: List<Int>,
-  c: List<Int>,
-  acc: List<Int>
-) -> List<Int> {
-  match a.first() {
-    Absent => acc
-    Present { value: ai } =>
-      match b.first() {
-        Absent => acc
-        Present { value: bi } =>
-          match c.first() {
-            Absent => acc
-            Present { value: ci } =>
-              decomposed_scalar_relu_mul_add_chain(
-                a: a.skip(n: 1),
-                b: b.skip(n: 1),
-                c: c.skip(n: 1),
-                acc: concat(acc, [decomposed_scalar_mul_add_relu_elem(ai: ai, bi: bi, ci: ci)])
-              )
-          }
-      }
-  }
-}
-
-fn decomposed_scalar_relu_mul_add_oracle(
-  a: List<Int>,
-  b: List<Int>,
-  c: List<Int>
-) -> List<Int> {
-  decomposed_scalar_relu_mul_add_chain(a: a, b: b, c: c, acc: [])
-}
 
 fn demo_fixture_a() -> List<Int> {
   [2, -1, 0, 5]
@@ -119,13 +84,33 @@ fn int_list_eq(left: List<Int>, right: List<Int>) -> Bool {
   }
 }
 
-fn differential_harness(
+fn eval_program_via_kernel(
+  program: AcceleratorDemoProgram,
+  a: List<Int>,
+  b: List<Int>,
+  c: List<Int>
+) -> List<Int> {
+  match program {
+    PureElementwiseMap { ops: _ } =>
+      contiguous_loop_elementwise_kernel(
+        op_codes: program_op_codes(program: program),
+        a: a,
+        b: b,
+        c: c
+      )
+    EffectfulElementwiseMap { ops: _ } => []
+    DataDependentGatherMap { ops: _ } => []
+  }
+}
+
+fn differential_harness_for_program(
+  program: AcceleratorDemoProgram,
   a: List<Int>,
   b: List<Int>,
   c: List<Int>
 ) -> DifferentialVerdict {
-  let oracle = decomposed_scalar_relu_mul_add_oracle(a: a, b: b, c: c)
-  let kernel = contiguous_loop_relu_mul_add_kernel(a: a, b: b, c: c)
+  let oracle = eval_accelerator_program(program: program, a: a, b: b, c: c)
+  let kernel = eval_program_via_kernel(program: program, a: a, b: b, c: c)
   if int_list_eq(left: oracle, right: kernel) {
     BitExact
   } else {
@@ -133,22 +118,30 @@ fn differential_harness(
   }
 }
 
-fn execute_recognized_elementwise(
-  class: ElementwiseFoldClass,
+fn execute_accelerator_program(
+  program: AcceleratorDemoProgram,
   a: List<Int>,
   b: List<Int>,
   c: List<Int>
 ) -> ExecutionOutcome {
-  match recognize_elementwise_fold(class: class) {
+  match recognize_accelerator_program(program: program) {
     Recognized { plan: _, kernel_step: _, contract: _, fidelity: _, target_medium: _ } =>
-      Executed { verdict: differential_harness(a: a, b: b, c: c) }
+      Executed {
+        verdict: differential_harness_for_program(program: program, a: a, b: b, c: c)
+      }
     Refused { reason: reason } =>
       ExecutionRefused { reason: reason }
   }
 }
 
+fn witness_single_source_program_fixture_authority() -> Bool {
+  witness_pure_program_structurally_recognized()
+    && witness_integer_differential_bit_exact_on_fixture()
+}
+
 fn witness_integer_differential_bit_exact_on_fixture() -> Bool {
-  match differential_harness(
+  match differential_harness_for_program(
+    program: relu_mul_add_pure_program,
     a: demo_fixture_a(),
     b: demo_fixture_b(),
     c: demo_fixture_c()
@@ -158,9 +151,10 @@ fn witness_integer_differential_bit_exact_on_fixture() -> Bool {
   }
 }
 
-fn witness_scalar_oracle_matches_expected_fixture() -> Bool {
+fn witness_oracle_matches_expected_fixture() -> Bool {
   int_list_eq(
-    left: decomposed_scalar_relu_mul_add_oracle(
+    left: eval_accelerator_program(
+      program: relu_mul_add_pure_program,
       a: demo_fixture_a(),
       b: demo_fixture_b(),
       c: demo_fixture_c()
@@ -170,7 +164,8 @@ fn witness_scalar_oracle_matches_expected_fixture() -> Bool {
 }
 
 fn witness_kernel_matches_expected_fixture() -> Bool {
-  let kernel = contiguous_loop_relu_mul_add_kernel(
+  let kernel = eval_program_via_kernel(
+    program: relu_mul_add_pure_program,
     a: demo_fixture_a(),
     b: demo_fixture_b(),
     c: demo_fixture_c()
@@ -180,7 +175,8 @@ fn witness_kernel_matches_expected_fixture() -> Bool {
 
 fn witness_differential_would_red_on_wrong_golden() -> Bool {
   !int_list_eq(
-    left: decomposed_scalar_relu_mul_add_oracle(
+    left: eval_accelerator_program(
+      program: relu_mul_add_pure_program,
       a: demo_fixture_a(),
       b: demo_fixture_b(),
       c: demo_fixture_c()
@@ -189,9 +185,9 @@ fn witness_differential_would_red_on_wrong_golden() -> Bool {
   )
 }
 
-fn witness_recognized_pure_chain_executes_bit_exact() -> Bool {
-  match execute_recognized_elementwise(
-    class: PureElementwiseChain { op_count: 3 },
+fn witness_pure_program_executes_bit_exact() -> Bool {
+  match execute_accelerator_program(
+    program: relu_mul_add_pure_program,
     a: demo_fixture_a(),
     b: demo_fixture_b(),
     c: demo_fixture_c()
@@ -204,9 +200,9 @@ fn witness_recognized_pure_chain_executes_bit_exact() -> Bool {
   }
 }
 
-fn witness_effectful_subgraph_execution_refused() -> Bool {
-  match execute_recognized_elementwise(
-    class: EffectfulSubgraph,
+fn witness_effectful_program_execution_refused() -> Bool {
+  match execute_accelerator_program(
+    program: relu_mul_add_effectful_program,
     a: demo_fixture_a(),
     b: demo_fixture_b(),
     c: demo_fixture_c()
@@ -221,9 +217,9 @@ fn witness_effectful_subgraph_execution_refused() -> Bool {
   }
 }
 
-fn witness_data_dependent_gather_execution_refused() -> Bool {
-  match execute_recognized_elementwise(
-    class: DataDependentGather,
+fn witness_gather_program_execution_refused() -> Bool {
+  match execute_accelerator_program(
+    program: relu_mul_add_gather_program,
     a: demo_fixture_a(),
     b: demo_fixture_b(),
     c: demo_fixture_c()
@@ -236,4 +232,9 @@ fn witness_data_dependent_gather_execution_refused() -> Bool {
       AcceleratorUnsupportedNumericalDomain => false
     }
   }
+}
+
+fn witness_structural_recognition_refusal_arms() -> Bool {
+  witness_effectful_program_structurally_refused()
+    && witness_gather_program_structurally_refused()
 }
