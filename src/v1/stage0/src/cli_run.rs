@@ -4872,7 +4872,8 @@ pub fn emit_source_root_ingest_manifest(
 #[cfg(test)]
 mod inert_lens_hygiene_tests {
     use super::{
-        discover_floor_corpus_rows, inert_lens_modules, is_top_level_lens_module, DiscoveryRow,
+        default_source_roots, discover_floor_corpus_rows, inert_lens_modules,
+        is_top_level_lens_module, witness_discovery_scan_dirs, DiscoveryRow,
         FLOOR_DISCOVERY_EXCLUDES,
     };
     use std::collections::HashMap;
