@@ -82,16 +82,18 @@ fn concept_from_decl(decl: ConceptDecl) -> QualifiedConcept {
   }
 }
 
-fn enumerate_concepts() -> List<QualifiedConcept> {
-  fold(concept_decl_facts_live(), init: Empty, f: fn(acc, decl) {
+fn enumerate_concepts_from_decls(decls: List<ConceptDecl>) -> List<QualifiedConcept> {
+  fold(decls, init: Empty, f: fn(acc, decl) {
     list_snoc_item(xs: acc, item: concept_from_decl(decl: decl))
   })
 }
 
+fn enumerate_concepts() -> List<QualifiedConcept> {
+  enumerate_concepts_from_decls(decls: concept_decl_facts_live())
+}
+
 fn enumerate_concepts_in(pool_roots: List<String>) -> List<QualifiedConcept> {
-  fold(concept_decl_facts(pool_roots: pool_roots), init: Empty, f: fn(acc, decl) {
-    list_snoc_item(xs: acc, item: concept_from_decl(decl: decl))
-  })
+  enumerate_concepts_from_decls(decls: concept_decl_facts(pool_roots: pool_roots))
 }
 
 fn list_contains_name_index(acc: List<ConceptByName>, name: String) -> Bool {

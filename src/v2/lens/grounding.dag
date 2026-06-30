@@ -28,7 +28,8 @@ import v2.std.concept_index {
   QualifiedConcept,
   build_concept_name_index,
   concept_decl_facts,
-  concept_from_decl
+  concept_from_decl,
+  enumerate_concepts_from_decls
 }
 import v2.std.node { Node }
 import v2.std.node_query {
@@ -330,12 +331,6 @@ fn filter_layer_included(rows: List<GroundingWorklistEntry>) -> List<GroundingWo
     } else {
       list_snoc_item(xs: acc, item: row)
     }
-  })
-}
-
-fn enumerate_concepts_from_decls(decls: List<ConceptDecl>) -> List<QualifiedConcept> {
-  fold(decls, init: [], f: fn(acc, decl) {
-    list_snoc_item(xs: acc, item: concept_from_decl(decl: decl))
   })
 }
 
