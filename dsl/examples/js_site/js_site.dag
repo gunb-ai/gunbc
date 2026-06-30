@@ -1,0 +1,195 @@
+module examples.js_site
+
+import std.markup {
+  MarkupNode,
+  MarkupAttr,
+  ElementNode,
+  TextNode,
+}
+import extdeps.communication.medium { Medium, Lossy }
+import std.disposition { Disposition, Scaffold, SubstrateMandatoryTag }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+type JsSitePageId = Home | Browse | About
+
+type JsSitePage {
+  id: JsSitePageId
+  path: String
+  tsx_fn_name: String
+  node: MarkupNode
+}
+
+fn js_site_nav_link(href: String, label: String) -> MarkupNode {
+  ElementNode {
+    tag: "a",
+    attrs: [ MarkupAttr { name: "href", value: href } ],
+    children: [ TextNode { text: label } ],
+  }
+}
+
+fn js_site_header() -> MarkupNode {
+  ElementNode {
+    tag: "header",
+    attrs: [],
+    children: [
+      ElementNode {
+        tag: "h1",
+        attrs: [],
+        children: [ TextNode { text: "gunbc" } ],
+      },
+      ElementNode {
+        tag: "nav",
+        attrs: [],
+        children: [
+          js_site_nav_link(href: "/", label: "Home"),
+          js_site_nav_link(href: "/about", label: "About"),
+          js_site_nav_link(href: "/browse", label: "Browse"),
+        ],
+      },
+    ],
+  }
+}
+
+fn js_site_page_shell(title: String, main: MarkupNode) -> MarkupNode {
+  ElementNode {
+    tag: "html",
+    attrs: [],
+    children: [
+      ElementNode {
+        tag: "head",
+        attrs: [],
+        children: [
+          ElementNode {
+            tag: "title",
+            attrs: [],
+            children: [ TextNode { text: title } ],
+          },
+        ],
+      },
+      ElementNode {
+        tag: "body",
+        attrs: [],
+        children: [
+          js_site_header(),
+          ElementNode {
+            tag: "main",
+            attrs: [],
+            children: [ main ],
+          },
+        ],
+      },
+    ],
+  }
+}
+
+fn js_site_home_main() -> MarkupNode {
+  ElementNode {
+    tag: "p",
+    attrs: [],
+    children: [
+      TextNode {
+        text: "DAG-modeled compiler. One MarkupNode source, two realizations.",
+      },
+    ],
+  }
+}
+
+fn js_site_about_main() -> MarkupNode {
+  ElementNode {
+    tag: "p",
+    attrs: [],
+    children: [
+      TextNode {
+        text: "gunbc models programs as dependency graphs. Rust is bootstrap seed.",
+      },
+    ],
+  }
+}
+
+fn js_site_doc_link(name: String, path: String) -> MarkupNode {
+  ElementNode {
+    tag: "li",
+    attrs: [],
+    children: [
+      ElementNode {
+        tag: "a",
+        attrs: [ MarkupAttr { name: "href", value: path } ],
+        children: [ TextNode { text: name } ],
+      },
+    ],
+  }
+}
+
+fn js_site_browse_main() -> MarkupNode {
+  ElementNode {
+    tag: "ul",
+    attrs: [],
+    children: [
+      js_site_doc_link(name: "dsl", path: "/dsl"),
+      js_site_doc_link(name: "src", path: "/src"),
+      js_site_doc_link(name: "DESIGN.md", path: "/DESIGN.md"),
+      js_site_doc_link(name: "ROADMAP.md", path: "/ROADMAP.md"),
+    ],
+  }
+}
+
+fn js_site_home_page() -> MarkupNode {
+  js_site_page_shell(title: "gunbc — Home", main: js_site_home_main())
+}
+
+fn js_site_about_page() -> MarkupNode {
+  js_site_page_shell(title: "gunbc — About", main: js_site_about_main())
+}
+
+fn js_site_browse_page() -> MarkupNode {
+  js_site_page_shell(title: "gunbc — Browse", main: js_site_browse_main())
+}
+
+fn js_site_pages() -> List<JsSitePage> {
+  [
+    JsSitePage {
+      id: Home,
+      path: "/",
+      tsx_fn_name: "JsSiteHomePage",
+      node: js_site_home_page(),
+    },
+    JsSitePage {
+      id: Browse,
+      path: "/browse",
+      tsx_fn_name: "JsSiteBrowsePage",
+      node: js_site_browse_page(),
+    },
+    JsSitePage {
+      id: About,
+      path: "/about",
+      tsx_fn_name: "JsSiteAboutPage",
+      node: js_site_about_page(),
+    },
+  ]
+}
+
+fn js_site_page_count() -> Int {
+  count(xs: js_site_pages())
+}
+
+fn js_site_interactivity_exhaustion_exemplar() -> MarkupNode {
+  ElementNode {
+    tag: "button",
+    attrs: [ MarkupAttr { name: "onClick", value: "handleClick" } ],
+    children: [ TextNode { text: "Go" } ],
+  }
+}
+
+data js_site_markup_to_jsx_interactivity_medium: Medium<MarkupNode> = Medium {
+  carried: js_site_interactivity_exhaustion_exemplar(),
+  fidelity: Lossy
+}
+
+data js_site_expression_prop_markup_debt: Disposition = Scaffold {
+  dissolves_to: SubstrateMandatoryTag,
+  bind: DeclarationRef {
+    module_path: "std.markup",
+    decl_name: "MarkupAttr",
+    field: WholeDeclaration
+  }
+}
