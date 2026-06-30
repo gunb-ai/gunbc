@@ -4,11 +4,11 @@ use std::rc::Rc;
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use v1_compiler::resolved_graph_cache::{
-    audit_warm_equals_cold, AuditedRealization, CachePurityViolation, HiddenInputProbe,
-};
 use v1_compiler::cli_run::{
     build_multi_entry_index, load_sources_for_entry, resolve_entry_graph, resolve_entry_with_index,
+};
+use v1_compiler::resolved_graph_cache::{
+    audit_warm_equals_cold, AuditedRealization, CachePurityViolation, HiddenInputProbe,
 };
 use v1_compiler::resolved_graph_cache::{
     serialize_fixture_payload_for_test, subject_digest_for_closure,
