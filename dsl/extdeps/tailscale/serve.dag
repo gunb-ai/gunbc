@@ -1,0 +1,40 @@
+module extdeps.tailscale.serve
+
+import std.types { NonEmptyStr, Int, Bool, String }
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "tailscale.com/kb/1242/tailscale-serve"
+  }
+}
+
+service tailscale.Serve {
+  operation EnableBackground {
+    input { local_port: Int }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["tailscale", "serve", "--bg", "{local_port}"] }
+    exit {
+      0 => Unit
+      nonzero => String "tailscale serve failed"
+    }
+  }
+
+  operation Status {
+    input {}
+    output { stdout: String from "stdout" }
+    readonly
+    transport shell { argv: ["tailscale", "serve", "status"] }
+    exit {
+      0 => Unit
+      nonzero => String "tailscale serve status failed"
+    }
+  }
+}

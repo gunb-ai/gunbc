@@ -1,0 +1,53 @@
+module gunbc.live_deploy_apply
+
+import gunbc.live_deploy {
+  LiveDeployPlan,
+  LiveDeployPackageDependency,
+  live_deploy_plan_srv1,
+  live_deploy_dependency_ensure_script,
+}
+import gunbc.live_deploy_emit { live_deploy_remote_script_for }
+import gunbc.host_effect {
+  ShellCommand,
+  HostOs,
+  OneShotIdempotent,
+  LocalShell,
+  SshShell,
+  HostEffectIntent,
+  HostEffectEvidence,
+}
+import gunbc.host_effect_realize { host_effect_apply }
+import std.realization_reconcile { Reconciliation }
+
+fn live_deploy_dependency_ensure_via_ssh(
+  plan: LiveDeployPlan,
+  dep: LiveDeployPackageDependency
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  host_effect_apply(
+    target: HostOs { node: plan.target.host },
+    effect: ShellCommand { script: live_deploy_dependency_ensure_script(dep: dep) },
+    policy: OneShotIdempotent,
+    transport: SshShell { ssh_host: plan.target.ssh_host }
+  )
+}
+
+fn live_deploy_orchestrate_via_local_ssh(plan: LiveDeployPlan) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  let remote = live_deploy_remote_script_for(plan: plan)
+  let wrapped = concat(
+    concat(
+      concat(concat("ssh ", plan.target.ssh_host), " bash -s <<'GUNBC_LIVE_DEPLOY_EOF'\n"),
+      remote
+    ),
+    "\nGUNBC_LIVE_DEPLOY_EOF"
+  )
+  host_effect_apply(
+    target: HostOs { node: plan.target.host },
+    effect: ShellCommand { script: wrapped },
+    policy: OneShotIdempotent,
+    transport: LocalShell
+  )
+}
+
+fn live_deploy_orchestrate_srv1() -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  live_deploy_orchestrate_via_local_ssh(plan: live_deploy_plan_srv1())
+}

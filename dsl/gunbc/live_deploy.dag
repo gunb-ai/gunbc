@@ -1,0 +1,113 @@
+module gunbc.live_deploy
+
+import std.types { String, NonEmptyStr, List, Int, Bool }
+import std.os.types { Apt, UbuntuOs, NobleNumbat2404Lts, OsPackageManager }
+import extdeps.os.ubuntu { ubuntu_distribution_catalog_row }
+import extdeps.apt {
+  package_tailscale,
+  package_nodejs,
+}
+import gunbc.fleet_intent { srv1_host, ComputeHost }
+import gunbc.fleet_intent_network {
+  srv1_tailscale_endpoint,
+}
+import gunbc.node_http_server_emit {
+  gunbhub_node_http_static_server_spec,
+}
+import extdeps.http.server { HttpServerListenConfig }
+import product.network_topology { NetworkEndpoint }
+
+type LiveDeployPackageDependency {
+  package: NonEmptyStr
+}
+
+type LiveDeployHostTarget {
+  host: ComputeHost
+  ssh_host: NonEmptyStr
+  tailscale_endpoint: NetworkEndpoint
+  os_package_manager: OsPackageManager
+}
+
+type LiveDeployServiceConfig {
+  unit_name: NonEmptyStr
+  install_dir: NonEmptyStr
+  server_entry: NonEmptyStr
+  listen: HttpServerListenConfig
+}
+
+type LiveDeployPlan {
+  target: LiveDeployHostTarget
+  dependencies: List<LiveDeployPackageDependency>
+  service: LiveDeployServiceConfig
+}
+
+data gunbc_live_deploy_unit_name: NonEmptyStr = "gunbc-serve.service"
+data gunbc_live_deploy_install_dir: NonEmptyStr = "/opt/gunbc/serve"
+data gunbc_live_deploy_server_entry: NonEmptyStr = "server.js"
+
+fn srv1_os_package_manager() -> OsPackageManager {
+  ubuntu_distribution_catalog_row(distro: NobleNumbat2404Lts).package_manager
+}
+
+fn live_deploy_dependencies_for_ubuntu() -> List<LiveDeployPackageDependency> {
+  [
+    LiveDeployPackageDependency { package: package_tailscale },
+    LiveDeployPackageDependency { package: package_nodejs },
+  ]
+}
+
+fn live_deploy_srv1_target() -> LiveDeployHostTarget {
+  LiveDeployHostTarget {
+    host: srv1_host,
+    ssh_host: srv1_tailscale_endpoint.address as NonEmptyStr,
+    tailscale_endpoint: srv1_tailscale_endpoint,
+    os_package_manager: srv1_os_package_manager(),
+  }
+}
+
+fn live_deploy_service_config() -> LiveDeployServiceConfig {
+  let spec = gunbhub_node_http_static_server_spec()
+  LiveDeployServiceConfig {
+    unit_name: gunbc_live_deploy_unit_name,
+    install_dir: gunbc_live_deploy_install_dir,
+    server_entry: gunbc_live_deploy_server_entry,
+    listen: spec.listen,
+  }
+}
+
+fn live_deploy_plan_srv1() -> LiveDeployPlan {
+  LiveDeployPlan {
+    target: live_deploy_srv1_target(),
+    dependencies: live_deploy_dependencies_for_ubuntu(),
+    service: live_deploy_service_config(),
+  }
+}
+
+fn live_deploy_plan_package_manager_is_apt(plan: LiveDeployPlan) -> Bool {
+  match plan.target.os_package_manager {
+    Apt => true
+    _ => false
+  }
+}
+
+fn live_deploy_plan_host_identity(plan: LiveDeployPlan) -> String {
+  plan.target.host.identity
+}
+
+fn live_deploy_plan_ssh_host(plan: LiveDeployPlan) -> NonEmptyStr {
+  plan.target.ssh_host
+}
+
+fn live_deploy_plan_listen_port(plan: LiveDeployPlan) -> Int {
+  plan.service.listen.port
+}
+
+fn live_deploy_dependency_ensure_script(dep: LiveDeployPackageDependency) -> String {
+  concat(
+    concat(
+      concat("if ! dpkg -s ", dep.package),
+      concat(" >/dev/null 2>&1; then apt-get install -y ", dep.package)
+    ),
+    "; fi"
+  )
+}
