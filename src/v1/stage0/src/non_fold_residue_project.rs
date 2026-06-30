@@ -81,6 +81,13 @@ const NON_FOLD_MIGRATION_DEBT_ROSTER: &[&str] = &[
     "src/v2/std/compilers/target_model.dag::target_type_expr_emitted_validate_wire_shape",
     "src/v2/std/compilers/target_model.dag::target_use_site_ownership_catalog_lookup_step",
     "src/v2/test/claim/manual/eval_runtime_mvp.dag::eval_mvp2_arg_is_two_literal",
+    // (a) ManualAnchorKey closed-coproduct wildcards discovered by multiline type-index fix (2026-06-30).
+    "src/v2/lens/testgen.dag::algebra_law_subject_for_manual_anchor",
+    "src/v2/lens/testgen.dag::nat_manual_anchor_key_eq",
+    "src/v2/lens/testgen.dag::testgen_emit_language_behavior_equivalence_claim",
+    "src/v2/lens/testgen.dag::testgen_emit_refinement_preservation_claim",
+    "src/v2/test/claim/generated/coproduct_exhaustiveness.dag::anchor_is",
+    "src/v2/test/claim/generated/cross_representation_equality.dag::anchor_is_straddle",
 ];
 
 const NON_FOLD_RESIDUE_ROSTER: &[&str] = &[
@@ -133,6 +140,12 @@ const NON_FOLD_RESIDUE_ROSTER: &[&str] = &[
     "src/v2/extdeps/languages/dag.dag::dag_grammar_terminal_for_mvp1_pick_token",
     "src/v2/extdeps/languages/dag.dag::dag_grammar_terminal_for_mvp1_rec_token",
     "src/v2/extdeps/runtimes/v2_effect_io_pure.dag::effect_io_pure_backends_match",
+    "src/v2/lens/testgen.dag::algebra_law_subject_for_manual_anchor",
+    "src/v2/lens/testgen.dag::nat_manual_anchor_key_eq",
+    "src/v2/lens/testgen.dag::testgen_emit_language_behavior_equivalence_claim",
+    "src/v2/lens/testgen.dag::testgen_emit_refinement_preservation_claim",
+    "src/v2/test/claim/generated/coproduct_exhaustiveness.dag::anchor_is",
+    "src/v2/test/claim/generated/cross_representation_equality.dag::anchor_is_straddle",
     "src/v2/lens/complexity.dag::complexity_bound_dominates",
     "src/v2/lens/complexity.dag::complexity_bound_from_class",
     "src/v2/lens/cost.dag::asymptotic_class_dominates",
@@ -211,8 +224,17 @@ fn closed_coproduct_names(files: &[(String, String)]) -> BTreeSet<String> {
             i += 1;
             while i < lines.len() {
                 let nt = lines[i].trim_start();
-                if depth <= 0 && !(nt.starts_with('|') || nt.starts_with('=')) {
-                    break;
+                if depth <= 0 {
+                    if nt.is_empty() {
+                        i += 1;
+                        continue;
+                    }
+                    if !(nt.starts_with('|') || nt.starts_with('=')) {
+                        if block.contains('|') || block.contains('=') {
+                            break;
+                        }
+                        break;
+                    }
                 }
                 block.push('\n');
                 block.push_str(&strip_line_comment(lines[i]));
@@ -456,17 +478,24 @@ fn residue_sites(files: &[(String, String)]) -> Vec<String> {
 struct NonFoldReport {
     sites: Vec<String>,
     coproduct_universe: usize,
+    closed_coproduct_names: BTreeSet<String>,
 }
 
 fn build_report() -> &'static NonFoldReport {
     static REPORT: OnceLock<NonFoldReport> = OnceLock::new();
     REPORT.get_or_init(|| {
         let files = corpus_dag_files();
+        let closed_coproduct_names = closed_coproduct_names(&files);
         NonFoldReport {
             sites: residue_sites(&files),
-            coproduct_universe: closed_coproduct_names(&files).len(),
+            coproduct_universe: closed_coproduct_names.len(),
+            closed_coproduct_names,
         }
     })
+}
+
+pub fn non_fold_residue_closed_coproduct_type_names() -> &'static BTreeSet<String> {
+    &build_report().closed_coproduct_names
 }
 
 pub fn non_fold_residue_count() -> i64 {
