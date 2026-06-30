@@ -440,6 +440,21 @@ fn section_7() -> RoadmapSection {
         ],
         edges: [],
       ),
+      section_prose(content: "**Hosting / live dashboard lane** *(operator-directed)* — stand the roadmap dashboard up **live on the fleet** (srv1/srv2, `fleet_intent`), dogfooding §7's page rendering and §8's session-dashboard. Each node names the displaced cost: a roadmap you can *see and act on in a browser*, not only read as committed markdown. Binding strategy: **emit a TS/Node server** — the host bridge is an emitted artifact, the `.dag` stays the authority and Rust does not grow (§2 Realization handler; gives the modeled-but-dead `NodeHttpCreateServer*` types their consumer)."),
+      section_group(
+        label: "Hosting / live dashboard lane",
+        nodes: [
+          derivable_wi(id: "7-roadmap-html", prs: [6010], title: "**roadmap → HTML page** *(keystone)*", description: "pure projection `roadmap_model` → `MarkupNode` (`gunbc.roadmap_page`), serialized through the same XSS-safe HTML boundary as gunbhub; per-node status (open/review/done) / sizing / owner / carrier links. No substrate change.", intricacy: IntricacyMedium, volume: VolumeMedium, repo: "gunbc"),
+          derivable_wi(id: "7-live-serve", prs: [], title: "**live service on srv1/srv2**", description: "emit a TS/Node HTTP server (realization handler for `NodeHttpCreateServerEmissionTarget`) that serves the rendered pages bound to a port on a fleet host; the missing port-binding piece — today serving is a pre-rendered static table + a pure request→response fn.", intricacy: IntricacyHigh, volume: VolumeMedium, repo: "gunbc"),
+          derivable_wi(id: "7-interactivity", prs: [], title: "**interactive components** *(props / state / handlers)*", description: "`MarkupAttrValue = LiteralValue | ExprValue` coproduct + expression children; JSX emits `{…}`, HTML emit **fails closed** on expression nodes (the `DecodeFidelity` honesty boundary §5). Load-bearing `std/markup.dag` shape — sign off before authoring.", intricacy: IntricacyHigh, volume: VolumeMedium, repo: "gunbc"),
+          derivable_wi(id: "7-idea-input", prs: [], title: "**idea input → roadmap node**", description: "capture a free-form idea via the live service (dynamic POST handler) and admit it as a roadmap work node (input-envelope admission §5). Composes `7-live-serve` + `7-interactivity`.", intricacy: IntricacyMedium, volume: VolumeMedium, repo: "gunbc"),
+        ],
+        edges: [
+          RoadmapEdge { child: nid(s: "7-live-serve"), parent: nid(s: "7-roadmap-html") },
+          RoadmapEdge { child: nid(s: "7-interactivity"), parent: nid(s: "7-roadmap-html") },
+          RoadmapEdge { child: nid(s: "7-idea-input"), parent: nid(s: "7-live-serve") },
+        ],
+      ),
     ],
   }
 }
