@@ -582,7 +582,6 @@ pub fn filesystem_read(path: String) -> FilesystemReadResult {
         std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("failed to read {}: {}", path, e));
     FilesystemReadResult { content }
 }
-
 fn int_relu(x: i64) -> i64 {
     if x > 0 {
         x
@@ -591,19 +590,16 @@ fn int_relu(x: i64) -> i64 {
     }
 }
 
-/// Expected opcode wire shape from `gunbc.accelerator_demo_program` (`elemwise_mul/add/relu_op_code` rows).
-/// Host validation is fail-closed on mismatch; literals dissolve with `feature:dag-kernel-realization-handler`.
+/// Opcode wire authority: `gunbc.accelerator_demo_program.elemwise_*_op_code` rows.
 const RELU_MUL_ADD_OP_CODES: [i64; 3] = [1, 2, 3];
 
-fn assert_relu_mul_add_op_codes(op_codes: &[i64], handler: &str) {
+fn assert_relu_mul_add_op_codes(op_codes: &[i64], _handler: &str) {
     if op_codes != RELU_MUL_ADD_OP_CODES {
-        panic!(
-            "{handler}: unsupported op_codes (expected {RELU_MUL_ADD_OP_CODES:?} from gunbc.accelerator_demo_program), got {op_codes:?}"
-        );
+        panic!("unsupported op_codes in accelerator demo kernel");
     }
 }
 
-/// fma_contraction_policy: 0 = separate mul/add (FmaContractionRefused), 1 = fused FMA (Permitted).
+/// Host bridge: `.dag` passes `std.numerical_contract.FmaContractionPolicy`; interpreter maps to 0/1 until target_model emit.
 pub fn contiguous_loop_elementwise_float_kernel(
     op_codes: &[i64],
     fma_contraction_policy: i64,
@@ -622,24 +618,16 @@ pub fn contiguous_loop_elementwise_float_kernel(
                 prod + c[i]
             }
             1 => a[i].mul_add(b[i], c[i]),
-            other => panic!(
-                "contiguous_loop_elementwise_float_kernel: unknown fma_contraction_policy {other} (expected 0=refused, 1=permitted)"
-            ),
+            _ => panic!("unknown fma_contraction_policy"),
         };
-        out.push(float_relu_f64(elem));
+        out.push(if elem > 0.0 { elem } else { 0.0 });
     }
     out
 }
 
-fn float_relu_f64(x: f64) -> f64 {
-    if x > 0.0 {
-        x
-    } else {
-        0.0
-    }
-}
-
-/// Host handler for `simd-contiguous-loop` integer path.
+/// Integer oracle authority: `gunbc.accelerator_demo_eval` via interpreter `Int` binops (`*`/`+`).
+/// Host kernel uses `wrapping_*` to mirror release interpreter overflow semantics; demo fixtures
+/// stay in-range under `IntegerExact` — out-of-range inputs are outside the bit-exact bar.
 pub fn contiguous_loop_elementwise_kernel(
     op_codes: &[i64],
     a: &[i64],

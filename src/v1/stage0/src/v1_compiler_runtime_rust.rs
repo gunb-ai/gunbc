@@ -100,21 +100,28 @@ pub fn rust_runtime_source() -> String {
                         v1_rt::concat(
                             v1_rt::concat(
                                 v1_rt::concat(
-                                    v1_rt::concat(rt_header(), rt_text_lookup_work_counter()),
-                                    rt_concat_trait(),
+                                    v1_rt::concat(
+                                        v1_rt::concat(rt_header(), rt_text_lookup_work_counter()),
+                                        rt_concat_trait(),
+                                    ),
+                                    rt_string_ops(),
                                 ),
-                                rt_string_ops(),
+                                rt_collection_ops(),
                             ),
-                            rt_collection_ops(),
+                            rt_rc_container_ops(),
                         ),
-                        rt_rc_container_ops(),
+                        rt_scanner_ops(),
                     ),
-                    rt_scanner_ops(),
+                    rt_unicode_ops(),
                 ),
-                rt_unicode_ops(),
+                rt_hash_ops(),
             ),
-            rt_hash_ops(),
+            rt_filesystem(),
         ),
-        rt_filesystem(),
+        rt_accelerator_demo_kernel(),
     )
+}
+
+pub fn rt_accelerator_demo_kernel() -> String {
+    v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("fn int_relu(x: i64) -> i64 {\n".to_string(), "    if x > 0 { x } else { 0 }\n".to_string()), "}\n\n".to_string()), "/// Opcode wire authority: `gunbc.accelerator_demo_program.elemwise_*_op_code` rows.\n".to_string()), "const RELU_MUL_ADD_OP_CODES: [i64; 3] = [1, 2, 3];\n\n".to_string()), "fn assert_relu_mul_add_op_codes(op_codes: &[i64], _handler: &str) {\n".to_string()), "    if op_codes != RELU_MUL_ADD_OP_CODES {\n".to_string()), "        panic!(\"unsupported op_codes in accelerator demo kernel\");\n".to_string()), "    }\n".to_string()), "}\n\n".to_string()), "/// Host bridge: `.dag` passes `std.numerical_contract.FmaContractionPolicy`; interpreter maps to 0/1 until target_model emit.\n".to_string()), "pub fn contiguous_loop_elementwise_float_kernel(\n".to_string()), "    op_codes: &[i64],\n".to_string()), "    fma_contraction_policy: i64,\n".to_string()), "    a: &[f64],\n".to_string()), "    b: &[f64],\n".to_string()), "    c: &[f64],\n".to_string()), ") -> Vec<f64> {\n".to_string()), "    assert_relu_mul_add_op_codes(op_codes, \"contiguous_loop_elementwise_float_kernel\");\n".to_string()), "    assert_eq!(a.len(), b.len());\n".to_string()), "    assert_eq!(b.len(), c.len());\n".to_string()), "    let mut out = Vec::with_capacity(a.len());\n".to_string()), "    for i in 0..a.len() {\n".to_string()), "        let elem = match fma_contraction_policy {\n".to_string()), "            0 => {\n".to_string()), "                let prod = a[i] * b[i];\n".to_string()), "                prod + c[i]\n".to_string()), "            },\n".to_string()), "            1 => a[i].mul_add(b[i], c[i]),\n".to_string()), "            _ => panic!(\"unknown fma_contraction_policy\"),\n".to_string()), "        };\n".to_string()), "        out.push(if elem > 0.0 { elem } else { 0.0 });\n".to_string()), "    }\n".to_string()), "    out\n".to_string()), "}\n\n".to_string()), "/// Integer oracle authority: `gunbc.accelerator_demo_eval` via interpreter `Int` binops (`*`/`+`).\n".to_string()), "/// Host kernel uses `wrapping_*` to mirror release interpreter overflow semantics; demo fixtures\n".to_string()), "/// stay in-range under `IntegerExact` — out-of-range inputs are outside the bit-exact bar.\n".to_string()), "pub fn contiguous_loop_elementwise_kernel(\n".to_string()), "    op_codes: &[i64],\n".to_string()), "    a: &[i64],\n".to_string()), "    b: &[i64],\n".to_string()), "    c: &[i64],\n".to_string()), ") -> Vec<i64> {\n".to_string()), "    assert_relu_mul_add_op_codes(op_codes, \"contiguous_loop_elementwise_kernel\");\n".to_string()), "    assert_eq!(a.len(), b.len());\n".to_string()), "    assert_eq!(b.len(), c.len());\n".to_string()), "    let mut out = Vec::with_capacity(a.len());\n".to_string()), "    for i in 0..a.len() {\n".to_string()), "        let tmp = a[i].wrapping_mul(b[i]).wrapping_add(c[i]);\n".to_string()), "        out.push(int_relu(tmp));\n".to_string()), "    }\n".to_string()), "    out\n".to_string()), "}\n".to_string())
 }

@@ -5282,7 +5282,7 @@ fn eval_builtin(
 
         "contiguous_loop_elementwise_float_kernel" => {
             let op_codes = expect_int_list_flex(positional.first().copied(), name)?;
-            let fma_policy = expect_int(positional.get(1).copied(), name)?;
+            let fma_policy = expect_fma_contraction_policy_wire(positional.get(1).copied(), name)?;
             let a = expect_float_list_flex(positional.get(2).copied(), name)?;
             let b = expect_float_list_flex(positional.get(3).copied(), name)?;
             let c = expect_float_list_flex(positional.get(4).copied(), name)?;
@@ -6449,6 +6449,36 @@ fn expect_float_list_flex(val: Option<&Value>, context: &str) -> InterpResult<Ve
         }
     }
     Ok(out)
+}
+
+fn expect_fma_contraction_policy_wire(val: Option<&Value>, context: &str) -> InterpResult<i64> {
+    let Some(v) = val else {
+        return Err(InterpError::TypeError {
+            msg: format!("{context} requires FmaContractionRefused | FmaContractionPermitted"),
+        });
+    };
+    match v {
+        Value::Variant { variant_name, .. } => {
+            let name = resolve_sym(*variant_name);
+            if name == "FmaContractionRefused" {
+                Ok(0)
+            } else if name == "FmaContractionPermitted" {
+                Ok(1)
+            } else {
+                Err(InterpError::TypeError {
+                    msg: format!(
+                        "{context} requires FmaContractionRefused | FmaContractionPermitted, got `{name}`"
+                    ),
+                })
+            }
+        }
+        other => Err(InterpError::TypeError {
+            msg: format!(
+                "{context} requires FmaContractionRefused | FmaContractionPermitted, got {}",
+                other.type_label()
+            ),
+        }),
+    }
 }
 
 fn expect_int(val: Option<&Value>, context: &str) -> InterpResult<i64> {

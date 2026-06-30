@@ -19,8 +19,6 @@ import gunbc.accelerator_demo_program {
   relu_mul_add_effectful_program,
   relu_mul_add_gather_program,
   program_op_codes,
-  fma_contraction_refused_policy_code,
-  fma_contraction_permitted_policy_code,
 }
 import gunbc.accelerator_demo_recognizer {
   recognize_accelerator_program,
@@ -299,7 +297,7 @@ fn float_list_eq(left: List<Float>, right: List<Float>) -> Bool {
 
 fn eval_float_program_via_kernel(
   program: AcceleratorDemoProgram,
-  fma_contraction_policy: Int,
+  fma_contraction_policy: FmaContractionPolicy,
   a: List<Float>,
   b: List<Float>,
   c: List<Float>
@@ -320,7 +318,7 @@ fn eval_float_program_via_kernel(
 
 fn float_differential_harness_for_program(
   program: AcceleratorDemoProgram,
-  fma_contraction_policy: Int,
+  fma_contraction_policy: FmaContractionPolicy,
   a: List<Float>,
   b: List<Float>,
   c: List<Float>
@@ -343,7 +341,7 @@ fn float_differential_harness_for_program(
 fn witness_float_fma_refused_bit_exact_on_fixture() -> Bool {
   match float_differential_harness_for_program(
     program: relu_mul_add_pure_program,
-    fma_contraction_policy: fma_contraction_refused_policy_code(),
+    fma_contraction_policy: FmaContractionRefused,
     a: float_fma_discriminating_a(),
     b: float_fma_discriminating_b(),
     c: float_fma_discriminating_c()
@@ -377,7 +375,7 @@ fn witness_float_fma_permitted_is_declared_lossy_not_bit_exact() -> Bool {
   )
   let kernel = eval_float_program_via_kernel(
     program: relu_mul_add_pure_program,
-    fma_contraction_policy: fma_contraction_permitted_policy_code(),
+    fma_contraction_policy: FmaContractionPermitted,
     a: float_fma_discriminating_a(),
     b: float_fma_discriminating_b(),
     c: float_fma_discriminating_c()
