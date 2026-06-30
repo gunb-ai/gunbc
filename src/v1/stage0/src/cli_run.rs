@@ -5562,8 +5562,12 @@ pub struct LanguagesDeclConsumerRecord {
 fn languages_decl_records_inner() -> Vec<LanguagesDeclConsumerRecord> {
     let ws = workspace_root();
     let authority = ws.join(LANGUAGES_AUTHORITY_REL);
-    let authority_content = std::fs::read_to_string(&authority)
-        .unwrap_or_else(|e| panic!("languages_consumer_census: failed to read {}: {e}", authority.display()));
+    let authority_content = std::fs::read_to_string(&authority).unwrap_or_else(|e| {
+        panic!(
+            "languages_consumer_census: failed to read {}: {e}",
+            authority.display()
+        )
+    });
     let decl_names = languages_census_extract_data_decl_names(&authority_content);
     let decl_name_set: HashSet<String> = decl_names.iter().cloned().collect();
 
