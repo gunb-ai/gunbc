@@ -1,5 +1,17 @@
 module gunbc.roadmap_style
 
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data css_rule_props_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.roadmap_style",
+    decl_name: "css_rule",
+    field: WholeDeclaration
+  }
+}
+
 fn css_rule(selector: String, props: String) -> String {
   join([selector, " { ", props, " }"], "")
 }
