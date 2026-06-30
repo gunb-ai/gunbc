@@ -5,7 +5,8 @@ import tools.emit_host_transport {
   run_rust_mvp2_smoke,
   run_python_mvp2_smoke,
   run_go_mvp2_smoke,
-  run_ts_mvp1_smoke
+  run_ts_mvp1_smoke,
+  run_node_http_serve_smoke
 }
 
 func run_emit_host_gate_body() -> ProcessExit {
@@ -13,11 +14,12 @@ func run_emit_host_gate_body() -> ProcessExit {
   python = run_python_mvp2_smoke()
   go = run_go_mvp2_smoke()
   ts = run_ts_mvp1_smoke()
-  return if rust && python && go && ts {
+  node_http = run_node_http_serve_smoke()
+  return if rust && python && go && ts && node_http {
     ExitSuccess
   } else {
     exit_failure(
-      reason: "emit host gate failed: one or more of rust/python/go/typescript MVP smoke rows"
+      reason: "emit host gate failed: one or more of rust/python/go/typescript/node-http MVP smoke rows"
     )
   }
 }
