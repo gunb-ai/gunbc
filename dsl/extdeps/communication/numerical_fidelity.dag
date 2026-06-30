@@ -26,6 +26,8 @@ type LoweringFidelityVerdict
   = LoweringAccepted { fidelity: DecodeFidelity }
   | LoweringRefused { reason: LoweringRefusalReason }
 
+data lowering_fidelity_verdict_refusal_dissolution_trigger: String = "dissolve-on: execution lane wires real refusal paths into lowering_fidelity_verdict_for_contract; LoweringRefused and LoweringRefusalReason are modeling-lane carriers today (verdict always returns LoweringAccepted until then)."
+
 fn decode_fidelity_for_contract(contract: NumericalContract) -> DecodeFidelity {
   match contract {
     IntegerExact => Lossless
