@@ -150,6 +150,34 @@ pub fn qualified_name_value_to_module_path(value: &crate::v1_interpreter::Value)
     crate::v1_interpreter::qualified_name_value_to_module_path(value)
 }
 
+pub fn qualified_name_value_from_dotted_string(
+    ctx: &crate::v1_interpreter::InterpContext,
+    dotted: &str,
+) -> crate::v1_interpreter::Value {
+    use crate::v1_interpreter::{sorted_fields, Value};
+    use std::rc::Rc;
+
+    let qn_variant = |variant: &str, fields: Vec<_>| Value::Variant {
+        type_name: ctx.sym("QualifiedName"),
+        variant_name: ctx.sym(variant),
+        fields: Rc::new(fields),
+    };
+    if dotted.is_empty() {
+        return qn_variant("QnEmpty", vec![]);
+    }
+    let mut qn = qn_variant("QnEmpty", vec![]);
+    for seg in dotted.split('.').rev() {
+        qn = qn_variant(
+            "QnCons",
+            sorted_fields(vec![
+                (ctx.sym("head"), Value::Str(seg.to_string())),
+                (ctx.sym("tail"), qn),
+            ]),
+        );
+    }
+    qn
+}
+
 pub(crate) fn repo_rel(path: &std::path::Path) -> String {
     let ws = workspace_root();
     let s = path.to_string_lossy().replace('\\', "/");

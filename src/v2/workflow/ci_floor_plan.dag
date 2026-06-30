@@ -75,6 +75,15 @@ data floor_corpus_node: Node = Node {
   children: []
 }
 
+data floor_grounding_whole_tree_node: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^gunbc_floor_grounding_whole_tree } },
+  children: []
+}
+
+data floor_grounding_whole_tree_entry: String = "src/v2/test/manual/grounding_lens_whole_tree_test.dag"
+
+data floor_grounding_whole_tree_function: String = "grounding_lens_whole_tree_witnesses"
+
 fn gate_node(g: Gate) -> Node {
   match g {
     RustMonolithGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_rust } }, children: [] }
@@ -173,6 +182,22 @@ fn corpus_source_roots() -> List<String> {
   witness_layer_roots
 }
 
+fn grounding_whole_tree_profile() -> RunnableResourceProfile {
+  runnable_resource_profile(
+    heavy_whole_tree_resolve: true,
+    spawns_host_compiler: false,
+    memory: runnable_memory_substantial(predicted_peak: gunbc_ci_floor_per_shard_peak_rss_bytes())
+  )
+}
+
+fn grounding_whole_tree_runnable() -> Runnable {
+  RunnableSingleClaim {
+    entry: floor_grounding_whole_tree_entry,
+    function: floor_grounding_whole_tree_function,
+    profile: grounding_whole_tree_profile()
+  }
+}
+
 fn corpus_runnable() -> Runnable {
   RunnableDiscoveryBatch {
     source_roots: corpus_source_roots(),
@@ -217,7 +242,7 @@ fn execution_corpus_runnable() -> Runnable {
 }
 
 fn floor_nodes(spec: CiSpec) -> List<Node> {
-  fold(spec.gates, init: [floor_corpus_node, execution_corpus_node], f: fn(acc, g) {
+  fold(spec.gates, init: [floor_corpus_node, execution_corpus_node, floor_grounding_whole_tree_node], f: fn(acc, g) {
     list_snoc_item(xs: acc, item: gate_node(g: g))
   })
 }
@@ -241,8 +266,12 @@ fn floor_resource_depends_on(source: Node, dependent: Node) -> DependencyView {
 }
 
 fn floor_corpus_exclusion_resource_edges(spec: CiSpec) -> List<DependencyView> {
-  let execution_after_floor = [floor_resource_depends_on(source: floor_corpus_node, dependent: execution_corpus_node)]
-  fold(spec.gates, init: execution_after_floor, f: fn(acc, g) {
+  let after_floor_corpus = [
+    floor_resource_depends_on(source: floor_corpus_node, dependent: execution_corpus_node),
+    floor_resource_depends_on(source: floor_corpus_node, dependent: floor_grounding_whole_tree_node),
+    floor_resource_depends_on(source: execution_corpus_node, dependent: floor_grounding_whole_tree_node)
+  ]
+  fold(spec.gates, init: after_floor_corpus, f: fn(acc, g) {
     let node = gate_node(g: g)
     if floor_resource_anchor_node(node: node) {
       acc
@@ -271,6 +300,7 @@ fn floor_heavy_resolve_chain_resource_edges(spec: CiSpec) -> List<DependencyView
       acc
     }
   })
+  let heavy_nodes = list_snoc_item(xs: heavy_nodes, item: floor_grounding_whole_tree_node)
   zip_map(
     a: heavy_nodes,
     b: skip(xs: heavy_nodes, n: 1),
@@ -285,7 +315,8 @@ fn floor_data_dependencies(spec: CiSpec) -> List<DependencyView> {
     spec.gates,
     init: [
       floor_depends_on_compile(dependent: floor_corpus_node),
-      floor_depends_on_compile(dependent: execution_corpus_node)
+      floor_depends_on_compile(dependent: execution_corpus_node),
+      floor_depends_on_compile(dependent: floor_grounding_whole_tree_node)
     ],
     f: fn(acc, g) {
       match g {
@@ -354,6 +385,8 @@ fn runnable_for_node(node: Node, spec: CiSpec) -> Runnable {
     corpus_runnable()
   } else if node == execution_corpus_node {
     execution_corpus_runnable()
+  } else if node == floor_grounding_whole_tree_node {
+    grounding_whole_tree_runnable()
   } else {
     fold(spec.gates, init: floor_unrunnable_sentinel(), f: fn(acc, g) {
       if node == gate_node(g: g) { gate_runnable(g: g) } else { acc }

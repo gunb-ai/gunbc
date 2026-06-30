@@ -25,7 +25,13 @@ import v2.std.layer {
   LayerPrefixWorkflow
 }
 import v2.std.logic { Bool }
-import v2.std.qualified_name { QualifiedName, QnCons, QnEmpty, qualified_name_eq }
+import v2.std.qualified_name {
+  QualifiedName,
+  QnCons,
+  QnEmpty,
+  qualified_name_eq,
+  qualified_name_from_dotted_string
+}
 import v2.std.text { String }
 
 type SourceRootBinding {
@@ -96,6 +102,12 @@ fn tree_fundamentality_order(
   }
 }
 
+fn layer_prefix_from_dotted_qualified_name(qn: String) -> LayerPrefix {
+  layer_prefix_from_qualified_name(
+    qn: qualified_name_from_dotted_string(dotted: qn)
+  )
+}
+
 fn layer_prefix_from_qualified_name(qn: QualifiedName) -> LayerPrefix {
   match qn {
     QnEmpty => LayerPrefixStd
@@ -122,6 +134,16 @@ fn layer_prefix_from_qualified_name(qn: QualifiedName) -> LayerPrefix {
         }
       } else if h == ^extdeps {
         LayerPrefixExtdeps
+      } else if h == ^std {
+        LayerPrefixStd
+      } else if h == ^compiler {
+        LayerPrefixCompiler
+      } else if h == ^lens {
+        LayerPrefixCompiler
+      } else if h == ^test {
+        LayerPrefixCompiler
+      } else if h == ^workflow {
+        LayerPrefixWorkflow
       } else if h == ^gunbc {
         LayerPrefixWorkflow
       } else if h == ^tools {

@@ -1,7 +1,8 @@
 use std::rc::Rc;
 
+use v1_compiler::cli_run;
 use v1_compiler::v1_compiler_compile::{compile_to_resolved, ResolvedPipelineResult, SourceFile};
-use v1_compiler::v1_interpreter::{self, Value};
+use v1_compiler::v1_interpreter::{self, ExecutionMode, Value};
 
 use crate::helpers::{resolve_imports_transitively_with_source_roots, workspace_root};
 
@@ -134,4 +135,26 @@ fn coproduct_reflection_connective_behavior_arm_sets_are_distinct() {
         Value::Bool(true) => {}
         other => panic!("expected distinct arm sets, got {other:?}"),
     }
+}
+
+const CONCEPT_INDEX_ENTRY: &str = "src/v2/test/claim/concept_index_enumeration_test.dag";
+
+#[test]
+fn concept_index_parse_only_perturb_witnesses_hold() {
+    let roots: Vec<String> = v2_source_roots()
+        .iter()
+        .map(|p| p.to_string_lossy().into_owned())
+        .collect();
+    let entry = workspace_root()
+        .join(CONCEPT_INDEX_ENTRY)
+        .to_string_lossy()
+        .into_owned();
+    let (graph, si) = cli_run::resolve_entry_graph(&roots, &entry).expect("resolve entry");
+    let ctx = cli_run::make_eval_context(&graph, si, ExecutionMode::Wet);
+    let outcome = cli_run::run_claim(&ctx, "concept_index_enumeration_witnesses");
+    assert_eq!(
+        outcome,
+        cli_run::ClaimOutcome::Pass,
+        "concept_index_enumeration_witnesses must pass (includes parse-only perturb-RED)"
+    );
 }
