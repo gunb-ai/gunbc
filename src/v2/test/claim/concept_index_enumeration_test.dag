@@ -46,7 +46,7 @@ fn witness_enumeration_nonempty() -> Bool {
 
 fn witness_fieldref_self_projection() -> Bool {
   concept_matches(
-    target_qn: "std.concept_index.FieldRef",
+    target_qn: "v2.std.concept_index.FieldRef",
     short_name: "FieldRef",
     field_count: 2,
     check: fn(fields) {
@@ -58,7 +58,7 @@ fn witness_fieldref_self_projection() -> Bool {
 
 fn witness_qualified_concept_self_projection() -> Bool {
   concept_matches(
-    target_qn: "std.concept_index.QualifiedConcept",
+    target_qn: "v2.std.concept_index.QualifiedConcept",
     short_name: "QualifiedConcept",
     field_count: 2,
     check: fn(fields) {
@@ -70,7 +70,7 @@ fn witness_qualified_concept_self_projection() -> Bool {
 
 fn witness_local_record_enumerated() -> Bool {
   concept_matches(
-    target_qn: "test.claim.concept_index_enumeration.ConceptIndexWitnessRecord",
+    target_qn: "v2.test.claim.concept_index_enumeration.ConceptIndexWitnessRecord",
     short_name: "ConceptIndexWitnessRecord",
     field_count: 2,
     check: fn(fields) {
@@ -81,8 +81,8 @@ fn witness_local_record_enumerated() -> Bool {
 }
 
 fn witness_absent_concept_is_false() -> Bool {
-  (idx_has_qn(target: "std.concept_index.NoSuchConceptZZZ") == false)
-    && (idx_has_qn(target: "v2.std.concept_index.FieldRef") == false)
+  (idx_has_qn(target: "v2.std.concept_index.NoSuchConceptZZZ") == false)
+    && (idx_has_qn(target: "std.concept_index.FieldRef") == false)
 }
 
 test fn concept_index_enumeration_witnesses() -> Bool {

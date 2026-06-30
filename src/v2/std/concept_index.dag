@@ -2,8 +2,16 @@ module v2.std.concept_index
 
 import v2.std.algebra { Empty, list_snoc_item }
 import v2.std.collection { List }
-import v2.std.node { Node }
-import v2.std.node_query { CoproductArm, coproduct_arm_list_from_node, coproduct_arm_payload_pair_from_arm, node_is_coproduct }
+import v2.std.node { Conj, Disj, Node, TypeNode }
+import v2.std.node_query {
+  CoproductArm,
+  coproduct_arm_list_from_node,
+  coproduct_arm_payload_pair_from_arm,
+  edge_field_type_name,
+  named_edge_sort_key,
+  node_is_coproduct,
+  node_labeled_child_edges
+}
 import v2.std.text { String }
 
 type FieldRef {
@@ -40,11 +48,28 @@ fn concept_decl_facts(pool_roots: List<String>) -> List<ConceptDecl> {
   concept_decl_facts(pool_roots: pool_roots)
 }
 
-fn field_refs_from_node(node: Node) -> List<FieldRef> {
-  fold(coproduct_arm_list_from_node(node: node), init: Empty, f: fn(acc, arm) {
-    let pair = coproduct_arm_payload_pair_from_arm(arm: arm)
-    list_snoc_item(xs: acc, item: FieldRef { field: pair.label, type_name: pair.payload_type_name })
+fn field_refs_from_conj_node(node: Node) -> List<FieldRef> {
+  fold(node_labeled_child_edges(node: node), init: Empty, f: fn(acc, e) {
+    list_snoc_item(
+      xs: acc,
+      item: FieldRef {
+        field: named_edge_sort_key(e: e),
+        type_name: edge_field_type_name(target: e.target)
+      }
+    )
   })
+}
+
+fn field_refs_from_node(node: Node) -> List<FieldRef> {
+  match node.kind {
+    TypeNode { connective: Conj } => field_refs_from_conj_node(node: node)
+    TypeNode { connective: Disj } =>
+      fold(coproduct_arm_list_from_node(node: node), init: Empty, f: fn(acc, arm) {
+        let pair = coproduct_arm_payload_pair_from_arm(arm: arm)
+        list_snoc_item(xs: acc, item: FieldRef { field: pair.label, type_name: pair.payload_type_name })
+      })
+    _ => Empty
+  }
 }
 
 fn concept_from_decl(decl: ConceptDecl) -> QualifiedConcept {
