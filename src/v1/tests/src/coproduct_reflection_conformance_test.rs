@@ -96,6 +96,12 @@ fn coproduct_reflection_std_node_bridge_fns_are_intercept_wired() {
             "eval_call intercept must wire v2.std.fn_index bridge `{name}`"
         );
     }
+    for name in v1_interpreter::std_qualified_name_bridge_fn_names() {
+        assert!(
+            source.contains(&format!("\"{name}\" =>")),
+            "eval_call intercept must wire v2.std.qualified_name bridge `{name}`"
+        );
+    }
     assert!(
         source.contains("is_v4_std_node_bridge_call"),
         "eval_call must gate v2.std.node bridge dispatch"
@@ -111,6 +117,10 @@ fn coproduct_reflection_std_node_bridge_fns_are_intercept_wired() {
     assert!(
         source.contains("is_v4_std_fn_index_bridge_call"),
         "eval_call must gate v2.std.fn_index bridge dispatch"
+    );
+    assert!(
+        source.contains("is_v4_std_qualified_name_bridge_call"),
+        "eval_call must gate v2.std.qualified_name bridge dispatch"
     );
 }
 
