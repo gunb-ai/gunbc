@@ -43,11 +43,19 @@ type SelfHostStageEmission {
 }
 
 type SelfHostStage1 {
+  phase: Symbol
   emission: SelfHostStageEmission
 }
 
 type SelfHostStage2 {
+  phase: Symbol
   emission: SelfHostStageEmission
+}
+
+type SelfHostFixpointCondition {
+  over: SelfHostEqualityRepresentation
+  stage1: SelfHostStage1
+  stage2: SelfHostStage2
 }
 
 type SelfHostFixpointEqual {
@@ -117,21 +125,40 @@ fn self_host_stage_emission(node: CoreNode) -> SelfHostStageEmission {
 
 fn self_host_stage1(node: CoreNode) -> SelfHostStage1 {
   SelfHostStage1 {
+    phase: ^self_host_first_self_compile_emission,
     emission: self_host_stage_emission(node: node)
   }
 }
 
 fn self_host_stage2(node: CoreNode) -> SelfHostStage2 {
   SelfHostStage2 {
+    phase: ^self_host_second_self_compile_emission,
     emission: self_host_stage_emission(node: node)
   }
+}
+
+fn self_host_fixpoint_condition(
+  stage1: SelfHostStage1,
+  stage2: SelfHostStage2
+) -> SelfHostFixpointCondition {
+  SelfHostFixpointCondition {
+    over: self_host_equality_representation(),
+    stage1: stage1,
+    stage2: stage2
+  }
+}
+
+fn self_host_fixpoint_condition_holds(c: SelfHostFixpointCondition) -> Bool {
+  c.stage1.emission.digest == c.stage2.emission.digest
 }
 
 fn self_host_snake_closes(
   stage1: SelfHostStage1,
   stage2: SelfHostStage2
 ) -> Bool {
-  stage1.emission.digest == stage2.emission.digest
+  self_host_fixpoint_condition_holds(
+    c: self_host_fixpoint_condition(stage1: stage1, stage2: stage2)
+  )
 }
 
 fn self_host_fixpoint_witness(
@@ -191,13 +218,10 @@ fn fixed_point_scaffold(
   emitted_stage: CoreNode,
   reference_stage: CoreNode
 ) -> FixedPointCheck {
-  Violates {
-    diagnostic: Diagnostic {
-      reason: ^fixed_point_not_realized,
-      at: node_locus(node: reference_stage),
-      correction: Unavailable { reason: ExternalContractUnknown }
-    }
-  }
+  self_host_fixpoint_witness(
+    stage1: self_host_stage1(node: reference_stage),
+    stage2: self_host_stage2(node: emitted_stage)
+  )
 }
 
 fn stage_emission_closedness(reference_stage1: CoreNode) -> StructuralPropertyWitness {
