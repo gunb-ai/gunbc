@@ -73,8 +73,8 @@ fn witness_apply_script_contains_systemd_and_tailscale() -> Bool {
     && string_contains(s: sh, pattern: "[Service]")
     && string_contains(s: sh, pattern: "systemctl enable --now gunbc-roadmap.service")
     && string_contains(s: sh, pattern: "tailscale serve --bg 8080")
-    && string_contains(s: sh, pattern: "ensure_apt_package tailscale")
-    && string_contains(s: sh, pattern: "ensure_apt_package nodejs")
+    && string_contains(s: sh, pattern: "ensure_apt_package \"tailscale\"")
+    && string_contains(s: sh, pattern: "ensure_apt_package \"nodejs\"")
     && string_contains(s: sh, pattern: "fold=apply verdict=converged")
 }
 
