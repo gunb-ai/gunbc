@@ -22,8 +22,6 @@ import std.realization_reconcile {
   Converged,
   NotConverged
 }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.types { String }
 import std.logic { Bool }
 import extdeps.languages.bash.program {
@@ -36,15 +34,6 @@ import extdeps.languages.bash.program {
 type FloorUnifiedDiffResult
   = UnifiedDiffOk { text: String }
   | UnifiedDiffFail { reason: String }
-
-data floor_diff_observe_cli_run_bridge_disposition: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "v2.workflow.floor_diff_observe",
-    decl_name: "floor_observe_git_diff_unified_for_ci",
-    field: WholeDeclaration
-  }
-}
 
 fn floor_ci_host_os() -> NodeControlPlane {
   HostOs { node: gunbc_ci_host }
