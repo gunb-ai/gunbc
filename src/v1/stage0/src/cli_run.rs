@@ -5622,6 +5622,121 @@ pub fn inert_carrier_declared_count_live() -> i64 {
 }
 
 #[cfg(test)]
+mod inert_carrier_tests {
+    use super::*;
+
+    fn inert_names_of(files: &[(&str, &str)]) -> Vec<String> {
+        let owned: Vec<(String, String)> = files
+            .iter()
+            .map(|(p, c)| (p.to_string(), c.to_string()))
+            .collect();
+        compute_inert_carrier_data(&owned).inert_names
+    }
+
+    #[test]
+    fn type_carrier_blocks_extracts_names_and_bodies() {
+        let c = "module m\ntype Connective = Atom | Conj\ntype WorkDemand {\n  field: Int\n}\nfn f() -> Int { 1 }\n";
+        let blocks = inert_carrier_type_carrier_blocks(c);
+        let names: Vec<&String> = blocks.iter().map(|(n, _)| n).collect();
+        assert_eq!(names, vec!["Connective", "WorkDemand"]);
+        let wd = &blocks.iter().find(|(n, _)| n == "WorkDemand").unwrap().1;
+        assert!(wd.contains("field: Int") && wd.contains('}'));
+        assert!(!wd.contains("fn f"));
+    }
+
+    #[test]
+    fn identifier_tokens_are_whole_words() {
+        let toks = inert_carrier_identifier_tokens("  field: PlacementSupply = foo(Placement)");
+        assert!(toks.contains(&"PlacementSupply".to_string()));
+        assert!(toks.contains(&"Placement".to_string()));
+        assert!(toks.contains(&"field".to_string()));
+    }
+
+    #[test]
+    fn red_control_self_tested_zero_consumer_carrier_is_inert() {
+        let inert = inert_names_of(&[
+            ("a.dag", "module a\ntype Lonely { x: Int }\n"),
+            (
+                "a_test.dag",
+                "module t\nfn t() -> Bool { Lonely { x: 1 } == Lonely { x: 1 } }\n",
+            ),
+        ]);
+        assert!(
+            inert.contains(&"Lonely".to_string()),
+            "a self-tested carrier with no real consumer must be flagged inert; got {inert:?}"
+        );
+    }
+
+    #[test]
+    fn green_control_carrier_with_real_consumer_is_not_inert() {
+        let inert = inert_names_of(&[
+            ("a.dag", "module a\ntype Used { x: Int }\n"),
+            (
+                "b.dag",
+                "module b\nimport a { Used }\nfn f(u: Used) -> Int { u.x }\n",
+            ),
+            (
+                "a_test.dag",
+                "module t\nfn t() -> Bool { Used { x: 1 } == Used { x: 1 } }\n",
+            ),
+        ]);
+        assert!(
+            !inert.contains(&"Used".to_string()),
+            "a carrier with a real (non-test, cross-file) consumer must NOT be flagged; got {inert:?}"
+        );
+    }
+
+    #[test]
+    fn green_control_same_file_consumer_is_not_inert() {
+        let inert = inert_names_of(&[
+            (
+                "lens.dag",
+                "module lens\ntype LocalFact { x: Int }\nfn clean(fs: LocalFact) -> Bool { fs.x == 0 }\n",
+            ),
+            ("lens_test.dag", "module t\nfn t() -> Bool { clean(fs: LocalFact { x: 0 }) }\n"),
+        ]);
+        assert!(
+            !inert.contains(&"LocalFact".to_string()),
+            "a carrier consumed by a fn in its own file is NOT inert; got {inert:?}"
+        );
+    }
+
+    #[test]
+    fn green_control_untested_unused_carrier_is_not_flagged() {
+        let inert = inert_names_of(&[("a.dag", "module a\ntype Staged { x: Int }\n")]);
+        assert!(
+            !inert.contains(&"Staged".to_string()),
+            "an untested unused carrier must NOT be flagged (it is model-first, not illusion); got {inert:?}"
+        );
+    }
+
+    #[test]
+    fn comment_reference_is_not_a_real_consumer() {
+        let inert = inert_names_of(&[
+            ("a.dag", "module a\ntype Noted { x: Int }\n"),
+            (
+                "b.dag",
+                "module b\n// Noted is described here\nfn f() -> Int { 1 }\n",
+            ),
+            (
+                "a_test.dag",
+                "module t\nfn t() -> Bool { Noted { x: 1 } == Noted { x: 1 } }\n",
+            ),
+        ]);
+        assert!(inert.contains(&"Noted".to_string()));
+    }
+
+    #[test]
+    fn doubly_declared_name_is_not_flagged() {
+        let inert = inert_names_of(&[
+            ("a.dag", "module a\ntype Dup { x: Int }\n"),
+            ("b.dag", "module b\ntype Dup { y: Int }\n"),
+        ]);
+        assert!(!inert.contains(&"Dup".to_string()));
+    }
+}
+
+#[cfg(test)]
 mod module_path_index_tests {
     use super::*;
 
