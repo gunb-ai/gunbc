@@ -1,7 +1,7 @@
 module v2.compiler.self_host
 
 import extdeps.communication.medium { Medium }
-import v2.std.algebra { fold_list, length }
+import v2.std.algebra { fold_list }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.diagnostic {
