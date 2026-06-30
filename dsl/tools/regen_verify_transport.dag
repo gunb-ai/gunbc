@@ -7,6 +7,10 @@ import extdeps.languages.bash.program {
   lit, var_ref, command, serialize_bash
 }
 import tools.host_prelude { ensure_regen_stage0_built }
+import tools.self_host_realized_comparison_transport {
+  realized_comparison_stable_dir,
+  realized_comparison_roster_manifest_path
+}
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
@@ -17,7 +21,12 @@ fn regen_verify_program() -> ShellProgram {
     set_e: true,
     statements: concat(ensure_regen_stage0_built(), [
       command(words: [lit(text: "cd"), root]),
-      command(words: [regen, lit(text: "--verify")])
+      command(words: [
+        regen,
+        lit(text: "--emit-fresh"), lit(text: realized_comparison_stable_dir),
+        lit(text: "--write-manifest"), lit(text: realized_comparison_roster_manifest_path),
+        lit(text: "--verify")
+      ])
     ])
   }
 }

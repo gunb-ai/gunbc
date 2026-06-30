@@ -2131,6 +2131,8 @@ pub(crate) const STD_NODE_BRIDGE_FNS: &[&str] = &["resolve_type_node"];
 
 pub(crate) const STD_LEXING_BRIDGE_FNS: &[&str] = &["symbol_intern_lexeme"];
 
+pub(crate) const STD_QUALIFIED_NAME_BRIDGE_FNS: &[&str] = &["qualified_name_from_dotted_string"];
+
 pub(crate) const STD_NODE_QUERY_BRIDGE_FNS: &[&str] = &["coproduct_nullary_inhabitants"];
 
 pub(crate) const STD_CONCEPT_INDEX_BRIDGE_FNS: &[&str] = &["concept_decl_facts_live"];
@@ -2151,6 +2153,10 @@ pub fn std_concept_index_bridge_fn_names() -> &'static [&'static str] {
 
 pub fn std_fn_index_bridge_fn_names() -> &'static [&'static str] {
     STD_FN_INDEX_BRIDGE_FNS
+}
+
+pub fn std_qualified_name_bridge_fn_names() -> &'static [&'static str] {
+    STD_QUALIFIED_NAME_BRIDGE_FNS
 }
 
 fn is_v4_std_node_bridge_call(ctx: &InterpContext, func_name: &str) -> bool {
@@ -2198,6 +2204,15 @@ fn is_v4_std_lexing_bridge_call(ctx: &InterpContext, func_name: &str) -> bool {
         .is_some_and(|info| info.module_name == "v2.std.compilers.lexing")
 }
 
+fn is_v4_std_qualified_name_bridge_call(ctx: &InterpContext, func_name: &str) -> bool {
+    if !STD_QUALIFIED_NAME_BRIDGE_FNS.contains(&func_name) {
+        return false;
+    }
+    ctx.item_registry
+        .get(func_name)
+        .is_some_and(|info| info.module_name == "v2.std.qualified_name")
+}
+
 fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
     let func_name = {
         let key = Rc::as_ptr(node) as usize;
@@ -2236,6 +2251,15 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
                 crate::coproduct_reflection::eval_symbol_intern_lexeme(ctx, &args)
             }
             _ => unreachable!("lexing bridge fn set mismatch"),
+        };
+    }
+
+    if is_v4_std_qualified_name_bridge_call(ctx, &func_name) {
+        return match func_name.as_str() {
+            "qualified_name_from_dotted_string" => {
+                crate::coproduct_reflection::eval_qualified_name_from_dotted_string(ctx, &args)
+            }
+            _ => unreachable!("qualified_name bridge fn set mismatch"),
         };
     }
 
@@ -5307,6 +5331,14 @@ fn eval_builtin(
                 });
             }
             Ok(Some(list_value(items)))
+        }
+
+        "concept_decl_facts" => {
+            let pool_roots = expect_str_list(positional.first().copied(), "concept_decl_facts")?;
+            Ok(Some(crate::coproduct_reflection::eval_concept_decl_facts(
+                ctx,
+                &pool_roots,
+            )?))
         }
 
         "module_declaration_facts" => {
