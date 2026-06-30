@@ -56,6 +56,10 @@ data wgsl_relu_mul_add_integer_kernel_source: String = "@group(0) @binding(0) va
 
 data wgsl_relu_mul_add_float_kernel_source: String = "@group(0) @binding(0) var<storage, read> a: array<f32>;\n@group(0) @binding(1) var<storage, read> b: array<f32>;\n@group(0) @binding(2) var<storage, read> c: array<f32>;\n@group(0) @binding(3) var<storage, read_write> out: array<f32>;\n\n@compute @workgroup_size(64)\nfn main(@builtin(global_invocation_id) gid: vec3<u32>) {\n  let i = gid.x;\n  if i >= arrayLength(&out) { return; }\n  let tmp = a[i] * b[i] + c[i];\n  out[i] = max(tmp, 0.0);\n}\n"
 
+data wgsl_kernel_handler_roadmap_bind: String = "bind: docs/plans/accelerator-demo-roundtrip.md §6 item 4 (GPU epilogue)"
+
+data host_kernel_wgsl_sources_scaffold_note: String = "regen-sync: src/v1/stage0/src/v1_rt_gpu.rs WGSL_INTEGER_KERNEL/WGSL_FLOAT_KERNEL must mirror wgsl_relu_mul_add_integer_kernel_source/wgsl_relu_mul_add_float_kernel_source, and RELU_MUL_ADD_OP_CODES must mirror relu_mul_add_wire_op_codes (extdeps.languages.simd.kernel), until feature:dag-gpu-realization-handler dissolves host literals into target_model emit; roadmap: wgsl_kernel_handler_roadmap_bind"
+
 fn witness_wgsl_kernel_surface_fused_op_count() -> Bool {
   wgsl_relu_mul_add_kernel_surface().fused_op_count == 3
 }
@@ -100,4 +104,4 @@ data wgsl_kernel_float_execution_host_realization_marker: Disposition = Scaffold
   }
 }
 
-data wgsl_kernel_handler_dissolution_trigger: String = "dissolve-on: feature:dag-gpu-realization-handler — v1_interpreter builtin dispatches WGSL compute via wgpu; dissolve into target_model row emit when self-host lands"
+data wgsl_kernel_handler_dissolution_trigger: String = "dissolve-on: feature:dag-gpu-realization-handler (roadmap: wgsl_kernel_handler_roadmap_bind) — v1_interpreter builtin dispatches WGSL compute via wgpu; dissolve into target_model row emit when self-host lands; retire host WGSL source literals (mirror wgsl_relu_mul_add_integer_kernel_source/wgsl_relu_mul_add_float_kernel_source) and host op-code literals (mirror relu_mul_add_wire_op_codes)"
