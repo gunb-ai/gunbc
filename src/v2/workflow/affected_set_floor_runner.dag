@@ -62,7 +62,8 @@ fn floor_witness_nodes_touch_frontier(witness_nodes: List<Node>, frontier: List<
 fn floor_witness_run_disposition(
   diff: FloorDiffObservation,
   frontier: FloorRerunFrontier,
-  touches_frontier: Bool
+  touches_frontier: Bool,
+  function_edited: Bool
 ) -> WitnessRunDisposition {
   match diff {
     DiffObservationFailClosed { reason: reason } =>
@@ -75,8 +76,14 @@ fn floor_witness_run_disposition(
           FrontierFailClosed { reason: reason } =>
             RunWitness { reason: reason }
           FrontierProduced { nodes: _ } =>
-            if touches_frontier {
-              RunWitness { reason: "witness node-closure intersects rerun frontier" }
+            if touches_frontier || function_edited {
+              RunWitness {
+                reason: if function_edited {
+                  "witness test fn declaration directly edited"
+                } else {
+                  "witness node-closure intersects rerun frontier"
+                }
+              }
             } else {
               SkipAssumedGreen
             }
@@ -88,12 +95,14 @@ fn floor_witness_run_disposition(
 fn floor_kernel_would_skip(
   changed_paths: List<String>,
   frontier_nodes: List<Node>,
-  touches_frontier: Bool
+  touches_frontier: Bool,
+  function_edited: Bool
 ) -> Bool {
   match floor_witness_run_disposition(
     diff: DiffPathsProduced { changed_paths: changed_paths },
     frontier: FrontierProduced { nodes: frontier_nodes },
-    touches_frontier: touches_frontier
+    touches_frontier: touches_frontier,
+    function_edited: function_edited
   ) {
     SkipAssumedGreen => true
     RunWitness { reason: _ } => false
@@ -103,12 +112,14 @@ fn floor_kernel_would_skip(
 fn floor_host_scaffold_would_skip(
   changed_paths: List<String>,
   frontier_nodes: List<Node>,
-  touches_frontier: Bool
+  touches_frontier: Bool,
+  function_edited: Bool
 ) -> Bool {
   floor_kernel_would_skip(
     changed_paths: changed_paths,
     frontier_nodes: frontier_nodes,
-    touches_frontier: touches_frontier
+    touches_frontier: touches_frontier,
+    function_edited: function_edited
   )
 }
 
