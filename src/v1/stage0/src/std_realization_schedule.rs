@@ -179,9 +179,9 @@ pub fn runnable_resource_profile(
     memory: Rc<RunnableMemoryClass>,
 ) -> Rc<RunnableResourceProfile> {
     Rc::new(RunnableResourceProfile {
-        heavy_whole_tree_resolve,
-        spawns_host_compiler,
-        memory,
+        heavy_whole_tree_resolve: heavy_whole_tree_resolve,
+        spawns_host_compiler: spawns_host_compiler,
+        memory: memory,
     })
 }
 

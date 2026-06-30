@@ -1339,7 +1339,10 @@ fn run_walk(source_roots: &[String], batches: &[Vec<Runnable>], spawn_width: usi
         let mut thread_units: Vec<BatchUnit> = Vec::new();
         for unit in units {
             match &unit {
-                BatchUnit::SharedClaims { use_walk_memo: true, .. } => memo_units.push(unit),
+                BatchUnit::SharedClaims {
+                    use_walk_memo: true,
+                    ..
+                } => memo_units.push(unit),
                 BatchUnit::SharedClaims { entry, .. } if walk_memo.contains_key(entry) => {
                     memo_units.push(unit)
                 }
