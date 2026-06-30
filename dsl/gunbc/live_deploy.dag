@@ -1,7 +1,7 @@
 module gunbc.live_deploy
 
 import std.types { String, NonEmptyStr, List, Int, Bool }
-import std.os.types { Apt, NobleNumbat2404Lts, OsPackageManager }
+import std.os.types { NobleNumbat2404Lts, OsPackageManager }
 import extdeps.os.ubuntu { ubuntu_distribution_catalog_row }
 import extdeps.apt {
   package_tailscale,
@@ -133,25 +133,6 @@ fn deployment_spec_srv1() -> DeploymentSpec {
   }
 }
 
-fn deployment_step_is_owned(step: DeploymentStep) -> Bool {
-  match step {
-    Owned { step: _ } => true
-    Ensured { step: _ } => false
-  }
-}
-
-fn deployment_step_is_ensured(step: DeploymentStep) -> Bool {
-  !deployment_step_is_owned(step: step)
-}
-
-fn deployment_retract_includes_ensured(step: DeploymentOwnedStep) -> Bool {
-  match step.kind {
-    ServerScript => false
-    SystemdUnit => false
-    TailscaleServeMapping => false
-  }
-}
-
 fn deployment_plan_host_identity(spec: DeploymentSpec) -> String {
   spec.target.host.identity
 }
@@ -162,23 +143,6 @@ fn deployment_plan_ssh_host(spec: DeploymentSpec) -> NonEmptyStr {
 
 fn deployment_plan_listen_port(spec: DeploymentSpec) -> Int {
   spec.service.listen.port
-}
-
-fn deployment_package_manager_is_apt(spec: DeploymentSpec) -> Bool {
-  match spec.target.os_package_manager {
-    Apt => true
-    _ => false
-  }
-}
-
-fn deployment_ensure_dependency_script(dep: DeploymentEnsuredStep) -> String {
-  concat(
-    concat(
-      concat("if ! dpkg -s ", dep.package),
-      concat(" >/dev/null 2>&1; then apt-get install -y ", dep.package)
-    ),
-    "; fi"
-  )
 }
 
 fn deployment_tailnet_url(spec: DeploymentSpec) -> String {

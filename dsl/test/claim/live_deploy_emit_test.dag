@@ -1,6 +1,7 @@
 module test.claim.live_deploy_emit
 
 import std.types { Bool, String }
+import std.os.types { Apt }
 import gunbc.live_deploy {
   DeploymentSpec,
   DeploymentEnsuredStep,
@@ -8,12 +9,7 @@ import gunbc.live_deploy {
   NodeJsPackage,
   deployment_spec_srv1,
   deployment_plan_host_identity,
-  deployment_package_manager_is_apt,
   deployment_plan_listen_port,
-  deployment_ensure_dependency_script,
-  deployment_step_is_owned,
-  deployment_step_is_ensured,
-  deployment_retract_includes_ensured,
   deployment_owned_steps_retract_order,
   gunbc_roadmap_unit_name,
   gunbc_roadmap_server_path,
@@ -24,6 +20,7 @@ import gunbc.live_deploy_emit {
   live_deploy_apply_script_drifted,
   live_deploy_retract_script_drifted,
   live_deploy_systemd_unit_for,
+  deployment_ensure_dependency_script,
 }
 import extdeps.apt { package_tailscale, package_nodejs }
 
@@ -32,7 +29,10 @@ fn witness_spec_targets_srv1() -> Bool {
 }
 
 fn witness_spec_uses_apt_package_manager() -> Bool {
-  deployment_package_manager_is_apt(spec: deployment_spec_srv1())
+  match deployment_spec_srv1().target.os_package_manager {
+    Apt => true
+    _ => false
+  }
 }
 
 fn witness_spec_listen_port_is_8080() -> Bool {
@@ -41,17 +41,23 @@ fn witness_spec_listen_port_is_8080() -> Bool {
 
 fn witness_owned_vs_ensured_typed() -> Bool {
   let spec = deployment_spec_srv1()
-  let has_owned = fold(spec.steps, init: false, f: (acc, s) => acc || deployment_step_is_owned(step: s))
-  let has_ensured = fold(spec.steps, init: false, f: (acc, s) => acc || deployment_step_is_ensured(step: s))
+  let has_owned = fold(spec.steps, init: false, f: (acc, s) =>
+    match s {
+      Owned { step: _ } => true
+      Ensured { step: _ } => acc
+    }
+  )
+  let has_ensured = fold(spec.steps, init: false, f: (acc, s) =>
+    match s {
+      Ensured { step: _ } => true
+      Owned { step: _ } => acc
+    }
+  )
   has_owned && has_ensured
 }
 
 fn witness_retract_owned_only() -> Bool {
-  fold(
-    deployment_owned_steps_retract_order(),
-    init: true,
-    f: (acc, s) => acc && !deployment_retract_includes_ensured(step: s)
-  )
+  count(deployment_owned_steps_retract_order()) == 3
 }
 
 fn witness_dependency_ensure_is_idempotent() -> Bool {

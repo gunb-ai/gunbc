@@ -13,7 +13,6 @@ import gunbc.live_deploy {
   DeploymentOwnedStep,
   deployment_spec_srv1,
   deployment_plan_listen_port,
-  deployment_ensure_dependency_script,
   gunbc_roadmap_server_path,
   gunbc_roadmap_systemd_unit_path,
 }
@@ -144,3 +143,15 @@ fn live_deploy_retract_script_drifted(committed: String) -> Bool {
 fn live_deploy_systemd_unit_for(spec: DeploymentSpec) -> String {
   render(doc: emit_systemd_unit_doc(spec: spec), proto: live_deploy_protocol)
 }
+
+fn deployment_ensure_dependency_script(dep: DeploymentEnsuredStep) -> String {
+  concat(
+    concat(
+      concat("if ! dpkg -s ", dep.package),
+      concat(" >/dev/null 2>&1; then apt-get install -y ", dep.package)
+    ),
+    "; fi"
+  )
+}
+
+data live_deploy_emit_shell_dissolution_trigger: String = "dissolve-on: host_effect modeled shell steps — replace bash concat emit with HostEffect intent rows realized per transport handler; medium_structure_exception_roster entry retires when live_deploy folds emit through host_effect_apply without string shell"

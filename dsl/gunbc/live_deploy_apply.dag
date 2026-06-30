@@ -4,11 +4,11 @@ import gunbc.live_deploy {
   DeploymentSpec,
   DeploymentEnsuredStep,
   deployment_spec_srv1,
-  deployment_ensure_dependency_script,
 }
 import gunbc.live_deploy_emit {
   live_deploy_apply_script_for,
   live_deploy_retract_script_for,
+  deployment_ensure_dependency_script,
 }
 import gunbc.host_effect {
   ShellCommand,
