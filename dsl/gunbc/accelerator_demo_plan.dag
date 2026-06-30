@@ -59,6 +59,8 @@ type AcceleratorRefusalReason
   | FmaContractionViolatesContract
   | UnsupportedNumericalDomain
 
+data accelerator_refusal_reason_mirror_dissolution_trigger: String = "dissolve-on: execution lane lands; fold lowering-aligned variants into extdeps.communication.numerical_fidelity.LoweringRefusalReason as single authority and retire accelerator_refusal_from_lowering (DESIGN §3 parallel-representation bridge — modeling lane only)."
+
 type AcceleratorRecognitionOutcome
   = Recognized {
       plan: RealizationPlan<Nano>
