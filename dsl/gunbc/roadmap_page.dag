@@ -118,11 +118,25 @@ fn node_li(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, 
     ),
     concat(sizing_badge(rn: rn), carrier_links(carriers: rn.carriers)),
   )
-  let kids = if fuel > 0 { children_of(nodes: nodes, edges: edges, parent: rn.node) } else { [] }
-  let child_block = if count(kids) > 0 {
-    [ nodes_ul(items: kids, nodes: nodes, edges: edges, merged: merged, fuel: fuel - 1) ]
-  } else {
+  let kids = children_of(nodes: nodes, edges: edges, parent: rn.node)
+  let child_block = if count(kids) == 0 {
     []
+  } else {
+    if fuel > 0 {
+      [ nodes_ul(items: kids, nodes: nodes, edges: edges, merged: merged, fuel: fuel - 1) ]
+    } else {
+      [
+        ElementNode {
+          tag: "ul",
+          attrs: [ MarkupAttr { name: "class", value: "depth-limited" } ],
+          children: [
+            el_class("li", "depth-limit", [
+              txt(concat(concat("(", to_string(count(kids))), " nested node(s) hidden — depth limit)")),
+            ]),
+          ],
+        },
+      ]
+    }
   }
   ElementNode {
     tag: "li",

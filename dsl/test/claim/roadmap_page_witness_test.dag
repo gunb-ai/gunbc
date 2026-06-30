@@ -3,9 +3,11 @@ module test.claim.roadmap_page_witness
 import gunbc.roadmap_page {
   roadmap_page,
   roadmap_page_for_authority,
+  nodes_ul,
 }
 import gunbc.roadmap_document { RoadmapDocument }
-import gunbc.roadmap_authority { authored_merged_prs }
+import gunbc.roadmap_model { RoadmapNode, RoadmapEdge }
+import gunbc.roadmap_authority { authored_merged_prs, authored }
 import extdeps.languages.html { EmitOk, EmitRejected, try_serialize_html_source }
 
 fn authority_page_html() -> String {
@@ -40,8 +42,28 @@ fn witness_authority_differs_from_empty() -> Bool {
   !(authority_page_html() == empty_doc_html())
 }
 
+fn depth_chain_html(fuel: Int) -> String {
+  let parent = authored(id: "p", done: false, content: "parent-node")
+  let child = authored(id: "c", done: false, content: "child-node-title")
+  let edge = RoadmapEdge { child: child.node, parent: parent.node }
+  match try_serialize_html_source(node: nodes_ul(items: [parent], nodes: [parent, child], edges: [edge], merged: [], fuel: fuel)) {
+    EmitOk { html: h } => h
+    EmitRejected { reason: _ } => ""
+  }
+}
+
+fn witness_depth_cap_fails_honest() -> Bool {
+  let truncated = depth_chain_html(fuel: 0)
+  let expanded = depth_chain_html(fuel: 1)
+  string_contains(s: truncated, pattern: "depth limit")
+    && !string_contains(s: truncated, pattern: "child-node-title")
+    && string_contains(s: expanded, pattern: "child-node-title")
+    && !string_contains(s: expanded, pattern: "depth limit")
+}
+
 test fn roadmap_page_keystone_holds() -> Bool {
   witness_authority_serializes_with_structure()
     && witness_empty_doc_is_minimal_shell()
     && witness_authority_differs_from_empty()
+    && witness_depth_cap_fails_honest()
 }
