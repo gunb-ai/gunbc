@@ -35,10 +35,16 @@ fn floor_ci_host_os() -> NodeControlPlane {
 fn floor_git_diff_env_preamble(policy: DiffPolicy) -> String {
   concat(
     concat(
-      "if [ -n \"${GUNBC_CI_DIFF_UNIFIED:-}\" ]; then printf '%s' \"$GUNBC_CI_DIFF_UNIFIED\"; exit 0; fi\n",
-      concat("BASE=\"${GUNBC_CI_DIFF_BASE:-", concat(policy.base, "\"}\n")))
+      concat(
+        "if [ -n \"$GUNBC_CI_DIFF_UNIFIED\" ]; then printf '%s' \"$GUNBC_CI_DIFF_UNIFIED\"; exit 0; fi\n",
+        "if [ -z \"$GUNBC_CI_DIFF_BASE\" ]; then BASE=\""
+      ),
+      concat(policy.base, "\"; else BASE=\"$GUNBC_CI_DIFF_BASE\"; fi\n")
     ),
-    concat("HEAD=\"${GUNBC_CI_DIFF_HEAD:-", concat(policy.head, "\"}\n"))
+    concat(
+      concat("if [ -z \"$GUNBC_CI_DIFF_HEAD\" ]; then HEAD=\"", policy.head),
+      "\"; else HEAD=\"$GUNBC_CI_DIFF_HEAD\"; fi\n"
+    )
   )
 }
 
@@ -49,10 +55,16 @@ fn floor_git_diff_unified_script(policy: DiffPolicy) -> String {
       concat(
         preamble,
         concat(
-          "if [ \"${GUNBC_CI_DIFF_MERGE_BASE:-1}\" = \"0\" ] || [ \"${GUNBC_CI_DIFF_MERGE_BASE:-1}\" = \"false\" ]; then\n",
+          "if [ \"$GUNBC_CI_DIFF_MERGE_BASE\" = \"0\" ] || [ \"$GUNBC_CI_DIFF_MERGE_BASE\" = \"false\" ]; then\n",
           concat(
             "  git diff -U0 \"$BASE\" \"$HEAD\"\n",
-            "else\n  git diff -U0 \"${BASE}...${HEAD}\"\nfi\n"
+            concat(
+              "elif [ -n \"$GUNBC_CI_DIFF_MERGE_BASE\" ]; then\n",
+              concat(
+                "  git diff -U0 \"$BASE\" \"$HEAD\"\n",
+                "else\n  git diff -U0 \"${BASE}...${HEAD}\"\nfi\n"
+              )
+            )
           )
         )
       )
