@@ -197,7 +197,8 @@ impl GpuDispatchContext {
         });
         self.device.poll(wgpu::Maintain::wait()).panic_on_timeout();
         rx.recv().expect("map callback").expect("map failed");
-        slice.get_mapped_range().to_vec()
+        let mapped = slice.get_mapped_range();
+        mapped.to_vec()
     }
 }
 
