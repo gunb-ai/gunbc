@@ -1684,7 +1684,7 @@ fn emit_lib_rs_from_files(all_module_files: List<TextFile>, has_compiler_tests: 
   )
 
   let hand_maintained_mods = if has_compiler_tests {
-    "\npub mod v1_interpreter;\npub mod cli_run;\npub mod rest_transport_facts;\npub mod wire_value_serialize;\npub mod coproduct_reflection;\npub mod resolved_graph_cache;\npub mod recorded_fixture;\npub mod cache_purity_oracle;\npub mod corpus_lex;\npub mod doc_reachability_project;\npub mod inert_carrier_project;\npub mod medium_structure_project;\npub mod extdeps_shape_transport_policy_project;\npub mod fact_cardinality_census;\npub mod import_resolution_project;\npub mod languages_consumer_census;\npub mod non_fold_residue_project;\npub mod layering_imports_project;\npub mod module_path_index;\npub mod transport_script_position_project;"
+    "\npub mod v1_interpreter;\npub mod cli_run;\npub mod rest_transport_facts;\npub mod wire_value_serialize;\npub mod coproduct_reflection;\npub mod resolved_graph_cache;\npub mod recorded_fixture;\npub mod cache_purity_oracle;\npub mod corpus_lex;\npub mod doc_reachability_project;\npub mod inert_carrier_project;\npub mod medium_structure_project;\npub mod extdeps_shape_transport_policy_project;\npub mod fact_cardinality_census;\npub mod import_resolution_project;\npub mod languages_consumer_census;\npub mod non_fold_residue_project;\npub mod layering_imports_project;\npub mod module_path_index;\npub mod transport_script_position_project;\npub mod v1_compiler_dag_collect;\npub mod v1_compiler_dag_collect_support;"
   } else {
     ""
   }
@@ -3047,7 +3047,15 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
   let env = scope.type_env
   let qualified_name = concat(module_name, ".", authored_name(env: env, node: item))
   let item_text = authored_name(env: env, node: item)
-  if is_type_def_item(item: item) {
+  let dag_collect_delegated = ["json_quote", "DagCollectAcc", "DagCollectPending", "inferred_fingerprint", "expr_data_variant", "dag_node_surface_fingerprint", "dag_node_fingerprint", "dag_node_key_collision_error", "dag_node_key", "dag_node_is_resolved_identity_shell", "dag_node_collection_anchor", "dag_collect_nodes_list", "dag_collect_optional_node", "dag_collect_inferred", "dag_collect_match_pattern", "dag_collect_node_tree", "dag_collect_insert", "dag_collect_from_module", "collect_dag_nodes", "connective_name"]
+  let is_compile_module = module_name == "v1.compiler.compile"
+  if is_compile_module && (dag_collect_delegated |> any(d => d == item_text)) {
+    ""
+  } else {
+    let dag_collect_delegation = if is_compile_module && item_text == "dag_node_missing_ref_error" {
+      concat("pub use crate::v1_compiler_dag_collect_support::", "{", "connective_name, dag_node_key_collision_error, dag_node_surface_fingerprint, expr_data_variant, inferred_fingerprint, json_quote, DagCollectAcc", "}", ";\n\npub use crate::v1_compiler_dag_collect::", "{", "collect_dag_nodes, dag_collect_from_module, dag_collect_inferred, dag_collect_insert, dag_collect_match_pattern, dag_collect_node_tree, dag_collect_nodes_list, dag_collect_optional_node, dag_node_collection_anchor, dag_node_fingerprint, dag_node_is_resolved_identity_shell, dag_node_key", "}", ";\n\n")
+    } else { "" }
+    concat(dag_collect_delegation, if is_type_def_item(item: item) {
     emit_type_def_from_connective(item: item, recursive_types: emit_info.recursive_type_set, shared_types: shared_types, env: env, emit_info: emit_info, wire_contract_item: wire_contract_item, data_items: data_items, module_items: module_items, imports: imports)
   } else if is_type_alias_item(item: item, source_indices: env.source_indices) {
 
@@ -3184,6 +3192,7 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
     emit_resource_def(item: item, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, env: env)
   } else {
     concat("compile_error!(\"unhandled item: ", item_text, "\");")
+    })
   }
 }
 
@@ -8570,6 +8579,8 @@ fn emit_subcommand_enum(workflow_funcs: List<WorkflowFunc>, has_pipeline: Bool) 
       make_indent(level: depth + 2), "/// Target language: rust, python, go, dag, or + separated set such as rust+dag\n",
       make_indent(level: depth + 2), "#[arg(long, default_value = \"rust\")]\n",
       make_indent(level: depth + 2), "target: String,\n",
+      make_indent(level: depth + 2), "#[arg(long = \"dependency-pool-index\", default_value = \"strict\")]\n",
+      make_indent(level: depth + 2), "dependency_pool_index: String,\n",
       make_indent(level: depth + 1), "},")
   } else { "" }
   let run_variant_lines = [
@@ -8684,12 +8695,12 @@ fn emit_main_fn(workflow_funcs: List<WorkflowFunc>, has_services: Bool, has_pipe
 fn emit_compile_match_arm(crate_name: String) -> String {
   let pipeline_mod = module_to_filename(name: "v1.compiler.compile")
   concat(
-    "Commands::Compile { source_roots, source_dir, output_dir, target } => {\n",
+    "Commands::Compile { source_roots, source_dir, output_dir, target, dependency_pool_index } => {\n",
     "            let render_targets = parse_render_targets(&target);\n",
+    "            let pool_index = parse_dependency_pool_index(&dependency_pool_index);\n",
     "\n",
     "            let sources = if !source_roots.is_empty() {\n",
-    "                // FF-9: Import-driven resolution from source roots\n",
-    "                let index = build_module_index(&source_roots);\n",
+    "                let index = build_module_index(&source_roots, pool_index);\n",
     "                eprintln!(\"indexed {} modules from {} source roots\", index.len(), source_roots.len());\n",
     "\n",
     "                // Entry modules: all .dag files in the FIRST source root.\n",
@@ -8707,6 +8718,8 @@ fn emit_compile_match_arm(crate_name: String) -> String {
     "                        entry_files.push((path.to_string_lossy().to_string(), content));\n",
     "                    }\n",
     "                }\n",
+    "                let skipped_moduleless = cli_run::moduleless_dag_entry_paths(&entry_files);\n",
+    "                cli_run::report_moduleless_dag_entry_skips(&skipped_moduleless);\n",
     "\n",
     "                let mut seen: HashMap<String, Rc<", pipeline_mod, "::SourceFile>> = HashMap::new();\n",
     "                let mut entry_for_queue = Vec::new();\n",
@@ -8717,12 +8730,13 @@ fn emit_compile_match_arm(crate_name: String) -> String {
     "                            content: content.clone(),\n",
     "                        });\n",
     "                        seen.insert(mod_path, source);\n",
+    "                        entry_for_queue.push((path.clone(), content.clone()));\n",
     "                    }\n",
-    "                    entry_for_queue.push((path.clone(), content.clone()));\n",
     "                }\n",
     "\n",
     "                let mut resolved = resolve_transitively_with_seen(entry_for_queue, &index, seen);\n",
     "                for (path, content) in entry_files {\n",
+    "                    if extract_module_path(&content).is_none() { continue; }\n",
     "                    let already_there = resolved.iter().any(|s| s.path == path);\n",
     "                    if !already_there {\n",
     "                        resolved.push(Rc::new(", pipeline_mod, "::SourceFile { path, content }));\n",
@@ -8808,7 +8822,7 @@ fn emit_main_pipeline_fns(crate_name: String) -> String {
     emit_collect_dag_files_fn(),
     emit_extract_module_path_fn(),
     emit_extract_import_paths_fn(),
-    emit_build_module_index_fn(),
+    emit_dep_pool_type_and_fns(),
     emit_resolve_transitively_fn(crate_name: crate_name, pipeline_mod: pipeline_mod),
     emit_compile_target_helpers(crate_name: crate_name, pipeline_mod: pipeline_mod, artifact_mod: artifact_mod))
 }
@@ -8925,28 +8939,71 @@ fn emit_extract_import_paths_fn() -> String {
     "}\n\n")
 }
 
-fn emit_build_module_index_fn() -> String {
+fn emit_dep_pool_type_and_fns() -> String {
   concat(
-    "/// Build module index: scan all source roots, map module_path -> file_path.\n",
-    "/// Fail-closed: panics on missing roots, unreadable files, and duplicate module paths.\n",
-    "fn build_module_index(source_roots: &[String]) -> HashMap<String, std::path::PathBuf> {\n",
-    "    let mut index = HashMap::new();\n",
-    "    for root in source_roots {\n",
-    "        let root_path = std::path::Path::new(root);\n",
-    "        if !root_path.exists() {\n",
-    "            panic!(\"source root does not exist: {}\", root);\n",
+    "#[derive(Clone, Copy, PartialEq, Eq)]\nenum DependencyPoolIndex {\n    Strict,\n    PrimaryPrecedence,\n}\n\n",
+    "fn parse_dependency_pool_index(value: &str) -> DependencyPoolIndex {\n",
+    "    match value {\n",
+    "        \"strict\" => DependencyPoolIndex::Strict,\n",
+    "        \"primary-precedence\" => DependencyPoolIndex::PrimaryPrecedence,\n",
+    "        other => {\n",
+    "            eprintln!(\"unknown --dependency-pool-index: {} (expected strict | primary-precedence)\", other);\n",
+    "            std::process::exit(1);\n",
     "        }\n",
-    "        let mut dag_files = Vec::new();\n",
-    "        collect_dag_files(root_path, &mut dag_files);\n",
-    "        for path in dag_files {\n",
-    "            let content = std::fs::read_to_string(&path)\n",
-    "                .unwrap_or_else(|e| panic!(\"failed to read {:?}: {}\", path, e));\n",
-    "            if let Some(module_path) = extract_module_path(&content) {\n",
-    "                if let Some(existing) = index.get(&module_path) {\n",
-    "                    panic!(\"duplicate module path '{}': declared in both {:?} and {:?}\",\n",
-    "                        module_path, existing, path);\n",
+    "    }\n",
+    "}\n\n",
+    "fn insert_module_path(\n",
+    "    index: &mut HashMap<String, std::path::PathBuf>,\n",
+    "    module_path: String,\n",
+    "    path: std::path::PathBuf,\n",
+    "    within_root: &mut HashMap<String, std::path::PathBuf>,\n",
+    ") {\n",
+    "    if let Some(existing) = within_root.get(&module_path) {\n",
+    "        panic!(\"duplicate module path '{}' within source root: declared in both {:?} and {:?}\", module_path, existing, path);\n",
+    "    }\n",
+    "    within_root.insert(module_path.clone(), path.clone());\n",
+    "    index.insert(module_path, path);\n",
+    "}\n\n",
+    "fn index_source_root(root: &str, index: &mut HashMap<String, std::path::PathBuf>, pool_fill_only: bool) {\n",
+    "    let root_path = std::path::Path::new(root);\n",
+    "    if !root_path.exists() {\n",
+    "        panic!(\"source root does not exist: {}\", root);\n",
+    "    }\n",
+    "    let mut dag_files = Vec::new();\n",
+    "    collect_dag_files(root_path, &mut dag_files);\n",
+    "    let mut within_root = HashMap::new();\n",
+    "    for path in dag_files {\n",
+    "        let content = std::fs::read_to_string(&path)\n",
+    "            .unwrap_or_else(|e| panic!(\"failed to read {:?}: {}\", path, e));\n",
+    "        if let Some(module_path) = extract_module_path(&content) {\n",
+    "            if pool_fill_only {\n",
+    "                if index.contains_key(&module_path) {\n",
+    "                    continue;\n",
     "                }\n",
-    "                index.insert(module_path, path);\n",
+    "                insert_module_path(index, module_path, path, &mut within_root);\n",
+    "            } else if let Some(existing) = index.get(&module_path) {\n",
+    "                panic!(\"duplicate module path '{}': declared in both {:?} and {:?}\", module_path, existing, path);\n",
+    "            } else {\n",
+    "                insert_module_path(index, module_path, path, &mut within_root);\n",
+    "            }\n",
+    "        }\n",
+    "    }\n",
+    "}\n\n",
+    "fn build_module_index(source_roots: &[String], pool_index: DependencyPoolIndex) -> HashMap<String, std::path::PathBuf> {\n",
+    "    let mut index = HashMap::new();\n",
+    "    if source_roots.is_empty() {\n",
+    "        return index;\n",
+    "    }\n",
+    "    match pool_index {\n",
+    "        DependencyPoolIndex::Strict => {\n",
+    "            for root in source_roots {\n",
+    "                index_source_root(root, &mut index, false);\n",
+    "            }\n",
+    "        }\n",
+    "        DependencyPoolIndex::PrimaryPrecedence => {\n",
+    "            index_source_root(&source_roots[0], &mut index, false);\n",
+    "            for root in &source_roots[1..] {\n",
+    "                index_source_root(root, &mut index, true);\n",
     "            }\n",
     "        }\n",
     "    }\n",

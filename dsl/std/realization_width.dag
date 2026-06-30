@@ -33,6 +33,10 @@ fn int_min(a: Int, b: Int) -> Int {
   if a < b { a } else { b }
 }
 
+fn int_max(a: Int, b: Int) -> Int {
+  if a > b { a } else { b }
+}
+
 fn nano_time(count: Nat) -> Measure<Time, Nano, Nat> {
   time_measure(count: count)
 }

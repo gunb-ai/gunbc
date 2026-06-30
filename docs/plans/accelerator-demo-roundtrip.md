@@ -13,6 +13,7 @@ This draft is downstream of [DESIGN.md](../../DESIGN.md) §4 (one grammar, both 
 - **NOT opcode-bucketing scattered scalars.** SIMT width must come from *data-parallelism inside a node* (one op over a contiguous array), not *task-parallelism across nodes* (gathering scattered scalar ops by opcode — the gather/scatter is itself the pointer-chasing you were trying to escape, and the arithmetic intensity is hopeless).
 - **NOT a general "reshape arbitrary programs" control plane.** That is post-self-host research. This demo handles exactly one recognized class: **pure elementwise array folds.**
 
+<<<<<<< HEAD
 ## 0.5. Intuition — how your programs relate to GPU execution (the shared language)
 
 The phrase to hold onto is **"arbitrary program DAG → numerical graph."** Your program is already a dependency graph; the accelerator wants a *particular kind* of dependency graph. The demo is the bridge that finds the second kind inside the first.
@@ -40,6 +41,8 @@ A GPU is essentially a **batch executor for arithmetic**: if at one moment you c
 
 So the one-sentence relationship: **your arbitrary program is a task DAG; inside it live numerical subgraphs; the demo recognizes one, chooses a layout that makes it SIMT-shaped, and lowers it — proving the recognition is semantics-exact or honestly refused.**
 
+=======
+>>>>>>> origin/main
 ## 1. The claim the demo proves (load-bearing)
 
 > A pure `.dag` elementwise-array subgraph can be lowered to a contiguous-layout, fused, data-parallel kernel; the result is **bit-identical to the scalar interpreter under a declared numerical contract**; and any subgraph outside the lowerable class is **refused** with a typed, located honesty diagnostic — never silently miscompiled.
@@ -50,6 +53,7 @@ Three things an XLA/NVIDIA audience treats as *hard* and this gets *structurally
 2. **A new backend is a *row*, not a backend team.** Medium-agnostic emit (§4/§7) means "support this accelerator" = author a target row in `extdeps/languages/<accel>/`, not fork a codegen. The optional GPU run is the proof: *same plan, one target row changed.*
 3. **The schedule/layout is data, so auto-tuning can't miscompile.** The plan is a first-class `RealizationPlan<S>` value and every rewrite is provably semantics-preserving (purity + explicit `EffectShape`), so searching over layouts is guaranteed meaning-preserving.
 
+<<<<<<< HEAD
 ## 1.5. The relational projection — the demo artifact that is *for the author* (and doubles as the pitch)
 
 A first-class deliverable, not a debug print: the demo must **render the relationship** "arbitrary program DAG → numerical graph → kernel" as an inspectable artifact, because making that relationship legible is half the point (to the author, who thinks in array compilers; and to the audience, who thinks in HLO). The **recognize + plan** station's `RealizationPlan` value is *promoted from a side-effect to the product.*
@@ -74,6 +78,13 @@ The substrate **already models** the vocabulary; the roadmap (Ergonomics LANE) f
 
 - `std/realization.dag`: `Placement = LocalInProcess | LocalFilesystem | RemoteNetwork`, `Materialization = Recompute | Memoize | Share`, `RealizedStep<S> { shape, placement, materialization }`, `RealizationPlan`, `RealizationObjective`.
 - `extdeps/communication/medium.dag`: `DecodeFidelity = Lossless | Lossy` (the honesty-boundary type — declared here, an extdeps-layer type, *not* in std; consume it, never re-fork it).
+=======
+## 2. On-model framing — first live consumer of the inert placement carriers
+
+The substrate **already models** the vocabulary; the roadmap (Ergonomics LANE) flags `Placement` / `Materialization` / `RealizationObjective` as *inert (no live consumer)* — the keystone inert-abstraction-lens's first RED witness. This demo makes them **load-bearing** by being their first real consumer:
+
+- `std/realization.dag`: `Placement = LocalInProcess | LocalFilesystem | RemoteNetwork`, `Materialization = Recompute | Memoize | Share`, `RealizedStep<S> { shape, placement, materialization }`, `DecodeFidelity`, `RealizationPlan`, `RealizationObjective`.
+>>>>>>> origin/main
 - `std/realization_schedule.dag`: `RealizationPlan<S>`, `Runnable`, `Schedule = List<List<Runnable>>`, cost accounting.
 - `product/placement_supply.dag`: `PlacementSupplyRow` (host capacity) — literally "shaping for **supply**."
 
@@ -95,7 +106,11 @@ Fixture: a pure elementwise chain — `y = relu(a*b + c)` (mul → add → max).
 | 2. recognize + plan ("shaping for supply") | the elementwise-array-fold subgraph → a `RealizationPlan<S>` value: contiguous SoA buffers, 3 ops fused into one pass, `placement: LocalAccelerator`. **Inspectable, printed.** | `std/realization.dag`, `std/realization_schedule.dag` (first live consumer) |
 | 3. lower → fused kernel (forward fold) | the *same* translate fold run backward → one fused contiguous-loop / SIMD kernel | `target_model` translate + new `extdeps/languages/<accel>` row |
 | 4. differential vs oracle | scalar interpreter on same input = ground truth; assert match on a discriminating input | existing v2 interpreter |
+<<<<<<< HEAD
 | 5. fail-closed arm | feed a non-elementwise / effectful subgraph (data-dependent gather, or carries an effect) → **typed located `DecodeFidelity` refusal**, no silent fallback | `extdeps/communication/medium.dag` `DecodeFidelity` |
+=======
+| 5. fail-closed arm | feed a non-elementwise / effectful subgraph (data-dependent gather, or carries an effect) → **typed located `DecodeFidelity` refusal**, no silent fallback | `std/realization.dag` `DecodeFidelity` |
+>>>>>>> origin/main
 
 ## 4. Acceptance bars (this is what makes it credible to *that* audience)
 
@@ -112,8 +127,11 @@ Fixture: a pure elementwise chain — `y = relu(a*b + c)` (mul → add → max).
 
 ## 6. Sequencing — seam first, silicon last
 
+<<<<<<< HEAD
 > **Authoring note.** This charter doc and its inbound ROADMAP link land **atomically** (the live doc-graph wall, `doc_reachability_project.rs`, fails on an orphan doc). The linking roadmap node (`accel-*`, incl. `accel-exec`) is authored in **loyal-bee-794's roadmap-authority content slice** — the single authority for the generated roadmap — and the `accel-model` node carries the `plan_ptr` to this doc in the same commit, so the doc-graph wall is satisfied without a separate PR.
 
+=======
+>>>>>>> origin/main
 1. **Modeling lane** — `+LocalAccelerator` placement variant; the recognizer's output as a `RealizationPlan<S>`; the `NumericalContract` type + its `DecodeFidelity` coupling; the refusal diagnostic. All in `std/` + `extdeps/languages/<accel>/`. Lands consumed-or-marked (Ergonomics-lane "wire the seams" rule).
 2. **Execution lane** — the recognizer pass (elementwise-array-fold detection over the core graph) + the SoA fused-kernel handler (CPU contiguous loop) in the v2 interpreter; the differential harness; the **integer bit-exact witness** + the **refusal witness**, green-by-execution with a red-on-revert discriminator.
 3. **Numerical-contract bar** — float fixture under declared contract; refuse-on-contraction-violation witness.
@@ -124,6 +142,7 @@ Fixture: a pure elementwise chain — `y = relu(a*b + c)` (mul → add → max).
 - **Real today** (current v2 Rust interpreter, pre-self-host): the recognizer, the SoA fused-kernel handler, the differential + numerical-contract harness, the refusal arm, integer-bit-exact + float-under-contract bars. A runnable prototype, honestly labeled.
 - **Aspirational / post-self-host**: the plan being *fully* substrate-native end-to-end, and reshaping *arbitrary* programs (vs the recognized elementwise class). For the demo the plan is a real modeled value even where some lowering is Rust-side; each prototype-Rust seam is marked so the pitch never overclaims.
 
+<<<<<<< HEAD
 **Hand-Rust scaffold receipt (§7 self-host — Rust shrinks to zero, so new Rust must name its exit).** The execution lane's three Rust additions on the v2-interpreter seed — the elementwise recognizer pass, the SoA fused-kernel handler, and the differential harness — are **explicitly scaffold, not load-bearing Rust.** The authority for each exit is the **named dissolution trigger declared right here** (self-contained in this charter); the roadmap *tracking* row for the lane is `accel-exec`, authored alongside this doc in loyal-bee-794's roadmap-authority content slice (see the authoring note at the top of §6). The row does not flip `[x]` until each dissolution below is either done or re-deferred with a reason:
 
   - *recognizer* → dissolves into a `.dag` **lens** (read-only over the `Node` tree) once the lens can express the elementwise-fold predicate; dissolution trigger `feature:dag-elementwise-recognizer-lens`.
@@ -132,6 +151,8 @@ Fixture: a pure elementwise chain — `y = relu(a*b + c)` (mul → add → max).
 
   Until then they are `🟡`-marked prototype Rust on the doomed seed — they add **no** census ratchet pressure and must not be cemented into emit templates (DESIGN §7; the anti-cement rule). Net Rust delta is bounded and has a written path to zero; it is not new permanent compiler surface.
 
+=======
+>>>>>>> origin/main
 ## Open threads
 
 - Exact spelling of the accelerator `Placement` variant (device-parameterized `LocalAccelerator<Device>` vs flat) — DFS the concept DAG before minting; a device is plausibly a `Vendor<Hardware>`-adjacent entity (DESIGN §3), not a fresh enum.
