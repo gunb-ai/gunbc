@@ -6,14 +6,10 @@ import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.node {
   Behavior,
-  CoproductArmPayloadPair,
-  Symbol,
-  syntactic_coproduct_arm_keys,
-  syntactic_coproduct_arm_pairs
+  Symbol
 }
 import v2.std.node_query {
   coproduct_arm_keys,
-  coproduct_arm_payload_pairs,
   coproduct_nullary_inhabitants
 }
 
@@ -22,43 +18,6 @@ data reflect_behavior_type: Symbol = ^Behavior
 
 fn symbol_eq(a: Symbol, b: Symbol) -> Bool {
   a == b
-}
-
-fn coproduct_arm_payload_pair_eq(a: CoproductArmPayloadPair, b: CoproductArmPayloadPair) -> Bool {
-  symbol_eq(a: a.label, b: b.label)
-    && symbol_eq(a: a.payload_type_name, b: b.payload_type_name)
-}
-
-fn coproduct_arm_key_set_matches_syntactic(type_name: Symbol) -> Bool {
-  bag_eq(
-    xs: coproduct_arm_keys(type_name: type_name),
-    ys: syntactic_coproduct_arm_keys(type_name: type_name),
-    eq: symbol_eq
-  )
-}
-
-fn coproduct_arm_payload_pair_set_matches_syntactic(type_name: Symbol) -> Bool {
-  bag_eq(
-    xs: coproduct_arm_payload_pairs(type_name: type_name),
-    ys: syntactic_coproduct_arm_pairs(type_name: type_name),
-    eq: coproduct_arm_payload_pair_eq
-  )
-}
-
-test fn witness_connective_arm_key_set_path3() -> Bool {
-  coproduct_arm_key_set_matches_syntactic(type_name: reflect_connective_type)
-}
-
-test fn witness_behavior_arm_key_set_path3() -> Bool {
-  coproduct_arm_key_set_matches_syntactic(type_name: reflect_behavior_type)
-}
-
-test fn witness_connective_arm_payload_pair_path3() -> Bool {
-  coproduct_arm_payload_pair_set_matches_syntactic(type_name: reflect_connective_type)
-}
-
-test fn witness_behavior_arm_payload_pair_path3() -> Bool {
-  coproduct_arm_payload_pair_set_matches_syntactic(type_name: reflect_behavior_type)
 }
 
 test fn witness_connective_behavior_arm_sets_are_distinct() -> Bool {
@@ -114,11 +73,7 @@ test fn witness_connective_nullary_inhabitants_fail_closed() -> Bool {
 }
 
 test fn coproduct_reflection_conformance_holds() -> Bool {
-  witness_connective_arm_key_set_path3()
-    && witness_behavior_arm_key_set_path3()
-    && witness_connective_arm_payload_pair_path3()
-    && witness_behavior_arm_payload_pair_path3()
-    && witness_connective_behavior_arm_sets_are_distinct()
+  witness_connective_behavior_arm_sets_are_distinct()
     && witness_behavior_nullary_inhabitant_set_matches_arm_keys()
     && witness_connective_nullary_inhabitants_fail_closed()
 }

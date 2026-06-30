@@ -1,0 +1,116 @@
+module v2.test.lens_grounding_ledger.grounding_ledger_test
+
+import v2.lens.grounding_ledger {
+  GroundingVerdict, Reference, ReferenceUri, ReferencePath, Role, StayString, GenuineProse, PendingJudge,
+  ResidueReason, DecodeReturnedNone, UnrecognizedSiblingArm,
+  DecidedBy, StructuralRule, Judge, OperatorReview,
+  residue_forced_verdict, structural_ledger_entry
+}
+import v2.std.logic { Bool }
+
+fn verdict_is_stay_string_decode_none(v: GroundingVerdict) -> Bool {
+  match v {
+    StayString { reason } => match reason { DecodeReturnedNone => true  UnrecognizedSiblingArm => false }
+    Reference { authority: _ } => false
+    ReferenceUri => false
+    ReferencePath => false
+    Role => false
+    GenuineProse => false
+    PendingJudge => false
+  }
+}
+
+fn verdict_is_stay_string_unrecognized(v: GroundingVerdict) -> Bool {
+  match v {
+    StayString { reason } => match reason { DecodeReturnedNone => false  UnrecognizedSiblingArm => true }
+    Reference { authority: _ } => false
+    ReferenceUri => false
+    ReferencePath => false
+    Role => false
+    GenuineProse => false
+    PendingJudge => false
+  }
+}
+
+fn verdict_is_pending_judge(v: GroundingVerdict) -> Bool {
+  match v {
+    PendingJudge => true
+    StayString { reason: _ } => false
+    Reference { authority: _ } => false
+    ReferenceUri => false
+    ReferencePath => false
+    Role => false
+    GenuineProse => false
+  }
+}
+
+fn verdict_is_any_reference(v: GroundingVerdict) -> Bool {
+  match v {
+    Reference { authority: _ } => true
+    ReferenceUri => true
+    ReferencePath => true
+    StayString { reason: _ } => false
+    Role => false
+    GenuineProse => false
+    PendingJudge => false
+  }
+}
+
+fn decided_by_is_structural(d: DecidedBy) -> Bool {
+  match d {
+    StructuralRule => true
+    Judge { rationale: _ } => false
+    OperatorReview { note: _ } => false
+  }
+}
+
+test fn decode_optional_forces_stay_string() -> Bool {
+  verdict_is_stay_string_decode_none(
+    v: residue_forced_verdict(sibling_decode_optional: true, has_unrecognized_sibling: false)
+  )
+}
+
+test fn unrecognized_sibling_forces_stay_string() -> Bool {
+  verdict_is_stay_string_unrecognized(
+    v: residue_forced_verdict(sibling_decode_optional: false, has_unrecognized_sibling: true)
+  )
+}
+
+test fn clean_candidate_routes_to_pending_judge() -> Bool {
+  verdict_is_pending_judge(
+    v: residue_forced_verdict(sibling_decode_optional: false, has_unrecognized_sibling: false)
+  )
+}
+
+test fn residue_is_never_a_reference_verdict() -> Bool {
+  !verdict_is_any_reference(
+    v: residue_forced_verdict(sibling_decode_optional: true, has_unrecognized_sibling: false)
+  )
+    && !verdict_is_any_reference(
+      v: residue_forced_verdict(sibling_decode_optional: false, has_unrecognized_sibling: true)
+    )
+}
+
+test fn structural_entry_residue_verdict_is_stay_string() -> Bool {
+  verdict_is_stay_string_decode_none(
+    v: structural_ledger_entry(
+      site_qn: "v2.model.Widget",
+      field: "owner",
+      coincides_with: "v2.model.Owner",
+      sibling_decode_optional: true,
+      has_unrecognized_sibling: false
+    ).verdict
+  )
+}
+
+test fn structural_entry_is_decided_by_structural_rule() -> Bool {
+  decided_by_is_structural(
+    d: structural_ledger_entry(
+      site_qn: "v2.model.Link",
+      field: "href",
+      coincides_with: "extdeps.uri.Uri",
+      sibling_decode_optional: false,
+      has_unrecognized_sibling: false
+    ).decided_by
+  )
+}
