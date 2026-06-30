@@ -35,14 +35,6 @@ fn resolve_type_node(type_name: Symbol) -> Node {
   resolve_type_node(type_name: type_name)
 }
 
-fn syntactic_coproduct_arm_keys(type_name: Symbol) -> List<Symbol> {
-  syntactic_coproduct_arm_keys(type_name: type_name)
-}
-
-fn syntactic_coproduct_arm_pairs(type_name: Symbol) -> List<CoproductArmPayloadPair> {
-  syntactic_coproduct_arm_pairs(type_name: type_name)
-}
-
 type ArmPayload
   = Nullary
   | Typed { target_ref: Symbol }
