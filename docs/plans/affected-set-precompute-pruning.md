@@ -116,24 +116,7 @@ When the Rust path is gone, `construction_justification: WallAfterGrounding { di
 
 After N→1, a new parallel reverse-reachability implementation is a §3 violation. The wall:
 
-<<<<<<< Updated upstream
 The `fail_closed_lockdown.dag` INERT marker on `affected_set.dag` is removed when the live consumer wiring lands (Step 4). Add a corpus-scan lens or CI gate: any new `.rs` function that walks `InterpContext` edges for reachability outside `v2.lens.affected_set`'s call chain is flagged. A text-scan over the Rust seed is sufficient until the seed itself shrinks to zero (DESIGN §7); it does not need to be perfect, only fail-closed on the obvious re-invention pattern.
-=======
-**Required new witness:** `witness_precompute_skipped_on_scoped_diff` — a Rust control (SCAFFOLD, same dissolution trigger as Move A) that:
-
-**Structural assertions (the wall — non-flaky, §5 correct):**
-
-1. Constructs a synthetic diff that modifies one file **outside** the PublishedMockCase transitive closure (e.g. a change to a test-only `.dag` file).
-2. Calls `run_discovery_corpus_with_options` with `skip_unaffected_node_frontier: true`.
-3. Asserts `whole_tree_published_keys == None` — the precompute returned `None` (was skipped). This is the structural proof: None = precompute did not run; Some(_) = it ran. Cannot flake.
-4. Fail-closed control (second assertion): a synthetic diff that modifies a file **inside** the PublishedMockCase closure → assert `whole_tree_published_keys == Some(_)` (precompute IS invoked).
-
-**Measured evidence (logged, not the pass/fail gate):**
-
-5. Log wall-clock delta and peak-RSS delta (VmHWM before/after) for both branches. These are reported as `[measurement]` lines satisfying the operator success bar ("wall-clock must move on a scoped diff") without being threshold assertions that flake on noisy runners.
-
-The structural None/Some is the executable green-by-execution proof. The measured delta is the evidence that the skip is economically meaningful. Both are required; only the structural assertion is the pass/fail gate.
->>>>>>> Stashed changes
 
 ---
 
