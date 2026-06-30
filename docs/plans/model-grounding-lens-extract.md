@@ -27,11 +27,10 @@ The decidable part (`is_bare_string` AND `name_coincides`) is a candidate signal
 | Mechanism | Role |
 | --- | --- |
 | **Name index** | `build_concept_name_index` — O(unique names) lookup vs O(n²) linear scan |
+| **Job A — layer exclusion** | Structural, bidirectional: meta self-coincidence (`FieldRef.field`~`Field` on substrate layers — only when the field name is a meta-model name `field` or `name`, not role words) + layer-DAG inversion (enclosing layer cannot import target layer per `std ← extdeps ← compiler ← workflow`). Replaces the hand-list `is_structural_name` **meta** half. |
 | **Job B — role words** | `widget.id` etc. are **not** pre-filtered. Flow to CONFIRM / adjudication ledger (tidy-badger-45). |
 | **Residue evidence** | Sibling coproduct variant names, `Unrecognized*` / `NonExternal*` / `Non*` flags, optional-decode siblings — **surfaced**, not pre-filtered. Verdict is the ledger's. |
 | **CONFIRM judge** | `gunbc.tools.grounding_confirm` — haiku, `GROUND`/`KEEP`, `starts_with` grading. **Enrichment** (`target_kind` + `target_structure`) is the precision lever: bare ~4/6 wrong → enriched 6/6 on the haiku_confirm slice. Eval authority: `src/v2/lens/testdata/anemia_confirm_eval_corpus.json`. |
-
-**Job A — layer exclusion** (meta self-coincidence + layer-DAG inversion) is **deferred** to the `decl_facts` follow-up: it requires structured `QualifiedName` on concept rows (built from module+name components in the host, not a String round-trip). #5966 ships name-coincidence candidates only.
 
 ## 5. Worklist schema (feeds tidy-badger ITEM 4)
 
@@ -41,9 +40,10 @@ Each `GroundingWorklistEntry`:
 - `coincides_with` — **resolved qualified name** of the matched concept (identity, not bare name)
 - `target_kind`, `target_structure`
 - `qualified_name` — enclosing concept's qualified name
+- `layer_excluded` — Job A already ran
 - `sibling_variant_names`, `has_unrecognized_sibling`, `sibling_decode_optional` — fail-closed residue evidence
 
-`candidates()` and `worklist()` are identical on #5966 (no layer partition). `layer_excluded` returns with Job A in the `decl_facts` follow-up.
+`candidates()` returns layer-included rows only; `worklist()` includes layer-excluded rows for audit.
 
 ## Dissolution trigger
 
