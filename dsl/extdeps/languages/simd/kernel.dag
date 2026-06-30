@@ -57,6 +57,8 @@ fn contiguous_loop_elementwise_kernel(
   [pure_dag_seam_unreachable()]
 }
 
+data float_kernel_fma_policy_wire_note: String = "fma_contraction_policy Int is scaffold wire (0=FmaContractionRefused via fma_contraction_refused_policy_code, 1=Permitted); dissolves to std.numerical_contract.FmaContractionPolicy at feature:dag-kernel-realization-handler"
+
 fn contiguous_loop_elementwise_float_kernel(
   op_codes: List<Int>,
   fma_contraction_policy: Int,
@@ -76,4 +78,4 @@ data simd_kernel_execution_host_realization_marker: Disposition = Scaffold {
   }
 }
 
-data simd_kernel_handler_dissolution_trigger: String = "dissolve-on: feature:dag-kernel-realization-handler — v1_interpreter builtin dispatches contiguous SoA fused pass; dissolve into target_model row emit when self-host lands; retire host opcode literals (currently mirror gunbc.accelerator_demo_program.elemwise_*_op_code rows)"
+data simd_kernel_handler_dissolution_trigger: String = "dissolve-on: feature:dag-kernel-realization-handler — v1_interpreter builtin dispatches contiguous SoA fused pass; dissolve into target_model row emit when self-host lands; retire host opcode literals (mirror gunbc.accelerator_demo_program.elemwise_*_op_code rows) and replace float_kernel fma_contraction_policy Int wire with std.numerical_contract.FmaContractionPolicy carrier"
