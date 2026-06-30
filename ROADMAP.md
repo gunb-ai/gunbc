@@ -247,6 +247,8 @@ A program is a canonical `Node` (the *idea*); ingest / emit / eval across many m
 - [ ] **cross-media targets beyond syntax** — JSON / react / diagram as first-class media (not stringified)
   - [ ] `Medium<A> ↔ Medium<B>` homomorphisms
 - [ ] **emission = ingestion⁻¹ extended past syntax** — diagnostic + orchestration intent emit per-target by rows [plan](docs/plans/emission-ingestion-inverse.md)
+- [ ] **format-model reconciliation** — merge `FormatModel` / `OutputFormat` / the `Language`|`MarkupFormat`|`ConfigFormat` fork / regime-2 render protocol into one std layout authority (displaced cost: parallel indent/comment/newline spellings that drift independently) [plan](docs/plans/format-model-reconciliation.md)
+  - [ ] **regime-2 shared emission fold** — collapse pure-projection serializers onto one `render(doc, protocol)` fold; protocol grounds on the reconciled format model [plan](docs/plans/regime2-shared-emission-fold.md)
 - [ ] `FidelityDisposition` compose-up → medium-level `DecodeFidelity`
 - [ ] eval runtime generalization (wave-1 literal pins → `wave1_model_core` primitives)
 - [ ] **invert hand-maintained artifacts** — emit each (ROADMAP flagship · doc indexes) from its `.dag` authority + drift-gate it (the ci.yml pattern) [plan](docs/plans/invert-hand-maintained.md)
