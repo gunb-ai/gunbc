@@ -119,7 +119,6 @@ const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
     "medium_structure_project.rs",
     "extdeps_shape_transport_policy_project.rs",
     "fact_cardinality_census.rs",
-    "languages_consumer_census.rs",
     "non_fold_residue_project.rs",
     "recorded_fixture.rs",
     "resolved_graph_cache.rs",
@@ -345,9 +344,6 @@ fn run() -> Result<(), String> {
     })?;
     time_phase(&mut phases, "copy_hand_maintained_support", || {
         copy_hand_maintained_support(&stage0_src, &fresh_dir.join("src"))
-    })?;
-    time_phase(&mut phases, "patch_languages_consumer_census_mod", || {
-        patch_languages_consumer_census_mod(&fresh_dir.join("src"))
     })?;
     time_phase(&mut phases, "assert_bootstrap_emit_core_support", || {
         assert_bootstrap_emit_core_support(&fresh_dir.join("src"))
@@ -821,20 +817,6 @@ fn copy_hand_maintained_support(stage0_src: &Path, dest_src: &Path) -> Result<()
                 .map_err(|e| format!("copy {}: {e}", source.display()))?;
         }
     }
-    Ok(())
-}
-
-fn patch_languages_consumer_census_mod(src_dir: &Path) -> Result<(), String> {
-    let lib_path = src_dir.join("lib.rs");
-    let mut lib_text =
-        fs::read_to_string(&lib_path).map_err(|e| format!("read {}: {e}", lib_path.display()))?;
-    if !lib_text.contains("pub mod languages_consumer_census;") {
-        lib_text = lib_text.replace(
-            "pub mod fact_cardinality_census;\n",
-            "pub mod fact_cardinality_census;\npub mod languages_consumer_census;\n",
-        );
-    }
-    fs::write(&lib_path, lib_text).map_err(|e| format!("write {}: {e}", lib_path.display()))?;
     Ok(())
 }
 
