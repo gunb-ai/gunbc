@@ -1,4 +1,4 @@
-module v2.test.doc_reachability.lens_unit.verdict_flip_fixture
+module v2.test.doc_reachability.lens_unit.verdict_flip_test
 
 import v2.lens.doc_reachability {
   doc_graph_orphan_clean_for_count,
