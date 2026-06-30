@@ -1,0 +1,50 @@
+module extdeps.gpu.devices
+
+import std.types { NonEmptyStr, List }
+import extdeps.gpu.types { AcceleratorFacts, GpuRuntime, GpuFacts, GpuComputeCapability }
+import extdeps.vendor { Vendor }
+import extdeps.hardware { Hardware }
+import extdeps.vendor.apple { apple }
+import extdeps.vendor.nvidia { nvidia }
+import extdeps.memory.types { MemoryFacts }
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.apple.com/macbook-pro/specs/"
+  }
+}
+
+data apple_silicon_m5_gpu: AcceleratorFacts = AcceleratorFacts {
+  vendor: apple
+  model: "Apple M5 GPU"
+}
+
+data nvidia_rtx_5090: AcceleratorFacts = AcceleratorFacts {
+  vendor: nvidia
+  model: "GeForce RTX 5090"
+}
+
+data nvidia_rtx_5090_gpu_facts: GpuFacts = GpuFacts {
+  vendor: nvidia
+  model: "GeForce RTX 5090"
+  compute_capability: Present {
+    value: GpuComputeCapability { vendor: nvidia, major: 12, minor: 0 }
+  }
+  memory: MemoryFacts { capacity_bytes: 34359738368, speed_mts: 28000 }
+  supported_runtimes: [Cuda, Metal, OpenCl]
+}
+
+data wgpu_dispatch_device_label_apple_m5: NonEmptyStr = "apple-m5-metal"
+data wgpu_dispatch_device_label_rtx_5090: NonEmptyStr = "nvidia-rtx5090-dx12-vulkan"
+
+fn witness_apple_m5_grounds_on_vendor() -> Bool {
+  apple_silicon_m5_gpu.vendor == apple && apple_silicon_m5_gpu.model == "Apple M5 GPU"
+}
+
+fn witness_rtx_5090_grounds_on_vendor() -> Bool {
+  nvidia_rtx_5090.vendor == nvidia && nvidia_rtx_5090.model == "GeForce RTX 5090"
+}

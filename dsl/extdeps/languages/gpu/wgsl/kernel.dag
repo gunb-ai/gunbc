@@ -1,0 +1,107 @@
+module extdeps.languages.gpu.wgsl.kernel
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.communication.medium { Medium, Lossless, Lossy, DecodeFidelity }
+import std.types { NonEmptyStr, Int, List, Bool, String }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.bytes { pure_dag_seam_unreachable }
+import extdeps.languages.simd.kernel {
+  relu_mul_add_wire_op_codes,
+  elemwise_mul_wire_op_code,
+  elemwise_add_wire_op_code,
+  elemwise_relu_wire_op_code,
+  witness_relu_mul_add_wire_op_codes_are_locked_triplet,
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.w3.org/TR/WGSL/"
+  }
+}
+
+data wgsl_kernel_target_medium_name: NonEmptyStr = "wgsl-compute-kernel"
+
+data wgsl_kernel_precision_note: String = "WGSL kernel uses f32/i32; interpreter oracle uses Float64/Int — device-precision axis is the dominant float Lossy source (independent of NumericalContract FMA axis)"
+
+type WgslKernelBufferLayout = ContiguousSoa
+
+type WgslKernelEmitSurface {
+  fused_op_count: Int
+  buffer_layout: WgslKernelBufferLayout
+  integer_storage: String
+  float_storage: String
+}
+
+data wgsl_integer_storage_label: String = "i32"
+data wgsl_float_storage_label: String = "f32"
+data oracle_integer_storage_label: String = "Int (i64 wire)"
+data oracle_float_storage_label: String = "Float (Float64)"
+
+fn wgsl_relu_mul_add_kernel_surface() -> WgslKernelEmitSurface {
+  WgslKernelEmitSurface {
+    fused_op_count: 3
+    buffer_layout: ContiguousSoa
+    integer_storage: wgsl_integer_storage_label
+    float_storage: wgsl_float_storage_label
+  }
+}
+
+fn wgsl_kernel_medium(surface: WgslKernelEmitSurface) -> Medium<WgslKernelEmitSurface> {
+  Medium {
+    carried: surface
+    fidelity: Lossless
+  }
+}
+
+data wgsl_relu_mul_add_integer_kernel_source: String = "@group(0) @binding(0) var<storage, read> a: array<i32>;\n@group(0) @binding(1) var<storage, read> b: array<i32>;\n@group(0) @binding(2) var<storage, read> c: array<i32>;\n@group(0) @binding(3) var<storage, read_write> out: array<i32>;\n\n@compute @workgroup_size(64)\nfn main(@builtin(global_invocation_id) gid: vec3<u32>) {\n  let i = gid.x;\n  if i >= arrayLength(&out) { return; }\n  let tmp = a[i] * b[i] + c[i];\n  out[i] = max(tmp, 0);\n}\n"
+
+data wgsl_relu_mul_add_float_kernel_source: String = "@group(0) @binding(0) var<storage, read> a: array<f32>;\n@group(0) @binding(1) var<storage, read> b: array<f32>;\n@group(0) @binding(2) var<storage, read> c: array<f32>;\n@group(0) @binding(3) var<storage, read_write> out: array<f32>;\n\n@compute @workgroup_size(64)\nfn main(@builtin(global_invocation_id) gid: vec3<u32>) {\n  let i = gid.x;\n  if i >= arrayLength(&out) { return; }\n  let tmp = a[i] * b[i] + c[i];\n  out[i] = max(tmp, 0.0);\n}\n"
+
+fn witness_wgsl_kernel_surface_fused_op_count() -> Bool {
+  wgsl_relu_mul_add_kernel_surface().fused_op_count == 3
+}
+
+fn witness_wgsl_op_codes_share_simd_authority() -> Bool {
+  witness_relu_mul_add_wire_op_codes_are_locked_triplet()
+}
+
+fn wgpu_elementwise_kernel(
+  op_codes: List<Int>,
+  a: List<Int>,
+  b: List<Int>,
+  c: List<Int>
+) -> List<Int> {
+  [pure_dag_seam_unreachable()]
+}
+
+fn wgpu_elementwise_float_kernel(
+  op_codes: List<Int>,
+  a: List<Float>,
+  b: List<Float>,
+  c: List<Float>
+) -> List<Float> {
+  [pure_dag_seam_unreachable()]
+}
+
+data wgsl_kernel_int_execution_host_realization_marker: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "extdeps.languages.gpu.wgsl.kernel",
+    decl_name: "wgpu_elementwise_kernel",
+    field: WholeDeclaration
+  }
+}
+
+data wgsl_kernel_float_execution_host_realization_marker: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "extdeps.languages.gpu.wgsl.kernel",
+    decl_name: "wgpu_elementwise_float_kernel",
+    field: WholeDeclaration
+  }
+}
+
+data wgsl_kernel_handler_dissolution_trigger: String = "dissolve-on: feature:dag-gpu-realization-handler — v1_interpreter builtin dispatches WGSL compute via wgpu; dissolve into target_model row emit when self-host lands"
