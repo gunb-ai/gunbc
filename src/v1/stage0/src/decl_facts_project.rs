@@ -12,9 +12,9 @@ use std::path::PathBuf;
 use std::rc::Rc;
 
 use crate::cli_run::collect_dag_files_tolerant;
-use crate::cli_run::{is_test_dag, repo_rel};
 use crate::medium_structure_project::parse_dag_file;
 use crate::cli_run::workspace_root;
+use crate::cli_run::{is_test_dag, repo_rel};
 use crate::v1_compiler_infer_items::{item_kind, ItemKind};
 use crate::v1_std_core::{authored_name_at, Node};
 
