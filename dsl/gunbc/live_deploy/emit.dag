@@ -16,7 +16,7 @@ import gunbc.live_deploy.spec {
   gunbc_roadmap_server_path,
   gunbc_roadmap_systemd_unit_path,
 }
-import gunbc.node_http_server_emit { gunbhub_node_http_server_source }
+import gunbc.node_http_server_emit { roadmap_dashboard_node_http_server_source }
 
 data live_deploy_protocol: LayoutProtocol = LayoutProtocol { indent_unit: "" }
 
@@ -92,7 +92,7 @@ fn emit_apply_script_body(spec: DeploymentSpec) -> Doc {
       doc_line_of(text: ""),
       doc_line_of(text: "install -d -m 0755 /opt/gunbc"),
       doc_line_of(text: concat("cat > ", gunbc_roadmap_server_path, " <<'GUNBC_SERVER_EOF'")),
-      doc_line_of(text: gunbhub_node_http_server_source()),
+      doc_line_of(text: roadmap_dashboard_node_http_server_source()),
       doc_line_of(text: "GUNBC_SERVER_EOF"),
       doc_line_of(text: ""),
       doc_line_of(text: concat("cat > ", gunbc_roadmap_systemd_unit_path, " <<'GUNBC_UNIT_EOF'")),
@@ -102,7 +102,8 @@ fn emit_apply_script_body(spec: DeploymentSpec) -> Doc {
       doc_line_of(text: "GUNBC_UNIT_EOF"),
       doc_line_of(text: ""),
       doc_line_of(text: "systemctl daemon-reload"),
-      doc_line_of(text: concat("systemctl enable --now ", spec.service.unit_name)),
+      doc_line_of(text: concat("systemctl enable ", spec.service.unit_name)),
+      doc_line_of(text: concat("systemctl restart ", spec.service.unit_name)),
       doc_line_of(text: ""),
       doc_line_of(text: concat("if ! tailscale serve status 2>/dev/null | grep -q ':", to_string(port), "'; then")),
       doc_line_of(text: concat("  tailscale serve --bg ", to_string(port))),
