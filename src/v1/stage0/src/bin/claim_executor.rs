@@ -293,7 +293,7 @@ fn group_batch_units(batch: &[Runnable]) -> Vec<BatchUnit> {
         std::collections::HashMap::new();
     for runnable in batch {
         match runnable {
-            Runnable::SingleClaim { entry, function } if entry.is_empty() => {
+            Runnable::SingleClaim { entry, function, .. } if entry.is_empty() => {
                 units.push(BatchUnit::UnrunnableSentinel {
                     function: function.clone(),
                 });
@@ -457,6 +457,66 @@ fn run_shared_entry_claims(
         .map(|function| {
             let claim_start = Instant::now();
             let outcome = run_claim(&ctx, function);
+            let wall_nanos = claim_start.elapsed().as_nanos();
+            let rn = if first {
+                first = false;
+                resolve_nanos
+            } else {
+                0
+            };
+            claim_result_for_outcome(function.clone(), outcome, wall_nanos, rn)
+        })
+        .collect()
+}
+
+/// Run claims whose entry-graph is already resolved and cached in `memo`, resolving on first miss.
+/// Runs on the main thread so `InterpContext` (which contains `Rc` fields) never crosses thread
+/// boundaries. Subsequent callers for the same entry share the cached context — resolve runs once.
+fn run_memo_shared_claims(
+    source_roots: &[String],
+    entry: &str,
+    functions: &[String],
+    memo: &mut std::collections::HashMap<String, InterpContext>,
+) -> Vec<ClaimResult> {
+    let resolve_start = Instant::now();
+    let mut fresh_resolve = false;
+    if !memo.contains_key(entry) {
+        let (graph, source_indices) = match resolve_entry_graph(source_roots, entry) {
+            Ok(pair) => pair,
+            Err(msg) => {
+                return functions
+                    .iter()
+                    .map(|function| ClaimResult {
+                        function: function.clone(),
+                        ok: false,
+                        detail: format!("resolve failed for {}: {}", entry, msg),
+                        wall_nanos: 0,
+                        resolve_nanos: 0,
+                        corpus_resolve_nanos: 0,
+                        corpus_eval_nanos: 0,
+                        corpus_witnesses: 0,
+                    })
+                    .collect();
+            }
+        };
+        memo.insert(
+            entry.to_string(),
+            make_eval_context(&graph, source_indices, ExecutionMode::Wet),
+        );
+        fresh_resolve = true;
+    }
+    let resolve_nanos = if fresh_resolve {
+        resolve_start.elapsed().as_nanos()
+    } else {
+        0
+    };
+    let ctx = memo.get(entry).expect("memo populated above");
+    let mut first = fresh_resolve;
+    functions
+        .iter()
+        .map(|function| {
+            let claim_start = Instant::now();
+            let outcome = run_claim(ctx, function);
             let wall_nanos = claim_start.elapsed().as_nanos();
             let rn = if first {
                 first = false;
@@ -1230,6 +1290,12 @@ fn run_walk(source_roots: &[String], batches: &[Vec<Runnable>], spawn_width: usi
     let mut batches_run = 0usize;
     let walk_start = Instant::now();
     let mut batch_records: Vec<BatchRecord> = Vec::new();
+    // Cross-batch resolve memo: SharedClaims that declare ResolveScopeShared run on the main
+    // thread and share a single resolved InterpContext per (source_roots, entry) pair across all
+    // batches. Rc<ResolvedGraph> is !Send so these units cannot run on spawned threads; they
+    // run sequentially here after the spawned (non-memo) threads in each batch are joined.
+    let mut walk_memo: std::collections::HashMap<String, InterpContext> =
+        std::collections::HashMap::new();
     for (bi, batch) in batches.iter().enumerate() {
         batches_run = bi + 1;
         let units = group_batch_units(batch);
@@ -1241,6 +1307,15 @@ fn run_walk(source_roots: &[String], batches: &[Vec<Runnable>], spawn_width: usi
             width
         );
         let batch_start = Instant::now();
+        // Partition units: memo units stay on the main thread; others spawn.
+        let mut memo_units: Vec<BatchUnit> = Vec::new();
+        let mut thread_units: Vec<BatchUnit> = Vec::new();
+        for unit in units {
+            match &unit {
+                BatchUnit::SharedClaims { use_walk_memo: true, .. } => memo_units.push(unit),
+                _ => thread_units.push(unit),
+            }
+        }
         // Bracket the parallel walk in a host-effect group: the `[file]`/`[rest]`/
         // `[shell]` trace lines stream to stderr from the worker threads INSIDE the
         // group, while the scannable PASS/FAIL summary is deferred to AFTER the group
@@ -1252,16 +1327,25 @@ fn run_walk(source_roots: &[String], batches: &[Vec<Runnable>], spawn_width: usi
         if grouped {
             v1_compiler::v1_interpreter::group_begin(&format!("batch {} host-effects", bi + 1));
         }
-        let handles: Vec<_> = units
+        let handles: Vec<_> = thread_units
             .into_iter()
             .map(|unit| {
                 let roots = source_roots.to_vec();
                 thread::spawn(move || run_batch_unit(roots, unit, width))
             })
             .collect();
+        // Run memo units on the main thread while spawned threads are working.
+        let mut memo_results: Vec<ClaimResult> = Vec::new();
+        for unit in memo_units {
+            if let BatchUnit::SharedClaims { entry, functions, .. } = unit {
+                let results =
+                    run_memo_shared_claims(source_roots, &entry, &functions, &mut walk_memo);
+                memo_results.extend(results);
+            }
+        }
         // Collect all results before printing any PASS/FAIL — the prints must land
         // after `group_end`, and a thread panic still has to close the group.
-        let mut batch_results: Vec<ClaimResult> = Vec::new();
+        let mut batch_results: Vec<ClaimResult> = memo_results;
         let mut thread_panicked = false;
         for handle in handles {
             match handle.join() {
@@ -1417,7 +1501,7 @@ fn run_perturb_check(
         return Err(ExitCode::from(2));
     }
     let (gating_entry, gating_function) = match batches[0].first() {
-        Some(Runnable::SingleClaim { entry, function }) if !entry.is_empty() => {
+        Some(Runnable::SingleClaim { entry, function, .. }) if !entry.is_empty() => {
             (entry.clone(), function.clone())
         }
         _ => {
@@ -1458,7 +1542,7 @@ fn run_perturb_check(
             batch
                 .iter()
                 .map(|r| match r {
-                    Runnable::SingleClaim { entry, function } => Runnable::SingleClaim {
+                    Runnable::SingleClaim { entry, function, use_walk_memo } => Runnable::SingleClaim {
                         entry: if entry.is_empty() {
                             entry.clone()
                         } else {
@@ -1467,6 +1551,7 @@ fn run_perturb_check(
                                 .into_owned()
                         },
                         function: function.clone(),
+                        use_walk_memo: *use_walk_memo,
                     },
                     Runnable::DiscoveryBatch {
                         source_roots: roots,
@@ -1691,6 +1776,7 @@ mod tests {
         Runnable::SingleClaim {
             entry: entry.to_string(),
             function: function.to_string(),
+            use_walk_memo: false,
         }
     }
 
@@ -1714,7 +1800,7 @@ mod tests {
         let mut out = Vec::new();
         for unit in units {
             match unit {
-                BatchUnit::SharedClaims { entry, functions } => {
+                BatchUnit::SharedClaims { entry, functions, .. } => {
                     for f in functions {
                         out.push((entry.clone(), f.clone()));
                     }
@@ -1744,7 +1830,7 @@ mod tests {
             "three same-entry claims => one resolve-group"
         );
         match &units[0] {
-            BatchUnit::SharedClaims { entry, functions } => {
+            BatchUnit::SharedClaims { entry, functions, .. } => {
                 assert_eq!(entry, "gate.dag");
                 assert_eq!(functions, &["rust_gate", "emit_gate", "layering_gate"]);
             }
@@ -1783,7 +1869,7 @@ mod tests {
         let a = units
             .iter()
             .find_map(|u| match u {
-                BatchUnit::SharedClaims { entry, functions } if entry == "a.dag" => Some(functions),
+                BatchUnit::SharedClaims { entry, functions, .. } if entry == "a.dag" => Some(functions),
                 _ => None,
             })
             .expect("a.dag group present");
@@ -1828,7 +1914,7 @@ mod tests {
         let gate = units
             .iter()
             .find_map(|u| match u {
-                BatchUnit::SharedClaims { entry, functions } if entry == "gate.dag" => {
+                BatchUnit::SharedClaims { entry, functions, .. } if entry == "gate.dag" => {
                     Some(functions)
                 }
                 _ => None,
