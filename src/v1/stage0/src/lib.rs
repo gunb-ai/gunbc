@@ -13,10 +13,8 @@
 )]
 #![recursion_limit = "256"]
 
-pub mod cache_purity_oracle;
 pub mod cli_run;
 pub mod coproduct_reflection;
-pub mod corpus_lex;
 pub mod doc_reachability_project;
 pub mod extdeps_cargo;
 pub mod extdeps_cargo_version;
@@ -39,10 +37,8 @@ pub mod extdeps_uri_path;
 pub mod extdeps_version;
 pub mod extdeps_version_semver;
 pub mod fact_cardinality_census;
-pub mod import_resolution_project;
 pub mod inert_carrier_project;
 pub mod languages_consumer_census;
-pub mod layering_imports_project;
 pub mod medium_structure_project;
 pub mod module_path_index;
 pub mod non_fold_residue_project;

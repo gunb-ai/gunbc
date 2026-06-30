@@ -63,7 +63,7 @@ fn witness_rust_gate_split_is_real() -> Bool {
     symbol_in(syms: rustjob_syms, s: rust) &&
     bag_eq(xs: spec_syms, ys: floor_syms, eq: symbol_eq) &&
     string_contains(s: rust_job_script, pattern: "dsl/tools/rust_gates_ci.dag") &&
-    string_contains(s: rust_job_script, pattern: "cargo build -p v1-compiler --release")
+    string_contains(s: rust_job_script, pattern: "\"$CARGO_HOME/bin/cargo\" build -p v1-compiler --release")
 }
 
 fn witness_gate_roster_matches_coproduct_arms() -> Bool {
