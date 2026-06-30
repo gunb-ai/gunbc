@@ -22,3 +22,11 @@ test fn self_host_realized_comparison_generated_file_change_flips_verdict_holds(
   let fold_vrt = fold_side_bytes(root: floor_committed_root, roster: ["v1_rt.rs"])
   fold_lib != fold_vrt
 }
+
+test fn self_host_realized_comparison_hand_maintained_excluded_by_roster_holds() -> Bool {
+  let fold_generated = fold_side_bytes(root: floor_committed_root, roster: ["lib.rs"])
+  let fold_hand_maintained = fold_side_bytes(root: floor_committed_root, roster: ["cli_run.rs"])
+  string_contains(fold_generated, "lib.rs\n")
+  && string_contains(fold_hand_maintained, "cli_run.rs\n")
+  && !string_contains(fold_generated, "cli_run.rs\n")
+}

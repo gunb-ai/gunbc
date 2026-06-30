@@ -1,0 +1,61 @@
+module v2.workflow.self_host_realized_comparison_gate
+
+import extdeps.shell
+import gunbc.ci_layer_roots { witness_layer_roots }
+import std.logic { Bool }
+import extdeps.languages.bash.program {
+  ShellProgram, ShellStmt, ShellWord,
+  lit, var_ref, command, serialize_bash
+}
+import tools.host_prelude { ensure_regen_stage0_built, ensure_gunbc_built }
+import tools.self_host_realized_comparison_transport {
+  realized_comparison_stable_dir,
+  realized_comparison_roster_manifest_path
+}
+
+data srfc_gate_test_entry: String = "src/v2/test/claim/execution/self_host_realized_comparison_test.dag"
+data srfc_staleness_gate_witness: String = "self_host_realized_comparison_staleness_gate_holds"
+data srfc_provenance_witness: String = "self_host_realized_comparison_reads_real_bytes_both_sides_holds"
+
+fn srfc_source_root_flags() -> List<ShellWord> {
+  fold(witness_layer_roots, init: [], f: (acc, r) => concat(acc, [lit(text: "--source-root"), lit(text: r)]))
+}
+
+fn srfc_emit_stmt() -> ShellStmt {
+  command(words: [
+    var_ref(name: "REGEN_STAGE0"),
+    lit(text: "--emit-fresh"), lit(text: realized_comparison_stable_dir),
+    lit(text: "--write-manifest"), lit(text: realized_comparison_roster_manifest_path)
+  ])
+}
+
+fn srfc_gunbc_claim_run(function: String) -> ShellStmt {
+  command(words: concat(
+    concat([var_ref(name: "GUNBC"), lit(text: "run")], srfc_source_root_flags()),
+    [
+      lit(text: "--entry"), lit(text: srfc_gate_test_entry),
+      lit(text: "--function"), lit(text: function),
+      lit(text: "--claim-run")
+    ]
+  ))
+}
+
+fn realized_comparison_gate_program() -> ShellProgram {
+  ShellProgram {
+    set_e: true,
+    statements: concat(
+      concat(ensure_regen_stage0_built(), ensure_gunbc_built()),
+      [
+        command(words: [lit(text: "cd"), var_ref(name: "ROOT")]),
+        srfc_emit_stmt(),
+        srfc_gunbc_claim_run(function: srfc_provenance_witness),
+        srfc_gunbc_claim_run(function: srfc_staleness_gate_witness)
+      ]
+    )
+  }
+}
+
+func run_self_host_realized_comparison_gate() -> Bool {
+  let result = shell.Exec.Run(script: serialize_bash(p: realized_comparison_gate_program()))
+  result.success
+}
