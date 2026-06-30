@@ -54,6 +54,20 @@ fn depth_chain_html(fuel: Int) -> String {
   }
 }
 
+fn bold_title_html() -> String {
+  let rn = authored(id: "bold1", done: false, content: "**bold** item")
+  match try_serialize_html_source(node: nodes_ul(items: [rn], nodes: [rn], edges: [], merged: [], fuel: 0)) {
+    EmitOk { html: h } => h
+    EmitRejected { reason: _ } => ""
+  }
+}
+
+fn witness_bold_title_renders_strong() -> Bool {
+  let h = bold_title_html()
+  string_contains(s: h, pattern: "<strong>bold</strong>")
+    && !string_contains(s: h, pattern: "**")
+}
+
 fn witness_depth_cap_fails_honest() -> Bool {
   let truncated = depth_chain_html(fuel: 0)
   let expanded = depth_chain_html(fuel: 1)
@@ -68,4 +82,5 @@ test fn roadmap_page_keystone_holds() -> Bool {
     && witness_empty_doc_is_minimal_shell()
     && witness_authority_differs_from_empty()
     && witness_depth_cap_fails_honest()
+    && witness_bold_title_renders_strong()
 }
