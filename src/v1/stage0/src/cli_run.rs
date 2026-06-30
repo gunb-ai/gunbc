@@ -5609,6 +5609,7 @@ fn doc_reachable_set(
 }
 
 struct DocGraphReport {
+    doc_count: usize,
     orphans: Vec<String>,
     dangling: Vec<(String, String)>,
 }
@@ -5673,19 +5674,28 @@ fn build_doc_graph_report() -> DocGraphReport {
         .collect();
     dangling.sort();
     dangling.dedup();
-    DocGraphReport { orphans, dangling }
+    DocGraphReport {
+        doc_count: universe.len(),
+        orphans,
+        dangling,
+    }
+}
+
+fn doc_graph_report() -> &'static DocGraphReport {
+    static REPORT: OnceLock<DocGraphReport> = OnceLock::new();
+    REPORT.get_or_init(build_doc_graph_report)
 }
 
 pub fn doc_graph_orphan_count() -> i64 {
-    build_doc_graph_report().orphans.len() as i64
+    doc_graph_report().orphans.len() as i64
 }
 
 pub fn doc_graph_dangling_link_count() -> i64 {
-    build_doc_graph_report().dangling.len() as i64
+    doc_graph_report().dangling.len() as i64
 }
 
 pub fn doc_graph_doc_count() -> i64 {
-    doc_universe().len() as i64
+    doc_graph_report().doc_count as i64
 }
 
 #[cfg(test)]
