@@ -35,14 +35,6 @@ fn resolve_type_node(type_name: Symbol) -> Node {
   resolve_type_node(type_name: type_name)
 }
 
-fn syntactic_coproduct_arm_keys(type_name: Symbol) -> List<Symbol> {
-  syntactic_coproduct_arm_keys(type_name: type_name)
-}
-
-fn syntactic_coproduct_arm_pairs(type_name: Symbol) -> List<CoproductArmPayloadPair> {
-  syntactic_coproduct_arm_pairs(type_name: type_name)
-}
-
 type ArmPayload
   = Nullary
   | Typed { target_ref: Symbol }
@@ -678,6 +670,10 @@ fn canonical_hash_of_edge_label(label: EdgeLabel) -> Hash {
 
 fn combine_hash(a: Hash, b: Hash) -> Hash {
   hash_combine(a: a, b: b)
+}
+
+fn symbol_identity_digest(sym: Symbol) -> Hash {
+  atom_identity_hash(s: sym)
 }
 
 data byte_offset_residual_quotient_magnitude_shift_limbs: Int = 4
