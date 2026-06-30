@@ -340,6 +340,16 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
             "inert_carrier_declared_count".to_string(),
             int_type(),
         );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "inert_lens_unreached_module_count".to_string(),
+            int_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "inert_lens_top_level_module_count".to_string(),
+            int_type(),
+        );
         let m = v1_rt::rc_map_insert(m.clone(), "non_fold_residue_count".to_string(), int_type());
         let m = v1_rt::rc_map_insert(
             m.clone(),

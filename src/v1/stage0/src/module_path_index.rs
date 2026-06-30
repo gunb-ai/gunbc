@@ -17,15 +17,33 @@ pub fn workspace_root() -> std::path::PathBuf {
 // authority, the same direction gunbc#5364 takes the residue scan.)
 const CI_LAYER_ROOTS_AUTHORITY_REL: &str = "dsl/gunbc/ci_layer_roots.dag";
 const WITNESS_LAYER_ROOTS_DATA_NAME: &str = "witness_layer_roots";
+const WITNESS_DISCOVERY_SCAN_DIRS_DATA_NAME: &str = "witness_discovery_scan_dirs";
 
-/// Project the `witness_layer_roots` `List<String>` literal out of the ci_layer_roots authority's
-/// SOURCE TEXT via the real front-end (`tokenize` + `parse`) — no second hand-rolled scanner. Pure
-/// (text in, roots out) so a synthetic authority carrying non-default roots can drive it: a reader
-/// that ignored its input and returned a hardcoded `["dsl", "src/v2"]` (the reverted shape) fails that
-/// control — the by-construction discrimination (DESIGN §5). Fail-closed: a parse error, a missing data
-/// def, a non-string-list body, or an empty list is a loud panic, never a silent fallback that would
-/// re-open the drift.
-pub(crate) fn witness_layer_roots_from_source(content: &str) -> Vec<String> {
+fn ci_layer_roots_authority_content() -> &'static str {
+    static CONTENT: OnceLock<String> = OnceLock::new();
+    CONTENT
+        .get_or_init(|| {
+            let path = workspace_root().join(CI_LAYER_ROOTS_AUTHORITY_REL);
+            std::fs::read_to_string(&path).unwrap_or_else(|e| {
+                panic!(
+                    "ci_layer_roots authority: failed to read {}: {e}",
+                    path.display()
+                )
+            })
+        })
+        .as_str()
+}
+
+/// Project a `List<String>` data literal out of the ci_layer_roots authority's SOURCE TEXT via the
+/// real front-end (`tokenize` + `parse`) — no second hand-rolled scanner. Pure (text in, list out) so
+/// a synthetic authority carrying non-default values can drive it: a reader that ignored its input
+/// and returned a hardcoded copy fails that control — the by-construction discrimination (DESIGN §5).
+/// Fail-closed: a parse error, a missing data def, a non-string-list body, or an empty list is a loud
+/// panic, never a silent fallback that would re-open the drift.
+pub(crate) fn string_list_data_from_ci_layer_roots_source(
+    content: &str,
+    data_name: &str,
+) -> Vec<String> {
     use crate::v1_std_core::{ExprData, LiteralValue};
 
     let filename = CI_LAYER_ROOTS_AUTHORITY_REL.to_string();
@@ -45,52 +63,63 @@ pub(crate) fn witness_layer_roots_from_source(content: &str) -> Vec<String> {
         panic!("ci_layer_roots authority: {CI_LAYER_ROOTS_AUTHORITY_REL} parsed to no module")
     });
     for item in module.children.iter() {
-        if item.name != WITNESS_LAYER_ROOTS_DATA_NAME
+        if item.name != data_name
             || !crate::v1_compiler_emit_core_support::is_data_def_item(item.clone())
         {
             continue;
         }
         let body = item.body.as_ref().unwrap_or_else(|| {
             panic!(
-                "ci_layer_roots authority: `data {WITNESS_LAYER_ROOTS_DATA_NAME}` in \
+                "ci_layer_roots authority: `data {data_name}` in \
                  {CI_LAYER_ROOTS_AUTHORITY_REL} has no value body"
             )
         });
         if !matches!(body.expr_data.as_ref(), ExprData::ExprListLit) {
             panic!(
-                "ci_layer_roots authority: `data {WITNESS_LAYER_ROOTS_DATA_NAME}` in \
+                "ci_layer_roots authority: `data {data_name}` in \
                  {CI_LAYER_ROOTS_AUTHORITY_REL} is not a `List<String>` literal"
             );
         }
-        let mut roots = Vec::new();
+        let mut values = Vec::new();
         for el in body.children.iter() {
             match el.expr_data.as_ref() {
                 ExprData::ExprLiteral { value } => match value.as_ref() {
-                    LiteralValue::LitStr { value } => roots.push(value.clone()),
+                    LiteralValue::LitStr { value } => values.push(value.clone()),
                     _ => panic!(
-                        "ci_layer_roots authority: an element of `{WITNESS_LAYER_ROOTS_DATA_NAME}` in \
+                        "ci_layer_roots authority: an element of `{data_name}` in \
                          {CI_LAYER_ROOTS_AUTHORITY_REL} is not a string literal"
                     ),
                 },
                 _ => panic!(
-                    "ci_layer_roots authority: an element of `{WITNESS_LAYER_ROOTS_DATA_NAME}` in \
+                    "ci_layer_roots authority: an element of `{data_name}` in \
                      {CI_LAYER_ROOTS_AUTHORITY_REL} is not a literal"
                 ),
             }
         }
-        if roots.is_empty() {
+        if values.is_empty() {
             panic!(
-                "ci_layer_roots authority: `{WITNESS_LAYER_ROOTS_DATA_NAME}` in \
+                "ci_layer_roots authority: `{data_name}` in \
                  {CI_LAYER_ROOTS_AUTHORITY_REL} is empty (fail-closed: an empty witness corpus would \
                  vacuously pass every census wall)"
             );
         }
-        return roots;
+        return values;
     }
     panic!(
-        "ci_layer_roots authority: no `data {WITNESS_LAYER_ROOTS_DATA_NAME}` def in \
+        "ci_layer_roots authority: no `data {data_name}` def in \
          {CI_LAYER_ROOTS_AUTHORITY_REL}"
     )
+}
+
+/// Project the `witness_layer_roots` `List<String>` literal out of the ci_layer_roots authority.
+pub(crate) fn witness_layer_roots_from_source(content: &str) -> Vec<String> {
+    string_list_data_from_ci_layer_roots_source(content, WITNESS_LAYER_ROOTS_DATA_NAME)
+}
+
+/// Project the `witness_discovery_scan_dirs` `List<String>` literal out of the ci_layer_roots
+/// authority.
+pub(crate) fn witness_discovery_scan_dirs_from_source(content: &str) -> Vec<String> {
+    string_list_data_from_ci_layer_roots_source(content, WITNESS_DISCOVERY_SCAN_DIRS_DATA_NAME)
 }
 
 /// The witness layer roots, read live from the single .dag authority and memoized (the authority is
@@ -99,16 +128,15 @@ pub(crate) fn witness_layer_roots_from_source(content: &str) -> Vec<String> {
 pub(crate) fn witness_layer_roots() -> Vec<String> {
     static ROOTS: OnceLock<Vec<String>> = OnceLock::new();
     ROOTS
-        .get_or_init(|| {
-            let path = workspace_root().join(CI_LAYER_ROOTS_AUTHORITY_REL);
-            let content = std::fs::read_to_string(&path).unwrap_or_else(|e| {
-                panic!(
-                    "ci_layer_roots authority: failed to read {}: {e}",
-                    path.display()
-                )
-            });
-            witness_layer_roots_from_source(&content)
-        })
+        .get_or_init(|| witness_layer_roots_from_source(ci_layer_roots_authority_content()))
+        .clone()
+}
+
+/// Witness discovery scan dirs, read live from `gunbc.ci_layer_roots.witness_discovery_scan_dirs`.
+pub(crate) fn witness_discovery_scan_dirs() -> Vec<String> {
+    static SCAN_DIRS: OnceLock<Vec<String>> = OnceLock::new();
+    SCAN_DIRS
+        .get_or_init(|| witness_discovery_scan_dirs_from_source(ci_layer_roots_authority_content()))
         .clone()
 }
 
@@ -243,6 +271,29 @@ mod tests {
                 ws.join("dsl").to_string_lossy().into_owned(),
                 ws.join("src/v2").to_string_lossy().into_owned(),
             ]
+        );
+    }
+
+    #[test]
+    fn reader_follows_synthetic_authority_scan_dirs() {
+        let synthetic = "module gunbc.ci_layer_roots\n\n\
+             data witness_discovery_scan_dirs: List<String> = [\"scan/a\", \"scan/b\"]\n";
+        assert_eq!(
+            witness_discovery_scan_dirs_from_source(synthetic),
+            vec!["scan/a".to_string(), "scan/b".to_string()],
+            "the scan-dir reader must FOLLOW the authority, not a hardcoded copy"
+        );
+    }
+
+    #[test]
+    fn witness_discovery_scan_dirs_projects_live_authority_value() {
+        assert_eq!(
+            witness_discovery_scan_dirs(),
+            vec![
+                "dsl/test/claim".to_string(),
+                "src/v2/test/claim/manual".to_string(),
+            ],
+            "live authority scan-dir value drifted"
         );
     }
 }
