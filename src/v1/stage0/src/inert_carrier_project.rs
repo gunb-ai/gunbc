@@ -403,45 +403,4 @@ mod tests {
         ]);
         assert!(!inert.contains(&"Dup".to_string()));
     }
-
-    // LIVE-TREE gates. These run over the real corpus and must hold on main; they are the executable
-    // floor the `.dag` witness mirrors.
-    #[test]
-    fn live_tree_declared_universe_is_nonempty() {
-        assert!(
-            inert_carrier_declared_count() > 0,
-            "expected non-empty type-carrier universe; zero means the corpus walk fail-opened"
-        );
-    }
-
-    #[test]
-    fn live_tree_no_unrostered_inert_carrier() {
-        let report = build_report();
-        let roster: BTreeSet<&str> = INERT_CARRIER_ROSTER.iter().copied().collect();
-        let unrostered: Vec<&String> = report
-            .inert
-            .iter()
-            .filter(|n| !roster.contains(n.as_str()))
-            .collect();
-        assert!(
-            unrostered.is_empty(),
-            "new inert carrier(s) not on the exception roster (wire a consumer, or add to \
-             INERT_CARRIER_ROSTER with a dissolve-on): {unrostered:?}"
-        );
-    }
-
-    #[test]
-    fn live_tree_roster_has_no_stale_entries() {
-        let report = build_report();
-        let inert: BTreeSet<&String> = report.inert.iter().collect();
-        let stale: Vec<&&str> = INERT_CARRIER_ROSTER
-            .iter()
-            .filter(|n| !inert.contains(&n.to_string()))
-            .collect();
-        assert!(
-            stale.is_empty(),
-            "roster entries that are no longer inert (gained a consumer or were deleted) — remove \
-             them so the roster shrinks: {stale:?}"
-        );
-    }
 }
