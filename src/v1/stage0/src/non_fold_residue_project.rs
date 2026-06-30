@@ -68,6 +68,11 @@ const NON_FOLD_MIGRATION_DEBT_ROSTER: &[&str] = &[
     "src/v2/compiler/01_tokenize.dag::lex_try_rules_prefer_longer",
     "src/v2/compiler/06_translate.dag::translate_algebra_finalize",
     "src/v2/compiler/emit_host.dag::run_test_claim_emit_vs_eval_verdict",
+    "src/v2/extdeps/languages/dag.dag::dag_grammar_terminal_for_mvp1_bind_token",
+    "src/v2/extdeps/languages/dag.dag::dag_grammar_terminal_for_mvp1_loop_token",
+    "src/v2/extdeps/languages/dag.dag::dag_grammar_terminal_for_mvp1_match_token",
+    "src/v2/extdeps/languages/dag.dag::dag_grammar_terminal_for_mvp1_pick_token",
+    "src/v2/extdeps/languages/dag.dag::dag_grammar_terminal_for_mvp1_rec_token",
     // (a) other un-migrated modeling awaiting total fold.
     "dsl/extdeps/languages/markdown.dag::md_nested",
     "src/v2/extdeps/formats/spice_passive_projection.dag::passive_spec_from_component",
@@ -122,6 +127,11 @@ const NON_FOLD_RESIDUE_ROSTER: &[&str] = &[
     "src/v2/test/claim/manual/eval_runtime_mvp.dag::eval_mvp2_arg_is_two_literal",
     "src/v2/extdeps/formats/spice_passive_projection.dag::passive_spec_from_component",
     "src/v2/extdeps/formats/spice_passive_projection.dag::passive_topology_from_component",
+    "src/v2/extdeps/languages/dag.dag::dag_grammar_terminal_for_mvp1_bind_token",
+    "src/v2/extdeps/languages/dag.dag::dag_grammar_terminal_for_mvp1_loop_token",
+    "src/v2/extdeps/languages/dag.dag::dag_grammar_terminal_for_mvp1_match_token",
+    "src/v2/extdeps/languages/dag.dag::dag_grammar_terminal_for_mvp1_pick_token",
+    "src/v2/extdeps/languages/dag.dag::dag_grammar_terminal_for_mvp1_rec_token",
     "src/v2/extdeps/runtimes/v2_effect_io_pure.dag::effect_io_pure_backends_match",
     "src/v2/lens/complexity.dag::complexity_bound_dominates",
     "src/v2/lens/complexity.dag::complexity_bound_from_class",
@@ -686,8 +696,7 @@ mod tests {
             migration.difference(&roster).collect::<Vec<_>>()
         );
         assert_eq!(
-            NON_FOLD_MIGRATION_DEBT_ROSTER.len()
-                + non_fold_residue_irreducible_roster_slots() as usize,
+            NON_FOLD_MIGRATION_DEBT_ROSTER.len() + non_fold_residue_irreducible_roster_slots() as usize,
             NON_FOLD_RESIDUE_ROSTER.len(),
             "roster partition must cover every slot"
         );
