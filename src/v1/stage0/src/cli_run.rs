@@ -5157,6 +5157,13 @@ mod layer_span_lane_tests {
         assert!(coarse_layer_of_module("v2.compiler.emit") == CoarseLayer::Compiler);
         assert!(coarse_layer_of_module("v2.workflow.executor") == CoarseLayer::Workflow);
         assert!(coarse_layer_of_module("gunbc.ci_spec") == CoarseLayer::Workflow);
+        // Authority specifics (layer_prefix_from_qualified_name): lens/test are
+        // Compiler, an unknown head is Std (ambient).
+        assert!(coarse_layer_of_module("v2.lens.grounding") == CoarseLayer::Compiler);
+        assert!(coarse_layer_of_module("v2.test.claim.x") == CoarseLayer::Compiler);
+        assert!(coarse_layer_of_module("lens.grounding") == CoarseLayer::Compiler);
+        assert!(coarse_layer_of_module("tools.build_step") == CoarseLayer::Workflow);
+        assert!(coarse_layer_of_module("product.compute_fabric") == CoarseLayer::Std);
     }
 
     // A hermetic compiler->workflow test touches two adjacent layers (the unit

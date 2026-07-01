@@ -50,3 +50,16 @@ test fn product_module_is_workflow_layer() -> Bool {
     LayerPrefixCompiler => false
   }
 }
+
+test fn lens_module_is_compiler_layer() -> Bool {
+  match layer_of_module(mod_name: "v2.lens.grounding") {
+    LayerPrefixCompiler => true
+    LayerPrefixStd => false
+    LayerPrefixExtdeps => false
+    LayerPrefixWorkflow => false
+  }
+}
+
+test fn extdeps_plus_lens_is_floor() -> Bool {
+  keeps_on_floor(imports: ["extdeps.shell", "v2.lens.grounding"])
+}
