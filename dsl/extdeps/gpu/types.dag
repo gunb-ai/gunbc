@@ -55,7 +55,7 @@ type GpuModelCatalogRow {
   compute_capability: GpuComputeCapability?
   memory: MemoryFacts
   supported_runtimes: List<GpuRuntime>
-  wgpu_dispatch_device_label: NonEmptyStr?
+  wgpu_dispatch_device_label: String?
 }
 
 type GpuFacts {

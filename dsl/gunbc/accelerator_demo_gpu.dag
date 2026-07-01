@@ -12,7 +12,7 @@ import extdeps.languages.gpu.wgsl.kernel {
   wgpu_elementwise_kernel,
   wgpu_elementwise_float_kernel,
 }
-import extdeps.gpu.apple { apple_silicon_m5_gpu }
+import extdeps.gpu.apple { apple_silicon_m5_gpu, apple_m5_wgpu_dispatch_device_label }
 import extdeps.gpu.nvidia { nvidia_rtx_5090 }
 import extdeps.gpu { gpu_facts_model_number }
 import gunbc.accelerator_demo_program {
@@ -239,7 +239,7 @@ fn witness_gpu_float_fidelity_declaration_is_lossy_for_device_precision() -> Boo
 }
 
 fn witness_operator_receipt_is_honestly_dormant() -> Bool {
-  match operator_dormant_receipt_template(device_label: "apple-m5-metal").status {
+  match operator_dormant_receipt_template(device_label: apple_m5_wgpu_dispatch_device_label).status {
     DormantAwaitingOperator => true
     Executed => false
   }

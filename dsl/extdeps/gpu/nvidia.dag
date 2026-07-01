@@ -1,6 +1,7 @@
 module extdeps.gpu.nvidia
 
 import std.measure { ByteSize, gibibyte, gibibyte_to_byte_size }
+import std.types { String }
 import extdeps.gpu.types {
   GpuModelCatalogRow,
   GpuFacts,
@@ -23,6 +24,8 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 data rtx_5090_vram_bytes: ByteSize = gibibyte_to_byte_size(g: gibibyte(32))
 
+data nvidia_rtx_5090_wgpu_dispatch_device_label: String = "nvidia-rtx5090-dx12-vulkan"
+
 data nvidia_rtx_5090_catalog: GpuModelCatalogRow = GpuModelCatalogRow {
   model_number: "GeForce RTX 5090"
   vendor: nvidia
@@ -32,7 +35,7 @@ data nvidia_rtx_5090_catalog: GpuModelCatalogRow = GpuModelCatalogRow {
     memory_kind: Dram
   }
   supported_runtimes: [Cuda]
-  wgpu_dispatch_device_label: "nvidia-rtx5090-dx12-vulkan"
+  wgpu_dispatch_device_label: nvidia_rtx_5090_wgpu_dispatch_device_label
 }
 
 data nvidia_rtx_5090: GpuFacts = GpuFacts {

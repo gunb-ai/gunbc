@@ -1,7 +1,7 @@
 module extdeps.gpu.devices
 
-import extdeps.gpu.apple { apple_silicon_m5_gpu, apple_m5_gpu_catalog }
-import extdeps.gpu.nvidia { nvidia_rtx_5090, nvidia_rtx_5090_catalog }
+import extdeps.gpu.apple { apple_silicon_m5_gpu, apple_m5_gpu_catalog, apple_m5_wgpu_dispatch_device_label }
+import extdeps.gpu.nvidia { nvidia_rtx_5090, nvidia_rtx_5090_catalog, nvidia_rtx_5090_wgpu_dispatch_device_label }
 import extdeps.gpu { gpu_facts_vendor, gpu_facts_model_number, gpu_facts_wgpu_dispatch_device_label }
 import extdeps.vendor.apple { apple }
 import extdeps.vendor.nvidia { nvidia }
@@ -24,7 +24,7 @@ fn witness_apple_m5_has_metal_runtime() -> Bool {
 
 fn witness_apple_m5_dispatch_label_grounded() -> Bool {
   match gpu_facts_wgpu_dispatch_device_label(gpu: apple_silicon_m5_gpu) {
-    Present { value: label } => label == "apple-m5-metal"
+    Present { value: label } => label == apple_m5_wgpu_dispatch_device_label
     Absent => false
   }
 }
@@ -56,7 +56,7 @@ fn witness_rtx_5090_has_cuda_runtime() -> Bool {
 
 fn witness_rtx_5090_dispatch_label_grounded() -> Bool {
   match gpu_facts_wgpu_dispatch_device_label(gpu: nvidia_rtx_5090) {
-    Present { value: label } => label == "nvidia-rtx5090-dx12-vulkan"
+    Present { value: label } => label == nvidia_rtx_5090_wgpu_dispatch_device_label
     Absent => false
   }
 }

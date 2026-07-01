@@ -4,7 +4,7 @@ import extdeps.gpu.types { GpuFacts, GpuRuntime, GpuComputeCapability }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
 import extdeps.memory.types { MemoryFacts }
-import std.types { NonEmptyStr, List }
+import std.types { NonEmptyStr, String, List }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -36,6 +36,6 @@ fn gpu_facts_supported_runtimes(gpu: GpuFacts) -> List<GpuRuntime> {
   gpu.catalog.supported_runtimes
 }
 
-fn gpu_facts_wgpu_dispatch_device_label(gpu: GpuFacts) -> NonEmptyStr? {
+fn gpu_facts_wgpu_dispatch_device_label(gpu: GpuFacts) -> String? {
   gpu.catalog.wgpu_dispatch_device_label
 }

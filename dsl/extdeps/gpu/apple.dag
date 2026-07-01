@@ -1,6 +1,7 @@
 module extdeps.gpu.apple
 
 import std.measure { ByteSize, gibibyte, gibibyte_to_byte_size }
+import std.types { String }
 import extdeps.gpu.types { GpuModelCatalogRow, GpuFacts, GpuRuntime, Metal }
 import extdeps.memory.types { MemoryFacts, UnifiedShared }
 import extdeps.vendor.apple { apple }
@@ -17,6 +18,8 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 data apple_m5_unified_memory_bytes: ByteSize = gibibyte_to_byte_size(g: gibibyte(24))
 
+data apple_m5_wgpu_dispatch_device_label: String = "apple-m5-metal"
+
 data apple_m5_gpu_catalog: GpuModelCatalogRow = GpuModelCatalogRow {
   model_number: "Apple M5 GPU"
   vendor: apple
@@ -26,7 +29,7 @@ data apple_m5_gpu_catalog: GpuModelCatalogRow = GpuModelCatalogRow {
     memory_kind: UnifiedShared
   }
   supported_runtimes: [Metal]
-  wgpu_dispatch_device_label: "apple-m5-metal"
+  wgpu_dispatch_device_label: apple_m5_wgpu_dispatch_device_label
 }
 
 data apple_silicon_m5_gpu: GpuFacts = GpuFacts {
