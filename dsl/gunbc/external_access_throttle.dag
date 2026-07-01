@@ -2,6 +2,7 @@ module gunbc.external_access_throttle
 
 import extdeps.cloud.gcp.gcp { GcpProjectId, ServiceAccountEmail }
 import extdeps.cron.schedule_model { CronSchedule, Wildcard, Exact, Step }
+import std.bytes { pure_dag_seam_unreachable }
 import gunbc.assimilate.bmc_token_federation {
   bmc_secrets_project_id,
   bmc_srv3_secret_name,
@@ -111,18 +112,27 @@ fn external_access_throttle_schedule_for(
   )
 }
 
+fn external_access_throttle_registry_covers(namespace: ExternalAccessThrottleNamespace) -> Bool {
+  match external_access_throttle_schedule_for(
+    policies: external_access_throttle_registry,
+    namespace: namespace
+  ) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn external_access_throttle_missing_registry_row_fatal() -> CronSchedule {
+  pure_dag_seam_unreachable()
+  external_access_throttle_conservative_probe_interval
+}
+
 fn external_access_throttle_enforce_schedule(namespace: ExternalAccessThrottleNamespace) -> CronSchedule {
   match external_access_throttle_schedule_for(
     policies: external_access_throttle_registry,
     namespace: namespace
   ) {
     Present { value: schedule } => schedule
-    Absent => CronSchedule {
-      minute: Exact { value: 0 },
-      hour: Exact { value: 0 },
-      day_of_month: Exact { value: 1 },
-      month: Exact { value: 1 },
-      day_of_week: Exact { value: 0 }
-    }
+    Absent => external_access_throttle_missing_registry_row_fatal()
   }
 }

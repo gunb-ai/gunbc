@@ -2,13 +2,17 @@ module test.claim.external_access_throttle_witness
 
 import std.logic { Bool }
 import gunbc.external_access_throttle {
+  ExternalAccessThrottleNamespace,
   external_access_throttle_registry,
   external_access_throttle_conservative_probe_interval,
   external_access_throttle_namespace_key,
+  external_access_throttle_schedule_for,
+  external_access_throttle_registry_covers,
   external_access_throttle_enforce_schedule,
   gcp_bmc_assimilator_sts_throttle_namespace,
   gcp_bmc_srv3_secret_throttle_namespace,
 }
+import extdeps.cloud.gcp.gcp { GcpProjectId }
 import extdeps.cron.schedule_model { render_cron_schedule }
 
 test fn external_access_throttle_registry_has_distinct_namespaced_rows() -> Bool {
@@ -33,4 +37,25 @@ test fn external_access_throttle_schedule_is_single_authority_per_namespace() ->
   )
   let authority_cron = render_cron_schedule(s: external_access_throttle_conservative_probe_interval)
   sts_cron == authority_cron && sm_cron == authority_cron
+}
+
+data external_access_throttle_unregistered_probe_namespace: ExternalAccessThrottleNamespace = GcpSecretManagerReachability {
+  project_id: "unregistered-probe-project" as GcpProjectId,
+  secret_id: "unregistered-probe-secret"
+}
+
+test fn external_access_throttle_unregistered_namespace_has_no_registry_schedule() -> Bool {
+  match external_access_throttle_schedule_for(
+    policies: external_access_throttle_registry,
+    namespace: external_access_throttle_unregistered_probe_namespace
+  ) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+test fn external_access_throttle_registry_covers_only_registered_namespaces() -> Bool {
+  external_access_throttle_registry_covers(namespace: gcp_bmc_assimilator_sts_throttle_namespace)
+    && external_access_throttle_registry_covers(namespace: gcp_bmc_srv3_secret_throttle_namespace)
+    && !external_access_throttle_registry_covers(namespace: external_access_throttle_unregistered_probe_namespace)
 }
