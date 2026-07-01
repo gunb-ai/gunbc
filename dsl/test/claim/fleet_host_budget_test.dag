@@ -85,7 +85,7 @@ fn overhead_16gib() -> ByteSize {
 }
 
 fn session_slice_fixture() -> ByteSize {
-  byte_size(40000000000)
+  byte_size(0)
 }
 
 fn fitting_headroom() -> HeadroomPolicy {
@@ -106,7 +106,6 @@ fn is_unsound(plan: FleetHostPlan) -> Bool {
 fn full_plan(
   citation: CtrlJobserverCitation,
   runner: FleetContainerType,
-  session_slice: ByteSize,
   policy: HeadroomPolicy,
   oomd: OomdEnforcementEvidence
 ) -> FleetHostPlan {
@@ -116,7 +115,6 @@ fn full_plan(
     overhead: overhead_16gib(),
     nproc: hardware_thread_count(count: 128),
     runner: runner,
-    session_slice: session_slice,
     citation: citation,
     policy: policy,
     oomd: oomd
@@ -124,7 +122,7 @@ fn full_plan(
 }
 
 fn sound_plan() -> FleetHostPlan {
-  full_plan(citation: fixture_citation(), runner: fixture_runner_measured(), session_slice: session_slice_fixture(), policy: fitting_headroom(), oomd: OomdEnforced)
+  full_plan(citation: fixture_citation(), runner: fixture_runner_measured(), policy: fitting_headroom(), oomd: OomdEnforced)
 }
 
 fn witness_live_plan_fail_closed() -> Bool {

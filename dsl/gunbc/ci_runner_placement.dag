@@ -145,7 +145,7 @@ fn resolve_session_slice(mode: SessionReservationMode, oomd: OomdEnforcementEvid
   }
 }
 
-data gunbc_ci_runner_count_from_budget_disposition: Disposition = Terminal { reason: "DESIGN conservation model: the runner count divides the DECLARED runner_pool_budget by the DECLARED per_runner_memory_cap (gunbc.fleet_host_budget). Soundness is host_allocation_conserves (node_conserves over runner_pool + session_pool + fixed_overhead + headroom <= host RAM); it replaces the old chicken-and-egg RunnerSlotUnenforced gate (which refused to derive a count premised on a cap not yet enforced live). 'Is the cap live on the host' is no longer a plan-soundness question - it is a converge-receipt question. Session pool is the uniform 1 GiB demand class shared with the ctrl session dashboard." }
+data gunbc_ci_runner_count_from_budget_disposition: Disposition = Terminal { reason: "DESIGN standalone runner model: runner_count divides DECLARED runner_pool_budget by DECLARED slot_memory.memory_max (gunbc_runner_slot_memory_contract). Soundness is host_allocation_conserves (runner_pool + fixed_overhead + headroom <= host RAM) — runners only; sessions are an independent standalone 8G contract in cool-swift P4 session-dispatch, NOT conserved here. Replaces the old chicken-and-egg RunnerSlotUnenforced gate. 'Is the cap live on the host' is a converge-receipt question, not plan-soundness." }
 
 fn host_fixed_overhead_bytes(o: HostFixedOverhead) -> ByteSize {
   match o {
@@ -183,8 +183,7 @@ fn accumulate_conservation_deployment(acc: DeploymentAccumulator, offer: Compute
         host: host_ram,
         overhead: overhead,
         headroom: headroom,
-        runner_pool: gunbc_runner_pool_budget,
-        session_pool: byte_size(0)
+        runner_pool: gunbc_runner_pool_budget
       ) {
         let dep = conservation_host_deployment(offer: offer, nproc: cpu_facts_threads(cpu: cpu))
         DeploymentAccumulator {
@@ -196,7 +195,7 @@ fn accumulate_conservation_deployment(acc: DeploymentAccumulator, offer: Compute
       } else {
         DeploymentAccumulator {
           deployments: acc.deployments,
-          unsound_reason: if acc.unsound_reason == "" { concat("host allocation over-committed (runner_pool + session_pool + overhead + headroom exceeds host RAM): ", offer.supply.physical.identity) } else { acc.unsound_reason },
+          unsound_reason: if acc.unsound_reason == "" { concat("host allocation over-committed (runner_pool + overhead + headroom exceeds host RAM): ", offer.supply.physical.identity) } else { acc.unsound_reason },
           any_unfit: acc.any_unfit,
           total: acc.total,
         }
