@@ -1,6 +1,6 @@
 module gunbc.runner_spec_from_offer
 
-import extdeps.github.actions { RunnerSpec, SelfHosted, RunsOnExpression }
+import extdeps.github.actions { RunnerSpec, SelfHosted }
 import gunbc.ci_fleet { ComputeOffer, gunbc_ci_fleet_offer }
 import gunbc.fleet_intent { compute_host_primary_cpu }
 import extdeps.cpu { cpu_facts_architecture }
@@ -47,8 +47,6 @@ fn runner_spec_from_offer(offer: ComputeOffer) -> RunnerSpec {
   }
 }
 
-data gunbc_ci_ubicloud_runner_label: String = "ubicloud-standard-16-arm"
-
 fn gunbc_ci_runner_spec() -> RunnerSpec {
-  RunsOnExpression { expression: gunbc_ci_ubicloud_runner_label }
+  runner_spec_from_offer(offer: gunbc_ci_fleet_offer)
 }
