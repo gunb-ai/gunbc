@@ -5941,35 +5941,6 @@ fn list_values_from_free_monoid(
     }
 }
 
-fn entry_root_node_from_ctx(
-    ctx: &v1_interpreter::InterpContext,
-    edit_loci: &[v1_interpreter::Value],
-) -> v1_interpreter::Value {
-    let mut best: Option<&v1_interpreter::Value> = None;
-    let mut best_children = 0usize;
-    for locus in edit_loci {
-        let children = count_node_children(locus, ctx);
-        if children > best_children {
-            best_children = children;
-            best = Some(locus);
-        }
-    }
-    best.or(edit_loci.first())
-        .cloned()
-        .unwrap_or(v1_interpreter::Value::Null)
-}
-
-fn count_node_children(value: &v1_interpreter::Value, ctx: &v1_interpreter::InterpContext) -> usize {
-    match value {
-        v1_interpreter::Value::Record { fields, .. }
-        | v1_interpreter::Value::Variant { fields, .. } => ctx
-            .field(fields, "children")
-            .map(|c| list_values_from_free_monoid(c, ctx).map(|v| v.len()).unwrap_or(0))
-            .unwrap_or(0),
-        _ => 0,
-    }
-}
-
 fn provenance_rerun_frontier_nodes(
     runner_ctx: &v1_interpreter::InterpContext,
     entry_root: &v1_interpreter::Value,
