@@ -17,6 +17,7 @@ import gunbc.merge_admission_produce {
   merge_admission_receipt_path,
   parse_receipt_wire,
   ci_repo_root_shell,
+  shell_stdout_line,
 }
 import gunbc.ci_failure_class { merge_admission_blocks_merge }
 import gunbc.ci_spec { gunbc_ci_spec }
@@ -26,12 +27,12 @@ fn merge_target_tree_hash() -> ContentHash {
   let result = shell.Exec.Run(
     script: concat("git show -s --format=%T ", policy.base)
   )
-  result.stdout
+  shell_stdout_line(raw: result.stdout)
 }
 
 fn repo_root() -> String {
   let result = shell.Exec.Run(script: concat("cd ", concat(ci_repo_root_shell(), " && pwd")))
-  result.stdout
+  shell_stdout_line(raw: result.stdout)
 }
 
 fn verdict_reason(v: MergeAdmissionVerdict) -> String {

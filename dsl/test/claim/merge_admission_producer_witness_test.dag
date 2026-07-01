@@ -15,6 +15,7 @@ import gunbc.merge_admission_produce {
   stamp_floor_receipt,
   floor_exit_to_check_conclusion,
   ci_floor_stamp_merge_admission_script,
+  shell_stdout_line,
 }
 import extdeps.github.checks { check_conclusion_wire_label }
 import std.types { ContentHash }
@@ -53,6 +54,10 @@ test fn floor_exit_nonzero_maps_to_failure() -> Bool {
 
 test fn mint_binds_current_gate_roster_hash() -> Bool {
   green_receipt.gate_roster_hash == current_gate_roster_hash
+}
+
+test fn shell_stdout_line_strips_trailing_newline() -> Bool {
+  shell_stdout_line(raw: "abc123\n") == "abc123"
 }
 
 test fn wire_roundtrip_preserves_admission_fields() -> Bool {

@@ -25,6 +25,10 @@ fn merge_admission_receipt_path(root: String) -> String {
   concat(concat(root, "/"), merge_admission_receipt_rel_path)
 }
 
+fn shell_stdout_line(raw: String) -> String {
+  trim(raw)
+}
+
 fn render_receipt_wire_with_pr_line(receipt: MergeAdmissionReceipt, pr_line: String) -> String {
   concat(
     concat(

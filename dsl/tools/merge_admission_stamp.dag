@@ -9,6 +9,7 @@ import gunbc.merge_admission_produce {
   stamp_floor_receipt,
   render_receipt_wire,
   ci_repo_root_shell,
+  shell_stdout_line,
 }
 import gunbc.ci_spec { gunbc_ci_spec }
 
@@ -28,7 +29,7 @@ fn pr_number_from_event() -> Int {
       result.stdout
     Absent => "0"
   }
-  match parse_int(s: line) {
+  match parse_int(s: shell_stdout_line(raw: line)) {
     Present { value: n } => n
     Absent => 0
   }
@@ -39,12 +40,12 @@ fn merge_target_tree_hash() -> String {
   let result = shell.Exec.Run(
     script: concat("git show -s --format=%T ", policy.base)
   )
-  result.stdout
+  shell_stdout_line(raw: result.stdout)
 }
 
 fn repo_root() -> String {
   let result = shell.Exec.Run(script: concat("cd ", concat(ci_repo_root_shell(), " && pwd")))
-  result.stdout
+  shell_stdout_line(raw: result.stdout)
 }
 
 fn floor_exit_code_from_env() -> Int {
@@ -67,7 +68,7 @@ func main() -> ProcessExit {
   }
   let receipt = stamp_floor_receipt(
     pr_number: pr_number_from_event(),
-    head_sha: head.sha,
+    head_sha: shell_stdout_line(raw: head.sha),
     base_tree_hash: base_tree,
     floor_exit_code: floor_exit_code_from_env(),
   )
