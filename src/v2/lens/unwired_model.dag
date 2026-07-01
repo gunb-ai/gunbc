@@ -454,6 +454,8 @@ data unwired_model_roster: List<String> = [
   "meminfo_field_names",
   "memory_scale_factor_bytes",
   "merge_admission_enforcement_policy",
+  "merge_admission_ci_gate_step_scaffold",
+  "merge_admission_enforcement_gating_scaffold",
   "mergeable_state_wire_label",
   "microsecond",
   "milliwatt",

@@ -38,7 +38,7 @@ fn merge_base_tree_hash() -> String {
         concat("git show -s --format=%T \"$(git merge-base ", policy.base),
         concat(" ", concat(policy.head, ")\""))
       ),
-      " 2>/dev/null || true"
+      ""
     )
   )
   result.stdout

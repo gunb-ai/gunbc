@@ -67,6 +67,8 @@ fn parse_receipt_wire(text: String) -> MergeAdmissionReceipt? {
   }
 }
 
+data merge_admission_shell_emit_dissolution_trigger: String = "🟡 dissolve-on: merge_admission CI shell transport — ci_merge_admission_stamp_script / ci_merge_admission_gate_script concat-built bash runners; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-emission) realizes these through host_effect_apply transport handlers and medium_structure_exception_roster entries for merge_admission_produce + tools retire"
+
 fn ci_repo_root_shell() -> String {
   "$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 }
@@ -118,7 +120,7 @@ fn git_fetch_script_for_gate() -> String {
   let ref_name = fold(parts.skip(n: 1), init: "", f: (acc, p) => if acc == "" { p } else { concat(concat(acc, "/"), p) })
   concat(
     concat(concat("git fetch --no-tags ", remote), " "),
-    concat(ref_name, " 2>/dev/null || true")
+    ref_name
   )
 }
 
