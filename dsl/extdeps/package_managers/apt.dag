@@ -24,6 +24,10 @@ data package_rustc: NonEmptyStr = "rustc"
 data package_systemd_oomd_defaults: NonEmptyStr = "systemd-oomd-defaults"
 data package_tailscale: NonEmptyStr = "tailscale"
 data package_nodejs: NonEmptyStr = "nodejs"
+data package_curl: NonEmptyStr = "curl"
+data package_nbdkit: NonEmptyStr = "nbdkit"
+data package_socat: NonEmptyStr = "socat"
+data package_websocat: NonEmptyStr = "websocat"
 
 data apt_man_url: NonEmptyStr = "https://manpages.debian.org/testing/apt/apt.8.en.html"
 

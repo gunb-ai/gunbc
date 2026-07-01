@@ -23,6 +23,7 @@ import product.placement_supply { HostIdentity }
 type HostStandupPrefixPhase
   = BmcCredentialConverge
   | OsInstallMechanismResolved
+  | OsInstallActuated
   | HostConvergePolicyDerived
 
 type HostStandupAssimilationPhase
@@ -170,6 +171,24 @@ fn decl_ref(module_path: String, decl_name: String) -> DeclarationRef {
   }
 }
 
+fn host_standup_prefix_gap_step(
+  phase: HostStandupPrefixPhase,
+  label: NonEmptyStr,
+  interim_realization: String,
+  refusal: String,
+  effect_policy: Policy
+) -> HostStandupStep {
+  HostStandupStep {
+    phase: Prefix { phase: phase },
+    label: label,
+    disposition: DeclaredGap {
+      interim_realization: interim_realization,
+      refusal: refusal,
+    },
+    effect_policy: effect_policy,
+  }
+}
+
 data host_standup_spine: List<HostStandupStep> = [
   host_standup_prefix_step(
     phase: BmcCredentialConverge,
@@ -186,7 +205,15 @@ data host_standup_spine: List<HostStandupStep> = [
     authorities: [
       decl_ref(module_path: "gunbc.os_install_mechanism", decl_name: "solve_install_mechanism"),
       decl_ref(module_path: "gunbc.os_install_mechanism", decl_name: "srv3_install_mechanism"),
+      decl_ref(module_path: "gunbc.os_install", decl_name: "srv3_os_install_plan"),
     ],
+    effect_policy: OneShotIdempotent
+  ),
+  host_standup_prefix_gap_step(
+    phase: OsInstallActuated,
+    label: "prefix:os-install-actuated",
+    interim_realization: "extdeps.bmc.webui.nbd_proxy_serve ShellProgram transport (bash_emit dissolve-on) + gunbc.nbd_proxy_virtual_media_install.srv3_os_install_actuator_plan; live mount+boot proof operator-gated",
+    refusal: "host_standup:prefix:os-install-actuated:unexecuted — refuse assimilation until NBD-proxy install actuates and OS-up witness is green-by-execution",
     effect_policy: OneShotIdempotent
   ),
   host_standup_prefix_step(
@@ -276,7 +303,12 @@ data host_standup_gap_ledger: List<GapLedgerRow> = [
   GapLedgerRow {
     phase_label: "prefix:os-install-mechanism",
     modeling: "modeled",
-    authority_or_interim: "gunbc.os_install_mechanism.srv3_install_mechanism (srv3=NbdProxyVirtualMediaInstall, no fallback)"
+    authority_or_interim: "gunbc.os_install_mechanism.srv3_install_mechanism + gunbc.os_install.srv3_os_install_plan (solver-derived delivery + boot target)"
+  },
+  GapLedgerRow {
+    phase_label: "prefix:os-install-actuated",
+    modeling: "gap",
+    authority_or_interim: "extdeps.bmc.webui.nbd_proxy_serve (ShellProgram + bash_emit dissolve-on) + extdeps.bmc.os_install_actuator_toolchain — live execution proof operator-gated"
   },
   GapLedgerRow {
     phase_label: "prefix:host-converge",

@@ -1,0 +1,23 @@
+module extdeps.tools.socat
+
+import std.types { NonEmptyStr }
+import extdeps.version { VersionConstraint }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.tools { CliTool, SourceApt }
+import extdeps.apt { package_socat }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.dest-unreach.org/socat/doc/socat.html"
+  }
+}
+
+data socat_pinned_version: VersionConstraint = ">= 1.7.4"
+
+data socat_cli_tool: CliTool = CliTool {
+  name: "socat",
+  min_version: Present { value: socat_pinned_version },
+  installable_via: [SourceApt { package: package_socat }],
+}

@@ -1,0 +1,9 @@
+module test.claim.non_fold_residue_witness
+
+test fn non_fold_residue_clean_holds() -> Bool {
+  return non_fold_residue_unrostered_count() == 0 && non_fold_residue_stale_roster_count() == 0
+}
+
+test fn non_fold_residue_universe_is_nonempty() -> Bool {
+  return non_fold_residue_coproduct_universe_count() > 0
+}

@@ -83,6 +83,7 @@ fresh_artifact_path() {
     docs/plans/ci-floor-fractal-gantt.md*) return 0 ;;
     docs/plans/representation-minimization.md*) return 0 ;;
     docs/plans/reference-grounding-migration.md*) return 0 ;;
+    docs/plans/typescript-gap-census.md*) return 0 ;;
     dsl/**) return 0 ;;
     src/v2/**) return 0 ;;
   esac

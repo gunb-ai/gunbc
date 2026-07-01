@@ -22,16 +22,43 @@ import product.placement_supply { HostIdentity }
 import product.network_topology { NetworkSegment }
 import extdeps.bmc.types {
   RedfishBootSourceOverrideTarget,
-  BootTargetPxe,
   RedfishBootSourceOverrideEnabled,
   BootOverrideOnce,
   RedfishResetType,
   ResetForceRestart,
 }
+import gunbc.os_install_mechanism {
+  srv3_install_boot_target,
+  srv3_install_mechanism,
+  install_boot_target_for,
+  OsInstallMechanism,
+  NbdProxyVirtualMediaInstall,
+  PxeHttpInstall,
+  VirtualMediaInstall,
+  FirmwareUpdateThenVirtualMedia,
+}
 
 type NetworkBootDelivery {
   chain: NetworkBootChain
   autoinstall: UbuntuAutoinstallPayload
+}
+
+type OsInstallDelivery
+  = NetworkBoot { delivery: NetworkBootDelivery }
+  | VirtualMediaIso { autoinstall: UbuntuAutoinstallPayload }
+
+fn os_install_delivery_for(mechanism: OsInstallMechanism, pxe_chain: NetworkBootChain, autoinstall: UbuntuAutoinstallPayload) -> OsInstallDelivery {
+  match mechanism {
+    NbdProxyVirtualMediaInstall => VirtualMediaIso { autoinstall: autoinstall }
+    VirtualMediaInstall => VirtualMediaIso { autoinstall: autoinstall }
+    FirmwareUpdateThenVirtualMedia => VirtualMediaIso { autoinstall: autoinstall }
+    PxeHttpInstall => NetworkBoot {
+      delivery: NetworkBootDelivery {
+        chain: pxe_chain,
+        autoinstall: autoinstall,
+      },
+    }
+  }
 }
 
 type LanInstallInfraSurvey {
@@ -51,10 +78,17 @@ type Srv3OsInstallPlan {
   os_target: OperatingSystemProduct
   host_architecture: Architecture
   lan_survey: LanInstallInfraSurvey
-  network_boot_delivery: NetworkBootDelivery
+  delivery: OsInstallDelivery
   bmc_boot_target: RedfishBootSourceOverrideTarget
   bmc_boot_enabled: RedfishBootSourceOverrideEnabled
   post_stage_reset: RedfishResetType
+}
+
+fn srv3_os_install_plan_autoinstall(plan: Srv3OsInstallPlan) -> UbuntuAutoinstallPayload {
+  match plan.delivery {
+    NetworkBoot { delivery: d } => d.autoinstall
+    VirtualMediaIso { autoinstall: a } => a
+  }
 }
 
 data srv3_lan_install_survey: LanInstallInfraSurvey = LanInstallInfraSurvey {
@@ -62,7 +96,7 @@ data srv3_lan_install_survey: LanInstallInfraSurvey = LanInstallInfraSurvey {
   dedicated_install_server_present: false,
 }
 
-data srv3_network_boot_chain: NetworkBootChain = NetworkBootChain {
+data srv3_pxe_network_boot_chain: NetworkBootChain = NetworkBootChain {
   boot_mode: UefiHttpBoot,
   dhcp_direction: survey_implied_dhcp_direction(survey: srv3_lan_install_survey),
   image_http_root: Uri {
@@ -101,11 +135,26 @@ data srv3_os_install_plan: Srv3OsInstallPlan = Srv3OsInstallPlan {
   os_target: UbuntuOs { distro: NobleNumbat2404Lts },
   host_architecture: Aarch64,
   lan_survey: srv3_lan_install_survey,
-  network_boot_delivery: NetworkBootDelivery {
-    chain: srv3_network_boot_chain,
-    autoinstall: srv3_ubuntu_autoinstall,
-  },
-  bmc_boot_target: BootTargetPxe,
+  delivery: os_install_delivery_for(
+    mechanism: srv3_install_mechanism,
+    pxe_chain: srv3_pxe_network_boot_chain,
+    autoinstall: srv3_ubuntu_autoinstall
+  ),
+  bmc_boot_target: srv3_install_boot_target,
+  bmc_boot_enabled: BootOverrideOnce,
+  post_stage_reset: ResetForceRestart,
+}
+
+data srv3_pxe_os_install_plan: Srv3OsInstallPlan = Srv3OsInstallPlan {
+  os_target: UbuntuOs { distro: NobleNumbat2404Lts },
+  host_architecture: Aarch64,
+  lan_survey: srv3_lan_install_survey,
+  delivery: os_install_delivery_for(
+    mechanism: PxeHttpInstall,
+    pxe_chain: srv3_pxe_network_boot_chain,
+    autoinstall: srv3_ubuntu_autoinstall
+  ),
+  bmc_boot_target: install_boot_target_for(mechanism: PxeHttpInstall),
   bmc_boot_enabled: BootOverrideOnce,
   post_stage_reset: ResetForceRestart,
 }
@@ -128,10 +177,21 @@ type InstallServerSpec {
   serving_segment: NetworkSegment
 }
 
+fn fleet_install_server_specs_for(mechanism: OsInstallMechanism) -> List<InstallServerSpec> {
+  match mechanism {
+    PxeHttpInstall => [srv3_install_server_spec]
+    NbdProxyVirtualMediaInstall => []
+    VirtualMediaInstall => []
+    FirmwareUpdateThenVirtualMedia => []
+  }
+}
+
 data srv3_install_server_spec: InstallServerSpec = InstallServerSpec {
   host: operator_host_srv3,
-  plan: srv3_os_install_plan,
+  plan: srv3_pxe_os_install_plan,
   serving_segment: operator_lan_segment,
 }
 
-data fleet_install_server_specs: List<InstallServerSpec> = [srv3_install_server_spec]
+data fleet_install_server_specs: List<InstallServerSpec> = fleet_install_server_specs_for(
+  mechanism: srv3_install_mechanism
+)

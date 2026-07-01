@@ -1,8 +1,14 @@
 module extdeps.bmc.webui.nbd_proxy
 
-import std.types { Int, List, Bool }
+import std.types { Int, List, Bool, NonEmptyStr }
 import std.measure { ByteSize }
-import std.http_path { PathTemplate, LiteralToken, ParamToken }
+import std.http_path {
+  PathTemplate,
+  LiteralToken,
+  ParamToken,
+  PathParamBinding,
+  render_path_template,
+}
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -182,6 +188,29 @@ fn bmcweb_nbd_proxy_endpoint_path_template(variant: BmcwebNbdProxyEndpointVarian
     NbdSlotEndpoint => nbd_slot_endpoint_path_template
     VmSlotIndexEndpoint => vm_slot_index_endpoint_path_template
   }
+}
+
+fn bmcweb_nbd_proxy_path_params(
+  variant: BmcwebNbdProxyEndpointVariant,
+  slot: Int,
+  index: Int,
+) -> List<PathParamBinding> {
+  match variant {
+    NbdSlotEndpoint => [
+      PathParamBinding { name: "slot", value: to_string(slot) },
+    ]
+    VmSlotIndexEndpoint => [
+      PathParamBinding { name: "slot", value: to_string(slot) },
+      PathParamBinding { name: "index", value: to_string(index) },
+    ]
+  }
+}
+
+fn bmcweb_nbd_proxy_ws_path(variant: BmcwebNbdProxyEndpointVariant, slot: Int, index: Int) -> NonEmptyStr {
+  render_path_template(
+    template: bmcweb_nbd_proxy_endpoint_path_template(variant: variant),
+    params: bmcweb_nbd_proxy_path_params(variant: variant, slot: slot, index: index),
+  ) as NonEmptyStr
 }
 
 type BmcwebNbdProxyWsUpgrade {
