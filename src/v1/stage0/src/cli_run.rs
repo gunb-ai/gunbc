@@ -4744,6 +4744,8 @@ mod floor_witness_a_prove {
 
     const FIXTURE_REL: &str = "src/v2/test/fixture/floor_skip/node_precise_discriminator_test.dag";
     const FLOOR_RUNNER: &str = "src/v2/workflow/affected_set_floor_runner.dag";
+    const WITNESS_A_PROVE: &str = "src/v2/test/claim/affected_set_witness_a_prove_test.dag";
+    const AFFECTED_SET_MID_PATH: &str = "src/v2/lens/affected_set.dag";
 
     fn workspace_root() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -4925,6 +4927,38 @@ mod floor_witness_a_prove {
         call_floor_test_fn_declaration_edited(ctx, touches, &entry_norm, decl_line)
     }
 
+    fn dag_affected_frontier_for_changed_path(
+        prove_ctx: &v1_interpreter::InterpContext,
+        changed_path: &str,
+    ) -> Result<v1_interpreter::Value, String> {
+        let args = [(
+            Some("changed".to_string()),
+            Value::Str(changed_path.to_string()),
+        )];
+        match v1_interpreter::run_in_context_with_args(
+            prove_ctx,
+            "witness_a_dag_affected_nodes_for_path",
+            &args,
+            true,
+        ) {
+            Ok(v @ Value::List(_)) => Ok(v),
+            Ok(other) => Err(format!(
+                "witness_a_dag_affected_nodes_for_path returned `{}`",
+                prove_ctx.format_value(&other)
+            )),
+            Err(e) => Err(format!("witness_a_dag_affected_nodes_for_path: {e}")),
+        }
+    }
+
+    fn dag_entry_touches_frontier_independently(
+        prove_ctx: &v1_interpreter::InterpContext,
+        entry_ctx: &v1_interpreter::InterpContext,
+        changed_path: &str,
+    ) -> Result<bool, String> {
+        let frontier = dag_affected_frontier_for_changed_path(prove_ctx, changed_path)?;
+        super::entry_claims_touch_frontier(entry_ctx, &frontier)
+    }
+
     fn assert_superset_on_fixture_with_real_diff_shape(
         ws: &PathBuf,
         diff_text: &str,
@@ -4948,6 +4982,9 @@ mod floor_witness_a_prove {
         let (runner_graph, runner_indices) =
             resolve_entry_with_index(&index, FLOOR_RUNNER).expect("floor runner resolves");
         let runner_ctx = make_eval_context(&runner_graph, runner_indices, ExecutionMode::Wet);
+        let (prove_graph, prove_indices) =
+            resolve_entry_with_index(&index, WITNESS_A_PROVE).expect("witness a prove resolves");
+        let prove_ctx = make_eval_context(&prove_graph, prove_indices, ExecutionMode::Wet);
 
         let fixture_abs = ws.join(FIXTURE_REL).to_string_lossy().into_owned();
         let (graph, source_indices) =
@@ -4955,6 +4992,17 @@ mod floor_witness_a_prove {
         let entry_ctx = make_eval_context(&graph, source_indices, ExecutionMode::Wet);
         let rust_entry_touches = entry_touches_frontier_seeds(&entry_ctx, &fixture_abs, &seeds)
             .expect("rust entry touch check");
+
+        let changed_paths: Vec<String> = line_ranges.keys().cloned().collect();
+        let mid_in_diff = changed_paths
+            .iter()
+            .any(|p| super::normalize_repo_path(p) == AFFECTED_SET_MID_PATH);
+        let dag_entry_touches = if mid_in_diff {
+            dag_entry_touches_frontier_independently(&prove_ctx, &entry_ctx, AFFECTED_SET_MID_PATH)
+                .unwrap_or_else(|e| panic!("independent dag node-frontier: {e}"))
+        } else {
+            false
+        };
 
         let mut saw_node_frontier_run = false;
         let mut saw_function_edited_run = false;
@@ -4968,11 +5016,11 @@ mod floor_witness_a_prove {
             } else {
                 false
             };
-            // Dag node-frontier: conservative path-level — if the fixture file changed and
-            // rust sees entry touch, dag must not under-select on the function_edited axis.
-            // Full affected_set_closure vs NodeFrontierSeeds node set equality is follow-on
-            // once whole-tree InferredTree grounding lands; this gate catches §5 under-select.
-            let dag_touches = rust_touches;
+            let dag_touches = if diff_file_matches_entry(FIXTURE_REL, &row.entry) && mid_in_diff {
+                dag_entry_touches
+            } else {
+                false
+            };
             assert!(
                 call_floor_rust_run_implies_dag_run(
                     &runner_ctx,
@@ -5079,6 +5127,53 @@ mod floor_witness_a_prove {
                 .expect("superset must fail when dag under-selects function_edited"),
             "mandatory RED: rust function_edited run + dag skip must violate superset"
         );
+    }
+
+    #[test]
+    fn witness_a_node_frontier_dag_closure_independent_on_real_diff() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let diff = real_git_dag_unified_diff(&ws).expect("real git dag diff");
+        let line_ranges = parse_unified_diff_line_ranges(&diff);
+        let mid_in_diff = line_ranges
+            .keys()
+            .any(|p| super::normalize_repo_path(p) == AFFECTED_SET_MID_PATH);
+        if !mid_in_diff {
+            eprintln!(
+                "witness_a: skipping independent node-frontier — {AFFECTED_SET_MID_PATH} not in real diff paths"
+            );
+            return;
+        }
+        let roots = setup_roots(&ws);
+        let index = build_multi_entry_index(&roots);
+        let seeds = collect_frontier_seeds_from_diff_line_ranges(&index, &line_ranges)
+            .expect("seeds from real git dag diff");
+        assert!(
+            !seeds.force_run_all,
+            "dag-only mid-path diff must not force_run_all during node-frontier PROVE"
+        );
+        let (prove_graph, prove_indices) =
+            resolve_entry_with_index(&index, WITNESS_A_PROVE).expect("witness a prove resolves");
+        let prove_ctx = make_eval_context(&prove_graph, prove_indices, ExecutionMode::Wet);
+        let affected = dag_affected_frontier_for_changed_path(&prove_ctx, AFFECTED_SET_MID_PATH)
+            .expect("dag affected_set_closure frontier");
+        let Value::List(nodes) = &affected else {
+            panic!("expected List frontier from .dag affected_set_closure");
+        };
+        assert!(
+            !nodes.is_empty(),
+            ".dag affected_set_closure must produce non-empty frontier for {AFFECTED_SET_MID_PATH} \
+             on real diff (Impl-1 not inert)"
+        );
+        if !seeds.overlapping_data_items.is_empty() {
+            assert!(
+                !seeds
+                    .overlapping_data_items
+                    .iter()
+                    .all(|(f, _)| super::normalize_repo_path(f) != AFFECTED_SET_MID_PATH),
+                "when rust seeds overlap mid path, node-frontier axis must fire on real diff"
+            );
+        }
     }
 
     #[test]

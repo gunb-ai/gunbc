@@ -1,6 +1,20 @@
 module v2.test.claim.affected_set_witness_a_prove
 
+import v2.lens.edit_locus { GitDiffNameOnly, RepoPath }
+import v2.std.algebra { count_equal, length }
+import v2.std.collection { List }
+import v2.std.exact_structural_equality_zip_fold_predicate {
+  exact_structural_equality_zip_fold
+}
 import v2.std.logic { Bool }
+import v2.std.node { Node }
+import v2.std.witness { Holds, Violates }
+import v2.test.lens_affected_set.node_precision { affected_set_mid }
+import v2.test.lens_affected_set.provenance_producer {
+  provenance_producer_node_precision_provenance,
+  provenance_producer_path_mid,
+  provenance_producer_reading_from_provenance
+}
 import v2.workflow.affected_set_floor_runner {
   FloorDiffLineTouch,
   floor_rust_run_implies_dag_run,
@@ -11,6 +25,28 @@ data witness_a_fixture_fn_edit_touch: FloorDiffLineTouch = FloorDiffLineTouch {
   path: "src/v2/test/fixture/floor_skip/node_precise_discriminator_test.dag",
   start_line: 74,
   end_line: 74
+}
+
+fn witness_a_node_eq(left: Node, right: Node) -> Bool {
+  exact_structural_equality_zip_fold(source_facts: left, candidate: right)
+}
+
+fn witness_a_dag_affected_nodes_for_path(changed: RepoPath) -> List<Node> {
+  match provenance_producer_reading_from_provenance(
+    git_diff: GitDiffNameOnly { changed_paths: [changed] },
+    provenance: provenance_producer_node_precision_provenance
+  ) {
+    Holds { value: nodes } => nodes
+    Violates { diagnostic: _ } => []
+  }
+}
+
+fn witness_a_dag_affected_includes_mid_for_path(changed: RepoPath) -> Bool {
+  count_equal(
+    xs: witness_a_dag_affected_nodes_for_path(changed: changed),
+    item: affected_set_mid,
+    eq: witness_a_node_eq
+  ) >= 1
 }
 
 fn witness_a_dag_function_edited_model_holds() -> Bool {
@@ -36,7 +72,12 @@ fn witness_a_dag_superset_predicate_holds() -> Bool {
     )
 }
 
+fn witness_a_dag_closure_fires_on_mid_path_holds() -> Bool {
+  witness_a_dag_affected_includes_mid_for_path(changed: provenance_producer_path_mid)
+}
+
 test fn affected_set_witness_a_prove_dag_models_holds() -> Bool {
   witness_a_dag_function_edited_model_holds()
     && witness_a_dag_superset_predicate_holds()
+    && witness_a_dag_closure_fires_on_mid_path_holds()
 }
