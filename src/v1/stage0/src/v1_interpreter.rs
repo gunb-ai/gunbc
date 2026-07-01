@@ -5823,13 +5823,13 @@ fn eval_builtin(
         ))),
 
         "doc_graph_orphan_count" => Ok(Some(Value::Int(
-            crate::doc_reachability_project::doc_graph_orphan_count(),
+            crate::cli_run::doc_graph_orphan_count(),
         ))),
         "doc_graph_dangling_link_count" => Ok(Some(Value::Int(
-            crate::doc_reachability_project::doc_graph_dangling_link_count(),
+            crate::cli_run::doc_graph_dangling_link_count(),
         ))),
         "doc_graph_doc_count" => Ok(Some(Value::Int(
-            crate::doc_reachability_project::doc_graph_doc_count(),
+            crate::cli_run::doc_graph_doc_count(),
         ))),
 
         "inert_carrier_count" => Ok(Some(Value::Int(
