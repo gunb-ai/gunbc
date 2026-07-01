@@ -212,7 +212,7 @@ fn gunbc_ci_run_script(spec: CiSpec) -> String {
       concat(git_fetch_script(policy: spec.diff_policy), "\n")
     ),
     concat(
-      concat(scheduler_invoke(spec: spec), "\n"),
+      concat("set +e\n", concat(scheduler_invoke(spec: spec), "\n")),
       ci_floor_stamp_merge_admission_script()
     )
   )

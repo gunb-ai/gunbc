@@ -54,6 +54,8 @@ test fn wire_roundtrip_preserves_admission_fields() -> Bool {
       (parsed.base_tree_hash == scenario_base)
         && (parsed.gate_roster_hash == current_gate_roster_hash)
         && (parsed.conclusion == Success)
+        && (parsed.head_sha == scenario_head)
+        && (parsed.pr_number == 5933)
     Absent => false
   }
 }
