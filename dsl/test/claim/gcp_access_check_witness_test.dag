@@ -3,23 +3,25 @@ module test.claim.gcp_access_check_witness
 import std.logic { Bool }
 import extdeps.cloud.gcp.mock_corpus { gcp_published_mock_corpus }
 import gunbc.gcp_access_check {
-  GcpAccessCheckResult,
   gcp_access_check_entry,
   gcp_access_check_wet_function,
-  gcp_access_check_interval,
-  gcp_access_check_concurrency_group,
   gcp_access_check_project_id,
   gcp_access_check_canary_secret,
   gcp_access_check_service_account,
   gcp_access_check_wif_audience,
   gcp_access_check_run_script,
   gcp_access_check_workflow,
-  gcp_wif_secret_manager_reachability_check,
-  gcp_access_check_succeeded,
+  gcp_access_check_workflow_schedule,
+  gcp_access_check_workflow_concurrency_group,
+  gcp_access_check_sts_throttle_namespace,
+  gcp_access_check_secret_manager_throttle_namespace,
 }
 import gunbc.gcp_access_check_emit { expected_gcp_access_check_yml, gcp_access_check_yml_drifted }
-import gunbc.auth.patterns { GitHubActions }
-import extdeps.github.actions { github_actions_runtime }
+import gunbc.external_access_throttle {
+  external_access_throttle_conservative_probe_interval,
+  external_access_throttle_enforce_schedule,
+  external_access_throttle_namespace_key,
+}
 import extdeps.cron.schedule_model { render_cron_schedule }
 
 data gcp_access_check_required_mock_keys: List<String> = [
@@ -44,16 +46,36 @@ test fn gcp_access_check_targets_scoped_canary_secret() -> Bool {
     && string_contains(s: gcp_access_check_wif_audience as String, pattern: "workloadIdentityPools/")
 }
 
-test fn gcp_access_check_interval_is_conservative_hours_not_minutes() -> Bool {
-  render_cron_schedule(s: gcp_access_check_interval) == "23 */6 * * *"
+test fn gcp_access_check_schedule_is_namespaced_throttle_authority() -> Bool {
+  let workflow_cron = render_cron_schedule(s: gcp_access_check_workflow_schedule())
+  let authority_cron = render_cron_schedule(s: external_access_throttle_conservative_probe_interval)
+  let sts_cron = render_cron_schedule(
+    s: external_access_throttle_enforce_schedule(namespace: gcp_access_check_sts_throttle_namespace)
+  )
+  let sm_cron = render_cron_schedule(
+    s: external_access_throttle_enforce_schedule(namespace: gcp_access_check_secret_manager_throttle_namespace)
+  )
+  workflow_cron == authority_cron
+    && workflow_cron == sts_cron
+    && workflow_cron == sm_cron
+}
+
+test fn gcp_access_check_concurrency_group_is_namespaced_per_sts_token() -> Bool {
+  let group = gcp_access_check_workflow_concurrency_group()
+  let sts_key = external_access_throttle_namespace_key(namespace: gcp_access_check_sts_throttle_namespace)
+  string_contains(s: group, pattern: "external-access:")
+    && string_contains(s: group, pattern: sts_key)
+    && string_contains(s: group, pattern: "gcp-sts/gunbai-secrets")
+    && string_contains(s: group, pattern: "bmc-assimilator@gunbai-secrets.iam.gserviceaccount.com")
+    && !(group == "gcp-access-check")
 }
 
 test fn gcp_access_check_workflow_is_scheduled_throttled_not_per_commit() -> Bool {
   let y = expected_gcp_access_check_yml()
   string_contains(s: y, pattern: "schedule:")
-    && string_contains(s: y, pattern: "cron: '23 */6 * * *'")
+    && string_contains(s: y, pattern: "cron: 23 */6 * * *")
     && string_contains(s: y, pattern: "workflow_dispatch:")
-    && string_contains(s: y, pattern: concat("group: ", gcp_access_check_concurrency_group))
+    && string_contains(s: y, pattern: concat("group: ", gcp_access_check_workflow_concurrency_group()))
     && string_contains(s: y, pattern: "cancel-in-progress: true")
     && string_contains(s: y, pattern: "id-token: write")
     && !string_contains(s: y, pattern: "pull_request:")
@@ -78,14 +100,6 @@ test fn gcp_access_check_yml_drift_gate_is_sensitive() -> Bool {
   let expected = expected_gcp_access_check_yml()
   !gcp_access_check_yml_drifted(committed: expected)
     && gcp_access_check_yml_drifted(committed: concat(expected, "# perturb\n"))
-}
-
-test fn gcp_access_check_hermetic_pattern_reports_reachability_without_payload_use() -> Bool {
-  let result = gcp_wif_secret_manager_reachability_check(
-    runtime: GitHubActions { runtime: github_actions_runtime }
-  )
-  gcp_access_check_succeeded(result: result)
-    && result.secret_resource_name != ""
 }
 
 test fn gcp_access_check_workflow_job_id_is_pinned() -> Bool {

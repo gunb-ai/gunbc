@@ -1,7 +1,9 @@
 module gunbc.gcp_access_check
 
 import extdeps.cloud.gcp.gcp { GcpProjectId, ServiceAccountEmail }
-import extdeps.cron.schedule_model { CronSchedule, Wildcard, Exact, Step }
+import extdeps.cloud.gcp.secret_manager
+import extdeps.cloud.gcp.sts
+import extdeps.cron.schedule_model { CronSchedule }
 import extdeps.github.actions {
   Step, RunStep, UsesStep,
   Workflow, Job,
@@ -22,6 +24,13 @@ import gunbc.auth.patterns {
   optional_impersonation
 }
 import gunbc.ci_spec { ci_release_build_script }
+import gunbc.external_access_throttle {
+  ExternalAccessThrottleNamespace,
+  gcp_bmc_assimilator_sts_throttle_namespace,
+  gcp_bmc_srv3_secret_throttle_namespace,
+  external_access_throttle_concurrency_group,
+  external_access_throttle_enforce_schedule,
+}
 import gunbc.runner_spec_from_offer { gunbc_ci_runner_spec }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.resources { Network }
@@ -30,16 +39,6 @@ import std.types { NonEmptyStr }
 data gcp_access_check_entry: String = "dsl/gunbc/gcp_access_check.dag"
 data gcp_access_check_wet_function: String = "gcp_wif_secret_manager_reachability_wet"
 
-data gcp_access_check_concurrency_group: String = "gcp-access-check"
-
-data gcp_access_check_interval: CronSchedule = CronSchedule {
-  minute: Exact { value: 23 },
-  hour: Step { start: 0, step: 6 },
-  day_of_month: Wildcard,
-  month: Wildcard,
-  day_of_week: Wildcard
-}
-
 data gcp_access_check_project_id: GcpProjectId = bmc_secrets_project_id
 
 data gcp_access_check_canary_secret: NonEmptyStr = bmc_srv3_secret_name
@@ -47,6 +46,18 @@ data gcp_access_check_canary_secret: NonEmptyStr = bmc_srv3_secret_name
 data gcp_access_check_service_account: ServiceAccountEmail = bmc_assimilator_sa_email
 
 data gcp_access_check_wif_audience: NonEmptyStr = bmc_wif_provider_resource()
+
+data gcp_access_check_sts_throttle_namespace: ExternalAccessThrottleNamespace = gcp_bmc_assimilator_sts_throttle_namespace
+
+data gcp_access_check_secret_manager_throttle_namespace: ExternalAccessThrottleNamespace = gcp_bmc_srv3_secret_throttle_namespace
+
+fn gcp_access_check_workflow_schedule() -> CronSchedule {
+  external_access_throttle_enforce_schedule(namespace: gcp_access_check_sts_throttle_namespace)
+}
+
+fn gcp_access_check_workflow_concurrency_group() -> String {
+  external_access_throttle_concurrency_group(namespace: gcp_access_check_sts_throttle_namespace)
+}
 
 type GcpAccessCheckResult {
   sts_ok: Bool
@@ -165,12 +176,12 @@ fn gcp_access_check_job() -> Job {
 data gcp_access_check_workflow: Workflow = {
   name: "gcp-access-check",
   on: [
-    Schedule { cron: gcp_access_check_interval },
+    Schedule { cron: gcp_access_check_workflow_schedule() },
     WorkflowDispatch { inputs: [] }
   ],
   concurrency: Present {
     value: ConcurrencyMappingQueueNotMax {
-      group: gcp_access_check_concurrency_group,
+      group: gcp_access_check_workflow_concurrency_group(),
       cancel_in_progress: Present { value: CancelInProgressBool { value: true } },
       explicit_single: none
     }

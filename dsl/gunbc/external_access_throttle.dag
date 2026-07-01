@@ -1,0 +1,128 @@
+module gunbc.external_access_throttle
+
+import extdeps.cloud.gcp.gcp { GcpProjectId, ServiceAccountEmail }
+import extdeps.cron.schedule_model { CronSchedule, Wildcard, Exact, Step }
+import gunbc.assimilate.bmc_token_federation {
+  bmc_secrets_project_id,
+  bmc_srv3_secret_name,
+  bmc_assimilator_sa_email,
+  bmc_wif_provider_resource
+}
+import std.types { NonEmptyStr }
+
+type ExternalAccessThrottleNamespace
+  = GcpStsTokenExchange {
+      project_id: GcpProjectId
+      service_account: ServiceAccountEmail
+      audience: NonEmptyStr
+    }
+  | GcpSecretManagerReachability {
+      project_id: GcpProjectId
+      secret_id: NonEmptyStr
+    }
+
+type ExternalAccessThrottlePolicy {
+  namespace: ExternalAccessThrottleNamespace
+  schedule: CronSchedule
+}
+
+data external_access_throttle_conservative_probe_interval: CronSchedule = CronSchedule {
+  minute: Exact { value: 23 },
+  hour: Step { start: 0, step: 6 },
+  day_of_month: Wildcard,
+  month: Wildcard,
+  day_of_week: Wildcard
+}
+
+data gcp_bmc_assimilator_sts_throttle_namespace: ExternalAccessThrottleNamespace = GcpStsTokenExchange {
+  project_id: bmc_secrets_project_id,
+  service_account: bmc_assimilator_sa_email,
+  audience: bmc_wif_provider_resource()
+}
+
+data gcp_bmc_srv3_secret_throttle_namespace: ExternalAccessThrottleNamespace = GcpSecretManagerReachability {
+  project_id: bmc_secrets_project_id,
+  secret_id: bmc_srv3_secret_name
+}
+
+data external_access_throttle_registry: List<ExternalAccessThrottlePolicy> = [
+  {
+    namespace: gcp_bmc_assimilator_sts_throttle_namespace,
+    schedule: external_access_throttle_conservative_probe_interval
+  },
+  {
+    namespace: gcp_bmc_srv3_secret_throttle_namespace,
+    schedule: external_access_throttle_conservative_probe_interval
+  }
+]
+
+fn external_access_throttle_namespace_key(namespace: ExternalAccessThrottleNamespace) -> String {
+  match namespace {
+    GcpStsTokenExchange { project_id: project_id, service_account: service_account, audience: audience } =>
+      concat(
+        concat(
+          concat("gcp-sts/", project_id as String),
+          concat("/sa/", service_account as String)
+        ),
+        concat("/aud/", audience as String)
+      )
+    GcpSecretManagerReachability { project_id: project_id, secret_id: secret_id } =>
+      concat(
+        concat("gcp-secretmanager/", project_id as String),
+        concat("/secret/", secret_id as String)
+      )
+  }
+}
+
+fn external_access_throttle_concurrency_group(namespace: ExternalAccessThrottleNamespace) -> String {
+  concat("external-access:", external_access_throttle_namespace_key(namespace: namespace))
+}
+
+fn external_access_throttle_policy_matches(
+  policy: ExternalAccessThrottlePolicy,
+  namespace: ExternalAccessThrottleNamespace
+) -> Bool {
+  match policy.namespace {
+    GcpStsTokenExchange { project_id: p1, service_account: sa1, audience: aud1 } =>
+      match namespace {
+        GcpStsTokenExchange { project_id: p2, service_account: sa2, audience: aud2 } =>
+          p1 == p2 && sa1 == sa2 && aud1 == aud2
+        _ => false
+      }
+    GcpSecretManagerReachability { project_id: p1, secret_id: s1 } =>
+      match namespace {
+        GcpSecretManagerReachability { project_id: p2, secret_id: s2 } =>
+          p1 == p2 && s1 == s2
+        _ => false
+      }
+  }
+}
+
+fn external_access_throttle_schedule_for(
+  policies: List<ExternalAccessThrottlePolicy>,
+  namespace: ExternalAccessThrottleNamespace
+) -> CronSchedule? {
+  fold(policies, init: none, f: (acc, policy) =>
+    if external_access_throttle_policy_matches(policy: policy, namespace: namespace) {
+      Present { value: policy.schedule }
+    } else {
+      acc
+    }
+  )
+}
+
+fn external_access_throttle_enforce_schedule(namespace: ExternalAccessThrottleNamespace) -> CronSchedule {
+  match external_access_throttle_schedule_for(
+    policies: external_access_throttle_registry,
+    namespace: namespace
+  ) {
+    Present { value: schedule } => schedule
+    Absent => CronSchedule {
+      minute: Exact { value: 0 },
+      hour: Exact { value: 0 },
+      day_of_month: Exact { value: 1 },
+      month: Exact { value: 1 },
+      day_of_week: Exact { value: 0 }
+    }
+  }
+}

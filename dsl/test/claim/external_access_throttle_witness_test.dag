@@ -1,0 +1,36 @@
+module test.claim.external_access_throttle_witness
+
+import std.logic { Bool }
+import gunbc.external_access_throttle {
+  external_access_throttle_registry,
+  external_access_throttle_conservative_probe_interval,
+  external_access_throttle_namespace_key,
+  external_access_throttle_enforce_schedule,
+  gcp_bmc_assimilator_sts_throttle_namespace,
+  gcp_bmc_srv3_secret_throttle_namespace,
+}
+import extdeps.cron.schedule_model { render_cron_schedule }
+
+test fn external_access_throttle_registry_has_distinct_namespaced_rows() -> Bool {
+  let sts_key = external_access_throttle_namespace_key(namespace: gcp_bmc_assimilator_sts_throttle_namespace)
+  let sm_key = external_access_throttle_namespace_key(namespace: gcp_bmc_srv3_secret_throttle_namespace)
+  external_access_throttle_registry.length() == 2 && !(sts_key == sm_key)
+}
+
+test fn external_access_throttle_keys_pin_external_resources() -> Bool {
+  let sts_key = external_access_throttle_namespace_key(namespace: gcp_bmc_assimilator_sts_throttle_namespace)
+  let sm_key = external_access_throttle_namespace_key(namespace: gcp_bmc_srv3_secret_throttle_namespace)
+  string_contains(s: sts_key, pattern: "gcp-sts/gunbai-secrets/sa/bmc-assimilator@gunbai-secrets.iam.gserviceaccount.com/aud/")
+    && string_contains(s: sm_key, pattern: "gcp-secretmanager/gunbai-secrets/secret/bmc-srv3-admin")
+}
+
+test fn external_access_throttle_schedule_is_single_authority_per_namespace() -> Bool {
+  let sts_cron = render_cron_schedule(
+    s: external_access_throttle_enforce_schedule(namespace: gcp_bmc_assimilator_sts_throttle_namespace)
+  )
+  let sm_cron = render_cron_schedule(
+    s: external_access_throttle_enforce_schedule(namespace: gcp_bmc_srv3_secret_throttle_namespace)
+  )
+  let authority_cron = render_cron_schedule(s: external_access_throttle_conservative_probe_interval)
+  sts_cron == authority_cron && sm_cron == authority_cron
+}
