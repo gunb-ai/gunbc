@@ -6,7 +6,6 @@ import extdeps.github.expressions {
   HashFiles, Github,
   serialize_template, runner_os, runner_arch, runner_temp
 }
-import gunbc.host_runner_provision { gunbc_deploy_runner_provisioned }
 
 fn ci_cache_hash_files() -> Expression {
   FunctionCall {
@@ -81,18 +80,16 @@ data ci_workflow_expression_templates: List<ExpressionTemplate> = [
 
 data ci_deploy_push_to_main_if: String = "github.ref == 'refs/heads/main' && github.event_name == 'push'"
 
-data ci_deploy_runner_ready_repo_var_if: String = "vars.GUNBC_DEPLOY_RUNNER_READY == 'true'"
+data gunbc_deploy_runner_ready_repo_var: String = "GUNBC_DEPLOY_RUNNER_READY"
 
-fn ci_deploy_srv1_job_if() -> String {
-  if gunbc_deploy_runner_provisioned {
-    concat(
-      concat("(", ci_deploy_push_to_main_if),
-      concat(") && (", concat(ci_deploy_runner_ready_repo_var_if, ")"))
-    )
-  } else {
-    "false"
-  }
-}
+data gunbc_deploy_runner_ready_basis: String = "Observed readiness gate for deploy_dashboard_srv1: vars.GUNBC_DEPLOY_RUNNER_READY is the single authority for 'deploy runner live' (runtime inventory proxy, not a declared .dag Bool). Unset/false -> job skips on main; operator sets true after srv1 gunbc-deploy + label deploy is confirmed. Flip needs no ci.yml re-emit."
+
+data ci_deploy_runner_ready_repo_var_if: String = concat("vars.", concat(gunbc_deploy_runner_ready_repo_var, " == 'true'"))
+
+data ci_deploy_srv1_job_if: String = concat(
+  concat("(", ci_deploy_push_to_main_if),
+  concat(") && (", concat(ci_deploy_runner_ready_repo_var_if, ")"))
+)
 
 fn ci_concurrency_group() -> String { serialize_template(template: ci_concurrency_group_template) }
 fn ci_setup_rust_home() -> String { serialize_template(template: ci_setup_rust_home_template) }
