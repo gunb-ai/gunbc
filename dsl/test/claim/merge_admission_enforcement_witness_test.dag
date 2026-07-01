@@ -22,7 +22,11 @@ import gunbc.ci_failure_class {
   merge_freshness_gating_status,
   gating_is_enforced,
   GatingComputedDeferred,
+  merge_admission_enforcement_gating_scaffold,
+  merge_admission_gating_activation_trigger,
 }
+import gunbc.ci_workflow { merge_admission_gate_step_name, merge_admission_ci_gate_step_scaffold }
+import std.disposition { Scaffold, SingleAuthority, Terminal }
 import std.types { ContentHash }
 
 data scenario_base_b0: ContentHash = "merge-admission-enforce-base-b0"
@@ -63,6 +67,34 @@ data red_receipt: MergeAdmissionReceipt = stamp_floor_receipt(
 test fn gating_still_deferred_until_activation_flip() -> Bool {
   (merge_freshness_gating_status == GatingComputedDeferred)
     && (gating_is_enforced(s: merge_freshness_gating_status) == false)
+}
+
+test fn enforcement_gating_scaffold_is_tracked() -> Bool {
+  match merge_admission_enforcement_gating_scaffold {
+    Scaffold { dissolves_to: SingleAuthority, bind: _ } => true
+    Terminal { reason: _ } => false
+  }
+}
+
+test fn ci_gate_step_scaffold_is_tracked() -> Bool {
+  match merge_admission_ci_gate_step_scaffold {
+    Scaffold { dissolves_to: SingleAuthority, bind: _ } => true
+    Terminal { reason: _ } => false
+  }
+}
+
+test fn ci_gate_step_name_declares_not_enforcing() -> Bool {
+  string_contains(
+    s: merge_admission_gate_step_name,
+    pattern: "NOT ENFORCING until GatingEnforced"
+  )
+}
+
+test fn gating_activation_trigger_names_flip() -> Bool {
+  string_contains(
+    s: merge_admission_gating_activation_trigger,
+    pattern: "GatingComputedDeferred to GatingEnforced"
+  )
 }
 
 test fn would_block_stale_base() -> Bool {
