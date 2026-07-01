@@ -6233,6 +6233,99 @@ mod module_path_index_tests {
 }
 
 #[cfg(test)]
+mod doc_reachability_tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    fn edges_of(pairs: &[(&str, &[&str])]) -> HashMap<String, Vec<String>> {
+        pairs
+            .iter()
+            .map(|(k, vs)| {
+                (
+                    (*k).to_string(),
+                    vs.iter().map(|s| (*s).to_string()).collect(),
+                )
+            })
+            .collect()
+    }
+
+    #[test]
+    fn reachable_set_flags_orphan_node() {
+        let roots: BTreeSet<String> = ["root.md".to_string()].into_iter().collect();
+        let edges = edges_of(&[("root.md", &["linked.md"]), ("orphan.md", &[])]);
+        let reached = doc_reachable_set(&roots, &edges);
+        assert!(reached.contains("root.md"));
+        assert!(reached.contains("linked.md"));
+        assert!(
+            !reached.contains("orphan.md"),
+            "an unlinked node must be unreachable (the orphan witness)"
+        );
+    }
+
+    #[test]
+    fn reachable_set_inert_cluster_stays_unreached() {
+        let roots: BTreeSet<String> = ["root.md".to_string()].into_iter().collect();
+        let edges = edges_of(&[
+            ("root.md", &["a.md"]),
+            ("a.md", &[]),
+            ("dead1.md", &["dead2.md"]),
+            ("dead2.md", &["dead1.md"]),
+        ]);
+        let reached = doc_reachable_set(&roots, &edges);
+        assert!(reached.contains("a.md"));
+        assert!(!reached.contains("dead1.md") && !reached.contains("dead2.md"));
+    }
+
+    #[test]
+    fn reachable_set_transitive_chain() {
+        let roots: BTreeSet<String> = ["r.md".to_string()].into_iter().collect();
+        let edges = edges_of(&[
+            ("r.md", &["a.md"]),
+            ("a.md", &["b.md"]),
+            ("b.md", &["c.md"]),
+        ]);
+        let reached = doc_reachable_set(&roots, &edges);
+        for n in ["r.md", "a.md", "b.md", "c.md"] {
+            assert!(reached.contains(n), "{n} should be reached");
+        }
+    }
+
+    #[test]
+    fn markdown_link_targets_basic() {
+        let c = "see [x](docs/plans/x.md) and [y](y.md#anchor) and [ext](https://e.com) and [z](./z.md)";
+        let t = markdown_link_targets(c);
+        assert_eq!(t, vec!["docs/plans/x.md", "y.md", "./z.md"]);
+    }
+
+    #[test]
+    fn dangling_detection_flags_missing_md_only() {
+        let doc = "[ok](https://x) [broken](docs/plans/does-not-exist-xyz.md) [code](src/lib.rs)";
+        let targets = markdown_link_targets(doc);
+        let dangling: Vec<&String> = targets
+            .iter()
+            .filter(|t| {
+                t.ends_with(".md")
+                    && !workspace_root()
+                        .join(normalize_doc_path(Path::new(t)))
+                        .is_file()
+            })
+            .collect();
+        assert_eq!(
+            dangling.len(),
+            1,
+            "exactly the missing .md link is dangling (not the http or the existing code link): {dangling:?}"
+        );
+    }
+
+    #[test]
+    fn bind_md_refs_basic() {
+        let c = "// bind: docs/planning/foo.md (provenance)\n// no bind here\n// bind: bar.md";
+        let t = bind_md_refs(c);
+        assert_eq!(t, vec!["docs/planning/foo.md", "bar.md"]);
+    }
+}
+
+#[cfg(test)]
 mod non_fold_residue_tests {
     use super::*;
 
