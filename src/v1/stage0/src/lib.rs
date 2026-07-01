@@ -36,6 +36,7 @@ pub mod extdeps_uri;
 pub mod extdeps_uri_path;
 pub mod extdeps_version;
 pub mod extdeps_version_semver;
+pub mod external_authority_project;
 pub mod module_path_index;
 pub mod recorded_fixture;
 pub mod resolved_graph_cache;
