@@ -40,5 +40,12 @@ fn roadmap_css() -> String {
     css_rule(selector: "code", props: "background: #f0f0f0; padding: 1px 4px; border-radius: 3px; font-size: 12px"),
     css_rule(selector: ".prose", props: "color: #555; font-size: 13px; margin-bottom: 8px"),
     css_rule(selector: ".depth-limit", props: "color: #999; font-style: italic; font-size: 12px"),
+    css_rule(selector: ".daily-workspace", props: "padding: 16px 24px; max-width: 960px"),
+    css_rule(selector: ".roadmap-frontier", props: "display: flex; flex-direction: column; gap: 20px"),
+    css_rule(selector: ".frontier-bucket", props: "border: 1px solid #e0e0e0; border-radius: 6px; padding: 12px 16px; background: #fff"),
+    css_rule(selector: ".frontier-bucket h2", props: "font-size: 14px; font-weight: 600; margin: 0 0 8px; text-transform: uppercase; letter-spacing: 0.04em"),
+    css_rule(selector: ".frontier-ready h2", props: "color: #856404"),
+    css_rule(selector: ".frontier-upcoming h2", props: "color: #084298"),
+    css_rule(selector: ".frontier-done h2", props: "color: #0a3622"),
   ], "\n")
 }
