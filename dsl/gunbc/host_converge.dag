@@ -25,7 +25,10 @@ import gunbc.ci_floor_measurement {
   SessionAggregateUnmeasured,
   gunbc_ci_session_reservation_mode,
 }
-import gunbc.ci_fleet { fleet_intent_offers }
+import gunbc.fleet_intent_network {
+  operator_fleet_unix_home,
+  operator_fleet_unix_user,
+}
 import gunbc.bmc_onboarding {
   host_onboarding_lifecycle_phase,
   BmcOnboardingPhase,

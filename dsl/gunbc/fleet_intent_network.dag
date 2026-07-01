@@ -15,7 +15,23 @@ import product.network_topology {
   DockerBridge,
   TailscaleOverlay,
 }
+import std.types { String, List }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import product.placement_supply { HostIdentity }
+
+data operator_fleet_unix_user_disposition: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.fleet_intent_network",
+    decl_name: "operator_fleet_unix_user",
+    field: WholeDeclaration
+  }
+}
+
+data operator_fleet_unix_user: String = "briansrls"
+
+data operator_fleet_unix_home: String = concat("/home/", operator_fleet_unix_user)
 
 data operator_host_srv1: HostIdentity = "srv1"
 data operator_host_srv2: HostIdentity = "srv2"
