@@ -10,6 +10,7 @@ import v2.std.verification {
   Unit,
   manual_claim_anchor
 }
+import v2.test.fixture.floor_skip.floor_disc_shared_helper { floor_disc_shared_helper }
 import v2.workflow.affected_set_floor_runner { floor_claim_touches_rerun_frontier }
 
 data floor_disc_node_a: Node = Node {
@@ -45,6 +46,10 @@ data floor_disc_helper_conj: Node = Node {
     }
   ],
   occurrence_id: SyntheticOccurrence
+}
+
+fn floor_disc_helper_fn() -> Bool {
+  floor_disc_shared_helper()
 }
 
 data floor_disc_claim_on_a: TestClaim = EqualsClaim {
