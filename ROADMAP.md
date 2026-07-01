@@ -248,7 +248,7 @@ A program is a canonical `Node` (the *idea*); ingest / emit / eval across many m
   - [ ] `Medium<A> ↔ Medium<B>` homomorphisms
   - [ ] **format-model reconciliation** — decompose record-spelling onto single authority (`SerializationKnobs` + `serialize_record` → `Doc`); complementary to regime-2 line-layout half [plan](docs/plans/format-model-reconciliation.md)
     - [ ] **C1 — SerializationKnobs + serialize_record keystone** (#6045) — delete `FormatModel`; migrate runner manifest byte-identically; JSON swap-test witness (still-wolf-292) [plan](docs/plans/format-model-reconciliation.md)
-      - [ ] **C3 — gitignore de-fork** — migrate `OutputFormat` consumer onto `SerializationKnobs` + `ConfigFormat`; delete `OutputFormat` + `gitignore_render.dag` [plan](docs/plans/format-model-reconciliation.md)
+      - [ ] **C3 — gitignore de-fork** — migrate `OutputFormat` consumer onto `SerializationKnobs` + `ConfigFormat`; delete `OutputFormat` + `gitignore_render.dag` [plan](docs/plans/format-model-reconciliation.md) — ⏳ awaiting sign-off
       - [ ] **C4 — dnsmasq emit** — dnsmasq `ConfigFormat` + knobs; honest positional micro-syntax [plan](docs/plans/format-model-reconciliation.md)
       - [ ] **C5 — digest/accelerator kv** *(low)* — route `digest_render` through `serialize_record` [plan](docs/plans/format-model-reconciliation.md)
       - [ ] **C6 — CSS declaration blocks** *(cosmetic)* — `css_rule` props as record emit [plan](docs/plans/format-model-reconciliation.md)
@@ -289,3 +289,4 @@ Product/infra tooling — shelved during the stability window (no `.dag`-correct
 
 - [ ] idea → PR pipeline *(deferred)*
 - [ ] **roadmap-as-spawner MVP** *(active — operator-directed, un-shelves this slice)* — the gunbc roadmap `.dag` becomes the work-tracking DAG that drives ctrl session spawns. **Structure** (what work exists, deps, sizing, acceptance) lives only in the `.dag` (single authority §3, edited by committing to main); **runtime state** (done/live-session) flows ctrl→gunbc read-only as acceptance evidence — two kinds of fact, one home each, no dual authority. gunbc emits `roadmap-spawn-request/v1` via `roadmap_next_spawnable` (graph readiness = not-done ∧ deps-done); a thin ctrl bridge consumes it, dedups vs live sessions, and reuses the existing auto-spawn poller (zero new spawn code, #1812 merged). **Fail-closed pause kill switch** (§5, default paused — a missing/garbled control file spawns nothing). Stage 2 migrates spawn/session-management onto the `.dag` host-effect `apply()` seam (host-effect-orchestration Phase D/E), shrinking the ctrl realization toward zero (§7). [plan](docs/plans/roadmap-spawner.md)
+

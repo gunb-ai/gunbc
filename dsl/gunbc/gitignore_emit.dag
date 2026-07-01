@@ -36,7 +36,7 @@ import std.layout {
   doc_concat, doc_line_of, doc_blank,
   render
 }
-import std.render { format_comment, config_comment_prefix }
+import std.render { config_comment_prefix }
 
 fn artifact_pattern(a: IgnoreArtifact) -> String {
   match a {
@@ -158,7 +158,9 @@ fn producer_rationale_line(p: Producer) -> String {
 data gitignore_protocol: LayoutProtocol = LayoutProtocol { indent_unit: "" }
 
 fn gitignore_comment_line(text: String) -> Doc {
-  doc_line_of(text: format_comment(syntax: gitignore_format.comment, text: text))
+  let prefix = config_comment_prefix(format: gitignore_format)
+  let line = if text == "" { prefix } else { concat(concat(prefix, " "), text) }
+  doc_line_of(text: line)
 }
 
 fn gitignore_section_header(title: String) -> Doc {
@@ -176,7 +178,7 @@ fn group_doc(g: IgnoreGroup) -> Doc {
 fn gitignore_header_doc() -> Doc {
   doc_concat(parts: [
     gitignore_comment_line(text: "gunbc .gitignore — generated from dsl/gunbc/gitignore_authority.dag — do not hand-edit."),
-    doc_line_of(text: config_comment_prefix(format: gitignore_format)),
+    gitignore_comment_line(text: ""),
     gitignore_comment_line(text: "Rule: Ignore anything that is (a) reproducible from committed source-of-truth files, or (b) environment-specific and not shared across developers."),
     doc_blank()
   ])
