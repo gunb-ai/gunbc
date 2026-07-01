@@ -9,7 +9,7 @@ import gunbc.runner_spec_from_offer { runner_spec_from_offer }
 import extdeps.github.actions { RunnerSpec, SelfHosted }
 
 type DeployTargetHostProof
-  = RunnerIdentityOnHost { host: HostIdentity, pinned_label: NonEmptyStr }
+  = RunnerIdentityOnHost { host: HostIdentity }
   | SshExplicitHost { host: HostIdentity, ssh_host: NonEmptyStr }
 
 data deploy_target_host_refusal_local: String = "deploy-target-host: FAIL LocalShell apply refused — runner identity does not prove target host"
@@ -19,7 +19,7 @@ data deploy_target_host_refusal_ssh: String = "deploy-target-host: FAIL SshShell
 fn deploy_target_proof(host: HostIdentity, transport: HostEffectTransport) -> DeployTargetHostProof {
   match transport {
     LocalShell =>
-      RunnerIdentityOnHost { host: host, pinned_label: host }
+      RunnerIdentityOnHost { host: host }
     SshShell { ssh_host: h } =>
       SshExplicitHost { host: host, ssh_host: h }
   }
@@ -28,7 +28,7 @@ fn deploy_target_proof(host: HostIdentity, transport: HostEffectTransport) -> De
 fn deploy_target_ssh_proof_structurally_valid(proof: DeployTargetHostProof) -> Bool {
   match proof {
     SshExplicitHost { host: id, ssh_host: h } => h == id
-    RunnerIdentityOnHost { host: _, pinned_label: _ } => true
+    RunnerIdentityOnHost { host: _ } => true
   }
 }
 
@@ -38,7 +38,7 @@ fn deploy_target_runner_identity_proves_host(
   observed_runner_name: String
 ) -> Bool {
   match proof {
-    RunnerIdentityOnHost { host: id, pinned_label: _ } =>
+    RunnerIdentityOnHost { host: id } =>
       (observed_hostname == id) || string_contains(s: observed_runner_name, pattern: id)
     SshExplicitHost { host: _, ssh_host: _ } => true
   }
@@ -90,7 +90,7 @@ fn gunbc_ci_deploy_srv1_runner_spec() -> RunnerSpec {
 
 fn deploy_target_host_preflight_block(proof: DeployTargetHostProof) -> String {
   match proof {
-    RunnerIdentityOnHost { host: id, pinned_label: _ } =>
+    RunnerIdentityOnHost { host: id } =>
       concat(
         concat(
           concat(
@@ -100,7 +100,7 @@ fn deploy_target_host_preflight_block(proof: DeployTargetHostProof) -> String {
             ),
             concat(
               concat("if [ \"$HOSTNAME\" != \"", id),
-              concat("\" ] && ! echo \"$RUNNER_NAME\" | grep -q '", concat(id, "'; then\n"))
+              concat("\" ] && ! echo \"$RUNNER_NAME\" | grep -Fq \"", concat(id, "\"; then\n"))
             )
           ),
           concat(

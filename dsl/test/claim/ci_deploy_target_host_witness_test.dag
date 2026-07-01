@@ -108,8 +108,7 @@ fn witness_ci_yml_deploy_job_pins_srv1_runner() -> Bool {
 
 fn witness_local_proof_requires_host_identity() -> Bool {
   match deploy_target_proof_from_access(access: ci_deploy_srv1_access) {
-    RunnerIdentityOnHost { host: id, pinned_label: label } =>
-      id == operator_host_srv1 && label == operator_host_srv1
+    RunnerIdentityOnHost { host: id } => id == operator_host_srv1
     _ => false
   }
 }
