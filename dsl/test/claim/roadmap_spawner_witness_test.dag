@@ -99,6 +99,7 @@ fn witness_json_schema_field_present() -> Bool {
     && string_contains(s: json, pattern: "test-json")
     && string_contains(s: json, pattern: "Json Node")
     && string_contains(s: json, pattern: "prs_merged")
+    && string_contains(s: json, pattern: "\"owner\": null")
 }
 
 fn witness_json_satisfied_dep_in_ready() -> Bool {

@@ -191,8 +191,9 @@ fn node_json(n: RoadmapNode, intricacy: Intricacy, volume: Volume, repo: String,
   let f2 = concat(", \"repo\": ", concat(json_str(s: repo), concat(", \"intricacy\": ", json_str(s: intricacy_str(i: intricacy)))))
   let f3 = concat(", \"volume\": ", concat(json_str(s: volume_str(v: volume)), concat(", \"parent_node_id\": ", parent_id_json)))
   let f3b = concat(", \"parent_node_ids\": ", json_str_list(items: node_parent_ids(edges: edges, id: n.node)))
+  let f3c = concat(", \"owner\": ", if n.owner == "" { "null" } else { json_str(s: n.owner) })
   let f4 = concat(", \"plan_doc\": ", concat(plan_json, concat(", \"acceptance\": ", acceptance_json(a: acceptance, line: n.line))))
-  concat("{", concat(f1, concat(f2, concat(f3, concat(f3b, concat(f4, "}"))))))
+  concat("{", concat(f1, concat(f2, concat(f3, concat(f3b, concat(f3c, concat(f4, "}")))))))
 }
 
 fn join_strings(items: List<String>) -> String {
