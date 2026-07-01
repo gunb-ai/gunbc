@@ -1,6 +1,7 @@
 module extdeps.gpu.types
 
 import std.types { Int, NonEmptyStr, String, List }
+import std.measure { HardwareThreadCount, Hertz, Watt, Bandwidth }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
 import extdeps.memory.types { MemoryFacts }
@@ -60,4 +61,21 @@ type GpuFacts {
 type AcceleratorFacts {
   vendor: Vendor<Hardware>
   model: NonEmptyStr
+}
+
+data gpu_execution_lane_count_grounding_note: String = "§3 single-authority decision: a GPU shader/CUDA-core count is a count of parallel hardware execution units, the SAME grounded concept as a CPU thread count — Measure<Count, One, Nat>. So GpuModelCatalogRow.execution_lane_count REUSES std.measure.HardwareThreadCount (and hardware_thread_count) rather than minting a ShaderLaneCount/CudaCoreCount nickname (that would be a second name for one Measure<Count,One,Nat> concept). The GPU-specific meaning is carried by the FIELD name, not a forked type."
+
+data gpu_microarchitecture_grounding_note: String = "microarchitecture is a vendor proper name (e.g. \"Blackwell\", \"Apple GPU\"), not decomposable structure, so it is a cited NonEmptyStr — NOT the CPU extdeps.toolchain.types.Architecture enum (aarch64/x86), which describes a different axis (ISA), not GPU shader generation."
+
+type GpuModelCatalogRow {
+  vendor: Vendor<Hardware>
+  model: NonEmptyStr
+  microarchitecture: NonEmptyStr
+  execution_lane_count: HardwareThreadCount
+  memory: MemoryFacts
+  memory_bandwidth: Bandwidth
+  boost_clock: Hertz?
+  tdp_watts: Watt?
+  compute_capability: GpuComputeCapability?
+  supported_runtimes: List<GpuRuntime>
 }
