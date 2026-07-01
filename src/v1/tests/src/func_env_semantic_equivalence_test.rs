@@ -58,7 +58,43 @@ fn git_toplevel() -> PathBuf {
     PathBuf::from(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
 
+fn git_verify_commit(commit: &str, root: &Path) -> bool {
+    Command::new("git")
+        .args(["rev-parse", "--verify", &format!("{commit}^{{commit}}")])
+        .current_dir(root)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map(|status| status.success())
+        .unwrap_or(false)
+}
+
+fn ensure_baseline_commit_available(root: &Path) {
+    if git_verify_commit(BASELINE_COMMIT, root) {
+        return;
+    }
+    // PR checkouts can be too shallow to contain the frozen baseline commit.
+    let _ = Command::new("git")
+        .args(["fetch", "--unshallow"])
+        .current_dir(root)
+        .status();
+    if git_verify_commit(BASELINE_COMMIT, root) {
+        return;
+    }
+    let fetch = Command::new("git")
+        .args(["fetch", "origin", BASELINE_COMMIT])
+        .current_dir(root)
+        .output()
+        .unwrap_or_else(|e| panic!("git fetch origin {BASELINE_COMMIT}: {e}"));
+    assert!(
+        fetch.status.success() && git_verify_commit(BASELINE_COMMIT, root),
+        "baseline commit {BASELINE_COMMIT} unavailable after fetch: {}",
+        String::from_utf8_lossy(&fetch.stderr)
+    );
+}
+
 fn baseline_corpus_dir() -> PathBuf {
+    let git_root = git_toplevel();
     let dir = workspace_root()
         .join("target")
         .join("func_env_semantic_baseline_corpus");
@@ -66,9 +102,10 @@ fn baseline_corpus_dir() -> PathBuf {
         return dir;
     }
     fs::create_dir_all(&dir).unwrap_or_else(|e| panic!("create baseline corpus dir {dir:?}: {e}"));
+    ensure_baseline_commit_available(&git_root);
     let archive = Command::new("git")
         .args(["archive", BASELINE_COMMIT, "dsl", "src/v1"])
-        .current_dir(git_toplevel())
+        .current_dir(&git_root)
         .output()
         .unwrap_or_else(|e| panic!("git archive {BASELINE_COMMIT}: {e}"));
     assert!(
