@@ -22,7 +22,6 @@ import gunbc.host_effect {
 import gunbc.host_effect_realize {
   host_effect_apply_gated,
   host_effect_policy_directive,
-  host_effect_intent_is_privilege_denial,
   Refused,
 }
 import std.realization_reconcile { reconciliation_converged, NotConverged, Converged }
@@ -61,12 +60,15 @@ fn witness_unprivileged_mutation_refused_before_shell() -> Bool {
     fixture_actor: Present { value: deploy_access_unprivileged_fixture_actor() }
   ) {
     NotConverged { reason: _, applied: intent } =>
-      host_effect_intent_is_privilege_denial(intent: intent)
-        && match intent.privilege_denial {
-          Present { value: d } =>
-            !string_contains(s: deploy_access_decision_reason(d: d), pattern: privilege_mutation_marker)
-          Absent => false
-        }
+      match intent.privilege_denial {
+        Present { value: d } =>
+          match d {
+            Deny { reason: _ } =>
+              !string_contains(s: deploy_access_decision_reason(d: d), pattern: privilege_mutation_marker)
+            Permit => false
+          }
+        Absent => false
+      }
     Converged { evidence: _, applied: _ } => false
   }
 }
@@ -84,7 +86,10 @@ fn witness_unprivileged_mutation_directive_is_refused_terminal() -> Bool {
     Refused { reason: _ } =>
       match r {
         NotConverged { reason: _, applied: intent } =>
-          host_effect_intent_is_privilege_denial(intent: intent)
+          match intent.privilege_denial {
+            Present { value: Deny { reason: _ } } => true
+            _ => false
+          }
         Converged { evidence: _, applied: _ } => false
       }
     _ => false

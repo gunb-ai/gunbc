@@ -175,6 +175,15 @@ fn host_effect_apply_gated(
   }
 }
 
+type ConvergeDirective = Settled | ReDrive | Refused { reason: String }
+
+fn not_converged_directive(policy: Policy) -> ConvergeDirective {
+  match policy {
+    OneShotIdempotent => Settled
+    ConvergeToFixpoint => ReDrive
+  }
+}
+
 fn host_effect_policy_directive(r: Reconciliation<HostEffectIntent, HostEffectEvidence>) -> ConvergeDirective {
   match r {
     Converged { evidence: _, applied: _ } => Settled
