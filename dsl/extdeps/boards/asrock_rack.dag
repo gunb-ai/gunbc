@@ -149,8 +149,8 @@ fn live_probe_confirms_shipped_firmware_version() -> Bool {
 }
 
 fn live_probe_row_is_redfish_vm_absent(row: BmcLiveReadOnlyProbeRow) -> Bool {
-  if row.locator == "/redfish/v1/Systems/system/VirtualMedia" as NonEmptyStr
-      || row.locator == "/redfish/v1/Managers/bmc/VirtualMedia" as NonEmptyStr {
+  if row.locator == ("/redfish/v1/Systems/system/VirtualMedia" as NonEmptyStr)
+      || row.locator == ("/redfish/v1/Managers/bmc/VirtualMedia" as NonEmptyStr) {
     row.verdict == ProbeAbsent
   } else {
     true

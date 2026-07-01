@@ -20,8 +20,13 @@ import extdeps.boards.asrock_rack {
   asrock_altrad8ud_openbmc_2_07_00_nbd_proxy_primary_endpoint,
 }
 import gunbc.os_install_mechanism {
-  solve_install_mechanism,
+  OsInstallMechanism,
+  VirtualMediaInstall,
+  NbdProxyVirtualMediaInstall,
+  PxeHttpInstall,
+  FirmwareUpdateThenVirtualMedia,
   srv3_install_mechanism,
+  install_boot_target_for,
 }
 import gunbc.host_effect {
   RedfishAction,

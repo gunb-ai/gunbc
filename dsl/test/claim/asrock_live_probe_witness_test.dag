@@ -42,14 +42,14 @@ test fn live_probe_rows_cover_vm_and_nbd_get_surfaces() -> Bool {
       asrock_srv3_live_readonly_probe_rows,
       init: false,
       f: (acc, row) =>
-        acc || (row.locator == "/vm/0/0 non-upgrade GET" as NonEmptyStr
+        acc || (row.locator == ("/vm/0/0 non-upgrade GET" as NonEmptyStr)
           && row.verdict == ProbeInconclusive)
     )
     && fold(
       asrock_srv3_live_readonly_probe_rows,
       init: false,
       f: (acc, row) =>
-        acc || (row.locator == "/redfish/v1/Systems/system/VirtualMedia" as NonEmptyStr
+        acc || (row.locator == ("/redfish/v1/Systems/system/VirtualMedia" as NonEmptyStr)
           && row.verdict == ProbeAbsent)
     )
 }
