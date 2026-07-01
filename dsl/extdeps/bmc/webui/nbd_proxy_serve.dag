@@ -130,9 +130,32 @@ fn nbd_proxy_serve_program_statement_count(intent: NbdProxyServeTransportIntent)
   nbd_proxy_serve_program(intent: intent).statements.length()
 }
 
+fn shell_command_leading_lit_text(stmt: ShellStmt) -> String {
+  match stmt {
+    Command { words: ws } => fold(ws, init: "", f: (acc, w) => {
+      if acc != "" {
+        acc
+      } else {
+        match w {
+          Lit { text: t } => t
+          _ => ""
+        }
+      }
+    })
+    _ => ""
+  }
+}
+
+fn shell_program_final_statement(p: ShellProgram) -> ShellStmt {
+  fold(p.statements, init: RawLine { text: "" }, f: (_, stmt) => stmt)
+}
+
 fn nbd_proxy_serve_program_foreground_command_is_websocat(intent: NbdProxyServeTransportIntent) -> Bool {
+  let program = nbd_proxy_serve_program(intent: intent)
   nbd_proxy_serve_program_statement_count(intent: intent) == 5
-    && nbd_proxy_serve_cited_tool_row_count() == 3
+    && shell_command_leading_lit_text(
+      stmt: shell_program_final_statement(p: program)
+    ) == websocat_cli_tool.name
 }
 
 fn nbd_proxy_serve_requires_host_as_nbd_server() -> Bool {
