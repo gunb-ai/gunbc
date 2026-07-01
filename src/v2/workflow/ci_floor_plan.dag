@@ -14,7 +14,7 @@ import v2.std.node { Atom, Node, TypeNode }
 import v2.std.text { String }
 import std.types { ContentHash, Int }
 import std.measure { HardwareThreadCount, hardware_thread_count, hardware_thread_count_value, byte_size, ByteSize, byte_size_count }
-import std.realization_width { width_fold_objective_goals, bounded_host_spawn_width, int_min, int_max }
+import std.realization_width { width_fold_objective_goals, bounded_host_spawn_width, int_min }
 import gunbc.fleet_container {
   ResourceEnvelope,
   parallel_run_demand_envelope,
@@ -480,7 +480,7 @@ fn gunbc_ci_plan_spawn_width(memory_budget_bytes: Int) -> HardwareThreadCount {
     t: gunbc_ci_floor_spawn_width_for_budget(memory_budget: byte_size(memory_budget_bytes))
   )
   let exec_w = execution_corpus_spawn_width()
-  hardware_thread_count(count: int_max(a: floor_w, b: exec_w))
+  hardware_thread_count(count: int_min(a: floor_w, b: exec_w))
 }
 
 fn gunbc_ci_floor_run_envelope(memory_budget_bytes: Int) -> ResourceEnvelope {
@@ -599,14 +599,14 @@ fn witness_execution_corpus_spawn_width_at_runner_cap() -> Bool {
   execution_corpus_spawn_width() == 3
 }
 
-fn witness_plan_spawn_width_is_max_floor_exec_at_runner_cap() -> Bool {
+fn witness_plan_spawn_width_is_min_floor_exec_at_runner_cap() -> Bool {
   let cap_budget = byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap)
   let plan_w = hardware_thread_count_value(t: gunbc_ci_plan_spawn_width(memory_budget_bytes: cap_budget))
   let floor_w = hardware_thread_count_value(
     t: gunbc_ci_floor_spawn_width_for_budget(memory_budget: gunbc_ci_runner_cgroup_memory_cap)
   )
   let exec_w = execution_corpus_spawn_width()
-  plan_w == int_max(a: floor_w, b: exec_w)
+  plan_w == int_min(a: floor_w, b: exec_w)
 }
 
 fn witness_floor_derived_width_leaves_headroom_at_cap() -> Bool {
