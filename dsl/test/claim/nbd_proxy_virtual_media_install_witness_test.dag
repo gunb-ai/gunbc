@@ -25,7 +25,7 @@ import gunbc.nbd_proxy_virtual_media_install {
   srv3_os_install_actuator_host,
   srv3_os_install_actuator_toolchain_grant_row_count,
 }
-import gunbc.host_effect { HostOs, ShellCommand, BmcController, RedfishAction }
+import gunbc.host_effect { HostOs, ShellCommand }
 import extdeps.tools.websocat { websocat_cli_tool }
 
 test fn srv3_install_boot_target_follows_mechanism_not_hardcoded_pxe() -> Bool {

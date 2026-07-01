@@ -46,7 +46,7 @@ service bmc.webui.BmcwebSession {
     readonly
     transport shell {
       argv: [
-        curl_cli_tool.name,
+        "curl",
         "-sk",
         "-X", "POST",
         "https://{bmc_host}/login",
