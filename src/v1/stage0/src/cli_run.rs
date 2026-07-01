@@ -7381,7 +7381,6 @@ mod nfr_tests {
             "a real wildcard arm must still be flagged despite an in-string decoy; got {sites:?}"
         );
     }
-
 }
 
 const LANGUAGES_AUTHORITY_REL: &str = "dsl/std/languages.dag";
