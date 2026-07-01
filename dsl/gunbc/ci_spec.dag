@@ -177,31 +177,38 @@ fn git_fetch_script(policy: DiffPolicy) -> String {
 data floor_plan_entry: String = "src/v2/workflow/ci_floor_plan.dag"
 data floor_plan_function: String = "gunbc_ci_floor_batches"
 
-fn scheduler_invoke(spec: CiSpec) -> String {
+fn scheduler_invoke_laned(spec: CiSpec, lane: String) -> String {
   concat(
     concat(
       concat(
-        concat(concat(claim_executor_bin_shell(), witness_layer_source_flags(roots: witness_layer_roots)), concat(" --plan-entry ", floor_plan_entry)),
-        concat(" --plan-function ", floor_plan_function)
+        concat(
+          concat(concat(claim_executor_bin_shell(), witness_layer_source_flags(roots: witness_layer_roots)), concat(" --plan-entry ", floor_plan_entry)),
+          concat(" --plan-function ", floor_plan_function)
+        ),
+        concat(concat(" --notice-title \"", spec.notice_title), "\"")
       ),
-      concat(concat(" --notice-title \"", spec.notice_title), "\"")
+      concat(" --layer-span-lane ", lane)
     ),
     ""
   )
 }
 
-fn gunbc_ci_run_script(spec: CiSpec) -> String {
+fn gunbc_ci_run_script_laned(spec: CiSpec, lane: String) -> String {
   concat(
     concat(
       concat(ci_release_build_script(), "\n"),
       concat(git_fetch_script(policy: spec.diff_policy), "\n")
     ),
-    scheduler_invoke(spec: spec)
+    scheduler_invoke_laned(spec: spec, lane: lane)
   )
 }
 
 fn gunbc_ci_workflow_run(spec: CiSpec) -> String {
-  gunbc_ci_run_script(spec: spec)
+  gunbc_ci_run_script_laned(spec: spec, lane: "floor")
+}
+
+fn gunbc_ci_integration_run(spec: CiSpec) -> String {
+  gunbc_ci_run_script_laned(spec: spec, lane: "integration")
 }
 
 fn gunbc_ci_rust_gate_invoke() -> String {
