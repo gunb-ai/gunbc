@@ -210,7 +210,7 @@ fn runner_deployment_plan() -> RunnerDeploymentPlan {
     contract: gunbc_runner_slot_memory_contract,
     host_swap: gunbc_host_swap_available,
   ) {
-    PlanUnsound { reason: "fabric runner memory accounting inadmissible: Σ(slot memory_max contracts) exceeds Σ(allocatable runner memory) and per-slot memory_swap_max exceeds host swap pool" }
+    PlanUnsound { reason: "fabric runner memory accounting inadmissible: per-host slot_count×memory_max exceeds slice_cap and burst escape fails (per-slot memory_swap_max > host swap pool and/or single-slot memory_max > slice_cap + host_swap)" }
   } else {
     let acc = fold(
       fleet_intent_offers,

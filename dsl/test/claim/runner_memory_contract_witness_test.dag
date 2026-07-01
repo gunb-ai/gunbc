@@ -1,9 +1,10 @@
 module test.claim.runner_memory_contract
 
 import std.types { Bool, String }
-import std.measure { byte_size_count }
+import std.measure { byte_size_count, byte_size }
 import gunbc.fleet_host_budget {
   gunbc_runner_slot_memory_contract,
+  RunnerSlotMemoryContract,
   gunbc_runner_slice_cap,
   gunbc_declared_runner_slot_count,
   gunbc_host_swap_available,
@@ -150,6 +151,21 @@ fn witness_policy_has_per_slot_memory_knobs() -> Bool {
   }
 }
 
+fn witness_burst_gate_rejects_excess_per_slot_swap() -> Bool {
+  let inflated_swap = RunnerSlotMemoryContract {
+    memory_max: gunbc_runner_slot_memory_contract.memory_max,
+    memory_high: gunbc_runner_slot_memory_contract.memory_high,
+    memory_swap_max: byte_size(17179869184),
+  }
+  !fabric_memory_accounting_admissible(
+    offers: fleet_intent_offers,
+    overhead: host_fixed_overhead_bytes(o: gunbc_ci_host_fixed_overhead),
+    slot_count: gunbc_declared_runner_slot_count,
+    contract: inflated_swap,
+    host_swap: gunbc_host_swap_available
+  )
+}
+
 fn witness_fabric_memory_accounting_admissible_under_burst_contract() -> Bool {
   fabric_memory_accounting_admissible(
     offers: fleet_intent_offers,
@@ -169,4 +185,5 @@ test fn runner_memory_contract_holds() -> Bool {
     && witness_deployment_carries_slot_memory_and_slice()
     && witness_policy_has_per_slot_memory_knobs()
     && witness_fabric_memory_accounting_admissible_under_burst_contract()
+    && witness_burst_gate_rejects_excess_per_slot_swap()
 }
