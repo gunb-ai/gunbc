@@ -248,11 +248,17 @@ A program is a canonical `Node` (the *idea*); ingest / emit / eval across many m
   - [ ] `Medium<A> ↔ Medium<B>` homomorphisms
   - [ ] **format-model reconciliation** — decompose record-spelling onto single authority (`SerializationKnobs` + `serialize_record` → `Doc`); complementary to regime-2 line-layout half [plan](docs/plans/format-model-reconciliation.md)
     - [ ] **C1 — SerializationKnobs + serialize_record keystone** (#6045) — delete `FormatModel`; migrate runner manifest byte-identically; JSON swap-test witness (still-wolf-292) [plan](docs/plans/format-model-reconciliation.md)
-      - [ ] **C3 — gitignore de-fork** — migrate `OutputFormat` consumer onto `SerializationKnobs` + `ConfigFormat`; delete `OutputFormat` + `gitignore_render.dag` [plan](docs/plans/format-model-reconciliation.md)
+      - [ ] **C3 — gitignore de-fork** — migrate `OutputFormat` consumer onto `SerializationKnobs` + `ConfigFormat`; delete `OutputFormat` + `gitignore_render.dag` [plan](docs/plans/format-model-reconciliation.md) — ⏳ awaiting sign-off
       - [ ] **C4 — dnsmasq emit** — dnsmasq `ConfigFormat` + knobs; honest positional micro-syntax [plan](docs/plans/format-model-reconciliation.md)
       - [ ] **C5 — digest/accelerator kv** *(low)* — route `digest_render` through `serialize_record` [plan](docs/plans/format-model-reconciliation.md)
       - [ ] **C6 — CSS declaration blocks** *(cosmetic)* — `css_rule` props as record emit [plan](docs/plans/format-model-reconciliation.md)
 - [ ] **emission = ingestion⁻¹ extended past syntax** — diagnostic + orchestration intent emit per-target by rows [plan](docs/plans/emission-ingestion-inverse.md)
+  - [ ] **shell emission model** — `emit(intent,Bash)` via `05_emit_orchestration`; dissolves `program.dag` + `ShellCommand{script}` (Phase B); cross-link §1 `1-inline-shell-defork` [plan](docs/plans/shell-emission-model.md)
+    - [ ] **slice 0 — CI EAGAIN-retry** — `ci_cargo_eagain_retry_core` → `emit(Retry,Bash)`; byte-oracle = committed `ci.yml` [plan](docs/plans/shell-emission-model.md)
+      - [ ] **slice 1 — control-flow emit** — `If` then `For`/`While` (`orch_emit_step` arms + byte goldens) [plan](docs/plans/shell-emission-model.md)
+        - [ ] **slice 2 — fleet_converge** — `fleet_converge_emit` → committed `.github/fleet-converge.sh` [plan](docs/plans/shell-emission-model.md)
+          - [ ] **slice 3 — live_deploy** — freeze golden first; heredoc foreign-media = permanent ratchet [plan](docs/plans/shell-emission-model.md)
+            - [ ] **slice 4 — tail** — `bmc_token_federation` → `ci_workflow` RunSteps → githooks [plan](docs/plans/shell-emission-model.md)
 - [ ] `FidelityDisposition` compose-up → medium-level `DecodeFidelity`
 - [ ] eval runtime generalization (wave-1 literal pins → `wave1_model_core` primitives)
 - [ ] **invert hand-maintained artifacts** — emit each (ROADMAP flagship · doc indexes) from its `.dag` authority + drift-gate it (the ci.yml pattern) [plan](docs/plans/invert-hand-maintained.md)
