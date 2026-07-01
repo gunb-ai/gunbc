@@ -1,33 +1,103 @@
 module gunbc.host_runner_provision
 
-import std.types { String, List, NonEmptyStr }
-import gunbc.fleet_intent { ComputeHost }
+import std.types { String, List, NonEmptyStr, Bool }
+import extdeps.github.actions { RunnerSpec, SelfHosted, HostedRunner, RunsOnExpression }
+import gunbc.fleet_intent { ComputeHost, srv1_host }
+import gunbc.ci_fleet { ComputeOffer, srv1_offer, srv2_offer, srv3_offer }
+import gunbc.runner_spec_from_offer { runner_spec_from_offer }
+import gunbc.ci_deploy_access {
+  DeployAccess,
+  ci_deploy_srv1_access,
+  gunbc_deploy_runner_principal,
+  deploy_access_command_paths,
+}
 
-data gunbc_runner_principal: NonEmptyStr = "gunbc-runner"
-
-data gunbc_runner_provision_privileged_commands: List<NonEmptyStr> = [
-  "apt-get",
-  "install",
-  "systemctl",
-  "tailscale",
-]
+type RunnerProvisionRole = Ci | Deploy
 
 type HostRunnerProvision {
+  role: RunnerProvisionRole
   principal: NonEmptyStr
   host: ComputeHost
   privileged_commands: List<NonEmptyStr>
+  labels: List<String>
 }
 
-data gunbc_runner_provision_privileged_commands_basis: String = "Option (a) consumer-declares, provisioning-grants: privileged_commands is aggregated from deploy consumers' declared sudo needs (cool-swift DeployAccess seed: apt-get, install, systemctl, tailscale). Provisioning realizes the union as /etc/sudoers.d/gunbc-deploy NOPASSWD scoped to exactly these commands — never blanket root. dissolve-on: aggregate_authority fold over all HostEffect consumers once DeployAccess lands (#6093)."
+data gunbc_ci_runner_principal: NonEmptyStr = "gunbc-runner"
+
+data gunbc_runner_principal: NonEmptyStr = gunbc_ci_runner_principal
+
+data gunbc_deploy_runner_label: NonEmptyStr = "deploy"
+
+data gunbc_runner_provision_privileged_commands_basis: String = "Dual-role HostRunnerProvision (operator L8 / cool-swift): ci role = gunbc-runner, quarantined (privileged_commands empty); deploy role = gunbc-deploy, trusted, privileged_commands aggregated from DeployAccess consumer-declares/provisioning-grants (bash, apt-get, systemctl, tailscale, install) realized as /etc/sudoers.d/gunbc-deploy NOPASSWD. Deploy GHA label = deploy so runs-on [self-hosted, linux, arm64, deploy] lands only on the trusted identity. srv1 carries both roles; other fleet hosts CI-only until deploy is declared. dissolve-on: aggregate_authority fold over all HostEffect consumers (#6093)."
+
+fn compute_offer_for_host(host: ComputeHost) -> ComputeOffer {
+  match host.identity {
+    "srv1" => srv1_offer
+    "srv2" => srv2_offer
+    "srv3" => srv3_offer
+    _ => srv1_offer
+  }
+}
+
+fn runner_spec_label_list(spec: RunnerSpec) -> List<String> {
+  match spec {
+    SelfHosted { labels: labels } => labels
+    HostedRunner { label: l } => [l]
+    RunsOnExpression { expression: e } => [e]
+  }
+}
+
+fn runner_spec_with_extra_label(spec: RunnerSpec, extra: String) -> RunnerSpec {
+  match spec {
+    SelfHosted { labels: labels } => SelfHosted { labels: concat(labels, [extra]) }
+    other => other
+  }
+}
+
+fn host_has_deploy_runner(host: ComputeHost) -> Bool {
+  host.identity == srv1_host.identity
+}
+
+fn gunbc_ci_runner_provision_for(host: ComputeHost) -> HostRunnerProvision {
+  HostRunnerProvision {
+    role: Ci,
+    principal: gunbc_ci_runner_principal,
+    host: host,
+    privileged_commands: [],
+    labels: runner_spec_label_list(spec: runner_spec_from_offer(offer: compute_offer_for_host(host: host))),
+  }
+}
+
+fn gunbc_deploy_runner_provision_for(host: ComputeHost) -> HostRunnerProvision {
+  let base = runner_spec_from_offer(offer: compute_offer_for_host(host: host))
+  HostRunnerProvision {
+    role: Deploy,
+    principal: gunbc_deploy_runner_principal,
+    host: host,
+    privileged_commands: deploy_access_command_paths(access: ci_deploy_srv1_access),
+    labels: runner_spec_label_list(spec: runner_spec_with_extra_label(spec: base, extra: gunbc_deploy_runner_label)),
+  }
+}
+
+fn host_runner_provisions_for(host: ComputeHost) -> List<HostRunnerProvision> {
+  if host_has_deploy_runner(host: host) {
+    [gunbc_ci_runner_provision_for(host: host), gunbc_deploy_runner_provision_for(host: host)]
+  } else {
+    [gunbc_ci_runner_provision_for(host: host)]
+  }
+}
 
 fn gunbc_runner_provision_for(host: ComputeHost) -> HostRunnerProvision {
-  HostRunnerProvision {
-    principal: gunbc_runner_principal,
-    host: host,
-    privileged_commands: gunbc_runner_provision_privileged_commands,
-  }
+  gunbc_ci_runner_provision_for(host: host)
 }
 
 fn host_runner_provision_principal(p: HostRunnerProvision) -> String {
   p.principal
+}
+
+fn gunbc_deploy_runner_spec() -> RunnerSpec {
+  runner_spec_with_extra_label(
+    spec: runner_spec_from_offer(offer: srv1_offer),
+    extra: gunbc_deploy_runner_label
+  )
 }

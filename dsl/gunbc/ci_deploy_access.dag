@@ -18,7 +18,13 @@ type DeployAccess {
 
 data gunbc_deploy_sudoers_dropin: NonEmptyStr = "/etc/sudoers.d/gunbc-deploy"
 
-data ci_deploy_runner_principal: NonEmptyStr = "runner"
+data gunbc_deploy_runner_principal: NonEmptyStr = "gunbc-deploy"
+
+data ci_deploy_runner_principal: NonEmptyStr = gunbc_deploy_runner_principal
+
+fn deploy_access_command_paths(access: DeployAccess) -> List<NonEmptyStr> {
+  map(access.privileged_commands, cmd => cmd.path)
+}
 
 fn srv1_live_deploy_privileged_commands() -> List<PrivilegedCommand> {
   [

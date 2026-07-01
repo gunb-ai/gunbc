@@ -1,35 +1,85 @@
 module test.claim.host_runner_provision
 
-import std.types { Bool }
+import std.types { Bool, String }
 import gunbc.host_runner_provision {
   HostRunnerProvision,
-  gunbc_runner_principal,
+  RunnerProvisionRole,
+  gunbc_ci_runner_principal,
+  gunbc_deploy_runner_principal,
+  gunbc_deploy_runner_label,
+  gunbc_ci_runner_provision_for,
+  gunbc_deploy_runner_provision_for,
   gunbc_runner_provision_for,
-  gunbc_runner_provision_privileged_commands,
+  host_runner_provisions_for,
   host_runner_provision_principal,
+  gunbc_deploy_runner_spec,
 }
-import gunbc.fleet_intent { srv1_host, srv3_host }
+import gunbc.fleet_intent { srv1_host, srv2_host, srv3_host }
+import gunbc.ci_deploy_access { ci_deploy_srv1_access, deploy_access_command_paths }
+import extdeps.github.actions { SelfHosted }
 
-fn witness_principal_is_gunbc_runner() -> Bool {
-  gunbc_runner_principal == "gunbc-runner"
-    && host_runner_provision_principal(p: gunbc_runner_provision_for(host: srv1_host)) == "gunbc-runner"
-}
-
-fn witness_privileged_commands_seeded() -> Bool {
-  gunbc_runner_provision_privileged_commands.length() == 4
-    && all(gunbc_runner_provision_privileged_commands, c =>
-      c == "apt-get" || c == "install" || c == "systemctl" || c == "tailscale"
-    )
+fn witness_ci_principal_is_gunbc_runner() -> Bool {
+  gunbc_ci_runner_principal == "gunbc-runner"
+    && host_runner_provision_principal(p: gunbc_ci_runner_provision_for(host: srv1_host)) == "gunbc-runner"
 }
 
-fn witness_srv3_greenfield_provision() -> Bool {
+fn witness_ci_role_has_no_privileged_commands() -> Bool {
+  let p = gunbc_ci_runner_provision_for(host: srv1_host)
+  p.role == Ci && p.privileged_commands.length() == 0
+}
+
+fn witness_deploy_principal_and_sudoers_contract() -> Bool {
+  let p = gunbc_deploy_runner_provision_for(host: srv1_host)
+  p.role == Deploy
+    && p.principal == gunbc_deploy_runner_principal
+    && p.principal == "gunbc-deploy"
+    && p.privileged_commands == deploy_access_command_paths(access: ci_deploy_srv1_access)
+    && p.privileged_commands.length() == 5
+}
+
+fn witness_deploy_labels_include_deploy() -> Bool {
+  let p = gunbc_deploy_runner_provision_for(host: srv1_host)
+  any(p.labels, l => l == gunbc_deploy_runner_label)
+    && any(p.labels, l => l == "self-hosted")
+    && any(p.labels, l => l == "linux")
+    && any(p.labels, l => l == "arm64")
+}
+
+fn witness_deploy_runner_spec_matches_provision() -> Bool {
+  match gunbc_deploy_runner_spec() {
+    SelfHosted { labels: labels } =>
+      any(labels, l => l == gunbc_deploy_runner_label)
+        && any(labels, l => l == "arm64")
+    _ => false
+  }
+}
+
+fn witness_srv1_has_ci_and_deploy_roles() -> Bool {
+  let provisions = host_runner_provisions_for(host: srv1_host)
+  provisions.length() == 2
+    && provisions.first().role == Ci
+    && provisions.last().role == Deploy
+}
+
+fn witness_srv2_is_ci_only() -> Bool {
+  let provisions = host_runner_provisions_for(host: srv2_host)
+  provisions.length() == 1 && provisions.first().role == Ci
+}
+
+fn witness_srv3_greenfield_ci_only() -> Bool {
   let p = gunbc_runner_provision_for(host: srv3_host)
   p.host.identity == "srv3"
-    && p.principal == gunbc_runner_principal
+    && p.principal == gunbc_ci_runner_principal
+    && p.role == Ci
 }
 
 test fn host_runner_provision_holds() -> Bool {
-  witness_principal_is_gunbc_runner()
-    && witness_privileged_commands_seeded()
-    && witness_srv3_greenfield_provision()
+  witness_ci_principal_is_gunbc_runner()
+    && witness_ci_role_has_no_privileged_commands()
+    && witness_deploy_principal_and_sudoers_contract()
+    && witness_deploy_labels_include_deploy()
+    && witness_deploy_runner_spec_matches_provision()
+    && witness_srv1_has_ci_and_deploy_roles()
+    && witness_srv2_is_ci_only()
+    && witness_srv3_greenfield_ci_only()
 }

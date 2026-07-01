@@ -11,6 +11,7 @@ import gunbc.ci_spec {
 import gunbc.ci_deploy_access {
   ci_deploy_srv1_access,
   ci_deploy_runner_principal,
+  gunbc_deploy_runner_principal,
   deploy_access_is_local_apply,
   deploy_access_preflight_script,
   gunbc_deploy_sudoers_dropin,
@@ -32,7 +33,9 @@ fn witness_deploy_stage_targets_live_deploy_wet() -> Bool {
 fn witness_deploy_access_uses_local_apply_on_srv1() -> Bool {
   let access = ci_deploy_srv1_access
   access.host == srv1_host
+    && access.principal == gunbc_deploy_runner_principal
     && access.principal == ci_deploy_runner_principal
+    && access.principal == "gunbc-deploy"
     && deploy_access_is_local_apply(access: access)
     && match access.transport {
       LocalShell => true
@@ -82,6 +85,7 @@ fn witness_ci_yml_emits_deploy_job() -> Bool {
     && string_contains(s: yaml, pattern: concat("    if: ", ci_deploy_push_to_main_if))
     && string_contains(s: yaml, pattern: "Deploy dashboard to srv1 (live_deploy_apply_srv1_wet)")
     && string_contains(s: yaml, pattern: live_deploy_apply_srv1_wet_function)
+    && string_contains(s: yaml, pattern: "runs-on: [self-hosted, linux, arm64, deploy]")
 }
 
 test fn ci_deploy_witnesses() -> Bool {

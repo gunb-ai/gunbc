@@ -14,6 +14,7 @@ import gunbc.merge_admission_produce {
 import gunbc.ci_workflow_expressions { ci_deploy_push_to_main_if }
 import gunbc.commit_workflow { commit_gate_roster, project_ci_floor_gates }
 import gunbc.runner_spec_from_offer { gunbc_ci_runner_spec }
+import gunbc.host_runner_provision { gunbc_deploy_runner_spec }
 import std.disposition { Disposition, Scaffold, SingleAuthority, Terminal }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.github.actions {
@@ -272,7 +273,7 @@ fn ci_deploy_job(stage: DeployStage) -> Job {
   Job {
     id: stage.id,
     name: none,
-    runner: gunbc_ci_runner_spec(),
+    runner: gunbc_deploy_runner_spec(),
     steps: concat(ci_prelude_steps(), [ci_deploy_step(stage: stage)]),
     needs: stage.needs,
     env: none,
