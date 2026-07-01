@@ -17,6 +17,7 @@ import gunbc.commit_workflow {
 }
 import gunbc.ci_failure_class { infra_retry_grep_alternation }
 import gunbc.ci_deploy_access { DeployAccess, ci_deploy_srv1_access }
+import gunbc.merge_admission_produce { ci_floor_stamp_merge_admission_script }
 
 type DiffMode = DiffMergeBase | DiffTwoDot
 
@@ -210,7 +211,10 @@ fn gunbc_ci_run_script(spec: CiSpec) -> String {
       concat(ci_release_build_script(), "\n"),
       concat(git_fetch_script(policy: spec.diff_policy), "\n")
     ),
-    scheduler_invoke(spec: spec)
+    concat(
+      concat(scheduler_invoke(spec: spec), "\n"),
+      ci_floor_stamp_merge_admission_script()
+    )
   )
 }
 
