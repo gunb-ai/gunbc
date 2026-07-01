@@ -32,6 +32,13 @@ fn deploy_target_ssh_proof_structurally_valid(proof: DeployTargetHostProof) -> B
   }
 }
 
+fn runner_name_proves_host_identity(runner_name: String, host: HostIdentity) -> Bool {
+  (runner_name == host)
+    || string_contains(s: runner_name, pattern: concat("@", host, "-"))
+    || string_contains(s: runner_name, pattern: concat("@", host, "."))
+    || ends_with(s: runner_name, suffix: concat("@", host))
+}
+
 fn deploy_target_runner_identity_proves_host(
   proof: DeployTargetHostProof,
   observed_hostname: String,
@@ -39,7 +46,8 @@ fn deploy_target_runner_identity_proves_host(
 ) -> Bool {
   match proof {
     RunnerIdentityOnHost { host: id } =>
-      (observed_hostname == id) || string_contains(s: observed_runner_name, pattern: id)
+      (observed_hostname == id)
+        || runner_name_proves_host_identity(runner_name: observed_runner_name, host: id)
     SshExplicitHost { host: _, ssh_host: _ } => true
   }
 }
@@ -100,7 +108,7 @@ fn deploy_target_host_preflight_block(proof: DeployTargetHostProof) -> String {
             ),
             concat(
               concat("if [ \"$HOSTNAME\" != \"", id),
-              concat("\" ] && ! echo \"$RUNNER_NAME\" | grep -Fq \"", concat(id, "\"; then\n"))
+              concat("\" ] && ! echo \"$RUNNER_NAME\" | grep -Eq '@", concat(id, "(-|\\.|$)'; then\n"))
             )
           ),
           concat(

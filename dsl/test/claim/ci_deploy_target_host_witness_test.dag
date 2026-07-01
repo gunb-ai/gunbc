@@ -40,6 +40,15 @@ fn witness_srv2_hostname_refused_for_srv1_deploy() -> Bool {
   )
 }
 
+fn witness_srv12_runner_name_refused_for_srv1_deploy() -> Bool {
+  deploy_local_apply_refused_for_observed_host(
+    host: ci_deploy_srv1_access.host.identity,
+    transport: ci_deploy_srv1_access.transport,
+    observed_hostname: "srv12",
+    observed_runner_name: "actions-runner@srv12-01.service"
+  )
+}
+
 fn witness_ubicloud_runner_name_refused_for_local_apply() -> Bool {
   deploy_local_apply_refused_for_observed_host(
     host: ci_deploy_srv1_access.host.identity,
@@ -124,6 +133,7 @@ fn witness_access_host_is_srv1() -> Bool {
 test fn ci_deploy_target_host_witnesses() -> Bool {
   witness_srv1_hostname_proves_target()
     && witness_srv2_hostname_refused_for_srv1_deploy()
+    && witness_srv12_runner_name_refused_for_srv1_deploy()
     && witness_ubicloud_runner_name_refused_for_local_apply()
     && witness_ssh_transport_structural_proof_holds()
     && witness_ssh_transport_mismatch_refused()
