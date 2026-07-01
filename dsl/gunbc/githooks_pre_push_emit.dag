@@ -36,7 +36,7 @@ fn emit_glob_case_arms(globs: List<String>) -> String {
 
 fn emit_claim_batch(entry: String, function: String, suffix: String) -> String {
   concat(
-    "\"$CLAIM_BATCH\" --source-root dsl --source-root src/v2 --entry ",
+    "\"$CLAIM_BATCH\" --source-root dsl --entry ",
     concat(entry, concat(" --function ", concat(function, suffix)))
   )
 }

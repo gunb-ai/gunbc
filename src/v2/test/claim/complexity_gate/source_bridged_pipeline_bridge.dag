@@ -6,7 +6,7 @@ import v2.compiler.resolve { resolve }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_language_model_wave1 }
 import v2.std.collection { List }
-import v2.std.compilers.lexing { Token }
+import v2.std.compilers.lexing { Token, token_stream_all, token_stream_remaining }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome, port_locus }
 import v2.std.grammar { GrammarRoot, ParseTree }
 import v2.std.node { Node, Symbol }
@@ -30,7 +30,7 @@ fn source_bridged_resolved_root(
         f: fn(token_stream) {
           bind_outcome(
             o: parse_production_tree(
-              tokens: token_stream.tokens,
+              tokens: token_stream_remaining(stream: token_stream),
               validated: validated,
               production_name: production_name
             ),
