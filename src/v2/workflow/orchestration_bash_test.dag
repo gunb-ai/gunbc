@@ -178,3 +178,33 @@ test fn orch_if_single_branch_perturb_has_teeth_holds() -> Bool {
     Rejected { diagnostics: _ } => false
   }
 }
+
+fn orch_if_env_cond_intent() -> Step {
+  If {
+    cond: ExitZero { run: orch_run_env_prefixed() },
+    then_: Pipeline {
+      steps: [
+        Do {
+          run: Run {
+            command: "echo hi",
+            env: [],
+            redirect: Absent,
+            capture: Absent
+          }
+        }
+      ],
+      on_failure: FailFast
+    },
+    else_: Absent
+  }
+}
+
+data orch_if_env_cond_frozen_golden: String = "if CARGO_BUILD_JOBS=1 cargo build -p v1-compiler --release --bins; then echo hi; fi"
+
+test fn orch_if_exitzero_cond_uses_run_emit_holds() -> Bool {
+  match orch_emit_step(s: orch_if_env_cond_intent()) {
+    Accepted { value: source, diagnostics: dg } =>
+      (source.carried == orch_if_env_cond_frozen_golden) && (dg == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
