@@ -32,7 +32,6 @@ use crate::cli_run::{
 // Dissolves to Chunk F when residue classification moves on-carrier (gunbc#5364).
 const NON_FOLD_MIGRATION_DEBT_ROSTER: &[&str] = &[
     // (a) eval interpreter escapes — §5 fail-open on EVAL path; escalate before editing 05_eval.
-    "src/v2/compiler/05_eval.dag::eval_bind_node_eval",
     "src/v2/compiler/05_eval.dag::eval_branch_node_eval",
     "src/v2/compiler/05_eval.dag::eval_loop_node",
     "src/v2/compiler/05_eval.dag::eval_match_node_eval",
