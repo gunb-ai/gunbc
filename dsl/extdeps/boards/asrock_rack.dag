@@ -138,8 +138,18 @@ data asrock_srv3_live_readonly_probe_rows: List<BmcLiveReadOnlyProbeRow> = [
     probed_at: "2026-07-01",
   },
   BmcLiveReadOnlyProbeRow {
+    locator: "/vm/0/0 ws-upgrade",
+    verdict: ProbePresent,
+    probed_at: "2026-07-01",
+  },
+  BmcLiveReadOnlyProbeRow {
     locator: "/nbd/0 non-upgrade GET",
     verdict: ProbeInconclusive,
+    probed_at: "2026-07-01",
+  },
+  BmcLiveReadOnlyProbeRow {
+    locator: "/nbd/0 ws-upgrade",
+    verdict: ProbeAbsent,
     probed_at: "2026-07-01",
   },
 ]
@@ -164,5 +174,32 @@ fn live_probe_confirms_redfish_virtual_media_absent() -> Bool {
     asrock_srv3_live_readonly_probe_rows,
     init: true,
     f: (acc, row) => acc && live_probe_row_is_redfish_vm_absent(row: row)
+  )
+}
+
+fn live_probe_row_matches(locator: NonEmptyStr, verdict: BmcReadOnlyProbeVerdict, row: BmcLiveReadOnlyProbeRow) -> Bool {
+  row.locator == locator && row.verdict == verdict
+}
+
+fn live_probe_has_ws_upgrade_row(locator: NonEmptyStr, verdict: BmcReadOnlyProbeVerdict) -> Bool {
+  fold(
+    asrock_srv3_live_readonly_probe_rows,
+    init: false,
+    f: (acc, row) => acc || live_probe_row_matches(locator: locator, verdict: verdict, row: row)
+  )
+}
+
+fn live_probe_confirms_nbd_proxy_vm_slot_ws_present() -> Bool {
+  live_probe_has_ws_upgrade_row(
+    locator: "/vm/0/0 ws-upgrade" as NonEmptyStr,
+    verdict: ProbePresent
+  )
+    && asrock_altrad8ud_openbmc_2_07_00_nbd_proxy_primary_endpoint == VmSlotIndexEndpoint
+}
+
+fn live_probe_confirms_nbd_slot_ws_absent() -> Bool {
+  live_probe_has_ws_upgrade_row(
+    locator: "/nbd/0 ws-upgrade" as NonEmptyStr,
+    verdict: ProbeAbsent
   )
 }

@@ -12,11 +12,16 @@ import extdeps.boards.asrock_rack {
   asrock_srv3_live_probe_firmware_version,
   asrock_srv3_live_readonly_probe_rows,
   asrock_altrad8ud_shipped_bmc_firmware_capabilities,
+  asrock_altrad8ud_openbmc_2_07_00_nbd_proxy_primary_endpoint,
   live_probe_confirms_shipped_firmware_version,
   live_probe_confirms_redfish_virtual_media_absent,
+  live_probe_confirms_nbd_proxy_vm_slot_ws_present,
+  live_probe_confirms_nbd_slot_ws_absent,
   ProbeAbsent,
   ProbeInconclusive,
+  ProbePresent,
 }
+import extdeps.bmc.webui.nbd_proxy { VmSlotIndexEndpoint }
 
 test fn srv3_live_bmc_host_is_grounded() -> Bool {
   asrock_srv3_live_bmc_host == "192.168.1.192"
@@ -37,14 +42,10 @@ test fn live_probe_redfish_virtual_media_absent_matches_catalog() -> Bool {
 }
 
 test fn live_probe_rows_cover_vm_and_nbd_get_surfaces() -> Bool {
-  list_length(items: asrock_srv3_live_readonly_probe_rows) == 5
-    && fold(
-      asrock_srv3_live_readonly_probe_rows,
-      init: false,
-      f: (acc, row) =>
-        acc || (row.locator == ("/vm/0/0 non-upgrade GET" as NonEmptyStr)
-          && row.verdict == ProbeInconclusive)
-    )
+  list_length(items: asrock_srv3_live_readonly_probe_rows) == 7
+    && live_probe_confirms_nbd_proxy_vm_slot_ws_present()
+    && live_probe_confirms_nbd_slot_ws_absent()
+    && asrock_altrad8ud_openbmc_2_07_00_nbd_proxy_primary_endpoint == VmSlotIndexEndpoint
     && fold(
       asrock_srv3_live_readonly_probe_rows,
       init: false,

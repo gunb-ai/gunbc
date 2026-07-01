@@ -212,7 +212,7 @@ data host_standup_spine: List<HostStandupStep> = [
   host_standup_prefix_gap_step(
     phase: OsInstallActuated,
     label: "prefix:os-install-actuated",
-    interim_realization: "gunbc.nbd_proxy_virtual_media_install.srv3_os_install_actuator_plan + seed wss+NBD server (§7); docs/runbooks/srv3-nbd-proxy-ws-upgrade-dry-run.md",
+    interim_realization: "gunbc.nbd_proxy_virtual_media_install.srv3_os_install_actuator_plan + extdeps.boards.asrock_rack live ws-upgrade receipt (§6(1) PRESENT /vm/0/0); seed wss+NBD server pending §6(2) sign-off",
     refusal: "host_standup:prefix:os-install-actuated:unexecuted — refuse assimilation until NBD-proxy install actuates and OS-up witness is green-by-execution",
     effect_policy: OneShotIdempotent
   ),
@@ -308,7 +308,7 @@ data host_standup_gap_ledger: List<GapLedgerRow> = [
   GapLedgerRow {
     phase_label: "prefix:os-install-actuated",
     modeling: "gap",
-    authority_or_interim: "gunbc.nbd_proxy_virtual_media_install.srv3_os_install_actuator_plan — seed wss+NBD server + live ws-upgrade dry-run receipt pending (§6 gate)"
+    authority_or_interim: "gunbc.nbd_proxy_virtual_media_install.srv3_os_install_actuator_plan — §6(1) ws-upgrade dry-run PRESENT on /vm/0/0 (2026-07-01); seed wss+NBD server blocked on §6(2) operator sign-off"
   },
   GapLedgerRow {
     phase_label: "prefix:host-converge",
