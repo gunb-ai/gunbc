@@ -461,7 +461,10 @@ fn gunbc_ci_floor_hardware_threads() -> HardwareThreadCount {
 fn gunbc_ci_floor_spawn_width_for_budget(memory_budget: ByteSize) -> HardwareThreadCount {
   let budget_count = byte_size_count(b: memory_budget)
   if budget_count <= 0 {
-    hardware_thread_count(count: gunbc_ci_floor_conservative_fallback_width)
+    hardware_thread_count(count: int_min(
+      a: gunbc_ci_floor_conservative_fallback_width,
+      b: execution_corpus_spawn_width()
+    ))
   } else {
     let cpu_bound = hardware_thread_count_value(t: bounded_host_spawn_width(
       shard_count: gunbc_ci_floor_breadth(),
