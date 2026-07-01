@@ -15,12 +15,12 @@ import gunbc.merge_admission_produce {
 import gunbc.ci_spec { gunbc_ci_spec }
 
 fn env_var(name: NonEmptyStr) -> String? {
-  let result = shell.Exec.Run(script: concat("printenv ", name))
-  if result.success {
-    let line = shell_stdout_line(raw: result.stdout)
-    if line == "" { none } else { Present { value: line } }
-  } else {
-    none
+  let env = shell.Env.Get(name: name)
+  match env.value {
+    Present { value: raw } =>
+      let line = shell_stdout_line(raw: raw)
+      if line == "" { none } else { Present { value: line } }
+    Absent => none
   }
 }
 
