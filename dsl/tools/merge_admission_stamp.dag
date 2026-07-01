@@ -1,6 +1,7 @@
 module tools.merge_admission_stamp
 
 import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.types { NonEmptyStr }
 import extdeps.git
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -13,9 +14,18 @@ import gunbc.merge_admission_produce {
 }
 import gunbc.ci_spec { gunbc_ci_spec }
 
+fn env_var(name: NonEmptyStr) -> String? {
+  let result = shell.Exec.Run(script: concat("printenv ", name))
+  if result.success {
+    let line = shell_stdout_line(raw: result.stdout)
+    if line == "" { none } else { Present { value: line } }
+  } else {
+    none
+  }
+}
+
 fn pr_number_from_event() -> Int {
-  let path = shell.Env.Get(name: "GITHUB_EVENT_PATH")
-  let line = match path.value {
+  let line = match env_var(name: "GITHUB_EVENT_PATH") {
     Present { value: event_path } =>
       let result = shell.Exec.Run(
         script: concat(
@@ -49,8 +59,7 @@ fn repo_root() -> String {
 }
 
 fn floor_exit_code_from_env() -> Int {
-  let env = shell.Env.Get(name: "CI_FLOOR_EXIT")
-  match env.value {
+  match env_var(name: "CI_FLOOR_EXIT") {
     Present { value: raw } =>
       if raw == "0" { 0 } else { 1 }
     Absent => 1
@@ -68,7 +77,7 @@ func main() -> ProcessExit {
   }
   let receipt = stamp_floor_receipt(
     pr_number: pr_number_from_event(),
-    head_sha: shell_stdout_line(raw: head.sha),
+    head_sha: head.sha,
     base_tree_hash: base_tree,
     floor_exit_code: floor_exit_code_from_env(),
   )
