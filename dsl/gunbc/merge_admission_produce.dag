@@ -56,7 +56,7 @@ fn parse_receipt_wire(text: String) -> MergeAdmissionReceipt? {
         Present {
           value: MergeAdmissionReceipt {
             pr_number: 0,
-            head_sha: receipt_wire_head_sha(lines: lines),
+            head_sha: "0000000000000000000000000000000000000000",
             base_tree_hash: lines.first(),
             gate_roster_hash: lines.skip(n: 1).first(),
             conclusion: conclusion,
@@ -64,14 +64,6 @@ fn parse_receipt_wire(text: String) -> MergeAdmissionReceipt? {
         }
       Absent => none
     }
-  }
-}
-
-fn receipt_wire_head_sha(lines: List<String>) -> CommitSha {
-  if length(lines) > 3 {
-    lines.skip(n: 3).first()
-  } else {
-    "0000000000000000000000000000000000000000"
   }
 }
 

@@ -16,9 +16,9 @@ import gunbc.merge_admission {
 import gunbc.merge_admission_produce {
   merge_admission_receipt_path,
   parse_receipt_wire,
+  ci_repo_root_shell,
 }
 import gunbc.ci_failure_class { merge_admission_blocks_merge }
-import gunbc.merge_admission_produce { ci_repo_root_shell }
 import gunbc.ci_spec { gunbc_ci_spec }
 
 fn merge_target_tree_hash() -> ContentHash {
