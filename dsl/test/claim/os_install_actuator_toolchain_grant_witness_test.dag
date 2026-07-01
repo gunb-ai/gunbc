@@ -7,6 +7,7 @@ import extdeps.bmc.os_install_actuator_toolchain {
   srv3_os_install_actuator_host_label,
   srv3_os_install_actuator_toolchain_is_complete,
   actuator_toolchain_grant_includes_tool,
+  extdeps_external_authority_anchor,
 }
 import extdeps.tools.curl { curl_cli_tool }
 import extdeps.tools.websocat { websocat_cli_tool }
@@ -39,4 +40,11 @@ test fn srv3_actuator_toolchain_grant_is_fail_closed_on_websocat() -> Bool {
 
 test fn srv3_actuator_host_label_is_declared() -> Bool {
   srv3_os_install_actuator_host_label == "install-actuator-host"
+}
+
+test fn srv3_actuator_toolchain_authority_cites_openbmc_virtual_media() -> Bool {
+  string_contains(
+    s: extdeps_external_authority_anchor.uri.locator,
+    pattern: "openbmc/docs/blob/master/designs/virtual-media.md"
+  )
 }

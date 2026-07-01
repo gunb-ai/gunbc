@@ -13,7 +13,6 @@ import extdeps.languages.bash.program {
   command,
   assign,
   serialize_bash,
-  RawLine,
 }
 import extdeps.bmc.webui.nbd_proxy {
   extdeps_external_authority_anchor,
@@ -94,20 +93,22 @@ fn nbd_proxy_serve_program(intent: NbdProxyServeTransportIntent) -> ShellProgram
         lit(text: "-euo"),
         lit(text: "pipefail"),
       ]),
-      RawLine {
-        text: concat(
-          nbdkit_cli_tool.name,
-          " file file=",
-          intent.iso_path,
-          " port=",
-          port,
-          " rdonly=yes &",
-        ),
-      },
+      command(words: [
+        lit(text: nbdkit_cli_tool.name),
+        lit(text: "file"),
+        lit(text: concat("file=", intent.iso_path)),
+        lit(text: concat("port=", port)),
+        lit(text: "rdonly=yes"),
+        lit(text: "&"),
+      ]),
       assign(name: "NBDKIT_PID", value: lit(text: "$!")),
-      RawLine {
-        text: concat("trap 'kill \"", concat("$NBDKIT_PID", "\"' EXIT INT TERM")),
-      },
+      command(words: [
+        lit(text: "trap"),
+        lit(text: "'kill \"$NBDKIT_PID\"'"),
+        lit(text: "EXIT"),
+        lit(text: "INT"),
+        lit(text: "TERM"),
+      ]),
       command(words: [
         lit(text: websocat_cli_tool.name),
         lit(text: "-b"),
