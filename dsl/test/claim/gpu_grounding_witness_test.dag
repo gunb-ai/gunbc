@@ -7,14 +7,12 @@ import extdeps.gpu {
   gpu_facts_model_number,
   gpu_facts_memory,
 }
-import extdeps.gpu.types { GpuModelCatalogRow }
 import extdeps.vendor.apple { apple }
 import extdeps.vendor.nvidia { nvidia }
 import extdeps.memory.types { UnifiedShared, Dram, Hbm }
 
 fn w_gpu_facts_catalog_shape_matches_cpu_pattern() -> Bool {
-  let catalog: GpuModelCatalogRow = apple_m5_gpu_catalog
-  catalog.model_number == "Apple M5 GPU" && catalog.vendor == apple
+  apple_m5_gpu_catalog.model_number == "Apple M5 GPU" && apple_m5_gpu_catalog.vendor == apple
 }
 
 fn w_apple_m5_unified_memory_grounded() -> Bool {
