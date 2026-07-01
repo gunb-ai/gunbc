@@ -49,6 +49,7 @@ type DualRepDataInit {
 
 type DualRepFnFact {
   name: String
+  params: List<Symbol>
   output: Node
 }
 
@@ -69,11 +70,14 @@ type EqNodeSite {
   rhs: Node
 }
 
+data empty_dual_rep_module_refs: List<DualRepModuleRef> = []
 data empty_dual_rep_violations: List<DualRepViolation> = []
 data empty_dual_rep_data_inits: List<DualRepDataInit> = []
 data empty_dual_rep_fns: List<DualRepFnFact> = []
 data empty_dual_rep_module_scans: List<DualRepModuleScan> = []
 data empty_eq_node_sites: List<EqNodeSite> = []
+data empty_symbol_list: List<Symbol> = []
+data empty_edges: List<Edge> = []
 data empty_sym: Symbol = ^dual_rep_empty_sym
 
 data sym_m: Symbol = ^m
@@ -229,9 +233,10 @@ fn body_alpha_equivalent_to_call(
       false
     } else {
       let arg = first_call_arg_name(operand: lhs)
+      let param = first_param_sym(params: rec.params)
       let inlined = replace_param_in_output(
         output: rec.output,
-        param: sym_y,
+        param: param,
         arg_name: arg
       )
       node_for_compare(n: rhs) == node_for_compare(n: inlined)
@@ -243,8 +248,28 @@ fn node_for_compare(n: Node) -> Node {
   n
 }
 
+fn first_param_sym(params: List<Symbol>) -> Symbol {
+  match list_at_optional(xs: params, index: 0) {
+    Present { value: p } => p
+    Absent => empty_sym
+  }
+}
+
+fn param_syms_from_decl(decl: FnArrowDecl) -> List<Symbol> {
+  fold(decl.params, init: empty_symbol_list, f: fn(acc, p) {
+    list_snoc_item(xs: acc, item: p.name)
+  })
+}
+
 fn lookup_fn_fact(fns: List<DualRepFnFact>, name: String) -> DualRepFnFact {
-  fold(fns, init: DualRepFnFact { name: "", output: atom_node(sym: empty_sym) }, f: fn(acc, row) {
+  fold(
+    fns,
+    init: DualRepFnFact {
+      name: "",
+      params: empty_symbol_list,
+      output: atom_node(sym: empty_sym)
+    },
+    f: fn(acc, row) {
     if row.name == name {
       row
     } else {
@@ -266,7 +291,7 @@ fn replace_param_in_output(output: Node, param: Symbol, arg_name: String) -> Nod
         kind: output.kind,
         children: fold(
           output.children,
-          init: [],
+          init: empty_edges,
           f: fn(acc, e) {
             list_snoc_item(
               xs: acc,
@@ -406,7 +431,11 @@ fn decl_belongs_to_module(decl: FnArrowDecl, fact: DualRepModuleRef) -> Bool {
 }
 
 fn fn_fact_from_decl(decl: FnArrowDecl) -> DualRepFnFact {
-  DualRepFnFact { name: decl.name, output: decl.output }
+  DualRepFnFact {
+    name: decl.name,
+    params: param_syms_from_decl(decl: decl),
+    output: decl.output
+  }
 }
 
 fn module_fns_for_fact(
@@ -473,6 +502,7 @@ fn synthetic_same_symbol_scan() -> DualRepModuleScan {
     fns: [
       DualRepFnFact {
         name: "witness_taut",
+        params: empty_symbol_list,
         output: eq_conj(lhs: atom_node(sym: sym_m), rhs: atom_node(sym: sym_m))
       }
     ]
@@ -492,6 +522,7 @@ fn synthetic_literal_mirror_scan() -> DualRepModuleScan {
     fns: [
       DualRepFnFact {
         name: "witness_ttl",
+        params: empty_symbol_list,
         output: eq_conj(lhs: atom_node(sym: sym_ttl), rhs: atom_node_name(name: sym_lit_3600_name))
       }
     ]
@@ -506,6 +537,7 @@ fn synthetic_independent_oracle_scan() -> DualRepModuleScan {
     fns: [
       DualRepFnFact {
         name: "oracle",
+        params: empty_symbol_list,
         output: eq_conj(
           lhs: call_node(callee: sym_add, args: [atom_node(sym: sym_a), atom_node(sym: sym_b)]),
           rhs: atom_node_name(name: sym_lit_4_name)
@@ -523,17 +555,20 @@ fn synthetic_body_mirror_scan() -> DualRepModuleScan {
     fns: [
       DualRepFnFact {
         name: "inner",
+        params: [sym_y],
         output: atom_node(sym: sym_y)
       },
       DualRepFnFact {
         name: "wrapped",
+        params: [sym_x],
         output: call_node(callee: sym_inner, args: [atom_node(sym: sym_x)])
       },
       DualRepFnFact {
         name: "witness_wrap",
+        params: empty_symbol_list,
         output: eq_conj(
           lhs: call_node(callee: sym_wrapped, args: [atom_node_name(name: sym_lit_1_name)]),
-          rhs: call_node(callee: sym_inner, args: [atom_node(sym: sym_y)])
+          rhs: call_node(callee: sym_inner, args: [atom_node_name(name: sym_lit_1_name)])
         )
       }
     ]
@@ -548,6 +583,7 @@ fn synthetic_distinct_symbol_scan() -> DualRepModuleScan {
     fns: [
       DualRepFnFact {
         name: "ok",
+        params: empty_symbol_list,
         output: eq_conj(lhs: atom_node(sym: sym_a), rhs: atom_node(sym: sym_b))
       }
     ]
@@ -562,10 +598,12 @@ fn parse_path_helper_tautology_scan() -> DualRepModuleScan {
     fns: [
       DualRepFnFact {
         name: "helper_taut",
+        params: empty_symbol_list,
         output: eq_conj(lhs: atom_node(sym: sym_m), rhs: atom_node(sym: sym_m))
       },
       DualRepFnFact {
         name: "witness_calls_helper",
+        params: empty_symbol_list,
         output: call_node(callee: sym_m, args: [])
       }
     ]

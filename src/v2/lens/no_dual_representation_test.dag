@@ -10,7 +10,8 @@ import v2.lens.no_dual_representation_test.scan {
   dual_rep_clean_holds_for_scans,
   dual_rep_module_scans_from_fn_index,
   dual_rep_test_file_count_from_scans,
-  dual_rep_violation_count_from_scans
+  dual_rep_violation_count_from_scans,
+  empty_dual_rep_module_refs
 }
 import v2.std.algebra { fold_list, length, list_snoc_item }
 import v2.std.collection { List }
@@ -19,7 +20,7 @@ import v2.std.logic { Bool }
 fn module_refs_from_declaration_facts(pool_roots: List<String>) -> List<DualRepModuleRef> {
   fold_list(
     xs: module_declaration_facts_live(pool_roots: pool_roots),
-    empty: [],
+    empty: empty_dual_rep_module_refs,
     cons: fn(acc, decl) {
       list_snoc_item(
         xs: acc,
