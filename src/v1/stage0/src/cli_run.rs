@@ -6496,111 +6496,26 @@ fn list_values_from_free_monoid(
     }
 }
 
-fn outcome_accepted_value(
-    value: &v1_interpreter::Value,
-    ctx: &v1_interpreter::InterpContext,
-) -> Result<v1_interpreter::Value, String> {
-    match value {
-        v1_interpreter::Value::Variant {
-            variant_name,
-            fields,
-            ..
-        } if ctx.sym_eq(*variant_name, "Accepted") => ctx
-            .field(fields, "value")
-            .cloned()
-            .ok_or_else(|| "Accepted missing `value`".to_string()),
-        v1_interpreter::Value::Variant { variant_name, .. }
-            if ctx.sym_eq(*variant_name, "Rejected") =>
-        {
-            Err("Outcome rejected".to_string())
-        }
-        other => Err(format!("expected Outcome, got {}", ctx.format_value(other))),
-    }
-}
-
-fn eval_runner_data_item(
-    ctx: &v1_interpreter::InterpContext,
-    name: &str,
-) -> Result<v1_interpreter::Value, String> {
-    v1_interpreter::with_active_context(ctx, || v1_interpreter::eval_data_item_value(ctx, name))
-        .map_err(|e| format!("eval `{name}`: {e}"))?
-        .ok_or_else(|| format!("data item `{name}` missing"))
-}
-
-fn artifact_file_path_from_witness_read(
-    read: &v1_interpreter::Value,
-    ctx: &v1_interpreter::InterpContext,
-) -> Option<String> {
-    let fields = match read {
-        v1_interpreter::Value::Record { fields, .. }
-        | v1_interpreter::Value::Variant { fields, .. } => fields,
-        _ => return None,
-    };
-    let artifact = ctx.field(fields, "artifact")?;
-    let artifact_fields = match artifact {
-        v1_interpreter::Value::Record { fields, .. }
-        | v1_interpreter::Value::Variant { fields, .. } => fields,
-        _ => return None,
-    };
-    match ctx.field(artifact_fields, "file_path")? {
-        v1_interpreter::Value::Str(path) => Some(path.clone()),
-        _ => None,
-    }
-}
-
-fn witness_read_for_entry_file(
-    ingest: &v1_interpreter::Value,
-    entry_path: &str,
-    ctx: &v1_interpreter::InterpContext,
-) -> Result<v1_interpreter::Value, String> {
-    let entry_norm = repo_relative_dag_path(entry_path);
-    for read in list_values_from_free_monoid(ingest, ctx)? {
-        if artifact_file_path_from_witness_read(&read, ctx)
-            .is_some_and(|path| repo_relative_dag_path(&path) == entry_norm)
-        {
-            return Ok(read);
-        }
-    }
-    Err(format!(
-        "no DagSourceReadWitness for witness entry '{entry_norm}' in overlay ingest"
-    ))
-}
-
-fn artifact_file_path_from_provenance_row(
-    row: &v1_interpreter::Value,
-    ctx: &v1_interpreter::InterpContext,
-) -> Option<String> {
-    let fields = match row {
-        v1_interpreter::Value::Record { fields, .. }
-        | v1_interpreter::Value::Variant { fields, .. } => fields,
-        _ => return None,
-    };
-    let artifact = ctx.field(fields, "artifact")?;
-    let artifact_fields = match artifact {
-        v1_interpreter::Value::Record { fields, .. }
-        | v1_interpreter::Value::Variant { fields, .. } => fields,
-        _ => return None,
-    };
-    match ctx.field(artifact_fields, "file_path")? {
-        v1_interpreter::Value::Str(path) => Some(path.clone()),
-        _ => None,
-    }
-}
-
-fn provenance_tree_node_for_entry_file(
-    ctx: &v1_interpreter::InterpContext,
+fn witness_entry_tree_root(
+    runner_ctx: &v1_interpreter::InterpContext,
+    source_roots: &[String],
     entry_path: &str,
 ) -> Result<v1_interpreter::Value, String> {
-    let ingest = eval_runner_data_item(ctx, "host_source_root_ingest")?;
-    let read = witness_read_for_entry_file(&ingest, entry_path, ctx)?;
+    let rel = repo_relative_dag_path(entry_path);
+    let abs = resolve_dag_path(source_roots, &rel)?;
+    let content = std::fs::read_to_string(&abs)
+        .map_err(|e| format!("witness entry tree root: failed to read {:?}: {e}", abs))?;
     let result = v1_interpreter::run_in_context_with_args(
-        ctx,
-        "floor_witness_entry_tree_root_from_read",
-        &[(Some("read".to_string()), read)],
+        runner_ctx,
+        "floor_witness_entry_tree_root_from_host_read",
+        &[
+            (Some("source_text".to_string()), v1_interpreter::Value::Str(content)),
+            (Some("file_path".to_string()), v1_interpreter::Value::Str(rel)),
+        ],
         false,
     )
-    .map_err(|e| format!("floor_witness_entry_tree_root_from_read: {e}"))?;
-    witness_holds_node_value(&result, ctx)
+    .map_err(|e| format!("floor_witness_entry_tree_root_from_host_read: {e}"))?;
+    witness_holds_node_value(&result, runner_ctx)
 }
 
 fn witness_holds_node_value(
@@ -6626,14 +6541,6 @@ fn witness_holds_node_value(
             ctx.format_value(other)
         )),
     }
-}
-
-fn witness_entry_tree_root(
-    runner_ctx: &v1_interpreter::InterpContext,
-    _source_roots: &[String],
-    entry_path: &str,
-) -> Result<v1_interpreter::Value, String> {
-    provenance_tree_node_for_entry_file(runner_ctx, entry_path)
 }
 
 fn provenance_rerun_frontier_nodes(
