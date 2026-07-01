@@ -1,7 +1,7 @@
 module v2.lens.no_dual_representation_test
 
 import gunbc.ci_layer_roots { witness_layer_roots }
-import std.disposition { SubstrateMandatoryTag }
+import std.disposition { RealizationDispatch }
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import v2.lens.module_graph { module_declaration_facts_live }
 import v2.lens.no_dual_representation_test.scan {
@@ -49,5 +49,5 @@ fn no_dual_representation_test_clean_holds() -> Bool {
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: WallAfterGrounding { dissolves_to: SubstrateMandatoryTag }
+  class: WallAfterGrounding { dissolves_to: RealizationDispatch }
 }
