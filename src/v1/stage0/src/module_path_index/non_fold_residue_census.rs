@@ -89,6 +89,7 @@ const NON_FOLD_RESIDUE_ROSTER: &[&str] = &[
     // `file::fn` with a `match <coproduct-param> { ... _ => ... }` — a wildcard escape over a closed
     // coproduct. This is the honest baseline; the wall is that no NEW residue merges.
     "dsl/extdeps/languages/markdown.dag::md_nested",
+    "dsl/gunbc/external_access_throttle.dag::external_access_throttle_policy_matches",
     "dsl/gunbc/generated_artifact.dag::artifact_eq",
     // Category (b) kernel — `*_eq` off-diagonal; dissolves with exhaustiveness-by-default (gunbc#5364).
     "dsl/gunbc/commit_workflow.dag::commit_workflow_surface_eq",
