@@ -1,6 +1,6 @@
 module v2.workflow.orchestration_emit_test
 
-import v2.compiler.emit_orchestration { orch_emit_pipeline, orch_emit_run, orch_run_env_reduction_dissolution_trigger }
+import v2.compiler.emit_orchestration { orch_emit_pipeline, orch_emit_run, orch_run_env_reduction_dissolution_trigger, orch_emit_control_flow_dissolution_trigger }
 import extdeps.communication.medium { Medium }
 import v2.std.orchestration {
   Run,
@@ -93,4 +93,10 @@ test fn orch_run_env_reduction_trigger_recorded_holds() -> Bool {
   string_contains(s: orch_run_env_reduction_dissolution_trigger, pattern: "EnvPrefixed")
     && string_contains(s: orch_run_env_reduction_dissolution_trigger, pattern: "straddle")
     && string_contains(s: orch_run_env_reduction_dissolution_trigger, pattern: "DISSOLVES WHEN")
+}
+
+test fn orch_emit_control_flow_dissolution_trigger_recorded_holds() -> Bool {
+  string_contains(s: orch_emit_control_flow_dissolution_trigger, pattern: "bash_stmt_if_target_model")
+    && string_contains(s: orch_emit_control_flow_dissolution_trigger, pattern: "outcome_rejected")
+    && string_contains(s: orch_emit_control_flow_dissolution_trigger, pattern: "DISSOLVES WHEN")
 }
