@@ -10,6 +10,7 @@ import v2.extdeps.languages.go {
   go_wave1_grammar_root,
   go_wave1_lex
 }
+import v2.std.compilers.lexing { token_stream_remaining }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, port_locus }
 import v2.std.grammar { ParseTree }
 import v2.std.logic { Bool }
@@ -62,7 +63,7 @@ fn go_wave1_grammar_parse_fixture() -> Outcome<ParseTree> {
         Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
         Accepted { value: validated, diagnostics: _ } =>
           parse_production_tree(
-            tokens: stream.tokens,
+            tokens: token_stream_remaining(stream: stream),
             validated: validated,
             production_name: ^go_production_mvp1_fn_add
           )

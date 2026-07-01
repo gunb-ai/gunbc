@@ -79,6 +79,7 @@ data generated_stage0_files: List<String> = [
   "v1_compiler_languages.rs",
   "v1_compiler_normalize.rs",
   "v1_compiler_ownership.rs",
+  "v1_compiler_parse.rs",
   "v1_compiler_resolve.rs",
   "v1_compiler_runtime_go.rs",
   "v1_compiler_runtime_rust.rs",
