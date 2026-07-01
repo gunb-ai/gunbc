@@ -8,13 +8,14 @@ import gunbc.stage0_emit_model {
 }
 
 fn w_generated_roster_count() -> Bool {
-  generated_stage0_file_count() == 90
+  generated_stage0_file_count() == 91
 }
 
 fn w_hand_maintained_not_classified_generated() -> Bool {
   !is_generated_stage0_file(basename: "cli_run.rs") &&
   !is_generated_stage0_file(basename: "v1_interpreter.rs") &&
-  !is_generated_stage0_file(basename: "v1_compiler_parse.rs")
+  !is_generated_stage0_file(basename: "v1_compiler_parse.rs") &&
+  !is_generated_stage0_file(basename: "main.rs")
 }
 
 fn w_emit_naming_rule() -> Bool {
