@@ -18,12 +18,14 @@ use crate::v1_compiler_tokenize;
 use crate::v1_interpreter;
 use crate::v1_rt;
 use crate::v1_std_core::{
-    authored_name_at, build_newline_index, byte_to_line_col, diagnostic_to_message,
-    diagnostic_to_span, empty_intern_table, expr_var_name_at, field_init_node_name_at,
+    arg_name_at, arg_value, authored_name_at, block_stmts, build_newline_index, byte_to_line_col,
+    diagnostic_to_message, diagnostic_to_span, empty_intern_table, expr_method_name_at,
+    expr_var_name_at, field_access_base, field_access_field_at, field_init_node_name_at,
     field_init_node_value, has_child_named, intern,
     is_discovery_corpus_advisory_typecheck_diagnostic, is_discovery_corpus_blocking_diagnostic,
-    is_error_diagnostic, is_interpreter_blocking_diagnostic, CompilerDiagnostic, ErrorNode,
-    ExprData, InferredNode, InternTable, NewlineIndex, Node,
+    is_error_diagnostic, is_interpreter_blocking_diagnostic, let_binding_name_at, let_value,
+    method_arg_nodes, method_receiver, CompilerDiagnostic, ErrorNode, ExprData, InferredNode,
+    InternTable, NewlineIndex, Node,
 };
 use serde::Serialize;
 
@@ -1457,7 +1459,7 @@ pub fn run_claim(ctx: &v1_interpreter::InterpContext, function: &str) -> ClaimOu
         Ok(v1_interpreter::Value::Bool(false)) => ClaimOutcome::Fail,
         Ok(other) => match classify_exit(&other, ctx) {
             ExitClass::Success => ClaimOutcome::Pass,
-            ExitClass::Failure(_) => ClaimOutcome::Fail,
+            ExitClass::Failure { .. } => ClaimOutcome::Fail,
             ExitClass::NotProcessExit { type_name } => ClaimOutcome::NotBool { got: type_name },
         },
         Err(e) => ClaimOutcome::RuntimeError {
@@ -1611,7 +1613,12 @@ pub fn handle_run_with_options(
                 }
                 match classify_exit(&val, &ctx) {
                     ExitClass::Success => {}
-                    ExitClass::Failure(code) => std::process::exit(code),
+                    ExitClass::Failure { code, reason } => {
+                        if let Some(message) = reason {
+                            eprintln!("{message}");
+                        }
+                        std::process::exit(code);
+                    }
                     ExitClass::NotProcessExit { type_name } => {
                         eprintln!(
                             "error: function `{}` returned `{}`, not `ProcessExit`. \
@@ -1635,7 +1642,7 @@ pub fn handle_run_with_options(
 
 enum ExitClass {
     Success,
-    Failure(i32),
+    Failure { code: i32, reason: Option<String> },
     NotProcessExit { type_name: String },
 }
 
@@ -1654,10 +1661,15 @@ fn classify_exit(val: &v1_interpreter::Value, ctx: &v1_interpreter::InterpContex
             if ctx.sym_eq(*variant_name, "ExitSuccess") {
                 ExitClass::Success
             } else if ctx.sym_eq(*variant_name, "ExitFailure") {
-                match ctx.field(fields, "code") {
-                    Some(v1_interpreter::Value::Int(n)) => ExitClass::Failure(*n as i32),
-                    _ => ExitClass::Failure(1),
-                }
+                let code = match ctx.field(fields, "code") {
+                    Some(v1_interpreter::Value::Int(n)) => *n as i32,
+                    _ => 1,
+                };
+                let reason = match ctx.field(fields, "reason") {
+                    Some(v1_interpreter::Value::Str(s)) if !s.is_empty() => Some(s.clone()),
+                    _ => None,
+                };
+                ExitClass::Failure { code, reason }
             } else {
                 ExitClass::NotProcessExit {
                     type_name: format!("ProcessExit::{}", ctx.resolve(*variant_name)),
@@ -7582,15 +7594,26 @@ pub fn languages_consumer_census_has_external_consumer(decl_name: String) -> boo
         .unwrap_or(false)
 }
 
-// --- Inert carrier census (folded from inert_carrier_project.rs) ---
+// --- Unwired-model census (generalizes the retired inert_carrier census: type -> type/fn/data) ---
 //
-// A type carrier is "inert" iff (a) declared in a non-test file, (b) its name appears in at least
-// one *_test.dag file (self-tested), and (c) its name appears in NO non-test .dag file outside its
-// own declaration block (zero real consumer). This is DESIGN §5 coverage-by-illusion.
-// DISSOLUTION TRIGGER: when .dag gains compile-graph / reference-edge access (gunbc#5364), the
-// token scan folds into a pure .dag reader over BindsTo edges and this Rust census deletes.
+// A declared type/fn/data is "unwired" (DESIGN §5 coverage-by-illusion — a green test lying about
+// liveness) iff:
+//   (a) it is declared exactly once in a PRODUCTION file — not a *_test.dag / `/test/` / `/fixture/`
+//       (test infra) nor a `/plans/` file (plan/design doc);
+//   (b) it is self-tested — its name appears in at least one test file (a witness claims it is live);
+//   (c) it has ZERO production consumer outside its own declaration block; and
+//   (d) it carries no whole-declaration Scaffold marker (std.disposition
+//       `Scaffold { .. bind: DeclarationRef { decl_name: "X", field: WholeDeclaration } }`).
+// (a)+(b)+(c) means the only nodes that reach it are its own tests / plan-docs — no production node
+// consumes it — while a green test pretends otherwise; (d) is DESIGN §6's tracked-debt escape hatch.
+// A PURE orphan (no test at all) makes no liveness claim, so it is OUT of scope here (that is the
+// larger dead-code fight against §6 model-just-in-time, not this lens). Plan-doc PROSE mentions are
+// string-blanked by strip_line_comment and plan/test files are non-production, so a decl reached only
+// by tests / plan-docs is correctly unwired.
+// DISSOLUTION TRIGGER: when .dag gains compile-graph / reference-edge access (gunbc#5364), the token
+// scan folds into a pure .dag reader over BindsTo edges and this Rust census deletes.
 
-fn inert_carrier_identifier_tokens(line: &str) -> Vec<String> {
+fn unwired_identifier_tokens(line: &str) -> Vec<String> {
     let mut out = Vec::new();
     let mut cur = String::new();
     for ch in line.chars() {
@@ -7606,10 +7629,10 @@ fn inert_carrier_identifier_tokens(line: &str) -> Vec<String> {
     out
 }
 
-fn inert_carrier_count_token(text: &str, name: &str) -> i64 {
+fn unwired_count_token(text: &str, name: &str) -> i64 {
     let mut n = 0i64;
     for raw in text.lines() {
-        for tok in inert_carrier_identifier_tokens(&strip_line_comment(raw)) {
+        for tok in unwired_identifier_tokens(&strip_line_comment(raw)) {
             if tok == name {
                 n += 1;
             }
@@ -7618,16 +7641,35 @@ fn inert_carrier_count_token(text: &str, name: &str) -> i64 {
     n
 }
 
-fn inert_carrier_type_carrier_blocks(content: &str) -> Vec<(String, String)> {
+// Structural nesting delta over one line ({}, [], ()), string/comment-blind (reuses strip_line_comment).
+fn unwired_structural_delta(line: &str) -> i32 {
+    let c = strip_line_comment(line);
+    let opens = c.matches('{').count() + c.matches('[').count() + c.matches('(').count();
+    let closes = c.matches('}').count() + c.matches(']').count() + c.matches(')').count();
+    opens as i32 - closes as i32
+}
+
+// Every top-level `type` / `fn` / `data` declaration and its source block. Generalizes the retired
+// inert_carrier_type_carrier_blocks (type-only) by tracking (), [] and {} nesting so fn signatures
+// and multi-line data values are captured; type continuation lines (`|` / `=`) extend a zero-depth
+// block as before.
+fn unwired_decl_blocks(content: &str) -> Vec<(String, String)> {
     let lines: Vec<&str> = content.lines().collect();
     let mut out = Vec::new();
     let mut i = 0;
     while i < lines.len() {
         let trimmed = lines[i].trim_start();
-        let Some(rest) = trimmed.strip_prefix("type ") else {
+        let kind = if trimmed.starts_with("type ") {
+            "type"
+        } else if trimmed.starts_with("fn ") {
+            "fn"
+        } else if trimmed.starts_with("data ") {
+            "data"
+        } else {
             i += 1;
             continue;
         };
+        let rest = &trimmed[kind.len() + 1..];
         let name: String = rest
             .chars()
             .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
@@ -7639,23 +7681,67 @@ fn inert_carrier_type_carrier_blocks(content: &str) -> Vec<(String, String)> {
         let mut block = String::new();
         block.push_str(lines[i]);
         block.push('\n');
-        let mut depth = brace_delta(lines[i]);
+        let mut depth = unwired_structural_delta(lines[i]);
         i += 1;
         while i < lines.len() {
             let nt = lines[i].trim_start();
             if depth <= 0 {
-                if !(nt.starts_with('|') || nt.starts_with('=')) {
+                let type_continuation =
+                    kind == "type" && (nt.starts_with('|') || nt.starts_with('='));
+                if !type_continuation {
                     break;
                 }
             }
             block.push_str(lines[i]);
             block.push('\n');
-            depth += brace_delta(lines[i]);
+            depth += unwired_structural_delta(lines[i]);
             i += 1;
         }
         out.push((name, block));
     }
     out
+}
+
+// Whole-declaration Scaffold-marker exemption (DESIGN §6 tracked debt). A decl X is exempt iff some
+// `Scaffold { .. bind: DeclarationRef { .. decl_name: "X", field: WholeDeclaration } }` exists — the
+// canonical one-line bind form (a NamedField bind exempts a field, not the whole model, so it does
+// not exempt an unwired decl).
+fn unwired_whole_decl_scaffold_names(files: &[(String, String)]) -> BTreeSet<String> {
+    let mut out = BTreeSet::new();
+    for (_rel, content) in files {
+        for raw in content.lines() {
+            // Read the RAW line: the marker's decl_name lives INSIDE a string literal, which
+            // strip_line_comment would blank. (.dag comments are a parse error, so raw is safe.)
+            let line = raw;
+            if !line.contains("WholeDeclaration") {
+                continue;
+            }
+            let Some(idx) = line.find("decl_name:") else {
+                continue;
+            };
+            let after = &line[idx + "decl_name:".len()..];
+            let Some(q0) = after.find('"') else { continue };
+            let tail = &after[q0 + 1..];
+            let Some(q1) = tail.find('"') else { continue };
+            let name = &tail[..q1];
+            if !name.is_empty() {
+                out.insert(name.to_string());
+            }
+        }
+    }
+    out
+}
+
+fn unwired_is_test_file(rel: &str) -> bool {
+    is_test_dag(rel) || rel.contains("/test/") || rel.contains("/fixture/")
+}
+
+fn unwired_is_plan_file(rel: &str) -> bool {
+    rel.contains("/plans/")
+}
+
+fn unwired_is_prod_file(rel: &str) -> bool {
+    !unwired_is_test_file(rel) && !unwired_is_plan_file(rel)
 }
 
 const DOC_PLAN_ROOTS: &[&str] = &["ROADMAP.md", "DESIGN.md"];
@@ -7719,49 +7805,50 @@ fn markdown_link_targets(content: &str) -> Vec<String> {
     out
 }
 
-struct InertCarrierData {
+struct UnwiredModelData {
     declared_count: usize,
-    inert_names: Vec<String>,
+    unwired_names: Vec<String>,
 }
 
-fn compute_inert_carrier_data(files: &[(String, String)]) -> InertCarrierData {
+fn compute_unwired_model_data(files: &[(String, String)]) -> UnwiredModelData {
+    let exempt = unwired_whole_decl_scaffold_names(files);
     let mut declared: BTreeMap<String, String> = BTreeMap::new();
     let mut decl_count: BTreeMap<String, usize> = BTreeMap::new();
     let mut self_block_refs: BTreeMap<String, i64> = BTreeMap::new();
     for (rel, content) in files {
-        if is_test_dag(rel) {
+        if !unwired_is_prod_file(rel) {
             continue;
         }
-        for (name, block) in inert_carrier_type_carrier_blocks(content) {
+        for (name, block) in unwired_decl_blocks(content) {
             declared.entry(name.clone()).or_insert_with(|| rel.clone());
             *decl_count.entry(name.clone()).or_insert(0) += 1;
-            *self_block_refs.entry(name.clone()).or_insert(0) +=
-                inert_carrier_count_token(&block, &name);
+            *self_block_refs.entry(name.clone()).or_insert(0) += unwired_count_token(&block, &name);
         }
     }
     let names: BTreeSet<String> = declared.keys().cloned().collect();
-    let mut nontest_occ: BTreeMap<String, i64> = BTreeMap::new();
+    let mut prod_occ: BTreeMap<String, i64> = BTreeMap::new();
     let mut self_tested: BTreeSet<String> = BTreeSet::new();
     for (rel, content) in files {
         let mut local: BTreeMap<String, i64> = BTreeMap::new();
         for raw in content.lines() {
-            for tok in inert_carrier_identifier_tokens(&strip_line_comment(raw)) {
+            for tok in unwired_identifier_tokens(&strip_line_comment(raw)) {
                 if names.contains(&tok) {
                     *local.entry(tok).or_insert(0) += 1;
                 }
             }
         }
-        if is_test_dag(rel) {
-            for (k, _) in local {
-                self_tested.insert(k);
+        if unwired_is_test_file(rel) {
+            for k in local.keys() {
+                self_tested.insert(k.clone());
             }
-        } else {
+        }
+        if unwired_is_prod_file(rel) {
             for (k, v) in local {
-                *nontest_occ.entry(k).or_insert(0) += v;
+                *prod_occ.entry(k).or_insert(0) += v;
             }
         }
     }
-    let mut inert_names: Vec<String> = Vec::new();
+    let mut unwired_names: Vec<String> = Vec::new();
     for name in declared.keys() {
         if decl_count.get(name).copied().unwrap_or(0) != 1 {
             continue;
@@ -7769,67 +7856,63 @@ fn compute_inert_carrier_data(files: &[(String, String)]) -> InertCarrierData {
         if !self_tested.contains(name) {
             continue;
         }
-        let total = nontest_occ.get(name).copied().unwrap_or(0);
+        if exempt.contains(name) {
+            continue;
+        }
+        let total = prod_occ.get(name).copied().unwrap_or(0);
         let own = self_block_refs.get(name).copied().unwrap_or(0);
         if total - own <= 0 {
-            inert_names.push(name.clone());
+            unwired_names.push(name.clone());
         }
     }
-    inert_names.sort();
-    inert_names.dedup();
-    InertCarrierData {
+    unwired_names.sort();
+    unwired_names.dedup();
+    UnwiredModelData {
         declared_count: declared.len(),
-        inert_names,
+        unwired_names,
     }
 }
 
-fn build_inert_carrier_data() -> &'static InertCarrierData {
-    static CACHE: OnceLock<InertCarrierData> = OnceLock::new();
-    CACHE.get_or_init(|| compute_inert_carrier_data(&corpus_dag_files()))
+fn build_unwired_model_data() -> &'static UnwiredModelData {
+    static CACHE: OnceLock<UnwiredModelData> = OnceLock::new();
+    CACHE.get_or_init(|| compute_unwired_model_data(&corpus_dag_files()))
 }
 
-pub fn inert_carrier_names_live() -> Vec<String> {
-    build_inert_carrier_data().inert_names.clone()
+pub fn unwired_model_names_live() -> Vec<String> {
+    build_unwired_model_data().unwired_names.clone()
 }
 
-pub fn inert_carrier_declared_count_live() -> i64 {
-    build_inert_carrier_data().declared_count as i64
+pub fn unwired_model_declared_count_live() -> i64 {
+    build_unwired_model_data().declared_count as i64
 }
 
 #[cfg(test)]
-mod inert_carrier_tests {
+mod unwired_model_tests {
     use super::*;
 
-    fn inert_names_of(files: &[(&str, &str)]) -> Vec<String> {
+    fn unwired_names_of(files: &[(&str, &str)]) -> Vec<String> {
         let owned: Vec<(String, String)> = files
             .iter()
             .map(|(p, c)| (p.to_string(), c.to_string()))
             .collect();
-        compute_inert_carrier_data(&owned).inert_names
+        compute_unwired_model_data(&owned).unwired_names
     }
 
     #[test]
-    fn type_carrier_blocks_extracts_names_and_bodies() {
-        let c = "module m\ntype Connective = Atom | Conj\ntype WorkDemand {\n  field: Int\n}\nfn f() -> Int { 1 }\n";
-        let blocks = inert_carrier_type_carrier_blocks(c);
+    fn decl_blocks_extracts_type_fn_and_data() {
+        let c = "module m\ntype Connective = Atom | Conj\nfn f(x: Int) -> Int {\n  x + 1\n}\ndata d: List<Int> = [\n  1,\n  2\n]\n";
+        let blocks = unwired_decl_blocks(c);
         let names: Vec<&String> = blocks.iter().map(|(n, _)| n).collect();
-        assert_eq!(names, vec!["Connective", "WorkDemand"]);
-        let wd = &blocks.iter().find(|(n, _)| n == "WorkDemand").unwrap().1;
-        assert!(wd.contains("field: Int") && wd.contains('}'));
-        assert!(!wd.contains("fn f"));
+        assert_eq!(names, vec!["Connective", "f", "d"]);
+        let f = &blocks.iter().find(|(n, _)| n == "f").unwrap().1;
+        assert!(f.contains("x + 1") && !f.contains("data d"));
+        let d = &blocks.iter().find(|(n, _)| n == "d").unwrap().1;
+        assert!(d.contains("2") && d.contains(']'));
     }
 
     #[test]
-    fn identifier_tokens_are_whole_words() {
-        let toks = inert_carrier_identifier_tokens("  field: PlacementSupply = foo(Placement)");
-        assert!(toks.contains(&"PlacementSupply".to_string()));
-        assert!(toks.contains(&"Placement".to_string()));
-        assert!(toks.contains(&"field".to_string()));
-    }
-
-    #[test]
-    fn red_control_self_tested_zero_consumer_carrier_is_inert() {
-        let inert = inert_names_of(&[
+    fn red_control_self_tested_zero_consumer_type_is_unwired() {
+        let unwired = unwired_names_of(&[
             ("a.dag", "module a\ntype Lonely { x: Int }\n"),
             (
                 "a_test.dag",
@@ -7837,57 +7920,115 @@ mod inert_carrier_tests {
             ),
         ]);
         assert!(
-            inert.contains(&"Lonely".to_string()),
-            "a self-tested carrier with no real consumer must be flagged inert; got {inert:?}"
+            unwired.contains(&"Lonely".to_string()),
+            "a self-tested type with no production consumer must be flagged; got {unwired:?}"
         );
     }
 
     #[test]
-    fn green_control_carrier_with_real_consumer_is_not_inert() {
-        let inert = inert_names_of(&[
-            ("a.dag", "module a\ntype Used { x: Int }\n"),
+    fn red_control_self_tested_zero_consumer_fn_is_unwired() {
+        let unwired = unwired_names_of(&[
             (
-                "b.dag",
-                "module b\nimport a { Used }\nfn f(u: Used) -> Int { u.x }\n",
+                "a.dag",
+                "module a\nfn lonely_helper(x: Int) -> Int { x + 1 }\n",
             ),
             (
                 "a_test.dag",
-                "module t\nfn t() -> Bool { Used { x: 1 } == Used { x: 1 } }\n",
+                "module t\nfn t() -> Bool { lonely_helper(x: 1) == 2 }\n",
             ),
         ]);
         assert!(
-            !inert.contains(&"Used".to_string()),
-            "a carrier with a real (non-test, cross-file) consumer must NOT be flagged; got {inert:?}"
+            unwired.contains(&"lonely_helper".to_string()),
+            "a self-tested fn with no production consumer must be flagged; got {unwired:?}"
         );
     }
 
     #[test]
-    fn green_control_same_file_consumer_is_not_inert() {
-        let inert = inert_names_of(&[
+    fn red_control_self_tested_zero_consumer_data_is_unwired() {
+        let unwired = unwired_names_of(&[
+            ("a.dag", "module a\ndata lonely_row: Int = 7\n"),
             (
-                "lens.dag",
-                "module lens\ntype LocalFact { x: Int }\nfn clean(fs: LocalFact) -> Bool { fs.x == 0 }\n",
+                "a_test.dag",
+                "module t\nfn t() -> Bool { lonely_row == 7 }\n",
             ),
-            ("lens_test.dag", "module t\nfn t() -> Bool { clean(fs: LocalFact { x: 0 }) }\n"),
         ]);
         assert!(
-            !inert.contains(&"LocalFact".to_string()),
-            "a carrier consumed by a fn in its own file is NOT inert; got {inert:?}"
+            unwired.contains(&"lonely_row".to_string()),
+            "a self-tested data decl with no production consumer must be flagged; got {unwired:?}"
         );
     }
 
     #[test]
-    fn green_control_untested_unused_carrier_is_not_flagged() {
-        let inert = inert_names_of(&[("a.dag", "module a\ntype Staged { x: Int }\n")]);
+    fn green_control_fn_with_real_consumer_is_wired() {
+        let unwired = unwired_names_of(&[
+            (
+                "a.dag",
+                "module a\nfn used_helper(x: Int) -> Int { x + 1 }\n",
+            ),
+            (
+                "b.dag",
+                "module b\nimport a { used_helper }\nfn caller() -> Int { used_helper(x: 2) }\n",
+            ),
+            (
+                "a_test.dag",
+                "module t\nfn t() -> Bool { used_helper(x: 1) == 2 }\n",
+            ),
+        ]);
         assert!(
-            !inert.contains(&"Staged".to_string()),
-            "an untested unused carrier must NOT be flagged (it is model-first, not illusion); got {inert:?}"
+            !unwired.contains(&"used_helper".to_string()),
+            "a fn with a real production consumer must NOT be flagged; got {unwired:?}"
+        );
+    }
+
+    #[test]
+    fn green_control_scaffold_marked_unwired_is_exempt() {
+        let unwired = unwired_names_of(&[
+            (
+                "a.dag",
+                "module a\ntype MarkedModel { x: Int }\ndata marked_disp: Disposition = Scaffold {\n  dissolves_to: SingleAuthority,\n  bind: DeclarationRef { module_path: \"a\", decl_name: \"MarkedModel\", field: WholeDeclaration }\n}\n",
+            ),
+            (
+                "a_test.dag",
+                "module t\nfn t() -> Bool { MarkedModel { x: 1 } == MarkedModel { x: 1 } }\n",
+            ),
+        ]);
+        assert!(
+            !unwired.contains(&"MarkedModel".to_string()),
+            "a whole-decl Scaffold-marked model is tracked debt, NOT a violation; got {unwired:?}"
+        );
+    }
+
+    #[test]
+    fn green_control_pure_orphan_no_test_is_out_of_scope() {
+        let unwired = unwired_names_of(&[("a.dag", "module a\ntype Staged { x: Int }\n")]);
+        assert!(
+            !unwired.contains(&"Staged".to_string()),
+            "an untested orphan makes no liveness claim (model-first); it is not this lens's target; got {unwired:?}"
+        );
+    }
+
+    #[test]
+    fn green_control_plan_doc_only_consumer_is_unwired() {
+        let unwired = unwired_names_of(&[
+            ("a.dag", "module a\ntype PlanOnly { x: Int }\n"),
+            (
+                "gunbc/plans/p.dag",
+                "module p\nfn body() -> PlanOnly { PlanOnly { x: 1 } }\n",
+            ),
+            (
+                "a_test.dag",
+                "module t\nfn t() -> Bool { PlanOnly { x: 1 } == PlanOnly { x: 1 } }\n",
+            ),
+        ]);
+        assert!(
+            unwired.contains(&"PlanOnly".to_string()),
+            "a decl consumed only by a plan-doc (non-production) file must be flagged; got {unwired:?}"
         );
     }
 
     #[test]
     fn comment_reference_is_not_a_real_consumer() {
-        let inert = inert_names_of(&[
+        let unwired = unwired_names_of(&[
             ("a.dag", "module a\ntype Noted { x: Int }\n"),
             (
                 "b.dag",
@@ -7898,16 +8039,16 @@ mod inert_carrier_tests {
                 "module t\nfn t() -> Bool { Noted { x: 1 } == Noted { x: 1 } }\n",
             ),
         ]);
-        assert!(inert.contains(&"Noted".to_string()));
+        assert!(unwired.contains(&"Noted".to_string()));
     }
 
     #[test]
     fn doubly_declared_name_is_not_flagged() {
-        let inert = inert_names_of(&[
+        let unwired = unwired_names_of(&[
             ("a.dag", "module a\ntype Dup { x: Int }\n"),
             ("b.dag", "module b\ntype Dup { y: Int }\n"),
         ]);
-        assert!(!inert.contains(&"Dup".to_string()));
+        assert!(!unwired.contains(&"Dup".to_string()));
     }
 }
 
@@ -8078,6 +8219,265 @@ pub fn doc_graph_dangling_link_count() -> i64 {
 
 pub fn doc_graph_doc_count() -> i64 {
     doc_graph_report().doc_count as i64
+}
+
+// Host-fed fact extraction for `v2.lens.host_language_transport_script` — the lens `.dag` table
+// owns verdict logic; this bridge only projects `shell.Exec.Run` script-arg shapes from parsed
+// modules. DISSOLUTION: node-tree reader at gunbc#5364; until then one shared host seam (Chunk D).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TransportScriptArgShape {
+    ComputedApplication = 0,
+    BareStringLiteral = 1,
+    LetBoundStringLiteral = 2,
+    StringInterpLiteralsOnly = 3,
+}
+
+impl TransportScriptArgShape {
+    fn as_symbol(self) -> &'static str {
+        match self {
+            Self::ComputedApplication => "ComputedApplication",
+            Self::BareStringLiteral => "BareStringLiteral",
+            Self::LetBoundStringLiteral => "LetBoundStringLiteral",
+            Self::StringInterpLiteralsOnly => "StringInterpLiteralsOnly",
+        }
+    }
+}
+
+pub struct TransportScriptPositionFactRaw {
+    pub path: String,
+    pub function: String,
+    pub shape: &'static str,
+}
+
+fn resolve_dag_path_for_transport_script(path: &str) -> PathBuf {
+    let candidate = Path::new(path);
+    if candidate.is_file() {
+        return candidate.to_path_buf();
+    }
+    let rooted = workspace_root().join(path);
+    if rooted.is_file() {
+        return rooted;
+    }
+    panic!("transport_script_position_facts: file not found: {path}");
+}
+
+fn parse_module_items_for_transport_script(
+    path: &str,
+) -> (Rc<Vec<Rc<Node>>>, Rc<HashMap<String, Rc<NewlineIndex>>>) {
+    let resolved = resolve_dag_path_for_transport_script(path);
+    let path_str = resolved.to_string_lossy();
+    let content = std::fs::read_to_string(&resolved).unwrap_or_else(|e| {
+        panic!("transport_script_position_facts: failed to read {path_str}: {e}")
+    });
+    let filename = resolved
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or(path);
+    let tokens = v1_compiler_tokenize::tokenize(content.clone(), filename.to_string());
+    let source_index = build_newline_index(filename.to_string(), content);
+    let mut source_indices = HashMap::new();
+    source_indices.insert(filename.to_string(), source_index);
+    let source_indices = Rc::new(source_indices);
+    let result = v1_compiler_parse::parse(tokens, source_indices.clone());
+    if let Some(err) = result.error.as_ref() {
+        panic!(
+            "transport_script_position_facts: parse error in {path}: {}",
+            diagnostic_to_message(err.diagnostic.clone())
+        );
+    }
+    let module = result
+        .module
+        .as_ref()
+        .expect("transport_script_position_facts: missing module");
+    (module.children.clone(), source_indices)
+}
+
+fn literal_string_value_transport_script(node: &Rc<Node>) -> bool {
+    matches!(
+        node.expr_data.as_ref(),
+        ExprData::ExprLiteral {
+            value: lit,
+            ..
+        } if matches!(lit.as_ref(), LiteralValue::LitStr { .. })
+    )
+}
+
+fn classify_transport_script_arg(
+    node: &Rc<Node>,
+    let_literal_bindings: &HashMap<String, bool>,
+    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> TransportScriptArgShape {
+    if literal_string_value_transport_script(node) {
+        return TransportScriptArgShape::BareStringLiteral;
+    }
+    match node.expr_data.as_ref() {
+        ExprData::ExprStringInterp => {
+            for child in node.children.iter() {
+                match child.expr_data.as_ref() {
+                    ExprData::ExprLiteral { value, .. } => {
+                        if !matches!(value.as_ref(), LiteralValue::LitStr { .. }) {
+                            return TransportScriptArgShape::ComputedApplication;
+                        }
+                    }
+                    ExprData::ExprVar { .. } => {
+                        let name = expr_var_name_at(child.clone(), source_indices.clone());
+                        if !let_literal_bindings.get(&name).copied().unwrap_or(false) {
+                            return TransportScriptArgShape::ComputedApplication;
+                        }
+                    }
+                    _ => return TransportScriptArgShape::ComputedApplication,
+                }
+            }
+            TransportScriptArgShape::StringInterpLiteralsOnly
+        }
+        ExprData::ExprVar { .. } => {
+            let name = expr_var_name_at(node.clone(), source_indices.clone());
+            if let_literal_bindings.get(&name).copied().unwrap_or(false) {
+                TransportScriptArgShape::LetBoundStringLiteral
+            } else {
+                TransportScriptArgShape::ComputedApplication
+            }
+        }
+        _ => TransportScriptArgShape::ComputedApplication,
+    }
+}
+
+fn is_shell_exec_run_transport_script(
+    node: &Rc<Node>,
+    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    match node.expr_data.as_ref() {
+        ExprData::ExprMethodCall { .. } => {
+            if expr_method_name_at(node.clone(), source_indices.clone()) != "Run" {
+                return false;
+            }
+            let recv = method_receiver(node.clone());
+            match recv.expr_data.as_ref() {
+                ExprData::ExprFieldAccess { .. } => {
+                    if field_access_field_at(recv.clone(), source_indices.clone()) != "Exec" {
+                        return false;
+                    }
+                    let base = field_access_base(recv.clone());
+                    match base.expr_data.as_ref() {
+                        ExprData::ExprVar { .. } => {
+                            expr_var_name_at(base.clone(), source_indices.clone()) == "shell"
+                        }
+                        _ => false,
+                    }
+                }
+                _ => false,
+            }
+        }
+        _ => false,
+    }
+}
+
+fn transport_script_arg_node(
+    node: &Rc<Node>,
+    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<Rc<Node>> {
+    for arg in method_arg_nodes(node.clone()).iter() {
+        if arg_name_at(arg.clone(), source_indices.clone()).as_deref() == Some("script") {
+            return Some(arg_value(arg.clone()));
+        }
+    }
+    None
+}
+
+fn binding_is_literal_shaped_transport_script(
+    node: &Rc<Node>,
+    bindings: &HashMap<String, bool>,
+    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    matches!(
+        classify_transport_script_arg(node, bindings, source_indices),
+        TransportScriptArgShape::BareStringLiteral
+            | TransportScriptArgShape::LetBoundStringLiteral
+            | TransportScriptArgShape::StringInterpLiteralsOnly
+    )
+}
+
+fn collect_let_bindings_in_block_transport_script(
+    block: &Rc<Node>,
+    bindings: &mut HashMap<String, bool>,
+    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+) {
+    for stmt in block_stmts(block.clone()).iter() {
+        match stmt.expr_data.as_ref() {
+            ExprData::ExprLet { .. } => {
+                let name = let_binding_name_at(stmt.clone(), source_indices.clone());
+                let val = let_value(stmt.clone());
+                let literal_shaped =
+                    binding_is_literal_shaped_transport_script(&val, bindings, source_indices);
+                bindings.insert(name, literal_shaped);
+            }
+            _ => walk_transport_script_expr(stmt, bindings, source_indices, &mut |_| {}),
+        }
+    }
+}
+
+fn walk_transport_script_expr(
+    node: &Rc<Node>,
+    let_bindings: &HashMap<String, bool>,
+    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    on_run: &mut dyn FnMut(TransportScriptArgShape),
+) {
+    if is_shell_exec_run_transport_script(node, source_indices) {
+        if let Some(script_node) = transport_script_arg_node(node, source_indices) {
+            on_run(classify_transport_script_arg(
+                &script_node,
+                let_bindings,
+                source_indices,
+            ));
+        }
+    }
+    for child in node.children.iter() {
+        walk_transport_script_expr(child, let_bindings, source_indices, on_run);
+    }
+}
+
+fn transport_script_facts_for_function_body(
+    rel_path: &str,
+    function: &str,
+    body: &Rc<Node>,
+    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Vec<TransportScriptPositionFactRaw> {
+    let mut bindings = HashMap::new();
+    if let ExprData::ExprBlock { .. } = body.expr_data.as_ref() {
+        collect_let_bindings_in_block_transport_script(body, &mut bindings, source_indices);
+    }
+    let mut facts = Vec::new();
+    walk_transport_script_expr(body, &bindings, source_indices, &mut |shape| {
+        facts.push(TransportScriptPositionFactRaw {
+            path: rel_path.to_string(),
+            function: function.to_string(),
+            shape: shape.as_symbol(),
+        });
+    });
+    facts
+}
+
+pub fn transport_script_position_facts_for_path(
+    path: String,
+) -> Vec<TransportScriptPositionFactRaw> {
+    let (items, source_indices) = parse_module_items_for_transport_script(&path);
+    let mut facts = Vec::new();
+    for item in items.iter() {
+        let kind = item_kind(item.clone());
+        if !matches!(kind, ItemKind::FuncItem | ItemKind::FnItem) {
+            continue;
+        }
+        let Some(body) = item.body.as_ref() else {
+            continue;
+        };
+        facts.extend(transport_script_facts_for_function_body(
+            &path,
+            &item.name,
+            body,
+            &source_indices,
+        ));
+    }
+    facts
 }
 
 #[cfg(test)]

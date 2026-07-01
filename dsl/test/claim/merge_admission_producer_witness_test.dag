@@ -1,0 +1,177 @@
+module test.claim.merge_admission_producer_witness
+
+import gunbc.merge_admission {
+  MergeAdmissionReceipt,
+  Success,
+  Failure,
+  current_gate_roster_hash,
+  mint_merge_admission_receipt,
+}
+import gunbc.merge_admission_produce {
+  merge_admission_receipt_schema,
+  merge_admission_receipt_rel_path,
+  render_receipt_wire,
+  parse_receipt_wire,
+  stamp_floor_receipt,
+  floor_exit_to_check_conclusion,
+  ci_floor_stamp_merge_admission_script,
+  shell_stdout_line,
+}
+import tools.merge_admission_stamp {
+  merge_admission_stamp_missing_floor_exit_is_failure,
+  merge_admission_stamp_non_pr_omits_pr_number,
+}
+import extdeps.github.checks { check_conclusion_wire_label }
+import std.types { ContentHash }
+
+data scenario_base: ContentHash = "merge-admission-producer-base"
+data scenario_head: ContentHash = "abc1234def5678901234567890abcd1234567890"
+
+data green_receipt: MergeAdmissionReceipt = stamp_floor_receipt(
+  pr_number: Present { value: 5933 },
+  head_sha: scenario_head,
+  base_tree_hash: scenario_base,
+  floor_exit_code: 0,
+)
+
+data red_receipt: MergeAdmissionReceipt = stamp_floor_receipt(
+  pr_number: Present { value: 5933 },
+  head_sha: scenario_head,
+  base_tree_hash: scenario_base,
+  floor_exit_code: 1,
+)
+
+test fn floor_stamp_exports_ci_floor_exit_on_gunbc_line() -> Bool {
+  string_contains(
+    s: ci_floor_stamp_merge_admission_script(),
+    pattern: "CI_FLOOR_EXIT=$FLOOR_EXIT \"$ROOT/target/release/gunbc\" run"
+  )
+}
+
+test fn floor_stamp_propagates_stamp_failure_after_green_floor() -> Bool {
+  let script = ci_floor_stamp_merge_admission_script()
+  string_contains(s: script, pattern: "STAMP_EXIT=$?")
+    && string_contains(s: script, pattern: "exit \"$STAMP_EXIT\"")
+    && string_contains(s: script, pattern: "if [ \"$FLOOR_EXIT\" -ne 0 ]; then exit \"$FLOOR_EXIT\"; fi")
+}
+
+test fn stamp_missing_floor_exit_policy_is_fail_closed() -> Bool {
+  string_contains(
+    s: merge_admission_stamp_missing_floor_exit_is_failure,
+    pattern: "fail-closed"
+  )
+}
+
+test fn floor_exit_zero_maps_to_success() -> Bool {
+  floor_exit_to_check_conclusion(exit_code: 0) == Success
+}
+
+test fn floor_exit_nonzero_maps_to_failure() -> Bool {
+  floor_exit_to_check_conclusion(exit_code: 1) == Failure
+}
+
+test fn mint_binds_current_gate_roster_hash() -> Bool {
+  green_receipt.gate_roster_hash == current_gate_roster_hash
+}
+
+test fn shell_stdout_line_strips_trailing_newline() -> Bool {
+  shell_stdout_line(raw: "abc123\n") == "abc123"
+}
+
+test fn wire_roundtrip_preserves_admission_fields() -> Bool {
+  let wire = render_receipt_wire(receipt: green_receipt)
+  match parse_receipt_wire(text: wire) {
+    Present { value: parsed } =>
+      (parsed.base_tree_hash == scenario_base)
+        && (parsed.gate_roster_hash == current_gate_roster_hash)
+        && (parsed.conclusion == Success)
+        && (parsed.head_sha == scenario_head)
+        && match parsed.pr_number {
+          Present { value: n } => n == 5933
+          Absent => false
+        }
+    Absent => false
+  }
+}
+
+test fn wire_missing_head_sha_returns_absent() -> Bool {
+  let wire = concat(
+    concat(
+      concat(scenario_base, "\n"),
+      concat(current_gate_roster_hash, "\n")
+    ),
+    check_conclusion_wire_label(c: Success)
+  )
+  match parse_receipt_wire(text: wire) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+test fn wire_missing_pr_number_parses_as_absent_field() -> Bool {
+  let wire = concat(
+    concat(
+      concat(concat(scenario_base, "\n"), concat(current_gate_roster_hash, "\n")),
+      concat(check_conclusion_wire_label(c: Success), "\n")
+    ),
+    scenario_head
+  )
+  match parse_receipt_wire(text: wire) {
+    Present { value: parsed } =>
+      match parsed.pr_number {
+        Absent => parsed.conclusion == Success
+        Present { value: _ } => false
+      }
+    Absent => false
+  }
+}
+
+test fn wire_omitted_pr_roundtrips_without_fabricated_zero() -> Bool {
+  let receipt = stamp_floor_receipt(
+    pr_number: none,
+    head_sha: scenario_head,
+    base_tree_hash: scenario_base,
+    floor_exit_code: 0,
+  )
+  let wire = render_receipt_wire(receipt: receipt)
+  match parse_receipt_wire(text: wire) {
+    Present { value: parsed } =>
+      match parsed.pr_number {
+        Absent =>
+          (parsed.base_tree_hash == scenario_base)
+            && (parsed.conclusion == Success)
+            && (parsed.head_sha == scenario_head)
+        Present { value: _ } => false
+      }
+    Absent => false
+  }
+}
+
+test fn stamp_non_pr_event_omits_fabricated_pr_number() -> Bool {
+  string_contains(
+    s: merge_admission_stamp_non_pr_omits_pr_number,
+    pattern: "not fabricated 0"
+  )
+}
+
+test fn red_floor_stamps_failure_conclusion() -> Bool {
+  red_receipt.conclusion == Failure
+}
+
+test fn receipt_schema_and_path_are_stable() -> Bool {
+  (merge_admission_receipt_schema == "gunbc.merge_admission_receipt.v1")
+    && (merge_admission_receipt_rel_path == ".gunbc/merge-admission-receipt.wire")
+}
+
+test fn mint_matches_explicit_constructor() -> Bool {
+  let explicit = mint_merge_admission_receipt(
+    pr_number: Present { value: 5933 },
+    head_sha: scenario_head,
+    base_tree_hash: scenario_base,
+    gate_roster_hash: current_gate_roster_hash,
+    conclusion: Success,
+  )
+  (explicit.base_tree_hash == green_receipt.base_tree_hash)
+    && (explicit.gate_roster_hash == green_receipt.gate_roster_hash)
+    && (explicit.conclusion == green_receipt.conclusion)
+}
