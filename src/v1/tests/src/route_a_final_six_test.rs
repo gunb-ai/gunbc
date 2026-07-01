@@ -2,8 +2,8 @@
 //! that cleared the residual E0308 tail (647 -> 0 E0308) in the faithful `--emit-fresh`
 //! seed. Each fix is faithful CONSTRUCTION derived from the declared type, with a
 //! negative control proving it is type-derived (not a blanket transform). NOTE: 0 E0308
-//! is a MILESTONE, not cargo-green — 32 other-family errors (measure-tower, etc.) remain
-//! pre-existing and are tracked separately.
+//! was a milestone on the path to cargo-green; the full faithful `--emit-fresh` crate
+//! now builds green (see `route_a_emit_fresh_cargo_green_test`).
 
 use crate::helpers::compile_dag_target;
 use v1_compiler::v1_compiler_artifact::RenderTarget;
