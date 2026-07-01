@@ -13,6 +13,7 @@ import gunbc.ci_deploy_access {
   ci_deploy_runner_principal,
   deploy_access_is_local_apply,
   deploy_access_preflight_script,
+  deploy_access_runner_spec,
   gunbc_deploy_sudoers_dropin,
   deploy_access_sudoers_line,
   srv1_live_deploy_privileged_commands,
@@ -75,6 +76,19 @@ fn witness_workflow_has_deploy_job_gated_on_ci() -> Bool {
     }
 }
 
+fn witness_deploy_job_pins_access_host_runner() -> Bool {
+  let deploy_jobs = filter(ci_workflow.jobs, j => j.id == "deploy_dashboard_srv1")
+  length(deploy_jobs) == 1
+    && deploy_jobs.first().runner == deploy_access_runner_spec(access: ci_deploy_srv1_access)
+}
+
+fn witness_ci_yml_deploy_runs_on_srv1_host_label() -> Bool {
+  string_contains(
+    s: expected_ci_yml(),
+    pattern: "    runs-on: [self-hosted, linux, arm64, srv1]"
+  )
+}
+
 fn witness_ci_yml_emits_deploy_job() -> Bool {
   let yaml = expected_ci_yml()
   string_contains(s: yaml, pattern: "  deploy_dashboard_srv1:")
@@ -90,6 +104,8 @@ test fn ci_deploy_witnesses() -> Bool {
     && witness_deploy_access_preflight_is_fail_closed()
     && witness_ci_spec_carries_deploy_stages()
     && witness_deploy_run_script_invokes_gunbc_wet()
+    && witness_deploy_job_pins_access_host_runner()
     && witness_workflow_has_deploy_job_gated_on_ci()
     && witness_ci_yml_emits_deploy_job()
+    && witness_ci_yml_deploy_runs_on_srv1_host_label()
 }

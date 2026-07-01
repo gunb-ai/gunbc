@@ -12,7 +12,7 @@ import gunbc.host_effect_realize {
   host_effect_apply, host_effect_policy_directive,
   ConvergeDirective, Settled, ReDrive, Refused
 }
-import std.realization_reconcile { Reconciliation, reconciliation_converged }
+import std.realization_reconcile { Reconciliation, reconciliation_converged, NotConverged }
 import gunbc.fleet_intent { srv1_host }
 import extdeps.bmc.types { RedfishSystemAction, GetSystem }
 
@@ -147,9 +147,24 @@ fn witness_ssh_empty_script_fails_closed() -> Bool {
   ))
 }
 
+fn witness_shell_failure_surfaces_captured_stdout() -> Bool {
+  match host_effect_apply(
+    target: host_os_target(),
+    effect: ShellCommand { script: "echo host-effect-preflight-marker && exit 1" },
+    policy: OneShotIdempotent,
+    transport: LocalShell
+  ) {
+    NotConverged { reason: why, applied: _ } =>
+      string_contains(s: why, pattern: "host-effect-preflight-marker")
+        && string_contains(s: why, pattern: "--- stdout ---")
+    Converged { evidence: _, applied: _ } => false
+  }
+}
+
 test fn host_effect_apply_holds() -> Bool {
   witness_shell_on_host_success_converges()
     && witness_shell_on_host_failure_fails_closed()
+    && witness_shell_failure_surfaces_captured_stdout()
     && witness_ssh_shell_unreachable_fails_closed()
     && witness_ssh_empty_script_fails_closed()
     && witness_redfish_on_bmc_unimplemented_fails_closed()
