@@ -9,17 +9,20 @@ fn cargo_binary() -> &'static str {
 }
 
 pub fn assert_v2_compiler_lib_tests_compile() {
-    let output = std::process::Command::new(cargo_binary())
-        .arg("test")
-        .arg("-p")
-        .arg("v1-compiler")
-        .arg("--lib")
-        .arg("--no-run")
-        .arg("--release")
-        .arg("--quiet")
-        .current_dir(workspace_root())
-        .output()
-        .expect("failed to spawn cargo test -p v1-compiler --lib --no-run");
+    let output = crate::helpers::run_cargo_with_infra_retry(|| {
+        let mut cmd = std::process::Command::new(cargo_binary());
+        cmd.args([
+            "test",
+            "-p",
+            "v1-compiler",
+            "--lib",
+            "--no-run",
+            "--release",
+            "--quiet",
+        ])
+        .current_dir(workspace_root());
+        cmd
+    });
 
     if output.status.success() {
         return;
