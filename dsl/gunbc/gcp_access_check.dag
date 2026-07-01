@@ -32,6 +32,8 @@ import gunbc.external_access_throttle {
   external_access_throttle_enforce_schedule,
 }
 import gunbc.runner_spec_from_offer { gunbc_ci_runner_spec }
+import std.disposition { Disposition, Scaffold, RealizationDispatch }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.resources { Network }
 import std.types { NonEmptyStr }
@@ -50,6 +52,15 @@ data gcp_access_check_wif_audience: NonEmptyStr = bmc_wif_provider_resource()
 data gcp_access_check_sts_throttle_namespace: ExternalAccessThrottleNamespace = gcp_bmc_assimilator_sts_throttle_namespace
 
 data gcp_access_check_secret_manager_throttle_namespace: ExternalAccessThrottleNamespace = gcp_bmc_srv3_secret_throttle_namespace
+
+data gcp_access_check_invoke_shell_emit_debt: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "gunbc.gcp_access_check",
+    decl_name: "gcp_access_check_invoke",
+    field: WholeDeclaration
+  }
+}
 
 fn gcp_access_check_workflow_schedule() -> CronSchedule {
   external_access_throttle_enforce_schedule(namespace: gcp_access_check_sts_throttle_namespace)
@@ -115,13 +126,10 @@ func gcp_wif_secret_manager_reachability_wet() -> ProcessExit {
 fn gcp_access_check_invoke() -> String {
   concat(
     concat(
-      concat(
-        concat("\"$ROOT/target/release/gunbc\" run --source-root dsl --source-root src/v2 --entry ", gcp_access_check_entry),
-        concat(" --function ", gcp_access_check_wet_function)
-      ),
-      "\n"
+      concat("\"$ROOT/target/release/gunbc\" run --source-root dsl --source-root src/v2 --entry ", gcp_access_check_entry),
+      concat(" --function ", gcp_access_check_wet_function)
     ),
-    ""
+    "\n"
   )
 }
 
