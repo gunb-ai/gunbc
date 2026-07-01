@@ -471,6 +471,7 @@ data unwired_model_roster: List<String> = [
   "merge_admission_gating_activation_trigger",
   "merge_admission_receipt_schema",
   "merge_admission_stamp_missing_floor_exit_is_failure",
+  "merge_admission_stamp_non_pr_omits_pr_number",
   "mergeable_state_wire_label",
   "microsecond",
   "milliwatt",
