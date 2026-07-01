@@ -6257,6 +6257,15 @@ mod floor_witness_entry_tree_root_controls {
             .expect("overlay present");
         let effective = source_roots_with_overlay(&roots, &overlay);
         let runner = floor_runner_eval_context(&effective).expect("runner ctx");
+        let ingest = super::eval_runner_data_item(&runner, "host_source_root_ingest").expect("ingest");
+        let prov = v1_interpreter::run_in_context_with_args(
+            &runner,
+            "node_artifact_provenance_from_source_root",
+            &[(Some("ingest".to_string()), ingest)],
+            false,
+        )
+        .expect("provenance fold");
+        eprintln!("provenance fold outcome: {}", runner.format_value(&prov));
         witness_entry_tree_root(&runner, &roots, entry).expect("entry tree root");
     }
 }
@@ -6525,27 +6534,6 @@ fn eval_runner_data_item(
     v1_interpreter::with_active_context(ctx, || v1_interpreter::eval_data_item_value(ctx, name))
         .map_err(|e| format!("eval `{name}`: {e}"))?
         .ok_or_else(|| format!("data item `{name}` missing"))
-}
-
-fn artifact_file_path_from_provenance_row(
-    row: &v1_interpreter::Value,
-    ctx: &v1_interpreter::InterpContext,
-) -> Option<String> {
-    let fields = match row {
-        v1_interpreter::Value::Record { fields, .. }
-        | v1_interpreter::Value::Variant { fields, .. } => fields,
-        _ => return None,
-    };
-    let artifact = ctx.field(fields, "artifact")?;
-    let artifact_fields = match artifact {
-        v1_interpreter::Value::Record { fields, .. }
-        | v1_interpreter::Value::Variant { fields, .. } => fields,
-        _ => return None,
-    };
-    match ctx.field(artifact_fields, "file_path")? {
-        v1_interpreter::Value::Str(path) => Some(path.clone()),
-        _ => None,
-    }
 }
 
 fn artifact_file_path_from_witness_read(
