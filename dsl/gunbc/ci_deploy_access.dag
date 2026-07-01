@@ -128,10 +128,11 @@ fn deploy_access_sudo_all_granted(access: DeployAccess) -> Bool {
 
 fn deploy_access_observed_principal() -> NonEmptyStr? {
   let result = shell.Exec.Run(script: "whoami")
-  if result.success && trim(result.stdout) != "" {
-    Present { value: trim(result.stdout) as NonEmptyStr }
+  if !result.success {
+    none
   } else {
-    Absent
+    let line = trim(result.stdout)
+    if line == "" { none } else { Present { value: line as NonEmptyStr } }
   }
 }
 

@@ -14,6 +14,7 @@ import gunbc.ci_deploy_access {
 import gunbc.host_effect {
   ShellCommand,
   HostOs,
+  NodeControlPlane,
   OneShotIdempotent,
   LocalShell,
 }
@@ -28,7 +29,7 @@ import gunbc.fleet_intent { srv1_host }
 
 data privilege_mutation_marker: String = "host-mutation-privilege-marker-7f3a"
 
-fn host_os_target() -> HostOs {
+fn host_os_target() -> NodeControlPlane {
   HostOs { node: srv1_host }
 }
 
