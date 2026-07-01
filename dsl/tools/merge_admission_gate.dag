@@ -24,10 +24,7 @@ import gunbc.ci_spec { gunbc_ci_spec }
 fn merge_target_tree_hash() -> ContentHash {
   let policy = gunbc_ci_spec.diff_policy
   let result = shell.Exec.Run(
-    script: concat(
-      concat("git show -s --format=%T ", policy.base),
-      ""
-    )
+    script: concat("git show -s --format=%T ", policy.base)
   )
   result.stdout
 }

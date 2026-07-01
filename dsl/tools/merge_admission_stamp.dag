@@ -7,14 +7,14 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.merge_admission_produce {
   merge_admission_receipt_path,
   stamp_floor_receipt,
-  render_receipt_wire_with_pr_line,
+  render_receipt_wire,
   ci_repo_root_shell,
 }
 import gunbc.ci_spec { gunbc_ci_spec }
 
-fn pr_number_line() -> String {
+fn pr_number_from_event() -> Int {
   let path = shell.Env.Get(name: "GITHUB_EVENT_PATH")
-  match path.value {
+  let line = match path.value {
     Present { value: event_path } =>
       let result = shell.Exec.Run(
         script: concat(
@@ -28,15 +28,16 @@ fn pr_number_line() -> String {
       result.stdout
     Absent => "0"
   }
+  match parse_int(s: line) {
+    Present { value: n } => n
+    Absent => 0
+  }
 }
 
 fn merge_target_tree_hash() -> String {
   let policy = gunbc_ci_spec.diff_policy
   let result = shell.Exec.Run(
-    script: concat(
-      concat("git show -s --format=%T ", policy.base),
-      ""
-    )
+    script: concat("git show -s --format=%T ", policy.base)
   )
   result.stdout
 }
@@ -50,7 +51,7 @@ fn floor_exit_code_from_env() -> Int {
   let env = shell.Env.Get(name: "CI_FLOOR_EXIT")
   match env.value {
     Present { value: raw } =>
-      if raw == "0" { 0 } else { 1 }
+      if raw == "0" || raw == "" { 0 } else { 1 }
     Absent => 0
   }
 }
@@ -65,7 +66,7 @@ func main() -> ProcessExit {
     return exit_failure(reason: "merge_admission_stamp: merge-target tree hash unavailable")
   }
   let receipt = stamp_floor_receipt(
-    pr_number: 0,
+    pr_number: pr_number_from_event(),
     head_sha: head.sha,
     base_tree_hash: base_tree,
     floor_exit_code: floor_exit_code_from_env(),
@@ -77,7 +78,7 @@ func main() -> ProcessExit {
   if !mkdir.success {
     return exit_failure(reason: concat("merge_admission_stamp: mkdir .gunbc failed: ", mkdir.stderr))
   }
-  let wire = render_receipt_wire_with_pr_line(receipt: receipt, pr_line: pr_number_line())
+  let wire = render_receipt_wire(receipt: receipt)
   let write = Filesystem.Write(path: path, content: wire)
   if write.success {
     ExitSuccess
