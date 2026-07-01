@@ -8,8 +8,9 @@ import gunbc.ci_deploy_access {
   deploy_access_privileged_fixture_actor,
   deploy_access_unprivileged_fixture_actor,
   deploy_access_check,
-  AccessGranted,
-  AccessDenied,
+  Permit,
+  Deny,
+  deploy_access_decision_reason,
 }
 import gunbc.host_effect {
   ShellCommand,
@@ -34,12 +35,14 @@ fn host_os_target() -> NodeControlPlane {
 }
 
 fn witness_modeled_unprivileged_fixture_is_denied() -> Bool {
-  match deploy_access_check(
+  let d = deploy_access_check(
     access: ci_deploy_srv1_access,
     actor: deploy_access_unprivileged_fixture_actor()
-  ) {
-    AccessGranted => false
-    AccessDenied { reason: why } =>
+  )
+  match d {
+    Permit => false
+    Deny { reason: _ } =>
+      let why = deploy_access_decision_reason(d: d)
       host_effect_refusal_is_privilege(reason: why)
         && string_contains(s: why, pattern: "principal mismatch")
   }

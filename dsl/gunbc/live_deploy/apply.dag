@@ -13,11 +13,12 @@ import gunbc.live_deploy.emit {
 import gunbc.ci_deploy_access {
   ci_deploy_srv1_access,
   DeployAccess,
-  DeployAccessVerdict,
-  AccessGranted,
-  AccessDenied,
+  AccessDecision,
+  Permit,
+  Deny,
   deploy_access_check_observed,
   deploy_access_preflight_pass_message,
+  deploy_access_decision_reason,
 }
 import gunbc.host_effect {
   ShellCommand,
@@ -98,8 +99,9 @@ fn live_deploy_access_preflight() -> Reconciliation<HostEffectIntent, HostEffect
     policy: OneShotIdempotent,
     transport: access.transport,
   }
-  match deploy_access_check_observed(access: access) {
-    AccessGranted =>
+  let verdict = deploy_access_check_observed(access: access)
+  match verdict {
+    Permit =>
       Converged {
         evidence: ShellEffectApplied {
           exit_code: 0,
@@ -107,7 +109,7 @@ fn live_deploy_access_preflight() -> Reconciliation<HostEffectIntent, HostEffect
         },
         applied: intent,
       }
-    AccessDenied { reason: why } => NotConverged { reason: why, applied: intent }
+    Deny { reason: _ } => NotConverged { reason: deploy_access_decision_reason(d: verdict), applied: intent }
   }
 }
 

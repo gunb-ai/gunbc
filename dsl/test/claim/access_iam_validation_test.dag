@@ -7,11 +7,11 @@ import product.network_topology {
 }
 
 fn decision_is_permit(d: AccessDecision) -> Bool {
-  match d { Permit => true  Deny => false }
+  match d { Permit => true  Deny { reason: _ } => false }
 }
 
 fn decision_is_deny(d: AccessDecision) -> Bool {
-  match d { Deny => true  Permit => false }
+  match d { Deny { reason: _ } => true  Permit => false }
 }
 
 type IamPrincipal {
@@ -43,7 +43,7 @@ fn iam_decide(request: AccessRequest<IamPrincipal, S3Action, NonEmptyStr>) -> Ac
      && request.subject.mfa_present {
     Permit
   } else {
-    Deny
+    Deny { reason: none }
   }
 }
 

@@ -23,17 +23,11 @@ type DeployAccessActor {
   sudo_granted: Bool
 }
 
-type DeployAccessVerdict
-  = AccessGranted
-  | AccessDenied { reason: String }
-
 data deploy_access_refusal_prefix: String = "deploy_access: typed refusal before mutation"
 
 data gunbc_deploy_sudoers_dropin: NonEmptyStr = "/etc/sudoers.d/gunbc-deploy"
 
 data ci_deploy_runner_principal: NonEmptyStr = "runner"
-
-fn srv1_live_deploy_privileged_commands() -> List<PrivilegedCommand> {
   [
     PrivilegedCommand { path: "/usr/bin/bash", check: "-c true" },
     PrivilegedCommand { path: "/usr/bin/apt-get", check: "--help" },
@@ -159,55 +153,65 @@ fn deploy_access_unprivileged_fixture_actor() -> DeployAccessActor {
   DeployAccessActor { principal: deploy_access_unprivileged_fixture_principal, sudo_granted: false }
 }
 
-fn deploy_access_check(access: DeployAccess, actor: DeployAccessActor) -> DeployAccessVerdict {
+fn deploy_access_check(access: DeployAccess, actor: DeployAccessActor) -> AccessDecision {
   if actor.principal != access.principal {
-    AccessDenied {
-      reason: concat(
-        concat(
-          concat(deploy_access_refusal_prefix, " — principal mismatch expected="),
-          access.principal
-        ),
-        concat(" actual=", actor.principal)
-      )
+    Deny {
+      reason: Present {
+        value: concat(
+          concat(
+            concat(deploy_access_refusal_prefix, " — principal mismatch expected="),
+            access.principal
+          ),
+          concat(" actual=", actor.principal)
+        )
+      }
     }
   } else {
     if actor.sudo_granted {
-      AccessGranted
+      Permit
     } else {
-      AccessDenied {
-        reason: concat(
-          deploy_access_refusal_prefix,
-          " — privileged commands not granted (sudo -n preflight miss)"
-        )
+      Deny {
+        reason: Present {
+          value: concat(
+            deploy_access_refusal_prefix,
+            " — privileged commands not granted (sudo -n preflight miss)"
+          )
+        }
       }
     }
   }
 }
 
-fn deploy_access_check_observed(access: DeployAccess) -> DeployAccessVerdict {
+fn deploy_access_check_observed(access: DeployAccess) -> AccessDecision {
   match deploy_access_observed_actor(access: access) {
     Present { value: actor } => deploy_access_check(access: access, actor: actor)
     Absent =>
-      AccessDenied {
-        reason: concat(
-          deploy_access_refusal_prefix,
-          " — could not observe principal (whoami failed)"
-        )
+      Deny {
+        reason: Present {
+          value: concat(
+            deploy_access_refusal_prefix,
+            " — could not observe principal (whoami failed)"
+          )
+        }
       }
   }
 }
 
-fn deploy_access_verdict_is_granted(v: DeployAccessVerdict) -> Bool {
-  match v {
-    AccessGranted => true
-    AccessDenied { reason: _ } => false
+fn deploy_access_decision_is_permit(d: AccessDecision) -> Bool {
+  match d {
+    Permit => true
+    Deny { reason: _ } => false
   }
 }
 
-fn deploy_access_verdict_to_decision(v: DeployAccessVerdict) -> AccessDecision {
-  match v {
-    AccessGranted => Permit
-    AccessDenied { reason: _ } => Deny
+fn deploy_access_decision_reason(d: AccessDecision) -> String {
+  match d {
+    Permit => ""
+    Deny { reason: r } =>
+      match r {
+        Present { value: why } => why
+        Absent => deploy_access_refusal_prefix
+      }
   }
 }
 
@@ -215,4 +219,4 @@ fn deploy_access_preflight_pass_message(access: DeployAccess) -> String {
   concat("deploy-access-preflight: PASS principal=", access.principal)
 }
 
-data deploy_access_preflight_shell_dissolution_trigger: String = "🟡 dissolve-on: deploy_access_preflight_shell — bash preflight script built with concat/string shell (extends live_deploy medium-as-string debt, #5828); DISSOLVES WHEN live_deploy_emit_shell_dissolution_trigger lands — privileged-command checks modeled as HostEffect intent rows realized through host_effect_apply transport handlers, retiring bash script emit and medium_structure_exception_roster entry for dsl/gunbc/ci_deploy_access.dag"
+data deploy_access_preflight_shell_dissolution_trigger: String = "🟡 dissolve-on: deploy_access_preflight_shell — deploy_access_preflight_script (bash emit) AND deploy_access_sudo_check_cmd (shell.Exec.Check over concat argv) are medium-as-string transport debt (extends live_deploy #5828); DISSOLVES WHEN live_deploy_emit_shell_dissolution_trigger lands — privileged-command checks become HostEffect intent rows realized through host_effect_apply transport handlers, retiring bash script emit, sudo argv concat, and medium_structure_exception_roster entry for dsl/gunbc/ci_deploy_access.dag"

@@ -2,11 +2,11 @@ module std.access
 
 type AccessDecision
   = Permit
-  | Deny
+  | Deny { reason: String? }
 
 fn decision_meet(a: AccessDecision, b: AccessDecision) -> AccessDecision {
   match a {
-    Deny => Deny
+    Deny { reason: _ } => Deny { reason: none }
     Permit => b
   }
 }

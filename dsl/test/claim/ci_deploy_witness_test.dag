@@ -15,8 +15,9 @@ import gunbc.ci_deploy_access {
   deploy_access_refusal_prefix,
   deploy_access_check_observed,
   deploy_access_preflight_pass_message,
-  AccessGranted,
-  AccessDenied,
+  deploy_access_decision_reason,
+  Permit,
+  Deny,
   gunbc_deploy_sudoers_dropin,
   deploy_access_sudoers_line,
   srv1_live_deploy_privileged_commands,
@@ -45,8 +46,9 @@ fn witness_deploy_access_uses_local_apply_on_srv1() -> Bool {
 }
 
 fn witness_deploy_access_preflight_is_fail_closed() -> Bool {
-  match deploy_access_check_observed(access: ci_deploy_srv1_access) {
-    AccessGranted =>
+  let d = deploy_access_check_observed(access: ci_deploy_srv1_access)
+  match d {
+    Permit =>
       string_contains(
         s: deploy_access_preflight_pass_message(access: ci_deploy_srv1_access),
         pattern: "deploy-access-preflight: PASS"
@@ -55,9 +57,9 @@ fn witness_deploy_access_preflight_is_fail_closed() -> Bool {
           s: deploy_access_preflight_pass_message(access: ci_deploy_srv1_access),
           pattern: ci_deploy_runner_principal
         )
-    AccessDenied { reason: why } =>
-      string_contains(s: why, pattern: deploy_access_refusal_prefix)
-        && string_contains(s: why, pattern: gunbc_deploy_sudoers_dropin) == false
+    Deny { reason: _ } =>
+      string_contains(s: deploy_access_decision_reason(d: d), pattern: deploy_access_refusal_prefix)
+        && string_contains(s: deploy_access_decision_reason(d: d), pattern: gunbc_deploy_sudoers_dropin) == false
   }
 }
 
