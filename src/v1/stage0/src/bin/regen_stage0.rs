@@ -118,7 +118,6 @@ const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
     "complexity_linearity_audit_project.rs",
     "decl_facts_project.rs",
     "coproduct_reflection.rs",
-    "doc_reachability_project.rs",
     "inert_carrier_project.rs",
     "medium_structure_project.rs",
     "extdeps_shape_transport_policy_project.rs",
