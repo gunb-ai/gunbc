@@ -4,288 +4,112 @@
 
 Legend: `[x]` done · `[ ]` todo · **indentation = depends on the item it sits under**. Each section opens with a **◆ Milestones** spine — the *verifiable* checkpoints in dependency order (`✓` reached · `▸` now · `○` ahead); the checklist below is the work toward them. Read L→R = the path.
 
-**Priority order, top = now.** Bands: **stability / correctness** (§0–§4) → **expansion** (§5–§7) → **shelved** (§8).
+**Reset 2026-07-01 (operator-directed).** The roadmap is collapsed to **two pillars** — **§1 get off v1** and **§2 own the compute fabric** — plus **§3 the floor + audit**: the walls that keep both pillars honest, and an execution-grounded audit of what the existing machinery *actually does* (green by execution, red by perturbation). Everything else is **§4 shelved**: parked, not deleted — plan docs and carriers stay, no work dispatches from it, and un-shelving is a PR that moves a node into §1–§3 with a displaced-cost justification (DESIGN §6). The prior roadmap with full detail is in git history. Priority order, top = now.
 
-## ✦ Ergonomics LANE — make the fold the path of least resistance *(lead lane of the stability band, upstream of §0 — placed bright-stag-194)*
+## 1. Get off v1 — v2 self-hosts (TERMINAL: `src/v1` deleted)
 
-→ [charter: spine + ranked focus](docs/plans/fold-ergonomics.md)
+Anchor (do not flip-flop): `.dag` = truth; v2 emits its own seed (no stage0 hand-edits); the trust chain is discharged by execution; then the hand-written seed is deleted. Terminal is **hand-written compiler logic → 0**, not zero bytes of Rust: a pinned v2-emitted bootstrap kernel (~8–15k LOC — `claim_executor`, evaluator host-physics, the regen oracle) survives as the content-addressed seed. → [plan](docs/plans/v2-self-hosting.md) · [de-fork audit](docs/plans/dsl-v2-defork-audit.md) · [seed census](docs/plans/seed-shrink-census.md)
 
-Why a tier: **"it compiles but nothing works" traces to non-fold residue** — a hand-rolled `match` has a `_ =>` fail-open escape; a fold over a closed coproduct is total by construction and has none. So the chain is **ergonomics → adoption → fail-closed**: when the fold is awkward to reach, people hand-roll, and every hand-roll reintroduces a fail-open arm ([model↔realization fork](docs/plans/model-realization-fork.md) is the systemic instance — per-site bridges that should be one coercion fold). This lane **stops new residue by making folds ergonomic**; §0's fail-open-shape walls **retire the old**. The two together drain the fork. Guardrail (§6 — ergonomics is the #1 purity-trap magnet): every item **names the fail-open class or measured friction it retires** (displaced cost), never "cleaner."
+Ground truth (2026-07-01): `src/v1` = ~174k hand-written `.rs` LOC (the ~154k figure in older docs is stale) + 44 `.dag` files of v1's own modeling; `src/v2` = 839 `.dag`, zero `.rs`. HAND_MAINTAINED roster is down 24 → 11 files + `module_path_index` (~20.6k LOC); `patch_*` 3 → 1. The regen gate proves byte-identity per the COMMITTED seed (two-generation): emitter improvements are latent until a cutover, and the cargo-green receipt is episodic (`#[ignore]`, ~3–5min), not continuous — today's continuous walls are byte-identity + the interim fixpoint + well-typed emit.
 
-**◆ Milestones:** staging/`then_outcome` combinator seeded ✓ (#5512 — compiler front-end de-pyramided to a stage fold) → **generic inference fixed ✓ (#5552, in queue)** + measure the residue (inert-abstraction lens) → fold reachable *by default* → new non-fold residue can't merge (pairs with §0 wall)
+**◆ Milestones:** front-end ✓ · emit-rust well-typed ✓ · cross-tree import ✓ (#5473) · emitted crate cargo-green, 0 rustc errors ✓ (#5777/#5873, re-verified #6099) · `regen --verify` in CI ✓ (#5873) · interim fixpoint gate, 2-of-92 roster ✓ (#6009) → **▸ NOW: regen-cutover cadence · HAND queue drain · full-roster real fixed point** → seed-honesty (DDC) → **TERMINAL: `src/v1` deleted**
 
-**Audit half — measure the friction + the residue (decidable; wall-able):**
-
-- [ ] **inert-abstraction lens** *(keystone)* — flag any item *defined + self-tested + zero non-test consumers*; generalizes the inert-lens backstop (#5433) from lenses to all carriers. **First RED witness = `Placement` / `Materialization` / `RealizationObjective`** (charter §4: "modeled + witness-passing, no non-test consumer") — a genuinely-inert carrier the lens *fires* on day one, so the lens isn't itself inert (its own §6 guardrail). (`cached_stage` is the *resolved* case — now wired, see Fix half — so it's the worked example, not the witness.)
-- [ ] **non-fold-residue audit** — `_ =>` catch-alls over *closed* coproducts · `unwrap_or_default` in inference · hand-rolled recursion where a fold exists. These are the decidable fail-open shapes → §0 wall candidates, not just lenses [irreducible residue catalogue](docs/plans/non-fold-irreducible-residue-catalogue.md) [real-debt syntactic sample audit](docs/plans/real-debt-syntactic-sample-audit.md) [eval-bind node-eval PROPOSE](docs/plans/eval-bind-node-eval-propose.md)
-- [ ] **fold-friction audit** — what makes the fold awkward to reach (the #5512 pre-state: generic fn-params mis-inferred as kernel `Witness`/`Optional`, forcing typed-param workarounds) — the friction predicts where new residue appears
-
-**Fix half — make the fold the path of least resistance:**
-
-- [ ] **generic-inference fix** *(fix keystone — #1)* — **▸ #5552 (keystone green-by-execution + red-on-revert witness, MERGED):** `= FreeMonoid<Symbol>` now resolves. The hand-roll collapse (`qualified_name` trio · `ParseTable`) + §0's realization-grounding (~120 `Value` bridges) follow in de-fork phase 2. Dissolve-on `feature:free-monoid-entry-generic-inference` ([charter](docs/plans/fold-ergonomics.md) §3, [de-fork brief](docs/plans/dsl-v2-defork-audit.md))
-- [ ] **generalize the staging combinator** — `then_outcome` (Kleisli for the `Outcome` monad) seeded the pattern (#5512); lift it to the standard way to compose fail-closed stages, so a pipeline is a fold of typed stages, not a `bind_outcome` pyramid
-- [ ] **wire the seams, don't strand them** — an abstraction lands *consumed* or scaffold-marked with a dissolution trigger ([construction-justification rule](docs/plans/construction-justification-rule.md), #5476). Worked example (the full arc): `cached_stage` seeded inert (#5512) → caught by the keystone lens → wired with a `Miss`-stub wrapping `stage_resolve`. **Boundary:** this lane owns only that the seam *lands consumed-or-marked*; **§1/§2 own *enabling* the resolve-cache** (the realization work) — one home each.
-
-**Own runway — down-ranked (the lane's §6 guardrail applied to its own scope):**
-
-- [ ] **ban source comments** (`.dag` + `.rs`) — *separate runway, sequenced BELOW the fold items.* Orthogonal to folds (it's documentation-hygiene), load-bearing (grammar `02_parse`/`syntax`), and the item most likely to swallow the lane. Displaced cost: reviewer reads multiples of the real diff (a comment-heavy `.dag` fn is ~10% code) + LOC inflation; that's the pain, not "cleaner." Construction arc: model the live-state survivors → migrate → **delete the rest aggressively** (git is the backup) → **parser refuses free `//`** (§5, lands LAST). *(calm-seal-13: pilot CI-gate files → fan out → wall; deletion has no modeling-blocker — no gate text-scans comment bodies)*
-
-**Pairs with:** §0 (walls retire old residue; this lane stops new) · [model↔realization fork](docs/plans/model-realization-fork.md) (the residue's deepest instance) · §4 testgen (anemia/structure lenses are the same "measure the modeling" move).
-
-## 0. Fail-closed lock-down LANE — BLOCKS expansion into products
-
-Cache flakes, un-wired lenses, complexity violations = one problem: modeled, not made *impossible to write*. Fix = correctness by construction, not validation ([DESIGN §5](DESIGN.md)).
-
-→ [audit + checklist](docs/plans/fail-closed-lockdown.md)
-
-This window = a few days of STABILITY — shrink the fail-open surface, don't "lock" it. The deepest root (`Value::Null` overload, ~131 sites) stays OPEN until its own runway ([fork plan](docs/plans/model-realization-fork.md) §3).
-
-**◆ Milestones:** fail-open audited ✓ · numeric tower grounded ✓ (#5428) → **▸ NOW: cache warm==cold oracle · every lens wired-or-deleted · stage0 census under budget** → `Value::Null` split *(deep root)*
-
-**Audits (done):**
-
-- [ ] lens/gate wiring — most analytical lenses inert (authored, no discovered gate) — ⏳ awaiting sign-off
-- [ ] fail-open code — cache lossy-digest · under-keyed memos · `unwrap_or_default` infer — ⏳ awaiting sign-off
-- [ ] **model↔realization fork — ROOT CONFIRMED** — one seam (~13 bridges); sub-roots = numeric tower + `Value::Null` [plan](docs/plans/model-realization-fork.md) — ⏳ awaiting sign-off
-- [ ] remaining: coercion/equality straddles · inference fail-open · cache-purity · CI-coverage-completeness [detail](docs/plans/fail-closed-lockdown.md)
-
-**In-scope this window:**
-
-- [ ] **numeric-tower grounding** (#5428) — `Int=GroupCompletion<Nat>`; `==` straddle guard now dead-in-corpus [plan](docs/plans/model-realization-fork.md) — ⏳ awaiting sign-off
-- [ ] **cache trustworthy** — authoritative home is §2 F2/F3/P1; ship the warm==cold oracle as a detective now
-- [ ] **rust-gate coverage** (shared §1) — **▸ run-all at nextest speed ✓ CI-green-proven (#5427, in queue): full v1 coverage every `.rs` PR ~6m (was ~42m), no coverage-vs-speed tradeoff**; `.dag`→rust coverage wall = edge-(b), SCOPED / pending operator greenlight *(quick-ant-298)* [cause table](docs/plans/ci-selection-vs-scheduling.md) [edge-(b) brief](docs/plans/edge-b-rust-dag-provenance-brief.md)
-- [ ] **promote-or-delete inert lenses · de-vacuum gates** — EmitHostGate de-vacuumed ✓ (#5477); 4 advisory lenses widened+bounded, whole-corpus deferred to `.dag` structural-reflection (also unlocks coverage/testgen) *(silent-wren-739)*
-- [ ] **realization-vocabulary containment guard** (#5445/#5453) — target-AST importable only at the realization edge (fail-closed, shrinking-roster); dissolve-on: bash-sidecar arc empties the roster → pure wall → `program.dag` deletable [plan](docs/plans/emission-ingestion-inverse.md) — ⏳ awaiting sign-off
-- [ ] **stage0 clone-census inert + seed regressed** to 21540 (~1138 over) — resolve by clone-reduction / substrate-migration, NEVER a cap-bump; #5427 `#[ignore]` is the interim *(fierce-hawk-540 via quick-ant-298)*
-- [ ] **`Disposition` carrier** *(un-parked, operator GO)* — slice-1 prove-by-use active *(adhoc-0a633bef-bb9 / fierce-crane-13 under neat-dove-397)*: model `Disposition`+`ConstructionMechanism` in std → migrate one region (the post-#5579 `data:String` marker fleet) → fail-closed redundancy lens. Single-authority convergence home for scaffold/rationale/dissolution marks; substrate-mandatory #1 is the end-state, not this slice. [plan](docs/plans/disposition-carrier.md)
-
-**Fenced OUT (after stability):**
-
-- [ ] **split `Value::Null`** (None/Absent/miss/Violates → own carriers) — ~131-site substrate change, the deeper root; own runway
-- [ ] **self-host purity gate** — a §5 deliverable, not §0 (avoids the §0↔§5 cycle)
-- [ ] **cross-tree import activation** (§5) (#5473) — LANDED; the §0↔§5 escalate item is now closed — ⏳ awaiting sign-off
-- [ ] complexity-budget whole-codebase (§3) · cache-redundancy completeness (§2 P3) — residue, after construction
-- [ ] **cardinality refinement** — illegal cardinalities (wrong length · empty · overflow) unwritable by construction; the *decidable* refinement axis (linear arithmetic over counts), fold-propagated. MVP-1 (`Byte` via `Length<8>`) + P4 (fold homomorphism · uint8 overflow → typed `Rejected`) proven (#5512); P1 (`where` lowering) / P2 (construction-enforced) behind this lane; P5 (phantom-width reflection) substrate-blocked. [plan](docs/plans/cardinality-refinement.md) [P1](docs/plans/p1-where-clause-lowering.md)
-
-**Meta — lock down the reasoning (§7 recursion):**
-
-- [ ] **inert-lens hygiene backstop** (#5433) — every `lens/*.dag` wired or deleted; runs over the corpus — ⏳ awaiting sign-off
-- [ ] **reachability-completeness lens** — every declared node (code carrier · doc · lens) reachable from a run-root, rostered, or deleted; generalizes #5433 to carriers + docs [plan](docs/plans/inert-layer-lens.md)
-- [ ] **gate-hygiene: a floor-enrolled gate must be green-on-main at merge** — roster-completeness assertion promoted to should-land ([plan](docs/plans/emission-ingestion-inverse.md) §2; [merge-freshness decision record](docs/plans/ci-merge-freshness.md)) *(quick-ant-298)*
-- [ ] **construction-justification rule** (#5476) (authoring-time) — justify why a class can't be construction before adding a lens *(silent-wren-739)* [plan](docs/plans/construction-justification-rule.md) [DESIGN §6](DESIGN.md) — ⏳ awaiting sign-off
-- [ ] **expressibility frontier** — partition each modeling discipline into wall / lens-residue / undecidable-review *before* gating [plan](docs/plans/expressibility-frontier.md)
-- [ ] **confront the skipped modeling decisions** — the `🟡` comment backlog *+ the post-#5579 `data:String` marker fleet* (the comment-wall moved marks comments→rows, growing the §3-migrate surface); converges on the `Disposition` carrier (single authority, `0-disposition`) [Disposition plan](docs/plans/disposition-carrier.md)
-- [ ] **reference grounding** — migrate stringly-typed *references* (a symbol/module/fn/url written as free text where a typed edge belongs) to typed carriers (`DeclarationRef`/`QualifiedName`/`Uri`); the carrier half of the groundedness effort (detector half = `v2.lens.grounding` EXTRACT). Splits the coincidence into REFERENCE (independent entity → `DeclarationRef`) vs ROLE (genitive/ownership of the enclosing concept → an EdgeLabel/FieldRef tag, EARNED from an adjudication ledger, not guessed). Follow-on to `0-construction-rule`'s prose deletion *(tidy-badger-45)* [plan](docs/plans/reference-grounding-migration.md) [construction rule](docs/plans/construction-justification-rule.md)
-- [ ] **axiom + syllogism lens** (DESIGN open thread #1) — every claim chains back to an axiom, no orphan/cycle; stays `[ ]` until it runs executably over this doc [scope](docs/plans/axiom-syllogism-lens.md)
-- [ ] **self-applying lenses (detect → generalize → emit → write)** — a lens *produces the correct pattern and applies it via the write API*, not just flags; the §7-recursion upgrade to the whole lens family, unified by **redundant intent** (specification complexity above the essential min). Anti-unification is the shared engine (term-layer fold + `structural_similarity` type-generic = one kernel, two binders); seeded in `v2.lens.simulated_relationship` (#5584). Decidable-wall classes only — ratchet residue stays detect-only. Depends on §6 emit + a write effect + resolve facts [plan](docs/plans/self-applying-lenses.md)
-
-**Dispatch discipline (anti-stale-ledger, §6):** a lever earns a lane only after it is re-measured against CURRENT main — a displaced cost already paid by another merge is the purity trap (e.g. rust-test sharding, ruled out post-#5427's nextest cut). And the lane/parked list is DERIVED from this authority, never hand-typed (a hand-list drifts exactly like a second representation). The authority tracks ALL planned work; work-items dispatch only the active subset.
-
-## 1. CI as the substrate integration dogfood (the correctness floor)
-
-A flaky or green-but-broken floor means no gate protects anything — so CI is upstream of every §0 claim. CI is also the one workload that flexes *every* substrate layer at once (execution · scheduling · caching · secrets/effects · emission), so it is the forcing function that turns each modeled-but-inert abstraction load-bearing. **Deliverable = shared abstractions proven by CI consuming them** (one Materialization kernel · one Placement authority · one secrets model); faster CI falls *out* of that, it is not the goal (§6 — price the lane in displaced cost, "move with confidence", not elegance).
-
-→ [charter: causal-chain gap analysis](docs/plans/ci-process-end-to-end.md) — what's on `.dag` today vs not, push→execute.
-
-→ [CI humming](docs/plans/ci-humming.md) — the throughput/wall-clock/reliability operations plan for the **▸ NOW** milestone: un-throttle runner slots from the modeled budget (fix the build-pool double-count), verified-effective caps, the carrier, SessionSliceEnforcement, oomd demoted to backstop.
-
-**◆ Milestones:** execution-as-DAG ✓ (the floor *is* a bounded forward graph walk) · width on `.dag` ✓ (#5444) → **▸ NOW — host-operation on `.dag` (placement · runner deployment · caps are hand-managed, off-fabric)** · **floor wall-clock 26m → <1min (resolve-phase incrementality)** → resolve-cache enabled → one Materialization kernel (collapse the 5 caches) → one Placement authority (jobs · threads · sessions = 3 forks) → shared secrets · gunbhub closes the GitHub engine (G6, parked)
-
-**Floor wall-clock — the measured gap (26m → <1min, profiled 2026-06-24):**
-
-- [ ] **the floor is a full recompute every run** — profiled: the one `gunbc ci` step = **26m**, of which **~518s resolves all 870 witnesses** cold, a **second** `run_discovery_corpus` pass ~275s, effect-bound shell gates ~360s, seed compile ~134s. On a one-file PR ~99% of that resolve recomputes witnesses whose inputs did **not** change — §2 redundant work, un-inhabited. **Target: <1min on a typical PR.**
-- [ ] **resolve is not affected-set-pruned** — discovery is deliberately tree-wide (fail-closed enrol), but EXECUTION still **resolves all 870** every run; #5427 selection shrinks compile/test, not the 518s resolve. The lever: extend the affected-set across discovery→resolve so unchanged witnesses skip (the floor-selection items below, applied to the resolve phase). [plan](docs/plans/ci-selection-vs-scheduling.md)
-- [ ] **affected-set de-fork: `v2.lens.affected_set` as single authority** — N=2 parallel reverse-reachability impls exist: `.dag` authority (`v2.lens.affected_set` + `affected_set_floor_runner`, INERT, `WallAfterGrounding`) and Rust parallel (`NodeFrontierSeeds` + `entry_touches_frontier_seeds`, LIVE). The `.dag` authority must become the single live implementation; the Rust path deleted. BOTH witness-selection (per-row skip) AND precompute-skip (`precompute_whole_tree_published_mock_keys` at `cli_run.rs:3509`, unconditional today) wire to the same one `.dag` query. Acceptance: (a) `.dag`-vs-Rust equivalence on real corpus diff, (b) Rust rep deleted (N→1), (c) real floor wall-clock+peak-RSS drop on scoped diff. [plan](docs/plans/affected-set-precompute-pruning.md)
-- [ ] **kill the within-run double-resolve** — the corpus resolves once for discovery and again for execution (~275s second pass); execution should piggyback the discovery resolve. Pure within-run win, no cross-run cache needed.
-- [ ] **profile the 518s resolve** — ~0.6s/witness average, but a known machine-independent resolver bug resolves `budget_roster` ~450x its structural twin; a few pathological witnesses likely dominate the 518s. Profile which, fix the resolver.
-- [ ] **fractal Gantt profiling receipt (#5757 baseline)** — per-claim timing tap (`GUNBC_FLOOR_GANTT=1`) + Batch 1/2/3 breakdown; hot spots: rust gate ~530s (host-effect, architectural sep), discovery eval ~229s (interpreter, `width=3`), cold resolve ~50s (resolve-cache lever). [plan](docs/plans/ci-floor-fractal-gantt.md) — ⏳ awaiting sign-off
-- [ ] **interpreter memory chronicle (post-#5910)** — execution-grounded floor RSS receipt (width=1 @ 8 GiB: ~5.12 GiB self-RSS, ~5.31 GiB cgroup) + per-shard/per-resolve probes vs the 14.2→5.5→5.1 GiB arc; phase-0 measurement scaffold toward `PerformanceReceipt`. [plan](docs/plans/interpreter-memory-chronicle.md) — ⏳ awaiting sign-off
-
-**The <1min lever is resolve-phase incrementality, NOT cross-run resolve-cache** — CI is cold-dominated (the exe-hash re-colds on every code change), so §2 P3 resolve-cache is the *warm* ~18% lever and was measured net-negative as the cold-CI path. Incrementality (don't resolve what didn't change) is upstream of caching (memoize what repeats); the <1min target rides the former. **This re-frames the §2 "core ask" — operator review.**
-
-→ [resolved-graph representation minimization](docs/plans/representation-minimization.md) — operator-funded root-first leanness after the #5867 InternTable fix (whole-tree resolve 14.2 to 5.5 GiB): emitter-determinism gate, stream/evict (Lever C — converges with resolve-incrementality above), variant-Node minimal representation, func_env.sigs single-authority. Gated on the root-vs-doomed-seed discriminator (v1 is going away).
-
-→ [§5 determinism mechanism](docs/plans/determinism-mechanism-design.md) — signature-derived DeterminismClass axis orthogonal to EffectShape; P1 primitive roster + compose algebra (#5941); bundles into #3468 InferredFacts at P4.
-
-**What's on `.dag` today (the gap map — detail in the charter §2/§4):**
-
-- [ ] **execution = a dependency-graph walk** — `claim_executor` interprets `ci_floor_plan.dag`; one fold, batches from dependency edges (the realest layer) — ⏳ awaiting sign-off
-- [ ] **scheduling: width axis** (#5444) — `memory_aware_spawn_width` consumes the measured envelope; single-host — ⏳ awaiting sign-off
-- [ ] **Section 1 spawn-width foundation — std.measure expressibility** (#5470/#5478) — the FLOOR family (measure_scale_fraction_floor + measure_fit_count_floor) and the demand-CEIL family completing the ceil-not-equal-floor money-pair landed, dissolving the measure unwrap→raw-arith→rewrap §3 fork. Authority: the expressibility-frontier spec #5467 [plan](docs/plans/expressibility-frontier.md) — ⏳ awaiting sign-off
-- [ ] **scheduling: placement + materialization inert** — `Placement`/`Materialization` modeled + witness-passing, **no live consumer** (same band as the host-ops gap, substrate side)
-- [ ] **scheduling: resource-aware (larger allocation → larger throughput)** — `spawn_width` is a side-channel derived from a static data row (`gunbc_ci_floor_measured_peak`, coarse whole_run÷concurrency estimate); goal: width derived from per-`Runnable` cost in the plan itself, self-calibrating from measured per-shard RSS. Four nodes: (A) measurement plumbing — claim_batch emits `[measurement] per-shard-peak-rss`, claim_executor collects max *(dispatched adhoc-97532cd3-dfe)*; (B) `CostEstimate.space` on `Runnable` in std; (C) scheduler reads cost → derives width, side-channel deleted; (D) calibration loop retires static data rows. Construction invariant: host memory increase → higher width → more throughput, no `.dag` edits required. [plan](docs/plans/resource-aware-scheduler.md)
-- [ ] **caching forked** — sccache live · resolve-cache **opt-in (`GUNBC_RESOLVED_GRAPH_CACHE_DIR`; #5789 always-on default reverted — its whole-file JSON read/write OOMs the floor, must stream before it can default on)** · ParseTable memo live · RecordedFixture · BuildBuddy opt-in → converge on `realize(subject)` (§2 P2)
-
-**Host-operation band — off-fabric, unmodeled, unenforced (G1–G3, NOW):**
-
-→ [host-effect orchestration plan](docs/plans/host-effect-orchestration.md) — the unifying design: one `apply(target, effect, policy) → Receipt` interface (install · manage · decom on the same fleet authority), the shell→`.dag` migration phasing, and the ctrl-exodus / host-self-converge end-state. G1–G3 below are its consumers.
-
-→ [srv3 virtual-media install (design for sign-off)](docs/plans/srv3-webui-kvm-virtual-media.md) — the first *install*-band consumer instance: a BMC `apply` transport `NbdProxyServe` (a direct wss+NBD seed client over OpenBMC's nbd-proxy, no browser/JS), capability-solver-dispatched (`os_install_mechanism`). srv3's cited row stays honestly grounded (PXE today) until an operator-gated ws-upgrade dry-run confirms the nbd-proxy surface; seed client gated on that.
-
-- [ ] **G1 placement** — which host a job lands on is GitHub-native, demand-blind, first-idle → heavy runs co-reside, other host idles (the underutilization root) [plan](docs/plans/compute-envelope-model.md)
-- [ ] **G2 runner deployment + cross-host placement** *(dispatched proud-tern-439: model + drift-gate)* — derive runners/host + registration from `fleet_intent`+envelope; **host-apply RESOLVED (operator-set, CI-humming plan authority): the gunbc-EMITTED converge shell** (`.github/fleet-converge.sh` = a §2 host-effect handler inhabiting the §6 carrier *by emission* — the emitted shell IS the executing consumer, escaping the §5 spec-without-execution trap; ctrl thin-runs it + parses a fail-closed receipt; §7 seed-shrink). In progress: emit (wise-eagle-664) + thin consume/run (fierce-carp)
-- [ ] **G3 cgroup caps** — `TasksMax`/`MemoryMax` host-set by hand, only *read* live; derive + reconcile via the **emitted converge shell + fail-closed receipt** (same carrier-inhabitation-by-emission as G2) so a hand-edit reds
-- [ ] **CI on compute fabric** — derive every host knob from one measured `ResourceEnvelope`; ends the crash-or-idle swing [plan](docs/plans/compute-envelope-model.md)
-
-**Adjacent gaps (smaller, outside the host band):**
-
-- [ ] **G4 dispatch dup** — `workflow_dispatch`+PR fire two same-SHA runs; `run_id` concurrency fallback won't collapse them → OOM [decision record](docs/plans/ci-merge-freshness.md)
-- [ ] **CI inline-shell de-fork** — `RunStep.run` is raw concat'd bash across ~26 sites; #5427 modeled `cargo.Build.Nextest` but bypasses it for the release build (`ci_release_build_script` hand-writes bash) = a model↔realization fork in one file (+ hardcoded `CARGO_BUILD_JOBS`, pinned nextest version, a bash `uname` arch-case we already model as `TargetArchitecture`). Root: `RunStep` carries modeled effects, not a `String`; revive the inline-shell reducibility lens — §3 transport-fusion de-fork (the N×M adapter trap → one shape + N bound handlers). Sequence after #5427/#5546 (same file). [plan](docs/plans/emission-ingestion-inverse.md)
-- [ ] **interpreter terminal-output de-fork** — the seed interpreter's CLI rendering (`v1_interpreter.rs` sgr/color_enabled/cli_verbosity/render_shell_trace, `claim_executor.rs` result lines) is a hand-Rust realization of three `.dag` authorities it does not yet consume: `extdeps.render.ansi.ansi_mappings` (SGR codes), `extdeps.render.terminal_capability.detect_capability` (NO_COLOR/CI/TTY to color), and `gunbc.output_policy` (resolve_verbosity precedence, channel_decision, env_var_for dispatch, shell_trace_summary_max_columns cap). §3 single-authority: the parallel representation can drift until the interpreter reads these tables. Dissolve-on: interpreter consumes the .dag render/output-policy tables at runtime (same class as CI inline-shell de-fork — seed forks the modeled authority; one home each). [plan](dsl/gunbc/output_policy.dag)
-- [ ] **G5 rust-gate selection** — rust fmt/clippy/run-all is all-or-nothing on `.rs` PRs; no affected-set (the `.dag` floor already has one) [plan](docs/plans/ci-selection-vs-scheduling.md)
-- [ ] **floor runs the right things** — SELECTION (what changed) vs SCHEDULING (by cost); cost never drives selection [plan](docs/plans/ci-selection-vs-scheduling.md)
-  - [ ] opt-level=3 restores Pop-A to per-PR (#5456) — merged — ⏳ awaiting sign-off
-  - [ ] per-PR = #5427 run-all sound baseline, shrunk to the affected set (#5427)
-  - [ ] nightly = full-corpus selector-backstop + non-hermetic residue (#5447 stood down; ⚠ CI-gen load-bearing) *(quick-ant-298)*
-- [ ] **tree-scoped builtin registry** (fail-closed) — global seed registry leaks intrinsics into the substrate compile; instance fix #5452, class fix (partition) open *(quick-ant-298)* [force-check plan](docs/plans/compile-clean-forcecheck.md)
-- [ ] **kill sccache false-greens** — exit-0-no-binary; build-verify asserts artifact exists + fresh (partly landed in `ci.yml`)
-
-**Shared abstractions (the lane's real deliverable — §6: pull in as CI flexes them, not by taxonomy):**
-
-- [ ] **one Materialization kernel** — collapse sccache / resolve / ParseTable-memo / RecordedFixture / BuildBuddy onto `realize(subject)` (§2 P2)
-- [ ] **one Placement authority** — jobs (GitHub) · threads (`spawn_width`) · sessions (ctrl `plans.capacity`) are 3 forks of "put work on a host"
-- [ ] **resource budget tree** (§2 one-concept-every-scale, money→memory→infra) — grounded in real accounting (`extdeps.accounting.budget`, anchored, zero-based) generic over `Measure<Q,S>` (money = instantiation #1, memory = #2); a recursive tree where a child's appropriation is a line item charged at its parent (divide-once, structural). Three §5-distinct verdicts, never conflated: **admission** (`admit_all`, zero-based justified-&-approved) is the **construction** path — the committed set is provably within appropriation, over-commit unwritable on it; `node_conserves` is the honest **residue lens** for raw literals (the unstructurable residue, *not* a wall — the §5 distinction); runtime intent-vs-actual **reconcile** is the fail-closed **handler** (evict by QoS / loud-error on unsatisfiable Guaranteed). Subsumes spawn-width (#5444) · placement (#5559) · compile-jobs (#5546) as consumer leaves; a survey found `realization_width` + complexity `EffortBudget` are the SAME capped-resource→claims concept (§3 convergence candidates onto the one authority). **Protective only paired with an enforcement actuator** (admission cap or cgroup `memory.max`, operator-fenced): the model decides budgets, it does not itself prevent the kernel OOM, so interim the L1 claim-count must be the conservative-HIGH ceiling (carrier #5582). [carrier](dsl/product/budget_tree.dag) [grounding](docs/plans/budget-tree.md)
-- [ ] **shared secrets/effects** — BMC · tokens · sccache-auth modeled once (when the fork is the pain)
-
-**Downstream / parked:**
-
-- [ ] privacy (compute fabric) — ⏳ awaiting sign-off
-- [ ] repo model (internal repo) on compute fabric
-- [ ] **gunbhub** — own the Git/CI engine (closes G6, the irreducible GitHub boundary); not pressing
-- [ ] *(downstream)* compute fabric as a sellable infra piece
-
-## 2. Minimal work — caching by realization (fail-closed)
-
-Gate: uncached non-redundant work is an ERROR, not "slow". The cache-key-from-inputs construction is the §0 "cache trustworthy" item. → [plan](docs/plans/realization-measurement-loop.md)
-
-**◆ Milestones:** key-by-construction ✓ (#5425) → **▸ warm==cold purity proven (616/616, #5429)** → resolve-cache ON — ~18% floor cut *(core ask)* → native `content(T)` *(gated B2)*
-
-- [ ] F1 scheduler gives heavy nodes budgeted width (#5421) — ⏳ awaiting sign-off
-- [ ] F2/F3 `resolved_graph` key derived from declared `inputs_considered` (#5425) — construction, not a lens — ⏳ awaiting sign-off
-  - [ ] P1 honest keys by construction — warm==cold purity oracle **LANDED (#5429)** — ⏳ awaiting sign-off
-    - [ ] P2 one door: `realize(subject)` sole API — kernel inhabits `cache_interface.dag` (#5446); ParseTable dissolution is downstream of the dsl→v2 de-fork (§5)
-      - hermetic fixtures feed P2: [x] M4.1 universal hermetic corpus governance (#5236, [plan](docs/plans/m4-universal-hermetic-corpus.md)); [ ] M5 fixture-store onto one Realization kernel ([plan](docs/plans/m5-fixture-store-consolidation.md))
-      - [ ] P3 **resolve-cache enable** — purity proven (616/616); cache is correct but **opt-in** (`GUNBC_RESOLVED_GRAPH_CACHE_DIR`): #5789's always-on `$TMPDIR` default was reverted because the whole-file JSON read (hit) and write (miss) buffer ~11x the packed graph in memory and OOM the concurrent-shard floor. Re-enabling by default is gated on a streaming IO realization (binary + `deserialize_from`/`serialize_into`, no whole-file `Vec<u8>`)
-- [ ] P4 economic tier (measured cost → `Materialization`) — instrument done (#5431); remaining = (a) space arm: per-shard RSS plumbing → `CostEstimate.space` on `Runnable` (nodes A+B, [plan](docs/plans/resource-aware-scheduler.md)); (b) time arm: consumer feedback → `CostAccount.time = Measured` feeds width-fold (node C+D); dissolves `cost_account_predicted_zero()` on the floor path
-- [ ] P5 native `content(T) = content_hash(subgraph)` — gated on B2
-
-- blockers: [ ] B1 #5295 generic-instantiation (gates cross-shard `Share`) · [ ] B2 cross-tree content-hash (gates P5)
-
-## 3. Complexity budget gate (stability — validation)
-
-Operator decision (2026-06-21): budget-gate validation is the in-window tool; the algorithmic-cost *rewrite construction* is expansion, relocated to §5. Detection is total by construction (cost.dag U2); the gate's reach is a subject-production limit (fn-body reflection), not a detection one.
-
-**◆ Milestones:** budget-gate non-toothless ✓ (#5437) → complexity gates the whole codebase *(gated on §5 fn-body reflection)*
-
-- [ ] complexity lens total over the kernel (cost.dag U2); the gate runs a curated subject roster — ⏳ awaiting sign-off
-- [ ] cost-lens zero-absorption fix — budgets non-toothless (#5437) — ⏳ awaiting sign-off
-  - [ ] a subject-producer for every fn (#5437 helper; whole-corpus needs fn-body reflection)
-    - [ ] complexity budget gates the whole codebase (gated on fn-body reflection)
-- [ ] synthesis stays advisory (by Rice, optimality is a ratchet not a wall — DESIGN §5)
-
-→ rewrite-catalog construction design preserved + relocated to §5 ([plan](docs/plans/algebraic-rewrite-optimization.md))
-
-## 4. Testgen as the bug-class oracle (coverage by construction)
-
-Prevent the next class, not the last instance: generate witnesses from declared structure. → [audit + method](docs/plans/testgen-oracle.md)
-
-**◆ Milestones:** output gated ✓ (#5434) · coproduct-exhaustiveness structural ✓ (#5441) · cross-rep-equality ✓ (#5449) · oracle-method mapped ✓ (#5471) → **▸ NOW: wiring-liveness oracle (compile-time lens · fail compilation)** → anemia lens? *(parked, likely advisory)*
-
-Motivating instance: a prod rotation 401'd `CREDENTIALS_MISSING` because `auth_input: access_token` was modeled (§3-correct) but the interpreter REST realization (`resolve_auth`) only realizes the env-var path — a declared input wired into nothing, typechecking but dead, and the only "auth tests" were `.contains("Bearer")` greps on emitted source (§5 spec-without-execution). The general class is **wiring-liveness**: a declared input must influence the output it feeds — the cache-purity oracle read backwards (purity: *same* in ⇒ *same* out; liveness: *different* in ⇒ *different* out — one perturbation kernel, two readings). → [audit + design](docs/plans/wiring-liveness-preflight.md)
-
-- [ ] gate the generated output (#5434) — floor-discover `generated/` (or regen==committed drift gate) — ⏳ awaiting sign-off
-- [ ] CoproductExhaustiveness made structural (#5441) — over every declared coproduct, not a hand-roster — ⏳ awaiting sign-off
-- [ ] cross-representation-equality category (#5449) — straddle witness per coproduct × native realization — ⏳ awaiting sign-off
-- [ ] **the oracle method (retro)** (#5471) — bug-class→mechanism map (generator/lens/wall); testgen owns A + B-routing only, rest are lenses/walls ([map](docs/plans/testgen-oracle.md) §2) — ⏳ awaiting sign-off
-- [ ] affected-set = the completeness half (#5430) — model the full repo-process universe — frontier now has a paying consumer: the wiring residue-preflight (below) — ⏳ awaiting sign-off
-  - [ ] *anemia lens?* (parked, DESIGN §2 leaf-side) — likely advisory, not a hard gate; decide whether to elevate
-- [ ] **wiring-liveness oracle** — a declared input must influence its output; the cache-purity oracle read backwards (perturbation-response, one kernel two readings). Decidability split (§5): static dataflow reachability over the Node DAG is the **compile-time wall** (declared input with no path to an output = unwired → fail compilation, no runtime gate); perturbation/fuzz is the runtime **confirmation** for the opaque-seed residue (`resolve_auth` is Rust, invisible to `.dag` reflection today). [plan](docs/plans/wiring-liveness-preflight.md)
-  - [ ] **pre-send fail-closed guard** (narrowest seam) — declared-auth-but-no-token ⇒ typed `AuthDeclaredButUnwired` refusal before send. **LANDED (#5683)** — fail-closed typed error before the request leaves `dispatch_rest`, never a remote 401; perturb-confirmed (drop the token → typed error) — ⏳ awaiting sign-off
-  - [ ] **wiring lens — static reachability, compile-time** — over `.dag`-modeled input→output relations; fails compilation on a dead wire. **Wave-1 LANDED (#5679): reachability kernel + wired floor witness.** Primary mechanism; grows to subsume the seed realizations as they self-host (§5/§7)
-  - [ ] **wiring witness — opaque-realization generator** — perturbation witness over declared service input→request relations; RED when an input is dropped (the execution-grounded generalization of the auth case, for realizations the compile-time lens can't see)
-  - [ ] **runtime preflight — residue only** — run the wiring check over the `affected_set` `ReExecFrontier` (the about-to-run slice) before execution; `FailClosed` on a dead wire. Needed only for opaque realizations; dissolves into the compile-time lens as they self-host
-
-## 5. Self-host v2 → delete `src/v1` (expansion)
-
-Anchor (do not flip-flop): `.dag` = truth; purely self-hosting (v2 emits its own seed, no stage0 hand-edits); emit Rust + TypeScript; then shrink the seed to zero. → [plan](docs/plans/v2-self-hosting.md) · [de-fork audit](docs/plans/dsl-v2-defork-audit.md)
-
-Adjacent lane — algorithmic-cost rewrite engine (the §3 construction design; post-stability, natural once `.dag` is the self-hosted truth). → [plan](docs/plans/algebraic-rewrite-optimization.md)
-
-**◆ Milestones (critical path):** front-end ✓ · emit-rust well-typed ✓ · de-fork Step 1 ✓ (#5473) · class-3 corpus-coherence + cargo-green seed ✓ (#5481) → emitted crate cargo-builds green ✓ (#5777/#5873) → **▸ NOW: real fixed point** → `regen --verify` in CI ✓ (#5873) → seed-honesty → **TERMINAL: `src/v1` deleted** *(§7 regen-fixpoint deferred, #5514; src/v1 NOT yet deletable)*
-
-- [ ] rewrite suboptimal patterns to the cheaper equivalent (`O(n²)→O(n)` …) — published finite catalog, bulletproof where it fires
-- [ ] `Unknown` dissolved over time as an anemic atom (reuse the `Disposition` carrier)
-- [ ] `O(n^x)→O(n log n)` substitution as per-idiom rules (candidate shared framing: **redundant intent** — the anti-unification generalization measures `spec − minimal`; see §0 self-applying lenses)
-- [ ] front-end (parse / resolve / infer) over the whole tree — ⏳ awaiting sign-off
-- [ ] emit whole tree `--target rust` (well-typed under CI gate) — ⏳ awaiting sign-off
-- [ ] de-fork dsl ↔ v2 (one std authority) — **grounding cluster UNPARKED: operator ruled FreeMonoid/algebra single authority** (coproduct = structural authority; dsl record-surface derived-from-inhabitance; grounded-realization wins) → de-fork + self-host fused into one grounding lane ([brief](docs/plans/dsl-v2-defork-audit.md) §3b)
-  - [ ] turn on cross-tree import — Step 1 **LANDED** (#5473) — ⏳ awaiting sign-off
-  - [ ] **Root A — emit-seam grounding ✓ LANDED (#5734)**: String/`FreeMonoid`→host `Vec` via the #5428 `RustCorpusRepr` seam; drove HostNative cargo-green *(jolly-cat)* — ⏳ awaiting sign-off
-  - [ ] **Root B — generic-inference keystone ✓ MERGED (#5552)** → def-unification (coproduct authority + aliases) → repoints (algebra/nat/integer/float/logic/effects/verification) → 🟡-marker dissolution *(bright-deer-111)*
+- [ ] **regen-cutover cadence** — absorb latent emitter fixes into the committed seed (#6099 merged with the `machine_width` emit test still ignored: two-generation regen means every emitter improvement is invisible until a cutover). Each cutover un-ignores its witnesses; a stale seed hides emitter regressions.
+  - [ ] **real fixed point** — `content_hash` stage1==stage2 over the FULL seed: host-ground `source_text_code_unit_digest`, widen the `SelfHostRealizedComparisonGate` byte-fold from its 2-file roster (`lib.rs`, `v1_rt.rs`) to all 92 GENERATED files, dissolve the `bootstrap.dag` placeholder hashes. The #6009 gate is INTERIM by its own disposition; this milestone gates the bulk cutover-delete, seed-honesty, and the shelved TS self-host.
+    - [ ] **seed-honesty discharge** (Diverse Double-Compiling) — modeled in `bootstrap.dag` (`SeedHonestyDischarge`), no execution exists; needs a reproducible artifact to double-compile
+    - [ ] **TERMINAL — collapse `src/v1`**: one atomic regen cutover-delete of the 92 GENERATED files (~117k of stage0's ~137k LOC) + per-module test deletes as migration lands + pin the terminal kernel. Requires: HAND queue empty · real fixed point · test-migration green · seed-honesty.
+- [ ] **drain the HAND_MAINTAINED queue** (11 files + `module_path_index`, ~20.6k LOC) + kill the last `patch_*` (`patch_complexity_linearity_audit_mod`) — order: `main.rs` flip-back → the three lens projections → `coproduct_reflection` (de-fork-coupled) → `v1_interpreter` pure-eval emit (kernel D [plan](docs/plans/interpreter-kernel-d.md)) → `cli_run.rs` (largest, ~9.2k LOC; #6046 hard-gates relocating anything further INTO it). Host-physics files (recorded_fixture · resolved_graph_cache · rest_transport · wire_value_serialize) are terminal-kernel pins, not dissolution targets.
+  - [ ] **no-dual-representation-test lens rebuilt pure-v2** (#6104) — lens verdict moves off v1 Rust, the lens-E retirement pattern continued (in flight)
+- [ ] **de-fork dsl ↔ v2 grounding cluster** (one std authority — the fixed point must be well-defined over ONE algebra): `algebra` first (LIVE fail-open, 75 floor entries) → effects/float/integer/logic → `nat` LAST. Operator rulings stand: coproduct = structural authority; grounded-realization wins. [brief](docs/plans/dsl-v2-defork-audit.md)
+  - [ ] **Root B repoints** — def-unification (coproduct authority + aliases) → repoints (algebra/nat/integer/float/logic/effects/verification) → 🟡-marker dissolution (keystone #5552 merged)
   - [ ] v1-coupled `coercion`/`node` renames — deferred to v1-delete
-- [ ] **emitted crate `cargo build`s green (Route-A last mile) ✓ LANDED (#5777/#5873)** — execution-grounded **re-census CONFIRMED 0 TOTAL errors** (cool-hawk-908: `regen_stage0 --emit-fresh` → `cargo build` debug+release, 2026-06-28). **REFUTED** the stale 'residual 2 = E0091×2' hypothesis: #5777 cleared E0599/E0624 **and** E0091 (`alias_unused_param_names` → `PhantomData` for unused type-alias params; `type_alias_phantom_param_test` witnesses). Trajectory: 647 E0308 → 0 (#5716/#5718/#5717) → ~32 other-family → 5 TOTAL → **0 TOTAL** (#5777). #5873: two-generation regen cutover + `regen --verify` CI gate. Compose emits `PhantomData<(Algebra, MachineConstraint)>`. Model hole stays flagged: pipe-first `OptionalOf` unwrap follow-up owed upstream (`Value::Null` runway). *(jolly-cat #5705/#5716/#5718 + cool-hawk-908 re-census)* — ⏳ awaiting sign-off
-  - [ ] real fixed point: `content_hash` stage1==stage2 (dissolve placeholder hashes)
-    - [ ] wire `regen_stage0 --verify` lockstep gate into CI — enforces no hand-edits to **generated** stage0 files (`GENERATED_STAGE0_FILES`); `HAND_MAINTAINED_STAGE0_FILES` are copied through, excluded by design ← **keystone** — ⏳ awaiting sign-off
-      - [ ] dissolve seed hand-patches (`patch_*` / `HAND_MAINTAINED_STAGE0_FILES`) — the `emit_rust` hand-sync caveat the gate reproduces (the required-facts plan is dissolved into the executable `RegenVerifyGate`)
-    - [ ] **TypeScript self-host (own lane)** — emit the compiler ITSELF as TypeScript and reproduce a per-realization merkle fixed point (the Rust `regen --verify` gate, mirrored for the TS realization). This is what makes "language design collapses to a row" real at full scale — §7 medium-agnostic proof, emit Rust *and* TypeScript, fixed point *per realization*. `5-ts-first-class` is the emit seed; this is the self-host. Gated on the Rust fixed point.
-  - [ ] TypeScript to first-class (beyond the `add` slice) — the emit SEED. **In progress: Char atom-realization + green typed-fn emit (#5695), FieldAccess + RecordConstruct + `tsc --noEmit` oracle (#5701), operators by inhabitance (#5704)**
-  - [ ] seed-honesty discharge (Diverse Double-Compiling)
-  - [ ] collapse `src/v1` → pinned v2-emitted seed; delete the 154k hand-written lines (terminal, not a big-bang `rm`)
+- [ ] **test-migration lane** — ~90 v1 test modules / ~939 `#[test]` fns move to floor `*_test.dag` witnesses before their module deletes (hard gate per module, bulk-delete forbidden); ~71 modules have NO floor equivalent today (census §5B: infer_semantics 51 · source_audit 41 · effects 36 · pipeline.rs 418 concern-level only). Parallelizable now; gates the terminal collapse per module.
+- [ ] **make cargo-green continuous (or cheap)** — `route_a_emit_fresh_cargo_green_test` is ignored (~3–5min); an emitter regression that keeps bytes stable per the old seed but breaks a fresh build surfaces late. Decide: fold into `RegenVerifyGate` (doubles its cost) or a scheduled receipt.
 
-## 6. idea → idea compiler (expansion — stop anchoring on code)
+## 2. Compute fabric — own the infra (CI · deploy · control plane)
 
-A program is a canonical `Node` (the *idea*); ingest / emit / eval across many media via one grammar read both directions (§2 N+M). → [plan](docs/plans/idea-machine.md)
+State (2026-07-01): required CI is **stabilized on Ubicloud** (#6107, `ubicloud-standard-16-arm`, one fresh VM per job — the reliability half; zero required jobs on the fleet). The fleet — srv1/srv2 (128c/125GiB Ampere) + srv3 (greenfield, OpenBMC) — carries agent sessions, the dashboard, and non-required runners, with live cgroup caps, runner registration, sudoers, and tailscale-ACL actuation still **hand-managed**. #6096 (fleet converge control plane) was **closed unmerged**; its review gap-list is the re-land spec, and the findings apply to the committed `.github/fleet-converge.sh` too (mutate-then-read, `|| true` swallowing, no hostname dispatch) — the re-land is an architecture change, not a rebase. → [CI humming](docs/plans/ci-humming.md) *(self-hosted-era caveats)* · [host-effect orchestration](docs/plans/host-effect-orchestration.md) · [compute envelope](docs/plans/compute-envelope-model.md) · [charter](docs/plans/ci-process-end-to-end.md)
 
-**◆ Milestones:** medium axis ✓ → language axis: English ingest round-trip → cross-media first-class (JSON/react/diagram) → invert hand-maintained: ROADMAP emitted + drift-gated
+**◆ Milestones:** OOM root-caused (hand-set caps vs measured peaks + budget double-count) ✓ · required CI on Ubicloud ✓ (#6107) · converge shell emitted ✓ (#5725/#5827) · `apply()` Phase A ✓ (#5756) · CD to srv1 ✓ (#6030/#6060/#6093) · witness-level affected-set pruning LIVE ✓ (#6061) → **▸ NOW: CD-transport fix · cap de-conflation (~9× floor width on Ubicloud) · floor <1min · converge re-land to the signed design** → periodic actuation with receipts → srv3 OsInstalled · `apply()` Phases B–D → required CI returns to the fleet → **TERMINAL: install/manage/decom all on `apply()` with fail-closed receipts**
 
-- [ ] **medium axis** — `Medium<R>` + `DecodeFidelity`; `LanguageModel` unified (13 forks dissolved); `compile(Eval) → EvalResult{value: Medium<Node>}` — ⏳ awaiting sign-off
-- [ ] **round-trip law (ingest∘emit = id, DecodeFidelity-bounded)** (#5525/#5527) — established across two structurally-different media: markdown (block-document) and GHA-expr (recursive-expression). v2-TargetModel convergence is the deferred single-authority destination; per-medium round-trips are v1-seed interim. Authority for the law: the round-trip oracle #5513 §5.2 [plan](docs/plans/emission-ingestion-inverse.md) — ⏳ awaiting sign-off
-- [ ] **ingestion as a first-class direction** — fold foreign surface INTO the node tree (the inverse of emit): `Lossless` where decidable, fail-closed `DecodeFidelity` where not, and **emit = ingest⁻¹ over ONE `GrammarRelation`** (§4: one grammar read both directions; the §7 "any language with a typed honesty boundary" payoff). Emission is well-covered (round-trip law, language axis); ingest *at large* — beyond the per-medium round-trips — has no lane. (the comment parser-wall #5579 is one corner of the construction direction; ingest-at-large needs an owner.) [plan](docs/plans/emission-ingestion-inverse.md)
-- [ ] **language axis** — 15+ targets wave-1; English emit proven
-  - [ ] English vocabulary closure → fail-closed English ingest (today's catch-all is fail-open; also §0)
-  - [ ] English ingest round-trip (only emit proven today)
-- [ ] **cross-media targets beyond syntax** — JSON / react / diagram as first-class media (not stringified)
-  - [ ] `Medium<A> ↔ Medium<B>` homomorphisms
-  - [ ] **format-model reconciliation** — decompose record-spelling onto single authority (`SerializationKnobs` + `serialize_record` → `Doc`); complementary to regime-2 line-layout half [plan](docs/plans/format-model-reconciliation.md)
-    - [ ] **C1 — SerializationKnobs + serialize_record keystone** (#6045) — delete `FormatModel`; migrate runner manifest byte-identically; JSON swap-test witness (still-wolf-292) [plan](docs/plans/format-model-reconciliation.md)
-      - [ ] **C3 — gitignore de-fork** — migrate `OutputFormat` consumer onto `SerializationKnobs` + `ConfigFormat`; delete `OutputFormat` + `gitignore_render.dag` [plan](docs/plans/format-model-reconciliation.md) — ⏳ awaiting sign-off
-      - [ ] **C4 — dnsmasq emit** — dnsmasq `ConfigFormat` + knobs; honest positional micro-syntax [plan](docs/plans/format-model-reconciliation.md)
-      - [ ] **C5 — digest/accelerator kv** *(low)* — route `digest_render` through `serialize_record` [plan](docs/plans/format-model-reconciliation.md)
-      - [ ] **C6 — CSS declaration blocks** *(cosmetic)* — `css_rule` props as record emit [plan](docs/plans/format-model-reconciliation.md)
-- [ ] **emission = ingestion⁻¹ extended past syntax** — diagnostic + orchestration intent emit per-target by rows [plan](docs/plans/emission-ingestion-inverse.md)
-  - [ ] **shell emission model** — `emit(intent,Bash)` via `05_emit_orchestration`; dissolves `program.dag` + `ShellCommand{script}` (Phase B); cross-link §1 `1-inline-shell-defork` [plan](docs/plans/shell-emission-model.md)
-    - [ ] **slice 0 — CI EAGAIN-retry** — `ci_cargo_eagain_retry_core` → `emit(Retry,Bash)`; byte-oracle = committed `ci.yml` [plan](docs/plans/shell-emission-model.md)
-      - [ ] **slice 1 — control-flow emit** — `If` then `For`/`While` (`orch_emit_step` arms + byte goldens) [plan](docs/plans/shell-emission-model.md)
-        - [ ] **slice 2 — fleet_converge** — `fleet_converge_emit` → committed `.github/fleet-converge.sh` [plan](docs/plans/shell-emission-model.md)
-          - [ ] **slice 3 — live_deploy** — freeze golden first; heredoc foreign-media = permanent ratchet [plan](docs/plans/shell-emission-model.md)
-            - [ ] **slice 4 — tail** — `bmc_token_federation` → `ci_workflow` RunSteps → githooks [plan](docs/plans/shell-emission-model.md)
-- [ ] `FidelityDisposition` compose-up → medium-level `DecodeFidelity`
-- [ ] eval runtime generalization (wave-1 literal pins → `wave1_model_core` primitives)
-- [ ] **invert hand-maintained artifacts** — emit each (ROADMAP flagship · doc indexes) from its `.dag` authority + drift-gate it (the ci.yml pattern) [plan](docs/plans/invert-hand-maintained.md)
-  - [ ] **PR→checkbox status + section-emit + projection layer** (#5491/#5508/#5520) — box derived from an explicit *completes-iff-PR* binding (not mere mention), drift-gated; slice-1 status derivation + slice-2 section-emit + step-3a whole-document projection landed; #5513 medium-as-Node operative as the acceptance test [plan](docs/plans/invert-hand-maintained.md) — ⏳ awaiting sign-off
+**Now — correctness of the current posture:**
 
-## 7. HTML / React rendering (expansion — the "website" sellable piece)
+- [ ] **fix the CD transport premise** *(URGENT — fail-open wrong-host-apply risk on every main push)* — `ci_deploy_access` is `LocalShell` with principal `runner` (premise: runner is ON srv1, #6093), but since #6107 the runner is a Ubicloud VM; `deploy_dashboard_srv1` needs `SshShell`-over-tailnet + an ephemeral-runner credential (#6066 Phase 2 design). Verify or disable the job's effect before it next fires.
+- [ ] **cap de-conflation** — split `gunbc_ci_runner_cgroup_memory_cap` (8GiB fleet slot contract, load-bearing for the dormant fleet budget tree) from the Ubicloud 48GB VM envelope → floor `spawn_width` ~9 on Ubicloud (~9× floor throughput; the deferred half of #6107).
+- [ ] **merge-admission gate: close the HELD state** — wired (#5974/#6080) but the freshness block is HELD pending a real green-on-main receipt, and the #6080→#6101 accidental re-apply/re-revert needs a clean landing. [decision record](docs/plans/ci-merge-freshness.md)
 
-Depends on §6 — react/html is a first-class medium (idea-machine.md §3/§4), downstream of §6's cross-media item.
+**Floor wall-clock — 26m → <1min on a typical PR:**
 
-**◆ Milestones:** react/html page stands up (real page) → in the demo beside the TS emit
+- [ ] **the floor is a full recompute every run** — profiled 26m: ~518s resolves all 870 witnesses cold, a second ~275s discovery pass, ~360s effect-bound gates, ~134s seed compile; on a one-file PR ~99% of the resolve recomputes witnesses whose inputs did not change. **Target: <1min.** The lever is resolve-phase incrementality, NOT cross-run caching — CI is cold-dominated (the exe-hash re-colds on every code change).
+- [ ] **affected-set de-fork — `v2.lens.affected_set` as single authority** — witness-level run/skip live (#6061, v1 `force_run_all` hack retired); remaining: precompute-skip wired to the same one `.dag` query, the Rust parallel (`NodeFrontierSeeds`) deleted (N→1), and a wall-clock+RSS receipt on a scoped diff. [plan](docs/plans/affected-set-precompute-pruning.md)
+  - [ ] **provenance ingest live at floor runtime** (#6105) — make the `v2.lens.affected_set` node-closure LIVE during the floor pass (`host_source_root_ingest_manifest` is Empty today); gates node-level pruning + the Rust-bridge deletion (in flight) [plan](docs/plans/affected-set-precompute-pruning.md)
+- [ ] **kill the within-run double-resolve** — discovery and execution each resolve the corpus (~275s second pass); execution piggybacks the discovery resolve. Pure within-run win (M1 within-walk memo landed #6008 — this is the cross-phase half).
+- [ ] **profile the 518s resolve** — `budget_roster` resolves ~450× its structural twin (machine-independent resolver bug); a few pathological witnesses likely dominate. Profile which, fix the resolver.
+- [ ] **G5 rust-gate selection** — rust fmt/clippy/run-all is all-or-nothing on `.rs` PRs (the ~530s hot spot); no affected-set, while the `.dag` floor already has one. Matters until v1 is gone. [plan](docs/plans/ci-selection-vs-scheduling.md)
+- [ ] **floor runs the right things** — SELECTION (what changed) vs SCHEDULING (by cost); per-PR = run-all sound baseline (#5427) shrunk to the affected set; cost never drives selection. [plan](docs/plans/ci-selection-vs-scheduling.md)
+- [ ] **resolve-cache default-on** — purity proven (616/616) but opt-in: whole-file JSON IO buffers ~11× the packed graph and OOMed the concurrent floor (#5789 reverted); gated on a streaming IO realization. The warm ~18% lever, downstream of incrementality.
+- [ ] **G4 dispatch dup** — `workflow_dispatch`+PR fire two same-SHA runs; the concurrency fallback won't collapse them → wasted runners (and OOM risk at fleet return). [decision record](docs/plans/ci-merge-freshness.md)
 
-- [ ] react/html rendering stands up (real page, not fixture) — **SERVE page green-by-execution via gunbc-run landed (#5662); real socket the remaining gap (Lane C)**
-- [ ] add to the demo alongside the TypeScript emit (website + language, dogfoodable)
+Receipts + adjacent levers: [fractal Gantt](docs/plans/ci-floor-fractal-gantt.md) · [memory chronicle](docs/plans/interpreter-memory-chronicle.md) · [representation minimization](docs/plans/representation-minimization.md) · [shared-compute memoization](docs/plans/floor-shared-compute-memoization.md) *(M1 ✓ #6008; M2 gated on determinism #5941)* · [OOM reclassification](docs/plans/ci-oom-reclassification.md).
 
-**Hosting / live dashboard lane** *(operator-directed)* — stand the roadmap dashboard up **live on the fleet** (srv1/srv2, `fleet_intent`), dogfooding §7's page rendering and §8's session-dashboard. Each node names the displaced cost: a roadmap you can *see and act on in a browser*, not only read as committed markdown. Binding strategy: **emit a TS/Node server** — the host bridge is an emitted artifact, the `.dag` stays the authority and Rust does not grow (§2 Realization handler; gives the modeled-but-dead `NodeHttpCreateServer*` types their consumer).
+**Control plane — the #6096 re-land, done right (G2/G3):**
 
-**Hosting / live dashboard lane:**
+- [ ] **G2 runner deployment derived from `fleet_intent`** — runners/host + registration from the modeled envelope; the gunbc-EMITTED converge shell is the host-apply carrier (operator-set). The umbrella for the re-land below.
+  - [ ] **closed-loop converge re-land** — the signed design: base snapshot → edit → **three-way diff** → gated plan → apply → **independent read-back** → commit/retract; **hostname self-selection** (the committed script runs all three hosts' rows unconditionally); **sound swap admission** (per-slot × slot-count overcommit vs host swap, not a single-slot compare); runner-width **INCREASE provisioning** (today an echo-to-stderr stub). The three-way-diff carrier does not exist yet in `dsl/gunbc/`.
+    - [ ] **privilege model for host mutation** — converge writes `/etc/systemd/system/*.d` and runs `systemctl set-property` (root), but #6096's service ran as the operator user with `|| true` swallowing EPERM; extend `DeployAccess`/`host_effect` so an unprivileged apply is a **typed refusal BEFORE mutation**, never a swallowed failure.
+    - [ ] **periodic actuation with receipts** — a systemd timer (or ctrl thin-run) executes the emitted converge per-host under the privilege model; receipts land where a hand-edit REDS (G3's unmet promise). Until this exists the emitted shell is spec-without-execution.
+- [ ] **G3 cgroup caps derived + reconciled** — `TasksMax`/`MemoryMax` are host-set by hand and only *read* live; derive from the budget tree + reconcile via converge so a hand-edit reds.
+- [ ] **G1 placement** — job→host is GitHub-native, demand-blind, first-idle → heavy runs co-reside while the other host idles. Dormant while required CI is on Ubicloud; live again at fleet return. [plan](docs/plans/compute-envelope-model.md)
+- [ ] **shell emission model** — `emit(intent, Bash)`; the mechanism the emitted converge/CD artifacts ride on (kept scoped to the converge/CI path; the tail slices are shelved). [plan](docs/plans/shell-emission-model.md)
+  - [ ] **orchestration emission → agnostic registry dispatch** (#6106) — de-bash the compiler stage (in flight)
+  - [ ] **slice 0 — CI EAGAIN-retry** — `ci_cargo_eagain_retry_core` → `emit(Retry, Bash)`; byte-oracle = committed `ci.yml` [plan](docs/plans/shell-emission-model.md)
+    - [ ] **slice 1 — control-flow emit** — `If` then `For`/`While` (`orch_emit_step` arms + byte goldens) [plan](docs/plans/shell-emission-model.md)
+      - [ ] **slice 2 — fleet_converge emit** — `fleet_converge_emit` → committed `.github/fleet-converge.sh`; the emit half of the re-land [plan](docs/plans/shell-emission-model.md)
+- [ ] **`apply()` Phases B–F** — B `host_exec`→`apply()` (gated on srv3 OsInstalled) · C Redfish live (partially via #6097) · D converge lane = EmitArtifactThenThinRun handler (first ctrl LOC deleted) · E pull-mode self-converge (autoinstall plants the on-host agent; the push star retires) · F decom. Phase A landed (#5756). [plan](docs/plans/host-effect-orchestration.md)
+- [ ] **srv3 → OsInstalled** — finish the greenfield install over the solve-driven NBD-proxy actuator (#6097, live BMC); proves the install band end-to-end. [plan](docs/plans/srv3-webui-kvm-virtual-media.md)
 
-- [ ] **roadmap → HTML page** *(keystone)* (#6010) pure projection `roadmap_model` → `MarkupNode` (`gunbc.roadmap_page`), serialized through the same XSS-safe HTML boundary as gunbhub; per-node status (open/review/done) / sizing / owner / carrier links. No substrate change.
-  - [ ] **live service on srv1/srv2** (#6010) emit a TS/Node HTTP server (realization handler for `NodeHttpCreateServerEmissionTarget`) that serves the rendered pages bound to a port on a fleet host; the missing port-binding piece — today serving is a pre-rendered static table + a pure request→response fn.
-    - [ ] **live deploy on srv1 over tailnet** (#6030) .dag-orchestrated deployment onto srv1: `DeploymentSpec` with typed owned-vs-ensured steps, apply+retract folds from one spec, `host_effect_realize` SshShell arm (`ssh.Session.Exec` via `ssh_session_exec`), idempotent apt ensure for tailscale+nodejs, emit systemd unit + `tailscale serve`.
-    - [ ] **idea input → roadmap node** capture a free-form idea via the live service (dynamic POST handler) and admit it as a roadmap work node (input-envelope admission §5). Composes `7-live-serve` + `7-interactivity`.
-  - [ ] **interactive components** *(props / state / handlers)* `MarkupAttrValue = LiteralValue | ExprValue` coproduct + expression children; JSX emits `{…}`, HTML emit **fails closed** on expression nodes (the `DecodeFidelity` honesty boundary §5). Load-bearing `std/markup.dag` shape — sign off before authoring.
+**Fleet return — required CI back on our metal:**
 
-## 8. Session dashboard on `.dag` (SHELVED)
+- [ ] **SessionSliceEnforcement + verified-effective caps** — agent-session cgroups have no citable verified-effective cap (the residual over-commit vector on srv1/srv2); the humming apply-rule stands: runner caps must not tighten while sessions are uncapped and oomd is absent.
+  - [ ] **return required CI to the fleet** (or hybrid: fleet + Ubicloud burst) — gated on: converge closed-loop live · caps verified-effective on all hosts · SessionSliceEnforcement · the OOM consumer. Retires rented compute as the required path; 3×128c/125GiB does no required-CI work today.
+- [ ] **OOM classification consumer** — `ClusteredOutOfMemoryKill` is modeled but absent from the active infra-retry signature roster; build the consumer so an OOM is first-class, never EAGAIN-shaped. [plan](docs/plans/ci-oom-reclassification.md)
+- [ ] **resource-aware scheduler** — width derived from per-`Runnable` measured cost, self-calibrating: (A) per-shard peak-RSS plumbing → (B) `CostEstimate.space` on `Runnable` → (C) scheduler reads cost, static side-channel deleted → (D) calibration loop retires the data rows (instrument landed #5431). Construction invariant: more memory → more width → more throughput, no `.dag` edits. [plan](docs/plans/resource-aware-scheduler.md)
+- [ ] **resource budget tree** — admission (construction) · conserve-lens (honest residue) · runtime reconcile (fail-closed handler), three verdicts never conflated; subsumes spawn-width/placement/compile-jobs as consumer leaves. Protective only when paired with an enforcement actuator (cgroup `memory.max`, operator-fenced). [carrier](dsl/product/budget_tree.dag) [grounding](docs/plans/budget-tree.md)
+- [ ] **one Placement authority** — jobs (GitHub) · threads (`spawn_width`) · sessions (ctrl capacity) are 3 forks of "put work on a host"; `Placement`/`Materialization` are modeled but inert — CI consuming them is the lane's real deliverable.
 
-Product/infra tooling — shelved during the stability window (no `.dag`-correctness leverage right now). **One slice un-shelved (operator-directed): the roadmap-as-spawner MVP below** — it earns `.dag`-correctness leverage by making the roadmap the single authority for tracked work (§3) and is the first inhabitant of migrating ctrl onto the substrate (§7).
+## 3. The floor — audit what we have (does it actually do what it claims?)
 
-- [ ] idea → PR pipeline *(deferred)*
-- [ ] **roadmap-as-spawner MVP** *(active — operator-directed, un-shelves this slice)* — the gunbc roadmap `.dag` becomes the work-tracking DAG that drives ctrl session spawns. **Structure** (what work exists, deps, sizing, acceptance) lives only in the `.dag` (single authority §3, edited by committing to main); **runtime state** (done/live-session) flows ctrl→gunbc read-only as acceptance evidence — two kinds of fact, one home each, no dual authority. gunbc emits `roadmap-spawn-request/v1` via `roadmap_next_spawnable` (graph readiness = not-done ∧ deps-done); a thin ctrl bridge consumes it, dedups vs live sessions, and reuses the existing auto-spawn poller (zero new spawn code, #1812 merged). **Fail-closed pause kill switch** (§5, default paused — a missing/garbled control file spawns nothing). Stage 2 migrates spawn/session-management onto the `.dag` host-effect `apply()` seam (host-effect-orchestration Phase D/E), shrinking the ctrl realization toward zero (§7). [plan](docs/plans/roadmap-spawner.md)
+Both pillars ride the CI floor: tree-wide marker-driven witness discovery · compile-clean gate · generated-artifact drift gates (this document is one) · `regen --verify` (#5873) · doc-graph reachability · emit-determinism (#5941) · the interim self-host comparison (#6009). Those stand. The floor's *expansion* lanes (testgen, wiring-liveness, complexity gates, lens meta-walls) are shelved — a new wall must displace a measured cost on a pillar path to un-shelve.
+
+**Audit directive (operator, 2026-07-01): thoroughly audit what we have and what it actually does.** For each load-bearing mechanism, prove **by execution** that it does what it claims, with a **discriminating perturb** that goes RED when the behavior is wrong — a typecheck or a grep is not a consumer (DESIGN §5), and a wired gate can still be vacuous. A mechanism claim without a red-control is *unverified*, whatever its docs say. The reset's own mapping found the pattern live: the committed converge shell is spec-without-execution (§2), the fixpoint gate self-declares interim (2-of-92 files), cargo-green is an ignored test. Highest-stakes mechanisms first:
+
+**Audit — green by execution, red by perturbation:**
+
+- [ ] **affected-set lens** *(the operator's named example)* — witness-level skip is LIVE on the floor (#6061); prove it: (a) **soundness** — construct a diff that MUST re-run a witness and assert it runs (a skipped-but-affected witness is the fail-open catastrophe); (b) **effectiveness** — receipts on real scoped diffs (skip counts + wall-clock delta, not claims); (c) **fail-closed default** — a provenance gap falls back to run-all, witnessed RED-on-perturb. The node-closure half (#6105) inherits the same receipt obligation before it may prune.
+- [ ] **mechanism inventory with red-controls** — census every wired gate/lens/cache (floor-plan roster + `commit_workflow`): what it claims · its discriminating RED witness · its last execution receipt. Anything without a red-control gets one or gets demoted/deleted. The inert-lens backstop (#5433) covers *wiring*; this covers *claim-vs-behavior*.
+- [ ] **cache honesty re-receipt** — re-run the warm==cold purity oracle against CURRENT main (616/616 was pre-reset), and close the sccache exit-0-no-binary class (below); a cache that lies is worse than no cache.
+
+**Open floor holes:**
+
+- [ ] **nightly full-corpus selector-backstop** — per-PR selection is only sound because nightly runs everything; ⚠ CI-gen load-bearing
+- [ ] **tree-scoped builtin registry** (fail-closed) — the global seed registry leaks intrinsics into the substrate compile, making compile-clean falsely green; instance fix #5452, class fix (partition) open [force-check plan](docs/plans/compile-clean-forcecheck.md)
+- [ ] **kill sccache false-greens** — exit-0-no-binary; build-verify asserts the artifact exists + is fresh (partly landed in `ci.yml`)
+
+## 4. Shelved (parked 2026-07-01 — not deleted)
+
+Every lane below was live roadmap before the reset. Shelved = plan docs and carriers stay in place, nothing dispatches from here, and the git-history ROADMAP.md holds the full pre-reset detail (structure, milestones, sign-off states). Un-shelve by PR into §1–§3, priced in displaced cost.
+
+- **fold-ergonomics lane** — inert-abstraction lens · non-fold-residue audit · staging combinator · ban source comments [charter](docs/plans/fold-ergonomics.md) [residue catalogue](docs/plans/non-fold-irreducible-residue-catalogue.md) [debt sample audit](docs/plans/real-debt-syntactic-sample-audit.md) [eval-bind PROPOSE](docs/plans/eval-bind-node-eval-propose.md)
+- **fail-closed meta band** — `Value::Null` split (the deep root) · Disposition carrier · reference grounding · cardinality refinement · expressibility frontier · reachability-completeness lens · axiom+syllogism lens · self-applying lenses · inert-lens promotion + gate-hygiene residue [lockdown](docs/plans/fail-closed-lockdown.md) [fork plan](docs/plans/model-realization-fork.md) [Disposition](docs/plans/disposition-carrier.md) [reference grounding](docs/plans/reference-grounding-migration.md) [cardinality](docs/plans/cardinality-refinement.md) [P1 where-lowering](docs/plans/p1-where-clause-lowering.md) [frontier](docs/plans/expressibility-frontier.md) [inert-layer lens](docs/plans/inert-layer-lens.md) [axiom lens](docs/plans/axiom-syllogism-lens.md) [self-applying](docs/plans/self-applying-lenses.md) [construction rule](docs/plans/construction-justification-rule.md)
+- **rust-gate `.dag`→rust coverage wall (edge-b)** + stage0 clone-census ratchet [brief](docs/plans/edge-b-rust-dag-provenance-brief.md)
+- **complexity budget whole-codebase** + the algebraic-rewrite construction engine (O(n²)→O(n) catalog, `Unknown` dissolution) [rewrite plan](docs/plans/algebraic-rewrite-optimization.md)
+- **testgen oracle + wiring-liveness family** (compile-time wiring lens wave-1 ✓ #5679 · pre-send guard ✓ #5683 stand; the generator/preflight expansion parks) [method](docs/plans/testgen-oracle.md) [wiring](docs/plans/wiring-liveness-preflight.md)
+- **caching completion** — `realize(subject)` one door (P2) · M5 fixture-store · native `content(T)` (P5) · B1 generic-instantiation / B2 cross-tree content-hash blockers · one Materialization kernel · shared secrets model [loop](docs/plans/realization-measurement-loop.md) [M4](docs/plans/m4-universal-hermetic-corpus.md) [M5](docs/plans/m5-fixture-store-consolidation.md)
+- **CI inline-shell de-fork · interpreter terminal-output de-fork** (seed forks of modeled authorities; both shrink as v1 burns down) [emission-ingestion](docs/plans/emission-ingestion-inverse.md)
+- **idea machine** — ingest-at-large · English closure/round-trip · cross-media (JSON/react/diagram) · `Medium` homomorphisms · format-model C4–C6 · fidelity compose-up · eval generalization · invert-hand-maintained residue [plan](docs/plans/idea-machine.md) [format reconciliation](docs/plans/format-model-reconciliation.md) [invert](docs/plans/invert-hand-maintained.md)
+- **shell-emission slices 3–4** — live_deploy golden · bmc_token_federation → ci_workflow RunSteps → githooks tail [plan](docs/plans/shell-emission-model.md)
+- **TypeScript first-class emit + TS self-host** — END GOAL UNCHANGED (both realizations, per plan do-not-relitigate); resumes after the Rust fixed point [gap census](docs/plans/typescript-gap-census.md)
+- **HTML/React + live dashboard lane** — page ✓ (#6010) and srv1 deploy ✓ (#6030) keep running as-is; interactivity · idea-input · demo park (the CD *transport* fix is live work, §2)
+- **session dashboard + roadmap-as-spawner** — the spawn bridge stays fail-closed paused; §1/§2 sized nodes are the only dispatch surface [plan](docs/plans/roadmap-spawner.md)
+- **gunbhub** (own the Git/CI engine, closes G6) · internal repo model · compute fabric as a sellable piece
+- **design sketches without an active lane** [orchestration-as-intent](docs/plans/orchestration-as-intent-design.md) [model-grounding extract](docs/plans/model-grounding-lens-extract.md) [node-minimal representation](docs/plans/node-minimal-representation-sketch.md) [func-env sigs](docs/plans/func-env-sigs-single-authority.md) [resolved-graph minimization](docs/plans/resolved-graph-representation-minimization.md) [emit-host batch isolation](docs/plans/emit-host-batch-isolation.md) [accelerator roundtrip](docs/plans/accelerator-demo-roundtrip.md) [commit workflow](docs/plans/commit-workflow.md) [input envelope](docs/plans/input-envelope-roadmap.md) [seed-debt bundle 2](docs/plans/seed-debt-bundle-item-2.md) [resolver collision wall](docs/plans/resolver-type-name-collision-wall.md) [regime-2 shared emission](docs/plans/regime2-shared-emission-fold.md)

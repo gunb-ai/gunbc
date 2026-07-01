@@ -86,7 +86,7 @@ fn preamble() -> List<MarkdownBlock> {
     HeadingBlock { level: H1, inlines: [TextInline { text: "gunbc — Roadmap" }] },
     ParagraphBlock { inlines: [TextInline { text: "`DESIGN.md` is the authority for *why*. This is the **shape of the work** — a scannable, dependency-ordered checklist. **Checkboxes are authoritative for progress**; detail lives in the linked plan docs — don't restate it here (no dual representations). A task's real state is its branch/PR." }] },
     ParagraphBlock { inlines: [TextInline { text: "Legend: `[x]` done · `[ ]` todo · **indentation = depends on the item it sits under**. Each section opens with a **◆ Milestones** spine — the *verifiable* checkpoints in dependency order (`✓` reached · `▸` now · `○` ahead); the checklist below is the work toward them. Read L→R = the path." }] },
-    ParagraphBlock { inlines: [TextInline { text: "**Reset 2026-07-01 (operator-directed).** The roadmap is collapsed to **two pillars** — **§1 get off v1** and **§2 own the compute fabric** — plus **§3 the floor** that keeps both honest. Everything else is **§4 shelved**: parked, not deleted — plan docs and carriers stay, no work dispatches from it, and un-shelving is a PR that moves a node into §1–§3 with a displaced-cost justification (DESIGN §6). The prior roadmap with full detail is in git history. Priority order, top = now." }] },
+    ParagraphBlock { inlines: [TextInline { text: "**Reset 2026-07-01 (operator-directed).** The roadmap is collapsed to **two pillars** — **§1 get off v1** and **§2 own the compute fabric** — plus **§3 the floor + audit**: the walls that keep both pillars honest, and an execution-grounded audit of what the existing machinery *actually does* (green by execution, red by perturbation). Everything else is **§4 shelved**: parked, not deleted — plan docs and carriers stay, no work dispatches from it, and un-shelving is a PR that moves a node into §1–§3 with a displaced-cost justification (DESIGN §6). The prior roadmap with full detail is in git history. Priority order, top = now." }] },
   ]
 }
 
@@ -205,11 +205,21 @@ fn section_2() -> RoadmapSection {
 
 fn section_3() -> RoadmapSection {
   RoadmapSection {
-    title: "3. The floor (standing walls — kept honest, not expanded)",
+    title: "3. The floor — audit what we have (does it actually do what it claims?)",
     elements: [
-      section_prose(content: "Both pillars ride the CI floor: tree-wide marker-driven witness discovery · compile-clean gate · generated-artifact drift gates (this document is one) · `regen --verify` (#5873) · doc-graph reachability · emit-determinism (#5941) · the interim self-host comparison (#6009). Those stand; the items below are the floor's own open holes. The floor's *expansion* lanes (testgen, wiring-liveness, complexity gates, lens meta-walls) are shelved — a new wall must displace a measured cost on a pillar path to un-shelve."),
+      section_prose(content: "Both pillars ride the CI floor: tree-wide marker-driven witness discovery · compile-clean gate · generated-artifact drift gates (this document is one) · `regen --verify` (#5873) · doc-graph reachability · emit-determinism (#5941) · the interim self-host comparison (#6009). Those stand. The floor's *expansion* lanes (testgen, wiring-liveness, complexity gates, lens meta-walls) are shelved — a new wall must displace a measured cost on a pillar path to un-shelve."),
+      section_prose(content: "**Audit directive (operator, 2026-07-01): thoroughly audit what we have and what it actually does.** For each load-bearing mechanism, prove **by execution** that it does what it claims, with a **discriminating perturb** that goes RED when the behavior is wrong — a typecheck or a grep is not a consumer (DESIGN §5), and a wired gate can still be vacuous. A mechanism claim without a red-control is *unverified*, whatever its docs say. The reset's own mapping found the pattern live: the committed converge shell is spec-without-execution (§2), the fixpoint gate self-declares interim (2-of-92 files), cargo-green is an ignored test. Highest-stakes mechanisms first:"),
       section_group(
-        label: "",
+        label: "Audit — green by execution, red by perturbation",
+        nodes: [
+          authored_wi(id: "3-audit-affected-set", done: false, content: "**affected-set lens** *(the operator's named example)* — witness-level skip is LIVE on the floor (#6061); prove it: (a) **soundness** — construct a diff that MUST re-run a witness and assert it runs (a skipped-but-affected witness is the fail-open catastrophe); (b) **effectiveness** — receipts on real scoped diffs (skip counts + wall-clock delta, not claims); (c) **fail-closed default** — a provenance gap falls back to run-all, witnessed RED-on-perturb. The node-closure half (#6105) inherits the same receipt obligation before it may prune.", intricacy: IntricacyHigh, volume: VolumeMedium, repo: "gunbc"),
+          authored_wi(id: "3-audit-gate-inventory", done: false, content: "**mechanism inventory with red-controls** — census every wired gate/lens/cache (floor-plan roster + `commit_workflow`): what it claims · its discriminating RED witness · its last execution receipt. Anything without a red-control gets one or gets demoted/deleted. The inert-lens backstop (#5433) covers *wiring*; this covers *claim-vs-behavior*.", intricacy: IntricacyMedium, volume: VolumeLarge, repo: "gunbc"),
+          authored(id: "3-audit-cache-honesty", done: false, content: "**cache honesty re-receipt** — re-run the warm==cold purity oracle against CURRENT main (616/616 was pre-reset), and close the sccache exit-0-no-binary class (below); a cache that lies is worse than no cache."),
+        ],
+        edges: [],
+      ),
+      section_group(
+        label: "Open floor holes",
         nodes: [
           authored(id: "1-nightly", done: false, content: "**nightly full-corpus selector-backstop** — per-PR selection is only sound because nightly runs everything; ⚠ CI-gen load-bearing"),
           authored_pp(id: "1-builtin-registry", done: false, content: "**tree-scoped builtin registry** (fail-closed) — the global seed registry leaks intrinsics into the substrate compile, making compile-clean falsely green; instance fix #5452, class fix (partition) open", carriers: [ptr(label: "force-check plan", path: "docs/plans/compile-clean-forcecheck.md")]),
