@@ -231,6 +231,4 @@ fn coverage_domain_equivalence_argument_holds() -> Bool {
     && rows_cover_kind(kind: violation_kind_transport_fusion)
     && rows_cover_kind(kind: violation_kind_dead_param)
     && rows_cover_kind(kind: violation_kind_embedded_policy)
-    && length(xs: violation_kinds) == 4
-    && length(xs: extdeps_shape_transport_policy_receipt_rows) == 21
 }

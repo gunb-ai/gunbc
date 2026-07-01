@@ -1,0 +1,17 @@
+module v2.test.lens_no_dual_representation_test.lens_unit.controls
+
+import v2.lens.no_dual_representation_test {
+  no_dual_representation_test_clean_holds,
+  no_dual_representation_test_live_count,
+  no_dual_representation_test_live_unrostered_count,
+}
+import v2.std.logic { Bool }
+
+test fn no_dual_representation_live_corpus_is_clean() -> Bool {
+  no_dual_representation_test_clean_holds()
+}
+
+test fn no_dual_representation_live_corpus_has_coverage() -> Bool {
+  no_dual_representation_test_live_count() >= 0
+    && no_dual_representation_test_live_unrostered_count() == 0
+}

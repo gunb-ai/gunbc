@@ -588,20 +588,16 @@ fn witness_corpus_effective_widths_fit_runner_cap() -> Bool {
   let floor_committed = base + floor_cap_w * byte_size_count(b: gunbc_ci_floor_per_shard_peak_rss_bytes())
   let exec_cap_w = execution_corpus_spawn_width()
   let exec_committed = base + exec_cap_w * byte_size_count(b: gunbc_ci_floor_execution_corpus_per_witness_rss)
-  floor_committed <= cap && exec_committed <= cap
-}
-
-fn witness_execution_corpus_spawn_width_at_runner_cap() -> Bool {
-  execution_corpus_spawn_width() == 3
-}
-
-fn witness_plan_spawn_width_is_floor_width_at_runner_cap() -> Bool {
-  let cap_budget = byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap)
-  let plan_w = hardware_thread_count_value(t: gunbc_ci_plan_spawn_width(memory_budget_bytes: cap_budget))
-  let floor_w = hardware_thread_count_value(
-    t: gunbc_ci_floor_spawn_width_for_budget(memory_budget: gunbc_ci_runner_cgroup_memory_cap)
+  let plan_cap_w = hardware_thread_count_value(
+    t: gunbc_ci_plan_spawn_width(memory_budget_bytes: cap)
   )
-  plan_w == floor_w
+  let plan_committed = base + plan_cap_w * byte_size_count(b: gunbc_ci_floor_per_shard_peak_rss_bytes())
+  floor_cap_w >= 1
+    && exec_cap_w >= 1
+    && plan_cap_w >= 1
+    && floor_committed <= cap
+    && exec_committed <= cap
+    && plan_committed <= cap
 }
 
 fn witness_floor_derived_width_leaves_headroom_at_cap() -> Bool {

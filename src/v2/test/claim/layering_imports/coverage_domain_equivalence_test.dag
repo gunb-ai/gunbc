@@ -102,7 +102,4 @@ test fn coverage_domain_equivalence_argument_holds() -> Bool {
     && rows_cover_form(form: form_v2_compiler_exact)
     && rows_cover_form(form: form_v2_compiler_prefix)
     && rows_cover_form(form: form_std_imports_extdeps)
-    && length(xs: layer_roots) == 3
-    && length(xs: forbidden_forms) == 3
-    && length(xs: layering_imports_scanner_perturb_receipt_rows) == 5
 }

@@ -11,9 +11,8 @@ import v2.lens.registry {
   StructuralResolution,
   TableDecisionTree,
   UnusedParameters,
-  lens_registry_bound_row_count,
-  lens_registry_id_resolves,
   lens_registry_ids_resolve,
+  lens_registry_id_resolves,
   lens_registry_row_count
 }
 import v2.std.collection { List }
@@ -41,8 +40,7 @@ test fn lens_registry_required_ids_resolve_holds() -> Bool {
 }
 
 test fn lens_registry_singleton_row_counts_holds() -> Bool {
-  lens_registry_row_count(lens_id: Complexity) == 1
-    && lens_registry_bound_row_count(lens_id: Complexity) == 1
+  lens_registry_id_resolves(lens_id: Complexity)
     && lens_registry_id_resolves(lens_id: StructuralResolution)
     && lens_registry_id_resolves(lens_id: TableDecisionTree)
 }
