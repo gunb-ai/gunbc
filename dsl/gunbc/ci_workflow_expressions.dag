@@ -78,6 +78,8 @@ data ci_workflow_expression_templates: List<ExpressionTemplate> = [
   ci_cache_restore_keys_template
 ]
 
+data ci_deploy_push_to_main_if: String = "github.ref == 'refs/heads/main' && github.event_name == 'push'"
+
 fn ci_concurrency_group() -> String { serialize_template(template: ci_concurrency_group_template) }
 fn ci_setup_rust_home() -> String { serialize_template(template: ci_setup_rust_home_template) }
 fn ci_cache_path() -> String { serialize_template(template: ci_cache_path_template) }
