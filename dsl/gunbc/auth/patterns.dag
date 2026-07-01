@@ -16,7 +16,7 @@ import extdeps.cloud.gcp.sts
 import extdeps.cloud.gcp.sts { MetadataRuntime }
 import extdeps.github.actions { GitHubActionsRuntime }
 import extdeps.runtime.local { LocalDevRuntime }
-import extdeps.shell
+import extdeps.shell as shell_ops
 
 type AuthRuntime
   = GitHubActions { runtime: GitHubActionsRuntime }
@@ -104,8 +104,8 @@ pattern credential_chain(
 func github_oidc(audience: String, runtime: GitHubActionsRuntime) -> { token: Secret }
   uses net: Network
 {
-  url = shell.Env.Get(name: runtime.oidc_request_url_env)
-  auth = shell.Env.Get(name: runtime.oidc_request_token_env)
+  url = shell_ops.Env.Get(name: runtime.oidc_request_url_env)
+  auth = shell_ops.Env.Get(name: runtime.oidc_request_token_env)
 
   response = github.OIDC.GetToken(
     audience: audience,
