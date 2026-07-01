@@ -4129,11 +4129,8 @@ fn run_discovery_rows(
     } else {
         None
     };
-    let provenance_live = skip_ctx.provenance_ingest_live
-        && dag_closure_runner
-            .as_ref()
-            .map(floor_provenance_ingest_is_live)
-            .unwrap_or(false);
+    let provenance_live =
+        skip_ctx.provenance_ingest_live && dag_closure_runner.is_some();
     let use_dag_closure =
         skip_enabled && skip_ctx.provenance_ingest_live && dag_closure_runner.is_some();
     let mut summary = DiscoverySummary {
@@ -5820,6 +5817,12 @@ fn prepare_floor_provenance_ingest_overlay(
     changed_paths: &[String],
     exclude_subpaths: &[String],
 ) -> Result<Option<FloorProvenanceIngestOverlay>, String> {
+    if matches!(
+        std::env::var("GUNBC_FLOOR_PROVENANCE_OVERLAY").ok().as_deref(),
+        Some("0") | Some("false")
+    ) {
+        return Ok(None);
+    }
     if changed_paths.is_empty() {
         return Ok(None);
     }
@@ -6042,6 +6045,9 @@ fn provenance_rerun_frontier_nodes(
     witness_list_nodes_from_value(&result, runner_ctx)
 }
 
+// Step 3 equivalence may wire this for edit-loci closure expansion; skip disposition
+// uses seed-derived loci directly until that gate lands.
+#[allow(dead_code)]
 fn closure_rerun_frontier_nodes(
     runner_ctx: &v1_interpreter::InterpContext,
     entry_root: &v1_interpreter::Value,
@@ -6093,11 +6099,7 @@ fn entry_frontier_nodes_via_dag_closure(
     provenance_live: bool,
 ) -> Result<Vec<v1_interpreter::Value>, String> {
     let edit_loci = entry_frontier_nodes_from_seeds(entry_ctx, entry_path, seeds)?;
-    let mut frontier = if edit_loci.is_empty() {
-        Vec::new()
-    } else {
-        closure_rerun_frontier_nodes(runner_ctx, &v1_interpreter::Value::Null, &edit_loci)?
-    };
+    let mut frontier = edit_loci;
     if provenance_live {
         let provenance_entry_root = provenance_entry_tree_root(runner_ctx, entry_path)
             .map_err(|msg| format!("provenance entry tree root unavailable ({msg})"))?;

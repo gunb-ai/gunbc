@@ -44,6 +44,7 @@ fn discovery_options(skip: bool) -> DiscoveryCorpusOptions {
 
 fn run_explicit_roster(skip: bool) -> Result<DiscoverySummary, String> {
     chdir_workspace();
+    let _overlay = EnvVarGuard::set("GUNBC_FLOOR_PROVENANCE_OVERLAY", "0");
     let (source_roots, explicit) = floor_skip_test_roster();
     run_discovery_corpus_with_options(
         &source_roots,
@@ -162,6 +163,7 @@ fn run_injected_diff_roster(
     roster: &[(String, String)],
 ) -> DiscoverySummary {
     let unified = format!("+++ b/{rel_path}\n@@ -{line},0 +{line},1 @@\n");
+    let _overlay = EnvVarGuard::set("GUNBC_FLOOR_PROVENANCE_OVERLAY", "0");
     let _diff = EnvVarGuard::set("GUNBC_CI_DIFF_UNIFIED", &unified);
     run_discovery_corpus_with_options(
         &floor_skip_source_roots(),
