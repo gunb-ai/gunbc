@@ -200,7 +200,9 @@ fn w_gpu_facts_structured_compute_capability() -> Bool {
     catalog: GpuModelCatalogRow {
       model_number: "H100"
       vendor: nvidia
-      compute_capability: GpuComputeCapability { vendor: nvidia, major: 9, minor: 0 }
+      compute_capability: Present {
+        value: GpuComputeCapability { vendor: nvidia, major: 9, minor: 0 }
+      }
       memory: MemoryFacts {
         capacity: byte_size(80)
         memory_kind: Hbm

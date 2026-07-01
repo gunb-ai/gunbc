@@ -6,7 +6,14 @@ import extdeps.gpu { gpu_facts_vendor, gpu_facts_model_number, gpu_facts_wgpu_di
 import extdeps.vendor.apple { apple }
 import extdeps.vendor.nvidia { nvidia }
 import extdeps.memory.types { UnifiedShared, Dram }
-import extdeps.gpu.types { Metal, Cuda, gpu_compute_capability_sm_label, GpuCapabilityLabelOk }
+import extdeps.gpu.types {
+  Metal,
+  Cuda,
+  GpuComputeCapability,
+  gpu_compute_capability_sm_label,
+  GpuCapabilityLabelOk,
+  GpuCapabilityLabelRejected,
+}
 
 fn witness_apple_m5_grounds_on_vendor() -> Bool {
   gpu_facts_vendor(gpu: apple_silicon_m5_gpu) == apple

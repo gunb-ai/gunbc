@@ -29,7 +29,7 @@ data apple_m5_gpu_catalog: GpuModelCatalogRow = GpuModelCatalogRow {
     memory_kind: UnifiedShared
   }
   supported_runtimes: [Metal]
-  wgpu_dispatch_device_label: apple_m5_wgpu_dispatch_device_label
+  wgpu_dispatch_device_label: Present { value: apple_m5_wgpu_dispatch_device_label }
 }
 
 data apple_silicon_m5_gpu: GpuFacts = GpuFacts {
