@@ -53,7 +53,11 @@ service tailscale.AclAdmin {
       policy_json: String from "acl"
     }
 
-    transport rest { method: PUT, path: "/api/v2/tailnet/\{tailnet\}/acl", body: policy_json }
+    transport rest {
+      method: PUT,
+      path: "/api/v2/tailnet/\{tailnet\}/acl",
+      body: { acl: policy_json }
+    }
     response {
       200 => String
       401 => TailscaleAclApiError
