@@ -17,7 +17,7 @@ Why a tier: **"it compiles but nothing works" traces to non-fold residue** — a
 **Audit half — measure the friction + the residue (decidable; wall-able):**
 
 - [ ] **inert-abstraction lens** *(keystone)* — flag any item *defined + self-tested + zero non-test consumers*; generalizes the inert-lens backstop (#5433) from lenses to all carriers. **First RED witness = `Placement` / `Materialization` / `RealizationObjective`** (charter §4: "modeled + witness-passing, no non-test consumer") — a genuinely-inert carrier the lens *fires* on day one, so the lens isn't itself inert (its own §6 guardrail). (`cached_stage` is the *resolved* case — now wired, see Fix half — so it's the worked example, not the witness.)
-- [ ] **non-fold-residue audit** — `_ =>` catch-alls over *closed* coproducts · `unwrap_or_default` in inference · hand-rolled recursion where a fold exists. These are the decidable fail-open shapes → §0 wall candidates, not just lenses
+- [ ] **non-fold-residue audit** — `_ =>` catch-alls over *closed* coproducts · `unwrap_or_default` in inference · hand-rolled recursion where a fold exists. These are the decidable fail-open shapes → §0 wall candidates, not just lenses [irreducible residue catalogue](docs/plans/non-fold-irreducible-residue-catalogue.md) [real-debt syntactic sample audit](docs/plans/real-debt-syntactic-sample-audit.md)
 - [ ] **fold-friction audit** — what makes the fold awkward to reach (the #5512 pre-state: generic fn-params mis-inferred as kernel `Witness`/`Optional`, forcing typed-param workarounds) — the friction predicts where new residue appears
 
 **Fix half — make the fold the path of least resistance:**
@@ -246,6 +246,12 @@ A program is a canonical `Node` (the *idea*); ingest / emit / eval across many m
   - [ ] English ingest round-trip (only emit proven today)
 - [ ] **cross-media targets beyond syntax** — JSON / react / diagram as first-class media (not stringified)
   - [ ] `Medium<A> ↔ Medium<B>` homomorphisms
+  - [ ] **format-model reconciliation** — decompose record-spelling onto single authority (`SerializationKnobs` + `serialize_record` → `Doc`); complementary to regime-2 line-layout half [plan](docs/plans/format-model-reconciliation.md)
+    - [ ] **C1 — SerializationKnobs + serialize_record keystone** (#6045) — delete `FormatModel`; migrate runner manifest byte-identically; JSON swap-test witness (still-wolf-292) [plan](docs/plans/format-model-reconciliation.md)
+      - [ ] **C3 — gitignore de-fork** — migrate `OutputFormat` consumer onto `SerializationKnobs` + `ConfigFormat`; delete `OutputFormat` + `gitignore_render.dag` [plan](docs/plans/format-model-reconciliation.md)
+      - [ ] **C4 — dnsmasq emit** — dnsmasq `ConfigFormat` + knobs; honest positional micro-syntax [plan](docs/plans/format-model-reconciliation.md)
+      - [ ] **C5 — digest/accelerator kv** *(low)* — route `digest_render` through `serialize_record` [plan](docs/plans/format-model-reconciliation.md)
+      - [ ] **C6 — CSS declaration blocks** *(cosmetic)* — `css_rule` props as record emit [plan](docs/plans/format-model-reconciliation.md)
 - [ ] **emission = ingestion⁻¹ extended past syntax** — diagnostic + orchestration intent emit per-target by rows [plan](docs/plans/emission-ingestion-inverse.md)
 - [ ] `FidelityDisposition` compose-up → medium-level `DecodeFidelity`
 - [ ] eval runtime generalization (wave-1 literal pins → `wave1_model_core` primitives)
@@ -266,7 +272,8 @@ Depends on §6 — react/html is a first-class medium (idea-machine.md §3/§4),
 **Hosting / live dashboard lane:**
 
 - [ ] **roadmap → HTML page** *(keystone)* (#6010) pure projection `roadmap_model` → `MarkupNode` (`gunbc.roadmap_page`), serialized through the same XSS-safe HTML boundary as gunbhub; per-node status (open/review/done) / sizing / owner / carrier links. No substrate change.
-  - [ ] **live service on srv1/srv2** emit a TS/Node HTTP server (realization handler for `NodeHttpCreateServerEmissionTarget`) that serves the rendered pages bound to a port on a fleet host; the missing port-binding piece — today serving is a pre-rendered static table + a pure request→response fn.
+  - [ ] **live service on srv1/srv2** (#6010) emit a TS/Node HTTP server (realization handler for `NodeHttpCreateServerEmissionTarget`) that serves the rendered pages bound to a port on a fleet host; the missing port-binding piece — today serving is a pre-rendered static table + a pure request→response fn.
+    - [ ] **live deploy on srv1 over tailnet** (#6030) .dag-orchestrated deployment onto srv1: `DeploymentSpec` with typed owned-vs-ensured steps, apply+retract folds from one spec, `host_effect_realize` SshShell arm (`ssh.Session.Exec` via `ssh_session_exec`), idempotent apt ensure for tailscale+nodejs, emit systemd unit + `tailscale serve`.
     - [ ] **idea input → roadmap node** capture a free-form idea via the live service (dynamic POST handler) and admit it as a roadmap work node (input-envelope admission §5). Composes `7-live-serve` + `7-interactivity`.
   - [ ] **interactive components** *(props / state / handlers)* `MarkupAttrValue = LiteralValue | ExprValue` coproduct + expression children; JSX emits `{…}`, HTML emit **fails closed** on expression nodes (the `DecodeFidelity` honesty boundary §5). Load-bearing `std/markup.dag` shape — sign off before authoring.
 
