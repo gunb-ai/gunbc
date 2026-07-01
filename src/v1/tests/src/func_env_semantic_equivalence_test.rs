@@ -1,8 +1,8 @@
 //! Oracle 4 — whole-corpus semantic equivalence vs pre-scope-chain baseline.
 //!
-//! Proves the post-refactor compiler is byte-identical to commit 57223267a2 on
+//! Proves the post-refactor compiler is byte-identical to commit db559b42814 on
 //! diagnostics, per-module emit repr, and full `EmitGraphInfo` when run over
-//! the frozen baseline corpus (`git archive 57223267a2 dsl src/v1`). Fixture
+//! the frozen baseline corpus (`git archive db559b42814 dsl src/v1`). Fixture
 //! captured via capture_func_env_semantic_oracle on that tree.
 
 use std::fs;
@@ -15,7 +15,7 @@ use v1_compiler::cli_run::{whole_corpus_semantic_oracle_snapshot, FLOOR_DISCOVER
 
 use crate::helpers::workspace_root;
 
-const BASELINE_COMMIT: &str = "57223267a2";
+const BASELINE_COMMIT: &str = "db559b42814";
 const BASELINE_FIXTURE: &str = "src/v1/tests/fixtures/func_env_semantic_baseline.json";
 
 #[derive(Debug, Deserialize)]
@@ -44,6 +44,20 @@ fn whole_tree_probe_excludes() -> Vec<String> {
     exclude_subpaths
 }
 
+fn git_toplevel() -> PathBuf {
+    let output = Command::new("git")
+        .args(["rev-parse", "--show-toplevel"])
+        .current_dir(workspace_root())
+        .output()
+        .unwrap_or_else(|e| panic!("git rev-parse --show-toplevel: {e}"));
+    assert!(
+        output.status.success(),
+        "git rev-parse --show-toplevel failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    PathBuf::from(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
 fn baseline_corpus_dir() -> PathBuf {
     let dir = workspace_root()
         .join("target")
@@ -54,7 +68,7 @@ fn baseline_corpus_dir() -> PathBuf {
     fs::create_dir_all(&dir).unwrap_or_else(|e| panic!("create baseline corpus dir {dir:?}: {e}"));
     let archive = Command::new("git")
         .args(["archive", BASELINE_COMMIT, "dsl", "src/v1"])
-        .current_dir(workspace_root())
+        .current_dir(git_toplevel())
         .output()
         .unwrap_or_else(|e| panic!("git archive {BASELINE_COMMIT}: {e}"));
     assert!(

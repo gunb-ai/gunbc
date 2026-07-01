@@ -24,7 +24,8 @@ fn disposition_node_frontier_only_skips_holds() -> Bool {
     changed_paths: [disposition_fixture_changed_path],
     frontier_nodes: [disposition_fixture_node],
     touches_frontier: false,
-    function_edited: false
+    function_edited: false,
+    entry_file_touched: false
   )
 }
 
@@ -33,7 +34,8 @@ fn disposition_node_frontier_only_runs_holds() -> Bool {
     changed_paths: [disposition_fixture_changed_path],
     frontier_nodes: [disposition_fixture_node],
     touches_frontier: true,
-    function_edited: false
+    function_edited: false,
+    entry_file_touched: false
   )
 }
 
@@ -42,7 +44,8 @@ fn disposition_function_edited_only_runs_holds() -> Bool {
     changed_paths: [disposition_fixture_changed_path],
     frontier_nodes: [disposition_fixture_node],
     touches_frontier: false,
-    function_edited: true
+    function_edited: true,
+    entry_file_touched: false
   )
 }
 
@@ -51,7 +54,8 @@ fn disposition_both_axes_false_skips_holds() -> Bool {
     diff: DiffPathsProduced { changed_paths: [disposition_fixture_changed_path] },
     frontier: FrontierProduced { nodes: [disposition_fixture_node] },
     touches_frontier: false,
-    function_edited: false
+    function_edited: false,
+    entry_file_touched: false
   ) {
     SkipAssumedGreen => true
     RunWitness { reason: _ } => false
@@ -63,7 +67,8 @@ fn disposition_either_axis_runs_holds() -> Bool {
     diff: DiffPathsProduced { changed_paths: [disposition_fixture_changed_path] },
     frontier: FrontierProduced { nodes: [disposition_fixture_node] },
     touches_frontier: false,
-    function_edited: true
+    function_edited: true,
+    entry_file_touched: false
   ) {
     RunWitness { reason: _ } => true
     SkipAssumedGreen => false
@@ -72,7 +77,8 @@ fn disposition_either_axis_runs_holds() -> Bool {
       diff: DiffPathsProduced { changed_paths: [disposition_fixture_changed_path] },
       frontier: FrontierProduced { nodes: [disposition_fixture_node] },
       touches_frontier: true,
-      function_edited: false
+      function_edited: false,
+      entry_file_touched: false
     ) {
       RunWitness { reason: _ } => true
       SkipAssumedGreen => false
