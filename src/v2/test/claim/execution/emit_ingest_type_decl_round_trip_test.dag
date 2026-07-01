@@ -18,7 +18,7 @@ import v2.extdeps.languages.dag {
 }
 import v2.std.algebra { Empty, fold_list, list_append }
 import v2.std.collection { List }
-import v2.std.compilers.lexing { Token }
+import v2.std.compilers.lexing { Token, token_stream_all }
 import v2.std.compilers.target_model {
   BoundToken,
   ConcreteSyntaxToken,
@@ -246,7 +246,7 @@ fn type_decl_tokenize_source_text(source: String) -> Outcome<List<Token>> {
       rules: type_decl_target().lex
     ),
     f: fn(stream) {
-      outcome_accepted(value: stream.tokens)
+      outcome_accepted(value: token_stream_all(stream: stream))
     }
   )
 }

@@ -1,0 +1,42 @@
+module v2.test.medium_structure_containment.scanner.perturb_red
+
+import v2.lens.medium_structure_containment {
+  medium_structure_containment_canonical_witness,
+  medium_structure_containment_canonical_with_check_perturb_witness,
+  medium_structure_leak_count_live,
+  medium_emit_side_scan_roots,
+  medium_structure_check_roots_with_perturb
+}
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.std.witness { Holds, Violates }
+
+data perturb_red_scan_roots: List<String> = [
+  "src/v2/test/fixture/medium_structure_scan/perturb_red"
+]
+
+test fn medium_structure_canonical_read_back_holds() -> Bool {
+  match medium_structure_containment_canonical_witness() {
+    Holds { value: _ } => true
+    Violates { diagnostic: _ } => false
+  }
+}
+
+test fn medium_structure_canonical_perturb_flips_violates() -> Bool {
+  match medium_structure_containment_canonical_with_check_perturb_witness(
+    perturb_roots: perturb_red_scan_roots
+  ) {
+    Holds { value: _ } => false
+    Violates { diagnostic: _ } => true
+  }
+}
+
+test fn medium_structure_perturb_red_leak_count_positive() -> Bool {
+  medium_structure_leak_count_live(
+    emit_roots: medium_emit_side_scan_roots,
+    check_roots: medium_structure_check_roots_with_perturb(
+      perturb_roots: perturb_red_scan_roots
+    )
+  ) > 0
+}

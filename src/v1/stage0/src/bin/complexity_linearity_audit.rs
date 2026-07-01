@@ -17,8 +17,10 @@ use std::process::ExitCode;
 use v1_compiler::complexity_linearity_audit_project::{
     audit_corpus_default_roots, audit_corpus_parse_only, roster_fiction_report,
 };
-use v1_compiler::inert_carrier_project::{inert_carrier_count, inert_carrier_unrostered_count};
-use v1_compiler::non_fold_residue_project::{
+use v1_compiler::module_path_index::inert_carrier_census::{
+    inert_carrier_count, inert_carrier_unrostered_count,
+};
+use v1_compiler::module_path_index::non_fold_residue_census::{
     non_fold_residue_count, non_fold_residue_irreducible_roster_slots,
     non_fold_residue_migration_debt_roster_slots, non_fold_residue_unrostered_count,
 };

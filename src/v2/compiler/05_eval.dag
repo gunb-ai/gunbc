@@ -1721,6 +1721,16 @@ fn eval_bind_node_eval(
   effect_io: EffectIoEvalContext
 ) -> Outcome<RuntimeValue> {
   match interpreter {
+    ValueRuntimeInterpreter { interpreter: _ } =>
+      outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
+    TransformRuntimeInterpreter { interpreter: _ } =>
+      outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
+    BranchRuntimeInterpreter { interpreter: _ } =>
+      outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
+    LoopRuntimeInterpreter { interpreter: _ } =>
+      outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
+    MatchRuntimeInterpreter { interpreter: _ } =>
+      outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
     BindRuntimeInterpreter { interpreter: bind } =>
       bind_outcome(
         o: eval_bind_key(node: node),
@@ -1762,7 +1772,6 @@ fn eval_bind_node_eval(
           )
         }
       )
-    _ => outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
   }
 }
 
