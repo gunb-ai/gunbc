@@ -1,0 +1,61 @@
+module v2.std.orchestration_emit
+
+import extdeps.communication.medium { Medium }
+import v2.std.text { String }
+import v2.std.algebra { FreeMonoid, list_head, HeadFound, HeadAbsent }
+import v2.std.collection { List, Optional, Present, Absent }
+import v2.std.diagnostic { Outcome }
+import v2.std.node { Node }
+import v2.std.orchestration { Run, EnvBinding }
+
+type OrchestrationMedium = Bash
+
+type OrchestrationEmitHandlers {
+  emit_run: fn(Run) -> Outcome<Medium<String>>
+  emit_join2: fn(String, String) -> Outcome<Medium<String>>
+  emit_retry_2level: fn(
+    String,
+    String,
+    String,
+    String,
+    String,
+    FreeMonoid<EnvBinding>,
+    FreeMonoid<EnvBinding>
+  ) -> Outcome<Medium<String>>
+  unsupported_step_anchor: Node
+}
+
+type OrchestrationEmitRegistryEntry {
+  medium: OrchestrationMedium
+  handlers: OrchestrationEmitHandlers
+}
+
+type OrchestrationEmitRegistry {
+  entries: List<OrchestrationEmitRegistryEntry>
+}
+
+fn orchestration_emit_registry_lookup_entries(
+  entries: List<OrchestrationEmitRegistryEntry>,
+  medium: OrchestrationMedium
+) -> Optional<OrchestrationEmitHandlers> {
+  match list_head(xs: entries) {
+    HeadAbsent => Absent
+    HeadFound { value: entry } =>
+      match entry.medium {
+        Bash =>
+          match medium {
+            Bash => Present { value: entry.handlers }
+          }
+      }
+  }
+}
+
+fn orchestration_emit_registry_lookup(
+  registry: OrchestrationEmitRegistry,
+  medium: OrchestrationMedium
+) -> Optional<OrchestrationEmitHandlers> {
+  orchestration_emit_registry_lookup_entries(
+    entries: registry.entries,
+    medium: medium
+  )
+}

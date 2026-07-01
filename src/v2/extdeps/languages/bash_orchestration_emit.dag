@@ -1,0 +1,174 @@
+module v2.extdeps.languages.bash_orchestration_emit
+
+import v2.compiler.emit { emit }
+import v2.compiler.emit_orchestration {
+  orch_emit_pipeline_dispatch,
+  orch_emit_run_dispatch,
+  orch_emit_step_dispatch
+}
+import v2.compiler.infer { InferredFacts, InferredTree }
+import extdeps.communication.medium { Medium }
+import v2.extdeps.languages.bash {
+  bash_word_pass_emitted,
+  orch_run_emitted_command,
+  orch_run_target_model,
+  orch_seq2_emitted_command,
+  orch_seq2_target_model,
+  orch_retry_emitted_command,
+  orch_retry_target_model
+}
+import v2.extdeps.languages.bash_command_fold { bash_fold_raw_line_target_model }
+import v2.std.orchestration_emit {
+  Bash,
+  OrchestrationEmitHandlers,
+  OrchestrationEmitRegistry,
+  OrchestrationEmitRegistryEntry
+}
+import v2.std.orchestration { Run, Pipeline, Step, EnvBinding }
+import v2.std.algebra { FreeMonoid, list_head, HeadFound, HeadAbsent }
+import v2.std.collection { Map, Absent }
+import v2.std.text { String }
+import v2.std.diagnostic {
+  Diagnostic,
+  ExternalContractUnknown,
+  Outcome,
+  Unavailable,
+  bind_outcome,
+  node_locus
+}
+import v2.std.node { Node }
+import v2.std.witness { Violates, Witness }
+
+fn bash_orch_emit_facts_lookup(key: Node) -> Witness<InferredFacts> {
+  Violates {
+    diagnostic: Diagnostic {
+      reason: ^bash_orch_emit_facts_unexpected_consultation,
+      at: node_locus(node: key),
+      correction: Unavailable { reason: ExternalContractUnknown }
+    }
+  }
+}
+
+data orch_run_env_reduction_dissolution_trigger: String = "orchestration_emit Run/Step/Retry path reduces onto bash_fold serialize: an env-FREE Run is delegated to bash_fold_raw_line_target_model + bash_word_pass_emitted via orch_fold_serialize_rawline (single orch_raw, green path, proven byte-identical by orch_run_empty_env_delegates_to_shell_emit and bash_fold fold==serialize_stmt witnesses). An env-BEARING Run lowers to an EnvPrefixed over env plus a RawLine command. The emit-kernel String<->List-Int-codepoint straddle that blocked this is now FIXED by grounding String construction into its native realization (free_monoid_to_string in v1_interpreter.rs, sibling to Int<->Nat PR 5428). The RESIDUAL blocker is a DIFFERENT, modeling-side gap, not the kernel: EnvBinding has EnvUnset (env -u NAME) and FreeMonoid<EnvBinding> is a LIST, but the bash AST EnvPrefixed models only a single name=value prefix with no EnvUnset node, so an env-bearing Run cannot yet be lowered losslessly. It stays on the orch_run_emitted_command single-string render (orch_emit_run_env_welded) until the bash AST grows an env-unset construct and multi-binding nesting. DISSOLVES WHEN the bash EnvPrefixed AST covers EnvUnset + multi-binding env (modeling follow-on landed by gunbc#5846 'Grow bash AST: EnvUnset node + multi-binding env nesting (dissolve orch_emit_run_env_welded)', which depends on this PR's kernel String grounding and dissolves this welded fn outright; no longer kernel-blocked)."
+
+fn bash_orch_fold_serialize_rawline(text: String) -> Outcome<Medium<String>> {
+  emit(
+    tree: InferredTree {
+      root: bash_word_pass_emitted,
+      facts: Map { lookup: bash_orch_emit_facts_lookup }
+    },
+    target: bash_fold_raw_line_target_model(text: text)
+  )
+}
+
+fn bash_orch_emit_run_env_welded(r: Run) -> Outcome<Medium<String>> {
+  emit(
+    tree: InferredTree {
+      root: orch_run_emitted_command,
+      facts: Map { lookup: bash_orch_emit_facts_lookup }
+    },
+    target: orch_run_target_model(r: r)
+  )
+}
+
+fn bash_orch_emit_run(r: Run) -> Outcome<Medium<String>> {
+  match list_head(xs: r.env) {
+    HeadAbsent => bash_orch_fold_serialize_rawline(text: r.command)
+    HeadFound { value: _ } => bash_orch_emit_run_env_welded(r: r)
+  }
+}
+
+fn bash_orch_emit_join2(left: String, right: String) -> Outcome<Medium<String>> {
+  emit(
+    tree: InferredTree {
+      root: orch_seq2_emitted_command,
+      facts: Map { lookup: bash_orch_emit_facts_lookup }
+    },
+    target: orch_seq2_target_model(left: left, right: right)
+  )
+}
+
+fn bash_orch_emit_retry_2level(
+  command: String,
+  pattern1: String,
+  pattern2: String,
+  warn1: String,
+  warn2: String,
+  env1: FreeMonoid<EnvBinding>,
+  env2: FreeMonoid<EnvBinding>
+) -> Outcome<Medium<String>> {
+  bind_outcome(
+    o: bash_orch_emit_run(r: Run { command: command, env: [], redirect: Absent, capture: Absent }),
+    f: fn(m1) {
+      bind_outcome(
+        o: bash_orch_emit_run(r: Run { command: command, env: env1, redirect: Absent, capture: Absent }),
+        f: fn(m2) {
+          bind_outcome(
+            o: bash_orch_emit_run(r: Run { command: command, env: env2, redirect: Absent, capture: Absent }),
+            f: fn(m3) {
+              emit(
+                tree: InferredTree {
+                  root: orch_retry_emitted_command,
+                  facts: Map { lookup: bash_orch_emit_facts_lookup }
+                },
+                target: orch_retry_target_model(
+                  occ1: m1.carried,
+                  occ2: m2.carried,
+                  occ3: m3.carried,
+                  pattern1: pattern1,
+                  pattern2: pattern2,
+                  warn1: warn1,
+                  warn2: warn2
+                )
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn bash_orchestration_emit_handlers() -> OrchestrationEmitHandlers {
+  OrchestrationEmitHandlers {
+    emit_run: bash_orch_emit_run,
+    emit_join2: bash_orch_emit_join2,
+    emit_retry_2level: bash_orch_emit_retry_2level,
+    unsupported_step_anchor: orch_run_emitted_command
+  }
+}
+
+fn bash_orchestration_emit_registry() -> OrchestrationEmitRegistry {
+  OrchestrationEmitRegistry {
+    entries: [
+      OrchestrationEmitRegistryEntry {
+        medium: Bash,
+        handlers: bash_orchestration_emit_handlers()
+      }
+    ]
+  }
+}
+
+fn orch_emit_run(r: Run) -> Outcome<Medium<String>> {
+  orch_emit_run_dispatch(
+    r: r,
+    registry: bash_orchestration_emit_registry(),
+    medium: Bash
+  )
+}
+
+fn orch_emit_step(s: Step) -> Outcome<Medium<String>> {
+  orch_emit_step_dispatch(
+    s: s,
+    registry: bash_orchestration_emit_registry(),
+    medium: Bash
+  )
+}
+
+fn orch_emit_pipeline(p: Pipeline) -> Outcome<Medium<String>> {
+  orch_emit_pipeline_dispatch(
+    p: p,
+    registry: bash_orchestration_emit_registry(),
+    medium: Bash
+  )
+}

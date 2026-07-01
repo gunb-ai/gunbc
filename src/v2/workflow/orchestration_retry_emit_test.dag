@@ -1,6 +1,6 @@
 module v2.workflow.orchestration_retry_emit_test
 
-import v2.compiler.emit_orchestration { orch_emit_step }
+import v2.extdeps.languages.bash_orchestration_emit { orch_emit_step }
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import v2.extdeps.languages.bash { orch_retry_emitted_command, orch_retry_target_model }

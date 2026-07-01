@@ -1,0 +1,31 @@
+module v2.workflow.orchestration_registry_dispatch_test
+
+import v2.compiler.emit_orchestration { orch_emit_pipeline_dispatch }
+import v2.std.orchestration_emit {
+  Bash,
+  OrchestrationEmitRegistry
+}
+import v2.std.orchestration {
+  Pipeline,
+  FailFast
+}
+import v2.std.diagnostic { Rejected }
+
+fn orch_empty_registry() -> OrchestrationEmitRegistry {
+  OrchestrationEmitRegistry { entries: [] }
+}
+
+fn orch_empty_pipeline() -> Pipeline {
+  Pipeline { steps: [], on_failure: FailFast }
+}
+
+test fn orch_emit_registry_empty_rejects_holds() -> Bool {
+  match orch_emit_pipeline_dispatch(
+    p: orch_empty_pipeline(),
+    registry: orch_empty_registry(),
+    medium: Bash
+  ) {
+    Rejected { diagnostics: _ } => true
+    _ => false
+  }
+}
