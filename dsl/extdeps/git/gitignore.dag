@@ -1,7 +1,5 @@
 module extdeps.gitignore
 
-import std.render { OutputFormat }
-
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -24,16 +22,6 @@ type GitignoreCategory {
 type GitignoreFile {
   rule_comment: String
   categories: List<GitignoreCategory>
-}
-
-data gitignore_output_format: OutputFormat = {
-  name: "Gitignore",
-  indent_unit: "",
-  kv_separator: "",
-  list_prefix: "",
-  comment_prefix: "#",
-  section_separator: "\n",
-  trailing_newline: true
 }
 
 fn filter_categories(categories: List<GitignoreCategory>, build_system: String) -> List<GitignoreCategory> {
