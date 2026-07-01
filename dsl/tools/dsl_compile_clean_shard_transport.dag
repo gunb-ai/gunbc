@@ -1,7 +1,6 @@
 module tools.dsl_compile_clean_shard_transport
 
 import extdeps.shell
-import gunbc.ci_layer_roots { witness_layer_roots }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.languages.bash.program {
@@ -12,13 +11,13 @@ import extdeps.languages.bash.program {
   lit, var_ref, command, assign, serialize_bash
 }
 import tools.host_prelude { ensure_gunbc_built }
-import tools.dsl_compile_clean_transport { dcc_pool_index_flags }
+import tools.dsl_compile_clean_transport {
+  dcc_pool_index_flags,
+  dcc_source_root_flags,
+  shell_serializes_dcc_common_compile_invocation
+}
 
 data shard_a_exemplar_entry_path: String = "dsl/std/logic.dag"
-
-fn dcc_shard_pool_root_flags() -> List<ShellWord> {
-  fold(witness_layer_roots, init: [], f: (acc, r) => concat(acc, [lit(text: "--source-root"), lit(text: r)]))
-}
 
 fn single_module_shard_compile_program(entry_rel_path: String) -> ShellProgram {
   let root = var_ref(name: "ROOT")
@@ -40,7 +39,7 @@ fn single_module_shard_compile_program(entry_rel_path: String) -> ShellProgram {
       ]),
       command(words: concat(
         [gunbc, lit(text: "compile"), lit(text: "--source-root"), stage],
-        concat(dcc_shard_pool_root_flags(), concat(dcc_pool_index_flags(), [
+        concat(dcc_source_root_flags(), concat(dcc_pool_index_flags(), [
           lit(text: "--output-dir"), out,
           lit(text: "--target"), lit(text: "dag")
         ]))
@@ -75,11 +74,7 @@ fn shard_transport_serializes_staged_compile_invocation() -> Bool {
   let script = serialize_bash(
     p: single_module_shard_compile_program(entry_rel_path: shard_a_exemplar_entry_path)
   )
-  script != ""
+  shell_serializes_dcc_common_compile_invocation(script: script)
     && string_contains(s: script, pattern: shard_stage_marker)
     && string_contains(s: script, pattern: shard_entry_marker)
-    && string_contains(s: script, pattern: "'--source-root' 'dsl'")
-    && string_contains(s: script, pattern: "'--source-root' 'src/v2'")
-    && string_contains(s: script, pattern: "'--dependency-pool-index' 'primary-precedence'")
-    && string_contains(s: script, pattern: "'--target' 'dag'")
 }
