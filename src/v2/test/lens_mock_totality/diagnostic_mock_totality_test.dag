@@ -23,9 +23,9 @@ type MaterializedDiagnosticMock {
 data diagnostic_red_omit_keys: List<String> = ["diagnostic.ipmi.Tool.SelList"]
 
 fn materialize_diagnostic_mock(case: PublishedMockCase) -> Outcome<MaterializedDiagnosticMock> {
-  if case.operation_key == "diagnostic.ssh.Session.Exec" {
+  if case.operation_key == "ssh.Session.Exec" {
     outcome_accepted(value: MaterializedDiagnosticMock { tag: ^materialized_ssh_exec })
-  } else if case.operation_key == "diagnostic.ssh.Session.Reachability" {
+  } else if case.operation_key == "ssh.Session.Reachability" {
     outcome_accepted(value: MaterializedDiagnosticMock { tag: ^materialized_ssh_reachability })
   } else if case.operation_key == "redfish.Http.GetSystem" {
     outcome_accepted(value: MaterializedDiagnosticMock { tag: ^materialized_redfish_get_system })

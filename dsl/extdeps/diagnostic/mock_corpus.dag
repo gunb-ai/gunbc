@@ -3,15 +3,15 @@ module extdeps.diagnostic.mock_corpus
 import std.hermetic_replay { PublishedMockCase }
 
 data diagnostic_ssh_session_mock_case_exec: PublishedMockCase = PublishedMockCase {
-  operation_key: "diagnostic.ssh.Session.Exec",
-  service: "diagnostic.ssh.Session",
+  operation_key: "ssh.Session.Exec",
+  service: "ssh.Session",
   operation: "Exec",
   case_id: 0
 }
 
 data diagnostic_ssh_session_mock_case_reachability: PublishedMockCase = PublishedMockCase {
-  operation_key: "diagnostic.ssh.Session.Reachability",
-  service: "diagnostic.ssh.Session",
+  operation_key: "ssh.Session.Reachability",
+  service: "ssh.Session",
   operation: "Reachability",
   case_id: 0
 }

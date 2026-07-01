@@ -1,6 +1,9 @@
 module gunbc.roadmap_page
 
 import std.markup { MarkupNode, ElementNode, TextNode, MarkupAttr }
+import std.markdown_markup { markdown_inlines_to_markup_nodes }
+import extdeps.languages.markdown { parse_inline_markdown_minimal }
+import gunbc.roadmap_style { roadmap_css }
 import gunbc.roadmap_model {
   RoadmapNode, RoadmapEdge, Pointer,
   RoadmapParent, TopLevel, UnderParent, roadmap_parent, is_top_level,
@@ -70,6 +73,10 @@ fn line_title(line: RoadmapItem) -> String {
   }
 }
 
+fn title_nodes(line: RoadmapItem) -> List<MarkupNode> {
+  markdown_inlines_to_markup_nodes(inlines: parse_inline_markdown_minimal(text: line_title(line: line)))
+}
+
 fn pointer_link(p: Pointer) -> MarkupNode {
   ElementNode {
     tag: "a",
@@ -112,7 +119,7 @@ fn node_li(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, 
     concat(
       [
         el_class("span", concat("status status-", status), [ txt(status) ]),
-        el_class("span", "title", [ txt(line_title(line: rn.line)) ]),
+        el_class("span", "title", title_nodes(line: rn.line)),
       ],
       owner_badge(rn: rn),
     ),
@@ -161,7 +168,7 @@ fn group_markup(g: SectionGroup, merged: List<Int>) -> List<MarkupNode> {
 
 fn element_markup(e: SectionElement, merged: List<Int>) -> List<MarkupNode> {
   match e {
-    Prose { prose } => [ el_class("p", "prose", [ txt(prose.content) ]) ]
+    Prose { prose } => [ el_class("p", "prose", markdown_inlines_to_markup_nodes(inlines: parse_inline_markdown_minimal(text: prose.content))) ]
     Group { group } => group_markup(g: group, merged: merged)
   }
 }
@@ -181,6 +188,7 @@ fn roadmap_page(doc: RoadmapDocument, merged: List<Int>) -> MarkupNode {
     children: [
       el("head", [
         ElementNode { tag: "meta", attrs: [ MarkupAttr { name: "charset", value: "utf-8" } ], children: [] },
+        el("style", [ txt(roadmap_css()) ]),
         el("title", [ txt("gunbc — roadmap") ]),
       ]),
       el("body", [
