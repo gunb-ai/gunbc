@@ -123,8 +123,7 @@ fn external_access_throttle_registry_covers(namespace: ExternalAccessThrottleNam
 }
 
 fn external_access_throttle_missing_registry_row_fatal() -> CronSchedule {
-  pure_dag_seam_unreachable()
-  external_access_throttle_conservative_probe_interval
+  pure_dag_seam_unreachable() as CronSchedule
 }
 
 fn external_access_throttle_enforce_schedule(namespace: ExternalAccessThrottleNamespace) -> CronSchedule {
