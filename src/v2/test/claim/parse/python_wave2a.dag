@@ -45,7 +45,7 @@ fn python_wave2a_tokenize_and_parse() -> Outcome<ParseTree> {
   ) {
     Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
     Accepted { value: stream, diagnostics: _ } =>
-      parse(tokens: stream.tokens, grammar: python_wave1_grammar())
+      parse(tokens: stream, grammar: python_wave1_grammar())
   }
 }
 

@@ -1,4 +1,4 @@
-module gunbc.live_deploy
+module gunbc.live_deploy.spec
 
 import std.types { String, NonEmptyStr, List, Int, Bool }
 import std.os.types { NobleNumbat2404Lts, OsPackageManager }
@@ -11,9 +11,10 @@ import gunbc.fleet_intent { srv1_host, ComputeHost }
 import gunbc.fleet_intent_network {
   srv1_tailscale_endpoint,
   fleet_intent_network,
+  operator_host_srv1,
 }
 import gunbc.node_http_server_emit {
-  gunbhub_node_http_static_server_spec,
+  roadmap_dashboard_node_http_static_server_spec,
 }
 import extdeps.http.server { HttpServerListenConfig }
 import product.network_topology { NetworkEndpoint }
@@ -103,7 +104,7 @@ fn deployment_owned_steps_retract_order() -> List<DeploymentOwnedStep> {
 fn deployment_srv1_target() -> DeploymentHostTarget {
   DeploymentHostTarget {
     host: srv1_host,
-    ssh_host: srv1_tailscale_endpoint.address,
+    ssh_host: operator_host_srv1 as NonEmptyStr,
     tailscale_endpoint: srv1_tailscale_endpoint,
     tailnet_domain: fleet_intent_network.tailnet_domain,
     os_package_manager: srv1_os_package_manager(),
@@ -111,7 +112,7 @@ fn deployment_srv1_target() -> DeploymentHostTarget {
 }
 
 fn deployment_service_config() -> DeploymentServiceConfig {
-  let spec = gunbhub_node_http_static_server_spec()
+  let spec = roadmap_dashboard_node_http_static_server_spec()
   DeploymentServiceConfig {
     unit_name: gunbc_roadmap_unit_name,
     server_path: gunbc_roadmap_server_path,

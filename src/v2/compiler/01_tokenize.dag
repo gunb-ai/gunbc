@@ -25,6 +25,8 @@ import v2.std.compilers.lexing {
   Token,
   TokenRule,
   TokenStream,
+  token_stream_empty,
+  token_stream_new,
   TriviaRule,
   VoidLexRules,
   WhitespaceChar,
@@ -500,7 +502,7 @@ fn lex_walk(source: String, file: Symbol, rules: LexRuleSet) -> Outcome<TokenStr
   if result.error {
     Rejected { diagnostics: diagnostics_singleton(d: tokenize_lex_e1_unrecognized_char_diagnostic(at: at)) }
   } else {
-    Accepted { value: TokenStream { tokens: result.tokens }, diagnostics: None }
+    Accepted { value: token_stream_new(all: result.tokens), diagnostics: None }
   }
 }
 
@@ -512,7 +514,7 @@ fn tokenize(text: String, file: Symbol, rules: LexRules) -> Outcome<TokenStream>
   match rules {
     VoidLexRules =>
       if is_empty(xs: text) {
-        Accepted { value: TokenStream { tokens: [] }, diagnostics: None }
+        Accepted { value: token_stream_empty(), diagnostics: None }
       } else {
         Rejected { diagnostics: diagnostics_singleton(d: tokenize_lex_e0_source_not_exhausted_diagnostic(at: at)) }
       }

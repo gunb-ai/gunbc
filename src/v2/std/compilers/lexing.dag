@@ -1,7 +1,7 @@
 module v2.std.compilers.lexing
 
-import v2.std.algebra { Empty, fold_list, list_snoc_item }
-import v2.std.collection { List }
+import v2.std.algebra { Empty, fold_list, length, list_snoc_item, skip }
+import v2.std.collection { Absent, List, Optional, Present, list_at_optional, optional_absent, optional_present }
 import v2.std.logic { Bool }
 import v2.std.node { Atom, Conj, Node, Symbol, SyntheticOccurrence, TypeNode }
 import v2.std.node_shape { stamp_node_shape_synthetic, type_shape }
@@ -100,7 +100,44 @@ type Token {
 }
 
 type TokenStream {
-  tokens: List<Token>
+  all: List<Token>
+  pos: Int
+}
+
+fn token_stream_new(all: List<Token>) -> TokenStream {
+  TokenStream { all: all, pos: 0 }
+}
+
+fn token_stream_empty() -> TokenStream {
+  TokenStream { all: Empty, pos: 0 }
+}
+
+fn token_stream_position(stream: TokenStream) -> Int {
+  stream.pos
+}
+
+fn token_stream_all(stream: TokenStream) -> List<Token> {
+  stream.all
+}
+
+fn token_stream_remaining_count(stream: TokenStream) -> Int {
+  length(xs: stream.all) - stream.pos
+}
+
+fn token_stream_remaining(stream: TokenStream) -> List<Token> {
+  skip(xs: stream.all, n: stream.pos)
+}
+
+fn token_stream_first(stream: TokenStream) -> Optional<Token> {
+  list_at_optional(xs: stream.all, index: stream.pos)
+}
+
+fn token_stream_get(stream: TokenStream, offset: Int) -> Optional<Token> {
+  list_at_optional(xs: stream.all, index: stream.pos + offset)
+}
+
+fn token_stream_advance(stream: TokenStream, n: Int) -> TokenStream {
+  TokenStream { all: stream.all, pos: stream.pos + n }
 }
 
 fn lex_rule_token_class_member(rule: LexRule, token_class: Symbol) -> Bool {

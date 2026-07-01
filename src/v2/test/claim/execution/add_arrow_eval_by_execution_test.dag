@@ -25,6 +25,7 @@ import v2.extdeps.languages.dag {
   dag_mvp1_source_text
 }
 import v2.std.collection { Absent, List, Map, Present, list_at_optional, map_insert }
+import v2.std.compilers.lexing { Token, token_stream_all, token_stream_remaining }
 import v2.std.cardinality {
   RankingDimension,
   TerminationProof,
@@ -312,7 +313,7 @@ fn add_arrow_source_ingested_add_infers() -> Outcome<InferredTree> {
     o: tokenize(text: dag_mvp1_source_text, file: ^add_arrow_eval_source_file, rules: lm.lex),
     f: fn(tokens) {
       bind_outcome(
-        o: source_bridged_add_parse_tokens(tokens: tokens.tokens),
+        o: source_bridged_add_parse_tokens(tokens: token_stream_remaining(stream: tokens)),
         f: fn(parsed) {
           bind_outcome(
             o: normalize(parse_tree: parsed),
@@ -336,7 +337,7 @@ fn add_arrow_eval_tokenize_source() -> Outcome<List<Token>> {
   bind_outcome(
     o: tokenize(text: dag_mvp1_source_text, file: ^add_arrow_eval_source_file, rules: lm.lex),
     f: fn(tokens) {
-      outcome_accepted(value: tokens.tokens)
+      outcome_accepted(value: token_stream_all(stream: tokens))
     }
   )
 }

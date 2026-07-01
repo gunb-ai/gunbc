@@ -1,0 +1,92 @@
+module v2.test.parse.token_stream_cursor
+
+import v2.std.algebra { Cons, Empty, length, skip }
+import v2.std.collection { Absent, List, Present, list_at_optional }
+import v2.std.compilers.lexing {
+  Token,
+  token_stream_advance,
+  token_stream_all,
+  token_stream_empty,
+  token_stream_first,
+  token_stream_get,
+  token_stream_new,
+  token_stream_position,
+  token_stream_remaining,
+  token_stream_remaining_count
+}
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.std.node { Symbol }
+
+fn tsc_token(class: Symbol, lexeme: String) -> Token {
+  Token { class: class, lexeme: lexeme, file: ^tsc_file, start: 0, end: 1 }
+}
+
+data tsc_three_tokens: List<Token> = Cons {
+  head: tsc_token(class: ^tsc_a, lexeme: "a"),
+  tail: Cons {
+    head: tsc_token(class: ^tsc_b, lexeme: "b"),
+    tail: Cons {
+      head: tsc_token(class: ^tsc_c, lexeme: "c"),
+      tail: Empty
+    }
+  }
+}
+
+fn tsc_first_matches_skip_first(all: List<Token>, n: Int) -> Bool {
+  let stream = token_stream_advance(stream: token_stream_new(all: all), n: n)
+  let baseline = list_at_optional(xs: skip(xs: all, n: n), index: 0)
+  match token_stream_first(stream: stream) {
+    Absent =>
+      match baseline {
+        Absent => true
+        Present { value: _ } => false
+      }
+    Present { value: tok } =>
+      match baseline {
+        Present { value: base } => tok.lexeme == base.lexeme
+        Absent => false
+      }
+  }
+}
+
+test fn token_stream_cursor_new_at_zero_holds() -> Bool {
+  let stream = token_stream_new(all: tsc_three_tokens)
+  (token_stream_position(stream: stream) == 0)
+    && (token_stream_remaining_count(stream: stream) == 3)
+    && (length(xs: token_stream_all(stream: stream)) == 3)
+}
+
+test fn token_stream_cursor_advance_bumps_pos_holds() -> Bool {
+  let stream = token_stream_advance(stream: token_stream_new(all: tsc_three_tokens), n: 2)
+  (token_stream_position(stream: stream) == 2)
+    && (token_stream_remaining_count(stream: stream) == 1)
+}
+
+test fn token_stream_cursor_first_after_advance_holds() -> Bool {
+  tsc_first_matches_skip_first(all: tsc_three_tokens, n: 0)
+    && tsc_first_matches_skip_first(all: tsc_three_tokens, n: 1)
+    && tsc_first_matches_skip_first(all: tsc_three_tokens, n: 2)
+}
+
+test fn token_stream_cursor_get_offset_holds() -> Bool {
+  let stream = token_stream_advance(stream: token_stream_new(all: tsc_three_tokens), n: 1)
+  match token_stream_get(stream: stream, offset: 1) {
+    Present { value: tok } => tok.lexeme == "c"
+    Absent => false
+  }
+}
+
+test fn token_stream_cursor_empty_first_absent_holds() -> Bool {
+  match token_stream_first(stream: token_stream_empty()) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+test fn token_stream_cursor_remaining_matches_skip_holds() -> Bool {
+  let stream = token_stream_advance(stream: token_stream_new(all: tsc_three_tokens), n: 1)
+  let remaining_len = length(xs: token_stream_remaining(stream: stream))
+  let skip_len = length(xs: skip(xs: tsc_three_tokens, n: 1))
+  remaining_len == skip_len
+}
