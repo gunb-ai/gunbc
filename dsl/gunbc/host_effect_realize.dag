@@ -175,35 +175,19 @@ fn host_effect_apply_gated(
   }
 }
 
-fn host_effect_intent_is_privilege_denial(intent: HostEffectIntent) -> Bool {
-  match intent.privilege_denial {
-    Present { value: Deny { reason: _ } } => true
-    Present { value: Permit } => false
-    Absent => false
-  }
-}
-
-type ConvergeDirective = Settled | ReDrive | Refused { reason: String }
-
-fn not_converged_directive(policy: Policy) -> ConvergeDirective {
-  match policy {
-    OneShotIdempotent => Settled
-    ConvergeToFixpoint => ReDrive
-  }
-}
-
 fn host_effect_policy_directive(r: Reconciliation<HostEffectIntent, HostEffectEvidence>) -> ConvergeDirective {
   match r {
     Converged { evidence: _, applied: _ } => Settled
     NotConverged { reason: why, applied: intent } =>
-      if host_effect_intent_is_privilege_denial(intent: intent) {
-        Refused { reason: why }
-      } else {
-        match resolve_host_effect_cell(target: intent.target, effect: intent.effect) {
-          IncompatibleCell { reason: inner_why } => Refused { reason: inner_why }
-          ShellOnHost { node: _, script: _ } => not_converged_directive(policy: intent.policy)
-          RedfishOnBmc { node: _, action: _ } => not_converged_directive(policy: intent.policy)
-        }
+      match intent.privilege_denial {
+        Present { value: Deny { reason: _ } } => Refused { reason: why }
+        Present { value: Permit } => not_converged_directive(policy: intent.policy)
+        Absent =>
+          match resolve_host_effect_cell(target: intent.target, effect: intent.effect) {
+            IncompatibleCell { reason: inner_why } => Refused { reason: inner_why }
+            ShellOnHost { node: _, script: _ } => not_converged_directive(policy: intent.policy)
+            RedfishOnBmc { node: _, action: _ } => not_converged_directive(policy: intent.policy)
+          }
       }
   }
 }

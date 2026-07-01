@@ -207,13 +207,6 @@ fn deploy_access_check_observed(access: DeployAccess) -> AccessDecision {
   }
 }
 
-fn deploy_access_decision_is_permit(d: AccessDecision) -> Bool {
-  match d {
-    Permit => true
-    Deny { reason: _ } => false
-  }
-}
-
 fn deploy_access_decision_reason(d: AccessDecision) -> String {
   match d {
     Permit => ""
