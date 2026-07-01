@@ -1,0 +1,47 @@
+module v2.test.realization_vocabulary_containment.importer_census
+
+import v2.lens.realization_vocabulary_containment {
+  realization_vocab_consumer_scan_roots,
+  realization_vocab_exception_roster,
+  realization_vocab_live_leak_candidate_paths,
+  realization_vocab_roster_stale_count_live
+}
+import v2.std.algebra { length }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+data bash_program_sidecar: String = "extdeps.languages.bash.program"
+
+fn list_contains_str(xs: List<String>, target: String) -> Bool {
+  fold(xs, init: false, f: fn(acc, s) { acc || (s == target) })
+}
+
+test fn bash_sidecar_roster_matches_live_non_edge_importers_holds() -> Bool {
+  let live = realization_vocab_live_leak_candidate_paths(
+    scan_roots: realization_vocab_consumer_scan_roots
+  )
+  length(xs: live) == length(xs: realization_vocab_exception_roster)
+    && realization_vocab_roster_stale_count_live(
+      scan_roots: realization_vocab_consumer_scan_roots
+    ) == 0
+}
+
+test fn ci_spec_migrated_off_bash_program_sidecar_holds() -> Bool {
+  !list_contains_str(
+    xs: realization_vocab_live_leak_candidate_paths(
+      scan_roots: realization_vocab_consumer_scan_roots
+    ),
+    target: "dsl/gunbc/ci_spec.dag"
+  ) && !list_contains_str(
+    xs: realization_vocab_exception_roster,
+    target: "dsl/gunbc/ci_spec.dag"
+  )
+}
+
+test fn node_http_server_emit_stale_roster_excuse_removed_holds() -> Bool {
+  !list_contains_str(
+    xs: realization_vocab_exception_roster,
+    target: "dsl/gunbc/node_http_server_emit.dag"
+  )
+}

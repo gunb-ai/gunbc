@@ -49,7 +49,6 @@ test fn rostered_consumer_import_is_not_leak_holds() -> Bool {
 }
 
 data roster_without_host_prelude: List<String> = [
-  "dsl/gunbc/ci_spec.dag",
   "dsl/gunbc/ci_yaml_validate.dag",
   "dsl/tools/build_step.dag",
   "dsl/tools/dsl_compile_clean_transport.dag",
