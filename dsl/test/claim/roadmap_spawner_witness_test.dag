@@ -118,6 +118,14 @@ fn witness_json_title_escaping() -> Bool {
   string_contains(s: json, pattern: "Title \\\"quoted\\\" and \\\\back")
 }
 
+fn witness_json_newline_escaping() -> Bool {
+  let node = sized_derivable(id: "newline-test", prs: [1], title: "line one\nline two")
+  let doc = fixture_doc(nodes: [node], edges: [])
+  let json = roadmap_spawn_request_json(doc: doc, merged: [], anchor_commit: "x")
+  string_contains(s: json, pattern: "line one\\nline two")
+    && !string_contains(s: json, pattern: "line one\nline two")
+}
+
 fn witness_spawn_frontier_ready_matches_next_spawnable() -> Bool {
   let node = sized_derivable(id: "frontier-ready", prs: [88], title: "Frontier Ready")
   let doc = fixture_doc(nodes: [node], edges: [])
@@ -169,6 +177,7 @@ test fn roadmap_spawner_witnesses() -> Bool {
     && witness_json_schema_field_present()
     && witness_json_satisfied_dep_in_ready()
     && witness_json_title_escaping()
+    && witness_json_newline_escaping()
     && witness_spawn_frontier_ready_matches_next_spawnable()
 }
 
