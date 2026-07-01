@@ -7,6 +7,7 @@ import v2.std.algebra {
   TailFound,
   fold_list,
   is_empty,
+  is_prefix_of,
   length,
   list_append,
   list_snoc_item,
@@ -35,7 +36,7 @@ import v2.std.node {
   node_synthetic
 }
 import v2.std.node_query { node_positional_child_targets }
-import v2.std.text { String }
+import v2.std.text { Char, String }
 
 type DualRepViolationKind
   = SameSymbolEquality
@@ -276,13 +277,17 @@ fn body_alpha_equivalent_to_call(
         param: param,
         arg_name: arg
       )
-      node_for_compare(n: rhs) == node_for_compare(n: inlined)
+      rhs == inlined
     }
   }
 }
 
-fn node_for_compare(n: Node) -> Node {
-  n
+fn char_eq(a: Char, b: Char) -> Bool {
+  a == b
+}
+
+fn qualified_name_in_module(qname: String, module: String) -> Bool {
+  is_prefix_of(prefix: concat(module, "."), xs: qname, eq: char_eq)
 }
 
 fn first_param_sym(params: List<Symbol>) -> Symbol {
@@ -468,7 +473,7 @@ fn dual_rep_test_file_count_from_scans(scans: List<DualRepModuleScan>) -> Int {
 
 fn decl_belongs_to_module(decl: FnArrowDecl, fact: DualRepModuleRef) -> Bool {
   path_is_test_dag(path: fact.path)
-    && string_contains(s: decl.qualified_name, pattern: concat(fact.module, "."))
+    && qualified_name_in_module(qname: decl.qualified_name, module: fact.module)
 }
 
 fn fn_fact_from_decl(decl: FnArrowDecl) -> DualRepFnFact {
