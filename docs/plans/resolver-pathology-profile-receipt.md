@@ -4,7 +4,9 @@
 
 **Owner:** vivid-carp-798 (`1-resolver-pathology-a`). Linked from `ROADMAP.md` §1 and `dsl/gunbc/roadmap_authority.dag` (`1-resolver-pathology`).
 
-**Host:** container session, linux x86_64, 2026-07-01. `claim_batch` / `claim_executor` built `release` locally (`CTRL_BUILD_BYPASS_SHIMS=1 cargo build -p v1-compiler --release --bin claim_batch --bin claim_executor`). `GUNBC_RESOLVED_GRAPH_CACHE_DIR` **unset** (cross-process resolve cache off).
+**Host:** container session, linux x86_64, 2026-07-01. `claim_batch` / `claim_executor` built `release` locally (`CTRL_BUILD_BYPASS_SHIMS=1 cargo build -p v1-compiler --release --bin claim_batch --bin claim_executor`). `GUNBC_RESOLVED_GRAPH_CACHE_DIR` **unset** (cross-process resolve cache off — do not export an empty string; `var_os` treats `""` as set).
+
+**Runner scaffold:** `scripts/profile-cold-resolve.sh` is marked `SCAFFOLD` with a named `dissolve-on` toward substrate-emitted resolve timings / gunbc bash-emit (#5828). The `.dag` plan documents commands; the shell is the interim receipt entrypoint only.
 
 ---
 

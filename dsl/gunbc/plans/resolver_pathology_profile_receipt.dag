@@ -7,7 +7,7 @@ import gunbc.plans.md_helpers { h2, h3, p, li, ul, cell, row, hr }
 fn resolver_pathology_profile_receipt_body() -> List<MarkdownBlock> {
   [
     p(text: "**Status:** measurement doc only (no resolver refactor). Timestamped profiling receipt for ROADMAP §1 *profile the 518s resolve*. DESIGN.md remains authority."),
-    p(text: "**Owner:** vivid-carp-798. Shell entrypoint: `scripts/profile-cold-resolve.sh`."),
+    p(text: "**Owner:** vivid-carp-798. Shell entrypoint: `scripts/profile-cold-resolve.sh` (SCAFFOLD — dissolve-on: substrate-emitted resolve timings / gunbc bash-emit #5828)."),
     hr(),
     h2(text: "1. Reproducible commands"),
     CodeBlock { code: "unset GUNBC_RESOLVED_GRAPH_CACHE_DIR\n./scripts/profile-cold-resolve.sh          # corpus + top-15\n./scripts/profile-cold-resolve.sh --pair   # budget_roster vs fold_list twin\n" },

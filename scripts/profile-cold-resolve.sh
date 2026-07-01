@@ -43,25 +43,49 @@ done
 log="$(mktemp "${TMPDIR:-/tmp}/profile-cold-resolve.XXXXXX.log")"
 trap 'rm -f "$log"' EXIT
 
+# Run one pair entry. resolve_only=1: witness may fail after resolve; still require [resolve] line.
+# Otherwise require claim_batch exit 0 (fail-closed for eval witnesses).
+run_pair_entry() {
+  local label="$1" entry="$2" fn="$3" resolve_only="${4:-0}"
+  local -a cmd=( "$BIN" --source-root src/v2 --source-root dsl --entry "$entry" --function "$fn" )
+  if [[ "$resolve_only" == "0" ]]; then
+    cmd+=( --claim-run --wet )
+  fi
+  local out rc
+  set +e
+  out="$("${cmd[@]}" 2>&1)"
+  rc=$?
+  set -e
+  printf '%s\n' "$out" >>"$log"
+  if ! printf '%s\n' "$out" | rg -qF "[resolve] ${entry}:"; then
+    echo "profile-cold-resolve: FAIL [pair:${label}] no [resolve] line (exit ${rc})" >&2
+    printf '%s\n' "$out" >&2
+    exit 1
+  fi
+  if [[ "$resolve_only" == "0" ]] && [[ "$rc" -ne 0 ]]; then
+    echo "profile-cold-resolve: FAIL [pair:${label}] witness run failed (exit ${rc})" >&2
+    printf '%s\n' "$out" >&2
+    exit 1
+  fi
+  printf '%s\n' "$out" | rg -F "[resolve] ${entry}:" | tail -1 | sed "s/^/[pair:${label}] /"
+  printf '%s\n' "$out" | rg '\[resolve-summary\]' | tail -1 | sed "s/^/[pair:${label}] /" || true
+}
+
 if [[ "$MODE" == "pair" ]]; then
   echo "profile-cold-resolve: pathological pair (cold per-process resolve)" >&2
-  for spec in \
-    "budget_roster:src/v2/test/claim/complexity_gate/budget_roster_completeness_test.dag" \
-    "structural_twin_fold_list:src/v2/test/claim/fold_list_generic_instantiation.dag" \
-    "roster_module:src/v2/test/claim/complexity_gate/subject_complexity_budget_roster.dag" \
-    "twin_single_row_eval:src/v2/test/claim/complexity_gate/source_bridged_add_budget_test.dag:source_bridged_add_budget_claim_holds"; do
-    label="${spec%%:*}"
-    rest="${spec#*:}"
-    entry="${rest%%:*}"
-    fn="${rest#*:}"
-    if [[ "$entry" == "$fn" ]]; then
-      "$BIN" --source-root src/v2 --source-root dsl --entry "$entry" --function __noop__ >>"$log" 2>&1 || true
-    else
-      "$BIN" --source-root src/v2 --source-root dsl --entry "$entry" --function "$fn" --claim-run --wet >>"$log" 2>&1 || true
-    fi
-    rg "\[resolve\] $entry:" "$log" | tail -1 | sed "s/^/[pair:$label] /"
-    rg "\[resolve-summary\]" "$log" | tail -1 | sed "s/^/[pair:$label] /" || true
-  done
+  # resolve_only entries: no test fn in module; claim_batch resolves then fails witness lookup.
+  run_pair_entry budget_roster \
+    src/v2/test/claim/complexity_gate/budget_roster_completeness_test.dag \
+    complexity_budget_roster_family_gate_holds 0
+  run_pair_entry structural_twin_fold_list \
+    src/v2/test/claim/fold_list_generic_instantiation.dag \
+    fold_list_generic_instantiation_holds 0
+  run_pair_entry roster_module \
+    src/v2/test/claim/complexity_gate/subject_complexity_budget_roster.dag \
+    _profile_resolve_only_probe_ 1
+  run_pair_entry twin_single_row_eval \
+    src/v2/test/claim/complexity_gate/source_bridged_add_budget_test.dag \
+    source_bridged_add_budget_claim_holds 0
   exit 0
 fi
 
