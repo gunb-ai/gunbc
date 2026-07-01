@@ -86,7 +86,7 @@ test fn ci_gate_step_scaffold_is_tracked() -> Bool {
 test fn ci_gate_step_name_declares_not_enforcing() -> Bool {
   string_contains(
     s: merge_admission_gate_step_name,
-    pattern: "NOT ENFORCING until GatingEnforced"
+    pattern: "freshness block held until GatingEnforced"
   )
 }
 

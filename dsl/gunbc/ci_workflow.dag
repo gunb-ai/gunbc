@@ -166,7 +166,7 @@ fn ci_floor_step() -> Step {
   }
 }
 
-data merge_admission_gate_step_name: String = "Merge-admission gate (NOT ENFORCING until GatingEnforced)"
+data merge_admission_gate_step_name: String = "Merge-admission gate (receipt required; freshness block held until GatingEnforced)"
 
 data merge_admission_ci_gate_step_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
