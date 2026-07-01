@@ -57,42 +57,29 @@ fn wire_pr_number_from_lines(lines: List<String>) -> Int {
   }
 }
 
-fn parse_receipt_wire_body(lines: List<String>, conclusion: CheckConclusion) -> MergeAdmissionReceipt {
-  if length(lines) >= 5 {
-    MergeAdmissionReceipt {
-      pr_number: wire_pr_number_from_lines(lines: lines),
-      head_sha: lines.skip(n: 3).first(),
-      base_tree_hash: lines.first(),
-      gate_roster_hash: lines.skip(n: 1).first(),
-      conclusion: conclusion,
-    }
-  } else if length(lines) >= 4 {
-    MergeAdmissionReceipt {
-      pr_number: 0,
-      head_sha: lines.skip(n: 3).first(),
-      base_tree_hash: lines.first(),
-      gate_roster_hash: lines.skip(n: 1).first(),
-      conclusion: conclusion,
+fn parse_receipt_wire_body(lines: List<String>, conclusion: CheckConclusion) -> MergeAdmissionReceipt? {
+  if length(lines) >= 4 {
+    Present {
+      value: MergeAdmissionReceipt {
+        pr_number: wire_pr_number_from_lines(lines: lines),
+        head_sha: lines.skip(n: 3).first(),
+        base_tree_hash: lines.first(),
+        gate_roster_hash: lines.skip(n: 1).first(),
+        conclusion: conclusion,
+      }
     }
   } else {
-    MergeAdmissionReceipt {
-      pr_number: 0,
-      head_sha: "0000000000000000000000000000000000000000",
-      base_tree_hash: lines.first(),
-      gate_roster_hash: lines.skip(n: 1).first(),
-      conclusion: conclusion,
-    }
+    none
   }
 }
 
 fn parse_receipt_wire(text: String) -> MergeAdmissionReceipt? {
   let lines = receipt_wire_lines(text: text)
-  if length(lines) < 3 {
+  if length(lines) < 4 {
     none
   } else {
     match parse_check_conclusion(raw: lines.skip(n: 2).first()) {
-      Present { value: conclusion } =>
-        Present { value: parse_receipt_wire_body(lines: lines, conclusion: conclusion) }
+      Present { value: conclusion } => parse_receipt_wire_body(lines: lines, conclusion: conclusion)
       Absent => none
     }
   }
