@@ -1221,6 +1221,9 @@ fn data_init_literal_fingerprint(
             crate::std_syntax::LiteralValue::LitInt { .. }
             | crate::std_syntax::LiteralValue::LitFloat { .. } => Some(format!("num:{lexeme}")),
             crate::std_syntax::LiteralValue::LitBool { .. } => Some(format!("bool:{lexeme}")),
+            // Str uses decoded content, not source lexeme: witness RHS is a skeleton atom
+            // name (bare content), so this matches `literal_fingerprint_str_content` when the
+            // initializer is a plain quoted literal without escapes.
             crate::std_syntax::LiteralValue::LitStr { value: s, .. } => {
                 Some(format!("str:\"{s}\""))
             }
@@ -1236,8 +1239,9 @@ fn data_init_literal_fingerprint(
 // `v2.lens.no_dual_representation_test`. Host SOURCE half; dissolves with
 // `fn_arrow_decl_facts_live` / `concept_decl_facts_live` on the same gunbc#5364
 // corpus-as-node accessor widen trigger named in `v2.lens.wiring_liveness`'s
-// construction_justification. Fingerprint encoding authority: `v2.std.data_index`
-// (`literal_fingerprint_*_lexeme`); host projection must stay aligned.
+// construction_justification. Fingerprint encoding spec: `v2.std.data_index`
+// (`literal_fingerprint_*_lexeme`); this host block is a transient SOURCE projection on
+// the gunbc#5364 corpus-accessor widen — not an independent authority.
 pub fn eval_data_init_decl_facts_live(
     ctx: &InterpContext,
     _args: &[(Option<String>, Value)],

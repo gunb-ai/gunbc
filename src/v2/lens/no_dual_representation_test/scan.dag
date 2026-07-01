@@ -257,7 +257,7 @@ fn first_call_arg_name(operand: Node) -> String {
   }
 }
 
-fn body_alpha_equivalent_to_call(
+fn body_alpha_equivalent_to_single_arg_call(
   lhs: Node,
   rhs: Node,
   fns: List<DualRepFnFact>
@@ -392,7 +392,7 @@ fn classify_eq_node_site(
       empty_dual_rep_violations
     }
   } else if skeleton_is_call(node: site.lhs)
-    && body_alpha_equivalent_to_call(lhs: site.lhs, rhs: site.rhs, fns: fns)
+    && body_alpha_equivalent_to_single_arg_call(lhs: site.lhs, rhs: site.rhs, fns: fns)
   {
     [
       DualRepViolation {
