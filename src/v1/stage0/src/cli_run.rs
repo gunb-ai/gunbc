@@ -1457,7 +1457,7 @@ pub fn run_claim(ctx: &v1_interpreter::InterpContext, function: &str) -> ClaimOu
         Ok(v1_interpreter::Value::Bool(false)) => ClaimOutcome::Fail,
         Ok(other) => match classify_exit(&other, ctx) {
             ExitClass::Success => ClaimOutcome::Pass,
-            ExitClass::Failure(_) => ClaimOutcome::Fail,
+            ExitClass::Failure { .. } => ClaimOutcome::Fail,
             ExitClass::NotProcessExit { type_name } => ClaimOutcome::NotBool { got: type_name },
         },
         Err(e) => ClaimOutcome::RuntimeError {
@@ -1611,7 +1611,12 @@ pub fn handle_run_with_options(
                 }
                 match classify_exit(&val, &ctx) {
                     ExitClass::Success => {}
-                    ExitClass::Failure(code) => std::process::exit(code),
+                    ExitClass::Failure { code, reason } => {
+                        if let Some(message) = reason {
+                            eprintln!("{message}");
+                        }
+                        std::process::exit(code);
+                    }
                     ExitClass::NotProcessExit { type_name } => {
                         eprintln!(
                             "error: function `{}` returned `{}`, not `ProcessExit`. \
@@ -1635,7 +1640,7 @@ pub fn handle_run_with_options(
 
 enum ExitClass {
     Success,
-    Failure(i32),
+    Failure { code: i32, reason: Option<String> },
     NotProcessExit { type_name: String },
 }
 
@@ -1654,10 +1659,15 @@ fn classify_exit(val: &v1_interpreter::Value, ctx: &v1_interpreter::InterpContex
             if ctx.sym_eq(*variant_name, "ExitSuccess") {
                 ExitClass::Success
             } else if ctx.sym_eq(*variant_name, "ExitFailure") {
-                match ctx.field(fields, "code") {
-                    Some(v1_interpreter::Value::Int(n)) => ExitClass::Failure(*n as i32),
-                    _ => ExitClass::Failure(1),
-                }
+                let code = match ctx.field(fields, "code") {
+                    Some(v1_interpreter::Value::Int(n)) => *n as i32,
+                    _ => 1,
+                };
+                let reason = match ctx.field(fields, "reason") {
+                    Some(v1_interpreter::Value::Str(s)) if !s.is_empty() => Some(s.clone()),
+                    _ => None,
+                };
+                ExitClass::Failure { code, reason }
             } else {
                 ExitClass::NotProcessExit {
                     type_name: format!("ProcessExit::{}", ctx.resolve(*variant_name)),
