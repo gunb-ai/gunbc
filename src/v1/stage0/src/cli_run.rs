@@ -5809,7 +5809,6 @@ mod module_path_index_tests {
     }
 }
 
-<<<<<<< HEAD
 // SCAFFOLD — host-fed fact extraction for v2.lens.extdeps_shape_transport_policy (Concern A).
 // Dissolution: when the Node-tree argv projection supersedes text scan (dissolve-on marker in
 // extdeps_shape_transport_policy.dag construction_justification), replace this block with a
@@ -6233,7 +6232,9 @@ pub fn extdeps_shape_transport_policy_module_facts(
         source_nickname_literal_count,
         gist_create_declares_filename_input,
         gist_create_files_keyed_by_filename,
-=======
+    }
+}
+
 #[cfg(test)]
 mod doc_reachability_tests {
     use super::*;
@@ -6324,6 +6325,5 @@ mod doc_reachability_tests {
         let c = "// bind: docs/planning/foo.md (provenance)\n// no bind here\n// bind: bar.md";
         let t = bind_md_refs(c);
         assert_eq!(t, vec!["docs/planning/foo.md", "bar.md"]);
->>>>>>> origin/main
     }
 }
