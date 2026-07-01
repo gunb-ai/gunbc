@@ -536,7 +536,7 @@ fn witness_floor_spawn_width_tight_budget_backs_off() -> Bool {
 
 fn witness_floor_spawn_width_zero_budget_falls_back() -> Bool {
   let width = hardware_thread_count_value(t: gunbc_ci_plan_spawn_width(memory_budget_bytes: 0))
-  width == int_min(a: gunbc_ci_floor_conservative_fallback_width, b: execution_corpus_spawn_width())
+  width == gunbc_ci_floor_conservative_fallback_width
 }
 
 fn floor_batch_heavy_gate_resolve_count(batch: List<Runnable>) -> Int {
