@@ -46,14 +46,6 @@ fn no_dual_representation_test_count() -> Int {
   dual_rep_violation_count_from_scans(scans: dual_rep_live_module_scans())
 }
 
-fn no_dual_representation_test_unrostered_count() -> Int {
-  0
-}
-
-fn no_dual_representation_test_stale_roster_count() -> Int {
-  0
-}
-
 fn no_dual_representation_test_file_count() -> Int {
   dual_rep_test_file_count_from_scans(scans: dual_rep_live_module_scans())
 }
@@ -64,14 +56,6 @@ fn no_dual_representation_test_clean_holds() -> Bool {
 
 fn no_dual_representation_test_live_count() -> Int {
   no_dual_representation_test_count()
-}
-
-fn no_dual_representation_test_live_unrostered_count() -> Int {
-  no_dual_representation_test_unrostered_count()
-}
-
-fn no_dual_representation_test_live_stale_roster_count() -> Int {
-  no_dual_representation_test_stale_roster_count()
 }
 
 fn no_dual_representation_test_live_file_count() -> Int {
