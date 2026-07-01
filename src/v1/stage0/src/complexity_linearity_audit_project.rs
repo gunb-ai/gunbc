@@ -79,7 +79,7 @@ fn nfr_roster_bucket(site: &str) -> Option<NonFoldRosterBucket> {
 use crate::decl_facts_project::{
     decl_facts_is_fn_like, logical_qualified_name_from_module, DeclFact,
 };
-use crate::medium_structure_project::parse_dag_file;
+use crate::module_path_index::medium_structure_census::parse_dag_file;
 use crate::v1_compiler_infer_items::item_kind;
 use crate::v1_std_core::{
     arm_pattern, authored_name_at, expr_var_name_at, match_arm_nodes, match_scrutinee,

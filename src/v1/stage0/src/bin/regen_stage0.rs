@@ -96,6 +96,7 @@ const GENERATED_STAGE0_FILES: &[&str] = &[
     "v1_compiler_languages.rs",
     "v1_compiler_normalize.rs",
     "v1_compiler_ownership.rs",
+    "v1_compiler_parse.rs",
     "v1_compiler_resolve.rs",
     "v1_compiler_runtime_go.rs",
     "v1_compiler_runtime_rust.rs",
@@ -117,27 +118,17 @@ const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
     "complexity_linearity_audit_project.rs",
     "decl_facts_project.rs",
     "coproduct_reflection.rs",
-    "inert_carrier_project.rs",
-    "medium_structure_project.rs",
-    "extdeps_shape_transport_policy_project.rs",
-    "fact_cardinality_census.rs",
-    "languages_consumer_census.rs",
     "recorded_fixture.rs",
     "resolved_graph_cache.rs",
     "rest_transport_facts.rs",
-    "transport_script_position_project.rs",
     "wire_value_serialize.rs",
-    // Un-dissolved bootstrap parser seed: #5864's O(N) cursor optimization lives in
-    // this hand-maintained file, NOT in src/v1/02_parse.dag (which still models the
-    // O(N^2) baseline). A faithful regen from 02_parse.dag would revert #5864, so
-    // parse.rs is copy-preserved here (operator ruling Path B). Dissolution: ground
-    // the TokenStream cursor into 02_parse.dag, then move this file back to
-    // GENERATED_STAGE0_FILES.
-    "v1_compiler_parse.rs",
     "v1_compiler_dag_collect.rs",
     "v1_compiler_dag_collect_support.rs",
     "v1_interpreter.rs",
 ];
+
+/// Hand-maintained stage0 support living in subdirectories (not flat `.rs` files).
+const HAND_MAINTAINED_STAGE0_DIRS: &[&str] = &["module_path_index"];
 
 fn main() -> ExitCode {
     match run() {
@@ -342,9 +333,6 @@ fn run() -> Result<(), String> {
     })?;
     time_phase(&mut phases, "copy_hand_maintained_support", || {
         copy_hand_maintained_support(&stage0_src, &fresh_dir.join("src"))
-    })?;
-    time_phase(&mut phases, "patch_languages_consumer_census_mod", || {
-        patch_languages_consumer_census_mod(&fresh_dir.join("src"))
     })?;
     time_phase(&mut phases, "patch_complexity_linearity_audit_mod", || {
         patch_complexity_linearity_audit_mod(&fresh_dir.join("src"))
@@ -821,20 +809,29 @@ fn copy_hand_maintained_support(stage0_src: &Path, dest_src: &Path) -> Result<()
                 .map_err(|e| format!("copy {}: {e}", source.display()))?;
         }
     }
+    for dir_name in HAND_MAINTAINED_STAGE0_DIRS {
+        let source = stage0_src.join(dir_name);
+        if source.is_dir() {
+            copy_dir_recursive(&source, &dest_src.join(dir_name))?;
+        }
+    }
     Ok(())
 }
 
-fn patch_languages_consumer_census_mod(src_dir: &Path) -> Result<(), String> {
-    let lib_path = src_dir.join("lib.rs");
-    let mut lib_text =
-        fs::read_to_string(&lib_path).map_err(|e| format!("read {}: {e}", lib_path.display()))?;
-    if !lib_text.contains("pub mod languages_consumer_census;") {
-        lib_text = lib_text.replace(
-            "pub mod fact_cardinality_census;\n",
-            "pub mod fact_cardinality_census;\npub mod languages_consumer_census;\n",
-        );
+fn copy_dir_recursive(source: &Path, dest: &Path) -> Result<(), String> {
+    fs::create_dir_all(dest).map_err(|e| format!("create {}: {e}", dest.display()))?;
+    for entry in fs::read_dir(source).map_err(|e| format!("read dir {}: {e}", source.display()))? {
+        let entry = entry.map_err(|e| format!("read dir entry in {}: {e}", source.display()))?;
+        let src_path = entry.path();
+        let dst_path = dest.join(entry.file_name());
+        if src_path.is_dir() {
+            copy_dir_recursive(&src_path, &dst_path)?;
+        } else {
+            fs::copy(&src_path, &dst_path).map_err(|e| {
+                format!("copy {} -> {}: {e}", src_path.display(), dst_path.display())
+            })?;
+        }
     }
-    fs::write(&lib_path, lib_text).map_err(|e| format!("write {}: {e}", lib_path.display()))?;
     Ok(())
 }
 

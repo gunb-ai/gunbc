@@ -21,6 +21,7 @@ import v2.compiler.parse {
 }
 import v2.compiler.resolve { resolve }
 import v2.compiler.tokenize { tokenize, TokenStream }
+import v2.std.compilers.lexing { token_stream_all, token_stream_remaining }
 import v2.extdeps.languages.dag { dag_language_model_wave1 }
 import v2.std.collection { List }
 import v2.std.diagnostic {
@@ -126,7 +127,7 @@ fn bisect_through_parse_production() -> Outcome<ParseTree> {
           match lm.grammar {
             ModeledGrammar { root: root } =>
               parse_production_tree(
-                tokens: token_stream.tokens,
+                tokens: token_stream_remaining(stream: token_stream),
                 validated: validated,
                 production_name: root.start
               )
@@ -161,8 +162,8 @@ fn bisect_single_module_parse_expr() -> Bool {
             Holds { value: production } =>
               match parse_expr(
                 expr: production.expression,
-                tokens: token_stream.tokens,
-                all_tokens: token_stream.tokens,
+                tokens: token_stream_remaining(stream: token_stream),
+                all_tokens: token_stream_all(stream: token_stream),
                 root: root,
                 table: parse_table_empty(),
                 prov: parse_prov_initial()

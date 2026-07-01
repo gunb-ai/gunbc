@@ -15,7 +15,7 @@ import v2.extdeps.languages.dag {
   dag_grammar_production_mvp1_fn_add,
   dag_language_model_wave1_modeled
 }
-import v2.std.compilers.lexing { TokenStream }
+import v2.std.compilers.lexing { TokenStream, token_stream_remaining }
 import v2.std.grammar { GrammarRoot, grammar_empty_sync_tokens }
 import v2.std.provenance { span_index_empty }
 import v2.std.algebra { Empty, FreeMonoid, fold_list, length, list_snoc_item }
@@ -214,7 +214,7 @@ fn source_authority_parse_source_file_tokens(
   match grammar_validate_for_parse(root: root, at: port_locus(port: ^parse_stage_locus_port)) {
     Accepted { value: validated, diagnostics: _ } =>
       match parse_production_tree(
-        tokens: tokens.tokens,
+        tokens: token_stream_remaining(stream: tokens),
         validated: validated,
         production_name: ^dag_production_mvp1_fn_add
       ) {
