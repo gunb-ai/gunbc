@@ -36,12 +36,16 @@ pub mod extdeps_uri;
 pub mod extdeps_uri_path;
 pub mod extdeps_version;
 pub mod extdeps_version_semver;
+<<<<<<< HEAD
 pub mod external_authority_project;
 pub mod fact_cardinality_census;
 pub mod inert_carrier_project;
 pub mod languages_consumer_census;
 pub mod medium_structure_project;
 pub mod non_fold_residue_project;
+=======
+pub mod module_path_index;
+>>>>>>> origin/main
 pub mod recorded_fixture;
 pub mod resolved_graph_cache;
 pub mod rest_transport_facts;
@@ -72,7 +76,6 @@ pub mod std_serialization;
 pub mod std_syntax;
 pub mod std_termination;
 pub mod std_types;
-pub mod transport_script_position_project;
 pub mod v1_compiler_artifact;
 pub mod v1_compiler_coercion;
 pub mod v1_compiler_compile;

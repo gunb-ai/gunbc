@@ -11,7 +11,7 @@ import gunbc.generated_artifact {
 }
 import std.realization_schedule { string_list_eq }
 
-data doc_reachability_witness_entry: String = "src/v2/lens/doc_reachability_test.dag"
+data doc_reachability_witness_entry: String = "dsl/test/claim/doc_reachability_witness_test.dag"
 
 type LocalTidyCheck
   = LocalTidyWitnessCheck { entry: String, check_fns: List<String> }

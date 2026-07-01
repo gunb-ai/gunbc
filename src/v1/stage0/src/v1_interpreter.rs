@@ -3721,7 +3721,13 @@ pub fn materialize_shell_argv_for_operation(
     param_bindings: HashMap<String, Value>,
 ) -> Result<Vec<String>, String> {
     let (argv_nodes, source_indices) =
+<<<<<<< HEAD
         crate::cli_run::shell_argv_nodes_for_operation(path, service, operation);
+=======
+        crate::module_path_index::extdeps_shape_transport_policy_census::shell_argv_nodes_for_operation(
+            path, service, operation,
+        );
+>>>>>>> origin/main
     let mut argv: Vec<String> = Vec::new();
     for node in argv_nodes.iter() {
         let val = materialize_argv_expr_for_bindings(node, &param_bindings, &source_indices)?;
@@ -5413,7 +5419,7 @@ fn eval_builtin(
                 expect_str_list_flex(positional.get(3).copied(), "medium_structure_leak_facts")?;
             let string_ops =
                 expect_str_list_flex(positional.get(4).copied(), "medium_structure_leak_facts")?;
-            let facts = crate::medium_structure_project::medium_structure_leak_facts(
+            let facts = crate::module_path_index::medium_structure_census::medium_structure_leak_facts(
                 &emit_roots,
                 &check_roots,
                 &markers,
@@ -5440,11 +5446,11 @@ fn eval_builtin(
         }
 
         "fact_cardinality_cross_tree_coexistence_count" => Ok(Some(Value::Int(
-            crate::fact_cardinality_census::cross_tree_coexistence_count(),
+            crate::module_path_index::fact_cardinality_census::cross_tree_coexistence_count(),
         ))),
 
         "fact_cardinality_cross_tree_diverged_fork_count" => Ok(Some(Value::Int(
-            crate::fact_cardinality_census::cross_tree_diverged_fork_count(),
+            crate::module_path_index::fact_cardinality_census::cross_tree_diverged_fork_count(),
         ))),
 
         "fact_cardinality_cross_tree_is_coexistence" => {
@@ -5453,7 +5459,7 @@ fn eval_builtin(
                 "fact_cardinality_cross_tree_is_coexistence",
             )?;
             Ok(Some(Value::Bool(
-                crate::fact_cardinality_census::cross_tree_is_coexistence(key),
+                crate::module_path_index::fact_cardinality_census::cross_tree_is_coexistence(key),
             )))
         }
 
@@ -5463,20 +5469,20 @@ fn eval_builtin(
                 "fact_cardinality_cross_tree_is_diverged_fork",
             )?;
             Ok(Some(Value::Bool(
-                crate::fact_cardinality_census::cross_tree_is_diverged_fork(key),
+                crate::module_path_index::fact_cardinality_census::cross_tree_is_diverged_fork(key),
             )))
         }
 
         "languages_consumer_census_data_decl_count" => Ok(Some(Value::Int(
-            crate::languages_consumer_census::languages_consumer_census_data_decl_count(),
+            crate::module_path_index::languages_consumer_census::languages_consumer_census_data_decl_count(),
         ))),
 
         "languages_consumer_census_per_language_row_count" => Ok(Some(Value::Int(
-            crate::languages_consumer_census::languages_consumer_census_per_language_row_count(),
+            crate::module_path_index::languages_consumer_census::languages_consumer_census_per_language_row_count(),
         ))),
 
         "languages_consumer_census_format_row_count" => Ok(Some(Value::Int(
-            crate::languages_consumer_census::languages_consumer_census_format_row_count(),
+            crate::module_path_index::languages_consumer_census::languages_consumer_census_format_row_count(),
         ))),
 
         "languages_consumer_census_external_consumer_count" => {
@@ -5485,7 +5491,7 @@ fn eval_builtin(
                 "languages_consumer_census_external_consumer_count",
             )?;
             Ok(Some(Value::Int(
-                crate::languages_consumer_census::languages_consumer_census_external_consumer_count(
+                crate::module_path_index::languages_consumer_census::languages_consumer_census_external_consumer_count(
                     decl_name,
                 ),
             )))
@@ -5497,7 +5503,7 @@ fn eval_builtin(
                 "languages_consumer_census_is_composition_only",
             )?;
             Ok(Some(Value::Bool(
-                crate::languages_consumer_census::languages_consumer_census_is_composition_only(
+                crate::module_path_index::languages_consumer_census::languages_consumer_census_is_composition_only(
                     decl_name,
                 ),
             )))
@@ -5509,12 +5515,35 @@ fn eval_builtin(
                 "languages_consumer_census_has_external_consumer",
             )?;
             Ok(Some(Value::Bool(
-                crate::languages_consumer_census::languages_consumer_census_has_external_consumer(
+                crate::module_path_index::languages_consumer_census::languages_consumer_census_has_external_consumer(
                     decl_name,
                 ),
             )))
         }
 
+<<<<<<< HEAD
+=======
+        "extdeps_dead_param_count_for_operation" => {
+            let path = expect_str(
+                positional.first().copied(),
+                "extdeps_dead_param_count_for_operation",
+            )?;
+            let service = expect_str(
+                positional.get(1).copied(),
+                "extdeps_dead_param_count_for_operation",
+            )?;
+            let operation = expect_str(
+                positional.get(2).copied(),
+                "extdeps_dead_param_count_for_operation",
+            )?;
+            let count =
+                crate::module_path_index::extdeps_shape_transport_policy_census::dead_param_count_for_operation(
+                    path, service, operation,
+                );
+            Ok(Some(Value::Int(count)))
+        }
+
+>>>>>>> origin/main
         "shell_materialize_argv_for_operation" => {
             let path = expect_str(
                 positional.first().copied(),
@@ -5555,6 +5584,31 @@ fn eval_builtin(
             )))
         }
 
+<<<<<<< HEAD
+=======
+        "extdeps_dead_param_count_for_path" => {
+            let path = expect_str(
+                positional.first().copied(),
+                "extdeps_dead_param_count_for_path",
+            )?;
+            let count =
+                crate::module_path_index::extdeps_shape_transport_policy_census::dead_param_count_for_path(path);
+            Ok(Some(Value::Int(count)))
+        }
+
+        "extdeps_embedded_policy_literal_count_for_path" => {
+            let path = expect_str(
+                positional.first().copied(),
+                "extdeps_embedded_policy_literal_count_for_path",
+            )?;
+            let count =
+                crate::module_path_index::extdeps_shape_transport_policy_census::embedded_policy_literal_count_for_path(
+                    path,
+                );
+            Ok(Some(Value::Int(count)))
+        }
+
+>>>>>>> origin/main
         "extdeps_qualified_name_resolves_in_derived_module_set" => {
             let module = positional.first().ok_or_else(|| InterpError::TypeError {
                 msg:
@@ -5562,17 +5616,46 @@ fn eval_builtin(
                         .to_string(),
             })?;
             Ok(Some(Value::Bool(
+<<<<<<< HEAD
                 crate::cli_run::qualified_name_resolves_in_derived_module_set(module),
             )))
         }
 
+=======
+                crate::module_path_index::extdeps_shape_transport_policy_census::qualified_name_resolves_in_derived_module_set(
+                    module,
+                ),
+            )))
+        }
+
+        "extdeps_dead_param_count_for_qualified_name" => {
+            let module = positional.first().ok_or_else(|| InterpError::TypeError {
+                msg: "extdeps_dead_param_count_for_qualified_name requires module, service, operation"
+                    .to_string(),
+            })?;
+            let service = expect_str(
+                positional.get(1).copied(),
+                "extdeps_dead_param_count_for_qualified_name",
+            )?;
+            let operation = expect_str(
+                positional.get(2).copied(),
+                "extdeps_dead_param_count_for_qualified_name",
+            )?;
+            let count =
+                crate::module_path_index::extdeps_shape_transport_policy_census::dead_param_count_for_qualified_name(
+                    module, service, operation,
+                );
+            Ok(Some(Value::Int(count)))
+        }
+
+>>>>>>> origin/main
         "transport_script_literal_violation_count_for_path" => {
             let path = expect_str(
                 positional.first().copied(),
                 "transport_script_literal_violation_count_for_path",
             )?;
             let count =
-                crate::transport_script_position_project::transport_script_literal_violation_count_for_path(
+                crate::module_path_index::transport_script_position_census::transport_script_literal_violation_count_for_path(
                     path,
                 );
             Ok(Some(Value::Int(count)))
@@ -5583,6 +5666,7 @@ fn eval_builtin(
                 msg: "extdeps_shape_transport_policy_facts_for_qualified_name requires a QualifiedName"
                     .to_string(),
             })?;
+<<<<<<< HEAD
             let module_path = crate::cli_run::qualified_name_value_to_module_path(qn);
             let facts = crate::cli_run::extdeps_shape_transport_policy_module_facts(&module_path);
             let argv_items: Vec<Value> = facts
@@ -5671,6 +5755,71 @@ fn eval_builtin(
                 ])),
             };
             Ok(Some(result))
+=======
+            let count = crate::module_path_index::extdeps_shape_transport_policy_census::embedded_policy_literal_count_for_qualified_name(
+                module,
+            );
+            Ok(Some(Value::Int(count)))
+        }
+
+        "module_source_nickname_literal_count_for_qualified_name" => {
+            let module = positional.first().ok_or_else(|| InterpError::TypeError {
+                msg: "module_source_nickname_literal_count_for_qualified_name requires a QualifiedName"
+                    .to_string(),
+            })?;
+            let count =
+                crate::module_path_index::extdeps_shape_transport_policy_census::module_source_nickname_literal_count_for_qualified_name(
+                    module,
+                );
+            Ok(Some(Value::Int(count)))
+        }
+
+        "extdeps_policy_leak_count_for_qualified_name" => {
+            let module = positional.first().ok_or_else(|| InterpError::TypeError {
+                msg: "extdeps_policy_leak_count_for_qualified_name requires a QualifiedName"
+                    .to_string(),
+            })?;
+            let count =
+                crate::module_path_index::extdeps_shape_transport_policy_census::policy_leak_count_for_qualified_name(
+                    module,
+                );
+            Ok(Some(Value::Int(count)))
+        }
+
+        "extdeps_transport_fusion_fork_count_for_qualified_name" => {
+            let module = positional.first().ok_or_else(|| InterpError::TypeError {
+                msg: "extdeps_transport_fusion_fork_count_for_qualified_name requires a QualifiedName"
+                    .to_string(),
+            })?;
+            let count = crate::module_path_index::extdeps_shape_transport_policy_census::transport_fusion_fork_count_for_qualified_name(
+                module,
+            );
+            Ok(Some(Value::Int(count)))
+        }
+
+        "extdeps_gist_create_declares_filename_input_for_qualified_name" => {
+            let module = positional.first().ok_or_else(|| InterpError::TypeError {
+                msg: "extdeps_gist_create_declares_filename_input_for_qualified_name requires a QualifiedName"
+                    .to_string(),
+            })?;
+            Ok(Some(Value::Bool(
+                crate::module_path_index::extdeps_shape_transport_policy_census::gist_create_declares_filename_input_for_qualified_name(
+                    module,
+                ),
+            )))
+        }
+
+        "extdeps_gist_create_files_keyed_by_filename_for_qualified_name" => {
+            let module = positional.first().ok_or_else(|| InterpError::TypeError {
+                msg: "extdeps_gist_create_files_keyed_by_filename_for_qualified_name requires a QualifiedName"
+                    .to_string(),
+            })?;
+            Ok(Some(Value::Bool(
+                crate::module_path_index::extdeps_shape_transport_policy_census::gist_create_files_keyed_by_filename_placeholder_for_qualified_name(
+                    module,
+                ),
+            )))
+>>>>>>> origin/main
         }
 
         "extdeps_external_authority_anchor_kind_for_qualified_name" => {
@@ -5679,7 +5828,11 @@ fn eval_builtin(
                     .to_string(),
             })?;
             Ok(Some(Value::Str(
+<<<<<<< HEAD
                 crate::external_authority_project::external_authority_anchor_kind_for_qualified_name(
+=======
+                crate::module_path_index::extdeps_shape_transport_policy_census::external_authority_anchor_kind_for_qualified_name(
+>>>>>>> origin/main
                     module,
                 ),
             )))
@@ -5691,7 +5844,11 @@ fn eval_builtin(
                     .to_string(),
             })?;
             Ok(Some(Value::Str(
+<<<<<<< HEAD
                 crate::external_authority_project::external_authority_scheme_identity_for_qualified_name(
+=======
+                crate::module_path_index::extdeps_shape_transport_policy_census::external_authority_scheme_identity_for_qualified_name(
+>>>>>>> origin/main
                     module,
                 ),
             )))
@@ -5704,7 +5861,11 @@ fn eval_builtin(
                         .to_string(),
             })?;
             Ok(Some(Value::Str(
+<<<<<<< HEAD
                 crate::external_authority_project::external_authority_locator_for_qualified_name(
+=======
+                crate::module_path_index::extdeps_shape_transport_policy_census::external_authority_locator_for_qualified_name(
+>>>>>>> origin/main
                     module,
                 ),
             )))
@@ -5716,7 +5877,11 @@ fn eval_builtin(
                     .to_string(),
             })?;
             Ok(Some(
+<<<<<<< HEAD
                 crate::external_authority_project::derived_extdeps_modules_value(ctx),
+=======
+                crate::module_path_index::extdeps_shape_transport_policy_census::derived_extdeps_modules_value(ctx),
+>>>>>>> origin/main
             ))
         }
 
@@ -5726,7 +5891,11 @@ fn eval_builtin(
                     .to_string(),
             })?;
             Ok(Some(
+<<<<<<< HEAD
                 crate::external_authority_project::backfill_pending_entries_value(ctx),
+=======
+                crate::module_path_index::extdeps_shape_transport_policy_census::backfill_pending_entries_value(ctx),
+>>>>>>> origin/main
             ))
         }
 
@@ -5736,7 +5905,13 @@ fn eval_builtin(
                     .to_string(),
             })?;
             Ok(Some(Value::Bool(
+<<<<<<< HEAD
                 crate::external_authority_project::is_backfill_pending_for_qualified_name(module),
+=======
+                crate::module_path_index::extdeps_shape_transport_policy_census::is_backfill_pending_for_qualified_name(
+                    module,
+                ),
+>>>>>>> origin/main
             )))
         }
         "extdeps_external_authority_is_machinery_exempt_for_qualified_name" => {
@@ -5745,7 +5920,13 @@ fn eval_builtin(
                     .to_string(),
             })?;
             Ok(Some(Value::Bool(
+<<<<<<< HEAD
                 crate::external_authority_project::is_machinery_exempt_for_qualified_name(module),
+=======
+                crate::module_path_index::extdeps_shape_transport_policy_census::is_machinery_exempt_for_qualified_name(
+                    module,
+                ),
+>>>>>>> origin/main
             )))
         }
         "extdeps_external_authority_is_clean_tree_roster_excluded_for_qualified_name" => {
@@ -5754,13 +5935,21 @@ fn eval_builtin(
                     .to_string(),
             })?;
             Ok(Some(Value::Bool(
+<<<<<<< HEAD
                 crate::external_authority_project::is_clean_tree_roster_excluded_for_qualified_name(
+=======
+                crate::module_path_index::extdeps_shape_transport_policy_census::is_clean_tree_roster_excluded_for_qualified_name(
+>>>>>>> origin/main
                     module,
                 ),
             )))
         }
         "extdeps_external_authority_live_clean_tree_holds" => Ok(Some(Value::Bool(
+<<<<<<< HEAD
             crate::external_authority_project::external_authority_live_clean_tree_holds(),
+=======
+            crate::module_path_index::extdeps_shape_transport_policy_census::external_authority_live_clean_tree_holds(),
+>>>>>>> origin/main
         ))),
         "extdeps_external_authority_anchor_shadow_masked_for_qualified_name" => {
             let module = positional.first().ok_or_else(|| InterpError::TypeError {
@@ -5768,16 +5957,27 @@ fn eval_builtin(
                     .to_string(),
             })?;
             Ok(Some(Value::Bool(
+<<<<<<< HEAD
                 crate::external_authority_project::external_authority_anchor_shadow_masked_for_qualified_name(
+=======
+                crate::module_path_index::extdeps_shape_transport_policy_census::external_authority_anchor_shadow_masked_for_qualified_name(
+>>>>>>> origin/main
                     module,
                 ),
             )))
         }
         "extdeps_external_authority_live_shadow_mask_holds" => Ok(Some(Value::Bool(
+<<<<<<< HEAD
             crate::external_authority_project::external_authority_live_shadow_mask_holds(),
         ))),
         "extdeps_external_authority_live_roster_module_count" => Ok(Some(Value::Int(
             crate::external_authority_project::external_authority_live_roster_module_count(),
+=======
+            crate::module_path_index::extdeps_shape_transport_policy_census::external_authority_live_shadow_mask_holds(),
+        ))),
+        "extdeps_external_authority_live_roster_module_count" => Ok(Some(Value::Int(
+            crate::module_path_index::extdeps_shape_transport_policy_census::external_authority_live_roster_module_count(),
+>>>>>>> origin/main
         ))),
 
         "doc_graph_orphan_count" => Ok(Some(Value::Int(
@@ -5791,16 +5991,16 @@ fn eval_builtin(
         ))),
 
         "inert_carrier_count" => Ok(Some(Value::Int(
-            crate::inert_carrier_project::inert_carrier_count(),
+            crate::module_path_index::inert_carrier_census::inert_carrier_count(),
         ))),
         "inert_carrier_unrostered_count" => Ok(Some(Value::Int(
-            crate::inert_carrier_project::inert_carrier_unrostered_count(),
+            crate::module_path_index::inert_carrier_census::inert_carrier_unrostered_count(),
         ))),
         "inert_carrier_stale_roster_count" => Ok(Some(Value::Int(
-            crate::inert_carrier_project::inert_carrier_stale_roster_count(),
+            crate::module_path_index::inert_carrier_census::inert_carrier_stale_roster_count(),
         ))),
         "inert_carrier_declared_count" => Ok(Some(Value::Int(
-            crate::inert_carrier_project::inert_carrier_declared_count(),
+            crate::module_path_index::inert_carrier_census::inert_carrier_declared_count(),
         ))),
 
         "inert_lens_unreached_module_count" => Ok(Some(Value::Int(
@@ -5811,16 +6011,16 @@ fn eval_builtin(
         ))),
 
         "non_fold_residue_count" => Ok(Some(Value::Int(
-            crate::non_fold_residue_project::non_fold_residue_count(),
+            crate::module_path_index::non_fold_residue_census::non_fold_residue_count(),
         ))),
         "non_fold_residue_unrostered_count" => Ok(Some(Value::Int(
-            crate::non_fold_residue_project::non_fold_residue_unrostered_count(),
+            crate::module_path_index::non_fold_residue_census::non_fold_residue_unrostered_count(),
         ))),
         "non_fold_residue_stale_roster_count" => Ok(Some(Value::Int(
-            crate::non_fold_residue_project::non_fold_residue_stale_roster_count(),
+            crate::module_path_index::non_fold_residue_census::non_fold_residue_stale_roster_count(),
         ))),
         "non_fold_residue_coproduct_universe_count" => Ok(Some(Value::Int(
-            crate::non_fold_residue_project::non_fold_residue_coproduct_universe_count(),
+            crate::module_path_index::non_fold_residue_census::non_fold_residue_coproduct_universe_count(),
         ))),
 
         "complexity_linearity_syntactic_finding_count" => Ok(Some(Value::Int(
