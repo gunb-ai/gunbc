@@ -1,6 +1,24 @@
 # Affected-set de-fork: `v2.lens.affected_set` as single authority; dissolve Rust parallel implementation
 
-**Status: DESIGN SKETCH — no implementation. Returns to stern-moth-225 → operator for sign-off before any code lands.**
+**Status: PARTIAL IMPLEMENTATION — prep (#6065) + witness (a) partial (#6072) landed; Steps 4–5 blocked.**
+
+**ROADMAP:** `1-affected-set-defork` (`dsl/gunbc/roadmap_authority.dag:173`).
+
+**Merge sequence:** PR #6065 (disposition-kernel prep) merges first; #6072 rebases onto fresh `main` so its diff collapses to witness-(a)-delta only. Do **not** merge #6072 before #6065.
+
+---
+
+## Implementation receipts (2026-07-01)
+
+| Step | Status | Receipt |
+|------|--------|---------|
+| Prep — disposition kernel both axes | **GREEN** (PR #6065) | `floor_witness_run_disposition` + `function_edited`; `affected_set_disposition_both_axes_test.dag`; `floor_disposition_kernel_alignment` in `cli_run.rs` (disposition tautology on shared Rust inputs — NOT witness (a)) |
+| Step 3 witness (a) — **edited_test_fns axis** | **GREEN (partial)** | `floor_witness_a_prove` in `cli_run.rs`: fixture unified diff → Rust `edited_test_fns` vs independent `.dag` `floor_test_fn_declaration_edited`; mandatory RED under-selection; `.dag` claim `affected_set_witness_a_prove_test.dag` |
+| Step 3 witness (a) — **node-frontier axis** | **BLOCKED** | Whole-tree `InferredTree` + `NodeArtifactProvenance` over live corpus — same resolve-grounding gate as `wiring_liveness_whole_tree` / `whole_tree_resolved_ctx` (`v2.lens.resolved_imports` open thread). `.dag` closure smoke on `provenance_producer` fixture only; Rust `NodeFrontierSeeds` equivalence deferred |
+| Step 4 migrate floor | **NOT STARTED** | Impl-2 live |
+| Step 5 delete Rust parallel | **NOT STARTED** | `NodeFrontierSeeds`, `entry_touches_frontier_seeds`, etc. intact |
+
+**Hand-Rust harness discipline:** `floor_witness_a_prove` uses **deterministic fixture unified diffs** (structured shape identical to CI git diff parsing) so every checkout — including `main` after merge — executes impl-vs-impl proof by execution. Branch-only `origin/main...HEAD` non-empty asserts were removed (§5: a gate that only passes on feature branches is not a stable floor witness).
 
 ---
 
