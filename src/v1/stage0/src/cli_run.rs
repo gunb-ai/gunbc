@@ -3975,35 +3975,31 @@ pub fn run_discovery_corpus_with_options(
         parallel_width
     };
     let width = capped_width.max(1);
-    let provenance_ingest_live = provenance_overlay
-        .as_ref()
-        .map(overlay_manifest_ingest_is_live)
-        .unwrap_or(false);
-    if provenance_overlay.is_some() {
+    let provenance_ingest_live = if provenance_overlay.is_some() {
         match floor_runner_eval_context(&effective_roots) {
             Ok(ctx) => {
-                let dag_live = floor_provenance_ingest_is_live(&ctx);
-                if provenance_ingest_live && dag_live {
+                let live = floor_provenance_ingest_is_live(&ctx);
+                if live {
                     eprintln!(
                         "claim_executor: floor provenance ingest is LIVE (node-closure authority enabled)"
-                    );
-                } else if provenance_ingest_live && !dag_live {
-                    eprintln!(
-                        "claim_executor: floor provenance overlay emitted but runner liveness check failed — using .dag closure with overlay ingest"
                     );
                 } else {
                     eprintln!(
                         "claim_executor: floor provenance ingest overlay present but not live — using seed fallback"
                     );
                 }
+                live
             }
             Err(msg) => {
                 eprintln!(
                     "claim_executor: floor provenance runner unavailable ({msg}) — skip uses seed fallback"
                 );
+                false
             }
         }
-    }
+    } else {
+        false
+    };
     let skip_ctx = FloorProvenanceSkipContext {
         effective_roots: effective_roots.clone(),
         changed_paths,
@@ -5714,6 +5710,11 @@ pub fn discover_source_root_reads(
     Ok(records)
 }
 
+// SCAFFOLD (DESIGN §6, dissolution named): runtime provenance-ingest overlay + interpreter
+// bridges that wire floor skip to `v2.lens.affected_set` node-closure while the committed
+// `host_source_root_ingest_manifest` stub stays Empty. Dissolve-on: Step 3 equivalence gate
+// then Step 5 deletion in `docs/plans/affected-set-precompute-pruning.md` — floor consumes
+// only `.dag` skip disposition; this host overlay + seed-bridge shrink to zero.
 pub const FLOOR_PROVENANCE_INGEST_MANIFEST_REL: &str =
     "src/v2/test/claim/workflow/host_source_root_ingest_manifest.dag";
 pub const FLOOR_PROVENANCE_RUNNER_ENTRY: &str = "src/v2/workflow/affected_set_floor_runner.dag";
@@ -5732,19 +5733,6 @@ impl Drop for FloorProvenanceIngestOverlay {
     fn drop(&mut self) {
         let _ = std::fs::remove_dir_all(&self.overlay_root);
     }
-}
-
-fn overlay_manifest_ingest_is_live(overlay: &FloorProvenanceIngestOverlay) -> bool {
-    let path = overlay
-        .overlay_root
-        .join(FLOOR_PROVENANCE_INGEST_MANIFEST_REL);
-    let Ok(content) = std::fs::read_to_string(&path) else {
-        return false;
-    };
-    content.contains("coverage_complete: true")
-        && content.contains("produced_row_count:")
-        && !content.contains("produced_row_count: 0")
-        && !content.contains("host_source_root_ingest: SourceRootIngest = Empty")
 }
 
 pub fn discover_source_root_reads_for_paths(
