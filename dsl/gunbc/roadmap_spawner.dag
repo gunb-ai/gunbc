@@ -56,12 +56,13 @@ fn doc_all_edges(doc: RoadmapDocument) -> List<RoadmapEdge> {
   fold(doc.sections, init: lane_edges, f: (acc, s) => concat(acc, section_edges(s: s)))
 }
 
+fn node_parent_ids(edges: List<RoadmapEdge>, id: ProcessNodeId) -> List<ProcessNodeId> {
+  edges |> filter(e => e.child == id) |> map(e => e.parent)
+}
+
 fn node_dep_done(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, id: ProcessNodeId, merged: List<Int>) -> Bool {
-  match roadmap_parent(edges: edges, node: id) {
-    TopLevel => true
-    UnderParent { parent: pid } =>
-      any(nodes, n => n.node == pid && item_is_done(item: n.line, merged: merged))
-  }
+  all(node_parent_ids(edges: edges, id: id), pid =>
+    any(nodes, n => n.node == pid && item_is_done(item: n.line, merged: merged)))
 }
 
 fn node_is_spawnable(n: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>) -> Bool {
