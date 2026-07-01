@@ -3,7 +3,6 @@ module gunbc.ci_deploy_access
 import std.types { NonEmptyStr, List, String, Bool }
 import gunbc.fleet_intent { ComputeHost, srv1_host }
 import gunbc.host_effect { HostEffectTransport, LocalShell, SshShell }
-import product.placement_supply { HostIdentity }
 
 type PrivilegedCommand {
   path: NonEmptyStr
@@ -98,8 +97,4 @@ fn deploy_access_is_local_apply(access: DeployAccess) -> Bool {
     LocalShell => true
     SshShell { ssh_host: _ } => false
   }
-}
-
-fn deploy_access_transport_for_host(access: DeployAccess) -> HostEffectTransport {
-  access.transport
 }
