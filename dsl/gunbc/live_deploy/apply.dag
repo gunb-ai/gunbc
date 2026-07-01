@@ -98,6 +98,7 @@ fn live_deploy_access_preflight() -> Reconciliation<HostEffectIntent, HostEffect
     effect: ShellCommand { script: "" },
     policy: OneShotIdempotent,
     transport: access.transport,
+    privilege_denial: none,
   }
   let verdict = deploy_access_check_observed(access: access)
   match verdict {
@@ -109,7 +110,17 @@ fn live_deploy_access_preflight() -> Reconciliation<HostEffectIntent, HostEffect
         },
         applied: intent,
       }
-    Deny { reason: _ } => NotConverged { reason: deploy_access_decision_reason(d: verdict), applied: intent }
+    Deny { reason: _ } =>
+      NotConverged {
+        reason: deploy_access_decision_reason(d: verdict),
+        applied: HostEffectIntent {
+          target: HostOs { node: access.host },
+          effect: ShellCommand { script: "" },
+          policy: OneShotIdempotent,
+          transport: access.transport,
+          privilege_denial: Present { value: verdict },
+        },
+      }
   }
 }
 

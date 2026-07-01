@@ -20,7 +20,7 @@ import std.access { AccessDecision, Permit, Deny }
 import gunbc.ci_deploy_access {
   DeployAccess, DeployAccessActor,
   deploy_access_check, deploy_access_check_observed,
-  deploy_access_refusal_prefix, deploy_access_decision_reason,
+  deploy_access_decision_reason,
 }
 import std.types { String, NonEmptyStr }
 
@@ -112,7 +112,13 @@ fn realize_shell_on_host(script: String, transport: HostEffectTransport, intent:
 }
 
 fn host_effect_apply(target: NodeControlPlane, effect: HostEffect, policy: Policy, transport: HostEffectTransport) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  let intent = HostEffectIntent { target: target, effect: effect, policy: policy, transport: transport }
+  let intent = HostEffectIntent {
+    target: target,
+    effect: effect,
+    policy: policy,
+    transport: transport,
+    privilege_denial: none,
+  }
   match resolve_host_effect_cell(target: target, effect: effect) {
     ShellOnHost { node: _, script: s } => realize_shell_on_host(script: s, transport: transport, intent: intent)
     RedfishOnBmc { node: _, action: _ } =>
@@ -139,7 +145,13 @@ fn host_effect_apply_gated(
   transport: HostEffectTransport,
   fixture_actor: DeployAccessActor?
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  let intent = HostEffectIntent { target: target, effect: effect, policy: policy, transport: transport }
+  let intent = HostEffectIntent {
+    target: target,
+    effect: effect,
+    policy: policy,
+    transport: transport,
+    privilege_denial: none,
+  }
   let verdict = host_effect_privilege_verdict(access: access, fixture_actor: fixture_actor)
   match verdict {
     Permit =>
@@ -150,12 +162,25 @@ fn host_effect_apply_gated(
         IncompatibleCell { reason: why } => NotConverged { reason: why, applied: intent }
       }
     Deny { reason: _ } =>
-      NotConverged { reason: deploy_access_decision_reason(d: verdict), applied: intent }
+      NotConverged {
+        reason: deploy_access_decision_reason(d: verdict),
+        applied: HostEffectIntent {
+          target: target,
+          effect: effect,
+          policy: policy,
+          transport: transport,
+          privilege_denial: Present { value: verdict },
+        },
+      }
   }
 }
 
-fn host_effect_refusal_is_privilege(reason: String) -> Bool {
-  string_contains(s: reason, pattern: deploy_access_refusal_prefix)
+fn host_effect_intent_is_privilege_denial(intent: HostEffectIntent) -> Bool {
+  match intent.privilege_denial {
+    Present { value: Deny { reason: _ } } => true
+    Present { value: Permit } => false
+    Absent => false
+  }
 }
 
 type ConvergeDirective = Settled | ReDrive | Refused { reason: String }
@@ -171,7 +196,7 @@ fn host_effect_policy_directive(r: Reconciliation<HostEffectIntent, HostEffectEv
   match r {
     Converged { evidence: _, applied: _ } => Settled
     NotConverged { reason: why, applied: intent } =>
-      if host_effect_refusal_is_privilege(reason: why) {
+      if host_effect_intent_is_privilege_denial(intent: intent) {
         Refused { reason: why }
       } else {
         match resolve_host_effect_cell(target: intent.target, effect: intent.effect) {

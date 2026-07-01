@@ -22,7 +22,7 @@ import gunbc.host_effect {
 import gunbc.host_effect_realize {
   host_effect_apply_gated,
   host_effect_policy_directive,
-  host_effect_refusal_is_privilege,
+  host_effect_intent_is_privilege_denial,
   Refused,
 }
 import std.realization_reconcile { reconciliation_converged, NotConverged, Converged }
@@ -42,9 +42,10 @@ fn witness_modeled_unprivileged_fixture_is_denied() -> Bool {
   match d {
     Permit => false
     Deny { reason: _ } =>
-      let why = deploy_access_decision_reason(d: d)
-      host_effect_refusal_is_privilege(reason: why)
-        && string_contains(s: why, pattern: "principal mismatch")
+      string_contains(
+        s: deploy_access_decision_reason(d: d),
+        pattern: "principal mismatch"
+      )
   }
 }
 
@@ -59,24 +60,33 @@ fn witness_unprivileged_mutation_refused_before_shell() -> Bool {
     transport: LocalShell,
     fixture_actor: Present { value: deploy_access_unprivileged_fixture_actor() }
   ) {
-    NotConverged { reason: why, applied: _ } =>
-      host_effect_refusal_is_privilege(reason: why)
-        && !string_contains(s: why, pattern: privilege_mutation_marker)
-        && !string_contains(s: why, pattern: "--- stdout ---")
+    NotConverged { reason: _, applied: intent } =>
+      host_effect_intent_is_privilege_denial(intent: intent)
+        && match intent.privilege_denial {
+          Present { value: d } =>
+            !string_contains(s: deploy_access_decision_reason(d: d), pattern: privilege_mutation_marker)
+          Absent => false
+        }
     Converged { evidence: _, applied: _ } => false
   }
 }
 
 fn witness_unprivileged_mutation_directive_is_refused_terminal() -> Bool {
-  match host_effect_policy_directive(r: host_effect_apply_gated(
+  let r = host_effect_apply_gated(
     access: ci_deploy_srv1_access,
     target: host_os_target(),
     effect: ShellCommand { script: concat("echo ", privilege_mutation_marker) },
     policy: OneShotIdempotent,
     transport: LocalShell,
     fixture_actor: Present { value: deploy_access_unprivileged_fixture_actor() }
-  )) {
-    Refused { reason: why } => host_effect_refusal_is_privilege(reason: why)
+  )
+  match host_effect_policy_directive(r: r) {
+    Refused { reason: _ } =>
+      match r {
+        NotConverged { reason: _, applied: intent } =>
+          host_effect_intent_is_privilege_denial(intent: intent)
+        Converged { evidence: _, applied: _ } => false
+      }
     _ => false
   }
 }
