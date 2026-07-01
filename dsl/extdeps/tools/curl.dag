@@ -1,0 +1,23 @@
+module extdeps.tools.curl
+
+import std.types { NonEmptyStr }
+import extdeps.version { VersionConstraint }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.tools { CliTool, SourceApt }
+import extdeps.apt { package_curl }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "curl.se/docs/manpage.html"
+  }
+}
+
+data curl_pinned_version: VersionConstraint = ">= 7.68"
+
+data curl_cli_tool: CliTool = CliTool {
+  name: "curl",
+  min_version: Present { value: curl_pinned_version },
+  installable_via: [SourceApt { package: package_curl }],
+}
