@@ -5,6 +5,8 @@ import v2.compiler.infer { InferredFacts, InferredTree }
 import extdeps.communication.medium { Medium }
 import v2.extdeps.languages.bash {
   bash_word_pass_emitted,
+  orch_if_emitted_command,
+  orch_if_target_model,
   orch_run_emitted_command,
   orch_run_target_model,
   orch_seq2_emitted_command,
@@ -18,6 +20,8 @@ import v2.std.orchestration {
   Step,
   Do,
   Pipeline,
+  Predicate,
+  ExitZero,
   EscalationLevel,
   LogMatches,
   EnvBinding
@@ -89,11 +93,58 @@ fn orch_emit_join2(left: String, right: String) -> Outcome<Medium<String>> {
   )
 }
 
+fn orch_emit_predicate(p: Predicate) -> Outcome<Medium<String>> {
+  match p {
+    ExitZero { run: r } => orch_emit_run(r: r)
+    LogMatches { source: _, pattern: _ } =>
+      outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_predicate_logmatches_unsupported))
+    StrEq { lhs: _, rhs: _ } =>
+      outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_predicate_streq_unsupported))
+    Not { inner: _ } =>
+      outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_predicate_not_unsupported))
+    And { lhs: _, rhs: _ } =>
+      outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_predicate_and_unsupported))
+    Or { lhs: _, rhs: _ } =>
+      outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_predicate_or_unsupported))
+  }
+}
+
+fn orch_emit_if(
+  cond: Predicate,
+  then_: Pipeline,
+  else_: Optional<Pipeline>
+) -> Outcome<Medium<String>> {
+  match else_ {
+    Present { value: _ } =>
+      outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_if_else_unsupported))
+    Absent =>
+      bind_outcome(
+        o: orch_emit_predicate(p: cond),
+        f: fn(cond_medium) {
+          bind_outcome(
+            o: orch_emit_pipeline(p: then_),
+            f: fn(then_medium) {
+              emit(
+                tree: InferredTree {
+                  root: orch_if_emitted_command,
+                  facts: Map { lookup: orch_emit_facts_lookup }
+                },
+                target: orch_if_target_model(
+                  cond: cond_medium.carried,
+                  then_body: then_medium.carried
+                )
+              )
+            }
+          )
+        }
+      )
+  }
+}
+
 fn orch_emit_step(s: Step) -> Outcome<Medium<String>> {
   match s {
     Do { run: r } => orch_emit_run(r: r)
-    If { cond: _, then_: _, else_: _ } =>
-      outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_step_if_unsupported))
+    If { cond: c, then_: t, else_: e } => orch_emit_if(cond: c, then_: t, else_: e)
     For { binder: _, over: _, body: _ } =>
       outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_step_for_unsupported))
     While { cond: _, body: _, bound: _ } =>

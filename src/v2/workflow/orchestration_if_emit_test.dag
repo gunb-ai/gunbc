@@ -1,0 +1,149 @@
+module v2.workflow.orchestration_if_emit_test
+
+import v2.compiler.emit_orchestration { orch_emit_step }
+import v2.compiler.emit { emit }
+import v2.compiler.infer { InferredFacts, InferredTree }
+import v2.extdeps.languages.bash { orch_if_emitted_command, orch_if_target_model }
+import v2.test.manual.single_branch_if_bash {
+  single_branch_if_intent,
+  single_branch_if_hand_authored,
+  single_branch_if_then_command
+}
+import v2.std.orchestration {
+  Step,
+  If,
+  Do,
+  Run,
+  Pipeline,
+  ExitZero,
+  FailFast
+}
+import v2.std.collection { Absent, Present, Map }
+import v2.std.node { Node }
+import v2.std.witness { Violates, Witness }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  None,
+  Rejected,
+  Unavailable,
+  node_locus
+}
+
+fn orch_if_probe_facts(key: Node) -> Witness<InferredFacts> {
+  Violates {
+    diagnostic: Diagnostic {
+      reason: ^orch_if_probe_facts,
+      at: node_locus(node: key),
+      correction: Unavailable { reason: ExternalContractUnknown }
+    }
+  }
+}
+
+test fn orch_if_row_direct_emit_accepted_holds() -> Bool {
+  match emit(
+    tree: InferredTree {
+      root: orch_if_emitted_command,
+      facts: Map { lookup: orch_if_probe_facts }
+    },
+    target: orch_if_target_model(
+      cond: "test -f marker",
+      then_body: "echo ok"
+    )
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn orch_if_byte_identical_to_hand_authored_holds() -> Bool {
+  match orch_emit_step(s: single_branch_if_intent()) {
+    Accepted { value: source, diagnostics: dg } =>
+      (source.carried == single_branch_if_hand_authored()) && (dg == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn single_branch_if_perturbed_intent() -> Step {
+  If {
+    cond: ExitZero {
+      run: Run {
+        command: "test -f marker",
+        env: [],
+        redirect: Absent,
+        capture: Absent
+      }
+    },
+    then_: Pipeline {
+      steps: [
+        Do {
+          run: Run {
+            command: concat(single_branch_if_then_command, " perturbed"),
+            env: [],
+            redirect: Absent,
+            capture: Absent
+          }
+        }
+      ],
+      on_failure: FailFast
+    },
+    else_: Absent
+  }
+}
+
+test fn orch_if_then_body_has_teeth_holds() -> Bool {
+  match orch_emit_step(s: single_branch_if_perturbed_intent()) {
+    Accepted { value: source, diagnostics: _ } =>
+      source.carried != single_branch_if_hand_authored()
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn single_branch_if_with_else_intent() -> Step {
+  If {
+    cond: ExitZero {
+      run: Run {
+        command: "test -f marker",
+        env: [],
+        redirect: Absent,
+        capture: Absent
+      }
+    },
+    then_: Pipeline {
+      steps: [
+        Do {
+          run: Run {
+            command: "echo ok",
+            env: [],
+            redirect: Absent,
+            capture: Absent
+          }
+        }
+      ],
+      on_failure: FailFast
+    },
+    else_: Present {
+      value: Pipeline {
+        steps: [
+          Do {
+            run: Run {
+              command: "echo fail",
+              env: [],
+              redirect: Absent,
+              capture: Absent
+            }
+          }
+        ],
+        on_failure: FailFast
+      }
+    }
+  }
+}
+
+test fn orch_if_else_branch_rejected_holds() -> Bool {
+  match orch_emit_step(s: single_branch_if_with_else_intent()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
