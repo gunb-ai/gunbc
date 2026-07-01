@@ -4405,10 +4405,10 @@ mod node_frontier_plumbing_controls {
     // File outside FIXTURE's import closure — precondition asserted at runtime in green control.
     // If a future import edge adds this file to FIXTURE's closure, the precondition assertion
     // fails loudly rather than letting the control silently degrade (§3 anti-drift).
-    const OUTSIDE_FILE: &str = "src/v2/lens/unwired_model.dag";
+    const OUTSIDE_FILE: &str = "src/v2/lens/inert_carrier.dag";
     // A known data-declaration line in OUTSIDE_FILE.
     // If this line shifts the test may generate force_run_all — a loud failure, not a silent pass.
-    const OUTSIDE_DATA_LINE: i64 = 870;
+    const OUTSIDE_DATA_LINE: i64 = 10;
 
     fn abs(ws: &PathBuf, rel: &str) -> String {
         ws.join(rel).to_string_lossy().into_owned()
