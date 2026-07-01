@@ -6257,15 +6257,6 @@ mod floor_witness_entry_tree_root_controls {
             .expect("overlay present");
         let effective = source_roots_with_overlay(&roots, &overlay);
         let runner = floor_runner_eval_context(&effective).expect("runner ctx");
-        let ingest = super::eval_runner_data_item(&runner, "host_source_root_ingest").expect("ingest");
-        let prov = v1_interpreter::run_in_context_with_args(
-            &runner,
-            "node_artifact_provenance_from_source_root",
-            &[(Some("ingest".to_string()), ingest)],
-            false,
-        )
-        .expect("provenance fold");
-        eprintln!("provenance fold outcome: {}", runner.format_value(&prov));
         witness_entry_tree_root(&runner, &roots, entry).expect("entry tree root");
     }
 }
@@ -6575,20 +6566,59 @@ fn witness_read_for_entry_file(
     ))
 }
 
+fn artifact_file_path_from_provenance_row(
+    row: &v1_interpreter::Value,
+    ctx: &v1_interpreter::InterpContext,
+) -> Option<String> {
+    let fields = match row {
+        v1_interpreter::Value::Record { fields, .. }
+        | v1_interpreter::Value::Variant { fields, .. } => fields,
+        _ => return None,
+    };
+    let artifact = ctx.field(fields, "artifact")?;
+    let artifact_fields = match artifact {
+        v1_interpreter::Value::Record { fields, .. }
+        | v1_interpreter::Value::Variant { fields, .. } => fields,
+        _ => return None,
+    };
+    match ctx.field(artifact_fields, "file_path")? {
+        v1_interpreter::Value::Str(path) => Some(path.clone()),
+        _ => None,
+    }
+}
+
 fn provenance_tree_node_for_entry_file(
     ctx: &v1_interpreter::InterpContext,
     entry_path: &str,
 ) -> Result<v1_interpreter::Value, String> {
     let ingest = eval_runner_data_item(ctx, "host_source_root_ingest")?;
-    let read = witness_read_for_entry_file(&ingest, entry_path, ctx)?;
-    let result = v1_interpreter::run_in_context_with_args(
+    let outcome = v1_interpreter::run_in_context_with_args(
         ctx,
-        "floor_witness_entry_tree_root_from_read",
-        &[(Some("read".to_string()), read)],
+        "node_artifact_provenance_from_source_root",
+        &[(Some("ingest".to_string()), ingest)],
         false,
     )
-    .map_err(|e| format!("floor_witness_entry_tree_root_from_read: {e}"))?;
-    witness_holds_node_value(&result, ctx)
+    .map_err(|e| format!("node_artifact_provenance_from_source_root: {e}"))?;
+    let provenance = outcome_accepted_value(&outcome, ctx)?;
+    let entry_norm = repo_relative_dag_path(entry_path);
+    for row in list_values_from_free_monoid(&provenance, ctx)? {
+        if artifact_file_path_from_provenance_row(&row, ctx)
+            .is_some_and(|path| repo_relative_dag_path(&path) == entry_norm)
+        {
+            let fields = match &row {
+                v1_interpreter::Value::Record { fields, .. }
+                | v1_interpreter::Value::Variant { fields, .. } => fields,
+                _ => continue,
+            };
+            return ctx
+                .field(fields, "node")
+                .cloned()
+                .ok_or_else(|| "NodeArtifactProvenance missing `node`".to_string());
+        }
+    }
+    Err(format!(
+        "no provenance tree root for witness entry '{entry_norm}'"
+    ))
 }
 
 fn witness_holds_node_value(
