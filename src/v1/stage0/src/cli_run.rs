@@ -4922,7 +4922,7 @@ mod floor_witness_a_prove {
             .iter()
             .find(|(path, _, _)| diff_file_matches_entry(path, &row.entry))
             .map(|(path, _, _)| path.clone())
-            .unwrap_or_else(|| normalize_repo_path(&row.entry));
+            .unwrap_or_else(|| super::normalize_repo_path(&row.entry));
         let content = std::fs::read_to_string(&row.entry)
             .map_err(|e| format!("read {} for decl scan: {e}", row.entry))?;
         let decl_line = scan_test_decl_lines(&content)
@@ -4942,14 +4942,15 @@ mod floor_witness_a_prove {
         prove_ctx: &v1_interpreter::InterpContext,
         frontier: &v1_interpreter::Value,
     ) -> Result<usize, String> {
-        v1_interpreter::free_monoid_to_vec(frontier)
-            .map(|items| items.len())
-            .ok_or_else(|| {
-                format!(
-                    "expected list frontier from .dag affected_set_closure, got `{}`",
-                    prove_ctx.format_value(frontier)
-                )
-            })
+        let len = v1_interpreter::with_active_context(prove_ctx, || {
+            v1_interpreter::free_monoid_to_vec(frontier).map(|items| items.len())
+        });
+        len.ok_or_else(|| {
+            format!(
+                "expected list frontier from .dag affected_set_closure, got `{}`",
+                prove_ctx.format_value(frontier)
+            )
+        })
     }
 
     fn dag_affected_frontier_for_changed_path(
@@ -5161,11 +5162,10 @@ mod floor_witness_a_prove {
         let prove_ctx = make_eval_context(&prove_graph, prove_indices, ExecutionMode::Wet);
         let affected = dag_affected_frontier_for_changed_path(&prove_ctx, AFFECTED_SET_MID_PATH)
             .expect("dag affected_set_closure frontier");
-        let Value::List(nodes) = &affected else {
-            panic!("expected List frontier from .dag affected_set_closure");
-        };
+        let node_count = frontier_list_len(&prove_ctx, &affected)
+            .expect("frontier must be a list (List or Cons carrier)");
         assert!(
-            !nodes.is_empty(),
+            node_count > 0,
             ".dag affected_set_closure must produce non-empty frontier for {AFFECTED_SET_MID_PATH} \
              via provenance_producer fixture (Impl-1 not inert; whole-tree Rust equivalence deferred)"
         );
